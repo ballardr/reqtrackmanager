@@ -259,6 +259,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     #: `report_accent_color_hex` falls back to the UI accent (`accent_color_hex`), then the platform default.
     report_accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     report_include_logo: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    #: The organisation's report colour scheme: a list of `{name, colour}` (`services.report_colours`), up to 8, that a layout
+    #: with no scheme of its own resolves colour names by. `None` is none set: only the four standard names resolve.
+    report_colour_scheme: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB, nullable=True)
     report_footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_include_cover_page: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     #: Whether the requirements report organises requirements into one chapter per component, each on its own page.

@@ -484,6 +484,23 @@ def test_margins_page_styles_and_sections_survive_a_project_bundle_round_trip(wo
     assert current["current"]["tree"] == styled
 
 
+def test_a_colour_scheme_and_the_names_that_use_it_survive_a_project_bundle_round_trip(world):
+    project = world.project("Source")
+    h = auth_headers(world.token)
+    coloured = {
+        **empty_tree("document"), "palette": [{"name": "plate", "colour": "accent_dark"}, {"name": "ink", "colour": "#102030"}],
+        "nodes": [{"type": "shape", "shape": "rectangle", "width": 3, "height": 1, "fill": "plate", "outline": "ink"}],
+    }
+    new_layout(world, project_url(project), "Coloured", body=coloured)
+
+    result = import_project(world, export_project(world, project))
+
+    assert result["warnings"] == []
+    copy = names(world, result["project"])["Coloured"]
+    current = world.client.get(project_url(result["project"], f"/{copy['id']}"), headers=h).json()
+    assert current["current"]["tree"] == coloured
+
+
 def test_a_bundle_tree_is_validated_again_and_bad_versions_are_dropped(world):
     project = world.project("Source")
     h = auth_headers(world.token)

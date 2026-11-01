@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { chooseReport, offersReport, reportPickerButton } from "./reportPicker";
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -178,6 +178,93 @@ test.describe("Custom report run", () => {
       await expect(page.getByRole("cell", { name: alpha.requirement })).toBeVisible();
       await expect(page.getByRole("cell", { name: beta.requirement })).toBeVisible();
     });
+  });
+
+  test("a single-project organisation layout asks for exactly one project and the server refuses any other run", async ({ page, request }) => {
+    const { org, headers, projects, suffix } = await setup(page, request);
+    const [alpha, beta] = projects;
+    const name = `E2E Single project ${suffix}`;
+    const created = await request.post(`${API}/orgs/${org.id}/report-layouts`, {
+      headers, data: { name, description: "E2E layout", family: "document", tree: { ...layoutTree, run_scope: "one" } },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+    const layout = await created.json();
+    const all = await (await request.get(`${API}/projects`, { headers })).json();
+    const idOf = (projectName: string) => all.find((p: { name: string }) => p.name === projectName).id;
+
+    await test.step("the report is held back until one project is chosen, and offers no multi-selection", async () => {
+      await page.goto(`/orgs/${org.id}/overview?reports=choose`);
+      await chooseReport(page, name);
+      await expect(page.getByText("This report runs for a single project. Choose the project to run it for.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("cell", { name: alpha.requirement })).toHaveCount(0);
+    });
+
+    await test.step("choosing a project runs the report for it alone, and the PDF carries the same one project", async () => {
+      await page.getByRole("combobox", { name: /Project/ }).selectOption({ label: beta.name });
+      await expect(page.getByRole("cell", { name: beta.requirement })).toBeVisible();
+      await expect(page.getByRole("cell", { name: alpha.requirement })).toHaveCount(0);
+      const sent = page.waitForRequest((r) => r.url().includes("/custom-reports/") && r.url().includes("format=pdf"));
+      const file = await download(page, "Download PDF report");
+      expect(new URL((await sent).url()).searchParams.get("project_ids")).toBe(idOf(beta.name));
+      expect(fs.readFileSync((await file.path())!).subarray(0, 5).toString()).toBe("%PDF-");
+    });
+
+    await test.step("the API refuses none or several projects, in the foreground and the background", async () => {
+      const run = `${API}/orgs/${org.id}/custom-reports/${layout.id}/run`;
+      expect((await request.get(run, { headers })).status()).toBe(422);
+      expect((await request.get(`${run}?project_ids=${idOf(alpha.name)},${idOf(beta.name)}`, { headers })).status()).toBe(422);
+      expect((await request.get(`${run}?project_ids=${idOf(alpha.name)}`, { headers })).status()).toBe(200);
+      const queue = `${API}/orgs/${org.id}/custom-reports/${layout.id}/runs`;
+      expect((await request.post(queue, { headers, data: { format: "pdf" } })).status()).toBe(422);
+    });
+  });
+
+  test("a layout for one project and its children offers the child-projects switch and sends the choice", async ({ page, request }) => {
+    const { org, headers, projects, suffix } = await setup(page, request);
+    const [alpha] = projects;
+    const name = `E2E Project tree ${suffix}`;
+    const created = await request.post(`${API}/orgs/${org.id}/report-layouts`, {
+      headers, data: { name, description: "E2E layout", family: "document", tree: { ...layoutTree, run_scope: "one_and_children" } },
+    });
+    expect(created.ok(), await created.text()).toBeTruthy();
+
+    await page.goto(`/orgs/${org.id}/overview?reports=choose`);
+    await chooseReport(page, name);
+    await expect(page.getByText("This report runs for a single project. Choose the project to run it for.")).toBeVisible();
+    await page.getByRole("combobox", { name: /Project/ }).selectOption({ label: alpha.name });
+    await expect(page.getByRole("cell", { name: alpha.requirement })).toBeVisible();
+    const sent = page.waitForRequest((r) => r.url().includes("/custom-reports/") && r.url().includes("include_children=true"));
+    await page.getByRole("switch", { name: "Include child projects" }).click();
+    const url = new URL((await sent).url());
+    expect(url.searchParams.get("project_ids")).toBe(
+      (await (await request.get(`${API}/projects`, { headers })).json()).find((p: { name: string }) => p.name === alpha.name).id,
+    );
+    await expect(page.getByRole("cell", { name: alpha.requirement })).toBeVisible();
+  });
+
+  test("the projects a layout runs for are set in the designer and written on the text view's first line", async ({ page, request }) => {
+    const { projects, suffix } = await setup(page, request);
+    const [alpha] = projects;
+    const name = `E2E Run scope ${suffix}`;
+
+    await page.goto(`/projects/${alpha.id}/admin`);
+    await selectProjectAdminGroup(page, "Reports");
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "New layout" }).click();
+    const dialog = page.getByRole("dialog", { name: "New report layout" });
+    await dialog.getByRole("textbox", { name: "Name" }).fill(name);
+    await dialog.getByRole("button", { name: "Create" }).click();
+    await expect(page.getByRole("heading", { name })).toBeVisible();
+    await page.getByRole("tab", { name: "Blocks" }).click();
+    await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+    await page.getByLabel("Block details").getByRole("combobox", { name: "Projects it runs for" }).selectOption({ label: "One project" });
+    await saveNewVersion(page);
+    await expect(page.getByText("Saved as version 2.")).toBeVisible();
+    await page.reload();
+    await page.getByRole("tab", { name: "Text" }).click();
+    await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveValue(/^@layout document oneproject/);
   });
 
   test("a layout embeds a table of another report as a widget, with its own headings around it", async ({ page, request }) => {

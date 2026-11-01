@@ -15,6 +15,7 @@
 import { api, ApiError } from "./client";
 import { fetchFileDetails, type FileDetails } from "./fileDetails";
 import type { ReportParam, ReportVariable } from "./reports";
+import type { ColourContext } from "../utils/reportColours";
 
 export type LayoutFamily = "document" | "table";
 /** Where a project sees a layout from. */
@@ -387,6 +388,8 @@ export interface ReportLayoutApi {
   widgets(): Promise<ReportWidget[]>;
   /** The block types the outline can add, with the form each needs. */
   blocks(): Promise<BlockCatalogue>;
+  /** The organisation's branding colour and colour scheme, for the colour fields (stock values where a client has no call). */
+  colours?(): Promise<ColourContext>;
   /** Checks a draft tree and lists every problem with its path (nothing is stored). */
   validate(tree: ReportLayoutTree): Promise<TreeCheck>;
   /** The snippets the scope can insert, with each parameter's choices. */
@@ -441,6 +444,7 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     fields: () => api.get<ReportFieldCatalogue>(`${base}/fields`),
     widgets: () => api.get<ReportWidget[]>(`${base}/widgets`),
     blocks: () => api.get<BlockCatalogue>(`${base}/blocks`),
+    colours: () => api.get<ColourContext>(`${base}/colours`),
     validate: (tree) => api.post<TreeCheck>(`${base}/validate`, { tree }),
     snippets: () => api.get<ReportSnippet[]>(`${base}/snippets`),
     applySnippet: (key, body) => api.post<SnippetApplyResult>(`${base}/snippets/${encodeURIComponent(key)}/apply`, body),

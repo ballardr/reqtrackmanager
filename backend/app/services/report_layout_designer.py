@@ -30,7 +30,7 @@ Dependencies: `services.report_fields`, `services.custom_report_run`, `services.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -234,9 +234,11 @@ def block_catalogue() -> BlockCatalogue:
     )
 
 
-def check_tree(tree: dict[str, Any]) -> TreeAnalysis:
-    """Validates a draft tree for live feedback: every problem with its path, nothing raised, nothing stored."""
-    return validate_tree(tree)
+def check_tree(tree: dict[str, Any], organization_colours: Iterable[str] | None = None) -> TreeAnalysis:
+    """Validates a draft tree for live feedback: every problem with its path, nothing raised, nothing stored.
+
+    `organization_colours` are the names in the organisation's colour scheme (`None`: any well-formed name is accepted)."""
+    return validate_tree(tree, organization_colours=organization_colours)
 
 
 def validation_errors(tree: dict[str, Any]) -> list[TreeError]:
@@ -277,18 +279,18 @@ def preview_for_project(
 
 def preview_for_organization(
     db: Session, user: User, organization: Organization, *, tree: dict[str, Any], name: str = "",
-    project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None,
+    project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None, include_children: bool = False,
 ) -> Preview:
     """Evaluates a draft organisation layout once per project the caller can read (or the selected ones), merged.
 
     Raises:
         InvalidLayoutError: The tree is not valid.
         LayoutLimitError: A work, output or time limit was exceeded.
-        custom_report_run.ProjectsNotInScopeError / NoProjectsToRunError / FanOutTooLargeError: As for a run.
+        custom_report_run.ProjectsNotInScopeError / NoProjectsToRunError / FanOutTooLargeError / RunScopeError: As for a run.
     """
     assert_valid(tree)
     layout, version = _transient(str(tree["family"]), tree, organization.id, None, name)
     run = custom_report_run.run_organization_layout(
-        db, user, organization, layout, version, project_ids=project_ids, variables=variables,
+        db, user, organization, layout, version, project_ids=project_ids, variables=variables, include_children=include_children,
     )
     return _preview_of(run)

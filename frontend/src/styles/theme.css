@@ -2318,7 +2318,7 @@ td:has(> .disclosure-toggle) {
 .toast-body {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
   min-width: 0;
 }
 
@@ -2336,7 +2336,7 @@ td:has(> .disclosure-toggle) {
   color: inherit;
   cursor: pointer;
   font: inherit;
-  padding: 0.15rem 0.5rem;
+  padding: 0.15rem var(--space-3);
   white-space: nowrap;
 }
 
@@ -3159,3 +3159,92 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .report-image-facts dt { font-size: 0.75rem; color: var(--color-text-muted, inherit); }
 .report-image-facts dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .report-image-browser { grid-template-columns: minmax(0, 1fr); } }
+
+/* A flat list of editable items (ItemRowList): name left, actions right, banded by a hairline. */
+.item-row-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+.item-row + .item-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.item-row__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.item-row__detail {
+  font-size: 0.85rem;
+}
+
+.item-row__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* `ColourChoiceField`: the button that shows the current colour, and the lines of its popover. A chip is never the only
+   signal: the colour's name is written beside it, and "no colour" is drawn struck through. */
+.colour-chip {
+  flex: none;
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.colour-chip--none {
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--color-text-muted) calc(50% - 1px), var(--color-text-muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--color-surface);
+}
+
+.colour-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-start;
+  min-height: 2.25rem;
+}
+
+.colour-choice__heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.colour-choice__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.colour-choice__line:hover,
+.colour-choice__line:focus-visible {
+  background: var(--color-surface-alt);
+}
+
+.colour-choice__line[aria-pressed="true"] {
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-text);
+}

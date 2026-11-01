@@ -609,14 +609,14 @@ def upload_report_image(headers: dict, path: str, file_path: Path, content_type:
 
 
 def project_overview_with_logo_layout(logo_file_id: str) -> dict:
-    """A cover banner (the product logo, white on transparent, in front of a plate in the organisation's report accent colour)
+    """A cover banner (the product logo, white on transparent, in front of a plate in the scheme's primary colour, the report accent)
     over the project name and a short requirements table. Both pictures are laid over the page beside the title, measured
     from the title's paragraph, so the title stays readable."""
     return {
         "schema_version": 1, "family": "document", "orientation": "portrait",
         "nodes": [
             {
-                "type": "shape", "shape": "rounded", "fill": "accent", "width": 5, "height": 2.5, "alt": "",
+                "type": "shape", "shape": "rounded", "fill": "primary", "width": 5, "height": 2.5, "alt": "",
                 "placement": "behind", "anchor": "paragraph", "offset_x": 12, "offset_y": 0,
             },
             {
@@ -769,7 +769,11 @@ def set_report_look(
     """
     r = httpx.put(
         f"{BASE}/orgs/{org_id}/branding",
-        json={"report_accent_color_hex": accent_color_hex, "report_include_logo": False},
+        json={
+            "report_accent_color_hex": accent_color_hex, "report_include_logo": False,
+            # The organisation's named report colours: layouts with no scheme of their own resolve a colour name by them.
+            "report_colour_scheme": [{"name": "alert", "colour": "#B42318"}, {"name": "success", "colour": "#067647"}],
+        },
         headers=headers, timeout=30,
     )
     r.raise_for_status()

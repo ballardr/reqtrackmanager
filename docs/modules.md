@@ -1313,6 +1313,15 @@ flowchart LR
   only to the physical page limit); a sheet's cell is the file names as text. The layout root's `repeat_table_header` (default true)
   reaches `Table.repeat_header` (PDF `repeatRows`, Word `w:tblHeader`, ODT header rows, HTML `thead`). The designer draws the column's
   settings from `BlockCatalogue.image_column_fields`.
+- **Which projects a layout runs for.** The layout root's `run_scope` (`any` by default; `one`; `one_and_children`; text words
+  `anyprojects`, `oneproject`, `projecttree`; constants in `models.report_layout`). `custom_report_run.check_run_scope` refuses (422
+  `RunScopeError`) an organisation run that does not name exactly one distinct project in `project_ids` when the scope is `one` or
+  `one_and_children`, `include_children` when the scope is `one`, and `include_children` on an `any` fan-out; it is called by
+  `run_project_layout`, `run_organization_layout` and `report_run_jobs.enqueue`, so every route, the preview, queued runs, "generate
+  again" and MCP are held to it. A `one` or `one_and_children` organisation run is handed to `run_project_layout` for the chosen
+  project (no merge heading or Project column; provenance scope is the project), and with `include_children` its readable child
+  projects are merged into the one report. A pack lists such an entry `not_available` unless one project is named; an organisation
+  pack runs a `one_and_children` entry for the project alone. The catalogue entry carries `run_scope`.
 - **Sheet links and the Contents sheet.** A sheet column `{"field", "from"?, "label"?, "link": {"sheet": "<name>"}}` makes the
   cell open the row its record has on the named sheet. `TreeValidator.sheet_links` checks, once every sheet is known, that the
   sheet exists and its own source is the column's record type (the same sheet is allowed). The evaluator keeps
@@ -2173,6 +2182,44 @@ flowchart LR
   placed behind and then an image placed behind at the same spot shows the image on the shape.
 - A document layout only (`FAMILY_DOCUMENT`); a table layout refuses it at save. A shape is part of the tree, so bundles carry it
   with no new table.
+
+### 4ae. Custom reports: colour words and colour schemes (Module 10 Phase 72)
+
+A colour setting in a layout holds a **colour word**, never markup: a hex colour (`#rgb`/`#rrggbb`), a reserved word (`accent`, the
+organisation's report accent, and `accent_light` and `accent_dark`, a fixed tint (85% to white) and shade (25% to black) of it; `white`,
+`black`, `none`) or the **name** of a colour in a scheme. A name is kept as a name, so changing the scheme re-colours every block
+that uses it. One resolver, `services/report_colours.resolve_colour`, turns a word into `#rrggbb`; every renderer and the HTML preview
+write a colour only from what it returns.
+
+```mermaid
+flowchart LR
+    L["layout palette<br/>(tree.palette, up to 8)"] --> E["effective_scheme"]
+    O["organisation scheme<br/>(Organization.report_colour_scheme)"] --> E
+    S["standard four<br/>primary secondary tint neutral"] --> E
+    E --> R["resolve_colour(word, accent, scheme)"]
+    A["org report accent"] --> R
+    R --> X["#rrggbb<br/>shape SVG, and later every colour setting"]
+```
+
+- **Resolution order:** the layout's own scheme, then the organisation's, then the standard four (`primary` = the accent, `secondary` =
+  `accent_dark`, `tint` = `accent_light`, `neutral` = a fixed grey), which always resolve. A layout with no `palette` follows the
+  organisation's, live (the run's provenance row, `stats.colours`, records the names a run used and what each resolved to).
+- **A scheme entry** is `{name, colour}`: a name is 1 to 24 lower-case letters, digits or underscores starting with a letter and is not a
+  reserved word; the colour is a hex colour or a reserved word except `none`, never another name, so resolution is one step.
+- **Checks.** `validate_tree(tree, organization_colours=...)` refuses a name no scheme defines (path of the block field) when the
+  organisation's names are given: the layout save routes, the validate endpoint and every run pass them, so deleting an organisation
+  colour a layout names turns that layout's next run into a 422 naming the block. Where the organisation is not at hand (the text
+  parser, snippets, bundle import) a well-formed name is accepted unchecked. Removing a scheme name a block still uses is refused in
+  the editor and is the same checked problem on a hand edit.
+- **A new colour setting** declares its block field with `kind="colour"` (`BlockField`), validates it with
+  `colour_word_problem(value, v.colour_names)` and resolves it with `resolve_colour(word, run.org_values["report_accent"], run.scheme)`,
+  calling `run.note_colours(word)` so the provenance row names it. The designer draws the field with `ColourChoiceField` with no
+  per-block case; `colourNamesUsed` (frontend) finds the names in use through the same schema kind.
+- **Text view:** `@palette primary=#1f3a5f warn=#b45309` (before the first block, once) and `@palette follow` (no scheme of its own, written
+  as no line). **Bundles:** the layout's palette is part of its tree; the organisation's scheme is `report_look.colour_scheme` in `org.json`
+  (an invalid one is dropped with a warning). **API:** `PUT /orgs/{id}/branding` takes `report_colour_scheme` (`[]` clears it);
+  `GET .../report-layouts/colours` (organisation and project scope) answers the branding colour and scheme the designer offers.
+- Document layouts only; a table layout refuses a `palette`.
 
 ### 4ad. Custom reports: the Project Workbook starter (Module 10 Phase 58)
 

@@ -294,6 +294,27 @@ class ReportBlockOut(BaseModel):
     described: bool
 
 
+class ReportColourEntryOut(BaseModel):
+    """One named colour: the name and the colour word it stands for (a hex colour or a reserved word)."""
+
+    name: str
+    colour: str
+
+
+class ReportLayoutColoursOut(BaseModel):
+    """What a layout designer needs to offer colours: the branding colour and the organisation's scheme.
+
+    Attributes:
+        accent: The organisation's report accent as `#rrggbb`: what `accent`, `primary` and the derived words resolve from.
+        organization_scheme: The organisation's own named colours, in order.
+        standard: The four standard names and the word each stands for when no scheme overrides it.
+    """
+
+    accent: str
+    organization_scheme: list[ReportColourEntryOut]
+    standard: list[ReportColourEntryOut]
+
+
 class ReportBlockCatalogueOut(BaseModel):
     """Every block type, the layout-level fields, the settings of an image column, the field kinds the designer has a control for and the operators a
     condition accepts for each kind of field (so the designer never restates the validator's rule)."""

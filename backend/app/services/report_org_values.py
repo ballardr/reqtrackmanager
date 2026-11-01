@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.models.organization import Organization, ServerSettings
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.report_colours import entries_of
 
 #: The `file` an image block or a header/footer logo names to mean the organisation's logo.
 ORG_LOGO_FILE = "org_logo"
@@ -88,6 +89,11 @@ def report_accent_hex(db: Session, organization: Organization) -> str:
     return platform or DEFAULT_ACCENT_COLOR_HEX
 
 
+def organization_colour_names(organization: Organization) -> list[str]:
+    """The names in the organisation's report colour scheme (empty when none is set)."""
+    return list(entries_of(organization.report_colour_scheme))
+
+
 def report_org_values(db: Session, organization: Organization) -> dict[str, Any]:
     """The values a layout may read for `organization`, keyed by `ORG_VALUE_KEYS`.
 
@@ -108,6 +114,6 @@ def report_org_values(db: Session, organization: Organization) -> dict[str, Any]
 
 
 __all__ = [
-    "ORG_FAMILY", "ORG_LOGO_FILE", "ORG_VALUES", "ORG_VALUE_KEYS", "OrgValue", "org_value_kind", "report_accent_hex",
-    "report_org_values",
+    "ORG_FAMILY", "ORG_LOGO_FILE", "ORG_VALUES", "ORG_VALUE_KEYS", "OrgValue", "org_value_kind", "organization_colour_names",
+    "report_accent_hex", "report_org_values",
 ]

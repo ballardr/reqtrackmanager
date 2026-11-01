@@ -28,6 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.models.report_layout import RUN_SCOPE_ANY, RUN_SCOPES
+
 #: The `kind`s of field the designer draws a control for. Anything else falls back to a JSON editor.
 FIELD_KINDS: tuple[str, ...] = (
     "text",  # one line
@@ -54,6 +56,8 @@ FIELD_KINDS: tuple[str, ...] = (
     "image",  # a picture from the layout tier's image library (a file id)
     "text_list",  # a list of short texts, one per line
     "file_name",  # a file name template: one line of text with the placeholders a file name allows and a live example
+    "colour",  # a colour word: a hex colour, a reserved word (accent, white, ...) or a name in the layout's colour scheme
+    "palette",  # the layout's colour scheme: up to 8 named colours
 )
 
 
@@ -162,6 +166,19 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         "repeat_table_header", "Repeat table header rows", "boolean", default=True,
         help="Whether a table's column headings are printed again at the top of every page the table runs onto. On unless "
         "switched off; applies to every table in the layout.", families=("document",),
+    ),
+    BlockField(
+        "run_scope", "Projects it runs for", "choice", choices=RUN_SCOPES, default=RUN_SCOPE_ANY,
+        empty_label="Not set (any number of projects)",
+        help="Whether the report may cover several projects (an organisation-wide run merges them), exactly one project (for a "
+        "sign-off sheet or a charter that names the project), or one project together with its child projects merged into the "
+        "same report. A run that does not fit is refused.",
+    ),
+    BlockField(
+        "palette", "Colour scheme", "palette",
+        help="Named colours for this layout, so a block uses a colour by name (primary, warning) and changing the scheme changes "
+        "every block that uses it. With none of its own the layout follows the organisation's scheme, then the standard four "
+        "(primary, secondary, tint, neutral) taken from the branding colour.", families=("document",),
     ),
     BlockField(
         "contents_sheet", "Contents sheet", "boolean", default=False,

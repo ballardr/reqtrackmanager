@@ -14,6 +14,7 @@ import type {
   BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, ReportImage, ReportSnippet, SnippetApplyResult, TreeCheck, TreeProblem,
   ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree, ReportLayoutVersion, ReportWidget, TextParseResult,
 } from "../api/reportLayouts";
+import { DEFAULT_COLOUR_CONTEXT, type ColourContext } from "../utils/reportColours";
 
 /** Longest the designer takes to finish checking text after typing stops, for a story to wait on. */
 export const TEXT_CHECKED_MS = 3000;
@@ -94,6 +95,14 @@ const block = (type: string, label: string, template: Record<string, unknown>, e
 });
 
 /** The block catalogue the server publishes (the ten core blocks), for stories of the outline. */
+/** The branding colour and an organisation scheme of two colours, as the designer is told them. */
+export function buildColourContext(overrides: Partial<ColourContext> = {}): ColourContext {
+  return {
+    ...DEFAULT_COLOUR_CONTEXT, accent: "#0f62fe", organization_scheme: [{ name: "alert", colour: "#b42318" }, { name: "success", colour: "#067647" }],
+    ...overrides,
+  };
+}
+
 export function buildBlockCatalogue(): BlockCatalogue {
   return {
     blocks: [
@@ -136,7 +145,7 @@ export function buildBlockCatalogue(): BlockCatalogue {
       block("shape", "Shape", { type: "shape", shape: "rectangle", fill: "accent", width: 5, height: 2 }, {
         fields: [
           field("shape", "Shape", "choice", { required: true, choices: ["rectangle", "rounded", "ellipse", "triangle", "line", "arrow", "custom"], default: "rectangle" }),
-          field("fill", "Fill", "text", { max_length: 7, default: "accent" }), field("outline", "Outline", "text", { max_length: 7 }),
+          field("fill", "Fill", "colour", { default: "accent" }), field("outline", "Outline", "colour", { empty_label: "No outline" }),
           field("outline_width", "Outline width (mm)", "number", { minimum: 0.1, maximum: 20 }),
           field("width", "Width", "number", { minimum: 0.1, maximum: 1000 }),
           field("width_unit", "Width unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "width" }),
@@ -200,6 +209,8 @@ export function buildBlockCatalogue(): BlockCatalogue {
       field("margins", "Margins", "margins", { families: ["document"] }),
       field("mirror_margins", "Mirror margins", "boolean", { families: ["document"] }),
       field("repeat_table_header", "Repeat table header rows", "boolean", { default: true, families: ["document"] }),
+      field("run_scope", "Projects it runs for", "choice", { choices: ["any", "one", "one_and_children"], default: "any", empty_label: "Not set (any number of projects)" }),
+      field("palette", "Colour scheme", "palette", { families: ["document"] }),
       field("page_styles", "Page styles", "page_styles", { families: ["document"] }),
       field("header", "Header", "running_band", { families: ["document"] }),
       field("footer", "Footer", "running_band", { families: ["document"] }),
@@ -487,6 +498,7 @@ export function buildLayoutApi(
     fields: fn(async () => buildFieldCatalogue()),
     widgets: fn(async () => buildWidgets()),
     blocks: fn(async () => buildBlockCatalogue()),
+    colours: fn(async () => buildColourContext()),
     validate: fn(async (tree: ReportLayoutTree) => fakeValidate(tree)),
     snippets: fn(async () => buildSnippets()),
     applySnippet: fn(async (key, body) => fakeApplySnippet(buildSnippets(), key, body)),

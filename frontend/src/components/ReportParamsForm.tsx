@@ -7,7 +7,8 @@
  * project reports and, for organisation-wide reports, a "Project" picker that
  * narrows the run to one project (`project_id`, "All projects" when blank), or, for an organisation-wide
  * custom report that runs once per project, a "Projects" selector choosing which are included
- * (`project_ids`, comma-separated; none chosen means all). Generated entirely from the catalogue entry, so a new module report
+ * (`project_ids`, comma-separated; none chosen means all) or, when the report runs for one project (and optionally its
+ * child projects), a single-choice "Project" that must be answered (`project_ids` holds the one id). Generated entirely from the catalogue entry, so a new module report
  * needs no UI code for its parameters.
  *
  * Controlled and stateless: values live in the caller (`ReportRunner`); an
@@ -33,9 +34,12 @@ import { ToggleSwitch } from "./ToggleSwitch";
  * @param supportsIncludeChildren Whether to offer the framework `include_children` switch.
  * @param projectOptions Projects to offer in the `project_id` picker; omitted hides it.
  * @param projectMultiOptions Projects to offer in the `project_ids` selector; omitted hides it.
+ * @param projectSingleOptions Projects to offer in the single-choice `project_ids` picker of a report that runs for one
+ *   project (no "all projects" choice); omitted hides it.
  */
 export function ReportParamsForm({
   params, values, onChange, hidden = [], supportsIncludeChildren = false, projectOptions, projectMultiOptions,
+  projectSingleOptions,
 }: {
   params: ReportParam[];
   values: ReportRunValues;
@@ -44,9 +48,10 @@ export function ReportParamsForm({
   supportsIncludeChildren?: boolean;
   projectOptions?: { value: string; label: string }[];
   projectMultiOptions?: { value: string; label: string }[];
+  projectSingleOptions?: { value: string; label: string }[];
 }) {
   const shown = params.filter((p) => !hidden.includes(p.name));
-  if (shown.length === 0 && !supportsIncludeChildren && !projectOptions && !projectMultiOptions) return null;
+  if (shown.length === 0 && !supportsIncludeChildren && !projectOptions && !projectMultiOptions && !projectSingleOptions) return null;
   const chosenProjects = new Set(typeof values.project_ids === "string" ? values.project_ids.split(",").filter(Boolean) : []);
   return (
     <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-end" }} role="group" aria-label="Report options">
@@ -57,6 +62,16 @@ export function ReportParamsForm({
           onChange={(next) => onChange("project_id", next === "" ? null : next)}
           options={projectOptions}
           placeholder="All projects"
+        />
+      )}
+      {projectSingleOptions && (
+        <LabeledSelect helpNotNeeded
+          label="Project"
+          required
+          value={typeof values.project_ids === "string" ? values.project_ids : ""}
+          onChange={(next) => onChange("project_ids", next === "" ? null : next)}
+          options={projectSingleOptions}
+          placeholder="Choose a project"
         />
       )}
       {projectMultiOptions && (

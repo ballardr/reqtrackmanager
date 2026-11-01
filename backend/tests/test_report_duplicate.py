@@ -153,6 +153,17 @@ def test_the_variables_and_default_file_name_travel_with_the_tree(world):
     assert got["variables"] == variables and got["file_name"] == "{{project_name}}-report"
 
 
+def test_the_colour_scheme_travels_with_the_tree(world):
+    project = world.project("Work")
+    scheme = [{"name": "plate", "colour": "accent"}, {"name": "ink", "colour": "#102030"}]
+    body = {**tree("T"), "palette": scheme}
+    body["nodes"].append({"type": "shape", "shape": "rectangle", "width": 3, "height": 1, "fill": "plate"})
+    shared = new_layout(world, world, "Coloured", body=body)
+    made = duplicated(world, project, kind="layout", source_id=shared["id"], name="Mine")
+    got = detail(world, project, made["new_id"])["current"]["tree"]
+    assert got["palette"] == scheme and got["nodes"][-1]["fill"] == "plate"
+
+
 def test_an_inherited_layout_from_a_parent_project_and_a_hidden_one_can_be_duplicated(world):
     parent = world.project("Parent")
     child = world.project("Child", parent=parent)

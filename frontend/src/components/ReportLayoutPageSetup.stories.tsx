@@ -168,3 +168,13 @@ export const AnExplicitRepeatHeaderWordIsPreserved: Story = {
     await expect(text(canvasElement).textContent).toBe("@layout document A3 repeatheader\n\n@heading Hello\n");
   },
 };
+
+/** The run-scope word on the header line is not this dialog's setting, but rewriting the page setup keeps it. */
+export const TheRunScopeWordIsKeptWhenThePageSetupIsRewritten: Story = {
+  render: () => <Host initial={"@layout document projecttree\n\n@heading Hello\n"} />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
+    await expect(text(canvasElement).textContent).toBe("@layout document A3 projecttree\n\n@heading Hello\n");
+  },
+};

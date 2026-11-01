@@ -363,11 +363,12 @@ export const AnImagesColumnIsAddedAndItsSettingsAreStoredUnderImages: Story = {
   render: () => <Harness field={columnsField()} names={tableNames} initial={{ type: "table", columns: [{ field: "code" }] }} />,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryByRole("group", { name: /images attached/ })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Settings for column Images" })).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Add images column" }));
     await waitFor(() => expect(nodeOf(canvasElement).columns).toEqual([{ field: "code" }, { images: {} }]));
-    const group = within(await canvas.findByRole("group", { name: "Column 2: images attached to the record" }));
-    await userEvent.type(group.getByRole("textbox", { name: "Column 2 heading" }), "Photos");
+    // The new column's settings open at once, in a popover holding the shared image-column forms.
+    const group = within(await within(document.body).findByRole("dialog", { name: "Settings for column Images" }));
+    await userEvent.type(group.getByRole("textbox", { name: "Heading" }), "Photos");
     await userEvent.type(group.getByRole("textbox", { name: "File names" }), "site-*{enter}");
     await userEvent.type(group.getByRole("spinbutton", { name: "Width" }), "60");
     await userEvent.selectOptions(group.getByRole("combobox", { name: "Arrangement" }), "Side by side, wrapping");
@@ -388,12 +389,14 @@ export const AnImagesColumnKeepsOnlyWhatWasSetAndCanBeRemoved: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const group = within(await canvas.findByRole("group", { name: "Column 1: images attached to the record" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Settings for column Images" }));
+    const group = within(await within(document.body).findByRole("dialog", { name: "Settings for column Images" }));
     await userEvent.clear(group.getByRole("textbox", { name: "File names" }));
     await waitFor(() => expect(nodeOf(canvasElement).columns[0]).toEqual({ images: { max_count: 2 } }));
-    await userEvent.click(group.getByRole("button", { name: "Move column 1 down" }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(canvas.getByRole("button", { name: "Move column Images down" }));
     await waitFor(() => expect(nodeOf(canvasElement).columns).toEqual([{ field: "title" }, { images: { max_count: 2 } }]));
-    await userEvent.click(canvas.getByRole("button", { name: /Remove column 2/ }));
+    await userEvent.click(canvas.getByRole("button", { name: "Remove column Images" }));
     await waitFor(() => expect(nodeOf(canvasElement).columns).toEqual([{ field: "title" }]));
   },
 };
@@ -404,9 +407,9 @@ export const ReadOnlyHasNoAddImagesColumn: Story = {
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("group", { name: "Column 1: images attached to the record" })).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Settings for column Images" }));
     await expect(canvas.queryByRole("button", { name: "Add images column" })).not.toBeInTheDocument();
-    await expect(canvas.getByRole("textbox", { name: "File names" })).toBeDisabled();
+    await expect(await within(document.body).findByRole("textbox", { name: "File names" })).toBeDisabled();
   },
 };
 
@@ -453,7 +456,7 @@ export const ASpacerBlockTakesAHeightInCentimetresOrMillimetres: Story = {
   },
 };
 
-/** A shape's kind is named in plain words, its fill is a text colour, and the SVG of a custom shape is a long field that grows. */
+/** A shape's kind is named in plain words, its fill is the colour control, and the SVG of a custom shape is a long field that grows. */
 export const AShapeBlockNamesItsKindInWordsAndTakesAnSvg: Story = {
   args: { field: fieldOf("shape", "shape"), initial: { type: "shape", shape: "rounded", width: 5, height: 2 } },
   render: (args) => (
@@ -471,8 +474,13 @@ export const AShapeBlockNamesItsKindInWordsAndTakesAnSvg: Story = {
     );
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Shape" }), "Arrow");
     await waitFor(() => expect(node(0).shape).toBe("arrow"));
-    await userEvent.type(canvas.getByRole("textbox", { name: "Fill" }), "#475569");
+    // A colour field is the shared colour control: a button naming the colour that opens the list, ending in a custom hex colour.
+    await userEvent.click(canvas.getByRole("button", { name: "Fill: Default (accent)" }));
+    const hexBox = within(document.body).getByRole("textbox", { name: "Fill (Custom colour) (hex code)" });
+    await userEvent.clear(hexBox);
+    await userEvent.type(hexBox, "#475569");
     await waitFor(() => expect(node(1).fill).toBe("#475569"));
+    await userEvent.keyboard("{Escape}");
     await userEvent.type(canvas.getByRole("textbox", { name: "SVG" }), "<svg/>");
     await waitFor(() => expect(node(2).svg).toBe("<svg/>"));
   },

@@ -50,6 +50,7 @@ import { useUiPreference } from "../hooks/useUiPreference";
 import {
   aliasesInScope, asBlock, insertAt, insertionRange, lineOfOffset, offsetOfLine,
 } from "../utils/reportLayoutText";
+import type { ColourContext } from "../utils/reportColours";
 import { stableJson, type Tree } from "../utils/reportLayoutTree";
 import { selectionFromLines } from "../utils/reportSnippetSelection";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
@@ -144,6 +145,7 @@ export function ReportLayoutDesigner({
   const [catalogue, setCatalogue] = useState<ReportFieldCatalogue | null>(null);
   const [widgets, setWidgets] = useState<ReportWidget[] | null>(null);
   const [blockTypes, setBlockTypes] = useState<BlockCatalogue | null>(null);
+  const [colours, setColours] = useState<ColourContext | undefined>(undefined);
   const [view, setView] = useState<EditView>("text");
   /** The tree the block editor edits, and the tree it started from (so a switch back leaves unedited text alone). */
   const [blockTree, setBlockTree] = useState<Tree | null>(null);
@@ -203,6 +205,8 @@ export function ReportLayoutDesigner({
       setCatalogue(fields);
       setWidgets(parts);
       setBlockTypes(blocks);
+      // The colours are a convenience: a failure leaves the stock choices rather than blocking the designer.
+      setColours(await (api.colours?.() ?? Promise.resolve(undefined)).catch(() => undefined));
       setToolsFailed(false);
     } catch {
       setToolsFailed(true);
@@ -634,7 +638,7 @@ export function ReportLayoutDesigner({
                         tree={blockTree} onChange={setBlockTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
                         widgets={widgets} problems={blockProblems} readOnly={!editable}
                         inspectorHost={inspectorHost} onInspect={() => setBlocksTab("block")}
-                        images={{ library: api.images, scope: api.scope.kind }}
+                        images={{ library: api.images, scope: api.scope.kind }} colours={colours}
                         snippets={{
                           api,
                           onInserted: (notice) => snippetToast.announce(notice),

@@ -29,6 +29,7 @@ import type { ReportSnippetStoreApi, SavedSnippet, SnippetCheck } from "../api/r
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import type { ColourContext } from "../utils/reportColours";
 import type { Tree } from "../utils/reportLayoutTree";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FormActions } from "./FormActions";
@@ -53,6 +54,8 @@ interface Tools {
   catalogue: ReportFieldCatalogue;
   widgets: ReportWidget[];
   blocks: BlockCatalogue;
+  /** The branding colour and the organisation's colours; stock choices when the call fails or is absent. */
+  colours?: ColourContext;
 }
 
 /** The number of top-level blocks of a tree. */
@@ -116,10 +119,11 @@ export function ReportSnippetEditorDialog({
     (async () => {
       try {
         const [catalogue, widgets, blocks] = await Promise.all([layoutApi.fields(), layoutApi.widgets(), layoutApi.blocks()]);
+        const colours = await (layoutApi.colours?.() ?? Promise.resolve(undefined)).catch(() => undefined);
         const base = await emptyTree(snippet?.family ?? "document");
         const detail = snippet ? await api.get(snippet.id) : null;
         if (cancelled) return;
-        setTools({ catalogue, widgets, blocks });
+        setTools({ catalogue, widgets, blocks, colours });
         setTree(detail ? { ...base, ...detail.root, nodes: detail.nodes } : base);
       } catch {
         if (!cancelled) setLoadFailed(true);
@@ -255,7 +259,7 @@ export function ReportSnippetEditorDialog({
                 <Suspense fallback={<Spinner />}>
                   <ReportLayoutBlocks
                     tree={tree} onChange={setTree} family={snippet?.family ?? family} blocks={tools.blocks} catalogue={tools.catalogue}
-                    widgets={tools.widgets} problems={problems} images={{ library: layoutApi.images, scope: layoutApi.scope.kind }}
+                    widgets={tools.widgets} problems={problems} images={{ library: layoutApi.images, scope: layoutApi.scope.kind }} colours={tools.colours}
                     inspectorHost={inspectorHost}
                   />
                 </Suspense>

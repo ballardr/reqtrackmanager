@@ -366,6 +366,9 @@ def _layout_entry(
     except custom_report_run.FanOutTooLargeError:
         outcome.reason = "It would cover too many projects."
         return outcome
+    except custom_report_run.RunScopeError:
+        outcome.reason = "It runs for a single project only; run the pack for one project."
+        return outcome
     except LayoutLimitError as exc:
         raise PackLimitError("A report in the pack is too large to produce while you wait.") from exc
     if by_project and any(v != outcome.variables for v in by_project.values()):

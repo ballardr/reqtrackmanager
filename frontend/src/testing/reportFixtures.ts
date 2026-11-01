@@ -31,6 +31,7 @@ export function buildReportCatalogueEntry(overrides: Partial<ReportCatalogueEntr
     placement_key: "report:fixture_report_module.f1",
     record_types: [],
     view_only: false,
+    run_scope: "any",
     params: [
       { name: "rollup", type: "string", default: "weighted_average", choices: ["weighted_average", "worst_case"], minimum: null, maximum: null, description: "How values combine." },
       { name: "stale_months", type: "integer", default: 6, choices: null, minimum: 1, maximum: 120, description: "Months before an item is stale." },

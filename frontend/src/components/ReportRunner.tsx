@@ -20,6 +20,8 @@
  *   accepts for this caller, so the picker never offers one that would fail.
  *   An organisation-wide custom report (run once per project) offers a
  *   "Projects" selector (`project_ids`) over the same list instead.
+ * - A custom report that runs for one project (`run_scope` `one` or `one_and_children`) offers a single-choice, required
+ *   "Project" picker instead and is held back until one is chosen; `one_and_children` also offers "Include child projects".
  * - For a custom report with run-time variables, show their form (`ReportVariablesForm`) and send the chosen values
  *   as the `variables` run value; a variable with no default and no value holds the run back until it has one, so
  *   the report is never produced for a choice the person has not made.
@@ -66,6 +68,8 @@ function initialValues(entry: ReportCatalogueEntry): ReportRunValues {
   const values: ReportRunValues = {};
   for (const param of entry.params) if (param.default !== null && param.default !== undefined) values[param.name] = param.default;
   if (entry.supports_include_children) values.include_children = false;
+  // A report limited to one project has nothing to choose when the caller can report on only one.
+  if (entry.run_scope !== "any" && entry.projects.length === 1) values.project_ids = entry.projects[0].id;
   return values;
 }
 
@@ -99,7 +103,10 @@ export function ReportRunner({
   );
   const signature = JSON.stringify(runValues);
   const missing = missingVariables(entry.variables, variableValues);
-  const blocked = missing.length > 0;
+  // A report limited to one project is held back until a project is chosen (the server refuses any other run).
+  const forOneProject = entry.run_scope !== "any" && scope.kind === "organization";
+  const needsProject = forOneProject && !values.project_ids;
+  const blocked = missing.length > 0 || needsProject;
 
   useEffect(() => {
     if (blocked || !showResult) return undefined;
@@ -197,6 +204,9 @@ export function ReportRunner({
               ? entry.projects.map((p) => ({ value: p.id, label: p.name }))
               : undefined
           }
+          projectSingleOptions={
+            forOneProject ? entry.projects.map((p) => ({ value: p.id, label: p.name })) : undefined
+          }
         />
         <ReportVariablesForm variables={entry.variables} values={variableValues} onChange={setVariable} />
         <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-4)" }}>
@@ -208,7 +218,12 @@ export function ReportRunner({
           {error}
         </p>
       )}
-      {blocked && (
+      {needsProject && (
+        <p role="status" className="text-muted" style={{ margin: 0 }}>
+          {strings.reportRuns.needProject}
+        </p>
+      )}
+      {missing.length > 0 && (
         <p role="status" className="text-muted" style={{ margin: 0 }}>
           {strings.reportVariables.needValues(entry.variables.filter((v) => missing.includes(v.name)).map((v) => v.label))}
         </p>

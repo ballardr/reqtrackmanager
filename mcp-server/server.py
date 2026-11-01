@@ -1362,8 +1362,10 @@ async def run_custom_report(
         layout_id: The layout's UUID (from `list_report_layouts`).
         project_id: Run for this project (a layout it can reach, own, a parent's or the organisation's).
         organization_id: Run an organisation layout across projects. Give one of the two.
-        include_children: Project run only: also read readable child projects' records.
-        project_ids: Organisation run only: limit it to these projects (default every project you can read).
+        include_children: Also read readable child projects' records: a project run (not for a `run_scope` of `one`), or an
+            organisation run of a `one_and_children` layout (with its one `project_ids` id).
+        project_ids: Organisation run only: limit it to these projects (default every project you can read). A layout
+            whose tree `run_scope` is `one` or `one_and_children` needs exactly one id here; anything else answers 422.
         variables: Values for the layout's run-time variables, `{name: value}` (a list for a variable that takes
             several; dates as YYYY-MM-DD). A variable left out takes its default; one with no default must be given.
             `get_report_layout_variables` lists them with their options. A wrong value answers 422 naming it.

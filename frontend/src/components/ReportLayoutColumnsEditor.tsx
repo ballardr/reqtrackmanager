@@ -4,8 +4,9 @@
  * Edits the columns of a table or sheet block, and a sheet's joins.
  *
  * Responsibilities:
- * - Columns: an ordered list of `{field, label?, from?, width?}`; the field is chosen from the fields of the block's
- *   record type, and in a sheet with joins a column also says which record it reads (`from`). An **images column**
+ * - Columns: an ordered list of `{field, label?, from?, width?}` shown as a short list (`ItemRowList`): one row per
+ *   column with its name, move, remove and a gear whose popover holds the rest (field, heading, width, link, images
+ *   settings; a new column's opens at once). The field is chosen from the fields of the block's record type, and in a sheet with joins a column also says which record it reads (`from`). An **images column**
  *   (`{images: {...}, label?, from?}`) shows the pictures attached to each row's record; its settings are the server's
  *   `image_column_fields`, drawn by the caller's `renderImageField` with the shared field forms.
  * - Links (sheets only): a column can open the row of its record on another sheet of the layout that lists the same
@@ -16,14 +17,17 @@
  * Design decisions: the editor lists only fields the field catalogue offers for the type, so a column cannot name
  * a Restricted or consent-sensitive field; the server still validates every name.
  */
-import type { ReactNode } from "react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import type { BlockCatalogue, BlockField, ReportFieldCatalogue } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import type { NameInScope } from "../utils/reportLayoutTree";
 import { TextField } from "./FormFields";
+import { ItemRowList } from "./ItemRowList";
 import { LabeledSelect } from "./LabeledSelect";
 import { ReportLayoutSourceEditor } from "./ReportLayoutSourceEditor";
+import { SettingsPopoverButton } from "./SettingsPopoverButton";
 
 interface Column {
   field?: string;
@@ -60,6 +64,8 @@ export function ReportLayoutColumnsEditor({
   const strings = useStrings();
   const text = strings.reportOutline;
   const several = names.length > 1;
+  /** The index of the column just added, whose settings open at once so its field can be chosen. */
+  const [fresh, setFresh] = useState<number | null>(null);
 
   /** The sheets a column reading `recordType` can open: those that list it, and the one already chosen (so it still shows). */
   function linkTargets(recordType: string | null | undefined, chosen: string | undefined): string[] {
@@ -89,79 +95,95 @@ export function ReportLayoutColumnsEditor({
     onChange(next);
   }
 
-  return (
-    <div className="stack" style={{ gap: "var(--space-2)" }}>
-      {value.map((column, i) => {
-        const owner = (several ? names.find((n) => n.name === (column.from ?? names[0].name)) : names[0]) ?? names[0];
-        const fields = catalogue.types.find((t) => t.type === owner?.recordType)?.fields ?? [];
-        const actions = !disabled && (
-          <span className="row" style={{ gap: "var(--space-1)" }}>
-            <button type="button" className="btn btn-sm" disabled={i === 0} onClick={() => move(i, -1)}>{text.moveColumnUp(i + 1)}</button>
-            <button type="button" className="btn btn-sm" disabled={i === value.length - 1} onClick={() => move(i, 1)}>{text.moveColumnDown(i + 1)}</button>
-            <button type="button" className="btn btn-sm" onClick={() => onChange(value.filter((_, j) => j !== i))}>{text.removeColumn(i + 1)}</button>
-          </span>
-        );
-        if (column.images !== undefined) {
-          const rules = column.images;
-          return (
-            <fieldset key={i} className="card stack" style={{ gap: "var(--space-2)" }} aria-label={text.imagesColumn(i + 1)}>
-              <legend><strong>{text.imagesColumn(i + 1)}</strong></legend>
+  /** The column's name in the list: its heading, else its field's label (an images column: "Images"). */
+  function nameOf(column: Column, fields: { key: string; label: string }[]): string {
+    if (column.label) return column.label;
+    if (column.images !== undefined) return text.imagesHeadingPlaceholder;
+    return fields.find((f) => f.key === column.field)?.label ?? "";
+  }
+
+  const rows = value.map((column, i) => {
+    const owner = (several ? names.find((n) => n.name === (column.from ?? names[0].name)) : names[0]) ?? names[0];
+    const fields = catalogue.types.find((t) => t.type === owner?.recordType)?.fields ?? [];
+    const name = nameOf(column, fields);
+    const shown = name || text.columnNeedsField;
+    const isImages = column.images !== undefined;
+    const marked = Boolean(column.width || column.link || (column.from && column.from !== names[0].name) || (isImages && Object.keys(column.images ?? {}).length > 0));
+    return {
+      id: String(i),
+      name,
+      detail: isImages ? text.imagesColumnKind : column.label && column.field ? column.field : undefined,
+      actions: (
+        <>
+          {!disabled && (
+            <>
+              <button type="button" className="btn btn-sm btn-icon" disabled={i === 0} aria-label={text.moveColumnUp(shown)} onClick={() => move(i, -1)}>
+                <ChevronUp size={14} aria-hidden="true" />
+              </button>
+              <button type="button" className="btn btn-sm btn-icon" disabled={i === value.length - 1} aria-label={text.moveColumnDown(shown)} onClick={() => move(i, 1)}>
+                <ChevronDown size={14} aria-hidden="true" />
+              </button>
+            </>
+          )}
+          <SettingsPopoverButton
+            label={text.columnSettings(shown)} title={text.columnSettings(shown)} marked={marked} defaultOpen={fresh === i}
+          >
+            <div className="stack" style={{ gap: "var(--space-2)" }}>
               {several && (
                 <LabeledSelect helpNotNeeded
-                  label={text.columnFrom(i + 1)} value={column.from ?? names[0].name} placeholder={null} disabled={disabled}
-                  options={names.map((n) => ({ value: n.name, label: n.name }))} onChange={(from) => patch(i, { from })}
+                  label={text.columnFrom} value={column.from ?? names[0].name} placeholder={null} disabled={disabled}
+                  options={names.map((n) => ({ value: n.name, label: n.name }))} onChange={(from) => patch(i, isImages ? { from } : { from, field: "" })}
+                />
+              )}
+              {!isImages && (
+                <LabeledSelect helpNotNeeded
+                  label={text.columnField} value={column.field ?? ""} placeholder={text.choose} disabled={disabled} required
+                  options={fields.map((f) => ({ value: f.key, label: f.label }))} onChange={(field) => patch(i, { field })}
                 />
               )}
               <TextField helpNotNeeded
-                label={text.columnLabel(i + 1)} value={column.label ?? ""} placeholder={text.imagesHeadingPlaceholder} disabled={disabled}
+                label={text.columnLabel} value={column.label ?? ""} disabled={disabled}
+                placeholder={isImages ? text.imagesHeadingPlaceholder : text.columnHeadingPlaceholder}
                 onChange={(label) => patch(i, { label })}
               />
               <TextField
-                label={text.columnWidth(i + 1)} value={column.width ?? ""} placeholder={text.columnWidthPlaceholder} disabled={disabled}
+                label={text.columnWidth} value={column.width ?? ""} placeholder={text.columnWidthPlaceholder} disabled={disabled}
                 help={strings.help.reportColumnWidth} onChange={(width) => patch(i, { width })}
               />
-              {renderImageField && imageFields.map((f) => renderImageField(f, rules, owner?.recordType ?? null, (key, setting) => setRule(i, key, setting)))}
-              {actions}
-            </fieldset>
-          );
-        }
-        return (
-          <span key={i} className="row" style={{ gap: "var(--space-2)", alignItems: "flex-end", flexWrap: "wrap" }}>
-            {several && (
-              <LabeledSelect helpNotNeeded
-                label={text.columnFrom(i + 1)} value={column.from ?? names[0].name} placeholder={null} disabled={disabled}
-                options={names.map((n) => ({ value: n.name, label: n.name }))} onChange={(from) => patch(i, { from, field: "" })}
-              />
-            )}
-            <LabeledSelect helpNotNeeded
-              label={text.columnField(i + 1)} value={column.field ?? ""} placeholder={text.choose} disabled={disabled} required
-              options={fields.map((f) => ({ value: f.key, label: f.label }))} onChange={(field) => patch(i, { field })}
-            />
-            <TextField helpNotNeeded
-              label={text.columnLabel(i + 1)} value={column.label ?? ""} placeholder={text.columnHeadingPlaceholder} disabled={disabled}
-              onChange={(label) => patch(i, { label })}
-            />
-            <TextField
-              label={text.columnWidth(i + 1)} value={column.width ?? ""} placeholder={text.columnWidthPlaceholder} disabled={disabled}
-              help={strings.help.reportColumnWidth} onChange={(width) => patch(i, { width })}
-            />
-            {linkTargets(owner?.recordType, column.link?.sheet).length > 0 && (
-              <LabeledSelect
-                label={text.columnLink(i + 1)} value={column.link?.sheet ?? ""} placeholder={text.columnNoLink} disabled={disabled}
-                help={strings.help.reportColumnLink}
-                options={linkTargets(owner?.recordType, column.link?.sheet).map((n) => ({ value: n, label: n }))}
-                onChange={(sheet) => patch(i, { link: { sheet } })}
-              />
-            )}
-            {actions}
-          </span>
-        );
-      })}
+              {!isImages && linkTargets(owner?.recordType, column.link?.sheet).length > 0 && (
+                <LabeledSelect
+                  label={text.columnLink} value={column.link?.sheet ?? ""} placeholder={text.columnNoLink} disabled={disabled}
+                  help={strings.help.reportColumnLink}
+                  options={linkTargets(owner?.recordType, column.link?.sheet).map((n) => ({ value: n, label: n }))}
+                  onChange={(sheet) => patch(i, { link: { sheet } })}
+                />
+              )}
+              {isImages && renderImageField && imageFields.map((f) => renderImageField(f, column.images ?? {}, owner?.recordType ?? null, (key, setting) => setRule(i, key, setting)))}
+            </div>
+          </SettingsPopoverButton>
+          {!disabled && (
+            <button type="button" className="btn btn-sm btn-icon" aria-label={text.removeColumn(shown)} title={text.removeColumn(shown)} onClick={() => onChange(value.filter((_, j) => j !== i))}>
+              <X size={14} aria-hidden="true" />
+            </button>
+          )}
+        </>
+      ),
+    };
+  });
+
+  function add(column: Column) {
+    setFresh(value.length);
+    onChange([...value, column]);
+  }
+
+  return (
+    <div className="stack" style={{ gap: "var(--space-2)" }}>
+      {rows.length > 0 && <ItemRowList items={rows} label={text.columnsList} emptyName={text.columnNeedsField} />}
       {!disabled && (
         <div className="row" style={{ gap: "var(--space-2)" }}>
-          <button type="button" className="btn btn-sm" onClick={() => onChange([...value, { field: "" }])}>{text.addColumn}</button>
+          <button type="button" className="btn btn-sm" onClick={() => add({ field: "" })}>{text.addColumn}</button>
           {renderImageField && imageFields.length > 0 && (
-            <button type="button" className="btn btn-sm" onClick={() => onChange([...value, { images: {} }])}>{text.addImagesColumn}</button>
+            <button type="button" className="btn btn-sm" onClick={() => add({ images: {} })}>{text.addImagesColumn}</button>
           )}
         </div>
       )}

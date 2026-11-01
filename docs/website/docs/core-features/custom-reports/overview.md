@@ -57,7 +57,7 @@ flowchart TD
 - **File name:** a layout can set a default **File name** with placeholders such as the project code and the day it was run; see [naming downloaded reports](./naming-downloads.md).
 - **Duplicating:** start a new report from an existing layout or pack, or from a built-in starter; see [duplicating a report](./duplicating-a-report.md).
 - **Copying:** reports can be copied from one project to another project of the organisation; see [copying reports to another project](./copying-between-projects.md).
-- **Choosing projects:** the **Projects** selector lists exactly the projects you hold a role in; downloads carry the same choice as the screen. A project that has hidden the layout is left out, and the report says so.
+- **Choosing projects:** the **Projects** selector lists exactly the projects you hold a role in; downloads carry the same choice as the screen. A project that has hidden the layout is left out, and the report says so. A layout set to run for **one project** (or one project and its children) shows a one-choice **Project** list instead; see [choosing which projects a report runs for](./designing-a-layout.md#choosing-which-projects-a-report-runs-for).
 
 ## Limits and background runs
 

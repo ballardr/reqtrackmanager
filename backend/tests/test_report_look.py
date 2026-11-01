@@ -257,8 +257,29 @@ def test_an_organisation_bundle_carries_the_look_and_no_templates(world):
     assert "report_templates" not in data
     assert data["report_look"] == {
         "accent_color_hex": "#112233", "include_cover_page": True, "include_logo": False, "footer_text": "Bundle footer",
-        "chapters_per_component": False,
+        "chapters_per_component": False, "colour_scheme": [],
     }
+
+
+def test_an_organisation_bundle_carries_the_colour_scheme_and_an_import_keeps_a_valid_one(world):
+    scheme = [{"name": "alert", "colour": "#b42318"}, {"name": "brand", "colour": "accent"}]
+    resp = world.client.put(
+        f"/api/v1/orgs/{world.org['id']}/branding", json={"report_colour_scheme": scheme}, headers=auth_headers(world.token)
+    )
+    assert resp.status_code == 200, resp.text
+    data = _export(world)
+    assert data["report_look"]["colour_scheme"] == scheme
+    with SessionLocal() as db:
+        admin = db.scalar(select(User).where(User.is_server_admin))
+        org, warnings = import_org_bundle(
+            db, name=f"Imported Scheme {uuid.uuid4().hex[:6]}", zip_bytes=_rebundle(world, data), current_user=admin
+        )
+        assert org.report_colour_scheme == scheme and not any("colour scheme" in w for w in warnings)
+        data["report_look"]["colour_scheme"] = [{"name": "accent", "colour": "#000000"}]
+        bad, warnings = import_org_bundle(
+            db, name=f"Imported Bad {uuid.uuid4().hex[:6]}", zip_bytes=_rebundle(world, data), current_user=admin
+        )
+        assert bad.report_colour_scheme is None and any("colour scheme" in w for w in warnings)
 
 
 def _rebundle(world: World, data: dict) -> bytes:

@@ -14666,3 +14666,139 @@ Time shapes: none. *Identify:* empty text blocks gave different gaps per format.
 | What follows | Starts on a new page in every format: in PDF the filler uses the rest of the page, and Word and ODT end the page with the anchor paragraph, so the three agree. | Agent |
 
 Time shapes: none. *Identify:* a sign-off table could only be placed by guessing the height of what was above it. *Verify:* `tests/test_report_bottom.py` (validation, text round trip, PDF bottom edge equal however long the header is, no-fit moves to a new page, too-tall flows, Word floating-table XML and trailing paragraph, ODT frame and style, HTML in place), an evaluator test, a block story, `report-page-bottom.spec.ts`, and one sample rendered in PDF, Word and ODT through LibreOffice and compared by eye (the block sat at the foot in all three). *Remediate:* none outstanding; Word to be confirmed by the User.
+
+## Custom reports Phase 65: which projects a layout runs for (2026-11-01)
+
+**Decided by: User** (a layout can be set so it runs for one project only; then, that a one-project layout may also merge its nested projects, chosen as one three-way setting rather than a second flag); **Decided by: Agent** (the details below).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Where the setting lives | `run_scope` on the layout tree beside `repeat_table_header`, not a column: it is versioned with the tree and travels in bundles, copies and duplicates with no change to those. Values `any` (default), `one`, `one_and_children`; both families. The first build was a `single_project` boolean; the User asked for nested projects to be mergeable and chose one three-way setting over a second flag, so no invalid combination exists. Layout settings field "Projects it runs for" (with help); text words `anyprojects`, `oneproject`, `projecttree` on the `@layout` line, written only when the key is present so existing layouts do not change. | User (three-way form), Agent (names) |
+| What each means | `any`: as before (a project run, or an organisation fan-out over a selection; `include_children` on an organisation fan-out is refused). `one`: exactly one distinct project and no child projects. `one_and_children`: exactly one project; `include_children` (an optional run-time switch, as in a project run) merges its readable child projects into the same report; children the caller cannot read are never added. | Agent |
+| Where it is enforced | One function, `custom_report_run.check_run_scope`, called at the top of `run_project_layout`, `run_organization_layout` and `report_run_jobs.enqueue` (so the sync run, the draft preview, pack entries and the MCP `run_custom_report` all reach it, and queuing is refused with a 422 up front; "generate again", which re-reads the current version, answers with the repeat-refused message). A job needs no check of its own: it runs the version it pinned when queued. The refusal is a 422 `RunScopeError`, raised before any project is read, so it reveals nothing about records. | Agent |
+| Result shape | A `one` or `one_and_children` organisation run is handed to `run_project_layout` for the chosen project: the report reads like that project's own (no merge heading or Project column, `{{project_code}}` filled), and the provenance scope is the project. The root project is already one the caller holds a role in, so authorisation is unchanged. | Agent |
+| Packs | A `one`/`one_and_children` layout in an organisation-wide pack run without exactly one project is listed `not_available` with the reason, not a failure of the whole pack. **Limit:** an organisation pack has no child-projects input, so a `one_and_children` entry runs for the project alone there; a project pack run passes `include_children` as before. | Agent |
+| Catalogue and UI | The catalogue entry carries `run_scope` and offers `supports_project_multi_filter` only for `any`; `supports_include_children` for a project run unless `one`, and for an organisation run only for `one_and_children`. `ReportParamsForm` offers a required single-choice Project picker (no "All projects"); `ReportRunner` and the designer preview hold the run until one is chosen and pre-select the only choice. A choice field's `empty_label` is now its blank option's text (used by "Not set (any number of projects)"). All shaping only; the server is the control. | Agent |
+| Placeholders | Layout settings shows a hint, never an automatic change, when an organisation layout prints `{{project_name}}`, `{{project_code}}` or `{{project_description}}` while still running for any number of projects. | Agent |
+
+Time shapes: none. *Identify:* a sign-off sheet or a charter was wrong when merged across projects, and a UI-only restriction would be bypassed by the API and MCP. *Verify:* `tests/test_report_run_scope.py` (tree, text round trip of all three words, 422 for none/several/blank, one accepted, duplicates of one id accepted, 404 for an unreadable project kept, an old layout still fans out, children refused for `one` and for a fan-out, children merged and limited to what the caller can read for `one_and_children`, project-form result, catalogue flags, queue, generate-again refused after the layout is changed, draft preview), a pack case in `test_report_packs.py`, Storybook stories for the runner, the preview, the page setup and the settings, and `custom-report-run.spec.ts`. *Remediate:* none open. No authorisation rule changed: each project is still evaluated with the caller's own access.
+
+## Custom reports Phase 66: page number and total pages in a header or footer (2026-11-01)
+
+**Decided by: Agent** (the User's request was that page and total pages can be inserted in a header or footer; the plan's suggestions were followed).
+
+| Question | Decision |
+|---|---|
+| Reproduced? | Yes, though the control existed. `RunningBandEditor` defaults its list to `BAND_PLACEHOLDERS` (which has `page` and `pages`), but the Blocks view settings and the Page setup dialog pass the server catalogue (`PLACEHOLDER_NAMES`), and the server keeps the page fields apart (`PAGE_FIELD_NAMES`) because they are valid only in a band. So in the real app the Insert list never offered them; the story passed only because it used the default. |
+| Fix | The editor adds the page choices itself, whatever list it is given (and drops any `page`/`pages` in it): **Page number**, **Total pages**, **Page X of Y** (writes `Page {{page}} of {{pages}}`). No tree or server change; the spelling stays `{{page}}`/`{{pages}}`. |
+| Insert position | At the caret of the cell last edited (selection kept on every select and on leaving the cell, since the Insert list takes the focus); at the end if the cell was never clicked. Helpers `insertAtCaret` and `pageSample` in `utils/reportPageSetup.ts`. |
+| Sample | A line under a cell that holds a page field: "Prints as: Page 3 of 12". Only cells with a page field show one (other placeholders are filled at run time, so a sample would be invented). |
+| One editor | All three places a band is edited (layout settings, Page setup, page styles) already share `RunningBandEditor`; the Text view's page setup uses it too, so nothing else needed the change. |
+
+Time shapes: none. *Identify:* an author could not find the page number control. *Verify:* stories (page fields offered with a catalogue that names none, insert at the caret) and the Playwright header/footer spec inserts Page X of Y from the live catalogue. A downloaded PDF/Word was not re-read in this phase; rendering of the fields is unchanged and covered by the existing backend page-field tests. *Remediate:* done as above.
+
+## Custom reports Phase 67: column lists with a remove button and a gear popover (2026-11-01)
+
+**Decided by: Agent** (the User's request: column heading and width behind a gear, a plain list with an x and a gear, no "Column 1 field" label; the plan's suggestions were followed).
+
+| Question | Decision |
+|---|---|
+| Shared component | `FolderTreeList` is a folder tree grid with item icons and sorting, too heavy for a flat list, so the row shape is a new small `ItemRowList` (name, muted detail, actions). No other call site had this shape (`RemovableItemList` is a chip list), so nothing else needed converting; the custom table editor will reuse it. |
+| Row | Name is the heading, else the field's label (images column: "Images"); the field's code is a muted detail when a heading hides it. Move up/down and × are icon buttons named with the column's name ("Remove column Code"); a column with no field yet reads "Choose a field". |
+| Gear | `SettingsPopoverButton` (gained `defaultOpen`) holds Field, Heading, Width, Reads from (sheets with joins), Links to sheet, and the image rules for an images column, with their help text unchanged. Labels lost their "Column N" prefix (the popover is named "Settings for column <name>"). A gear is marked when the width, link, join or image rules differ from the default. |
+| New column | Opens its settings at once, since an empty field is invalid. |
+| Confirm | Remove stays unconfirmed (re-adding restores it), as before. |
+
+Time shapes: none. *Identify:* four boxes per column made a wide table's editor a wall of fields. *Verify:* stories for the list, the popover fields, marked gear, long heading and the images column; the column-widths, image-columns and sheet-links Playwright specs open the gear first. The popover's accessible name follows the heading as it is typed, so specs find it by its common start. Backend untouched.
+
+
+## Custom reports Phase 68: custom tables spike, merged cells and per-cell style in four formats (2026-11-01)
+
+A measured choice of cell model for the `grid` block (Phase 69), with a working drawing in each document format. No user-visible change. The prototype and its tests are kept as `backend/tests/report_grid_spike.py` and `test_report_grid_spike.py` (29 tests) and become the first renderer tests of Phase 69.
+
+```mermaid
+flowchart LR
+    G["Grid: widths, columns, rows, header_rows"] --> P["place(): span checks, style cascade<br/>grid, column, row, cell"]
+    P --> PDF["ReportLab Table<br/>SPAN, BACKGROUND, VALIGN"]
+    P --> DOCX["Word table<br/>gridSpan, vMerge, shd, vAlign, trHeight"]
+    P --> ODT["ODF table<br/>spanned, covered-table-cell, min-row-height"]
+    P --> HTML["HTML table<br/>colspan, rowspan, classes, validated hex"]
+```
+
+### Method
+
+One case set (the plan's: a 4 x 4 grid, a title cell across four columns, a label down two rows, columns 1 and 3 black with white bold text from one column setting, a right-aligned, a justified and a middle-aligned cell, a blank row 2 cm tall) drawn in all four formats. The PDF was rendered and viewed; the Word and ODT files were converted by LibreOffice (`lo-check:local`) and viewed; the HTML was viewed in a browser. A second set, 30 groups of three rows with a label spanning each group, a 70-character unbreakable word in a 6 cm column and a header row, ran over three pages in PDF, Word and ODT. A third set held one row of 120 to 150 lines, taller than a page. **Word itself and Excel were not run**: Word output is checked by LibreOffice and by a structural check of the XML (`docx_problems`).
+
+### Findings
+
+| Case | PDF (ReportLab) | Word | ODT | HTML |
+|---|---|---|---|---|
+| Column and row spans | `SPAN`; covered cells hold empty strings | `gridSpan`, and `vMerge` restart then continue through python-docx's `merge`; the covered cells' empty paragraphs must be removed | `number-columns-spanned` / `number-rows-spanned` plus one `covered-table-cell` per covered position | `colspan` / `rowspan`; covered positions omitted |
+| Fill, vertical and horizontal alignment, text colour, bold | `BACKGROUND`, `VALIGN`, Paragraph style per cell | `w:shd`, `w:vAlign`, paragraph `w:jc`, run colour and bold; **the shading and `vAlign` are written on every covered cell too**, so a vertical merge does not depend on which cell a reader takes the style from | cell style (`fo:background-color`, `style:vertical-align`) and paragraph style (`fo:text-align`, `fo:color`, `fo:font-weight`) per cell | a class from a closed list for alignment; `background-color` and `color` in `style` only after a `#rrggbb` check |
+| Minimum row height | **No minimum exists**: the height is the larger of the author's minimum and the measured height of the row's single-row cells | `w:trHeight` `atLeast` | `style:min-row-height` | `tr` `height` (acts as a minimum) |
+| A row stays whole across pages | Default (`splitInRow` 0) | `w:cantSplit` | `fo:keep-together="always"` on the row style | `break-inside: avoid` (not measured) |
+| Header rows repeat | `repeatRows` | `w:tblHeader` | `table:table-header-rows` group | `thead` |
+| A vertical merge across a page break | **Never split**: all 30 groups stayed whole, the break fell at a group boundary | **Split** (LibreOffice: group 29 had its label on page 2 and its other rows on page 3) even with `cantSplit` on every row; fixed by `keepNext` on every paragraph of every row of the group but the last, after which no group split | Not split | Not measured (no print run); rows carry `break-inside: avoid` |
+| A 70-character word in a narrow column | Broken at the cell edge | Broken at the cell edge | Broken at the cell edge | `overflow-wrap: anywhere` |
+| A row taller than a page | **`LayoutError`: the whole run fails**, also with `splitInRow` while the cell is one Paragraph | Split across pages, header repeated, 120 of 120 lines | Split across pages despite `keep-together`, header repeated, 120 of 120 lines | Not measured (no print run) |
+
+### Decisions
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **A distinct `Grid` neutral type, not spans on `Table`.** A record table's rows are data and its sheet family never takes a grid; the table path of four renderers stays as it is.  | Agent |
+| 2 | **Storage:** a merged region is `colspan` / `rowspan` on its top-left cell and the covered positions are **omitted** from the row (the HTML way). A covered cell cannot hold text by mistake, and validation is one pass (`place`): each row's cells plus the positions covered from above must equal the column count; a span may not run past the grid, overlap another cell, or cross from the header rows into the body. Every problem names the row and the cell. | Agent |
+| 3 | **Style cascade** grid, column, row, cell (most specific wins), resolved once in `place` so the four renderers read finished values. Alignment and vertical alignment are closed words; colours are `#rrggbb` only in the spike (Phase 69 widens this to Phase 72's colour words, resolved to hex before they reach a renderer); anything else is refused naming the cell. No author text reaches XML, an attribute or CSS except as escaped text. | Agent |
+| 4 | **Header rows** are the leading rows only, a count, and a merge may not cross the boundary: ODF's header rows are one group of leading rows, so one cell cannot sit in both groups (not tried, by design), and PDF `repeatRows` and Word `tblHeader` have the same shape. | Agent |
+| 5 | **Rows stay whole, merged groups stay together.** Word needs `keepNext` on the group's paragraphs to match PDF and ODT (above); it is cheap and has no visible effect on a group that fits. A group taller than a page splits, as any table does. | Agent |
+| 6 | **A row taller than a page must not fail the run.** ReportLab's `LayoutError` would lose the whole report. The PDF drawing gives each cell's text as a list of Paragraphs (one per line of author text), leaves a too-tall row's height to ReportLab and sets `splitInRow` **only for a grid that has such a row** (it lifts the whole-row rule for every row of that grid). A single paragraph longer than a page in one cell is not split by ReportLab; the Phase 69 limits (2,000 characters a cell) keep that to a narrow column, and the renderer must catch `LayoutError` for the grid and fall back to the same text at no minimum height rather than fail. | Agent |
+| 7 | **Contrast** is a warning (the author chose it), at under 4.5:1 for a cell with both fill and text colour set, computed by `branding.contrast_ratio`. Not an error. | Agent |
+| 8 | **Not for the sheet family.** A grid in a table-family layout is a checked problem at save; XLSX/ODS merged cells are a separate feature if asked. | Agent |
+| 9 | **ODF text** goes through `xml_text` (a newline is `text:line-break`, a run of spaces is `text:s`); the first draft wrote the raw string and lost every line break, which the over-tall row test showed. | Agent |
+| 10 | **Not done, stated:** Word and Excel were not run; the keep-together result for Word is LibreOffice's reading of the same XML. The User is asked to open a Word file of the case set when Phase 69 lands (the spike's own output is not a deliverable). Row heights in a nested table, text inside a cell beyond plain text (bold, links, placeholders, equations) and images in a cell were not part of the spike; Phase 69 builds them on the same cell. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: cell text or a style value reaching XML (Word, ODF), CSS (HTML `style`) or a ReportLab paragraph's mini-markup; a colour or alignment value used as an injection route; resource use from a huge span or a very tall cell. Verify: text is written escaped or as run text (tests put `<w:p/>&amp;`, `<script>` and an attribute-breaking colour through every format), PDF paragraphs are `html.escape`d before ReportLab reads them as markup, every style value comes from a closed set or a `#rrggbb` match and is refused with the cell named otherwise, and spans are checked against the grid before any drawing. Limits on columns, rows and characters are Phase 69's checks. Remediate: none needed.
+
+Time shapes: none. Not applicable: no table, column, migration, project-scoped vocabulary, human code, search provider or bundle change (nothing is stored; the spike is code and tests only). The seed scripts hold no grid.
+
+## Custom reports Phase 72: document colours, a colour scheme and the branding colour wherever a colour is set (2026-11-02)
+
+A colour in a layout is now a **colour word**: a hex colour, a reserved word (`accent`, `accent_light`, `accent_dark`, `white`, `black`, `none`) or the **name** of a colour in a scheme. A block stores the name (`"fill": "primary"`), so changing the scheme re-colours every block that uses it. A layout can carry its own scheme; one that does not follows the **organisation's** report colours, live, and then four standard names taken from the branding colour. One control, `ColourChoiceField`, offers the branding colour first in every colour setting.
+
+```mermaid
+flowchart LR
+    B["block field<br/>fill = primary"] --> R["resolve_colour"]
+    L["layout palette"] --> E["effective_scheme"]
+    O["organisation scheme<br/>(Branding page)"] --> E
+    S["standard four"] --> E
+    E --> R
+    A["report accent"] --> R
+    R --> H["#rrggbb in the SVG, the document, the preview"]
+    R --> P["run provenance: stats.colours<br/>(names used and what each resolved to)"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **The scheme is a tree key `palette`** (`[{name, colour}]`, at most 8, document layouts only), versioned, copied, duplicated and bundled with the tree; no key means "follow the organisation's". No migration for existing layouts. Text view `@palette a=#112233 b=accent` and `@palette follow` (written as no line, so the round trip is exact). | Agent (the plan's suggestion) |
+| 2 | **Resolution order: the layout's, then the organisation's, then the standard four** (`primary` = the accent, `secondary` = `accent_dark`, `tint` = `accent_light`, `neutral` = `#6b7280`), which always resolve so a starter needs no scheme of its own. A later source overrides an earlier one of the same name. The organisation's scheme is live-inherited. | User (live inheritance, 2026-11-01); Agent (order, the four names) |
+| 3 | **The organisation's scheme is `Organization.report_colour_scheme`** (JSONB, NULL = none; migration 0122), edited on **Branding** (`PUT /orgs/{id}/branding`, sent only when present; `[]` clears), carried as `report_look.colour_scheme` in the organisation bundle (an invalid one is dropped with a warning). | User (stored on the organisation beside the accent); Agent (shape) |
+| 4 | **A name** is 1 to 24 lower-case letters, digits and underscores **starting with a letter** (the plan did not say; a leading digit would look like a number), unique within the scheme, and not a reserved word. **An entry's colour** is a hex colour or a reserved word except `none` (the plan said hex or `accent`; the light and dark forms, white and black cost nothing and let a scheme follow the branding), **never another name**, so resolution is one step and cannot loop. | Agent |
+| 5 | **Derived words:** `accent_light` is 85% of the way from the accent to white and `accent_dark` 25% towards black (the plan's suggestion). Python rounds half to even and the browser half up, so a displayed swatch can differ from the printed colour by one step in one channel on an exact half; the server's value is the one printed. | Agent |
+| 6 | **Unknown names are checked where the organisation's names are known.** `validate_tree(..., organization_colours=...)` refuses a name no scheme defines, naming the block's path; the layout save routes, the validate endpoint and every run pass the organisation's names, so **deleting an organisation colour a layout names turns the next run into a 422 naming the block** (the run route now answers any invalid stored tree 422 instead of an unhandled error). Where the organisation is not at hand (the text parser, snippets, bundle import) a well-formed name is accepted unchecked and the save or run decides. The consequence for the old shape check: a word like `red` is now shaped like a name, so only `Red!`-style values are refused without an organisation. | Agent |
+| 7 | **Provenance:** a run's `stats.colours` records `{name: #rrggbb}` for the scheme names it used (no migration: `stats` is JSON), so a saved run stays explainable after the scheme changes. | Agent (the plan asked for it) |
+| 8 | **One control:** `ColourChoiceField` (button with chip **and** name, popover list: branding colour with its actual colour, the layout's scheme, the organisation's, the standard four, light and dark forms, white, black, none where allowed, Custom colour). The pair of picker and hex box is extracted from `ColorField` into `HexColourInput`, which both use. A server block field of `kind="colour"` is drawn with it with no per-block case, so the shape fill and outline use it now and the custom table (Phases 69 and 70) and the document styles (Phase 74) get it by declaring the kind. `ColourChoiceField` is checked by `scripts/check_field_help.py`. | Agent |
+| 9 | **A used name is fixed.** The scheme editor refuses to remove, rename, start over past, or follow the organisation past a name a block uses (with the reason in text), because the name is the link; the server also reports it as a checked problem on a hand edit. **Start from** copies a set (the organisation's, Branding, monochrome, cool, warm) and keeps any used name the set lacks; nothing stays linked to a set. | Agent |
+| 10 | **A scheme entry's settings use the choice list inline** (`ColourChoiceList`), not a second popover, so popovers never nest. | Agent |
+| 11 | **Designer data:** `GET .../report-layouts/colours` (organisation and project scope, same gate as the other designer calls) answers the branding colour (`report_accent_hex`, including its UI-accent and platform fallbacks) and the organisation's scheme; `ReportLayoutApi.colours` is optional, and the designer and the snippet editor fall back to stock choices if it is absent or fails. | Agent |
+| 12 | **Not built here, stated:** the **contrast warning** for a fill and text colour pair (no such pair exists until the custom table has cell fill and text colour; it belongs to Phases 69 and 70); colour in snippets and the starters (Phase 77); the heading colour (Phase 74). The shape block's stored default is still the word `accent`. | Agent |
+| 13 | **Not applicable:** a project-scoped vocabulary table (the scheme is a layout tree key and an organisation column, so no nested-project fallback and no hide or restore of defaults); users and groups; human codes and search (a colour is not a record); time shapes (none). The organisation scheme travels in the organisation bundle and the layout's palette in the layout's tree, which the layout bundles carry whole (tests below). A module needs no core edit: `colour` is a generic field kind. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a colour word reaching SVG, XML or CSS markup (today the shape SVG; the grid and the document styles next); a scheme or organisation colour used as an injection route; an unbounded scheme; an administrator-only setting changed by someone else; a name that is a secret or personal data. Verify: every colour reaches an attribute only as the `#rrggbb` `resolve_colour` returns (a name, a word and a hex are matched against closed patterns, an unknown name resolves to the accent); the scheme is validated as a whole (`palette_problems`: at most 8 entries, exact keys, name and colour patterns, no reserved word, no duplicate) on the layout save, the layout text, the organisation PUT (a 422 from the schema) and the bundle import (dropped with a warning); the organisation's scheme is written only through the existing org-admin branding route and read by the designer through the layout-management gate; names and colours are configuration and are never logged. Tests put reserved words, a name pointing at a name, a duplicate, a ninth entry and markup-shaped colours through each path. Remediate: none needed.
+
+### Verification
+
+Backend `test_report_colours.py`: the resolver (every reserved word, hex, the derived tint and shade, the standard four with no scheme, a name following another organisation's accent, the three-level order, an unknown name or bad accent never breaking a run), the scheme checks (13 bad cases with paths), the tree (a scheme name and a standard name valid; unknown refused with the block path only where the organisation's names are known; removing a used name; table layouts refused), the text view (round trip, `follow`, bad lines positioned, once and before the first block), the organisation's scheme (API, validation, `[]` clears, a branding update that omits it leaves it), a run resolving layout then organisation then standard, provenance, a deleted organisation colour refused at save and at run, and the designer's colours endpoint at both scopes. `test_report_look.py` (organisation bundle carries the scheme; a valid one is imported, an invalid one dropped with a warning), `test_report_layout_tiers.py` (project bundle round trip) and `test_report_duplicate.py` (the scheme travels). Storybook: `ColourChoiceField` (10) and `ReportColourSchemeEditor` (15). Playwright `report-colours.spec.ts`: set the organisation's colour on Branding, use it by name on a shape, override it in the layout and see the preview change, a used colour cannot be removed, the text view, follow again; an unknown name refused with its path; Start from and a standard name. `seed_demo_data.py` sets two organisation colours and the logo demo's plate uses `primary`.

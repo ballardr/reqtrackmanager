@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
+from app.services.report_colours import palette_problems
 
 
 class OrganizationCreate(BaseModel):
@@ -115,6 +116,22 @@ class CodedRecordOut(BaseModel):
     label: str
 
 
+class ReportColourOut(BaseModel):
+    """One named colour of a report colour scheme."""
+
+    name: str
+    colour: str
+
+
+class ReportColourIn(BaseModel):
+    """One named colour of a report colour scheme, as sent (checked as a whole by `palette_problems`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=24)
+    colour: str = Field(max_length=12)
+
+
 class OrganizationOut(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -136,6 +153,8 @@ class OrganizationOut(BaseModel):
     #: The organisation's report accent colour (`None` = follow the UI accent) and whether its logo is on reports.
     report_accent_color_hex: str | None = None
     report_include_logo: bool = True
+    #: The organisation's named report colours (`None` = none set); see `services.report_colours`.
+    report_colour_scheme: list[ReportColourOut] | None = None
     header_title: str | None = None
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
@@ -229,6 +248,17 @@ class OrgBrandingUpdate(BaseModel):
     #: Sent only when set: a client that does not know these leaves the report look as it is.
     report_accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     report_include_logo: bool | None = None
+    #: Sent only when set: the organisation's named report colours (`[]` clears them).
+    report_colour_scheme: list[ReportColourIn] | None = None
+
+    @field_validator("report_colour_scheme")
+    @classmethod
+    def _valid_scheme(cls, value: list[ReportColourIn] | None) -> list[ReportColourIn] | None:
+        if value is not None:
+            problems = palette_problems([e.model_dump() for e in value], "report_colour_scheme")
+            if problems:
+                raise ValueError(problems[0][1])
+        return value
 
     @field_validator("header_title", "email_footer_company_name", "email_footer_website", "email_footer_address")
     @classmethod

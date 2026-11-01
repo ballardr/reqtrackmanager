@@ -129,7 +129,7 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     assert body["field_kinds"] == list(FIELD_KINDS)
     assert {f["key"] for f in body["layout_fields"]} == {
         "orientation", "page_size", "margins", "mirror_margins", "repeat_table_header", "page_styles", "header", "footer", "variables",
-        "file_name", "contents_sheet",
+        "file_name", "contents_sheet", "run_scope", "palette",
     }
     contents = next(f for f in body["layout_fields"] if f["key"] == "contents_sheet")
     assert (contents["kind"], contents["families"]) == ("boolean", ["table"])

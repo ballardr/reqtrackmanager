@@ -162,16 +162,27 @@ test.describe("Report sheet links", () => {
       // Select the Pain sheet: the only one whose columns can read from a joined record.
       const titles = page.locator(".blocklyText.rl-block-title", { hasText: /^Sheet$/ });
       await titles.first().waitFor();
+      /** Opens the gear of the nth column of the selected block; its settings are a popover on the page, not inside the inspector. */
+      const openColumn = async (nth: number) => {
+        await inspector.getByRole("list", { name: "Columns" }).getByRole("listitem").nth(nth).getByRole("button", { name: /^Settings for column/ }).click();
+        return page.getByRole("dialog", { name: /^Settings for column/ });
+      };
       for (let n = 0; n < (await titles.count()); n += 1) {
         await titles.nth(n).click();
         await expect(inspector).not.toContainText("Select a block");
-        if ((await inspector.getByRole("combobox", { name: "Column 2 reads from" }).count()) > 0) break;
+        const second = await openColumn(1);
+        if ((await second.getByRole("combobox", { name: "Reads from" }).count()) > 0) break;
+        await page.keyboard.press("Escape");
       }
-      const link = inspector.getByRole("combobox", { name: "Column 2 links to sheet" });
+      const second = page.getByRole("dialog", { name: /^Settings for column/ });
+      const link = second.getByRole("combobox", { name: "Links to sheet" });
       await expect(link.locator("option")).toHaveText(["No link", "Requirements"]);
       await expect(link).toHaveValue("Requirements");
+      await page.keyboard.press("Escape");
       // The pain point column can only open pain point sheets: its own sheet is the one on offer, never Requirements.
-      await expect(inspector.getByRole("combobox", { name: "Column 1 links to sheet" }).locator("option")).toHaveText(["No link", "Owner's pain"]);
+      const first = await openColumn(0);
+      await expect(first.getByRole("combobox", { name: "Links to sheet" }).locator("option")).toHaveText(["No link", "Owner's pain"]);
+      await page.keyboard.press("Escape");
     });
 
     await test.step("the text view writes the link and the layout setting", async () => {

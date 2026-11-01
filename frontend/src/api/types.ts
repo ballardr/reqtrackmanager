@@ -454,6 +454,8 @@ export interface Organization {
   report_accent_color_hex: string | null;
   /** Whether reports carry the organisation's logo. */
   report_include_logo: boolean;
+  /** The organisation's named report colours (`null` = none set). */
+  report_colour_scheme?: { name: string; colour: string }[] | null;
   header_title: string | null;
   email_footer_company_name: string | null;
   email_footer_website: string | null;

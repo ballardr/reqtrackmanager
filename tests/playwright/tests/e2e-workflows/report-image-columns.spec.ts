@@ -102,13 +102,16 @@ test.describe("Report image columns", () => {
 
     await test.step("Add images column offers the shared settings, with the size a share of the column", async () => {
       await inspector.getByRole("button", { name: "Add images column" }).click();
-      const column = inspector.getByRole("group", { name: "Column 3: images attached to the record" });
-      await column.getByRole("textbox", { name: "Column 3 heading" }).fill("Photos");
+      // The new column's settings open at once in a popover.
+      // (Its name follows the heading once one is typed, so it is found by the common start.)
+      const column = page.getByRole("dialog", { name: /^Settings for column/ });
+      await column.getByRole("textbox", { name: "Heading" }).fill("Photos");
       await column.getByRole("textbox", { name: "File names" }).fill("site-*");
       await column.getByRole("textbox", { name: "File names" }).press("Enter");
       await column.getByRole("spinbutton", { name: "Width" }).fill("60");
       await expect(column.getByRole("combobox", { name: "Width unit" }).locator("option", { hasText: "% of the column's width" })).toHaveCount(1);
       await column.getByRole("combobox", { name: "Arrangement" }).selectOption({ label: "Side by side, wrapping" });
+      await page.keyboard.press("Escape");
       await expect(page.getByText("No problems.")).toBeVisible();
     });
 

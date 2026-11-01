@@ -19,6 +19,7 @@
  * for something the server then rejects with a positioned message.
  */
 import type { LayoutFamily } from "../api/reportLayouts";
+import { RUN_SCOPE_WORDS, runScopeOfWords, type RunScope } from "./runScope";
 
 export const PAGE_ORIENTATIONS = ["portrait", "landscape"] as const;
 export const PAGE_SIZES = ["A3", "A4", "A5", "Letter", "Legal"] as const;
@@ -74,6 +75,8 @@ export interface PageSetup {
   mirror: boolean;
   /** Whether a table's heading row is printed again on each page: `false` for `norepeatheader`, `true` for an explicit `repeatheader`, `undefined` when the line says neither (on). */
   repeatHeader?: boolean;
+  /** Which projects the layout runs for, as the line states it (`undefined` when it states none, which means any). */
+  runScope?: RunScope;
   margins: PageMargins;
   styles: PageStyleSetup[];
   header?: RunningBand;
@@ -213,6 +216,7 @@ export function readPageSetup(text: string): PageSetup | null {
     size: size ?? "A4",
     mirror: before.includes("mirror"),
     repeatHeader: before.includes("norepeatheader") ? false : before.includes("repeatheader") ? true : undefined,
+    runScope: runScopeOfWords(before),
     margins: readMargins(margins),
     styles: [],
   };
@@ -242,6 +246,7 @@ export function writePageSetup(text: string, setup: PageSetup): string {
     ...(setup.size === "A4" ? [] : [setup.size]),
     ...(setup.mirror ? ["mirror"] : []),
     ...(setup.repeatHeader === undefined ? [] : [setup.repeatHeader ? "repeatheader" : "norepeatheader"]),
+    ...(setup.runScope === undefined ? [] : [RUN_SCOPE_WORDS[setup.runScope]]),
   ].join(" ") + marginsText(setup.margins);
   const styles = setup.styles.map((style) => {
     const words = [style.orientation, style.size].filter((word) => word !== undefined).join(" ");
@@ -291,4 +296,32 @@ export function bandNeedsCm(band: RunningBand | undefined): number {
   const lines = Math.max(...BAND_SLOTS.map((slot) => lineCount(band[slot])));
   const logo = band.logo?.height ?? 0;
   return lines > 0 || logo > 0 ? BAND_EDGE_CM + Math.max(lines * BAND_LINE_CM, logo) : 0;
+}
+
+const SAMPLE_PAGE = "3";
+const SAMPLE_PAGES = "12";
+
+/**
+ * `text` with `snippet` written over the selection `start`..`end` (at `start` when they are equal).
+ *
+ * @param text The cell's text.
+ * @param snippet What to write.
+ * @param start Selection start; clamped to the text.
+ * @param end Selection end; clamped to the text.
+ * @returns The new text and the caret position after the snippet.
+ */
+export function insertAtCaret(text: string, snippet: string, start: number, end: number): { text: string; caret: number } {
+  const from = Math.max(0, Math.min(start, text.length));
+  const to = Math.max(from, Math.min(end, text.length));
+  return { text: `${text.slice(0, from)}${snippet}${text.slice(to)}`, caret: from + snippet.length };
+}
+
+/**
+ * What a cell prints for page 3 of 12, or `null` when the cell holds no page field (nothing to show).
+ *
+ * @param text The cell's text.
+ */
+export function pageSample(text: string): string | null {
+  if (!/\{\{\s*pages?\s*\}\}/.test(text)) return null;
+  return text.replace(/\{\{\s*page\s*\}\}/g, SAMPLE_PAGE).replace(/\{\{\s*pages\s*\}\}/g, SAMPLE_PAGES);
 }

@@ -136,6 +136,7 @@ from app.services.project_export import (
     new_project_from_bundle_data,
 )
 from app.services.rbac import would_create_org_group_cycle
+from app.services.report_colours import palette_problems
 from app.services.report_file_names import ORG_FILE_NAME_PLACEHOLDERS, template_problems
 from app.services.report_folder_bundle import export_org_folders, import_org_folders
 from app.services.report_layout_bundle import export_org_layouts, import_org_layouts
@@ -197,7 +198,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
     report_look = {
         "accent_color_hex": org.report_accent_color_hex, "include_cover_page": org.report_include_cover_page,
         "include_logo": org.report_include_logo, "footer_text": org.report_footer_text,
-        "chapters_per_component": org.report_chapters_per_component,
+        "chapters_per_component": org.report_chapters_per_component, "colour_scheme": org.report_colour_scheme or [],
     }
 
     module_bundle_json: dict[str, Any] = {
@@ -576,6 +577,11 @@ def _import_report_look(db: Session, org: Organization, data: dict[str, Any], wa
     footer = look.get("footer_text")
     org.report_footer_text = footer if isinstance(footer, str) and footer.strip() else None
     org.report_chapters_per_component = bool(look.get("chapters_per_component", True))
+    scheme = look.get("colour_scheme")
+    if isinstance(scheme, list) and scheme and not palette_problems(scheme):
+        org.report_colour_scheme = [{"name": e["name"], "colour": e["colour"]} for e in scheme]
+    elif scheme:
+        warnings.add("The report colour scheme in this bundle was not valid and was not imported.")
     db.flush()
 
 

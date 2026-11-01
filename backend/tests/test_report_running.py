@@ -367,9 +367,11 @@ def test_the_preview_fills_the_placeholders_in_a_header_and_leaves_the_page_fiel
         '@layout document\n@header left "{{project_name}}" centre "{{organisation}}" right "v{{layout_version}}"\n'
         '@footer left "{{generated_on}}" right "Page {{page}} of {{pages}}"\n\nBody\n'
     )
-    html = preview(world, project, text, **{"X-Client-Date": "2026-10-30"})["html"]
+    # A day ahead of the server's UTC day (east of Greenwich the local day is ahead), the most a client date may differ by.
+    client_day = (datetime.now(UTC).date() + timedelta(days=1)).isoformat()
+    html = preview(world, project, text, **{"X-Client-Date": client_day})["html"]
     assert ">Alpha<" in html and f">{world.org['name']}<" in html
-    assert "2026-10-30" in html and 'title="Filled in when printed"' in html  # the caller's own day, and fields left for printing
+    assert client_day in html and 'title="Filled in when printed"' in html  # the caller's own day, and fields left for printing
     assert "{{" not in html
 
 

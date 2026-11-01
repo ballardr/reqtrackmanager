@@ -87,6 +87,7 @@ from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.report_colours import effective_scheme, is_name, resolve_colour
 from app.services.report_column_width import sheet_widths_cm
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
 from app.services.report_framework import ReportContext, ReportResult
@@ -136,7 +137,7 @@ from app.services.report_model import (
     text_runs,
     typed_cell,
 )
-from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, org_value_kind, report_org_values
+from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, org_value_kind, organization_colour_names, report_org_values
 from app.services.report_page_styles import effective_bands, resolve_page_styles
 from app.services.report_record_images import candidate_files, compile_pattern, load_attachment_image, record_files
 from app.services.report_shapes import shape_svg
@@ -247,6 +248,8 @@ class EvaluatedLayout:
             report, so `record_versions` is incomplete (the digest still covers every record).
         widgets: Keys of the widgets that ran (distinct, sorted); their output is covered by `source_digest`.
         variables: The values the layout's run-time variables took (empty when it declares none).
+        colours: `{name: #rrggbb}` of the scheme colours the report actually used, as they resolved in this run (the layout's
+            scheme, else the organisation's, else the standard four), so a saved run stays explainable after the scheme changes.
     """
 
     family: str
@@ -259,6 +262,7 @@ class EvaluatedLayout:
     record_versions_truncated: bool = False
     widgets: list[str] = field(default_factory=list)
     variables: dict[str, Any] = field(default_factory=dict)
+    colours: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -356,16 +360,18 @@ def evaluate_layout(
     """
     if ctx.root_project is None:
         raise ValueError("A layout runs for one project; ctx.root_project is required.")
-    assert_valid(tree)
+    colour_names = organization_colour_names(ctx.organization)
+    assert_valid(tree, organization_colours=colour_names)
     declared = tree.get("variables")
     values = resolve_values(declared, variables, today=ctx.today)
     if declared:
         tree = bind_variables(tree, values)  # the evaluator sees only literals
-    analysis = assert_valid(tree)
+    analysis = assert_valid(tree, organization_colours=colour_names)
     run = _Run(db, resolver, ctx, ctx.root_project, analysis.refs, title, placeholders, project_ids, timeout_seconds, limit_scale)
     run.placeholders.setdefault("layout_version", "" if layout_version is None else str(layout_version))
     run.variable_text = variable_text(declared, values)
     run.layout_project_id = layout_project_id
+    run.scheme = effective_scheme(tree.get("palette"), ctx.organization.report_colour_scheme)
     if tree["family"] == FAMILY_DOCUMENT:
         run.page_styles = run.with_running_bands(tree, *resolve_page_styles(tree))
         run.repeat_table_header = tree.get("repeat_table_header", True)
@@ -390,7 +396,7 @@ def evaluate_layout(
         run.stats.records_included[artefact_type] = len(pooled)
     return EvaluatedLayout(
         tree["family"], document, run.sheets, run.warnings, run.stats, run.source_digest(), versions, truncated,
-        sorted(run.widget_keys), values,
+        sorted(run.widget_keys), values, dict(sorted(run.colours_used.items())),
     )
 
 
@@ -416,6 +422,10 @@ class _Run:
         self.variable_text: dict[str, str] = {}
         #: The organisation's report look, read as `{{org.key}}` and `org.key` in a condition.
         self.org_values: dict[str, Any] = report_org_values(db, ctx.organization)
+        #: The colour names the layout may use and what each means for this run (set by `evaluate_layout`), and the names a
+        #: block used with the colour each resolved to.
+        self.scheme: dict[str, str] = {}
+        self.colours_used: dict[str, str] = {}
         self.placeholders: dict[str, str] = {
             "project_name": ctx.scope_label, "report_title": title,
             "project_code": getattr(project, "code", "") or "", "project_description": getattr(project, "summary", "") or "",
@@ -653,6 +663,14 @@ class _Run:
             self.stats.record_image_files.append(str(asset.id))
         self.stats.record_images += 1
         return image
+
+    def note_colours(self, *words: Any) -> None:
+        """Records the scheme names among `words` with the colour each resolved to in this run (for the provenance row)."""
+        for word in words:
+            if isinstance(word, str) and is_name(word):
+                resolved = resolve_colour(word, self.org_values["report_accent"], self.scheme)
+                if resolved:
+                    self.colours_used[word] = resolved
 
     def with_running_bands(self, tree: dict[str, Any], document: PageStyle, named: dict[str, PageStyle]) -> tuple[PageStyle, dict[str, PageStyle]]:
         """The page styles with the header and footer each prints: its own, else the document's, else none.
@@ -1218,7 +1236,8 @@ def _eval_shape(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     if node["shape"] == "custom":
         svg = node["svg"]
     else:
-        svg = shape_svg(node, accent=run.org_values["report_accent"])
+        svg = shape_svg(node, accent=run.org_values["report_accent"], scheme=run.scheme)
+        run.note_colours(node.get("fill"), node.get("outline"))
     alt = node.get("alt", "").strip()
     picture = Image(
         svg=svg, alt=alt, decorative=not alt,

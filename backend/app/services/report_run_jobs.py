@@ -180,7 +180,12 @@ def enqueue(
 
     Raises:
         TooManyActiveRunsError: The requester already has `MAX_ACTIVE_PER_USER` active background runs.
+        custom_report_run.RunScopeError: The request does not fit the layout's `run_scope`.
     """
+    custom_report_run.check_run_scope(
+        version, include_children=include_children,
+        chosen=None if project else len(set(requested_project_ids)) if requested_project_ids is not None else 0,
+    )
     _check_capacity(db, user)
     row = GeneratedReport(
         organization_id=organization.id, project_id=project.id if project else None,
@@ -333,6 +338,7 @@ def run_job(db: Session, row: GeneratedReport) -> None:
         else:
             run = custom_report_run.run_organization_layout(
                 db, user, organization, layout, version, project_ids=requested, background=True, variables=params.get("variables"),
+                include_children=bool(params.get("include_children")),
             )
         rendered = custom_report_run.render_file(db, run, row.format)
     except LayoutTimeoutError:
@@ -632,10 +638,13 @@ def requeue(db: Session, user: User, run_id: uuid.UUID) -> tuple[GeneratedReport
         values = resolve_values(version.tree.get("variables"), params.get("variables"), today=effective_today())
     except VariableValueError as exc:
         raise RepeatRefusedError("The values this report was run with no longer fit the layout. Run it again from the Reports dialog.") from exc
-    row = enqueue(
-        db, user, organization=organization, project=project, layout=layout, version=version, fmt=old.format,
-        include_children=include_children, requested_project_ids=requested, variables=values,
-    )
+    try:
+        row = enqueue(
+            db, user, organization=organization, project=project, layout=layout, version=version, fmt=old.format,
+            include_children=include_children, requested_project_ids=requested, variables=values,
+        )
+    except custom_report_run.RunScopeError as exc:
+        raise RepeatRefusedError(f"{exc} Run it again from the Reports dialog.") from exc
     return row, version.version != old.layout_version
 
 

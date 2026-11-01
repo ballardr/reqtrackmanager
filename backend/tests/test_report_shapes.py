@@ -76,7 +76,7 @@ def test_a_custom_shape_needs_svg_and_keeps_its_own_size_without_width_and_heigh
         ({"width_unit": "percent"}, "nodes[0].width_unit"),
         ({"width": 0}, "nodes[0].width"),
         ({"height": 101}, "nodes[0].height"),
-        ({"fill": "red"}, "nodes[0].fill"),
+        ({"fill": "Red!"}, "nodes[0].fill"),
         ({"fill": "#12345"}, "nodes[0].fill"),
         ({"outline": "javascript:1"}, "nodes[0].outline"),
         ({"outline_width": 1}, "nodes[0].outline_width"),

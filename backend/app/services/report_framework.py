@@ -1093,6 +1093,9 @@ class ReportCatalogueEntryOut(BaseModel):
     `record_types` are the registered record types the report names or reads (a record list offers the reports that
     list its type under "Download report").
     `view_only` marks a report meant to be read on screen, which a record list's "Download report" does not offer.
+    `run_scope` is which projects a custom report may run for: `any` (an organisation-wide run takes a selection), `one`
+    (exactly one id in `project_ids`, single-choice picker, no child projects) or `one_and_children` (one project, and
+    `include_children` merges its readable child projects into the same report).
     """
 
     module_key: str
@@ -1116,6 +1119,7 @@ class ReportCatalogueEntryOut(BaseModel):
     placement_key: str = ""
     record_types: list[str] = []
     view_only: bool = False
+    run_scope: Literal["any", "one", "one_and_children"] = "any"
 
 
 def param_out(param: ReportParamDefinition) -> ReportParamOut:

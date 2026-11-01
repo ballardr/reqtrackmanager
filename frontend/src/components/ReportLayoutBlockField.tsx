@@ -21,12 +21,15 @@ import { newLeaf, sourceRecordType, type NameInScope, type TreeNode } from "../u
 import {
   DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize, type RunningBand,
 } from "../utils/reportPageSetup";
+import { colourNamesUsed, DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "../utils/reportColours";
+import { ColourChoiceField } from "./ColourChoiceField";
 import { FileNameField } from "./FileNameField";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { ReportImageField } from "./ReportImageField";
 import { TextListField } from "./TextListField";
 import { LabeledSelect } from "./LabeledSelect";
 import { ConditionNodeEditor, type Condition, type ConditionEnv } from "./ReportLayoutConditionEditor";
+import { ReportColourSchemeEditor } from "./ReportColourSchemeEditor";
 import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayoutColumnsEditor";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
@@ -50,6 +53,10 @@ export interface BlockEnv {
   sheets?: { name: string; recordType: string | null }[];
   /** The picture library an image block chooses from, and the scope an upload goes to; absent where there is none. */
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
+  /** The branding colour and the organisation's colour scheme, which a colour field offers; stock values where absent. */
+  colours?: ColourContext;
+  /** The layout's own colour scheme (the root's `palette`). */
+  palette?: ColourEntry[];
   readOnly: boolean;
 }
 
@@ -86,6 +93,8 @@ export function ReportLayoutBlockField({
   const setText = (next: string) => set(next === "" && !field.required ? undefined : next);
   const asText = typeof value === "string" ? value : "";
   const hasPlaceholders = field.features.includes("placeholders");
+  /** The layout's own colour scheme: the root's `palette`, which a block's colour field may name. */
+  const layoutPalette = (field.kind === "palette" ? (Array.isArray(value) ? value : []) : env.palette ?? []) as ColourEntry[];
 
   let control;
   switch (field.kind) {
@@ -169,7 +178,10 @@ export function ReportLayoutBlockField({
       control = (
         <LabeledSelect
           label={field.label} value={typeof value === "string" ? value : ""} disabled={disabled} help={help} required={field.required}
-          placeholder={field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : text.choose}
+          placeholder={
+            field.empty_label
+            || (field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : text.choose)
+          }
           options={field.choices.map((c) => ({
             value: c, label: (field.key === "orientation" ? text.orientationLabels[c] : undefined)
               ?? (labelScope ? text.choiceLabels[`${labelScope}.${field.key}`]?.[c] : undefined) ?? text.choiceLabels[field.key]?.[c] ?? c,
@@ -286,6 +298,27 @@ export function ReportLayoutBlockField({
           <legend><strong>{field.label}</strong></legend>
           <ReportLayoutVariablesField
             value={Array.isArray(value) ? (value as PackVariableDeclaration[]) : undefined} catalogue={env.catalogue} disabled={disabled} onChange={set}
+          />
+        </fieldset>
+      );
+      break;
+    case "colour":
+      control = (
+        <ColourChoiceField
+          label={field.label} value={asText} disabled={disabled} help={help} required={field.required}
+          context={env.colours ?? DEFAULT_COLOUR_CONTEXT} layoutPalette={layoutPalette} allowNone={field.key !== "outline"}
+          emptyLabel={field.empty_label || (field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : undefined)}
+          onChange={setText}
+        />
+      );
+      break;
+    case "palette":
+      control = (
+        <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend><strong>{field.label}</strong></legend>
+          <ReportColourSchemeEditor
+            value={layoutPalette} mode="layout" disabled={disabled} context={env.colours ?? DEFAULT_COLOUR_CONTEXT}
+            used={colourNamesUsed(node, env.blocks)} onChange={(next) => set(next.length === 0 ? undefined : next)}
           />
         </fieldset>
       );

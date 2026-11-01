@@ -358,7 +358,11 @@ test.describe("Report layout designer", () => {
       await dialog.getByRole("combobox", { name: "Header: print" }).selectOption("custom");
       await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");
       await dialog.getByRole("combobox", { name: "Footer: print" }).selectOption("custom");
-      await dialog.getByRole("textbox", { name: "Footer, right cell" }).fill("Page {{page}} of {{pages}}");
+      // The page fields come from the Insert list (the server's catalogue names none), in plain words, written into the cell last edited.
+      await dialog.getByRole("textbox", { name: "Footer, right cell" }).click();
+      await dialog.getByRole("combobox", { name: "Insert placeholder" }).last().selectOption({ label: "Page X of Y" });
+      await expect(dialog.getByRole("textbox", { name: "Footer, right cell" })).toHaveValue("Page {{page}} of {{pages}}");
+      await expect(dialog.getByText("Prints as: Page 3 of 12")).toBeVisible();
       await expect(editor).toHaveValue(/^@layout document\n@header left "" centre "\{\{report_title\}\}"\n@footer left "" right "Page \{\{page\}\} of \{\{pages\}\}"\n/);
       await page.keyboard.press("Escape");
       await expect(dialog).toBeHidden();

@@ -9,8 +9,10 @@ import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 
 /** Hosts the editor with the band it edits, and shows the band as JSON so a story can read what was written. */
 function Host({
-  initial, kind = "header", inheritFrom = "template", margin = 1.5, withImages = false, disabled = false,
+  initial, kind = "header", inheritFrom = "template", margin = 1.5, withImages = false, disabled = false, placeholders,
 }: {
+  /** The list the designer passes: the server's catalogue, which names no page field. */
+  placeholders?: readonly string[];
   initial?: RunningBand;
   kind?: "header" | "footer";
   inheritFrom?: "template" | "layout";
@@ -22,7 +24,7 @@ function Host({
   return (
     <div className="stack">
       <RunningBandEditor
-        kind={kind} value={value} onChange={setValue} inheritFrom={inheritFrom} margin={margin} disabled={disabled}
+        kind={kind} value={value} onChange={setValue} inheritFrom={inheritFrom} margin={margin} disabled={disabled} placeholders={placeholders}
         images={withImages ? { library: buildImageLibrary(), scope: "project" } : undefined}
       />
       <pre aria-label="Band">{JSON.stringify(value ?? null)}</pre>
@@ -60,6 +62,33 @@ export const InsertingAPlaceholderGoesToTheLastCell: Story = {
     await userEvent.type(view.getByRole("textbox", { name: "Footer, right cell" }), "Page ");
     await userEvent.selectOptions(view.getByRole("combobox", { name: "Insert placeholder" }), "page");
     await expect(band(canvasElement).right).toBe("Page {{page}}");
+  },
+};
+
+/** The designer passes the server's catalogue, which has no page fields; the editor still offers them, in plain words. */
+export const PageFieldsAreOfferedWhateverTheCatalogueHolds: Story = {
+  render: () => <Host initial={{ left: "" }} kind="footer" placeholders={["project_name", "report_title"]} />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const insert = view.getByRole("combobox", { name: "Insert placeholder" });
+    await expect(within(insert).getByRole("option", { name: "Page number ({{page}})" })).toBeInTheDocument();
+    await expect(within(insert).getByRole("option", { name: "Total pages ({{pages}})" })).toBeInTheDocument();
+    await userEvent.selectOptions(insert, "page_of_pages");
+    await expect(band(canvasElement).left).toBe("Page {{page}} of {{pages}}");
+    await expect(view.getByText("Prints as: Page 3 of 12")).toBeInTheDocument();
+  },
+};
+
+/** A placeholder is written where the caret is, not at the end. */
+export const InsertingWritesAtTheCaret: Story = {
+  render: () => <Host initial={{ left: "Report  draft" }} kind="footer" placeholders={[]} />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const cell = view.getByRole("textbox", { name: "Footer, left cell" }) as HTMLTextAreaElement;
+    await userEvent.click(cell);
+    cell.setSelectionRange(7, 7);
+    await userEvent.selectOptions(view.getByRole("combobox", { name: "Insert placeholder" }), "page");
+    await expect(band(canvasElement).left).toBe("Report {{page}} draft");
   },
 };
 

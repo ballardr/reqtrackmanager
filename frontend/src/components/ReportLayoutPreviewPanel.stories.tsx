@@ -102,6 +102,48 @@ export const AnOrganisationPreviewCanChooseProjects: Story = {
   },
 };
 
+/** A draft limited to one project previews for exactly one: a single-choice picker, held until a project is chosen. */
+export const AOneProjectDraftNeedsExactlyOneProject: Story = {
+  args: {
+    api: buildLayoutApi([], { kind: "organization" }),
+    text: "@layout document oneproject\n",
+    projectOptions: [{ value: "p1", label: "Atlas" }, { value: "p2", label: "Borealis" }],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: /Projects/ })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Run preview" })).toBeDisabled();
+    await expect(canvas.getByText("This report runs for a single project. Choose the project to run it for.")).toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Project/ }), "p2");
+    await userEvent.click(canvas.getByRole("button", { name: "Run preview" }));
+    await waitFor(() => expect(args.api.preview).toHaveBeenCalledWith(expect.objectContaining({ project_ids: ["p2"] })));
+  },
+};
+
+/** A project-scope draft for one project alone offers no child-projects switch. */
+export const AOneProjectDraftInAProjectHasNoChildProjectsSwitch: Story = {
+  args: { text: "@layout document oneproject\n" },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("switch", { name: "Include child projects" })).not.toBeInTheDocument();
+  },
+};
+
+/** A draft for one project and its children previews for one chosen project, with the child-projects switch. */
+export const AProjectTreeDraftOffersTheChildProjectsSwitchInAnOrganisation: Story = {
+  args: {
+    api: buildLayoutApi([], { kind: "organization" }),
+    text: "@layout document projecttree\n",
+    projectOptions: [{ value: "p1", label: "Atlas" }, { value: "p2", label: "Borealis" }],
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Project/ }), "p1");
+    await userEvent.click(canvas.getByRole("switch", { name: "Include child projects" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Run preview" }));
+    await waitFor(() => expect(args.api.preview).toHaveBeenCalledWith(expect.objectContaining({ project_ids: ["p1"], include_children: true })));
+  },
+};
+
 const ORGANISATION_PROJECTS = [{ value: "p1", label: "Atlas" }, { value: "p2", label: "Borealis" }];
 
 /** The next preview of the same layout opens on the projects chosen last time; another layout is unaffected. */

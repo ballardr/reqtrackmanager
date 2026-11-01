@@ -157,7 +157,7 @@ def test_the_image_block_form_names_auto_for_width_and_height_but_the_shape_does
     blocks = {b.key: b.schema for b in block_catalogue().blocks}
     labels = {f.key: f.empty_label for f in blocks["image"].fields if f.key in ("width", "height")}
     assert labels == {"width": "Auto", "height": "Auto"}
-    assert all(f.empty_label == "" for f in blocks["shape"].fields)
+    assert all(f.empty_label == "" for f in blocks["shape"].fields if f.key in ("width", "height"))
 
 
 @pytest.mark.parametrize(

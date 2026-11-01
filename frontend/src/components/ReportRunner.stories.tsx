@@ -207,6 +207,93 @@ export const OrganisationCustomReportChoosesProjects: Story = {
   },
 };
 
+/** A custom report limited to one project: a single-choice Project picker (no "all projects"), nothing runs until one is chosen,
+ * and the run and download carry exactly that one id. */
+export const SingleProjectCustomReportNeedsOneProject: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "sign-off-1", supports_include_children: false,
+      supports_project_filter: false, supports_project_multi_filter: false, run_scope: "one", params: [],
+      formats: ["json", "pdf", "docx"],
+      projects: [{ id: "project-1", name: "Atlas" }, { id: "project-2", name: "Borealis" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-2/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/orgs/org-1/custom-reports/layout-2/run")) return buildReportResult();
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("This report runs for a single project. Choose the project to run it for.")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Projects" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+    await expect(api.get).not.toHaveBeenCalled();
+    await expect(canvas.queryByRole("option", { name: "All projects" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Project/ }), "project-2");
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+  },
+};
+
+/** A report for one project and its children: the same one-project picker, plus the child-projects switch, whose choice
+ * the run and the download carry. */
+export const OneProjectAndItsChildrenOffersTheChildProjectsSwitch: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "charter-1", supports_include_children: true,
+      supports_project_filter: false, supports_project_multi_filter: false, run_scope: "one_and_children", params: [],
+      formats: ["json", "pdf"],
+      projects: [{ id: "project-1", name: "Atlas" }, { id: "project-2", name: "Borealis" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-3/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async () => buildReportResult());
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Projects" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Project/ }), "project-1");
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("switch", { name: "Include child projects" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/include_children=true.*project_ids=project-1|project_ids=project-1.*include_children=true/)));
+    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("include_children=true")));
+  },
+};
+
+/** When the caller can report on only one project, a single-project report has nothing to choose and runs at once. */
+export const SingleProjectReportWithOneChoiceRunsAtOnce: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "sign-off-1", supports_include_children: false,
+      supports_project_filter: false, supports_project_multi_filter: false, run_scope: "one", params: [],
+      formats: ["json", "pdf"], projects: [{ id: "project-1", name: "Atlas" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-2/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async () => buildReportResult());
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-1"));
+  },
+};
+
 export const ProjectReportHasNoProjectPicker: Story = {
   beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {

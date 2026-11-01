@@ -34,6 +34,8 @@ Grammar (one statement per line; indentation is cosmetic):
   bottom=<cm> left=<cm> right=<cm> gutter=<cm>]` or `@layout table` is the first line. The orientation, size, `mirror`
   (mirrored margins for double-sided printing) and `norepeatheader` (do not print a table's heading row again on each page it
   runs onto; on otherwise) come in any order, each once; `margins` comes last and each side is optional.
+- Either `@layout` line may add `anyprojects`, `oneproject` or `projecttree`: the projects the report runs for (any number, exactly one,
+  or exactly one with its readable child projects merged in). Left out, any number.
 - A `@layout table` line may add `contents` (or `nocontents`): start the workbook with a generated Contents sheet. A
   sheet's `@column <name>.<field> ["<heading>"] link "<sheet>"` makes the cell open that record's row on the named sheet.
 - A table or sheet column may add `width 12%` (a share of the table), `width 4 cm` or `width 40 mm`, or `width auto` (the
@@ -76,6 +78,9 @@ Grammar (one statement per line; indentation is cosmetic):
 - `@filename "<template>"` (before the first block, once) is the default name of a downloaded copy, without the
   extension: `{{report_title}}`, `{{project_code}}`, `{{generated_on}}`, `{{var.name}}` and so on
   (`services.report_file_names`).
+- `@palette primary=#1f3a5f secondary=accent warn=#b45309` (before the first block, once) is the layout's own colour
+  scheme: up to 8 `name=colour` pairs a block can use as a colour by name. `@palette follow` says the layout has none of
+  its own (it follows the organisation's) and is the same as no line.
 - Run-time variables are declared before the first block, one per line:
   `@var <name> <text|number|date|bool|enum> [list] [label "<text>"] [default <value>[, ...]] [options "<a>", ...]
   [from <record type>.<field>]`. A condition value or widget parameter written `$name` is a reference to one
@@ -105,7 +110,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
+from app.models.report_layout import (
+    FAMILY_DOCUMENT,
+    FAMILY_TABLE,
+    RUN_SCOPE_ANY,
+    RUN_SCOPE_ONE,
+    RUN_SCOPE_ONE_AND_CHILDREN,
+)
 from app.services.report_column_width import canonical_width, width_problem
 from app.services.report_layout_tree import (
     LIST_OPERATORS,
@@ -144,6 +155,9 @@ VARIABLE_CLAUSES = ("label", "default", "options", "from")
 #: Layout line words for whether a table's header row is printed again on each page it runs onto (on unless `norepeatheader`).
 HEADER_REPEAT_WORDS = ("repeatheader", "norepeatheader")
 CONTENTS_WORDS = ("contents", "nocontents")
+#: Layout line words for which projects the report runs for, by the tree's `run_scope`.
+RUN_SCOPE_WORDS = {"anyprojects": RUN_SCOPE_ANY, "oneproject": RUN_SCOPE_ONE, "projecttree": RUN_SCOPE_ONE_AND_CHILDREN}
+_RUN_SCOPE_WORD = {scope: word for word, scope in RUN_SCOPE_WORDS.items()}
 
 
 @dataclass(frozen=True)
@@ -739,6 +753,7 @@ class _Parser:
         self.lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
         self.errors: list[TextError] = []
         self.line_of: dict[str, int] = {}
+        self._palette_seen = False
         self.node_count = 0
         self.root: dict[str, Any] = {"nodes": []}
         self.frames: list[_Frame] = [_Frame("root", self.root, "", 1)]
@@ -825,16 +840,21 @@ class _Parser:
             raise _Syntax(f"The layout must be a {FAMILY_DOCUMENT} or a {FAMILY_TABLE}, not {family!r}.", offset + 2)
         self.tree["family"] = family
         # The orientation, the page size and `mirror` may come in any order, each at most once; `margins` ends the line.
-        while word := cur.accept(*ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS, *CONTENTS_WORDS):
+        while word := cur.accept(
+            *ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS, *CONTENTS_WORDS, *RUN_SCOPE_WORDS,
+        ):
             key = (
                 "orientation" if word in ORIENTATION_WORDS else "mirror_margins" if word == "mirror"
                 else "repeat_table_header" if word in HEADER_REPEAT_WORDS
-                else "contents_sheet" if word in CONTENTS_WORDS else "page_size"
+                else "contents_sheet" if word in CONTENTS_WORDS
+                else "run_scope" if word in RUN_SCOPE_WORDS else "page_size"
             )
             if key in self.tree:
                 raise _Syntax(f"The {key.replace('_', ' ')} is written once.", offset)
-            self.tree[key] = word in ("repeatheader", "contents") if key in ("repeat_table_header", "contents_sheet") else (
-                True if word == "mirror" else word
+            self.tree[key] = (
+                RUN_SCOPE_WORDS[word] if key == "run_scope"
+                else word in ("repeatheader", "contents") if key in ("repeat_table_header", "contents_sheet")
+                else True if word == "mirror" else word
             )
         if cur.accept("margins"):
             self.tree["margins"] = _margins(cur)
@@ -854,6 +874,9 @@ class _Parser:
             return
         if name == "filename":
             self._file_name(directive, indent, line_no)
+            return
+        if name == "palette":
+            self._palette(directive, indent, line_no)
             return
         if name == "pagestyle":
             self._page_style(directive, indent, line_no)
@@ -955,6 +978,31 @@ class _Parser:
         self.tree["file_name"] = cur.text("the file name in quotes")
         cur.expect_end()
         self.line_of["file_name"] = line_no
+
+    def _palette(self, directive: _Directive, indent: int, line_no: int) -> None:
+        """Reads an `@palette` line into the root's `palette` (it belongs before the first block)."""
+        if len(self.frames) > 1 or self.root["nodes"]:
+            raise _Syntax("@palette sets the colour scheme of the whole layout: put it before the first block.", indent + 1)
+        if "palette" in self.tree or self._palette_seen:
+            raise _Syntax("@palette is written once.", indent + 1)
+        self._palette_seen = True
+        cur = directive.cursor()
+        if cur.accept("follow"):
+            cur.expect_end()
+            return
+        entries: list[dict[str, str]] = []
+        while (token := cur.peek()) is not None:
+            word = cur.word("name=colour")
+            name, equals, colour = word.partition("=")
+            if not equals or not name or not colour:
+                raise _Syntax(f"Expected name=colour, found {token.shown()}.", token.column)
+            entries.append({"name": name, "colour": colour})
+        if not entries:
+            raise _Syntax("Write name=colour pairs, or follow.", directive.offset + 1)
+        self.tree["palette"] = entries
+        self.line_of["palette"] = line_no
+        for i in range(len(entries)):
+            self.line_of[f"palette[{i}]"] = line_no
 
     def _variable(self, directive: _Directive, indent: int, line_no: int) -> None:
         """Reads an `@var` line into the root's `variables` (it belongs before the first block)."""
@@ -1299,6 +1347,8 @@ def format_tree(tree: dict[str, Any]) -> str:
         header += " repeatheader" if tree["repeat_table_header"] else " norepeatheader"
     if "contents_sheet" in tree:
         header += " contents" if tree["contents_sheet"] else " nocontents"
+    if "run_scope" in tree:
+        header += f" {_RUN_SCOPE_WORD[tree['run_scope']]}"
     if "margins" in tree:
         header += _margins_text(tree["margins"])
     writer.line(0, header)
@@ -1309,6 +1359,8 @@ def format_tree(tree: dict[str, Any]) -> str:
         _write_bands(writer, style)
     for declaration in tree.get("variables", []):
         writer.line(0, _variable_text(declaration))
+    if tree.get("palette"):
+        writer.line(0, "@palette " + " ".join(f"{e['name']}={e['colour']}" for e in tree["palette"]))
     if "file_name" in tree:
         writer.line(0, f"@filename {_quote(tree['file_name'])}")
     if tree["nodes"]:

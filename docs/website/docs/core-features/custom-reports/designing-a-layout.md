@@ -128,7 +128,7 @@ flowchart LR
 ```
 
 - For each, choose **Print**: *The default* (for the layout) or *Same as the layout's* (for a page style), *Its own text*, or *Nothing*. With no footer set anywhere, every page gets a page number. The organisation's footer text and logo are never added for you: write `{{org.footer_text}}` in a cell, or use `org_logo` as the logo's file in the Text view.
-- Each cell holds up to three lines of text. **Insert placeholder** adds one to the cell you last edited: `{{report_title}}`, `{{project_name}}`, `{{project_code}}`, `{{organisation}}`, `{{generated_on}}` (the date you ran the report, on your own calendar), `{{layout_version}}`, the organisation's `{{org.footer_text}}`, and the page fields `{{page}}` (this page) and `{{pages}}` (the total). Page numbers carry on across sections.
+- Each cell holds up to three lines of text. **Insert placeholder** writes one at the cursor in the cell you last edited (at the end if you have not clicked in it). **Page number**, **Total pages** and **Page X of Y** are always at the top of the list, and a line under the cell shows what it prints ("Prints as: Page 3 of 12"). The others are `{{report_title}}`, `{{project_name}}`, `{{project_code}}`, `{{organisation}}`, `{{generated_on}}` (the date you ran the report, on your own calendar), `{{layout_version}}`, the organisation's `{{org.footer_text}}`, with the page fields `{{page}}` (this page) and `{{pages}}` (the total) behind the first three entries. Page numbers carry on across sections.
 - A **logo** from the image library can sit in any cell, beside that cell's text, at a height you set. The logo follows the same library rule as an Image block.
 - **First page** can be *Skipped*, for a cover page. For a page style it applies to the first page of each section in that style.
 - A header or footer must fit in its margin (the editor says how much it takes and the check refuses one that does not fit), so raise the top or bottom margin for a bigger logo or more lines.
@@ -177,7 +177,7 @@ An **Image** block puts a picture from the image library into the report: on a l
 A **Shape** block draws a coloured rectangle, rounded rectangle, ellipse, triangle, line or arrow, or your own SVG. Use one as a plate behind a logo that is white on a transparent background, a banner, a callout box or a divider. It sits in line with the text, beside it, or behind or in front of it, exactly as a picture does.
 
 - **Shape** names the preset, or **Custom SVG** to paste your own markup (scripts, links to other files and embedded data are refused, and the SVG needs a `viewBox`, or a width and height). A custom shape is painted by its own SVG, so it has no fill or outline.
-- **Fill** and **Outline** take a hex colour such as `#475569`, or `accent` (your organisation's report accent), `white` or `black`; fill also takes `none`. A line or arrow has no fill and is drawn in the outline colour (black unless you set one); an arrow's **Height** is the size of its head. **Outline width** is in millimetres.
+- **Fill** and **Outline** are chosen with the [colour control](#colours): the branding colour, a colour of your scheme such as `primary`, white, black, a custom hex colour such as `#475569`, or (fill only) no colour. A line or arrow has no fill and is drawn in the outline colour (black unless you set one); an arrow's **Height** is the size of its head. **Outline width** is in millimetres.
 - **Width** and **Height** are in centimetres or millimetres and are needed for a preset. A shape wider than the text is scaled down with its proportions kept.
 - **Placement**, **Position from**, **Across** and **Down** work as they do for an Image block. A block later in the layout is drawn above an earlier one, so to put a logo on a plate, add the Shape first and the Image after it, both placed behind the text at the same position.
 - Shapes need no alternative text: leave it empty and a reader using assistive technology skips the shape. Describe it when it carries meaning.
@@ -192,6 +192,31 @@ flowchart LR
   C --> E[Placed like a picture]
   D --> E
 ```
+
+## Colours
+
+Anything that has a colour in a layout (today a shape's fill and outline) is set with one **colour control**: a button showing the colour and its name, which opens a list with the **branding colour** first (with its actual colour), then your layout's own colours, the organisation's colours, the four standard colours, a light and a dark form of the branding colour, white, black, and **Custom colour** for any hex code. Each line says what the colour is as well as showing it.
+
+A colour you give a name is a **colour scheme**: set it once and use it by name wherever a colour is needed, so changing it changes the document.
+
+- **Layout colours.** In the layout's settings (select the **Layout** block), **Colour scheme** lists up to eight named colours. **Add colour** opens its settings: a name (lower-case letters, digits and underscores, such as `primary` or `warning`) and a colour. A colour's colour can be the branding colour or its light or dark form, so the scheme follows your branding when it changes.
+- **The organisation's colours.** An organisation administrator sets **Report colours** on **Branding**. A layout that has no colours of its own uses them, and so does a layout that has some but not the name a block asks for. A layout's own colour of the same name wins.
+- **The standard four** always exist: `primary` (the branding colour), `secondary` (a darker form), `tint` (a lighter form) and `neutral` (a grey). Use them in a layout that has no scheme and it follows whatever your organisation's branding is.
+- **Start from** fills the layout's list from the organisation's colours, the Branding set, or a monochrome, cool or warm set. It copies the colours: the list is yours to edit afterwards. **Follow the organisation's colours** clears the layout's own list.
+- A colour a block uses cannot be removed or renamed until that block is changed. If an organisation colour a layout names is later deleted, the layout stops running with a message naming the block, rather than printing a different colour.
+- In the text view: `@palette primary=#1f3a5f warning=#b45309` before the first block, and a block names a colour in the usual place, for example `@shape rectangle fill primary outline warning width 3 cm height 1 cm`.
+
+```mermaid
+flowchart LR
+  A[A block says "primary"] --> B{Layout's own colours}
+  B -->|has it| Z[That colour]
+  B -->|no| C{Organisation's colours}
+  C -->|has it| Z
+  C -->|no| D[Standard four, from the branding colour]
+  D --> Z
+```
+
+A saved report records the colours it used and what each was that day, so a report stays explainable after the scheme changes.
 
 ## Vertical space
 
@@ -266,9 +291,13 @@ flowchart LR
 
 In the text view an images column is one line inside the table: `@images names "site-*" types png width 80 percent arrange side_by_side label "Photos"`.
 
+### The columns list
+
+A table or sheet block lists its columns as a short list: each row shows the column's name (its heading, or the field's name) with buttons to move it up or down, **Settings** (a gear) and **Remove** (an ×). **Add column** adds a row and opens its settings so you can choose the field at once. Everything else about a column is behind its gear: the field, its heading, its width, which record it reads in a sheet with joins, the sheet it links to and, for an images column, the picture rules. A gear with a coloured border has a setting changed from the default.
+
 ### Fixing a column's width
 
-Left alone, a table sizes each column from what it holds, so the columns of one table can differ from the next (for example the requirements of one component and the next). Give a column a **Width** in the table block's details to fix it:
+Left alone, a table sizes each column from what it holds, so the columns of one table can differ from the next (for example the requirements of one component and the next). Give a column a **Width** in its settings (the gear beside it in the table block's details) to fix it:
 
 - A share of the table (`30%`), which follows the page when you change its size or orientation, or a length (`4 cm`, `40 mm`). Leave it empty for **automatic**.
 - Columns with no width share what the others leave. Widths that do not fill the table are scaled to fit it, and percentages may not add to more than 100%.
@@ -280,6 +309,23 @@ In the text view it follows the heading: `@column code "ID" width 12%`, `@column
 ### Repeating table headings
 
 A table's column headings print again at the top of every page the table runs onto. If you would rather have them only at the start, turn off **Repeat table header rows** in the layout's settings (Blocks) or **Page setup** (Text). It applies to every table in the layout, and the text view writes `norepeatheader` on the first line (`@layout document norepeatheader`).
+
+### Choosing which projects a report runs for
+
+Some reports are wrong if they merge projects: a sign-off sheet that names the project, or a project charter. Set **Projects it runs for** in the layout's settings (Blocks):
+
+| Setting | Text word | Meaning |
+|---|---|---|
+| Any number of projects (default) | `anyprojects` | An organisation run covers the projects you select, merged |
+| One project | `oneproject` | Exactly one project, nothing else |
+| One project and its child projects | `projecttree` | Exactly one project; **Include child projects** merges its readable child projects into the same report |
+
+The text view writes the word on the first line (`@layout document oneproject`).
+
+- Run from the organisation's Reports dialog, a one-project report shows a **Project** list instead of the **Projects** selector. It has no "all projects" choice and nothing is produced until you pick one (if you can report on only one project, it is picked for you). The result reads like a project's own report: no per-project heading or *Project* column.
+- With *One project and its child projects*, the **Include child projects** switch is offered; only child projects you can read are added.
+- The rule is enforced on the server, so a download, a background run, "generate again" and the MCP `run_custom_report` tool all refuse none or several projects. In a report pack, the report is listed as not available unless the pack is run for one project; an organisation pack runs a *project and its children* report for the project alone (run the pack from the project to include children).
+- A hint in the layout's settings suggests limiting the report to one project when an organisation layout prints the project's name or code.
 
 ### Marking a picture confidential
 

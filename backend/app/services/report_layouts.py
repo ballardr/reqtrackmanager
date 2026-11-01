@@ -33,6 +33,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.report_layout import LAYOUT_FAMILIES, ReportLayout, ReportLayoutVersion
 from app.models.report_placement import ReportPlacement
@@ -42,6 +43,7 @@ from app.services.report_folders import clean_folder
 from app.services.report_images import image_problems
 from app.services.report_layout_scope import LAYOUT_KIND
 from app.services.report_layout_tree import TREE_SCHEMA_VERSION, InvalidLayoutError, assert_valid, tree_hash
+from app.services.report_org_values import organization_colour_names
 
 MAX_NAME_CHARS = 200
 MAX_DESCRIPTION_CHARS = 2000
@@ -150,7 +152,7 @@ def create_layout(
         project = db.get(Project, project_id)
         if project is None or project.organization_id != organization_id:
             raise ValueError("The project does not belong to the organisation.")
-    analysis = assert_valid(tree, family=family)
+    analysis = assert_valid(tree, family=family, organization_colours=_organization_colours(db, organization_id))
     if problems := image_problems(db, organization_id, project_id, tree):
         raise InvalidLayoutError(problems)
     _assert_name_free(db, organization_id, project_id, name)
@@ -172,6 +174,12 @@ def create_layout(
         detail={"family": family, "version": 1, "tree_hash": version.tree_hash, "blocks": analysis.node_count},
     )
     return SavedLayout(layout, version, True)
+
+
+def _organization_colours(db: Session, organization_id: uuid.UUID) -> list[str]:
+    """The names in the organisation's report colour scheme, which a layout's colour words may use."""
+    organization = db.get(Organization, organization_id)
+    return organization_colour_names(organization) if organization is not None else []
 
 
 def save_version(
@@ -205,7 +213,7 @@ def save_version(
     layout = db.scalar(select(ReportLayout).where(ReportLayout.id == layout_id).with_for_update())
     if layout is None:
         raise LookupError("No such layout.")
-    analysis = assert_valid(tree, family=layout.family)
+    analysis = assert_valid(tree, family=layout.family, organization_colours=_organization_colours(db, layout.organization_id))
     if problems := image_problems(db, layout.organization_id, layout.project_id, tree):
         raise InvalidLayoutError(problems)
     if layout.current_version != base_version:

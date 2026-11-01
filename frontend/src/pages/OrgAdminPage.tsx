@@ -103,6 +103,9 @@ import { Badge } from "../components/Badge";
 import { ReportSetupPanel } from "../components/ReportSetupPanel";
 import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
 import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
+import { FieldHelp } from "../components/FieldHelp";
+import { ReportColourSchemeEditor } from "../components/ReportColourSchemeEditor";
+import { DEFAULT_COLOUR_CONTEXT, type ColourEntry } from "../utils/reportColours";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
@@ -517,6 +520,7 @@ export function OrgAdminPage() {
   // The report accent colour follows the UI accent until the person gives reports their own (`null` on the server).
   const [useOwnReportAccent, setUseOwnReportAccent] = useState(false);
   const [reportAccentInput, setReportAccentInput] = useState("#475569");
+  const [reportColourScheme, setReportColourScheme] = useState<ColourEntry[]>([]);
   const [reportIncludeLogo, setReportIncludeLogo] = useState(true);
   const [headerTitleInput, setHeaderTitleInput] = useState("");
   const [emailFooterCompanyNameInput, setEmailFooterCompanyNameInput] = useState("");
@@ -671,6 +675,7 @@ export function OrgAdminPage() {
     setAccentColorInput(o.accent_color_hex ?? "#475569");
     setUseOwnReportAccent(o.report_accent_color_hex != null);
     setReportAccentInput(o.report_accent_color_hex ?? o.accent_color_hex ?? "#475569");
+    setReportColourScheme(o.report_colour_scheme ?? []);
     setReportIncludeLogo(o.report_include_logo);
     setHeaderTitleInput(o.header_title ?? "");
     setEmailFooterCompanyNameInput(o.email_footer_company_name ?? "");
@@ -1830,6 +1835,7 @@ export function OrgAdminPage() {
         accent_color_hex: useOwnAccentColor ? accentColorInput : null,
         report_accent_color_hex: useOwnReportAccent ? reportAccentInput : null,
         report_include_logo: reportIncludeLogo,
+        report_colour_scheme: reportColourScheme,
         header_title: headerTitleInput || null,
         email_footer_company_name: emailFooterCompanyNameInput || null,
         email_footer_website: emailFooterWebsiteInput || null,
@@ -3222,6 +3228,15 @@ export function OrgAdminPage() {
               {useOwnReportAccent && (
                 <ColorField helpNotNeeded label={strings.orgAdmin.reportAccentColor} value={reportAccentInput} onChange={setReportAccentInput} />
               )}
+              <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+                <legend><strong>{strings.orgAdmin.reportColourScheme}</strong> <FieldHelp label={strings.orgAdmin.reportColourScheme} help={strings.help.reportColourScheme} /></legend>
+                <ReportColourSchemeEditor
+                  mode="organization" value={reportColourScheme} onChange={setReportColourScheme}
+                  context={{
+                    ...DEFAULT_COLOUR_CONTEXT, accent: useOwnReportAccent ? reportAccentInput : useOwnAccentColor ? accentColorInput : DEFAULT_COLOUR_CONTEXT.accent,
+                  }}
+                />
+              </fieldset>
               <CheckboxField
                 help={strings.help.reportIncludeLogo}
                 label={strings.admin.includeLogo(orgLabel)}

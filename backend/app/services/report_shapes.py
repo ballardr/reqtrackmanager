@@ -7,7 +7,7 @@ the text, beside it, or behind or in front of it.
 Responsibilities:
 - Name the kinds, colour tokens and limits the tree validator, the block schema and the text format share.
 - `shape_svg`: draw a preset shape as SVG markup at its printed size, in the colours the run resolved.
-- `colour_hex`: resolve a colour token (`accent`, `white`, `black`) or a hex colour to `#rrggbb`.
+- `colour_hex`: resolve a colour word (hex, reserved word or scheme name; `services.report_colours`) to `#rrggbb`.
 - `svg_problem`: why an author's SVG cannot be used (the report image sanitiser plus a size check), or `None`.
 
 Design decisions:
@@ -22,16 +22,17 @@ Design decisions:
   text is scaled down with its proportions kept.
 - A line or arrow is drawn in the outline colour across the middle of its box; its height is the arrowhead's room.
 
-Dependencies: `lxml`, `services.report_svg`.
+Dependencies: `lxml`, `services.report_svg`, `services.report_colours`.
 """
 
 from __future__ import annotations
 
-import re
+from collections.abc import Mapping
 from typing import Any
 
 from lxml import etree
 
+from app.services.report_colours import RESERVED_WORDS, colour_word_problem, resolve_colour
 from app.services.report_svg import MAX_SVG_CHARS, UnsafeSvgError, sanitize_svg
 
 #: The kinds of preset, and `custom` for an author's SVG.
@@ -39,8 +40,8 @@ SHAPE_PRESETS = ("rectangle", "rounded", "ellipse", "triangle", "line", "arrow")
 SHAPE_KINDS = (*SHAPE_PRESETS, "custom")
 #: Kinds drawn as a stroke only: they have an outline colour and width and no fill.
 LINE_KINDS = ("line", "arrow")
-#: Colour names a fill or outline may use besides a hex colour; `none` leaves it unpainted.
-COLOUR_TOKENS = ("accent", "white", "black", "none")
+#: Reserved colour words a fill or outline may use besides a hex colour or a scheme name; `none` leaves it unpainted.
+COLOUR_TOKENS = RESERVED_WORDS
 SHAPE_UNITS = ("cm", "mm")
 #: Bounds of the outline width, in mm.
 OUTLINE_WIDTH_MM = (0.1, 20.0)
@@ -52,40 +53,29 @@ SHAPE_SIZE_CM = (0.1, 100.0)
 #: Most characters of a custom SVG's source stored in a layout.
 MAX_SHAPE_SVG_CHARS = 50_000
 
-_HEX = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
 _PX_PER_CM = 96 / 2.54
 _PX_PER_MM = _PX_PER_CM / 10
 
 
-def colour_problem(value: Any) -> str | None:
+def colour_problem(value: Any, names: frozenset[str] | None = None) -> str | None:
     """Why `value` is not a colour a shape may use (`None` when it is).
 
     Args:
-        value: A hex colour (`#rgb` or `#rrggbb`) or one of `COLOUR_TOKENS`.
+        value: A hex colour (`#rgb` or `#rrggbb`), a reserved word or a scheme name.
+        names: The scheme names in scope (`report_colours.known_names`); `None` accepts anything shaped like a name.
     """
-    if isinstance(value, str) and (value in COLOUR_TOKENS or _HEX.fullmatch(value)):
-        return None
-    return f"Must be a hex colour such as #475569, or one of: {', '.join(COLOUR_TOKENS)}."
+    return colour_word_problem(value, names)
 
 
-def colour_hex(value: str, accent: str) -> str | None:
-    """A validated colour token or hex colour as `#rrggbb`, or `None` for `none`.
+def colour_hex(value: str, accent: str, scheme: Mapping[str, str] | None = None) -> str | None:
+    """A validated colour word as `#rrggbb`, or `None` for `none`.
 
     Args:
         value: The colour as the layout stores it (already checked by `colour_problem`).
-        accent: The organisation's report accent as `#rrggbb`, for `accent`.
+        accent: The organisation's report accent as `#rrggbb`, for `accent` and the words derived from it.
+        scheme: The run's `report_colours.effective_scheme`, for a name.
     """
-    if value == "none":
-        return None
-    if value == "accent":
-        return colour_hex(accent, accent)
-    if value == "white":
-        return "#ffffff"
-    if value == "black":
-        return "#000000"
-    if len(value) == 4:  # #rgb
-        value = "#" + "".join(c * 2 for c in value[1:])
-    return value.lower()
+    return resolve_colour(value, accent, scheme)
 
 
 def svg_problem(source: Any) -> str | None:
@@ -114,12 +104,13 @@ def _num(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
-def shape_svg(node: dict[str, Any], *, accent: str) -> str:
+def shape_svg(node: dict[str, Any], *, accent: str, scheme: Mapping[str, str] | None = None) -> str:
     """The SVG of a preset shape block, at its printed size.
 
     Args:
         node: A validated `shape` node whose `shape` is in `SHAPE_PRESETS`, with `width` and `height`.
         accent: The organisation's report accent as `#rrggbb`.
+        scheme: The run's colour scheme (`report_colours.effective_scheme`), for a fill or outline that names a colour.
 
     Returns:
         SVG markup: a root sized in pixels (96 per inch) and a drawing inside it that keeps clear of the edge by half the
@@ -130,8 +121,8 @@ def shape_svg(node: dict[str, Any], *, accent: str) -> str:
     height = node["height"] / 10 if node.get("height_unit") == "mm" else node["height"]
     w, h = width * _PX_PER_CM, height * _PX_PER_CM
     line_kind = kind in LINE_KINDS
-    stroke = colour_hex(node.get("outline", DEFAULT_LINE_COLOUR if line_kind else "none"), accent)
-    fill = None if line_kind else colour_hex(node.get("fill", DEFAULT_FILL), accent)
+    stroke = colour_hex(node.get("outline", DEFAULT_LINE_COLOUR if line_kind else "none"), accent, scheme)
+    fill = None if line_kind else colour_hex(node.get("fill", DEFAULT_FILL), accent, scheme)
     sw = node.get("outline_width", DEFAULT_OUTLINE_WIDTH_MM) * _PX_PER_MM if stroke else 0.0
     half = sw / 2
     paint = f'fill="{fill or "none"}"' + (f' stroke="{stroke}" stroke-width="{_num(sw)}"' if stroke else "")

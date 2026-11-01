@@ -73,9 +73,16 @@ test.describe("Report column widths", () => {
     const inspector = page.getByLabel("Block details");
 
     await test.step("each column has a Width, automatic until set", async () => {
-      await expect(inspector.getByRole("textbox", { name: "Column 1 width" })).toHaveAttribute("placeholder", "auto");
-      await inspector.getByRole("textbox", { name: "Column 1 width" }).fill("15%");
-      await inspector.getByRole("textbox", { name: "Column 2 width" }).fill("5 cm");
+      // A column's width is in the popover behind its gear, one popover at a time.
+      const setWidth = async (nth: number, width: string) => {
+        await inspector.getByRole("list", { name: "Columns" }).getByRole("listitem").nth(nth).getByRole("button", { name: /^Settings for column/ }).click();
+        const box = page.getByRole("dialog", { name: /^Settings for column/ }).getByRole("textbox", { name: "Width" });
+        await expect(box).toHaveAttribute("placeholder", "auto");
+        await box.fill(width);
+        await page.keyboard.press("Escape");
+      };
+      await setWidth(0, "15%");
+      await setWidth(1, "5 cm");
       await expect(page.getByText("No problems.")).toBeVisible();
     });
 

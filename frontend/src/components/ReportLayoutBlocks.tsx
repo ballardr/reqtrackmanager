@@ -59,6 +59,7 @@ import { ReportLayoutSettings } from "./ReportLayoutSettings";
 import { ReportSnippetMenu } from "./ReportSnippetMenu";
 import { ReportSnippetPicker, type SnippetPlace } from "./ReportSnippetPicker";
 import type { SnippetNoticeData } from "../hooks/useSnippetToast";
+import type { ColourContext, ColourEntry } from "../utils/reportColours";
 
 /** Maps each block of the workspace to its tree path (`nodes[1].children[0]`). */
 function indexPaths(ws: Blockly.WorkspaceSvg): Map<string, string> {
@@ -131,11 +132,13 @@ function describeBlock(node: TreeNode, type: BlockType | undefined): string {
  * @param inspectorHost The element the inspector is drawn into (a portal; nothing is drawn until it exists).
  * @param onInspect Called when a block is selected or the layout's settings are opened.
  * @param images The picture library an image block chooses from (absent where the layout has none).
+ * @param colours The branding colour and the organisation's colour scheme (stock values when absent).
+ * @param colours The branding colour and the organisation's colour scheme (stock values when absent).
  * @param snippets The snippet calls, and what to tell the designer after an insertion; with `images` (a snippet may need a
  *   picture), else no Insert snippet button. `onSave`, when given, adds Save as snippet for the selected block.
  */
 export function ReportLayoutBlocks({
-  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, inspectorHost, onInspect, images, snippets,
+  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, inspectorHost, onInspect, images, colours, snippets,
 }: {
   tree: Tree;
   onChange: (next: Tree) => void;
@@ -148,6 +151,8 @@ export function ReportLayoutBlocks({
   inspectorHost: HTMLElement | null;
   onInspect?: () => void;
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
+  /** The branding colour and the organisation's colour scheme, which colour fields offer. */
+  colours?: ColourContext;
   snippets?: {
     api: Pick<ReportLayoutApi, "snippets" | "applySnippet">;
     onInserted: (notice: SnippetNoticeData) => void;
@@ -185,7 +190,8 @@ export function ReportLayoutBlocks({
   const sheets = (Array.isArray(tree.nodes) ? (tree.nodes as TreeNode[]) : [])
     .filter((n) => n.type === "sheet" && typeof n.name === "string" && n.name !== "")
     .map((n) => ({ name: String(n.name), recordType: sourceRecordType(n.source, []) }));
-  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, sheets, images, readOnly };
+  const palette = (Array.isArray(tree.palette) ? tree.palette : []) as ColourEntry[];
+  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, sheets, images, colours, palette, readOnly };
 
   // The workspace lives as long as the catalogue, family and mode it was built for.
   useEffect(() => {

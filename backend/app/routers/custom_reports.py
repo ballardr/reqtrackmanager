@@ -63,6 +63,7 @@ from app.services.downloads import file_response
 from app.services.rbac import check_pat_scope, require_org_role, require_project_view
 from app.services.report_framework import ReportOut, to_out
 from app.services.report_layout_eval import LayoutLimitError, LayoutTimeoutError
+from app.services.report_layout_tree import InvalidLayoutError
 from app.services.report_render import RenderedFile
 from app.services.report_variables import VariableValueError, describe_variables, resolve_values
 
@@ -159,11 +160,17 @@ def guard_run(call: Callable[[], T], *, file_format: bool = False) -> T:
                 "problems": [{"name": name, "message": message} for name, message in exc.problems],
             },
         ) from exc
+    except InvalidLayoutError as exc:
+        # The same body as the designer's own refusal, so a client reads one shape for "the tree is not valid".
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {"message": "The layout is not valid.", "errors": [{"path": e.path, "message": e.message} for e in exc.errors]},
+        ) from exc
     except custom_report_run.ProjectsNotInScopeError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That project is not covered by this report.") from exc
     except custom_report_run.NoProjectsToRunError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except custom_report_run.FanOutTooLargeError as exc:
+    except (custom_report_run.FanOutTooLargeError, custom_report_run.RunScopeError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
@@ -248,6 +255,9 @@ def run_org_custom_report(
     project_ids: str | None = Query(
         None, description="Comma-separated projects to include (narrowing only); default every project you can read.",
     ),
+    include_children: bool = Query(
+        False, description="A layout that runs for one project and its children: also read that project's readable child projects.",
+    ),
     variables: str | None = Query(
         None, description="A JSON object of values for the layout's run-time variables, e.g. {\"categories\": [\"A\"]}.",
     ),
@@ -271,8 +281,9 @@ def run_org_custom_report(
     supplied = parse_variables(variables)
     run = guard_run(lambda: custom_report_run.run_organization_layout(
         db, current_user, organization, layout, version, project_ids=requested, variables=supplied,
+        include_children=include_children,
     ), file_format=format != "json")
-    return _respond(db, current_user, run, format, requested=requested)
+    return _respond(db, current_user, run, format, requested=requested, include_children=include_children)
 
 
 @project_router.get("/{layout_id}/variables", response_model=ReportVariablesOut)
@@ -343,6 +354,7 @@ class OrgRunRequest(BaseModel):
 
     format: CustomReportFormat = Field(description="A file format the layout offers (not json).")
     project_ids: list[UUID] | None = Field(default=None, max_length=custom_report_run.MAX_FANOUT_PROJECTS)
+    include_children: bool = Field(default=False, description="For a layout that runs for one project and its children.")
     variables: dict[str, Any] | None = Field(default=None, max_length=50, description="Values for the layout's run-time variables.")
 
 
@@ -392,7 +404,7 @@ def _queue(
 
     Raises:
         HTTPException: 400 for `json` (the on-screen form has no file), 422 `variable_values`, 429 when the caller
-            has too many queued.
+            has too many queued, 422 a run that does not fit the layout's `run_scope`.
     """
     if fmt == "json":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Choose a file format; the on-screen report runs immediately.")
@@ -404,6 +416,8 @@ def _queue(
         )
     except report_run_jobs.TooManyActiveRunsError as exc:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
+    except custom_report_run.RunScopeError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     db.commit()
     return ReportRunOut.of(row)
 
@@ -457,7 +471,7 @@ def queue_org_custom_report(
     _check_format(layout, version, payload.format)
     return _queue(
         db, current_user, organization, None, layout, version, payload.format, requested=payload.project_ids,
-        variables=payload.variables,
+        include_children=payload.include_children, variables=payload.variables,
     )
 
 

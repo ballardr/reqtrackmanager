@@ -75,6 +75,11 @@ export interface ReportCatalogueEntry {
   record_types: string[];
   /** A report meant to be read on screen: a record list's download dialog does not offer it. */
   view_only: boolean;
+  /**
+   * Which projects a custom report runs for: `any` (an organisation-wide run takes a selection), `one` (exactly one id
+   * in `project_ids`) or `one_and_children` (one id, and `include_children` merges its child projects in).
+   */
+  run_scope: "any" | "one" | "one_and_children";
 }
 
 /** A custom report layout's run-time variable as the run form shows it (`ReportVariableOut`). */

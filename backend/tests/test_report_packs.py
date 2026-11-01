@@ -594,6 +594,24 @@ def test_a_module_report_that_is_off_or_has_no_org_variant_is_listed_not_availab
     assert info["entries"][1]["record_counts"][REQ] == 1
 
 
+def test_a_single_project_layout_in_an_organisation_pack_runs_only_when_one_project_is_named(world, scene):
+    make_layout(world, "Sign-off", {**requirements_tree("table", CATEGORIES), "run_scope": "one"})
+    pack = created(world, org_url(world), "Sign-offs", definition(
+        layout_entry("Sign-off", "csv", variables={"categories": ["Billing"]}),
+        layout_entry("Rows", "csv", variables={"categories": ["Billing"]}),
+    ))
+
+    def run(**body: Any):
+        return manifest(open_zip(world.client.post(
+            org_url(world, f"/{pack['id']}/run"), json=body, headers=auth_headers(world.token),
+        )))["entries"]
+
+    everywhere = run()
+    assert [e["status"] for e in everywhere] == ["not_available", "included"]
+    assert "single project" in everywhere[0]["reason"]
+    assert [e["status"] for e in run(project_ids=[scene["id"]])] == ["included", "included"]
+
+
 def test_a_run_never_includes_more_than_the_caller_can_read(world, scene):
     """A member with no role on the project cannot run its pack at all; the pack adds no access."""
     pack = created(world, org_url(world), "Guarded", definition(layout_entry("Rows", "csv", variables={"categories": ["Billing"]})))

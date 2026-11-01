@@ -38,6 +38,13 @@ FAMILY_DOCUMENT = "document"
 FAMILY_TABLE = "table"
 LAYOUT_FAMILIES: tuple[str, ...] = (FAMILY_DOCUMENT, FAMILY_TABLE)
 
+#: Which projects a layout may run for (the tree's `run_scope`): any number (an organisation run fans out), exactly one, or
+#: exactly one together with its readable child projects merged into the same report.
+RUN_SCOPE_ANY = "any"
+RUN_SCOPE_ONE = "one"
+RUN_SCOPE_ONE_AND_CHILDREN = "one_and_children"
+RUN_SCOPES: tuple[str, ...] = (RUN_SCOPE_ANY, RUN_SCOPE_ONE, RUN_SCOPE_ONE_AND_CHILDREN)
+
 
 class ReportLayout(UUIDPKMixin, TimestampMixin, Base):
     """A named report layout owned by an organisation or one of its projects.

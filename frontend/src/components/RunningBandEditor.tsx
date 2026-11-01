@@ -9,7 +9,8 @@
  * Responsibilities:
  * - Choose between "inherit" (a page style takes the layout's; the layout takes a page number), "its own text"
  *   and "nothing" (an explicitly empty band), and write the band back (`undefined`, an object, `{}`).
- * - Edit the three cells (up to three lines each) and add a placeholder to the cell last edited.
+ * - Edit the three cells (up to three lines each) and add a placeholder at the caret of the cell last edited; the page
+ *   number, total pages and "Page X of Y" are always offered, with a sample of what a cell prints.
  * - Choose the logo from the layout tier's image library, its height and its cell, through the shared `ReportImageField`.
  * - Say how much of the margin the band takes and warn when it does not fit, using the same arithmetic the server checks.
  *
@@ -17,12 +18,12 @@
  * fit and the designer shows its problems). Without an image library (a story or a read-only view) the logo is shown
  * but not editable.
  */
-import { useState } from "react";
+import { useRef, useState, type SyntheticEvent } from "react";
 
 import type { ReportImageLibrary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import {
-  BAND_FIRST_PAGE, BAND_SLOTS, DEFAULT_LOGO_CM, MAX_LOGO_CM, MIN_LOGO_CM, bandNeedsCm, type BandSlot, type RunningBand,
+  BAND_FIRST_PAGE, BAND_SLOTS, DEFAULT_LOGO_CM, MAX_LOGO_CM, MIN_LOGO_CM, bandNeedsCm, insertAtCaret, pageSample, type BandSlot, type RunningBand,
 } from "../utils/reportPageSetup";
 import { TextAreaField, TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
@@ -32,6 +33,14 @@ import { ReportImageField } from "./ReportImageField";
 export const BAND_PLACEHOLDERS = [
   "report_title", "project_name", "project_code", "organisation", "generated_on", "layout_version", "org.footer_text", "page", "pages",
 ] as const;
+
+/** Insert choices that are page fields, which exist only in a header or footer: the value is the choice, `snippet` what is written. */
+const PAGE_CHOICES = [
+  { value: "page", snippet: "{{page}}" },
+  { value: "pages", snippet: "{{pages}}" },
+  { value: "page_of_pages", snippet: "Page {{page}} of {{pages}}" },
+] as const;
+const PAGE_FIELD_NAMES = new Set(["page", "pages"]);
 
 type Mode = "inherit" | "custom" | "none";
 
@@ -46,7 +55,7 @@ function modeOf(value: RunningBand | undefined): Mode {
  * @param onChange Called with the band after any edit.
  * @param inheritFrom What an unset band takes: the default, a page number (`template`, for the layout itself) or the layout's (`layout`, for a page style).
  * @param margin The margin in cm the band must fit (the top for a header, the bottom for a footer).
- * @param placeholders The placeholder names offered for insertion.
+ * @param placeholders The global placeholder names offered for insertion; the page fields are added by the editor whatever this holds.
  * @param images The picture library a logo is chosen from, and where an upload goes (absent: the logo cannot be changed).
  * @param disabled Whether the editor is read-only.
  */
@@ -84,9 +93,24 @@ export function RunningBandEditor({
     // A band with nothing left in it would read as "nothing", so keep it as an empty left cell.
     onChange(Object.keys(next).length === 0 ? { left: "" } : next);
   };
-  const insert = (name: string) => {
-    if (name) set({ [lastCell]: `${band[lastCell] ?? ""}{{${name}}}` });
+  const caret = useRef<Partial<Record<BandSlot, { start: number; end: number }>>>({});
+  const insert = (choice: string) => {
+    if (!choice) return;
+    const page = PAGE_CHOICES.find((entry) => entry.value === choice);
+    const current = band[lastCell] ?? "";
+    const at = caret.current[lastCell] ?? { start: current.length, end: current.length };
+    const next = insertAtCaret(current, page ? page.snippet : `{{${choice}}}`, at.start, at.end);
+    caret.current[lastCell] = { start: next.caret, end: next.caret };
+    set({ [lastCell]: next.text });
   };
+  // The caret is read on every selection change and on leaving the cell (the Insert list takes the focus), so it survives the move.
+  const remember = (slot: BandSlot) => (e: SyntheticEvent<HTMLTextAreaElement>) => {
+    caret.current[slot] = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd };
+  };
+  const choices = [
+    ...PAGE_CHOICES.map((entry) => ({ value: entry.value, label: text.pageChoiceLabels[entry.value] })),
+    ...placeholders.filter((name) => !PAGE_FIELD_NAMES.has(name)).map((name) => ({ value: name, label: `{{${name}}}` })),
+  ];
   return (
     <div role="group" aria-label={title} className="stack" style={{ gap: "var(--space-2)" }}>
       <LabeledSelect
@@ -106,14 +130,18 @@ export function RunningBandEditor({
                 <TextAreaField
                   label={text.cellLabels[slot]} ariaLabel={text.cellAria(title, text.cellLabels[slot])} value={band[slot] ?? ""}
                   disabled={disabled} help={strings.help.bandCell} onChange={(next) => set({ [slot]: next })}
+                  inputProps={{ onSelect: remember(slot), onBlur: remember(slot) }}
                 />
+                {pageSample(band[slot] ?? "") !== null && (
+                  <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{text.sample(pageSample(band[slot] ?? "") ?? "")}</p>
+                )}
               </div>
             ))}
           </div>
           {!disabled && (
             <LabeledSelect
               label={text.insertLabel} value="" placeholder={text.insertChoose} help={strings.help.bandPlaceholder}
-              options={placeholders.map((name) => ({ value: name, label: `{{${name}}}` }))} onChange={insert}
+              options={choices} onChange={insert}
             />
           )}
           {images ? (

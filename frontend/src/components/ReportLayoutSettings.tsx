@@ -6,10 +6,16 @@
  *
  * Responsibilities: draw the layout fields the block catalogue lists for the layout's family with the shared field
  * forms, and list the server's problems that are not about any block (and not already shown on a settings field).
+ * An organisation layout that prints a project's name or code without being limited to one project gets a hint to
+ * set "Projects it runs for" (a hint only, never an automatic change).
  */
 import type { BlockCatalogue, LayoutFamily, TreeProblem } from "../api/reportLayouts";
+import { useStrings } from "../context/TerminologyContext";
 import { owningNode, setAt, type Tree } from "../utils/reportLayoutTree";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
+
+/** A placeholder that prints the project a report ran for, which has no single answer in an organisation-wide run. */
+const PROJECT_PLACEHOLDER = /\{\{\s*project_(name|code|description)\s*\}\}/;
 
 /**
  * @param tree The layout tree.
@@ -29,6 +35,9 @@ export function ReportLayoutSettings({
   env: BlockEnv;
   problems: TreeProblem[];
 }) {
+  const strings = useStrings();
+  const suggestSingleProject =
+    env.images?.scope === "organization" && (tree.run_scope ?? "any") === "any" && PROJECT_PLACEHOLDER.test(JSON.stringify(tree));
   const layoutProblems = problems.filter((p) => owningNode(p.path) === null);
   const fields = blocks.layout_fields.filter((f) => f.families.length === 0 || f.families.includes(family));
   const aboutField = (p: TreeProblem, key: string) => p.path === key || p.path.startsWith(`${key}[`) || p.path.startsWith(`${key}.`);
@@ -40,6 +49,7 @@ export function ReportLayoutSettings({
           {loose.map((p, i) => <li key={i}>{p.path === "" ? p.message : `${p.path}: ${p.message}`}</li>)}
         </ul>
       )}
+      {suggestSingleProject && <p role="note" className="text-muted">{strings.reportLayouts.singleProjectHint}</p>}
       {fields.map((field) => (
         <ReportLayoutBlockField
           key={field.key} field={field} node={tree} names={[]} env={env}

@@ -54,19 +54,20 @@ import hashlib
 import json
 import re
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from typing import Any
 
-from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, LAYOUT_FAMILIES
+from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, LAYOUT_FAMILIES, RUN_SCOPES
 from app.modules.registry import (
     get_module_registry,
     get_no_record_attachment_reasons,
     get_record_attachment_providers,
     get_report_field_providers,
 )
+from app.services.report_colours import known_names, palette_problems
 from app.services.report_column_width import percent_total, width_problem
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
 from app.services.report_file_names import template_problems
@@ -325,26 +326,29 @@ def empty_tree(family: str) -> dict[str, Any]:
     return tree
 
 
-def validate_tree(tree: Any, *, family: str | None = None) -> TreeAnalysis:
+def validate_tree(tree: Any, *, family: str | None = None, organization_colours: Iterable[str] | None = None) -> TreeAnalysis:
     """Validates a layout tree.
 
     Args:
         tree: The parsed JSON.
         family: The layout's family; when given, the tree must declare the same one.
+        organization_colours: The names in the organisation's colour scheme, so a colour name that is in neither the layout's
+            scheme, the organisation's nor the standard four is a problem. `None` (where the organisation is not at hand)
+            accepts any well-formed name and leaves the check to the save and the run.
 
     Returns:
         The analysis; `errors` is empty when the tree may be saved and run.
     """
-    return TreeValidator().run(tree, family)
+    return TreeValidator(organization_colours).run(tree, family)
 
 
-def assert_valid(tree: Any, *, family: str | None = None) -> TreeAnalysis:
+def assert_valid(tree: Any, *, family: str | None = None, organization_colours: Iterable[str] | None = None) -> TreeAnalysis:
     """`validate_tree`, raising when invalid.
 
     Raises:
         InvalidLayoutError: With every problem found.
     """
-    analysis = validate_tree(tree, family=family)
+    analysis = validate_tree(tree, family=family, organization_colours=organization_colours)
     if analysis.errors:
         raise InvalidLayoutError(analysis.errors)
     return analysis
@@ -357,8 +361,11 @@ class TreeValidator:
     record errors and carry on so the author sees every problem in one pass.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, organization_colours: Iterable[str] | None = None) -> None:
         self.analysis = TreeAnalysis()
+        self._organization_colours = None if organization_colours is None else tuple(organization_colours)
+        #: The colour names a block may use (`report_colours.known_names`), or `None` where the organisation's are not known.
+        self.colour_names: frozenset[str] | None = None
         self.family = FAMILY_DOCUMENT
         self.scope: dict[str, Binding] = {}
         self._collectors: list[set[Ref]] = []
@@ -399,7 +406,7 @@ class TreeValidator:
             tree, "", required=("schema_version", "family", "nodes"),
             optional=(
                 "orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name",
-                "repeat_table_header", "contents_sheet",
+                "repeat_table_header", "contents_sheet", "run_scope", "palette",
             ),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
@@ -427,6 +434,14 @@ class TreeValidator:
                 self.error("repeat_table_header", "Only a document layout has pages for a header row to repeat on.")
             elif not isinstance(tree["repeat_table_header"], bool):
                 self.error("repeat_table_header", "Must be true or false.")
+        if "run_scope" in tree and tree["run_scope"] not in RUN_SCOPES:
+            self.error("run_scope", f"Must be one of: {', '.join(RUN_SCOPES)}.")
+        if "palette" in tree:
+            if declared != FAMILY_DOCUMENT:
+                self.error("palette", "Only a document layout has a colour scheme.")
+            for path, message in palette_problems(tree["palette"]):
+                self.error(path, message)
+        self.colour_names = known_names(tree.get("palette"), self._organization_colours)
         if "contents_sheet" in tree:
             if declared != FAMILY_TABLE:
                 self.error("contents_sheet", "Only a table layout has sheets for a contents sheet to list.")
@@ -1287,10 +1302,10 @@ def _validate_shape(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         line_kind = kind in LINE_KINDS
         if line_kind and "fill" in node:
             v.error(f"{path}.fill", f"A {kind} is a line: set its colour with outline.")
-        if "fill" in node and not line_kind and (problem := colour_problem(node["fill"])):
+        if "fill" in node and not line_kind and (problem := colour_problem(node["fill"], v.colour_names)):
             v.error(f"{path}.fill", problem)
         if "outline" in node:
-            if problem := colour_problem(node["outline"]):
+            if problem := colour_problem(node["outline"], v.colour_names):
                 v.error(f"{path}.outline", problem)
             elif line_kind and node["outline"] == "none":
                 v.error(f"{path}.outline", f"A {kind} is drawn in its outline colour, so it cannot be none.")
@@ -1786,12 +1801,13 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         (
             BlockField("shape", "Shape", "choice", required=True, choices=SHAPE_KINDS, default="rectangle",
                        help="A preset shape, or Custom to paste your own SVG."),
-            BlockField("fill", "Fill", "text", max_length=7, default="accent",
-                       help="The colour inside, as a hex colour such as #475569, or accent (the organisation's report accent), "
-                       "white, black or none. Not used by a line, an arrow or a custom shape."),
-            BlockField("outline", "Outline", "text", max_length=7,
-                       help="The outline colour, as a hex colour or accent, white or black. Leave empty for no outline. A line or "
-                       "arrow is drawn in this colour (black unless set)."),
+            BlockField("fill", "Fill", "colour", default="accent",
+                       help="The colour inside: the branding colour, a colour of this layout's scheme, white, black, none or a hex "
+                       "colour such as #475569. A scheme colour is kept by name, so changing the scheme changes the shape. Not used "
+                       "by a line, an arrow or a custom shape."),
+            BlockField("outline", "Outline", "colour", empty_label="No outline",
+                       help="The outline colour, chosen as the fill is. Leave empty for no outline. A line or arrow is drawn in "
+                       "this colour (black unless set)."),
             BlockField("outline_width", "Outline width (mm)", "number", minimum=OUTLINE_WIDTH_MM[0], maximum=OUTLINE_WIDTH_MM[1],
                        help="How thick the outline or line is. Typically 0.5."),
             BlockField("width", "Width", "number", minimum=SHAPE_SIZE_CM[0], maximum=SHAPE_SIZE_CM[1] * 10,

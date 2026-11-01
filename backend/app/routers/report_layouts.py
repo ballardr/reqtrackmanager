@@ -51,9 +51,11 @@ from app.schemas.report_layout import (
     ReportBlockFieldOut,
     ReportBlockOut,
     ReportBlockProvidesOut,
+    ReportColourEntryOut,
     ReportFieldCatalogueOut,
     ReportFieldOut,
     ReportFieldTypeOut,
+    ReportLayoutColoursOut,
     ReportLayoutCreate,
     ReportLayoutDetailOut,
     ReportLayoutDraftVariablesOut,
@@ -110,10 +112,12 @@ from app.services.rbac import (
     require_permission,
     require_project_view_or_manage,
 )
+from app.services.report_colours import STANDARD_COLOURS, entries_of
 from app.services.report_framework import param_out
 from app.services.report_layout_block_schema import BlockField
 from app.services.report_layout_scope import Origin, ScopedLayout
 from app.services.report_layout_tree import InvalidLayoutError
+from app.services.report_org_values import organization_colour_names, report_accent_hex
 from app.services.report_variables import describe_variables
 from app.services.report_widgets import WidgetInfo, widgets_for_organization, widgets_for_project
 
@@ -249,7 +253,10 @@ def _validate_tree(
 
     Besides the tree's own rules, an image block must name a picture in a library the layout's owner may use.
     """
-    analysis = report_layout_designer.check_tree(body.tree)
+    organization = db.get(Organization, organization_id)
+    analysis = report_layout_designer.check_tree(
+        body.tree, organization_colour_names(organization) if organization is not None else None,
+    )
     errors = list(analysis.errors)
     if analysis.ok:
         errors += report_images.image_problems(db, organization_id, project_id, body.tree)
@@ -484,6 +491,26 @@ def list_org_blocks(current_user: User = Depends(manage_org_layouts)) -> ReportB
     return _blocks_out(report_layout_designer.block_catalogue())
 
 
+def _colours_out(db: Session, organization_id: UUID) -> ReportLayoutColoursOut:
+    """The branding colour and colour scheme of an organisation, for the designer's colour choices."""
+    organization = db.get(Organization, organization_id)
+    if organization is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    return ReportLayoutColoursOut(
+        accent=report_accent_hex(db, organization),
+        organization_scheme=[ReportColourEntryOut(name=n, colour=c) for n, c in entries_of(organization.report_colour_scheme).items()],
+        standard=[ReportColourEntryOut(name=n, colour=c) for n, c in STANDARD_COLOURS.items()],
+    )
+
+
+@org_router.get("/colours", response_model=ReportLayoutColoursOut)
+def list_org_colours(
+    organization_id: UUID, current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutColoursOut:
+    """The organisation's branding colour and colour scheme, which a layout's colour fields offer."""
+    return _colours_out(db, organization_id)
+
+
 @org_router.post("/validate", response_model=ReportLayoutValidateOut)
 def validate_org_layout_tree(
     organization_id: UUID, body: ReportLayoutValidateRequest, current_user: User = Depends(manage_org_layouts),
@@ -524,7 +551,7 @@ def preview_org_layout(
     try:
         preview = guard_run(lambda: report_layout_designer.preview_for_organization(
             db, current_user, organization, tree=tree, name=body.name, project_ids=body.project_ids,
-            variables=body.variables,
+            include_children=body.include_children, variables=body.variables,
         ))
     except InvalidLayoutError as exc:
         raise _bad_request(exc) from exc
@@ -729,6 +756,14 @@ def format_project_layout_text(
 def list_project_blocks(project_id: UUID, current_user: User = Depends(manage_project_layouts)) -> ReportBlockCatalogueOut:
     """The block types the visual designer can add, with the form each needs; the same for every project."""
     return _blocks_out(report_layout_designer.block_catalogue())
+
+
+@project_router.get("/colours", response_model=ReportLayoutColoursOut)
+def list_project_colours(
+    project_id: UUID, current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutColoursOut:
+    """The branding colour and colour scheme of the project's organisation, which a layout's colour fields offer."""
+    return _colours_out(db, _project_or_404(db, project_id).organization_id)
 
 
 @project_router.post("/validate", response_model=ReportLayoutValidateOut)

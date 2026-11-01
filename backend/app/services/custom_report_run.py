@@ -56,7 +56,15 @@ from sqlalchemy.orm import Session
 from app.models.generated_report import SCOPE_ORGANIZATION, SCOPE_PROJECT, STATUS_COMPLETED, GeneratedReport
 from app.models.organization import Organization
 from app.models.project import Project
-from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE, ReportLayout, ReportLayoutVersion
+from app.models.report_layout import (
+    FAMILY_DOCUMENT,
+    FAMILY_TABLE,
+    RUN_SCOPE_ANY,
+    RUN_SCOPE_ONE,
+    RUN_SCOPE_ONE_AND_CHILDREN,
+    ReportLayout,
+    ReportLayoutVersion,
+)
 from app.models.user import User
 from app.services import definition_suppression, report_layout_scope, report_layouts
 from app.services.client_date import effective_today
@@ -131,6 +139,40 @@ class NoProjectsToRunError(LookupError):
 
 class FanOutTooLargeError(ValueError):
     """More than `MAX_FANOUT_PROJECTS` projects were asked for."""
+
+
+class RunScopeError(ValueError):
+    """A run does not fit the projects the layout may run for (its `run_scope`)."""
+
+
+def check_run_scope(version: ReportLayoutVersion, *, chosen: int | None = None, include_children: bool = False) -> None:
+    """Refuses a run that does not fit the layout's `run_scope`.
+
+    `any` (the default) allows a project run and a fan-out over any number of projects; `one` needs exactly one project and
+    no child projects; `one_and_children` needs exactly one project and allows its readable child projects to be merged in.
+    This is the one place the rule is applied; every route, job, pack entry and preview reaches it through
+    `run_project_layout`, `run_organization_layout` or `report_run_jobs.enqueue`.
+
+    Args:
+        version: The version about to run.
+        chosen: The number of distinct projects an organisation-wide run names, `None` for a project run.
+        include_children: Whether the run would add child projects.
+
+    Raises:
+        RunScopeError: The run does not fit.
+    """
+    scope = version.tree.get("run_scope", RUN_SCOPE_ANY)
+    if scope == RUN_SCOPE_ANY:
+        if include_children and chosen is not None:
+            raise RunScopeError("Child projects can only be included when the report runs for one project and its children.")
+        return
+    if scope == RUN_SCOPE_ONE and include_children:
+        raise RunScopeError("This report runs for a single project, so child projects cannot be included.")
+    if chosen is not None and chosen != 1:
+        raise RunScopeError(
+            "This report runs for a single project: choose exactly one project." if chosen == 0
+            else f"This report runs for a single project, but {chosen} were chosen."
+        )
 
 
 @dataclass
@@ -230,7 +272,9 @@ def run_project_layout(
     Raises:
         LayoutLimitError: A work, output or time limit was exceeded.
         VariableValueError: A variable's value is missing, undeclared or unacceptable.
+        RunScopeError: The layout runs for one project without its children and `include_children` is set.
     """
+    check_run_scope(version, include_children=include_children)
     organization = db.get(Organization, project.organization_id)
     assert organization is not None
     started = datetime.now(UTC)
@@ -246,7 +290,7 @@ def run_project_layout(
 def run_organization_layout(
     db: Session, user: User, organization: Organization, layout: ReportLayout, version: ReportLayoutVersion, *,
     project_ids: Sequence[uuid.UUID] | None = None, background: bool = False, variables: Mapping[str, Any] | None = None,
-    variables_for: Callable[[Project], Mapping[str, Any] | None] | None = None,
+    variables_for: Callable[[Project], Mapping[str, Any] | None] | None = None, include_children: bool = False,
 ) -> LayoutRun:
     """Runs an organisation layout once per project the caller can read and merges the results.
 
@@ -261,6 +305,8 @@ def run_organization_layout(
         variables: Values for the layout's run-time variables, the same for every project.
         variables_for: Decides the values per project instead (a report pack's saved set as each project overrides
             it); it may raise `VariableValueError`, which ends the run.
+        include_children: Add the chosen project's readable child projects (only a layout whose `run_scope` is
+            `one_and_children`).
 
     Returns:
         The merged run; its `projects` are the ones evaluated.
@@ -269,9 +315,13 @@ def run_organization_layout(
         VariableValueError: A variable's value is missing, undeclared or unacceptable.
         ProjectsNotInScopeError: A requested project is not one the caller holds a role in.
         FanOutTooLargeError: More than `MAX_FANOUT_PROJECTS` projects would be evaluated.
+        RunScopeError: `project_ids` does not fit the layout's `run_scope` (exactly one project for `one` and `one_and_children`).
         NoProjectsToRunError: No project is left to evaluate.
         LayoutLimitError: A work, output or time limit was exceeded across the whole run.
     """
+    check_run_scope(
+        version, chosen=len(set(project_ids)) if project_ids is not None else 0, include_children=include_children,
+    )
     started = datetime.now(UTC)
     clock = time.monotonic()
     readable = readable_projects(db, user, organization=organization, root_project=None, include_children=False)
@@ -291,6 +341,13 @@ def run_organization_layout(
     chosen = [p for p in chosen if p.id not in hiding_ids]
     if not chosen:
         raise NoProjectsToRunError("There is no project to run this report for.")
+    if version.tree.get("run_scope", RUN_SCOPE_ANY) != RUN_SCOPE_ANY:
+        # A layout for one project reads like a project run: no merge heading or Project column, the project is the scope.
+        only = chosen[0]
+        return run_project_layout(
+            db, user, only, layout, version, include_children=include_children, background=background,
+            variables=variables_for(only) if variables_for is not None else variables,
+        )
     scale, timeout = (ASYNC_LIMIT_SCALE, ASYNC_TIMEOUT_SECONDS) if background else (1, DEFAULT_TIMEOUT_SECONDS)
     deadline = clock + timeout
     parts: list[tuple[Project, EvaluatedLayout]] = []
@@ -598,6 +655,7 @@ def provenance_fields(
             "record_images_digest": hashlib.sha256("\n".join(sorted(stats.record_image_files)).encode()).hexdigest()
             if stats.record_image_files else "",
             "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,
+            "colours": dict(run.evaluated.colours),
         },
         "source_digest": run.evaluated.source_digest, "record_versions": run.evaluated.record_versions,
         "record_versions_truncated": run.evaluated.record_versions_truncated,
@@ -663,12 +721,14 @@ def _entry(
     form = describe_variables(
         db, tree.get("variables"), [p.id for p in domain_projects][:MAX_FANOUT_PROJECTS], today=effective_today(),
     )
+    run_scope = tree.get("run_scope", RUN_SCOPE_ANY)
     return ReportCatalogueEntryOut(
         module_key=MODULE_KEY, module_name=MODULE_NAME, key=str(layout.id), slug=slug_for(layout), title=layout.name,
         description=layout.description or "A custom report layout.", scope="project" if scope == "project" else "organization",
         path=path, formats=available_formats(layout.family, tree),
-        supports_include_children=scope == "project", supports_project_filter=False,
-        supports_project_multi_filter=scope != "project",
+        supports_include_children=run_scope == RUN_SCOPE_ONE_AND_CHILDREN or (scope == "project" and run_scope == RUN_SCOPE_ANY),
+        supports_project_filter=False, supports_project_multi_filter=scope != "project" and run_scope == RUN_SCOPE_ANY,
+        run_scope=run_scope,
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects], params=[],
         variables=[ReportVariableOut.model_validate(v) for v in form],
         kind="sheet" if layout.family == FAMILY_TABLE else "report", folder=layout.folder,
@@ -706,8 +766,8 @@ def org_entries(db: Session, user: User, organization_id: uuid.UUID) -> list[Rep
 
 __all__ = [
     "ENGINE_VERSION", "MAX_FANOUT_PROJECTS", "MODULE_KEY", "FanOutTooLargeError", "LayoutRun",
-    "NoProjectsToRunError", "ProjectsNotInScopeError", "available_formats",
+    "NoProjectsToRunError", "ProjectsNotInScopeError", "RunScopeError", "available_formats",
     "document_for", "render_input_for", "merge_evaluations", "org_entries",
     "project_entries", "provenance_fields", "record_run", "render_file", "file_stem", "run_params", "result_for",
-    "run_organization_layout", "run_project_layout", "slug_for",
+    "check_run_scope", "run_organization_layout", "run_project_layout", "slug_for",
 ]

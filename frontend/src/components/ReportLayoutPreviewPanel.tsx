@@ -13,6 +13,9 @@
  * - Show the draft's run-time variables as a form (`ReportVariablesForm`, options from the server) and send the chosen
  *   values; the form follows the draft's `@var` lines, so it is refreshed only when those change, and a variable with
  *   no default and no value holds the preview back.
+ * - A draft that runs for one project (`oneproject` or `projecttree` on its `@layout` line) gets a single-choice, required
+ *   project picker; the child-projects switch is offered unless it is `oneproject` (and, in an organisation, only for
+ *   `projecttree`). The server enforces the same rule on every run.
  * - Surface the run's warnings, its counters and any refusal (over a limit, no projects) in words.
  * - Remember the chosen projects (and the child-projects switch) per viewer and layout, so the next preview opens on
  *   them (`utils/reportPreviewMemory`); a remembered project the caller can no longer choose is dropped.
@@ -35,6 +38,7 @@ import {
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { readPreviewScope, writePreviewScope } from "../utils/reportPreviewMemory";
+import { readRunScope } from "../utils/runScope";
 import { ReportParamsForm } from "./ReportParamsForm";
 import { ReportVariablesForm } from "./ReportVariablesForm";
 import { ReportSectionTable } from "./ReportViewer";
@@ -65,9 +69,18 @@ export function ReportLayoutPreviewPanel({
   // the same panel twice, agree; it is re-checked against the projects on offer, which may arrive after the panel opens.
   const [, setTick] = useState(0);
   const organisationScope = api.scope.kind === "organization";
+  // A draft that runs for one project previews for exactly one: a single-choice picker.
+  const runScope = readRunScope(draft);
+  const singleProject = runScope !== "any";
+  const childrenAllowed = organisationScope ? runScope === "one_and_children" : runScope !== "one";
   const offered = useMemo(() => new Set((projectOptions ?? []).map((project) => project.value)), [projectOptions]);
   const stored = readPreviewScope(api.scope, layoutId, organisationScope ? offered : new Set());
-  const values: ReportRunValues = { include_children: stored.includeChildren, project_ids: stored.projectIds.join(",") };
+  const values: ReportRunValues = {
+    include_children: stored.includeChildren && childrenAllowed,
+    // The remembered choice may hold several from before the draft was limited; the first is the one kept.
+    project_ids: (singleProject ? stored.projectIds.slice(0, 1) : stored.projectIds).join(","),
+  };
+  const needsProject = singleProject && organisationScope && values.project_ids === "";
   function changeValue(key: string, value: ReportRunValues[string]) {
     const next = { ...values, [key]: value };
     writePreviewScope(api.scope, layoutId, {
@@ -137,8 +150,9 @@ export function ReportLayoutPreviewPanel({
         params={[]}
         values={values}
         onChange={changeValue}
-        supportsIncludeChildren={api.scope.kind === "project"}
-        projectMultiOptions={api.scope.kind === "organization" ? projectOptions : undefined}
+        supportsIncludeChildren={childrenAllowed}
+        projectMultiOptions={organisationScope && !singleProject ? projectOptions : undefined}
+        projectSingleOptions={organisationScope && singleProject ? projectOptions : undefined}
       />
       <ReportVariablesForm
         variables={shown}
@@ -146,10 +160,11 @@ export function ReportLayoutPreviewPanel({
         onChange={(name: string, value: VariableValue | null) => setVariableValues((previous) => ({ ...previous, [name]: value }))}
       />
       <div className="row">
-        <button type="button" className="btn btn-primary" disabled={disabled || running || missing.length > 0} onClick={() => void run()}>
+        <button type="button" className="btn btn-primary" disabled={disabled || running || missing.length > 0 || needsProject} onClick={() => void run()}>
           {text.refreshPreview}
         </button>
         {disabled && <span className="text-muted">{text.previewFixFirst}</span>}
+        {!disabled && needsProject && <span className="text-muted">{strings.reportRuns.needProject}</span>}
         {!disabled && missing.length > 0 && (
           <span className="text-muted">{variableText.needValues(shown.filter((v) => missing.includes(v.name)).map((v) => v.label))}</span>
         )}
