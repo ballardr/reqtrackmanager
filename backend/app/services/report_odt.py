@@ -32,6 +32,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.services.branding import readable_on_white
+from app.services.report_grid_render import odt_grid
 from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
@@ -42,6 +43,7 @@ from app.services.report_model import (
     Cell,
     Equation,
     Gap,
+    Grid,
     Heading,
     Image,
     ImageCell,
@@ -289,6 +291,7 @@ class _Body:
         self.styles: list[str] = []
         self._frames = 0
         self._tables = 0
+        self._grids = 0
         self._static_styles()
 
     # --- styles ---------------------------------------------------------------------------------------------
@@ -584,6 +587,9 @@ class _Body:
             self._image_block(block, data)
         elif isinstance(block, Table):
             self.table(block)
+        elif isinstance(block, Grid):
+            self._grids += 1
+            self.chunks.append(odt_grid(block, f"Grid{self._grids}", self.usable_cm, self._inline, self.styles))
         elif isinstance(block, BottomStart):
             self.bottom_from = len(self.chunks)
         elif isinstance(block, BottomEnd):

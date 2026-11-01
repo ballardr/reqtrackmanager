@@ -7,15 +7,18 @@ blocks (`modules.registry.ReportSnippet`). A module adds snippets about its own 
 
 Responsibilities:
 - Declare the built-in set (`CORE_REPORT_SNIPPETS`): a cover page, a logo at the top right of the first page, record
-  images, document control, approvals and a landscape table section.
+  images, document details, document review and control, approvals and a landscape table section.
 - `_place_logo`: size and place the logo for the page it goes on (the one layout-aware snippet).
 
 Design decisions:
 - **Every snippet is true in the formats it lists.** The logo is an image in front of the text anchored to the page
   corner, which PDF, Word and OpenDocument text print where it is set; the browser preview has no pages and measures
   from where the block sits, so HTML is not listed for it.
-- **Document control and approvals are lists of lines, not tables**: a table block needs a record source, and there is
-  no block for a table of fixed words. A list with fill-in lines prints the same in every format.
+- **Document details, review and control, and approvals are custom tables (`grid` blocks)**: black label cells with white
+  bold text, merged title rows, and blank cells with a set row height to write in by hand. They use only the reserved colour
+  words `black` and `white`, so they apply into a layout with no colour scheme and carry no name a layout might lack. The
+  values that exist at run time (title, project, organisation, version, date) are placeholders, so the table fills itself in;
+  nothing names who runs the report, so the people boxes are left blank.
 - **A cover page is a section in its own page style with an empty header and footer**, so the document's running
   text does not print on it, and the report returns to its own style on a new page after it.
 - **No placeholder picture.** The logo asks for an image; an empty value is refused when applied.
@@ -153,21 +156,69 @@ RECORD_IMAGES = ReportSnippet(
     ),
 )
 
+def _cell(text: str = "", **style: Any) -> dict[str, Any]:
+    """A grid cell with the given text and style keys (`colspan`, `fill`, `bold`, ...)."""
+    return {"text": text, **style}
+
+
+def _row(*cells: dict[str, Any], height: float | None = None) -> dict[str, Any]:
+    """A grid row of cells, at least `height` cm tall when given (room to write by hand)."""
+    return {"cells": list(cells), **({"height": height} if height is not None else {})}
+
+
+#: A label cell and a title cell: white bold text on black.
+_LABEL = {"fill": "black", "color": "white", "bold": True}
+#: How tall a blank row is, in cm: room for a line of handwriting.
+_WRITE_IN_CM = 1.2
+
+
+def _grid(columns: list[dict[str, Any]], rows: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    """A grid block over the columns and rows."""
+    return {"type": "grid", "columns": columns, "rows": rows, **extra}
+
+
+DOCUMENT_DETAILS = ReportSnippet(
+    key="document-details",
+    name="Document details",
+    description=(
+        "A two-column table with a black label column: the document's title, project, organisation, version and date, "
+        "filled in from the run each time."
+    ),
+    category=CATEGORY_FRONT,
+    blocks=(
+        _grid(
+            [{"width": "28%", **_LABEL}, {}],
+            [
+                _row(_cell("Document details", colspan=2, align="center")),  # the label column's style, across both columns
+                _row(_cell("Document"), _cell("{{report_title}}")),
+                _row(_cell("Project"), _cell("{{project_name}} ({{project_code}})")),
+                _row(_cell("Organisation"), _cell("{{organisation}}")),
+                _row(_cell("Version"), _cell("{{layout_version}}")),
+                _row(_cell("Date"), _cell("{{generated_on}}")),
+            ],
+            header_rows=1,
+        ),
+    ),
+)
+
 DOCUMENT_CONTROL = ReportSnippet(
     key="document-control",
-    name="Document control",
-    description="A short list of the document's title, project, version and date, with lines to fill in the owner and status.",
+    name="Document review and control",
+    description=(
+        "A table for recording who reviewed the document and when: a title row, the column headings (version, date, author, "
+        "reviewer, comments) and blank rows tall enough to write in."
+    ),
     category=CATEGORY_FRONT,
     blocks=(
         heading("Document control", 2),
-        text(
-            "- **Document:** {{report_title}}\n"
-            "- **Project:** {{project_name}} ({{project_code}})\n"
-            "- **Organisation:** {{organisation}}\n"
-            "- **Version:** {{layout_version}}\n"
-            "- **Date:** {{generated_on}}\n"
-            "- **Owner:** \\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\n"
-            "- **Status:** \\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_"
+        _grid(
+            [{"width": "12%"}, {"width": "16%"}, {"width": "20%"}, {"width": "20%"}, {}],
+            [
+                _row(_cell("{{report_title}}, version {{layout_version}}", colspan=5, align="center", **_LABEL)),
+                _row(*(_cell(name, bold=True) for name in ("Version", "Date", "Author", "Reviewer", "Comments"))),
+                *(_row(*(_cell() for _ in range(5)), height=_WRITE_IN_CM) for _ in range(3)),
+            ],
+            header_rows=2,
         ),
     ),
 )
@@ -175,15 +226,18 @@ DOCUMENT_CONTROL = ReportSnippet(
 APPROVALS = ReportSnippet(
     key="approvals",
     name="Approvals",
-    description="A signature block: who prepared, reviewed and approved the document, with lines for a name, role and date to be completed by hand.",
+    description="A signature table: who prepared, reviewed and approved the document, with boxes for a name, signature and date.",
     category=CATEGORY_APPROVALS,
     blocks=(
         heading("Approvals", 2),
-        text("The people below have prepared, reviewed and approved this document."),
-        text(
-            "- **Prepared by** (name, role, date): \\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\n"
-            "- **Reviewed by** (name, role, date): \\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\n"
-            "- **Approved by** (name, role, date): \\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_\\_"
+        _grid(
+            [{"width": "22%"}, {"width": "30%"}, {}, {"width": "16%"}],
+            [
+                _row(_cell("Approval of {{report_title}}", colspan=4, align="center", **_LABEL)),
+                _row(*(_cell(name, bold=True) for name in ("Role", "Name", "Signature", "Date"))),
+                *(_row(_cell(role, bold=True), _cell(), _cell(), _cell(), height=1.5) for role in ("Prepared by", "Reviewed by", "Approved by")),
+            ],
+            header_rows=2,
         ),
     ),
 )
@@ -263,7 +317,7 @@ LINKED_SHEETS = ReportSnippet(
 )
 
 CORE_REPORT_SNIPPETS: tuple[ReportSnippet, ...] = (
-    COVER_PAGE, LOGO_TOP_RIGHT, DOCUMENT_CONTROL, RECORD_IMAGES, LANDSCAPE_TABLE, APPROVALS, LINKED_SHEETS,
+    COVER_PAGE, LOGO_TOP_RIGHT, DOCUMENT_DETAILS, DOCUMENT_CONTROL, RECORD_IMAGES, LANDSCAPE_TABLE, APPROVALS, LINKED_SHEETS,
 )
 """Every built-in snippet, in the order the picker lists them within a category."""
 

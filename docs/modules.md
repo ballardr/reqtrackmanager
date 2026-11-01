@@ -1282,7 +1282,7 @@ flowchart LR
   version through `services.report_layouts.save_version`, which refuses a save based on a stale version
   (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
 - **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, header?, footer?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
-  `table`, `each`, `group`, `if`, `page_break`, `spacer`, `bottom`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
+  `table`, `grid`, `each`, `group`, `if`, `page_break`, `spacer`, `bottom`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
 - **Images.** An `image` block names a library file by id (`services/report_images.py`): a project layout may use its
   own project's pictures (`file_assets.project_id`) and the organisation's shared resources, an organisation layout the
@@ -1293,6 +1293,17 @@ flowchart LR
   cm, mm or (widths) a percentage; caption numbering is `auto`, `always` or `never`. API: `/orgs/{id}/report-images`,
   `/projects/{id}/report-images` (list with the size limit, upload, delete). A picture's size and EXIF come from the general
   `GET /files/{id}/details` (same read rule as the download), shown by `FileDetailsToggle` wherever files are listed.
+- **Custom tables.** A `grid` block is an author-written table (`columns`, `rows` of `cells`; `header_rows`, `borders`,
+  `border_color` and the style keys `align`, `valign`, `fill`, `color`, `bold`, which cascade grid, column, row, cell). A merged
+  cell carries `colspan` / `rowspan` and the covered positions are left out of their rows; `services/report_grid.py` is the one
+  span check (`place_spans`, called by the tree validator and by `place_grid` for the renderers). The evaluator resolves the
+  cascade and the colour words to `#rrggbb` and reads each cell's text as Markdown into paragraphs (`Grid`, `GridRow`,
+  `GridCell` in `report_model`); `services/report_grid_render.py` draws it in PDF, Word, OpenDocument and HTML, taking each
+  renderer's own inline-text writer so a cell's styles, links and equations are drawn by the same code as a paragraph's. Document
+  layouts only. Text view `@grid` / `@col` / `@row` and `| a | b |` lines. The designer edits it in a dialog
+  (`components/ReportGridField.tsx`, `ReportGridEditor.tsx`, the pure matrix in `utils/reportGrid.ts`): the schema's
+  `grid_columns` field kind draws the summary and button and saves `columns`, `rows` and `header_rows` together; `grid_rows`
+  draws nothing of its own.
 - **Record images.** A `record_images` block (inside an `each`) prints the pictures attached to that block's record. A module
   lets its types take part with `ModuleDefinition.record_attachments[type] = RecordAttachmentProvider(link table, record
   column)` (core types: `services/record_attachments_core.py`), or gives a reason in `no_record_attachments`
@@ -2037,8 +2048,8 @@ flowchart TD
 
 ### 4aa. Custom reports: snippets (Module 10 Phase 43)
 
-A **snippet** is a named fragment of a layout (a cover page, a logo at the top right, record images, document control, approvals,
-a landscape table section) that an author inserts into the layout they are editing. Inserting **copies** the blocks in: nothing
+A **snippet** is a named fragment of a layout (a cover page, a logo at the top right, record images, document details, document review
+and control, approvals (these three are custom tables, `grid` blocks) and a landscape table section) that an author inserts into the layout they are editing. Inserting **copies** the blocks in: nothing
 links back, so changing a snippet never alters a layout. A snippet adds no block type, no data access (its blocks run with the
 runner's permissions) and the built-in and module snippets store nothing: the designer holds the draft and the server only builds
 and validates the result. Authors can also keep their own (see "Saved snippets" below).

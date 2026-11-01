@@ -40,6 +40,7 @@ from PIL import Image as PilImage
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.report_column_width import parse_width
+from app.services.report_grid_render import GRID_CSS, html_grid
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import INLINE_SIZE_PT, scaled_svg, typeset
 from app.services.report_model import (
@@ -48,6 +49,7 @@ from app.services.report_model import (
     BulletList,
     Equation,
     Gap,
+    Grid,
     Heading,
     Image,
     ImageCell,
@@ -87,6 +89,7 @@ th { background: var(--accent); color: %(head_text)s; text-align: left; }
 th, td { border: 1px solid #ccc; padding: .3rem .5rem; vertical-align: top; overflow-wrap: anywhere; }
 table.compact td { border-color: #ddd; } table.fixed { table-layout: fixed; }
 tbody tr:nth-child(even) td { background-color: #f5f5f5; }
+%(grid_css)s
 div.spacer { display: block; margin: 0; padding: 0; } figure { margin: 1rem 0; } figure img, figure svg { max-width: 100%%; height: auto; }
 figure.image { overflow-x: auto; } figure.image.align-center { text-align: center; } figure.image.align-right { text-align: right; }
 figure.image.wrap-left { float: left; margin: .2rem 1rem .5rem 0; } figure.image.wrap-right { float: right; margin: .2rem 0 .5rem 1rem; }
@@ -434,6 +437,8 @@ def render_html_document(document: ReportDocument) -> bytes:
                 parts.append(figure)
         elif isinstance(block, Table):
             parts.append(_table(block))
+        elif isinstance(block, Grid):
+            parts.append(html_grid(block, _rich))
         elif isinstance(block, VerticalSpace):
             parts.append(f'<div class="spacer" aria-hidden="true" style="height: {block.cm:g}cm"></div>')
         elif isinstance(block, PageBreak):
@@ -457,7 +462,7 @@ def render_html_document(document: ReportDocument) -> bytes:
     if branding and branding.footer_text and document.footer is None:
         parts.append(f"<footer>{_esc(branding.footer_text)}</footer>")
     css = _CSS % {
-        "accent": accent, "width": f"{_width_rem(document.style):g}rem", "head_text": "#" + text_on(accent.lstrip("#")),
+        "accent": accent, "width": f"{_width_rem(document.style):g}rem", "head_text": "#" + text_on(accent.lstrip("#")), "grid_css": GRID_CSS,
     }
     # `@page` rules sit outside `@media`: browsers ignore them on screen and do not accept them inside a media query.
     css += _page_rules("", document.style) + "\n" + _box_rules("", document.style) + "\n"

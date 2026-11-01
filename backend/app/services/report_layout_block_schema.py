@@ -58,6 +58,8 @@ FIELD_KINDS: tuple[str, ...] = (
     "file_name",  # a file name template: one line of text with the placeholders a file name allows and a live example
     "colour",  # a colour word: a hex colour, a reserved word (accent, white, ...) or a name in the layout's colour scheme
     "palette",  # the layout's colour scheme: up to 8 named colours
+    "grid_columns",  # the columns of a custom table: width and the style their cells start from
+    "grid_rows",  # the rows and cells of a custom table
 )
 
 

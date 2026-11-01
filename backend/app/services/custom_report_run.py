@@ -103,6 +103,7 @@ from app.services.report_model import (
     DataCell,
     Equation,
     Gap,
+    Grid,
     Heading,
     LinkedText,
     Note,
@@ -509,6 +510,8 @@ def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection],
             lines += [f"• {item}" for item in block.items]
         elif isinstance(block, NumberedList):
             lines += [f"{number}. {item}" for number, item in enumerate(block.items, start=1)]
+        elif isinstance(block, Grid):  # a custom table reads on screen as one line per row
+            lines += [" | ".join(" ".join(cell.paragraphs).strip() for cell in row.cells) for row in block.rows]
         elif isinstance(block, Table):
             sections.append(ReportSection(
                 key=f"section-{len(sections) + 1}", title=" / ".join(text for _, text in trail) or f"Table {len(sections) + 1}",

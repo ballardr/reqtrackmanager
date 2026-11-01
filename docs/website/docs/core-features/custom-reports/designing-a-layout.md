@@ -32,7 +32,7 @@ flowchart LR
 ```
 
 - **Problems** are listed by line and column; choosing one puts the cursor there. **Save new version** and **Run preview** wait until the text is valid. A layout's first line must declare its own kind (`@layout document` or `@layout table`).
-- The **icon buttons** above the text add a heading (of level 1, 2 or 3), text, *for each record*, a group, a table, an *if*, an equation, a page break, a spacer or content at the page bottom at the cursor (a sheet for a table layout); hover or focus a button for its name. The **Page setup** button beside them opens a dialog for the [page setup](#page-setup): the page **size**, **orientation**, **margins**, **header and footer** and **page styles**, written into the first lines of the text; the PDF, Word and OpenDocument files use them. The **Fields** tab is one searchable list of everything `{{…}}` can name at the cursor: the report and project values (`{{project_name}}`, `{{project_code}}`, `{{project_description}}`, `{{report_title}}`, `{{generated_on}}`, `{{organisation}}`, `{{layout_version}}`) together with the fields of the names in scope (the name after `as` of the block you are in), each saying where it comes from. Search it, or use **From** to narrow it to the report and project values or to one name. The **Widgets** tab lists the report components you can embed as a tree: each module, then each of its reports, then the report's parts, all collapsed until you open them (a search opens every branch that still holds a match). Choose a part to see the report's settings and to insert the finished line.
+- The **icon buttons** above the text add a heading (of level 1, 2 or 3), text, *for each record*, a group, a table of records, a custom table, an *if*, an equation, a page break, a spacer or content at the page bottom at the cursor (a sheet for a table layout); hover or focus a button for its name. The **Page setup** button beside them opens a dialog for the [page setup](#page-setup): the page **size**, **orientation**, **margins**, **header and footer** and **page styles**, written into the first lines of the text; the PDF, Word and OpenDocument files use them. The **Fields** tab is one searchable list of everything `{{…}}` can name at the cursor: the report and project values (`{{project_name}}`, `{{project_code}}`, `{{project_description}}`, `{{report_title}}`, `{{generated_on}}`, `{{organisation}}`, `{{layout_version}}`) together with the fields of the names in scope (the name after `as` of the block you are in), each saying where it comes from. Search it, or use **From** to narrow it to the report and project values or to one name. The **Widgets** tab lists the report components you can embed as a tree: each module, then each of its reports, then the report's parts, all collapsed until you open them (a search opens every branch that still holds a match). Choose a part to see the report's settings and to insert the finished line.
 
 | The Fields tab: report and project values and the fields of the names in scope, in one searchable list |
 | --- |
@@ -44,7 +44,7 @@ flowchart LR
 
 - **Blocks** shows the same layout as blocks, so you can build a layout without writing the `@` syntax. **Add block** lists the blocks (*Heading*, *Text* and *Table* first), and the line beside it says where the next one will go: after the selected block, inside it (a block that holds others, such as *for each record*, a group or an *if*, offers each of its lists) or at the end of the layout. The new block is selected at once, and **Ctrl+Z** (**Cmd+Z** on a Mac) takes it back. Drag blocks on the canvas to reorder them or drop them inside another block. A block shows a one-line summary of its key facts (a heading's level and words, the name a *for each* gives each record) and cannot be typed into. **Select a block** to edit all its settings, long or short, in the **Block** tab of the panel beside the canvas (under it on a narrow screen), the only place a value is changed: *Linked from* lists the names of the enclosing blocks, and a filter offers the fields and operators that suit the field you chose. The arrow keys move around the blocks. A block with a problem shows a warning mark, and the message appears under the field in the panel; Select the **Layout** block at the top of the canvas (or press the gear on it) to edit the layout's own settings in the same panel: the page size and orientation, the margins, the [page styles](#page-setup) and the [variables](./blocks-widgets-and-variables.md#variables). A problem with one of those settings shows as a warning on the Layout block. The layout is checked as you pause, **Save new version** and **Run preview** wait until there are no problems, and switching to **Text** shows the same layout as text. You can switch from the text only while it reads without problems. A block dragged outside the layout is not part of it, and the panel says so. Selecting a block (or pressing the gear on the Layout block) brings the **Block** tab forward; the **Preview** tab of the same panel runs the preview, and **Open in dialog** shows it larger.
 
-- **Snippets** (the puzzle-piece button beside **Add block** in Blocks, and beside the block shortcuts in Text) opens a menu with **Insert snippet** and **Save as snippet**. **Save as snippet** is greyed out in Blocks until a block is selected. **Insert snippet** adds a ready-made piece to the layout: a cover page, a logo at the top right of the first page, record images, a document control list, an approvals block, a landscape table section or, for a table layout, two linked sheets. The window lists the snippets by category with a search box, shows the output formats each is true in (PDF, Word, OpenDocument, HTML) and an outline of the blocks it adds, and asks for what it needs: a picture from the library, a kind of record, a short text. A snippet for the other kind of layout (a table snippet in a document) is shown greyed out with the reason. In **Blocks** it goes where the line beside **Add block** says, or at the start of the layout, and one **Ctrl+Z** removes all its blocks (a page style it added stays until you delete it); the new block is selected, so its settings are ready in the side panel. In **Text** the text is read as a layout first, so it must be free of problems; the snippet goes at the end or the start, and **Undo insertion** on the confirmation puts the text back while you have not edited it. Either way a pop-up confirmation appears in the corner, so nothing above your blocks moves. A plain insertion fades after a few seconds; when the snippet also added something ("Added page style "Cover"") or the layout already had problems, the pop-up lists it and stays until you dismiss it. A page style or variable the layout already has is reused rather than overwritten. A snippet is copied in: changing the layout later never changes the snippet, and the snippet never changes the layout again. A snippet cannot give anyone access to more than they could already read: its blocks run with the permissions of whoever runs the report.
+- **Snippets** (the puzzle-piece button beside **Add block** in Blocks, and beside the block shortcuts in Text) opens a menu with **Insert snippet** and **Save as snippet**. **Save as snippet** is greyed out in Blocks until a block is selected. **Insert snippet** adds a ready-made piece to the layout: a cover page, a logo at the top right of the first page, record images, a document details table (title, project, organisation, version and date, filled in from the run), a document review and control table (version, date, author, reviewer and comments, with blank rows to write in), an approvals table (role, name, signature and date boxes), a landscape table section or, for a table layout, two linked sheets. The window lists the snippets by category with a search box, shows the output formats each is true in (PDF, Word, OpenDocument, HTML) and an outline of the blocks it adds, and asks for what it needs: a picture from the library, a kind of record, a short text. A snippet for the other kind of layout (a table snippet in a document) is shown greyed out with the reason. In **Blocks** it goes where the line beside **Add block** says, or at the start of the layout, and one **Ctrl+Z** removes all its blocks (a page style it added stays until you delete it); the new block is selected, so its settings are ready in the side panel. In **Text** the text is read as a layout first, so it must be free of problems; the snippet goes at the end or the start, and **Undo insertion** on the confirmation puts the text back while you have not edited it. Either way a pop-up confirmation appears in the corner, so nothing above your blocks moves. A plain insertion fades after a few seconds; when the snippet also added something ("Added page style "Cover"") or the layout already had problems, the pop-up lists it and stays until you dismiss it. A page style or variable the layout already has is reused rather than overwritten. A snippet is copied in: changing the layout later never changes the snippet, and the snippet never changes the layout again. A snippet cannot give anyone access to more than they could already read: its blocks run with the permissions of whoever runs the report.
 - **Save as snippet** (in the **Snippets** menu) keeps a piece you built so you can insert it into other layouts. In **Blocks**, select a block (a container is saved with everything inside it) and choose it; in **Text**, put the caret in a block or select several, and the top-level blocks you touched are saved. Give it a **Name**, an optional description and a **Category**, and choose where to keep it: this project (also shared with the projects below it) or, from a project, the organisation, which shares it with every project. The window says how many blocks it saves and which page styles and variables it carries along, so it works in a layout that has neither. A selection that needs something defined outside it (an alias of an enclosing "for each") cannot be saved, and a picture from a project's library cannot be kept for the organisation: the window names the picture. Saved snippets appear in **Insert snippet** beside the built-in ones, marked "Saved" with where they come from, and are copied in like any other. They have no parameters: edit the result after inserting.
 - **Report snippets** in **Reports** (and an organisation's **Templates & reports**) lists the saved snippets with their source, block count and what they carry. **New snippet** makes one without opening a layout: choose its kind (document or table, fixed once the first block exists), give it a name, and build its blocks in the same **Blocks** and **Text** editors a layout uses; the window says what saving would store and refuses what the designer's **Save as snippet** would refuse. **Edit** changes a snippet you own, details and blocks together. **Make a copy** makes a snippet of your own from it (or **Copy to the organisation**), and **Delete** removes one you own after you type its name; layouts already built from it keep their blocks. A snippet shared from the organisation or a parent project is read-only: **Hide in this project** stops it being offered here, and **Add organisation defaults** brings it back. Snippets travel with the project and organisation exports.
 
@@ -165,7 +165,7 @@ An **Image** block puts a picture from the image library into the report: on a l
 - A picture's GPS position, camera and other hidden details are removed when it is placed in a report. A picture that has been deleted is left out and the run warns about it.
 - A report that is exported or imported with its project carries the pictures it uses.
 
-**Example: a logo on a coloured plate.** A logo is often white on a transparent background, so it needs something behind it. Add a **Shape** (a rounded rectangle filled with `accent`, the organisation's report colour, placed *Behind the text*) and then an **Image** with the logo (placed *In front of the text*) at the same position. A layer is drawn above the one before it, so the logo sits on the plate in PDF, Word, OpenDocument and the preview. The demo organisation has this ready as **Project overview with logo**.
+**Example: a logo on a coloured plate.** A logo is often white on a transparent background, so it needs something behind it. Add a **Shape** (a rounded rectangle filled with `accent`, the organisation's report colour, placed *Behind the text*) and then an **Image** with the logo (placed *In front of the text*) at the same position. A layer is drawn above the one before it, so the logo sits on the plate in PDF, Word, OpenDocument and the preview. The demo organisation has this ready as **Project overview with logo**, which also carries a document details table and a document review and control table inserted from the snippets.
 
 ```
 @shape rounded fill accent width 5 cm height 2.5 cm placement behind anchor paragraph x 12 y 0
@@ -217,6 +217,65 @@ flowchart LR
 ```
 
 A saved report records the colours it used and what each was that day, so a report stays explainable after the scheme changes.
+
+## Custom tables
+
+A **Table (custom)** block is a table you write cell by cell: a document-details box, a review and sign-off sheet, a form. It is the counterpart of **Table (records)**, which has one row per record. Cells can be **merged**, and each can be aligned and coloured; the PDF, Word, OpenDocument and the preview draw it the same way. A table layout (a spreadsheet) has no use for one and refuses it.
+
+- **Merging.** A cell can span several columns and rows. A merged cell is written once, on its top-left position, and the positions it covers are left out of the rows. A merge that overlaps another, runs past the table or leaves a row short is a problem at save, naming the row and the cell.
+- **Style cascade.** Alignment, vertical alignment, fill, text colour and bold can be set on the whole table, a column, a row or a cell; the most specific wins. "The first and third columns black with white bold text" is one setting per column, not one per cell. Colours are a hex colour, a name from the [colour scheme](#colours), or one of the reserved words (`accent`, `white`, `black`, `none`).
+- **Text.** A cell holds the same text as a text block: bold, italic, code, links, lists, `{{placeholders}}` and equations. Inside a *For each record* block, `{{record.field}}` fills each cell from the record. A cell can be blank, and a row can have a minimum height, so there is room to write in a printed sign-off sheet.
+- **Widths and borders.** A column can have a width (`25%`, `4cm`, `40mm`); the others share the rest, and a word too long for its column breaks inside it. Borders are **all**, **outer** (round the table only), **horizontal** (lines between rows) or **none**.
+- **Headings and pages.** The first rows can be **header rows**, printed again at the top of each page unless the layout turns repeated headings off. A row stays whole on a page, and the rows of a merged cell stay together. A row taller than a page is split rather than failing the report.
+- **Readability.** A cell whose text and fill colours are hard to read together (below 4.5 to 1) is flagged in the report's warnings; it is not refused.
+- **Limits.** Up to 20 columns, 200 rows and 2,000 characters in a cell.
+
+### Editing a table in the Blocks view
+
+Select the **Table (custom)** block. The block's panel shows a summary (for example *3 columns · 4 rows · 1 merged*) and **Edit table**, which opens the table in a window of its own.
+
+- **Select cells** by clicking, dragging or Shift+clicking a range; with the keyboard, the arrow keys move and Shift+arrow keys extend the selection. A merged cell is always selected whole.
+- **Merge cells** and **Unmerge cells** work on the selection. The text of the merged cells is joined into the top-left one. A merge may not run from the header rows into the rows below; the editor says so.
+- **Align** (left, centre, right, justify; top, middle, bottom), **Bold**, **Fill** and **Text colour** apply to the selection. Set **Apply to** to *Whole columns* or *Whole rows* to colour a column in two clicks: the first and third columns black with white text is one setting for each, not one per cell. Fill and text colour offer your branding colour, the layout's colours, white, black and a custom colour.
+- **Add and remove** rows and columns from the buttons above the table; a merge that spans the place you add to grows with it. The table keeps at least one row and one column, and at most 20 columns and 200 rows.
+- **Cell text** is typed in the box under the table (Enter moves you there). It takes the same text as a text block, including `{{placeholders}}`. A blank cell shows a dashed *blank* marker.
+- **Row height**, **column width** and **header rows** are set under the table for the selected cell's row and column.
+- **Undo** and **Redo** (or Ctrl+Z and Ctrl+Y) step through your changes; **Cancel** throws all of them away and **Save** puts them in the layout. Borders and the table-wide settings stay in the block's panel.
+
+If a cell's text and fill are hard to read together, the editor warns you; it does not stop you.
+
+```mermaid
+flowchart LR
+  A[Select the block] --> B[Edit table]
+  B --> C[Select cells]
+  C --> D["Merge, align, colour<br/>(cells, columns or rows)"]
+  D --> E[Save]
+  E --> F[Save new version]
+```
+
+In the text view the table is `@grid` … `@end`, with one line of cells per row:
+
+```
+@grid columns=4 headerrows=1
+  @col 1 fill=#000000 color=#ffffff bold
+  @col 3 fill=#000000 color=#ffffff bold
+  | {colspan=4 align=center fill=primary} Document details |
+  | Document | {{report_title}} | Version | {align=right} {{layout_version}} |
+  @row height=2cm
+  | Approved by | | Date | |
+@end
+```
+
+`@col` sets a column's width and style, `@row` (before a line of cells) a row's height and style, and `{…}` at the start of a cell sets its merge and style. In a cell, `\|` is a bar, `\\` a backslash and `\n` a new line.
+
+```mermaid
+flowchart LR
+  G[Table settings] --> C[Column]
+  C --> R[Row]
+  R --> X[Cell]
+  X --> D["Colour words resolve to hex<br/>(scheme, accent, reserved words)"]
+  D --> O["PDF, Word, OpenDocument, preview"]
+```
 
 ## Vertical space
 

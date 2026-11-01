@@ -67,6 +67,13 @@ Grammar (one statement per line; indentation is cosmetic):
   `caption "<text>"`, `caption_position above|below`, `numbering auto|always|never`, `width <n> [cm|mm|percent]`,
   `height <n> [cm|mm]`, `align left|center|right`, `placement inline|wrap` and `empty "<text>"`; each is written only when
   the block has the key.
+- A custom table is `@grid columns=<n> [headerrows=<n>] [borders=all|outer|horizontal|none] [bordercolor=<colour>] [<style>]`,
+  then `@col <n> [width=25%|4cm|40mm] [<style>]` for a column that sets anything, then one line of cells per row, `| a | b |`,
+  each row optionally preceded by `@row [height=2cm|15mm|2] [<style>]`, and `@end`. The `<style>` words are `align=left|center|right|
+  justify`, `valign=top|middle|bottom`, `fill=<colour>`, `color=<colour>` and `bold` / `notbold`; the most specific of grid,
+  column, row and cell wins. A cell may start with `{colspan=3 rowspan=2 <style>}` (the cell it merges is written once and the
+  positions it covers are left out of their rows). In a cell `\\\\` is a backslash, `\\|` a bar, `\\n` a new line and a leading `\\{` a
+  brace; an empty row is `||`. Cell text is Markdown with placeholders, as in a text block.
 - An equation block is `@equation <TeX>` on one line (`@equation \\frac{a}{b} = c`). Equations inside a text line
   are written `\\( x \\)` (inline) or `$$ x $$` (display), which are ordinary text to this grammar.
 - A widget is one component of a report (a table, its headline figures or its notes) on a line of its own,
@@ -118,6 +125,7 @@ from app.models.report_layout import (
     RUN_SCOPE_ONE_AND_CHILDREN,
 )
 from app.services.report_column_width import canonical_width, width_problem
+from app.services.report_grid import MAX_GRID_COLUMNS
 from app.services.report_layout_tree import (
     LIST_OPERATORS,
     MAX_CONDITION_DEPTH,
@@ -633,6 +641,8 @@ class _Frame:
     list_name: str = "children"
     body: list[str] = field(default_factory=list)  # lines of an explicit @text
     joins_none: bool = False  # a sheet written with @joins none
+    pending_row: dict[str, Any] | None = None  # a grid's @row waiting for its line of cells
+    seen: set[int] = field(default_factory=set)  # the columns of a grid that already had an @col
 
     def child_prefix(self) -> str:
         """The tree path of this frame's current child list."""
@@ -891,11 +901,16 @@ class _Parser:
                 if len(self.frames) == 1:
                     raise _Syntax("@end has nothing to close.", indent + 1)
                 self.frames.pop()
+                if top.kind == "grid" and top.pending_row is not None:
+                    raise _Syntax("This @row has no line of cells after it.", indent + 1)
             elif top.kind != "container" or top.node.get("type") != "if" or top.list_name == "else_children":
                 raise _Syntax("@else belongs inside an @if, once.", indent + 1)
             else:
                 top.list_name = "else_children"
                 top.node["else_children"] = []
+            return
+        if top.kind == "grid":
+            self._grid_directive(top, directive, indent)
             return
         if top.kind in ("table", "sheet"):
             self._sub_directive(top, directive, indent)
@@ -911,10 +926,12 @@ class _Parser:
         try:
             form.parse(self, directive)
         except _Syntax:
-            if name in ("each", "group", "if", "section", "bottom", "table", "sheet") and len(self.frames) == before:
+            if name in ("each", "group", "if", "section", "bottom", "table", "sheet", "grid") and len(self.frames) == before:
                 # Keep the @end of a block whose first line was wrong matched to it.
                 scratch: dict[str, Any] = {"type": name, "children": [], "columns": []}
                 self._push(_Frame("container" if name in ("each", "group", "if", "section", "bottom") else name, scratch, "", line_no))
+                if name == "grid":
+                    scratch["rows"] = []
             raise
 
     def _page_style(self, directive: _Directive, indent: int, line_no: int) -> None:
@@ -1154,6 +1171,52 @@ class _Parser:
         self.line_of[f"{column_path}[{len(frame.node['columns'])}]"] = directive.line_no
         return column
 
+
+    # --- custom table (grid)
+
+    def _grid_directive(self, frame: _Frame, directive: _Directive, indent: int) -> None:
+        """A `@col` or `@row` line inside a `@grid`."""
+        node = frame.node
+        cur = directive.cursor()
+        if directive.name == "col":
+            number = _grid_int(cur.word("the column number"), directive.offset + 1, "The column number")
+            columns = node.get("columns", [])
+            if not 1 <= number <= len(columns):
+                raise _Syntax(f"This table has {len(columns)} columns; there is no column {number}.", directive.offset + 1)
+            if number in frame.seen:
+                raise _Syntax(f"Column {number} already has an @col line.", directive.offset + 1)
+            frame.seen.add(number)
+            _grid_words(cur, columns[number - 1], _GRID_COLUMN_KEYS, "@col")
+            self.line_of[f"{frame.path}.columns[{number - 1}]"] = directive.line_no
+        elif directive.name == "row":
+            if frame.pending_row is not None:
+                raise _Syntax("The @row before this one has no line of cells.", indent + 1)
+            row: dict[str, Any] = {}
+            _grid_words(cur, row, _GRID_ROW_KEYS, "@row")
+            frame.pending_row = row
+        else:
+            raise _Syntax("Inside @grid use @col, @row, a line of cells such as | a | b |, or @end.", indent + 1)
+
+    def _grid_cells_line(self, frame: _Frame, raw: str, line_no: int) -> None:
+        """A `| a | b |` line: the cells of the next row."""
+        stripped = raw.strip(" \t")
+        column = 1 + len(raw) - len(raw.lstrip(" \t"))
+        if not stripped.startswith("|"):
+            self.error(line_no, column, "Inside @grid use @col, @row, a line of cells such as | a | b |, or @end.")
+            return
+        try:
+            cells = _grid_cells(stripped, column)
+        except _Syntax as exc:
+            self.error(line_no, exc.column, exc.message)
+            frame.pending_row = None
+            return
+        row = frame.pending_row or {}
+        frame.pending_row = None
+        row["cells"] = cells
+        rows = frame.node.setdefault("rows", [])
+        self.line_of[f"{frame.path}.rows[{len(rows)}]"] = line_no
+        rows.append(row)
+
     # --- building blocks (used by the forms)
 
     @property
@@ -1201,6 +1264,9 @@ class _Parser:
         return raw[min(have, want):]
 
     def _prose(self, raw: str, line_no: int) -> None:
+        if self.frames[-1].kind == "grid":
+            self._grid_cells_line(self.frames[-1], raw, line_no)
+            return
         if self.frames[-1].kind in ("table", "sheet"):
             self.error(line_no, None, f"Inside @{self.frames[-1].node['type']} use @column or @end, not text.")
             return
@@ -1764,6 +1830,182 @@ def _write_table(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, "@end")
 
 
+#: The words a grid, column, row or cell takes: the style words they share, and the ones each level adds (`key` -> tree key, kind).
+_GRID_STYLE_KEYS: dict[str, tuple[str, str]] = {
+    "align": ("align", "text"), "valign": ("valign", "text"), "fill": ("fill", "text"), "color": ("color", "text"),
+}
+_GRID_HEADER_KEYS = {
+    "columns": ("columns", "int"), "headerrows": ("header_rows", "int"), "borders": ("borders", "text"),
+    "bordercolor": ("border_color", "text"), **_GRID_STYLE_KEYS,
+}
+_GRID_COLUMN_KEYS = {"width": ("width", "width"), **_GRID_STYLE_KEYS}
+_GRID_ROW_KEYS = {"height": ("height", "height"), **_GRID_STYLE_KEYS}
+_GRID_CELL_KEYS = {"colspan": ("colspan", "int"), "rowspan": ("rowspan", "int"), **_GRID_STYLE_KEYS}
+_GRID_INT = re.compile(r"\d{1,6}")
+_GRID_HEIGHT = re.compile(r"(\d+(?:\.\d+)?)(cm|mm)?")
+_GRID_ATTRS = re.compile(r"\{([^{}]*)\}")
+_GRID_ESCAPES = {"\\": "\\", "|": "|", "n": "\n", "r": "\r", "{": "{"}
+
+
+def _grid_int(value: str, column: int, what: str) -> int:
+    if not _GRID_INT.fullmatch(value):
+        raise _Syntax(f"{what} is a whole number, not {value!r}.", column)
+    return int(value)
+
+
+def _grid_word(node: dict[str, Any], word: str, column: int, keys: dict[str, tuple[str, str]], where: str) -> None:
+    """Reads one `key=value` (or `bold` / `notbold`) word into `node`."""
+    if word in ("bold", "notbold"):
+        if "bold" in node:
+            raise _Syntax("bold is written once.", column)
+        node["bold"] = word == "bold"
+        return
+    key, equals, value = word.partition("=")
+    if key not in keys or not equals or not value:
+        raise _Syntax(f"Unexpected {word!r} in {where}. Write key=value with one of: {', '.join(keys)}, bold, notbold.", column)
+    tree_key, kind = keys[key]
+    if tree_key in node:
+        raise _Syntax(f"{key} is written once.", column)
+    if kind == "int":
+        node[tree_key] = _grid_int(value, column, f"{key}")
+    elif kind == "width":
+        if value == "auto":
+            return
+        spec = value if value.endswith("%") else re.sub(r"(cm|mm)$", r" \1", value)
+        problem = width_problem(spec)
+        if problem:
+            raise _Syntax(problem, column)
+        node[tree_key] = canonical_width(spec)
+    elif kind == "height":
+        match = _GRID_HEIGHT.fullmatch(value)
+        if match is None:
+            raise _Syntax('Write the height as a number with an optional unit: "2cm", "15mm" or "2".', column)
+        node[tree_key] = json.loads(match.group(1))
+        if match.group(2):
+            node["height_unit"] = match.group(2)
+    else:
+        node[tree_key] = value
+
+
+def _grid_words(cur: _Cursor, node: dict[str, Any], keys: dict[str, tuple[str, str]], where: str) -> None:
+    while (token := cur.peek()) is not None:
+        cur.take("a setting")
+        if token.kind != "word":
+            raise _Syntax(f"Unexpected {token.shown()} in {where}. Write key=value.", token.column)
+        _grid_word(node, token.value, token.column, keys, where)
+
+
+def _grid_cells(line: str, column: int) -> list[dict[str, Any]]:
+    """The cells of one `| a | b |` line (already stripped)."""
+    body = line[1:]
+    segments: list[str] = []
+    current: list[str] = []
+    i = 0
+    closed = False
+    while i < len(body):
+        char = body[i]
+        if char == "\\" and i + 1 < len(body):
+            current.append(body[i : i + 2])
+            i += 2
+            continue
+        if char == "|":
+            segments.append("".join(current))
+            current = []
+            closed = i == len(body) - 1
+        else:
+            current.append(char)
+        i += 1
+    if not closed:
+        raise _Syntax("A row of cells ends with a | (write \\| for a bar in a cell).", column + len(line))
+    return [_grid_cell(segment, column) for segment in segments] if (len(segments) > 1 or segments[0] != "") else []
+
+
+def _grid_cell(segment: str, column: int) -> dict[str, Any]:
+    """One cell: one space of padding each side, an optional `{settings}`, then the text."""
+    text = segment[1:] if segment.startswith(" ") else segment
+    text = text[:-1] if text.endswith(" ") else text
+    cell: dict[str, Any] = {}
+    if text.startswith("{") and not text.startswith("{{"):
+        match = _GRID_ATTRS.match(text)
+        if match is None:
+            raise _Syntax("The { opening a cell's settings is never closed (write \\{ for a brace that starts the text).", column)
+        for word in match.group(1).split():
+            _grid_word(cell, word, column, _GRID_CELL_KEYS, "a cell")
+        text = text[match.end():]
+        text = text[1:] if text.startswith(" ") else text
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        if text[i] == "\\":
+            replacement = _GRID_ESCAPES.get(text[i + 1]) if i + 1 < len(text) else None
+            if replacement is None:
+                raise _Syntax("A backslash in a cell is written \\\\ (\\| for a bar, \\n for a new line).", column)
+            out.append(replacement)
+            i += 2
+        else:
+            out.append(text[i])
+            i += 1
+    cell["text"] = "".join(out)
+    return cell
+
+
+def _parse_grid(p: _Parser, d: _Directive) -> None:
+    node: dict[str, Any] = {"type": "grid"}
+    _grid_words(d.cursor(), node, _GRID_HEADER_KEYS, "@grid")
+    count = node.pop("columns", None)
+    if not isinstance(count, int) or count < 1:
+        raise _Syntax("A @grid says how many columns it has: @grid columns=3.", d.offset + 1)
+    if count > MAX_GRID_COLUMNS:
+        raise _Syntax(f"A table has at most {MAX_GRID_COLUMNS} columns.", d.offset + 1)
+    node["columns"] = [{} for _ in range(count)]
+    node["rows"] = []
+    p.open(node, d.line_no, "grid")
+
+
+def _grid_style_words(node: dict[str, Any], keys: dict[str, tuple[str, str]]) -> list[str]:
+    parts: list[str] = []
+    for word, (tree_key, kind) in keys.items():
+        if tree_key not in node:
+            continue
+        value = node[tree_key]
+        if kind == "width":
+            parts.append(f"{word}={canonical_width(value).replace(' ', '')}")
+        elif kind == "height":
+            parts.append(f"{word}={json.dumps(value)}{node.get('height_unit', '')}")
+        else:
+            parts.append(f"{word}={value}")
+    if "bold" in node:
+        parts.append("bold" if node["bold"] else "notbold")
+    return parts
+
+
+def _grid_escape(text: str) -> str:
+    out = text.replace("\\", "\\\\").replace("|", "\\|").replace("\n", "\\n").replace("\r", "\\r")
+    return "\\" + out if out.startswith("{") and not out.startswith("{{") else out
+
+
+def _grid_cell_text(cell: dict[str, Any]) -> str:
+    settings = _grid_style_words(cell, _GRID_CELL_KEYS)
+    head = "{" + " ".join(settings) + "}" if settings else ""
+    body = _grid_escape(cell["text"])
+    return f"{head} {body}" if head and body else head or body
+
+
+def _write_grid(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    header = [f"columns={len(node['columns'])}", *_grid_style_words(node, {k: v for k, v in _GRID_HEADER_KEYS.items() if k != "columns"})]
+    w.line(depth, " ".join(["@grid", *header]))
+    for index, column in enumerate(node["columns"]):
+        words = _grid_style_words(column, _GRID_COLUMN_KEYS)
+        if words:
+            w.line(depth + 1, " ".join(["@col", str(index + 1), *words]))
+    for row in node["rows"]:
+        words = _grid_style_words(row, _GRID_ROW_KEYS)
+        if words:
+            w.line(depth + 1, " ".join(["@row", *words]))
+        w.line(depth + 1, "|" + "".join(f" {_grid_cell_text(cell)} |" for cell in row["cells"]) if row["cells"] else "||")
+    w.line(depth, "@end")
+
+
 def _parse_each(p: _Parser, d: _Directive) -> None:
     source, extra = _source(d.cursor(), ("as", "empty"))
     node: dict[str, Any] = {"type": "each", "source": source, "children": []}
@@ -1965,6 +2207,7 @@ for _form in (
     TextForm("shape", _parse_shape, _write_shape),
     TextForm("record_images", _parse_record_images, _write_record_images),
     TextForm("equation", _parse_equation, _write_equation),
+    TextForm("grid", _parse_grid, _write_grid),
     TextForm("table", _parse_table, _write_table),
     TextForm("each", _parse_each, _write_each),
     TextForm("group", _parse_group, _write_group),

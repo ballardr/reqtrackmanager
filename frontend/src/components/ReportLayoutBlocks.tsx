@@ -432,6 +432,7 @@ export function ReportLayoutBlocks({
                 key={field.key} field={field} node={node} names={namesInScope(tree, addr, types)} env={env}
                 problems={problemsForNode(problems, selected).byKey.get(field.key) ?? []}
                 onChange={(key, value) => onChange(setAt(tree, [...addr, key], value))}
+                onChangeMany={(patch) => onChange(Object.entries(patch).reduce((next, [key, value]) => setAt(next, [...addr, key], value), tree))}
               />
             ))
           ) : (

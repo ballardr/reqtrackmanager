@@ -9,23 +9,40 @@ from __future__ import annotations
 
 import copy
 import io
+import uuid
+import zipfile
 from typing import Any
 
 import pytest
+from docx import Document as DocxDocument
 from PIL import Image as PilImage
 from sqlalchemy import func, select
 
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
+from app.models.organization import Organization
+from app.models.project import Project
 from app.models.report_layout import ReportLayoutVersion
 from app.modules.registry import get_report_snippets
+from app.services.link_graph import ArtefactResolver
+from app.services.report_docx import render_docx_document
+from app.services.report_framework import ReportContext
+from app.services.report_html import render_html_document
+from app.services.report_layout_eval import evaluate_layout
 from app.services.report_layout_text import format_tree, parse_text
 from app.services.report_layout_tree import MAX_NODES, empty_tree, validate_tree
+from app.services.report_model import Grid
+from app.services.report_odt import render_odt_document
+from app.services.report_pdf import render_pdf_document
 from app.services.report_snippets_core import CORE_REPORT_SNIPPETS
 from tests.conftest import auth_headers, create_org_user, login
 from tests.link_world import World
 
-EXPECTED_KEYS = ["cover-page", "logo-top-right", "document-control", "record-images", "landscape-table-section", "approvals"]
+EXPECTED_KEYS = [
+    "cover-page", "logo-top-right", "document-details", "document-control", "record-images", "landscape-table-section", "approvals",
+]
+#: The snippets whose blocks are custom tables (a heading, where there is one, then the grid).
+GRID_KEYS = ["document-details", "document-control", "approvals"]
 
 
 @pytest.fixture
@@ -109,7 +126,7 @@ def refused(resp) -> list[tuple[str, str]]:
 # ---- the built-in set --------------------------------------------------------------------------------------------
 
 
-def test_the_built_in_set_is_the_documented_six_and_a_workbook_one_with_unique_keys_and_real_targets():
+def test_the_built_in_set_is_the_documented_seven_and_a_workbook_one_with_unique_keys_and_real_targets():
     keys = [snippet.key for snippet in CORE_REPORT_SNIPPETS]
     assert sorted(keys) == sorted([*EXPECTED_KEYS, "linked-sheets"])
     assert [s.key for _module, s in get_report_snippets()][: len(keys)] == keys
@@ -154,7 +171,8 @@ def test_each_snippet_applies_to_an_empty_layout_and_to_one_that_has_it_already(
 def test_a_snippet_is_a_copy_nothing_in_the_result_refers_back_to_it(world):
     tree = ok(apply(world, org_base(world), "approvals", doc()))["tree"]
 
-    assert all(set(node) <= {"type", "text", "level"} for node in tree["nodes"])
+    assert [node["type"] for node in tree["nodes"]] == ["heading", "grid"]
+    assert set(tree["nodes"][1]) <= {"type", "columns", "rows", "header_rows", "borders"}
 
 
 # ---- page styles: reuse, rename, never overwrite ----------------------------------------------------------------
@@ -412,7 +430,7 @@ def test_all_the_snippets_together_save_as_a_layout_and_preview(world):
     base = project_base(project)
     logo = upload(world, f"/api/v1/projects/{project['id']}/report-images")
     tree = doc()
-    for key in ["cover-page", "document-control", "record-images", "landscape-table-section", "approvals", "logo-top-right"]:
+    for key in ["cover-page", "document-details", "document-control", "record-images", "landscape-table-section", "approvals", "logo-top-right"]:
         tree = ok(apply(world, base, key, tree, values_for(world, base, key, logo), index=0 if key == "logo-top-right" else None))["tree"]
 
     created = world.client.post(
@@ -424,7 +442,7 @@ def test_all_the_snippets_together_save_as_a_layout_and_preview(world):
     body = preview.json()
     assert body["ok"], body
     assert "Document control" in body["html"] and "Approvals" in body["html"]
-    assert "__" in body["html"], "the fill-in lines print as underscores, not as emphasis"
+    assert body["html"].count('<table class="grid"') == 3, "details, review and control, and approvals are tables"
 
 
 # ---- the table snippet --------------------------------------------------------------------------------------------
@@ -453,3 +471,77 @@ def test_two_linked_sheets_is_refused_for_a_document_layout(world):
     errors = refused(apply(world, org_base(world), "linked-sheets", doc(), {"first_type": "requirement", "second_type": "change_request"}))
 
     assert errors and "table layout" in errors[0][1]
+
+
+# ---- the custom table snippets ------------------------------------------------------------------------------------
+
+
+def run_snippets(world: World, keys: list[str]):
+    """Evaluates a layout of the given snippets in a fresh project, with a version set, as a run would."""
+    created = world.project(f"Grid snippets {'-'.join(keys)}")
+    base = project_base(created)
+    tree = doc()
+    for key in keys:
+        tree = ok(apply(world, base, key, tree))["tree"]
+    session = SessionLocal()
+    try:
+        project = session.get(Project, uuid.UUID(created["id"]))
+        org = session.get(Organization, uuid.UUID(world.org["id"]))
+        resolver = ArtefactResolver(session, project, world.user_id, include_related=True)
+        ctx = ReportContext(module_key="reporting", organization=org, projects=[project], root_project=project)
+        return tree, evaluate_layout(session, resolver, ctx, tree, title="Quarterly review", layout_version=3)
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("key", GRID_KEYS)
+def test_a_table_snippet_uses_only_colour_words_every_layout_has(world, key):
+    tree = ok(apply(world, org_base(world), key, doc()))["tree"]
+
+    grid = next(node for node in tree["nodes"] if node["type"] == "grid")
+    used = {
+        value for holder in [grid, *grid["columns"], *grid["rows"], *(c for r in grid["rows"] for c in r["cells"])]
+        for k, value in holder.items() if k in ("fill", "color", "border_color")
+    }
+    assert used <= {"black", "white"}, "no hex value and no scheme name the layout might lack"
+    assert "colours" not in str(tree.get("palette", ""))
+
+
+def test_document_details_fills_itself_in_from_the_run(world):
+    _tree, result = run_snippets(world, ["document-details"])
+
+    (grid,) = (b for b in result.document.blocks if isinstance(b, Grid))
+    values = {str(row.cells[0].paragraphs[0]): str(row.cells[1].paragraphs[0]) for row in grid.rows[1:]}
+    assert values["Document"] == "Quarterly review" and values["Version"] == "3"
+    assert len(values["Date"]) == 10 and values["Date"][4] == "-"
+    assert values["Organisation"] == world.org["name"] and "(" in values["Project"]
+    assert [c.fill for c in grid.rows[1].cells] == ["#000000", None] and grid.rows[1].cells[0].color == "#ffffff"
+    assert grid.rows[1].cells[0].bold and grid.rows[0].cells[0].colspan == 2
+
+
+def test_review_and_control_and_approvals_have_blank_cells_with_room_to_write(world):
+    _tree, result = run_snippets(world, ["document-control", "approvals"])
+
+    review, approvals = (b for b in result.document.blocks if isinstance(b, Grid))
+    assert str(review.rows[0].cells[0].paragraphs[0]) == "Quarterly review, version 3" and review.rows[0].cells[0].colspan == 5
+    assert [str(c.paragraphs[0]) for c in review.rows[1].cells] == ["Version", "Date", "Author", "Reviewer", "Comments"]
+    assert [r.height_cm for r in review.rows[2:]] == [1.2, 1.2, 1.2]
+    assert all(str(c.paragraphs[0]) == "" for r in review.rows[2:] for c in r.cells)
+    assert [str(r.cells[0].paragraphs[0]) for r in approvals.rows[2:]] == ["Prepared by", "Reviewed by", "Approved by"]
+    assert [r.height_cm for r in approvals.rows[2:]] == [1.5, 1.5, 1.5]
+    assert review.header_rows == approvals.header_rows == 2
+
+
+def test_the_table_snippets_print_in_all_four_formats(world):
+    _tree, result = run_snippets(world, ["document-details", "document-control", "approvals"])
+
+    document = result.document
+    assert render_pdf_document(document).startswith(b"%PDF")
+    word = DocxDocument(io.BytesIO(render_docx_document(document)))
+    assert [t.cell(0, 0).text for t in word.tables] == ["Document details", "Quarterly review, version 3", "Approval of Quarterly review"]
+    heights = [row.height for row in word.tables[1].rows]
+    assert [h is not None for h in heights] == [False, False, True, True, True]
+    content = zipfile.ZipFile(io.BytesIO(render_odt_document(document))).read("content.xml").decode()
+    assert content.count("<table:table ") == 3 and "Quarterly review, version 3" in content
+    page = render_html_document(document).decode()
+    assert page.count('<table class="grid"') == 3 and "Prepared by" in page

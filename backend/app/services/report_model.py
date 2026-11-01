@@ -8,7 +8,8 @@ place rather than once per output format.
 
 Responsibilities:
 - Block types: `Heading`, `Paragraph`, `Equation` (a display equation), `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
-  `Gap`, `VerticalSpace`, `BottomStart`/`BottomEnd` (a run placed at the page foot), `PageBreak`,
+  `Grid` (an author-written table: merged cells, per-cell alignment and colour), `Gap`, `VerticalSpace`,
+  `BottomStart`/`BottomEnd` (a run placed at the page foot), `PageBreak`,
   `PageStyleChange` (a new page in another `PageStyle`: paper, orientation, `Margins`), and the
   `ReportDocument` that holds them with the title, branding and the page style of its own pages; `RunningBand` (a
   header or footer: an invisible left, centre and right table, with page fields and an optional logo).
@@ -458,6 +459,60 @@ class Table:
 
 
 @dataclass(frozen=True)
+class GridCell:
+    """One cell of a `Grid`, with its style already resolved (the cascade and colour words are the evaluator's job).
+
+    Attributes:
+        paragraphs: The cell's text, one entry per paragraph (plain text, or `MathText` with styles and equations); a blank
+            cell holds one empty paragraph.
+        colspan / rowspan: How many columns and rows the cell covers; the covered positions are not listed in their rows.
+        align: `left`, `center`, `right` or `justify`.
+        valign: `top`, `middle` or `bottom`.
+        fill: Background as `#rrggbb`, or `None` for none.
+        color: Text colour as `#rrggbb`, or `None` for the default.
+        bold: Whether the text is bold.
+    """
+
+    paragraphs: tuple[str, ...] = ("",)
+    colspan: int = 1
+    rowspan: int = 1
+    align: str = "left"
+    valign: str = "top"
+    fill: str | None = None
+    color: str | None = None
+    bold: bool = False
+
+
+@dataclass(frozen=True)
+class GridRow:
+    """A row of a `Grid`: its cells left to right (positions covered from above are left out) and a minimum height in cm."""
+
+    cells: list[GridCell]
+    height_cm: float | None = None
+
+
+@dataclass(frozen=True)
+class Grid:
+    """An author-written table, as opposed to a `Table`, whose rows are records.
+
+    Attributes:
+        widths: One forced width per column (`30%`, `4 cm`, `40 mm`, or `None` for automatic), resolved like a table's.
+        rows: The rows.
+        header_rows: How many leading rows form the header.
+        repeat_header: Whether the header rows are printed again at the top of each page the grid runs onto.
+        borders: `all`, `outer`, `horizontal` or `none`.
+        border_color: Border colour as `#rrggbb`.
+    """
+
+    widths: list[str | None]
+    rows: list[GridRow]
+    header_rows: int = 0
+    repeat_header: bool = True
+    borders: str = "all"
+    border_color: str = "#999999"
+
+
+@dataclass(frozen=True)
 class Gap:
     """Vertical whitespace of `cm` centimetres (a PDF layout hint)."""
 
@@ -511,8 +566,8 @@ class PageStyleChange:
 
 
 Block = (
-    Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Gap | VerticalSpace | BottomStart | BottomEnd | PageBreak
-    | PageStyleChange
+    Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Grid | Gap | VerticalSpace | BottomStart | BottomEnd
+    | PageBreak | PageStyleChange
 )
 
 
@@ -1056,5 +1111,10 @@ def finalize_links(document: ReportDocument) -> ReportDocument:
             block = BulletList([_resolved_links(item, taken) for item in block.items])
         elif isinstance(block, NumberedList):
             block = NumberedList([_resolved_links(item, taken) for item in block.items])
+        elif isinstance(block, Grid):
+            block = replace(block, rows=[
+                replace(row, cells=[replace(cell, paragraphs=tuple(_resolved_links(p, taken) for p in cell.paragraphs)) for cell in row.cells])
+                for row in block.rows
+            ])
         blocks.append(block)
     return replace(document, blocks=blocks)

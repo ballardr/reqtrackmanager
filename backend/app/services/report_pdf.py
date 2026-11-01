@@ -65,6 +65,7 @@ from app.services.report_document import (
     toned_paragraph,
 )
 from app.services.report_fonts import draw_centred, text_width
+from app.services.report_grid_render import pdf_grid
 from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
@@ -73,6 +74,7 @@ from app.services.report_model import (
     BulletList,
     Equation,
     Gap,
+    Grid,
     Heading,
     Image,
     ImageCell,
@@ -519,6 +521,8 @@ def render_pdf_document(document: ReportDocument) -> bytes:
                 story.extend(_image_flowables(block, usable_width))
         elif isinstance(block, Table):
             story.append(_table(block, accent, usable_width, usable_height, images))
+        elif isinstance(block, Grid):
+            story.append(pdf_grid(block, usable_width, usable_height, lambda text, bold: _markup(text, images, bold=bold)))
         elif isinstance(block, Gap):
             out.append(Spacer(1, block.cm * cm))
         elif isinstance(block, BottomStart):

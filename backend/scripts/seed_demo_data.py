@@ -635,6 +635,22 @@ def project_overview_with_logo_layout(logo_file_id: str) -> dict:
     }
 
 
+def with_snippets(headers: dict, path: str, tree: dict, snippets: list[tuple[str, int | None]]) -> dict:
+    """The layout tree with built-in report snippets inserted, as the designer's Insert snippet does: each `(key, index)` goes at
+    that position in the layout's blocks (`None`: the end). `path` is `/orgs/{id}` or `/projects/{id}`."""
+    for key, index in snippets:
+        target = {"container": "nodes"} | ({} if index is None else {"index": index})
+        r = httpx.post(
+            f"{BASE}{path}/report-layouts/snippets/{key}/apply", json={"tree": tree, "target": target}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+        body = r.json()
+        if not body["ok"]:
+            raise RuntimeError(f"Snippet {key} was refused: {body['errors']}")
+        tree = body["tree"]
+    return tree
+
+
 def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
     """Hides an inherited report layout in one project."""
     r = httpx.put(
@@ -2256,8 +2272,13 @@ def main() -> None:
     logo = upload_report_image(h_pm, f"/orgs/{org['id']}", LOGO_PATH, "image/svg+xml")
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Project overview with logo",
-        "A cover banner (the logo on a plate in the report accent colour), the project name and its requirements.",
-        project_overview_with_logo_layout(logo["id"]), folder="Handover",
+        "A cover banner (the logo on a plate in the report accent colour), the project name, a document-details table, "
+        "its requirements and a review and control table.",
+        with_snippets(
+            h_pm, f"/orgs/{org['id']}", project_overview_with_logo_layout(logo["id"]),
+            [("document-details", 4), ("document-control", None)],
+        ),
+        folder="Handover",
     )
     print("Seeding a saved report snippet: the by-component grouping, kept for the organisation to insert into other layouts...")
     create_report_snippet(

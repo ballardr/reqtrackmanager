@@ -276,7 +276,7 @@ export const TheMostUsedBlocksAreListedFirst: Story = {
     await workspaceOf();
     await userEvent.click(canvas.getByRole("button", { name: "Add block" }));
     const names = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
-    await expect(names.slice(0, 5).map((n) => n?.trim())).toEqual(["Heading 1", "Heading 2", "Heading 3", "Text", "Table"]);
+    await expect(names.slice(0, 5).map((n) => n?.trim())).toEqual(["Heading 1", "Heading 2", "Heading 3", "Text", "Table (records)"]);
     await expect(screen.getByText("Most used")).toBeInTheDocument();
     await expect(screen.getByText("Other blocks")).toBeInTheDocument();
   },

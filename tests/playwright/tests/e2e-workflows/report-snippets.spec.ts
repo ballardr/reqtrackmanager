@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { closeDesignerPreviewDialog, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -160,7 +160,7 @@ test.describe("Report snippets", () => {
       await page.getByRole("button", { name: "Snippets" }).click();
       await page.getByRole("menuitem", { name: "Insert snippet" }).click();
       const dialog = picker(page);
-      await dialog.getByRole("button", { name: "Select Document control" }).click();
+      await dialog.getByRole("button", { name: "Select Document review and control" }).click();
       await dialog.getByRole("combobox", { name: "Where to insert the snippet" }).selectOption({ label: "Inserting at the start of the layout" });
       await dialog.getByRole("button", { name: "Insert", exact: true }).click();
       await expect(editor).toHaveValue(/@layout document[\s\S]*Document control[\s\S]*Existing heading/);
@@ -172,6 +172,41 @@ test.describe("Report snippets", () => {
       await expect(page.getByText("The text is valid.")).toBeVisible();
       await saveNewVersion(page);
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
+    });
+  });
+
+  test("the table snippets insert as custom tables that fill in from the run and leave blank boxes to write in", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await newLayout(page, project.id, `E2E snippet tables ${suffix}`);
+    await page.getByRole("tab", { name: "Blocks" }).click();
+
+    for (const snippet of ["Document details", "Document review and control", "Approvals"]) {
+      await test.step(`insert ${snippet}`, async () => {
+        await page.getByRole("button", { name: "Snippets" }).click();
+        await page.getByRole("menuitem", { name: "Insert snippet" }).click();
+        const dialog = picker(page);
+        await dialog.getByRole("button", { name: `Select ${snippet}` }).click();
+        await dialog.getByRole("button", { name: "Insert", exact: true }).click();
+        await expect(dialog).toBeHidden();
+        await expect(page.locator(".toast", { hasText: `Inserted ${snippet}` })).toBeVisible();
+      });
+    }
+
+    await test.step("the preview prints the filled details and the blank rows", async () => {
+      await openDesignerPreviewDialog(page);
+      const preview = page.getByRole("dialog", { name: "Report preview" });
+      await preview.getByRole("button", { name: "Run preview" }).click();
+      const grids = preview.frameLocator('iframe[title="Report preview"]').locator("table.grid");
+      await expect(grids).toHaveCount(3);
+      await expect(grids.first().locator("td").filter({ hasText: project.name }).first()).toBeVisible();
+      await expect(grids.first().locator("td").first()).toHaveCSS("background-color", "rgb(0, 0, 0)");
+      // Where each lands depends on the selection, so the tables are found by what they hold.
+      const review = grids.filter({ hasText: "Comments" });
+      await expect(review.locator("tr").nth(2).locator("td")).toHaveCount(5);
+      await expect(review.locator("tr").nth(2).locator("td").first()).toHaveText("");
+      const approvals = grids.filter({ hasText: "Signature" });
+      await expect(approvals.locator("tr").nth(2).locator("td").first()).toHaveText("Prepared by");
+      await closeDesignerPreviewDialog(page);
     });
   });
 

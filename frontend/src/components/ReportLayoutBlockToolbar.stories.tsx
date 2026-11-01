@@ -17,7 +17,7 @@ type Story = StoryObj<typeof ReportLayoutBlockToolbar>;
 export const OffersHeadingsByLevelAndTheOtherBlocks: Story = {
   play: async ({ canvasElement, args }) => {
     const toolbar = within(within(canvasElement).getByRole("toolbar", { name: "Insert block" }));
-    for (const name of ["Heading 1", "Heading 2", "Heading 3", "Text with placeholders", "For each record", "Group records", "Table of records", "If … otherwise", "Equation", "Page break"]) {
+    for (const name of ["Heading 1", "Heading 2", "Heading 3", "Text with placeholders", "For each record", "Group records", "Table of records", "Table (custom)", "If … otherwise", "Equation", "Page break"]) {
       await expect(toolbar.getByRole("button", { name: `Insert block: ${name}` })).toBeInTheDocument();
     }
     await expect(toolbar.queryByRole("button", { name: "Insert block: Sheet" })).not.toBeInTheDocument();

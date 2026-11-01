@@ -30,6 +30,7 @@ import { TextListField } from "./TextListField";
 import { LabeledSelect } from "./LabeledSelect";
 import { ConditionNodeEditor, type Condition, type ConditionEnv } from "./ReportLayoutConditionEditor";
 import { ReportColourSchemeEditor } from "./ReportColourSchemeEditor";
+import { ReportGridField } from "./ReportGridField";
 import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayoutColumnsEditor";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
@@ -69,11 +70,13 @@ type Obj = Record<string, unknown>;
  * @param env The catalogues and layout-wide facts.
  * @param problems The server's messages for this field.
  * @param onChange Called with the key and its new value (`undefined` removes the key).
+ * @param onChangeMany Called with several keys at once, for an editor that changes more than its own key (the custom table's
+ *   editor changes `columns`, `rows` and `header_rows` together); without it the keys are set one after another.
  * @param labelScope Looks a choice's label up under `<scope>.<key>` first, for a field whose choices mean something else here
  *   (an image column's width unit is a share of the column, not of the text).
  */
 export function ReportLayoutBlockField({
-  field, node, names, env, problems, onChange, labelScope,
+  field, node, names, env, problems, onChange, onChangeMany, labelScope,
 }: {
   field: BlockField;
   node: TreeNode;
@@ -81,6 +84,7 @@ export function ReportLayoutBlockField({
   env: BlockEnv;
   problems: string[];
   onChange: (key: string, value: unknown) => void;
+  onChangeMany?: (patch: Record<string, unknown>) => void;
   labelScope?: string;
 }) {
   const strings = useStrings();
@@ -322,6 +326,29 @@ export function ReportLayoutBlockField({
           />
         </fieldset>
       );
+      break;
+    case "grid_columns": {
+      // One editor changes the table's columns, rows and header count together, so the `rows` field draws nothing of its own.
+      const gridText = strings.reportGrid;
+      control = (
+        <ReportGridField
+          label={gridText.fieldLabel} help={gridText.fieldHelp} node={node} disabled={disabled} colours={env.colours} palette={env.palette}
+          onSave={(patch) => (onChangeMany ? onChangeMany({ ...patch }) : Object.entries(patch).forEach(([key, v]) => onChange(key, v)))}
+          renderCellText={(cell, onText, label) => (
+            <ReportLayoutBlockField
+              field={{
+                key: "text", label, kind: "longtext", required: false, help: gridText.cellTextHelp, max_length: 2000, minimum: null, maximum: null,
+                default: null, choices: [], features: ["placeholders", "math", "markdown"], depends_on: null, families: [], empty_label: "",
+              }}
+              node={cell} names={names} env={env} problems={[]} onChange={(_, next) => onText(typeof next === "string" ? next : "")}
+            />
+          )}
+        />
+      );
+      break;
+    }
+    case "grid_rows":
+      control = null;
       break;
     case "page_style": {
       const unknown = asText !== "" && !env.pageStyles.includes(asText);

@@ -503,7 +503,94 @@ select.input[size] {
   color: var(--color-text);
 }
 
-.app-header .notification-dropdown .text-muted {
+.app-header .notification-dropdown /* Custom table editor (components/ReportGridEditor.tsx). The cells are drawn as the printed page shows them, so an unset
+   fill and text colour are paper white and black in both themes (the colours the author sets are drawn as they are). */
+.grid-editor__toolbar {
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.grid-editor__divider {
+  align-self: stretch;
+  border-left: 1px solid var(--color-border);
+  margin: 0 var(--space-1);
+}
+
+.grid-editor__sizes {
+  align-items: flex-end;
+}
+
+.grid-editor__scroller {
+  max-width: 100%;
+  overflow: auto;
+  padding: 2px;
+}
+
+.grid-editor__grid {
+  display: grid;
+  grid-auto-rows: minmax(2.5rem, auto);
+  gap: 0;
+  min-width: min-content;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.grid-editor__grid:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.grid-editor__cell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid var(--color-border);
+  cursor: cell;
+  user-select: none;
+  overflow-wrap: anywhere;
+}
+
+.grid-editor__cell--header-edge {
+  border-bottom-width: 3px;
+}
+
+.grid-editor__cell--selected {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 9999px rgba(47, 133, 90, 0.14);
+}
+
+.grid-editor__cell--active {
+  outline-width: 3px;
+}
+
+.grid-editor__text {
+  white-space: pre-wrap;
+  width: 100%;
+}
+
+.grid-editor__blank {
+  width: 100%;
+  border: 1px dashed currentColor;
+  border-radius: 3px;
+  opacity: 0.45;
+  font-size: 0.75rem;
+  text-align: center;
+  align-self: center;
+}
+
+.grid-editor__span {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 0.65rem;
+  opacity: 0.6;
+}
+
+.text-muted {
   color: var(--color-text-muted);
 }
 

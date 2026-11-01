@@ -6,7 +6,8 @@ decides whether a tree may be saved or run.
 
 Responsibilities:
 - Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
-  `each`, `group`, `if`, `page_break`, `spacer` (vertical space of an exact height), `bottom` (its contents at the foot of the page),
+  `each`, `group`, `if`, `grid` (an author-written table with merged, aligned and coloured cells), `page_break`,
+  `spacer` (vertical space of an exact height), `bottom` (its contents at the foot of the page),
   `section` (its contents in another page style), `equation` (display TeX),
   `image` (a picture from the layout tier's image library, with size, alignment, caption and alt text),
   `widget` (one component of a module report, by key), and the table-family block `sheet` (a root source plus
@@ -67,10 +68,21 @@ from app.modules.registry import (
     get_record_attachment_providers,
     get_report_field_providers,
 )
-from app.services.report_colours import known_names, palette_problems
+from app.services.report_colours import colour_word_problem, known_names, palette_problems
 from app.services.report_column_width import percent_total, width_problem
 from app.services.report_fields import FieldInfo, UnknownReportFieldError, field_catalogue
 from app.services.report_file_names import template_problems
+from app.services.report_grid import (
+    GRID_ALIGNMENTS,
+    GRID_BORDERS,
+    GRID_HEIGHT_UNITS,
+    GRID_ROW_HEIGHT_MM,
+    GRID_VALIGNMENTS,
+    MAX_CELL_CHARS,
+    MAX_GRID_COLUMNS,
+    MAX_GRID_ROWS,
+    place_spans,
+)
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import CELL_ARRANGEMENTS, CONTENTS_SHEET_NAME, PLACEHOLDER_NAMES, PLACEHOLDER_RE
@@ -1476,6 +1488,117 @@ def _validate_section(v: TreeValidator, node: dict[str, Any], path: str) -> None
         v.in_section = previous
 
 
+#: The keys a grid, a column, a row and a cell share: the style that cascades from the grid down to the cell.
+_GRID_STYLE_KEYS = ("align", "valign", "fill", "color", "bold")
+
+
+def _validate_grid_style(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    """Checks the cascading style keys of a grid, column, row or cell: closed words, colour words, a true/false bold."""
+    for key, allowed in (("align", GRID_ALIGNMENTS), ("valign", GRID_VALIGNMENTS)):
+        if key in node and node[key] not in allowed:
+            v.error(f"{path}.{key}", f"Must be one of: {', '.join(allowed)}.")
+    for key in ("fill", "color"):
+        if key in node and (problem := colour_problem(node[key], v.colour_names)):
+            v.error(f"{path}.{key}", problem)
+    if "bold" in node and not isinstance(node["bold"], bool):
+        v.error(f"{path}.bold", "Must be true or false.")
+
+
+def _grid_list(v: TreeValidator, node: dict[str, Any], key: str, path: str, limit: int) -> list[Any] | None:
+    """`node[key]` when it is a list of 1 to `limit` objects; `None` (and an error) otherwise."""
+    value = node.get(key, MISSING)
+    if value is MISSING:
+        return None
+    if not isinstance(value, list) or not 1 <= len(value) <= limit:
+        v.error(f"{path}.{key}", f"Must be a list of 1 to {limit} {key}.")
+        return None
+    return value
+
+
+def _validate_grid_row(v: TreeValidator, row: Any, path: str) -> list[tuple[int, int]]:
+    """Checks one row of a grid; returns the `(colspan, rowspan)` of each cell (a bad number counts as 1)."""
+    if not isinstance(row, dict):
+        v.error(path, "Must be an object.")
+        return []
+    v.check_keys(row, path, required=("cells",), optional=("height", "height_unit", *_GRID_STYLE_KEYS))
+    _validate_grid_style(v, row, path)
+    unit = row.get("height_unit", "cm")
+    if "height_unit" in row and unit not in GRID_HEIGHT_UNITS:
+        v.error(f"{path}.height_unit", f"Must be one of: {', '.join(GRID_HEIGHT_UNITS)}.")
+        unit = "cm"
+    if "height_unit" in row and "height" not in row:
+        v.error(f"{path}.height_unit", "A unit needs a height.")
+    if "height" in row:
+        scale = 0.1 if unit == "cm" else 1
+        low, high = GRID_ROW_HEIGHT_MM[0] * scale, GRID_ROW_HEIGHT_MM[1] * scale
+        value = row["height"]
+        if not isinstance(value, int | float) or isinstance(value, bool) or not low <= value <= high:
+            v.error(f"{path}.height", f"The height must be a number from {low:g} to {high:g} {unit}.")
+    cells = row.get("cells", MISSING)
+    if cells is MISSING:
+        return []
+    if not isinstance(cells, list) or len(cells) > MAX_GRID_COLUMNS:
+        v.error(f"{path}.cells", f"Must be a list of at most {MAX_GRID_COLUMNS} cells.")
+        return []
+    spans: list[tuple[int, int]] = []
+    for i, cell in enumerate(cells):
+        here = f"{path}.cells[{i}]"
+        if not isinstance(cell, dict):
+            v.error(here, "Must be an object.")
+            spans.append((1, 1))
+            continue
+        v.check_keys(cell, here, required=("text",), optional=("colspan", "rowspan", *_GRID_STYLE_KEYS))
+        text = v.text(cell.get("text", MISSING), f"{here}.text", limit=MAX_CELL_CHARS, allow_empty=True)
+        v.placeholders(text, f"{here}.text")
+        _check_authored_math(v, text, f"{here}.text")
+        _validate_grid_style(v, cell, here)
+        span: list[int] = []
+        for key in ("colspan", "rowspan"):
+            value = cell.get(key, 1)
+            if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= (MAX_GRID_COLUMNS if key == "colspan" else MAX_GRID_ROWS):
+                v.error(f"{here}.{key}", "Must be a whole number of 1 or more, within the table.")
+                value = 1
+            span.append(value)
+        spans.append((span[0], span[1]))
+    return spans
+
+
+def _validate_grid(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(
+        node, path, required=("type", "columns", "rows"), optional=("header_rows", "borders", "border_color", *_GRID_STYLE_KEYS),
+    )
+    _validate_grid_style(v, node, path)
+    if "borders" in node and node["borders"] not in GRID_BORDERS:
+        v.error(f"{path}.borders", f"Must be one of: {', '.join(GRID_BORDERS)}.")
+    if "border_color" in node and (problem := colour_word_problem(node["border_color"], v.colour_names, allow_none=False)):
+        v.error(f"{path}.border_color", problem)
+    columns = _grid_list(v, node, "columns", path, MAX_GRID_COLUMNS)
+    for i, column in enumerate(columns or []):
+        here = f"{path}.columns[{i}]"
+        if not isinstance(column, dict):
+            v.error(here, "Must be an object.")
+            continue
+        v.check_keys(column, here, optional=("width", *_GRID_STYLE_KEYS))
+        v.column_width(column, here)
+        _validate_grid_style(v, column, here)
+    if columns is not None:
+        widths = [c.get("width") for c in columns if isinstance(c, dict)]
+        total = percent_total(widths)
+        if total > 100 and not any(width_problem(w) for w in widths if w is not None):
+            v.error(f"{path}.columns", f"The columns' percentage widths add up to {total:g}%; they must not exceed 100%.")
+    rows = _grid_list(v, node, "rows", path, MAX_GRID_ROWS)
+    spans = [_validate_grid_row(v, row, f"{path}.rows[{r}]") for r, row in enumerate(rows or [])]
+    header = node.get("header_rows", 0)
+    if "header_rows" in node and (not isinstance(header, int) or isinstance(header, bool) or not 0 <= header <= len(spans)):
+        v.error(f"{path}.header_rows", f"Must be a whole number from 0 to the number of rows ({len(spans)}).")
+        header = 0
+    if columns is not None and rows is not None:
+        _, problems = place_spans(len(columns), spans, header if isinstance(header, int) else 0)
+        for merge in problems:
+            where = f"{path}.rows[{merge.row}]" + ("" if merge.cell is None else f".cells[{merge.cell}]")
+            v.error(where, merge.message)
+
+
 def _validate_table(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type", "source", "columns"), optional=("empty_text",))
     with v.collecting(node):
@@ -1887,8 +2010,33 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
                     help="One line of TeX without spaces at either end, for example \\frac{a}{b} = c."),),
         template={"type": "equation", "tex": "a = b"},
     ),
+    "grid": BlockSchema(
+        "Table (custom)", "A table you write cell by cell, as opposed to Table (records), which has one row per record. Cells can be "
+        "merged, aligned and coloured, and hold text with placeholders.",
+        (
+            BlockField("columns", "Columns", "grid_columns", required=True,
+                       help=f"One entry per column (up to {MAX_GRID_COLUMNS}): its width and the style its cells start from."),
+            BlockField("rows", "Rows", "grid_rows", required=True,
+                       help=f"The rows (up to {MAX_GRID_ROWS}) and their cells. A merged cell is written once, on its top-left position."),
+            BlockField("header_rows", "Header rows", "integer", minimum=0, maximum=MAX_GRID_ROWS, default=0,
+                       help="How many rows at the top repeat on each page the table runs onto. Typically 1 for a table with headings."),
+            BlockField("borders", "Borders", "choice", choices=GRID_BORDERS, default="all",
+                       help="All: a line round every cell. Outer: only round the table. Horizontal: lines between rows. None: no lines."),
+            BlockField("border_color", "Border colour", "colour", default="#999999", help="The colour of the lines. Typically a light grey."),
+            BlockField("align", "Alignment", "choice", choices=GRID_ALIGNMENTS, default="left",
+                       help="Where text sits across a cell, unless a column, row or cell says otherwise."),
+            BlockField("valign", "Vertical alignment", "choice", choices=GRID_VALIGNMENTS, default="top",
+                       help="Where text sits down a cell, unless a column, row or cell says otherwise."),
+            BlockField("fill", "Fill", "colour", help="Background of every cell, unless a column, row or cell says otherwise."),
+            BlockField("color", "Text colour", "colour", help="Colour of the text, unless a column, row or cell says otherwise."),
+            BlockField("bold", "Bold", "boolean", default=False, help="Whether the text is bold, unless a column, row or cell says otherwise."),
+        ),
+        template={
+            "type": "grid", "columns": [{}, {}], "rows": [{"cells": [{"text": "Label"}, {"text": "Value"}]}],
+        },
+    ),
     "table": BlockSchema(
-        "Table", "A table with one row per record.",
+        "Table (records)", "A table with one row per record.",
         (
             _SOURCE_FIELD,
             BlockField("columns", "Columns", "columns", required=True, help="The fields to show, in order, with an optional heading each."),
@@ -1969,6 +2117,7 @@ for _spec in (
     BlockSpec("shape", (FAMILY_DOCUMENT,), _validate_shape),
     BlockSpec("record_images", (FAMILY_DOCUMENT,), _validate_record_images),
     BlockSpec("equation", (FAMILY_DOCUMENT,), _validate_equation),
+    BlockSpec("grid", (FAMILY_DOCUMENT,), _validate_grid),
     BlockSpec("table", (FAMILY_DOCUMENT,), _validate_table),
     BlockSpec("each", (FAMILY_DOCUMENT,), _validate_each),
     BlockSpec("group", (FAMILY_DOCUMENT,), _validate_group),

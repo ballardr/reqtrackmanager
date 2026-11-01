@@ -37,7 +37,7 @@ To populate the running stack with a realistic, presentable dataset (a fictional
 cd tests/container && docker compose exec backend python scripts/seed_demo_data.py
 ```
 
-The demo organisation also has the custom reports a reviewer needs to see working: among them **Project overview with logo** (the white product logo, uploaded from `backend/scripts/data/logo.svg`, in front of a plate in the report accent colour) and the **Project Workbook** starter (one sheet per record type).
+The demo organisation also has the custom reports a reviewer needs to see working: among them **Project overview with logo** (the white product logo, uploaded from `backend/scripts/data/logo.svg`, in front of a plate in the report accent colour, with the document details and document review and control snippets inserted) and the **Project Workbook** starter (one sheet per record type).
 
 Idempotent (skips if already seeded) and API-driven, same as the E2E persona dataset (`scripts/seed_e2e_dataset.py`) — this is a separate script with separate, screenshot-friendly content, not a variant of the E2E fixtures. Login as `demo.admin@example.com` / `DemoDemo123!` afterward; see the script's own docstring for the other seeded personas and their roles. This is also the dataset the README's screenshots are captured from.
 

@@ -173,7 +173,15 @@ export function buildBlockCatalogue(): BlockCatalogue {
         ],
       }),
       block("equation", "Equation", { type: "equation", tex: "a = b" }, { fields: [field("tex", "TeX", "tex", { required: true })] }),
-      block("table", "Table", { type: "table", source: {}, columns: [] }, {
+      block("grid", "Table (custom)", { type: "grid", columns: [{}, {}], rows: [{ cells: [{ text: "Label" }, { text: "Value" }] }] }, {
+        fields: [
+          field("columns", "Columns", "grid_columns", { required: true }), field("rows", "Rows", "grid_rows", { required: true }),
+          field("header_rows", "Header rows", "integer", { minimum: 0, maximum: 200, default: 0 }),
+          field("borders", "Borders", "choice", { choices: ["all", "outer", "horizontal", "none"], default: "all" }),
+          field("border_color", "Border colour", "colour", { default: "#999999" }),
+        ],
+      }),
+      block("table", "Table (records)", { type: "table", source: {}, columns: [] }, {
         fields: [source, field("columns", "Columns", "columns", { required: true }), field("empty_text", "Text when there is nothing", "text")],
       }),
       block("each", "For each record", { type: "each", source: {}, children: [] }, {

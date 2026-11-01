@@ -56,6 +56,7 @@ from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
+from app.services.report_grid_render import docx_grid
 from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
@@ -66,6 +67,7 @@ from app.services.report_model import (
     BulletList,
     Equation,
     Gap,
+    Grid,
     Heading,
     Image,
     ImageCell,
@@ -783,6 +785,8 @@ def render_docx_document(document: ReportDocument) -> bytes:
             _image_block(doc, block, usable_cm)
         elif isinstance(block, Table):
             _table(doc, block, accent, usable_cm, usable_height_cm)
+        elif isinstance(block, Grid):
+            docx_grid(doc, block, usable_cm, _add_text)
         elif isinstance(block, PageBreak):
             doc.add_page_break()
         elif isinstance(block, PageStyleChange):

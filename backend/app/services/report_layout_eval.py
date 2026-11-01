@@ -91,6 +91,7 @@ from app.services.report_colours import effective_scheme, is_name, resolve_colou
 from app.services.report_column_width import sheet_widths_cm
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
 from app.services.report_framework import ReportContext, ReportResult
+from app.services.report_grid import DEFAULT_BORDER_COLOUR, cell_paragraphs, low_contrast, place_spans
 from app.services.report_images import MAX_REPORT_IMAGES, ResolvedImage, load_image, load_org_logo, max_total_image_bytes
 from app.services.report_layout_tree import (
     DEFAULT_GROUP_ALIAS,
@@ -111,6 +112,9 @@ from app.services.report_model import (
     CellLink,
     Equation,
     Gap,
+    Grid,
+    GridCell,
+    GridRow,
     Heading,
     Image,
     ImageCell,
@@ -531,7 +535,7 @@ class _Run:
         """Appends blocks to the document, enforcing the output limit."""
         for block in blocks:
             self.stats.blocks += 1
-            rows = len(block.rows) if isinstance(block, Table) else 0
+            rows = len(block.rows) if isinstance(block, Table | Grid) else 0
             self.stats.rows += rows
             self._count_output(1 + rows)
             self.blocks.append(block)
@@ -1356,6 +1360,48 @@ def _table_cells(run: _Run, node: dict[str, Any], scope: Scope, records: list[Re
     return labels, rows
 
 
+_GRID_STYLE_KEYS = ("align", "valign", "fill", "color", "bold")
+
+
+def _eval_grid(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """A custom table: the style of each cell is the most specific of cell, row, column and grid; colour words become hex;
+    each cell's text is read as Markdown with its placeholders filled, in the scope of the enclosing blocks."""
+    columns = node["columns"]
+    starts, _ = place_spans(
+        len(columns), [[(c.get("colspan", 1), c.get("rowspan", 1)) for c in row["cells"]] for row in node["rows"]], node.get("header_rows", 0),
+    )
+    accent = run.org_values["report_accent"]
+    unreadable = 0
+
+    def colour(word: str | None) -> str | None:
+        if word is None:
+            return None
+        run.note_colours(word)
+        return resolve_colour(word, accent, run.scheme)
+
+    rows: list[GridRow] = []
+    for r, row in enumerate(node["rows"]):
+        cells: list[GridCell] = []
+        for i, cell in enumerate(row["cells"]):
+            layers = (cell, row, columns[starts[r][i]], node)
+            style = {key: next((layer[key] for layer in layers if key in layer), None) for key in _GRID_STYLE_KEYS}
+            fill, text_colour = colour(style["fill"]), colour(style["color"])
+            unreadable += low_contrast(fill, text_colour or "#000000")
+            cells.append(GridCell(
+                cell_paragraphs(run.text_blocks(cell["text"], scope)) if cell["text"].strip() else ("",),
+                cell.get("colspan", 1), cell.get("rowspan", 1), style["align"] or "left", style["valign"] or "top", fill, text_colour,
+                bool(style["bold"]),
+            ))
+        height = _cm(row.get("height"), row.get("height_unit"))
+        rows.append(GridRow(cells, height))
+    if unreadable:
+        run.warn(f"{unreadable} cell{'s' if unreadable != 1 else ''} of a custom table have text and fill colours that are hard to read together.")
+    run.emit(Grid(
+        [c.get("width") for c in columns], rows, node.get("header_rows", 0), run.repeat_table_header, node.get("borders", "all"),
+        colour(node.get("border_color")) or DEFAULT_BORDER_COLOUR,
+    ), Gap(0.2))
+
+
 def _eval_table(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     found = run.source(node, scope)
     if found.records:
@@ -1548,7 +1594,7 @@ for _key, _fn in (
     ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("spacer", _eval_spacer),
     ("bottom", _eval_bottom), ("section", _eval_section),
     ("image", _eval_image), ("shape", _eval_shape), ("record_images", _eval_record_images),
-    ("equation", _eval_equation), ("table", _eval_table), ("each", _eval_each), ("group", _eval_group), ("if", _eval_if),
+    ("equation", _eval_equation), ("grid", _eval_grid), ("table", _eval_table), ("each", _eval_each), ("group", _eval_group), ("if", _eval_if),
     ("sheet", _eval_sheet), ("widget", _eval_widget),
 ):
     register_evaluator(_key, _fn)

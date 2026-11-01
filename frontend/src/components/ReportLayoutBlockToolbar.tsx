@@ -2,7 +2,7 @@
  * Module: components/ReportLayoutBlockToolbar
  *
  * The row of icon buttons above the text view that insert a block's starter text (a heading of a level, text, a
- * repeated section, a table, an if, an equation, a page break, a spacer, content at the page bottom, a sheet) at the caret.
+ * repeated section, a table of records, a custom table, an if, an equation, a page break, a spacer, content at the page bottom, a sheet) at the caret.
  *
  * Responsibilities: one icon button per block that suits the layout's family, each with a tooltip (`Tooltip`) naming
  * the block and the accessible name "Insert block: <name>"; call `onInsert` with the block's starter text. Which
@@ -12,7 +12,7 @@
  * the accessible name keep every button identifiable (style guide, "Pattern: icon buttons").
  */
 import {
-  ArrowDownToLine, FileSpreadsheet, GitBranch, Heading1, Heading2, Heading3, Layers, MoveVertical, RectangleHorizontal, Repeat, Sigma, SeparatorHorizontal, Table, Type,
+  ArrowDownToLine, FileSpreadsheet, GitBranch, Heading1, Heading2, Heading3, Layers, MoveVertical, RectangleHorizontal, Repeat, Sigma, SeparatorHorizontal, Table, Table2, Type,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,6 +30,7 @@ const BLOCK_ICONS: Record<string, LucideIcon> = {
   each: Repeat,
   group: Layers,
   table: Table,
+  grid: Table2,
   if: GitBranch,
   equation: Sigma,
   page_break: SeparatorHorizontal,
