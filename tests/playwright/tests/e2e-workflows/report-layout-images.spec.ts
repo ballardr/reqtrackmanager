@@ -191,6 +191,55 @@ test.describe("Report layout images", () => {
     });
   });
 
+  test("an EPS or PDF logo uploaded in the library is stored as an SVG and a damaged one is refused with a reason", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/admin`);
+    await selectProjectAdminGroup(page, "Reports");
+    await newLayout(page, `EPS ${suffix}`);
+    await page.getByRole("tab", { name: "Blocks" }).click();
+    await page.getByRole("button", { name: "Add block" }).click();
+    await page.getByRole("menuitem", { name: "Image", exact: true }).click();
+    await page.getByLabel("Block details").getByRole("button", { name: "Choose image…" }).click();
+    const library = page.getByRole("dialog", { name: "Image library" });
+    await expect(library.locator('input[type="file"]')).toHaveAttribute("accept", /\.eps.*\.pdf/);
+
+    await test.step("a real EPS is converted on upload and listed as <name>.eps.svg", async () => {
+      const eps = "%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 100 50\n1 0 0 setrgbcolor 10 10 80 30 rectfill\nshowpage\n";
+      await library.locator('input[type="file"]').setInputFiles({ name: `logo-${suffix}.eps`, mimeType: "application/postscript", buffer: Buffer.from(eps) });
+      await expect(library.getByRole("button", { name: `Select logo-${suffix}.eps.svg` })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    await test.step("the first page of a real PDF is converted on upload and listed as <name>.pdf.svg", async () => {
+      const content = "1 0 0 rg 10 10 80 30 re f";
+      const objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>",
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 50] /Contents 4 0 R >>",
+        `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+      ];
+      let pdf = "%PDF-1.4\n";
+      const offsets: number[] = [];
+      objects.forEach((body, i) => { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${body}\nendobj\n`; });
+      const xref = pdf.length;
+      pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+      pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+      await library.locator('input[type="file"]').setInputFiles({ name: `brand-${suffix}.pdf`, mimeType: "application/pdf", buffer: Buffer.from(pdf) });
+      await expect(library.getByRole("button", { name: `Select brand-${suffix}.pdf.svg` })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    await test.step("a damaged PDF is refused with the converter's reason", async () => {
+      await library.locator('input[type="file"]').setInputFiles({ name: `broken-${suffix}.pdf`, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\nbroken") });
+      await expect(library.getByText(/could not be read|Export an SVG or PNG instead/)).toBeVisible();
+      await expect(library.getByRole("button", { name: `Select broken-${suffix}.pdf.svg` })).toHaveCount(0);
+    });
+
+    await test.step("a file that is not PostScript is refused as an unusable picture", async () => {
+      await library.locator('input[type="file"]').setInputFiles({ name: `fake-${suffix}.eps`, mimeType: "application/postscript", buffer: Buffer.from("not a picture") });
+      await expect(library.getByText(/Only PNG, JPEG, GIF, WebP and plain SVG|can be used in a report/)).toBeVisible();
+      await expect(library.getByRole("button", { name: `Select fake-${suffix}.eps.svg` })).toHaveCount(0);
+    });
+  });
+
   test("text wraps beside a picture only when it says which side it is on, and a layered picture has no alignment", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await page.goto(`/projects/${project.id}/admin`);

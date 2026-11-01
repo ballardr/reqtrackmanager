@@ -24,16 +24,18 @@ from app.modules.registry import ReportFieldProvider
 from app.services.report_fields import bool_field, date_field, from_search
 
 REPORT_FIELDS: dict[str, ReportFieldProvider] = {
-    "compliance_requirement": from_search(SEARCH_PROVIDERS["compliance_requirement"]),
+    "compliance_requirement": from_search(SEARCH_PROVIDERS["compliance_requirement"], core_fields=("description",)),
     "compliance_evidence": from_search(
         SEARCH_PROVIDERS["compliance_evidence"],
         date_field("issued_date", "Issued", ComplianceEvidence.issued_date),
         date_field("expiry_date", "Expires", ComplianceEvidence.expiry_date),
+        core_fields=("description",),
     ),
-    "project_compliance_requirement": from_search(SEARCH_PROVIDERS["project_compliance_requirement"]),
+    "project_compliance_requirement": from_search(SEARCH_PROVIDERS["project_compliance_requirement"], core_fields=("description",)),
     "compliance_required_action_assessment": from_search(
         SEARCH_PROVIDERS["compliance_required_action_assessment"],
         date_field("due_date", "Due date", ComplianceRequiredActionAssessment.due_date),
         bool_field("is_completed", "Completed", ComplianceRequiredActionAssessment.is_completed),
+        core_fields=("description",),
     ),
 }

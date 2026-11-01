@@ -32,5 +32,6 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         date_field("decision_date", "Decision date", Decision.decision_date),
         principal_field("owner", "Owner", Decision.owner_type, Decision.owner_id),
         principal_field("decision_maker", "Decision maker", Decision.decision_maker_type, Decision.decision_maker_id),
+        core_fields=("decision_statement", "owner"),
     ),
 }

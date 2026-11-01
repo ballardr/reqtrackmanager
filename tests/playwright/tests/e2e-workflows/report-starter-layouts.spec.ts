@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import zlib from "node:zlib";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
@@ -6,7 +7,29 @@ import { chooseReport } from "./reportPicker";
 import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
-const STARTERS = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component"];
+const STARTERS = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component", "Project Workbook"];
+
+/** The text of one file of a zip (an XLSX is one), read from its central directory. */
+function zipEntry(zip: Buffer, name: string): string {
+  let end = zip.length - 22;
+  while (end >= 0 && zip.readUInt32LE(end) !== 0x06054b50) end -= 1;
+  let at = zip.readUInt32LE(end + 16);
+  for (let n = zip.readUInt16LE(end + 10); n > 0; n -= 1) {
+    const method = zip.readUInt16LE(at + 10);
+    const size = zip.readUInt32LE(at + 20);
+    const nameLength = zip.readUInt16LE(at + 28);
+    const extraLength = zip.readUInt16LE(at + 30);
+    const commentLength = zip.readUInt16LE(at + 32);
+    const local = zip.readUInt32LE(at + 42);
+    if (zip.toString("utf8", at + 46, at + 46 + nameLength) === name) {
+      const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
+      const body = zip.subarray(start, start + size);
+      return (method === 8 ? zlib.inflateRawSync(body) : body).toString("utf8");
+    }
+    at += 46 + nameLength + extraLength + commentLength;
+  }
+  throw new Error(`${name} is not in the zip`);
+}
 
 /**
  * Job to be done: start a Business Requirements Document, an Engineering Specification, a Review Package or Requirements by Component from the
@@ -79,6 +102,19 @@ test.describe("Report starter layouts", () => {
       await expect(page.getByRole("cell", { name: requirement })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Hardware" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Functional" })).toBeVisible();
+    });
+
+    await test.step("the Project Workbook downloads as a spreadsheet with a sheet of core detail for the requirements only", async () => {
+      const layouts: { id: string; name: string }[] = await (await request.get(`${API}/orgs/${org.id}/report-layouts`, { headers })).json();
+      const workbook = layouts.find((layout) => layout.name === "Project Workbook")!;
+      const run = await request.get(`${API}/projects/${project.id}/custom-reports/${workbook.id}/run`, { headers, params: { format: "xlsx" } });
+      expect(run.ok(), await run.text()).toBeTruthy();
+      const file = await run.body();
+      const sheets = zipEntry(file, "xl/workbook.xml");
+      expect(sheets).toContain('name="Contents"');
+      expect(sheets).toContain('name="Requirement"');
+      expect(sheets).not.toContain('name="Risk"'); // its module is off in this project, so its sheet is left out
+      expect(zipEntry(file, "xl/worksheets/sheet2.xml")).toContain(requirement); // strings are written inline; sheet 2 is the Requirement sheet
     });
 
     await test.step("Add missing starters is not offered while every starter is present", async () => {

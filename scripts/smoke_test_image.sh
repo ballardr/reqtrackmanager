@@ -2,7 +2,7 @@
 # Smoke test for one production container image: does it start, report healthy
 # and answer a real request on the CPU architecture it is run on?
 #
-# Usage: scripts/smoke_test_image.sh <backend|backup|frontend|mcp-server|docs> <image> [expected-arch]
+# Usage: scripts/smoke_test_image.sh <backend|backup|frontend|mcp-server|converter|docs> <image> [expected-arch]
 #
 # Why: CI builds an arm64 image for Raspberry Pi and other arm hosts, and an
 # image that builds but does not start (a missing aarch64 wheel, a broken
@@ -17,6 +17,7 @@
 #   backup     - the disaster-recovery tools (pg_dump, restic, age, ssh) run.
 #   frontend   - nginx serves `/`, a built static asset and the runtime config.
 #   mcp-server - becomes healthy.
+#   converter  - becomes healthy (Ghostscript and poppler present).
 #   docs       - becomes healthy and serves `/`.
 #
 # Safety: everything it creates (one network, its containers) carries a
@@ -158,13 +159,17 @@ mcp-server)
     start mcp-server "$IMAGE"
     wait_healthy mcp-server
     ;;
+converter)
+    start converter "$IMAGE"
+    wait_healthy converter
+    ;;
 docs)
     start docs "$IMAGE"
     wait_healthy docs
     in_container docs wget -qO /dev/null http://127.0.0.1:8080/ || fail "/ not served"
     ;;
 *)
-    fail "unknown kind '$KIND' (backend, backup, frontend, mcp-server, docs)"
+    fail "unknown kind '$KIND' (backend, backup, frontend, mcp-server, converter, docs)"
     ;;
 esac
 

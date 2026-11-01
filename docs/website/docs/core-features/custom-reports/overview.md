@@ -24,7 +24,7 @@ flowchart LR
 
 ## Starter layouts
 
-Every organisation starts with four ready-made document layouts, so a first report needs no design work:
+Every organisation starts with four ready-made document layouts and one workbook, so a first report needs no design work:
 
 | Starter | What it gives you |
 |---|---|
@@ -32,6 +32,7 @@ Every organisation starts with four ready-made document layouts, so a first repo
 | **Engineering Specification** | Scope, guiding principles, requirements by component, requirement types, needs, constraints, compliance obligations, decisions, traceability coverage and each requirement's review date. |
 | **Review Package** | What needs a person now: requirements still in draft or reviewed, change requests under review, decisions awaiting approval, open and overdue questions and risk reviews. |
 | **Requirements by Component** | Every requirement grouped under its component and then its category, with its reasoning, status and tags, between an Introduction and an Appendices section for you to write. It is the requirements report as a layout. |
+| **Project Workbook** | A spreadsheet with a sheet for each kind of record in the project (requirements, actions, change requests and those of each module you use), each listing the code, title, status, tags, the person responsible and the main description, behind a Contents sheet. Download it as Excel, OpenDocument or CSV. A module the project does not use has no sheet. |
 
 Each section is built from the project's records when you run it, so the document is a view of them, not a copy to keep up to date. A section whose module a project does not use is left out, not printed empty. The starters are ordinary layouts: open one in **Report layouts** to change the words and sections, rename it or delete it. If you delete one, or your organisation was created before the starters existed, choose **Add starter layouts** in the organisation's **Report layouts**; it adds only the starters you do not already have and never changes one you edited.
 

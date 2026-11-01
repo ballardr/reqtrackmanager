@@ -1481,8 +1481,8 @@ flowchart LR
   and the package holds no macro, link, script or field code but the page number. ODT headings, tables, lists and
   the footer page number are real ODF structures; equations are pictures (then the source), not formula objects.
 - **SVG figures.** `Image(svg=...)` holds markup that is untrusted until `report_svg.sanitize_svg` allow-lists it
-  (no DOCTYPE or entity, no script, `foreignObject`, `image`, `style` element, event handler or external reference;
-  `href` only to `#id`); every renderer sanitises again. The PDF draws it as vector through `svglib` (a `resvg-py` PNG
+  (no entity or DOCTYPE with its own declarations — the plain `<!DOCTYPE svg PUBLIC ...>` a vector editor writes is accepted — no script, `foreignObject`, `style` element, event handler or external reference;
+  `href` only to `#id`; an `image` survives only as a base64 `data:` PNG, JPEG, GIF or WebP, re-encoded without metadata and held to the pixel and count limits, `report_raster`); every renderer sanitises again. The PDF draws it as vector through `svglib` (a `resvg-py` PNG
   if `svglib` cannot), Word embeds a PNG (`python-docx` cannot take SVG), HTML inlines it. Text in an SVG is drawn
   with the bundled DejaVu font; a module producing a diagram wraps its own labels. A figure that cannot be drawn is
   skipped, never an error.
@@ -1853,7 +1853,7 @@ flowchart LR
 
 ### 4v. Custom reports: starter layouts (Module 10 Phase 11)
 
-Every organisation is created with four ready-made document layouts: **Business Requirements Document**, **Engineering
+Every organisation is created with four ready-made document layouts (and a table layout, the Project Workbook, §4ad): **Business Requirements Document**, **Engineering
 Specification**, **Review Package** and **Requirements by Component** (the requirements report grouped by component and category,
 with an Introduction and Appendices to write). They are ordinary organisation layouts once written (editable, versioned, hideable, shared
 with projects), so an organisation adapts one rather than cloning it first.
@@ -2134,6 +2134,66 @@ flowchart LR
 - **Bundles.** `org.json` carries `report_look`; an older bundle's `report_templates` becomes the look on a new organisation (the
   default one, else the only one) with a notice for each extra, and is ignored by a merge (the target's look is never touched). A
   layout entry's `report_template` and a pack definition's `template` are ignored with a notice.
+
+### 4ac. Custom reports: the shape block (Module 10 Phase 57)
+
+A `shape` block is a coloured rectangle, rounded rectangle, ellipse, triangle, line or arrow, or the author's own SVG, that sits
+in line with the text, beside it, or behind or in front of it. It is **a generated picture**: `_eval_shape` builds an SVG
+(`services/report_shapes.py`) and emits an `Image`, so a shape takes every placement, anchor, offset and layering rule the image
+block has (in line, wrap, behind, in front; paragraph, margin or page anchors) with no new path in the four renderers.
+
+```mermaid
+flowchart LR
+    Node["shape node<br/>(tree)"] --> Eval["_eval_shape"]
+    Org["org report_accent"] --> Eval
+    Eval -->|preset| Draw["shape_svg<br/>(numbers + colour only)"]
+    Eval -->|custom| San["sanitize_svg"]
+    Draw --> Img["Image(svg=...)"]
+    San --> Img
+    Img --> PDF["PDF: vector"]
+    Img --> HTML["HTML: inline SVG"]
+    Img --> Word["Word: transparent PNG"]
+    Img --> ODT["ODT: transparent PNG"]
+```
+
+- **Tree** keys: `shape` (`rectangle`, `rounded`, `ellipse`, `triangle`, `line`, `arrow`, `custom`), `fill`, `outline`,
+  `outline_width` (mm), `width` and `height` (cm or mm), `svg` (custom only), `alt`, `align`, `placement`, `anchor`, `offset_x`,
+  `offset_y`. A colour is `#rgb`/`#rrggbb` or `accent` (the organisation's report accent, `{{org.report_accent}}`), `white`,
+  `black`, `none`. A preset needs both sizes; a custom shape keeps its own when they are empty. A line or arrow is coloured by
+  `outline` (black unless set) and takes no fill; an arrow's height is its head. Placement is validated by the image block's own
+  rule (`_validate_image_placement`); a caption is not a shape key.
+- **Safety.** Nothing the author types becomes markup: a preset is built from validated numbers and a validated colour; a custom
+  SVG is checked at save time by `report_shapes.svg_problem` (the `report_svg.sanitize_svg` allow-list, a 50,000 character limit,
+  and a `viewBox` or width and height on the root) and sanitised again by each renderer.
+- **Sizes** are exact, in cm or mm; a percentage is not offered (the text width is unknown when the drawing is made, so an outline
+  or corner would stretch). A shape wider than the text is scaled down with its proportions.
+- **Word and OpenDocument** get a PNG at 300 dpi of the printed size with a **transparent** background
+  (`report_image_layout.svg_block_png`; this now applies to every SVG picture block, which used to have a white one), not a native
+  shape object: a flat colour does not justify a second drawing path per format. Layers are drawn in document order, so a shape
+  placed behind and then an image placed behind at the same spot shows the image on the shape.
+- A document layout only (`FAMILY_DOCUMENT`); a table layout refuses it at save. A shape is part of the tree, so bundles carry it
+  with no new table.
+
+### 4ad. Custom reports: the Project Workbook starter (Module 10 Phase 58)
+
+Every organisation is also created with a table layout, **Project Workbook**: one sheet per reportable record type holding its core
+detail, with a Contents sheet. It is generated from the report field registry when starters are written, so a module adds its sheet by
+declaring its record type's report fields, with no edit to a core file.
+
+```mermaid
+flowchart LR
+    P["get_report_field_providers()<br/>core types, then each module's"] --> T["workbook_tree()<br/>a sheet per type"]
+    F["core_field_keys(type)<br/>code, title, status, tags<br/>+ ReportField.core"] --> T
+    T --> W["module sheets wrapped in<br/>if module &lt;key&gt;"] --> L["organisation table layout"]
+    L --> R["run in a project: a sheet whose module is off is left out"]
+```
+
+- **Declare a core field.** Pass `core_fields=("description", "owner")` to `services.report_fields.from_search` (or set `core=True` on a
+  `ReportField`): the person responsible and the main descriptive text. Code, title, status and tags are always core. A test fails for a
+  type with no core field of its own.
+- **`if` in a table layout.** The `if` block is allowed in the table family so a sheet can be conditional; the only usable test there is
+  `{"module": key}` (`@if module <key>`).
+- **Width.** Sheet columns carry absolute widths so any number of core fields fits.
 
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 

@@ -560,6 +560,55 @@ test.describe("Report layout designer", () => {
     await expect(page.getByText("Saved as version 2.")).toBeVisible();
   });
 
+  test("the preview remembers the projects chosen for a layout and drops one that is gone", async ({ page, request }) => {
+    const { org, headers, project, suffix } = await setup(page, request);
+    const second = await (await request.post(`${API}/projects`, { headers, data: { organization_id: org.id, name: `Remembered second ${suffix}`, summary: "" } })).json();
+    const layout = await request.post(`${API}/orgs/${org.id}/report-layouts`, {
+      headers, data: {
+        name: `E2E remembered ${suffix}`, description: "", family: "table",
+        tree: {
+          schema_version: 1, family: "table",
+          nodes: [{ type: "sheet", name: "Requirements", source: { record_type: "requirement" }, columns: [{ field: "code" }, { field: "title" }] }],
+        },
+      },
+    });
+    expect(layout.ok(), await layout.text()).toBeTruthy();
+    const layoutId = (await layout.json()).id;
+    const designer = `/orgs/${org.id}/report-layouts/${layoutId}`;
+    const checkbox = (name: string) => page.getByRole("checkbox", { name });
+
+    await test.step("a fresh layout previews every project", async () => {
+      await page.goto(designer);
+      await page.getByRole("button", { name: /Projects/ }).click();
+      await expect(checkbox(second.name)).not.toBeChecked();
+      await expect(checkbox(project.name)).not.toBeChecked();
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("the projects chosen are the selection the next time the designer opens", async () => {
+      await page.getByRole("button", { name: /Projects/ }).click();
+      await checkbox(second.name).check();
+      await page.keyboard.press("Escape");
+      await page.goto(designer);
+      await page.getByRole("button", { name: /Projects/ }).click();
+      await expect(checkbox(second.name)).toBeChecked();
+      await expect(checkbox(project.name)).not.toBeChecked();
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("a project that is no longer there drops silently", async () => {
+      await page.evaluate(([key, ids]) => localStorage.setItem(key, JSON.stringify({ projectIds: ids, includeChildren: false })), [
+        `reqtrack.reportPreviewScope.organization.${org.id}.${layoutId}`, [second.id, "00000000-0000-0000-0000-000000000000"],
+      ] as const);
+      await page.reload();
+      await page.getByRole("button", { name: /Projects/ }).click();
+      await expect(checkbox(second.name)).toBeChecked();
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Run preview" }).click();
+      await expect(page.getByRole("region", { name: "Requirements" })).toBeVisible();
+    });
+  });
+
   test("deleting a layout needs its name typed", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     const name = `E2E doomed layout ${suffix}`;

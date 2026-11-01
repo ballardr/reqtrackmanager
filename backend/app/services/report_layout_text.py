@@ -1505,6 +1505,53 @@ def _write_image(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, " ".join(parts))
 
 
+_SHAPE_TEXT_CLAUSES = (
+    "fill", "outline", "outline_width", "width", "height", "svg", "alt", "align", "placement", "anchor", "x", "y",
+)
+
+
+def _parse_shape(p: _Parser, d: _Directive) -> None:
+    cur = d.cursor()
+    node: dict[str, Any] = {"type": "shape", "shape": cur.word("the shape: rectangle, rounded, ellipse, triangle, line, arrow or custom")}
+    while (token := cur.peek()) is not None:
+        word = cur.accept(*_SHAPE_TEXT_CLAUSES)
+        if word is None:
+            raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_SHAPE_TEXT_CLAUSES)}.", token.column)
+        if _IMAGE_CLAUSE_KEYS.get(word, word) in node:
+            raise _Syntax(f"{word} is written once.", token.column)
+        if word in ("alt", "svg"):
+            node[word] = cur.text(f"the {word} text in quotes")
+        elif word in ("width", "height"):
+            node[word] = _number_word(cur, f"the {word}")
+            if unit := cur.accept("cm", "mm"):
+                node[f"{word}_unit"] = unit
+        elif word == "outline_width":
+            node[word] = _number_word(cur, "the outline width in mm")
+        elif word in _IMAGE_CLAUSE_KEYS:
+            node[_IMAGE_CLAUSE_KEYS[word]] = _number_word(cur, f"the {'across' if word == 'x' else 'down'} distance in cm")
+        else:  # fill, outline, align, placement, anchor
+            node[word] = cur.word(f"the {word}")
+    p.add(node, d.line_no)
+
+
+def _write_shape(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    parts = [f"@shape {node['shape']}"]
+    for key in _SHAPE_TEXT_CLAUSES:
+        tree_key = _IMAGE_CLAUSE_KEYS.get(key, key)
+        if tree_key not in node:
+            continue
+        value = node[tree_key]
+        if key in ("alt", "svg"):
+            parts.append(f"{key} {_quote(value)}")
+        elif key in ("width", "height"):
+            parts.append(f"{key} {json.dumps(value)}" + (f" {node[f'{key}_unit']}" if f"{key}_unit" in node else ""))
+        elif key in ("outline_width", "x", "y"):
+            parts.append(f"{key} {json.dumps(value)}")
+        else:
+            parts.append(f"{key} {value}")
+    w.line(depth, " ".join(parts))
+
+
 _RECORD_IMAGE_CLAUSES = (
     "names", "types", "max_count", "order", "max_size_mb", "caption_source", "caption", "caption_position", "numbering", "width",
     "height", "align", "placement", "empty",
@@ -1831,6 +1878,7 @@ for _form in (
     TextForm("page_break", _parse_page_break, _write_page_break),
     TextForm("section", _parse_section, _write_section),
     TextForm("image", _parse_image, _write_image),
+    TextForm("shape", _parse_shape, _write_shape),
     TextForm("record_images", _parse_record_images, _write_record_images),
     TextForm("equation", _parse_equation, _write_equation),
     TextForm("table", _parse_table, _write_table),

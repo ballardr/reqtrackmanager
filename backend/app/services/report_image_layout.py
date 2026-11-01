@@ -6,6 +6,7 @@ How big a layout's `Image` block prints, the same in every document format.
 Responsibilities:
 - Read a picture's natural size (a raster's header, an SVG's declared size) in centimetres.
 - Turn the block's width, unit and height, and the width of the text, into the size drawn (`placed_size_cm`).
+- Rasterise an SVG picture for the formats that cannot embed one (`svg_block_png`).
 - Do the same for the pictures of a table cell, against the cell's width, stacked or side by side (`place_cell_pictures`).
 
 Design decisions:
@@ -27,7 +28,7 @@ from PIL import Image as PilImage
 from svglib.svglib import svg2rlg
 
 from app.services.report_model import Image, ImageCell
-from app.services.report_svg import UnsafeSvgError, sanitize_svg
+from app.services.report_svg import UnsafeSvgError, sanitize_svg, svg_png
 
 PIXELS_PER_CM = 96 / 2.54
 POINTS_PER_CM = 72 / 2.54
@@ -85,6 +86,37 @@ def placed_size_cm(block: Image, usable_cm: float) -> tuple[float, float] | None
     if width > usable_cm:
         height, width = height * usable_cm / width, usable_cm
     return width, height
+
+
+#: Pixels per inch an SVG is rasterised at for Word and OpenDocument, and the bounds of the result's width in pixels.
+RASTER_DPI = 300
+RASTER_WIDTH_PX = (300, 4000)
+
+
+def svg_block_png(block: Image, usable_cm: float) -> bytes:
+    """A transparent PNG of an SVG picture at the resolution its printed size needs.
+
+    Word and OpenDocument cannot embed the vector, so a shape or an SVG from the library is drawn here. The background is
+    transparent (a white mark or a shape under a picture must show what is behind it) and the width follows the printed size.
+
+    Args:
+        block: An image block whose `svg` is set.
+        usable_cm: The width of the text on the page, as for `placed_size_cm`.
+
+    Returns:
+        PNG bytes; empty when the size cannot be read.
+
+    Raises:
+        UnsafeSvgError: The markup is not acceptable.
+        ValueError: The rasteriser could not draw it.
+    """
+    assert block.svg is not None
+    size = placed_size_cm(block, usable_cm)
+    if size is None:
+        return b""
+    low, high = RASTER_WIDTH_PX
+    width_px = min(high, max(low, round(size[0] / 2.54 * RASTER_DPI)))
+    return svg_png(block.svg, width_px=width_px, background=None)
 
 
 #: The gap between two pictures of one table cell, in cm.

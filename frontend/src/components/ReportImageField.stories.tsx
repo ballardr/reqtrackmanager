@@ -82,6 +82,31 @@ export const AnEmptyLibrary: Story = {
   },
 };
 
+/** Without the optional converter service, EPS and PDF are neither offered nor named. */
+export const WithoutTheConverterOnlyBrowserFormatsAreOffered: Story = {
+  args: { library: buildImageLibrary([], 50 * 1024 * 1024, false) },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await expect(await modal.findByText("No images yet. Upload a PNG, JPEG, GIF, WebP or SVG picture.")).toBeInTheDocument();
+    const accept = screen.getByRole("dialog").querySelector<HTMLInputElement>('input[type="file"]')!.accept;
+    await expect(accept).not.toMatch(/eps|pdf|postscript/);
+  },
+};
+
+/** With it, an EPS or PDF is accepted and the empty text says it is converted. */
+export const WithTheConverterEpsAndPdfAreOffered: Story = {
+  args: { library: buildImageLibrary([]) },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await expect(await modal.findByText(/SVG, EPS or PDF picture/)).toBeInTheDocument();
+    const accept = screen.getByRole("dialog").querySelector<HTMLInputElement>('input[type="file"]')!.accept;
+    await expect(accept).toMatch(/\.eps/);
+    await expect(accept).toMatch(/\.pdf/);
+  },
+};
+
 const many = Array.from({ length: 30 }, (_, i) => ({
   ...buildReportImages()[0], id: `image-${i}`, filename: `photo-${String(i).padStart(2, "0")}.jpg`, content_type: "image/jpeg", size_bytes: 500_000 + i * 90_000,
 }));

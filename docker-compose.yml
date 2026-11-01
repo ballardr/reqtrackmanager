@@ -149,6 +149,12 @@ services:
       # hosted copy (the `docs` profile) or HELP_ENABLED=false to remove the link.
       HELP_ENABLED: ${HELP_ENABLED:-true}
       HELP_URL: ${HELP_URL:-https://ballardr.github.io/reqtrackmanager/}
+      # EPS and PDF logo upload is off unless this is set. It needs the optional `converter` service (below): set
+      # REPORT_CONVERTER_URL=http://converter:8300 and COMPOSE_PROFILES=converter (docs/deployment.md).
+      REPORT_CONVERTER_URL: ${REPORT_CONVERTER_URL:-}
+    networks:
+      - default
+      - converter
     volumes:
       # Only used if STORAGE_BACKEND=local is set (default is s3/storage
       # above). Named so it survives container recreation and so
@@ -159,6 +165,10 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
+      # Waits for the converter only when its profile is on; without it the backend starts as before.
+      converter:
+        condition: service_healthy
+        required: false
     ports:
       - "8000:8000"
     healthcheck:
@@ -167,6 +177,36 @@ services:
       start_period: 120s
       timeout: 5s
       retries: 10
+
+  # Picture converter (optional: `docker compose --profile converter up`, or COMPOSE_PROFILES=converter; leave it
+  # off and EPS and PDF logo upload is simply not offered). Runs Ghostscript and poppler on uploaded EPS and PDF
+  # logos so the backend never does (docs/solution-architecture.md). It is the sandbox: only on the `converter`
+  # network, which is `internal` (no route out, no published port) and shared with the backend alone; no secrets and
+  # no application code; non-root, read-only root filesystem with a small scratch `tmpfs`, no Linux capabilities, and
+  # CPU, memory and process ceilings. Nothing is stored.
+  converter:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-converter:${IMAGE_TAG:-latest}
+    profiles: ["converter"]
+    build:
+      context: ./converter
+    networks:
+      - converter
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 2560m
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8300/health', timeout=4)"]
+      interval: 10s
+      start_period: 20s
+      timeout: 5s
+      retries: 5
 
   # Disaster-recovery backup (docs/disaster-recovery.md). Not started with the stack: run it with the
   # `backup` profile, `scripts/dr-backup.sh` (or `docker compose --profile backup run --rm backup`). It has no
@@ -479,6 +519,11 @@ services:
       - prometheus
       - loki
       - tempo
+
+# `internal`: containers on it get no route to the outside world. Only the backend and the converter join it.
+networks:
+  converter:
+    internal: true
 
 volumes:
   reqtrack_db_data:

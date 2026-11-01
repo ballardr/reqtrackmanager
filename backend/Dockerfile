@@ -17,6 +17,7 @@ ENV APP_VERSION=${APP_VERSION} \
 
 WORKDIR /app
 
+# EPS and PDF logos are converted by the separate converter service (../converter), not by tools in this image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc curl \
     && rm -rf /var/lib/apt/lists/*

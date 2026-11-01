@@ -1504,6 +1504,9 @@ class ReportField:
             definition's name), `(db, project ids) -> the values on offer`, so a run-time variable can offer them as
             options. An `enum` needs none (its `labels` are the domain); a field with neither takes free input.
             `project ids` are the projects the report is for (one, or the readable projects of an organisation run).
+        core: Whether the field is part of the type's core detail: the few fields that say what a record is and who
+            answers for it (the person responsible, the main descriptive text). The default workbook starter prints
+            code, title, status and tags plus every core field of each type, so a new type's sheet is never empty.
     """
 
     key: str
@@ -1514,6 +1517,7 @@ class ReportField:
     id_column: Any | None = None
     math: bool = False
     domain: Callable[[Session, Sequence[uuid.UUID]], list[str]] | None = None
+    core: bool = False
 
 
 @dataclass(frozen=True)

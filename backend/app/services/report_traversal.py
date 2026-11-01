@@ -35,7 +35,7 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 
-from sqlalchemy import and_, select
+from sqlalchemy import BindParameter, and_, select
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
@@ -130,7 +130,9 @@ def root_records(
     query = select(cols.id).select_from(provider.from_clause).where(scope, *provider.where)
     if not include_archived:
         query = query.where(cols.is_archived.is_(False))
-    ids = list(db.scalars(query.order_by(cols.code, cols.id).limit(MAX_ROOTS + 1)).all())
+    # A type with no code declares a constant for it, which Postgres refuses as an ORDER BY item.
+    order = (cols.id,) if isinstance(cols.code, BindParameter) else (cols.code, cols.id)
+    ids = list(db.scalars(query.order_by(*order).limit(MAX_ROOTS + 1)).all())
     result = RootRecords(truncated=len(ids) > MAX_ROOTS)
     ids = ids[:MAX_ROOTS]
 

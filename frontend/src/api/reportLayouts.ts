@@ -53,10 +53,14 @@ export interface ReportImage {
   created_at: string;
 }
 
-/** A library listing: the pictures and the largest file an upload may be (a deployment setting). */
+/**
+ * A library listing: the pictures, the largest file an upload may be (a deployment setting) and whether EPS and PDF
+ * files can be uploaded (the deployment runs the optional converter service).
+ */
 export interface ReportImageList {
   images: ReportImage[];
   max_image_bytes: number;
+  converter_available: boolean;
 }
 
 /** The calls the image picker makes (the layout API's, narrowed so a story can supply a few pictures). */

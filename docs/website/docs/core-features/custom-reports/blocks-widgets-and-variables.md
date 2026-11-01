@@ -16,7 +16,7 @@ a document layout can include a table, the headline figures or the notes of any 
 
 ## Leaving a part out where a module is off
 
-`@if module risk_management` ... `@end` (with `@else` if you want) shows its contents only in a project that uses that module, so one organisation layout can span modules and still read cleanly in a project that uses only some of them. The starters are built this way.
+`@if module risk_management` ... `@end` (with `@else` if you want) shows its contents only in a project that uses that module, so one organisation layout can span modules and still read cleanly in a project that uses only some of them. The starters are built this way. A spreadsheet layout can use `@if module` too, around its sheets; the Project Workbook does.
 
 ## Choosing which records a layout lists
 

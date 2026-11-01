@@ -114,10 +114,10 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 53 | Blocks view: no editing on the block itself; every value is edited in the block editor only (a modal, a panel tab or both) | **Done 2026-11-01** (built and tested; awaiting the checkpoint review). Blocks show a read-only summary (`level 1 · text`, `as req`); the inline controls and write-back are removed; the server schema never had an inline flag. Settled by the User's mock: the editor is the right panel (Phase 54 makes it a tab). Decisions log "Custom reports Phase 53". |
 | 54 | Blocks and Text views: Preview and the block editor / fields / widgets become tabs of one right-hand panel that collapses and expands like a list's filter panel | **Done 2026-11-01** (built and tested; awaiting the checkpoint review). `DesignerSidePanel` (tabs Block/Preview in Blocks, Preview/Fields/Widgets in Text, fold to a rail like `DetailLayout`); the block form is portalled into it (`inspectorHost`, `onInspect`); fold and last tab per view in `useUiPreference`, not `localStorage`. Decisions log "Custom reports Phase 54". |
 | 55 | Tables: a forced column width, so a table's columns stop changing with the content (Business Requirements Document first) | **Done 2026-11-01** (built and tested; awaiting the checkpoint review). `width` on a column (`30%`, `4 cm`, `40 mm`, auto), one resolver for all renderers and sheets, 8 mm floor, text `width`/`colwidth`, starters fixed via `USUAL_WIDTHS`. Decisions log "Custom reports Phase 55". |
-| 56 | Report preview remembers the projects last chosen | Planned 2026-10-31. |
-| 57 | Shape block (rectangle, rounded, ellipse) with a fill, placeable behind or in front of other content, in all four document formats | Planned 2026-10-31. |
-| 58 | A default workbook: one sheet per record type holding every core field | Planned 2026-10-31. |
-| 59 | Demo data: an example report with an image (the product logo on a shape) and the default workbook | Planned 2026-10-31. |
+| 56 | Report preview remembers the projects last chosen | **Done 2026-11-01** (built and tested; awaiting the checkpoint review). Per layout, `localStorage` (`utils/reportPreviewMemory.ts`), organisation project set and the child-projects switch; stale ids drop silently. Decisions log "Custom reports Phase 56". |
+| 57 | Shape block (rectangle, rounded, ellipse) with a fill, placeable behind or in front of other content, in all four document formats | **Done 2026-11-01** (built and tested; awaiting the checkpoint review). Presets (rectangle, rounded, ellipse, triangle, line, arrow) and custom SVG; a shape is a generated SVG sent through the image block's placements, so PDF and HTML are vector and Word and ODT get a transparent 300 dpi PNG (no native shape objects). No percent sizes; icon toggles and SVG dialog not built. Playwright spec run and green 2026-11-01 (with Phase 59). Decisions log "Custom reports Phase 57", modules.md §4ac. |
+| 58 | A default workbook: one sheet per record type holding every core field | **Done 2026-11-01** (built and tested; awaiting the checkpoint review). Project Workbook starter (table layout) generated from the field registry; `ReportField.core` marks owner and main description per type; `if` allowed in table layouts so a module's sheet drops out when it is off; fixed an ORDER BY-constant crash for code-less types and the starter copy's family. Playwright step run and green 2026-11-01 (with Phase 59). Decisions log "Custom reports Phase 58", modules.md §4ad. |
+| 59 | Demo data: an example report with an image (the product logo on a shape) and the default workbook | **Done 2026-11-01** (built and tested; awaiting the checkpoint review). Demo layout "Project overview with logo" with the logo uploaded from `backend/scripts/data/logo.svg` (copied unchanged; the sanitiser now accepts the plain DOCTYPE that vector editors write); the seed also calls the idempotent starters route so the demo organisation has the Project Workbook. Rendered to PDF, Word and XLSX and read. Decisions log "Custom reports Phase 59". |
 | R | Review checkpoint: the User reviews Phases 17 to 59 together (17 to 20 were built before the third review; 28 to 34 come from the fourth review, 35 to 42 from the fifth, 43 to 45 from the sixth, 46 and 47 from the seventh and 48 to 59 from the eighth) | After Phase 59 |
 | 15 | Docs website | After the review checkpoint (its screenshots must wait: Phases 23, 24, 27, 28, 29, 32 to 34 and 35 to 59 change the screens) |
 
@@ -195,10 +195,10 @@ The plan is not closed. The paragraph below is the history of Phases 0 to 15, ke
 | 53 | Blocks view edits in the block editor only | 10 | [x] |
 | 54 | Right-hand panel as tabs, collapsible, in Blocks and Text | 10 | [x] |
 | 55 | Forced table column widths | 10 | [x] |
-| 56 | Preview remembers the chosen projects | 10 | [ ] |
-| 57 | Shape block | 10 | [ ] |
-| 58 | Default workbook (every record type, core fields) | 10 | [ ] |
-| 59 | Demo data: logo-on-shape example report and the default workbook | 10 | [ ] |
+| 56 | Preview remembers the chosen projects | 10 | [x] |
+| 57 | Shape block | 10 | [x] |
+| 58 | Default workbook (every record type, core fields) | 10 | [x] |
+| 59 | Demo data: logo-on-shape example report and the default workbook | 10 | [x] |
 | R | **Review checkpoint (User):** the User reviews Phases 17 to 59 together, once all are built; Phases 16 to 16d were reviewed 2026-10-28. The plan is not closed before it, and Phase 15 (docs) waits for it | 6 | [ ] |
 | 15 | Docs website coverage (incremental; first slice 2026-10-28: nested Custom reports section with eight screenshots, decisions log "Custom reports Phase 15"; background-reports, starters and organisation-run screenshots still to add) | — | [ ] |
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
@@ -28,7 +29,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.routers.report_layouts import manage_org_layouts, manage_project_layouts
 from app.schemas.report_image import ReportImageLibraryOut, ReportImageOut
-from app.services import report_images
+from app.services import report_converter, report_images
 from app.services.audit import log_event
 
 org_router = APIRouter(prefix="/api/v1/orgs/{organization_id}/report-images", tags=["report-images"])
@@ -50,9 +51,10 @@ async def _upload(
 ) -> ReportImageOut:
     data = await file.read()
     try:
+        # An EPS is converted to SVG here, in a worker thread, so the Ghostscript run does not block the event loop.
+        filename, data = await run_in_threadpool(report_images.prepare_upload, file.filename or "image", data)
         asset = report_images.upload_library_image(
-            db, organization_id=organization_id, project_id=project_id, uploaded_by=user.id,
-            filename=file.filename or "image", data=data,
+            db, organization_id=organization_id, project_id=project_id, uploaded_by=user.id, filename=filename, data=data,
         )
     except report_images.ImageRejectedError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
@@ -84,6 +86,7 @@ def _listing(db: Session, organization_id: UUID, project_id: UUID | None) -> Rep
     return ReportImageLibraryOut(
         images=[_out(i, project_id) for i in report_images.list_library(db, organization_id, project_id)],
         max_image_bytes=report_images.max_image_bytes(),
+        converter_available=report_converter.is_configured(),
     )
 
 

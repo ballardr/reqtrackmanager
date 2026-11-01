@@ -39,23 +39,27 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         SEARCH_PROVIDERS["strategy"],
         enum_field("priority", "Priority", StrategyVersion.priority, StrategyPriority),
         enum_field("time_horizon", "Time horizon", StrategyVersion.time_horizon, StrategyTimeHorizon),
+        core_fields=("objective",),
     ),
     "future_state": from_search(
         SEARCH_PROVIDERS["future_state"],
         date_field("target_date", "Target date", FutureStateVersion.target_date),
+        core_fields=("desired_state",),
     ),
-    "guiding_principle": from_search(SEARCH_PROVIDERS["guiding_principle"]),
+    "guiding_principle": from_search(SEARCH_PROVIDERS["guiding_principle"], core_fields=("principle_statement",)),
     "pain_point": from_search(
         SEARCH_PROVIDERS["pain_point"],
         enum_field("priority", "Priority", PainPoint.priority, PainPointPriority),
         principal_field("owner", "Owner", PainPoint.owner_type, PainPoint.owner_id),
         date_field("date_identified", "Date identified", PainPoint.date_identified),
         bool_field("is_intentional", "Intentional", PainPoint.is_intentional),
+        core_fields=("description", "owner"),
     ),
     "open_question": from_search(
         SEARCH_PROVIDERS["open_question"],
         enum_field("priority", "Priority", OpenQuestion.priority, OpenQuestionPriority),
         principal_field("owner", "Owner", OpenQuestion.owner_type, OpenQuestion.owner_id),
         date_field("due_date", "Due date", OpenQuestion.due_date),
+        core_fields=("question", "owner"),
     ),
 }

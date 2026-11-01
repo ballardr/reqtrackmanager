@@ -81,6 +81,17 @@ from app.services.report_page_styles import (
     resolve_page_styles,
     styles_problems,
 )
+from app.services.report_shapes import (
+    LINE_KINDS,
+    MAX_SHAPE_SVG_CHARS,
+    OUTLINE_WIDTH_MM,
+    SHAPE_KINDS,
+    SHAPE_PRESETS,
+    SHAPE_SIZE_CM,
+    SHAPE_UNITS,
+    colour_problem,
+    svg_problem,
+)
 from app.services.report_variables import (
     FIELD_KINDS,
     MAX_LIST_VALUES,
@@ -1221,6 +1232,81 @@ def _validate_image_placement(v: TreeValidator, node: dict[str, Any], path: str)
                 v.error(f"{path}.{key}", "A caption goes with a picture on a line of its own; use placement inline for it.")
 
 
+def _shape_size(v: TreeValidator, node: dict[str, Any], key: str, path: str, *, required: bool) -> None:
+    """Checks a shape's width or height: a number in cm or mm within the shape bounds (no percentage)."""
+    unit_key = f"{key}_unit"
+    unit = node.get(unit_key, "cm")
+    if unit_key in node and unit not in SHAPE_UNITS:
+        v.error(f"{path}.{unit_key}", f"Must be one of: {', '.join(SHAPE_UNITS)}.")
+        unit = "cm"
+    if key not in node:
+        if required:
+            v.error(f"{path}.{key}", f"A {node.get('shape', 'shape')} needs a {key}.")
+        elif unit_key in node:
+            v.error(f"{path}.{unit_key}", f"A unit needs a {key}.")
+        return
+    scale = 10 if unit == "mm" else 1
+    low, high = SHAPE_SIZE_CM[0] * scale, SHAPE_SIZE_CM[1] * scale
+    value = node[key]
+    if not isinstance(value, int | float) or isinstance(value, bool) or not low <= value <= high:
+        v.error(f"{path}.{key}", f"The {key} must be a number from {low:g} to {high:g} {unit}.")
+
+
+def _validate_shape(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(
+        node, path, required=("type", "shape"),
+        optional=(
+            "fill", "outline", "outline_width", "width", "width_unit", "height", "height_unit", "svg", "alt", "align", "placement",
+            "anchor", "offset_x", "offset_y",
+        ),
+    )
+    kind = node.get("shape", MISSING)
+    if kind is not MISSING and kind not in SHAPE_KINDS:
+        v.error(f"{path}.shape", f"Must be one of: {', '.join(SHAPE_KINDS)}.")
+        kind = MISSING
+    custom = kind == "custom"
+    preset = kind in SHAPE_PRESETS
+    if "svg" in node and not custom and kind is not MISSING:
+        v.error(f"{path}.svg", "Only a custom shape has SVG markup.")
+    if custom:
+        if "svg" not in node:
+            v.error(f"{path}.svg", "A custom shape needs its SVG markup.")
+        elif problem := svg_problem(node["svg"]):
+            v.error(f"{path}.svg", problem)
+        for key in ("fill", "outline", "outline_width"):
+            if key in node:
+                v.error(f"{path}.{key}", "A custom shape is painted by its own SVG, not by a fill or outline.")
+    if preset:
+        line_kind = kind in LINE_KINDS
+        if line_kind and "fill" in node:
+            v.error(f"{path}.fill", f"A {kind} is a line: set its colour with outline.")
+        if "fill" in node and not line_kind and (problem := colour_problem(node["fill"])):
+            v.error(f"{path}.fill", problem)
+        if "outline" in node:
+            if problem := colour_problem(node["outline"]):
+                v.error(f"{path}.outline", problem)
+            elif line_kind and node["outline"] == "none":
+                v.error(f"{path}.outline", f"A {kind} is drawn in its outline colour, so it cannot be none.")
+        if "outline_width" in node:
+            value = node["outline_width"]
+            low, high = OUTLINE_WIDTH_MM
+            if not isinstance(value, int | float) or isinstance(value, bool) or not low <= value <= high:
+                v.error(f"{path}.outline_width", f"Must be a number of millimetres from {low:g} to {high:g}.")
+            elif not line_kind and node.get("outline", "none") == "none":
+                v.error(f"{path}.outline_width", "An outline width needs an outline colour.")
+    if preset or custom:
+        _shape_size(v, node, "width", path, required=preset)
+        _shape_size(v, node, "height", path, required=preset)
+    alt = node.get("alt", "")
+    if not isinstance(alt, str):
+        v.error(f"{path}.alt", "Must be text.")
+    elif len(alt) > MAX_ALT_CHARS:
+        v.error(f"{path}.alt", f"Too long ({len(alt)} characters; the limit is {MAX_ALT_CHARS}).")
+    if "align" in node and node["align"] not in IMAGE_ALIGNMENTS:
+        v.error(f"{path}.align", f"Must be one of: {', '.join(IMAGE_ALIGNMENTS)}.")
+    _validate_image_placement(v, node, path)
+
+
 def _enclosing_record(v: TreeValidator) -> Binding | None:
     """The record of the nearest enclosing block that brings one into scope, or `None`."""
     for binding in reversed(list(v.scope.values())):
@@ -1592,7 +1678,7 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         (
             BlockField("file", "Image", "image", required=True,
                        help="A picture from the library: the project's own and the organisation's (an organisation layout "
-                       "can use organisation images only). PNG, JPEG, GIF, WebP and plain SVG."),
+                       "can use organisation images only). PNG, JPEG, GIF, WebP, plain SVG and EPS (converted to SVG on upload)."),
             BlockField("alt", "Alternative text", "text", max_length=MAX_ALT_CHARS,
                        help="What the picture shows, for readers who cannot see it. Required unless the image is decorative."),
             BlockField("decorative", "Decorative", "boolean", default=False,
@@ -1632,6 +1718,50 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
                        "a caption and leaves a bare one (a logo) alone; Always numbers it even with no caption; Never does not."),
         ),
         template={"type": "image", "file": ""},
+    ),
+    "shape": BlockSchema(
+        "Shape", "A coloured rectangle, ellipse, triangle, line or arrow (or your own SVG): in line with the text, beside it, or "
+        "behind or in front of it.",
+        (
+            BlockField("shape", "Shape", "choice", required=True, choices=SHAPE_KINDS, default="rectangle",
+                       help="A preset shape, or Custom to paste your own SVG."),
+            BlockField("fill", "Fill", "text", max_length=7, default="accent",
+                       help="The colour inside, as a hex colour such as #475569, or accent (the organisation's report accent), "
+                       "white, black or none. Not used by a line, an arrow or a custom shape."),
+            BlockField("outline", "Outline", "text", max_length=7,
+                       help="The outline colour, as a hex colour or accent, white or black. Leave empty for no outline. A line or "
+                       "arrow is drawn in this colour (black unless set)."),
+            BlockField("outline_width", "Outline width (mm)", "number", minimum=OUTLINE_WIDTH_MM[0], maximum=OUTLINE_WIDTH_MM[1],
+                       help="How thick the outline or line is. Typically 0.5."),
+            BlockField("width", "Width", "number", minimum=SHAPE_SIZE_CM[0], maximum=SHAPE_SIZE_CM[1] * 10,
+                       help="How wide it prints. Required for a preset; a custom shape keeps its own size when empty. Never wider "
+                       "than the text: a wider shape is scaled down with its proportions."),
+            BlockField("width_unit", "Width unit", "choice", choices=SHAPE_UNITS, default="cm", depends_on="width",
+                       help="Centimetres or millimetres."),
+            BlockField("height", "Height", "number", minimum=SHAPE_SIZE_CM[0], maximum=SHAPE_SIZE_CM[1] * 10,
+                       help="How tall it prints. Required for a preset. For an arrow it is the size of the arrowhead."),
+            BlockField("height_unit", "Height unit", "choice", choices=SHAPE_UNITS, default="cm", depends_on="height",
+                       help="Centimetres or millimetres."),
+            BlockField("svg", "SVG", "longtext", max_length=MAX_SHAPE_SVG_CHARS,
+                       help="Custom only: the SVG markup. Scripts, links to other files and embedded data are refused. Give it a "
+                       "viewBox so it scales."),
+            BlockField("alt", "Alternative text", "text", max_length=MAX_ALT_CHARS,
+                       help="Leave empty for a shape that is only decoration (the usual case); describe it when it carries meaning."),
+            BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
+                       help="Where it sits across the text width. With Wrap, the side the shape is on."),
+            BlockField("placement", "Placement", "choice", choices=IMAGE_PLACEMENTS, default="inline",
+                       help="In line: its own line. Wrap: the text that follows runs beside it. Behind or In front: laid over the "
+                       "page under or over the text, at the position below. A block later in the layout is drawn above an earlier "
+                       "one, so a shape placed behind and then an image placed behind at the same spot show the image on the shape."),
+            BlockField("anchor", "Position from", "choice", choices=IMAGE_ANCHORS, default="paragraph", depends_on="placement",
+                       help="Behind and In front only. Paragraph: from where this block sits in the text. Margin: from the corner of "
+                       "the text area of the page. Page: from the corner of the sheet."),
+            BlockField("offset_x", "Across (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+                       depends_on="placement", help="Behind and In front only. Centimetres to the right; negative goes left."),
+            BlockField("offset_y", "Down (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+                       depends_on="placement", help="Behind and In front only. Centimetres down; negative goes up."),
+        ),
+        template={"type": "shape", "shape": "rectangle", "fill": "accent", "width": 5, "height": 2},
     ),
     "record_images": BlockSchema(
         "Record images", "The pictures attached to the record of the enclosing For each block, chosen by rules.",
@@ -1757,12 +1887,13 @@ for _spec in (
     BlockSpec("page_break", (FAMILY_DOCUMENT,), _validate_page_break),
     BlockSpec("section", (FAMILY_DOCUMENT,), _validate_section),
     BlockSpec("image", (FAMILY_DOCUMENT,), _validate_image),
+    BlockSpec("shape", (FAMILY_DOCUMENT,), _validate_shape),
     BlockSpec("record_images", (FAMILY_DOCUMENT,), _validate_record_images),
     BlockSpec("equation", (FAMILY_DOCUMENT,), _validate_equation),
     BlockSpec("table", (FAMILY_DOCUMENT,), _validate_table),
     BlockSpec("each", (FAMILY_DOCUMENT,), _validate_each),
     BlockSpec("group", (FAMILY_DOCUMENT,), _validate_group),
-    BlockSpec("if", (FAMILY_DOCUMENT,), _validate_if),
+    BlockSpec("if", (FAMILY_DOCUMENT, FAMILY_TABLE), _validate_if),
     BlockSpec("widget", (FAMILY_DOCUMENT,), _validate_widget),
     BlockSpec("sheet", (FAMILY_TABLE,), _validate_sheet),
 ):

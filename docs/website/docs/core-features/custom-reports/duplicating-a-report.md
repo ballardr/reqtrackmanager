@@ -4,7 +4,7 @@ sidebar_position: 7
 
 # Duplicating a report
 
-Start a new report from one that already exists instead of building it from nothing: a layout or pack shared from the organisation or a parent project, one of your own, or one of the built-in starters (Business Requirements Document, Engineering Specification, Review Package, Requirements by Component). To move several reports to another project at once, see [copying reports to another project](./copying-between-projects.md).
+Start a new report from one that already exists instead of building it from nothing: a layout or pack shared from the organisation or a parent project, one of your own, or one of the built-in starters (Business Requirements Document, Engineering Specification, Review Package, Requirements by Component, Project Workbook). To move several reports to another project at once, see [copying reports to another project](./copying-between-projects.md).
 
 You need to be able to manage report layouts where the copy goes. A person who can only run reports does not see the action.
 

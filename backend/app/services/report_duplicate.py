@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.project import Project
-from app.models.report_layout import FAMILY_DOCUMENT, ReportLayout
+from app.models.report_layout import ReportLayout
 from app.models.report_pack import ReportPack
 from app.models.user import User
 from app.modules.registry import get_all_reports, report_enabled_for_project
@@ -197,7 +197,7 @@ def _source_entry(db: Session, source: _Source) -> dict[str, Any]:
         return report_pack_bundle.pack_entry(db, source.pack, latest_only=True, sets=[])
     starter = next(s for s in report_starters.STARTERS if s.key == source.starter_key)
     return {
-        "name": starter.name, "description": starter.description, "folder": "", "family": FAMILY_DOCUMENT,
+        "name": starter.name, "description": starter.description, "folder": "", "family": starter.family,
         "versions": [{
             "version": 1, "schema_version": TREE_SCHEMA_VERSION, "tree": starter.tree,
             "comment": f"Copied from the built-in starter {starter.name}"[: report_layouts.MAX_COMMENT_CHARS],

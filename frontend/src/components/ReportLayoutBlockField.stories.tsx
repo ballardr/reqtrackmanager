@@ -412,3 +412,28 @@ export const AnExplicitTrueIsShownOn: Story = {
     await expect(within(canvasElement).getByRole("checkbox", { name: "Repeat table header rows" })).toBeChecked();
   },
 };
+
+/** A shape's kind is named in plain words, its fill is a text colour, and the SVG of a custom shape is a long field that grows. */
+export const AShapeBlockNamesItsKindInWordsAndTakesAnSvg: Story = {
+  args: { field: fieldOf("shape", "shape"), initial: { type: "shape", shape: "rounded", width: 5, height: 2 } },
+  render: (args) => (
+    <div>
+      <Harness {...args} />
+      <Harness field={fieldOf("shape", "fill")} initial={{ type: "shape", shape: "rounded", width: 5, height: 2 }} />
+      <Harness field={fieldOf("shape", "svg")} initial={{ type: "shape", shape: "custom" }} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = (index: number) => JSON.parse(canvas.getAllByTestId("node")[index].textContent ?? "{}");
+    expect(canvas.getAllByRole("option").map((option) => option.textContent)).toEqual(
+      expect.arrayContaining(["Rectangle", "Rounded rectangle", "Ellipse", "Triangle", "Line", "Arrow", "Custom SVG"]),
+    );
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Shape" }), "Arrow");
+    await waitFor(() => expect(node(0).shape).toBe("arrow"));
+    await userEvent.type(canvas.getByRole("textbox", { name: "Fill" }), "#475569");
+    await waitFor(() => expect(node(1).fill).toBe("#475569"));
+    await userEvent.type(canvas.getByRole("textbox", { name: "SVG" }), "<svg/>");
+    await waitFor(() => expect(node(2).svg).toBe("<svg/>"));
+  },
+};

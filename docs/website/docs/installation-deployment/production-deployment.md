@@ -55,9 +55,22 @@ flowchart TD
     SMTP[external SMTP provider] -.->|outgoing mail| BE
 ```
 
+## Optional: EPS and PDF logos
+
+Report layouts can use PNG, JPEG, GIF, WebP and SVG pictures out of the box. EPS and PDF logos need a separate, optional container, because reading them means running Ghostscript and poppler on uploaded files, which is kept away from the application on purpose. If you do not want the extra container, do nothing: the upload dialog simply does not offer EPS or PDF.
+
+To turn it on, add this to `.env` and run `docker compose up -d`:
+
+```bash
+COMPOSE_PROFILES=converter
+REPORT_CONVERTER_URL=http://converter:8300
+```
+
+The container has no route to the outside network, no secrets, a read-only filesystem and a non-root user. A PDF contributes its first page, and both formats are stored as an SVG named after the file (`logo.eps.svg`).
+
 ## Obtaining container images
 
-CI builds the production `backend`, `backup`, `frontend`, `mcp-server`, and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once tests pass on a push to `main`, pushes all five to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,docs}`. Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI builds the production `backend`, `backup`, `frontend`, `mcp-server`, `converter` and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once tests pass on a push to `main`, pushes all six to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}`. Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 

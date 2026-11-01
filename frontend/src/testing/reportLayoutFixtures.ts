@@ -126,6 +126,23 @@ export function buildBlockCatalogue(): BlockCatalogue {
           field("numbering", "Caption numbering", "choice", { choices: ["auto", "always", "never"], default: "auto", depends_on: "caption" }),
         ],
       }),
+      block("shape", "Shape", { type: "shape", shape: "rectangle", fill: "accent", width: 5, height: 2 }, {
+        fields: [
+          field("shape", "Shape", "choice", { required: true, choices: ["rectangle", "rounded", "ellipse", "triangle", "line", "arrow", "custom"], default: "rectangle" }),
+          field("fill", "Fill", "text", { max_length: 7, default: "accent" }), field("outline", "Outline", "text", { max_length: 7 }),
+          field("outline_width", "Outline width (mm)", "number", { minimum: 0.1, maximum: 20 }),
+          field("width", "Width", "number", { minimum: 0.1, maximum: 1000 }),
+          field("width_unit", "Width unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "width" }),
+          field("height", "Height", "number", { minimum: 0.1, maximum: 1000 }),
+          field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+          field("svg", "SVG", "longtext", { max_length: 50000 }), field("alt", "Alternative text", "text", { max_length: 300 }),
+          field("align", "Alignment", "choice", { choices: ["left", "center", "right"], default: "center" }),
+          field("placement", "Placement", "choice", { choices: ["inline", "wrap", "behind", "front"], default: "inline" }),
+          field("anchor", "Position from", "choice", { choices: ["paragraph", "margin", "page"], default: "paragraph", depends_on: "placement" }),
+          field("offset_x", "Across (cm)", "number", { minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("offset_y", "Down (cm)", "number", { minimum: -100, maximum: 100, depends_on: "placement" }),
+        ],
+      }),
       block("record_images", "Record images", { type: "record_images" }, {
         fields: [
           field("names", "File names", "text_list", { max_length: 200, features: ["placeholders"] }),
@@ -286,7 +303,9 @@ export function buildReportImages(): ReportImage[] {
 }
 
 /** An in-memory picture library for stories; an upload adds a project picture named after the file. */
-export function buildImageLibrary(images: ReportImage[] = buildReportImages(), maxImageBytes = 50 * 1024 * 1024) {
+export function buildImageLibrary(
+  images: ReportImage[] = buildReportImages(), maxImageBytes = 50 * 1024 * 1024, converterAvailable = true,
+) {
   const store = [...images];
   const details: Record<string, FileDetails> = {
     "image-1": {
@@ -295,7 +314,7 @@ export function buildImageLibrary(images: ReportImage[] = buildReportImages(), m
     },
   };
   return {
-    list: fn(async () => ({ images: store.map((image) => ({ ...image })), max_image_bytes: maxImageBytes })),
+    list: fn(async () => ({ images: store.map((image) => ({ ...image })), max_image_bytes: maxImageBytes, converter_available: converterAvailable })),
     details: fn(async (id: string): Promise<FileDetails> => details[id] ?? {
       width_px: null, height_px: null, taken: null, camera: null, description: null, latitude: null, longitude: null,
     }),

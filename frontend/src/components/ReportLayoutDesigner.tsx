@@ -501,7 +501,7 @@ export function ReportLayoutDesigner({
   }
   const preview = (
     <ReportLayoutPreviewPanel
-      api={api} text={draft} name={detail.name} disabled={!valid || (treeEditing && textFor !== blockTree)} projectOptions={projectOptions}
+      api={api} layoutId={layoutId} text={draft} name={detail.name} disabled={!valid || (treeEditing && textFor !== blockTree)} projectOptions={projectOptions}
     />
   );
 

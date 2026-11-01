@@ -37,7 +37,7 @@ from __future__ import annotations
 import enum
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -197,6 +197,7 @@ def name_lookup_field(
 
 def from_search(
     search: ArtefactSearchProvider, *fields: ReportField, search_fields: bool = True, math_fields: Iterable[str] = (),
+    core_fields: Iterable[str] = (),
 ) -> ReportFieldProvider:
     """A `ReportFieldProvider` over a type's search declaration.
 
@@ -209,11 +210,13 @@ def from_search(
         *fields: The typed fields on top (dates, enums, people, lookups).
         search_fields: Whether to include the search provider's own text fields.
         math_fields: Keys of those text fields people write equations in (`ReportField.math`).
+        core_fields: Keys of the fields (search text or typed) that are the type's core detail (`ReportField.core`).
 
     Returns:
         The provider.
     """
     math_keys = frozenset(math_fields)
+    core_keys = frozenset(core_fields)
     from_search_fields = (
         tuple(text_field(f.key, f.label, f.column, math=f.key in math_keys) for f in search.fields) if search_fields else ()
     )
@@ -222,7 +225,7 @@ def from_search(
     return ReportFieldProvider(
         from_clause=search.from_clause,
         columns=search.columns,
-        fields=from_search_fields + extra,
+        fields=tuple(replace(f, core=True) if f.key in core_keys else f for f in from_search_fields + extra),
         where=search.where,
         status_labels=search.status_labels,
     )
@@ -291,6 +294,15 @@ def field_catalogue(artefact_type: str) -> list[FieldInfo]:
         for f in provider.fields
     ]
     return reserved + own
+
+
+def core_field_keys(artefact_type: str) -> list[str]:
+    """The keys of a type's core detail: code, title, status and tags, then the fields it marks `core`.
+
+    Raises:
+        UnknownReportFieldError: The type is not reportable.
+    """
+    return [*RESERVED_FIELD_KEYS, *(f.key for f in provider_for(artefact_type).fields if f.core)]
 
 
 def field_domain(db: Session, artefact_type: str, key: str, project_ids: Sequence[uuid.UUID]) -> list[str] | None:
@@ -466,7 +478,7 @@ def format_value(kind: str, value: Any) -> str:
 
 
 __all__ = [
-    "RESERVED_FIELD_KEYS", "FieldInfo", "ReportRecord", "UnknownReportFieldError", "bool_field", "date_field",
+    "RESERVED_FIELD_KEYS", "FieldInfo", "ReportRecord", "UnknownReportFieldError", "bool_field", "core_field_keys", "date_field",
     "enum_field", "field_catalogue", "field_domain", "format_value", "from_search", "instant_field", "load_records",
     "name_lookup_field", "number_field", "principal_field", "provider_for", "text_field", "validate_provider",
 ]

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
+import { clearRememberedPreviewScopes } from "../utils/reportPreviewMemory";
 import { buildReportVariable } from "../testing/reportFixtures";
 import { buildDocumentPreview, buildLayoutApi, buildSheetPreview } from "../testing/reportLayoutFixtures";
 import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
@@ -10,7 +11,11 @@ import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 const meta: Meta<typeof ReportLayoutPreviewPanel> = {
   title: "Components/ReportLayoutPreviewPanel",
   component: ReportLayoutPreviewPanel,
-  args: { api: buildLayoutApi(), text: "@layout document\n", name: "Requirements", disabled: false },
+  args: { api: buildLayoutApi(), layoutId: "layout-1", text: "@layout document\n", name: "Requirements", disabled: false },
+  // The remembered project choice lives in localStorage, which stories share: start each from nothing.
+  beforeEach: () => {
+    clearRememberedPreviewScopes();
+  },
 };
 export default meta;
 
@@ -94,6 +99,72 @@ export const AnOrganisationPreviewCanChooseProjects: Story = {
     await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Borealis" }));
     await userEvent.click(canvas.getByRole("button", { name: "Run preview" }));
     await waitFor(() => expect(args.api.preview).toHaveBeenCalledWith(expect.objectContaining({ project_ids: ["p2"] })));
+  },
+};
+
+const ORGANISATION_PROJECTS = [{ value: "p1", label: "Atlas" }, { value: "p2", label: "Borealis" }];
+
+/** The next preview of the same layout opens on the projects chosen last time; another layout is unaffected. */
+export const TheChosenProjectsAreRememberedForTheNextPreview: Story = {
+  args: { api: buildLayoutApi([], { kind: "organization" }), projectOptions: ORGANISATION_PROJECTS },
+  render: function Render(args) {
+    return <ReopenHarness {...args} />;
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /Projects/ }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Borealis" }));
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Reopen" }));
+    await userEvent.click(canvas.getByRole("button", { name: /Projects/ }));
+    await expect(await within(document.body).findByRole("checkbox", { name: "Borealis" })).toBeChecked();
+    await expect(within(document.body).getByRole("checkbox", { name: "Atlas" })).not.toBeChecked();
+    await userEvent.keyboard("{Escape}");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Other layout" }));
+    await userEvent.click(canvas.getByRole("button", { name: /Projects/ }));
+    await expect(await within(document.body).findByRole("checkbox", { name: "Borealis" })).not.toBeChecked();
+  },
+};
+
+function ReopenHarness(args: React.ComponentProps<typeof ReportLayoutPreviewPanel>) {
+  const [layoutId, setLayoutId] = useState(args.layoutId);
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => { setOpen(false); setTimeout(() => setOpen(true), 0); }}>Reopen</button>
+      <button type="button" onClick={() => setLayoutId("layout-2")}>Other layout</button>
+      {open && <ReportLayoutPreviewPanel {...args} layoutId={layoutId} />}
+    </>
+  );
+}
+
+/** A remembered project the caller can no longer choose drops silently and the default (all projects) applies. */
+export const ARememberedProjectThatIsGoneIsDropped: Story = {
+  args: { api: buildLayoutApi([], { kind: "organization" }), projectOptions: ORGANISATION_PROJECTS },
+  beforeEach: () => {
+    clearRememberedPreviewScopes();
+    localStorage.setItem("reqtrack.reportPreviewScope.organization.org-1.layout-1", JSON.stringify({ projectIds: ["p2", "gone"], includeChildren: false }));
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Run preview" }));
+    await waitFor(() => expect(args.api.preview).toHaveBeenCalledWith(expect.objectContaining({ project_ids: ["p2"] })));
+  },
+};
+
+/** The child-projects switch is remembered too. */
+export const TheChildProjectsSwitchIsRemembered: Story = {
+  beforeEach: () => {
+    clearRememberedPreviewScopes();
+    localStorage.setItem("reqtrack.reportPreviewScope.project.project-1.layout-1", JSON.stringify({ projectIds: [], includeChildren: true }));
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("switch", { name: "Include child projects" })).toBeChecked();
+    await userEvent.click(canvas.getByRole("button", { name: "Run preview" }));
+    await waitFor(() => expect(args.api.preview).toHaveBeenCalledWith(expect.objectContaining({ include_children: true })));
   },
 };
 

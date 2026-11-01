@@ -175,10 +175,17 @@ services:
       # (http://localhost:8080/realms/...) since that's what must appear in
       # tokens and what the browser gets redirected to.
       OIDC_INTERNAL_BASE_URL_OVERRIDE: http://keycloak:8080
+      # EPS and PDF logos are converted by the `converter` service (below), which the real-conversion tests also use.
+      REPORT_CONVERTER_URL: http://converter:8300
+    networks:
+      - default
+      - converter
     depends_on:
       db:
         condition: service_healthy
       storage:
+        condition: service_healthy
+      converter:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -188,6 +195,33 @@ services:
       start_period: 120s
       timeout: 5s
       retries: 10
+
+  # Picture converter: runs Ghostscript and poppler on uploaded EPS and PDF logos so the backend never does
+  # (docs/solution-architecture.md). It is the sandbox: only on the `converter`
+  # network, which is `internal` (no route out, no published port) and shared with the backend alone; no secrets and
+  # no application code; non-root, read-only root filesystem with a small scratch `tmpfs`, no Linux capabilities, and
+  # CPU, memory and process ceilings. Nothing is stored.
+  converter:
+    build:
+      context: ../../converter
+    networks:
+      - converter
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 2560m
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8300/health', timeout=4)"]
+      interval: 10s
+      start_period: 20s
+      timeout: 5s
+      retries: 5
 
   frontend:
     build:
@@ -271,6 +305,11 @@ configs:
       {"identities":[{"name":"app",
         "credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-reqtrackapp}","secretKey":"${STORAGE_SECRET_KEY:-reqtrackapp}"}],
         "actions":["Admin:${STORAGE_S3_BUCKET:-reqtrackmanager}","Read:${STORAGE_S3_BUCKET:-reqtrackmanager}","Write:${STORAGE_S3_BUCKET:-reqtrackmanager}","List:${STORAGE_S3_BUCKET:-reqtrackmanager}"]}]}
+
+# `internal`: containers on it get no route to the outside world. Only the backend and the converter join it.
+networks:
+  converter:
+    internal: true
 
 volumes:
   reqtrack_test_db_data:

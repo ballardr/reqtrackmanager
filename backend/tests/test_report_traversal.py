@@ -102,6 +102,16 @@ def test_roots_of_a_disabled_module_are_not_listed(client, admin_token, db):
     assert roots.summaries == [] and roots.hidden == 1
 
 
+def test_roots_of_a_type_with_no_code_list_without_ordering_by_a_constant(world, db):
+    """The compliance assessment declares a constant code, which Postgres refuses as an ORDER BY item."""
+    project = world.project("No code P")
+    resolver, row = _resolver(db, world, project)
+
+    roots = root_records(db, resolver, row, "compliance_required_action_assessment", [row.id])
+
+    assert roots.summaries == [] and roots.hidden == 0
+
+
 def test_the_root_cap_truncates_instead_of_failing(world, db, monkeypatch):
     project = world.project("Cap P")
     for i in range(3):

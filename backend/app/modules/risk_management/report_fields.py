@@ -28,5 +28,6 @@ REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         enum_field("treatment_strategy", "Treatment strategy", RiskVersion.treatment_strategy, TreatmentStrategy),
         principal_field("owner", "Owner", RiskVersion.owner_type, RiskVersion.owner_id),
         date_field("review_date", "Review date", RiskVersion.review_date),
+        core_fields=("statement", "owner"),
     ),
 }

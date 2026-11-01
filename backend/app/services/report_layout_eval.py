@@ -136,6 +136,7 @@ from app.services.report_model import (
 from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, org_value_kind, report_org_values
 from app.services.report_page_styles import effective_bands, resolve_page_styles
 from app.services.report_record_images import candidate_files, compile_pattern, load_attachment_image, record_files
+from app.services.report_shapes import shape_svg
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
 from app.services.report_variables import (
     PLACEHOLDER_FAMILY,
@@ -1206,6 +1207,25 @@ def _eval_image(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     run.emit(picture, *(() if picture.floats else (Gap(0.2),)))
 
 
+def _eval_shape(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """A shape: a preset drawn from the node's validated numbers and colours, or the author's sanitised SVG, as a picture.
+
+    It takes the picture's placements, so it can sit in line, beside the text, or behind or in front of it.
+    """
+    if node["shape"] == "custom":
+        svg = node["svg"]
+    else:
+        svg = shape_svg(node, accent=run.org_values["report_accent"])
+    alt = node.get("alt", "").strip()
+    picture = Image(
+        svg=svg, alt=alt, decorative=not alt,
+        width=_cm(node.get("width"), node.get("width_unit")), height_cm=_cm(node.get("height"), node.get("height_unit")),
+        align=node.get("align", "center"), placement=node.get("placement", "inline"), anchor=node.get("anchor", "paragraph"),
+        offset_x_cm=float(node.get("offset_x", 0)), offset_y_cm=float(node.get("offset_y", 0)),
+    )
+    run.emit(picture, *(() if picture.floats else (Gap(0.2),)))
+
+
 def _uses_record_images(nodes: list[dict[str, Any]]) -> bool:
     """Whether any block under `nodes` is a record-images block for the record of the `each` that holds them.
 
@@ -1487,7 +1507,7 @@ def _eval_widget(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 for _key, _fn in (
     ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("section", _eval_section),
-    ("image", _eval_image), ("record_images", _eval_record_images),
+    ("image", _eval_image), ("shape", _eval_shape), ("record_images", _eval_record_images),
     ("equation", _eval_equation), ("table", _eval_table), ("each", _eval_each), ("group", _eval_group), ("if", _eval_if),
     ("sheet", _eval_sheet), ("widget", _eval_widget),
 ):

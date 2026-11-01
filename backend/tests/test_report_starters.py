@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import pytest
 
-from app.models.report_layout import FAMILY_DOCUMENT
+from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import get_module_registry, get_report_starter_sections
 from app.services.report_layout_tree import validate_tree
 from app.services.report_starters import STARTER_NOTE, STARTERS
 from tests.conftest import auth_headers, create_org_user, login
 from tests.link_world import World
 
-STARTER_NAMES = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component"]
+DOCUMENT_STARTER_NAMES = ["Business Requirements Document", "Engineering Specification", "Review Package", "Requirements by Component"]
+STARTER_NAMES = [*DOCUMENT_STARTER_NAMES, "Project Workbook"]
 
 
 @pytest.fixture
@@ -37,22 +38,23 @@ def add_starters(world: World, token: str | None = None):
     return world.client.post(f"/api/v1/orgs/{world.org['id']}/report-layouts/starters", headers=auth_headers(token or world.token))
 
 
-def test_every_starter_is_a_valid_document_layout_with_a_unique_name():
+def test_every_starter_is_a_valid_layout_of_its_family_with_a_unique_name():
     assert [s.name for s in STARTERS] == STARTER_NAMES
     for starter in STARTERS:
-        result = validate_tree(starter.tree, family=FAMILY_DOCUMENT)
+        result = validate_tree(starter.tree, family=starter.family)
         assert [(e.path, e.message) for e in result.errors] == [], starter.name
         assert starter.description
 
 
 def test_every_module_section_names_a_real_starter_and_a_module_that_owns_it():
+    documents = [starter for starter in STARTERS if starter.family == FAMILY_DOCUMENT]
     keys = {starter.key for starter in STARTERS}
     contributed = [(module, section) for module, definition in get_module_registry().items() for section in definition.report_starter_sections]
 
     assert contributed, "modules contribute starter sections"
     assert {section.starter for _module, section in contributed} <= keys
     assert sum(len(get_report_starter_sections(key)) for key in keys) == len(contributed)
-    for starter in STARTERS:
+    for starter in documents:
         wrapped = {block["when"]["module"] for block in starter.tree["nodes"] if block["type"] == "if"}
         assert wrapped == {module for module, section in contributed if section.starter == starter.key}
 
@@ -61,7 +63,9 @@ def test_a_new_organisation_starts_with_the_starter_layouts(world):
     layouts = org_layouts(world)
 
     assert sorted(layout["name"] for layout in layouts) == sorted(STARTER_NAMES)
-    assert all(layout["family"] == FAMILY_DOCUMENT and layout["project_id"] is None for layout in layouts)
+    assert all(layout["project_id"] is None for layout in layouts)
+    assert {layout["name"]: layout["family"] for layout in layouts}["Project Workbook"] == FAMILY_TABLE
+    assert all(layout["family"] == FAMILY_DOCUMENT for layout in layouts if layout["name"] != "Project Workbook")
 
 
 def test_a_starter_is_an_ordinary_editable_layout(world):
@@ -157,7 +161,7 @@ def run_starter(world: World, project: dict, name: str, fmt: str | None = None):
     return world.client.get(url, params={"format": fmt} if fmt else {}, headers=auth_headers(world.token))
 
 
-@pytest.mark.parametrize("name", STARTER_NAMES)
+@pytest.mark.parametrize("name", DOCUMENT_STARTER_NAMES)
 def test_each_starter_runs_in_a_project_with_every_module_on(client, admin_token, name):
     world = World(client, admin_token, "Starter Run", decisions=True, context_strategy=True, keep_starter_layouts=True)
     world.enable("risk_management")
@@ -223,7 +227,7 @@ def test_a_part_comes_back_in_a_project_where_its_module_is_on(client, admin_tok
     assert "Risks and business impacts" not in html
 
 
-@pytest.mark.parametrize("name", STARTER_NAMES)
+@pytest.mark.parametrize("name", DOCUMENT_STARTER_NAMES)
 def test_a_starter_runs_as_pdf_and_word(world, name):
     project = world.project("Files")
     world.requirement(project)

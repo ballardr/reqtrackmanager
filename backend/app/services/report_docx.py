@@ -56,7 +56,7 @@ from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
-from app.services.report_image_layout import place_cell_pictures, placed_size_cm
+from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
     SLOT_NAMES,
@@ -289,6 +289,14 @@ def _svg_png(svg: str) -> bytes:
         return b""
 
 
+def _svg_block_png(block: Image, usable_cm: float) -> bytes:
+    """A transparent PNG of an image block's SVG at its printed size, or empty bytes when it cannot be drawn."""
+    try:
+        return svg_block_png(block, usable_cm)
+    except Exception:  # noqa: BLE001 - a figure that cannot be drawn must never break report generation
+        return b""
+
+
 def _picture(doc: DocxDocument, data: bytes, max_width_cm: float, *, fixed_width_cm: float | None = None) -> bool:
     """Adds an image, shrunk to the usable width. Returns `False` (nothing
     added) when the bytes are not an image python-docx can read."""
@@ -385,7 +393,7 @@ def _image_block(doc: DocxDocument, block: Image, usable_cm: float) -> None:
 
     A picture with a wrap or layer placement is a floating drawing instead. Nothing is added when the picture cannot be drawn.
     """
-    data = _svg_png(block.svg) if block.svg is not None else block.data
+    data = _svg_block_png(block, usable_cm) if block.svg is not None else block.data
     size = placed_size_cm(block, usable_cm)
     if size is None or not data:
         return

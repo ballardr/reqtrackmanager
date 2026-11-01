@@ -48,7 +48,7 @@ flowchart LR
 - **Save as snippet** (in the **Snippets** menu) keeps a piece you built so you can insert it into other layouts. In **Blocks**, select a block (a container is saved with everything inside it) and choose it; in **Text**, put the caret in a block or select several, and the top-level blocks you touched are saved. Give it a **Name**, an optional description and a **Category**, and choose where to keep it: this project (also shared with the projects below it) or, from a project, the organisation, which shares it with every project. The window says how many blocks it saves and which page styles and variables it carries along, so it works in a layout that has neither. A selection that needs something defined outside it (an alias of an enclosing "for each") cannot be saved, and a picture from a project's library cannot be kept for the organisation: the window names the picture. Saved snippets appear in **Insert snippet** beside the built-in ones, marked "Saved" with where they come from, and are copied in like any other. They have no parameters: edit the result after inserting.
 - **Report snippets** in **Reports** (and an organisation's **Templates & reports**) lists the saved snippets with their source, block count and what they carry. **New snippet** makes one without opening a layout: choose its kind (document or table, fixed once the first block exists), give it a name, and build its blocks in the same **Blocks** and **Text** editors a layout uses; the window says what saving would store and refuses what the designer's **Save as snippet** would refuse. **Edit** changes a snippet you own, details and blocks together. **Make a copy** makes a snippet of your own from it (or **Copy to the organisation**), and **Delete** removes one you own after you type its name; layouts already built from it keep their blocks. A snippet shared from the organisation or a parent project is read-only: **Hide in this project** stops it being offered here, and **Add organisation defaults** brings it back. Snippets travel with the project and organisation exports.
 
-- **The right-hand panel** is the same in Text and Blocks: Text has **Preview**, **Fields** and **Widgets** tabs, Blocks has **Block** and **Preview**. The round button at its top folds it to a thin strip, which gives the editor the width, and the same button opens it again; below 1100 pixels wide the panel sits under the editor and does not fold. The fold, and the last tab you used in each view, are remembered for you.
+- **The right-hand panel** is the same in Text and Blocks: Text has **Preview**, **Fields** and **Widgets** tabs, Blocks has **Block** and **Preview**. The round button at its top folds it to a thin strip, which gives the editor the width, and the same button opens it again; below 1100 pixels wide the panel sits under the editor and does not fold. The fold, and the last tab you used in each view, are remembered for you. The projects you pick for a preview (and the child-projects switch) are remembered for that layout in this browser, so the next preview opens on them; a project you can no longer choose drops out.
 - **Preview** runs the layout as you, on the real records, and shows a document as it will print or a table layout's first rows of each sheet (with the real row count). It stores nothing, and a project preview can include child projects while an organisation preview can be limited to chosen projects.
 - **Saving** adds a version: **Save new version** asks for an optional note in a small window, then saves. If somebody saved while you were editing, you are told and can reload their version; nothing is overwritten. Leaving with unsaved changes asks first.
 - **History** lists every version and compares any two line by line (added lines start with `+`, removed with `-`). **Use this version as the new text** puts an old version in the editor; saving it adds a new version, so history is never rewritten.
@@ -140,7 +140,7 @@ flowchart LR
 
 An **Image** block puts a picture from the image library into the report: on a line of its own, with text running beside it, or behind or in front of the text.
 
-- **Choose** the picture with *Choose image…*. The dialog lists the library (search by name) and lets you upload a PNG, JPEG, GIF, WebP or SVG file; the largest file allowed is shown in the dialog and set by your administrator (50 MB unless changed). A project layout can use its own project's pictures and the organisation's; an organisation layout can use the organisation's only, because every project runs it. An upload goes to the library of the layout you are editing, and the dialog says which.
+- **Choose** the picture with *Choose image…*. The dialog lists the library (search by name) and lets you upload a PNG, JPEG, GIF, WebP or SVG file. If your administrator has turned on the optional converter, it also takes an EPS or a PDF: it is converted to an SVG when you upload it and listed as `logo.eps.svg` or `logo.pdf.svg`, so it stays sharp at any size (a PDF contributes its first page, a bitmap inside it is kept as a picture, and the file is refused if nothing at all can be drawn); the largest file allowed is shown in the dialog and set by your administrator (50 MB unless changed). A project layout can use its own project's pictures and the organisation's; an organisation layout can use the organisation's only, because every project runs it. An upload goes to the library of the layout you are editing, and the dialog says which.
 - **Selecting a picture shows its details**: a larger preview, its size in pixels and, for a photograph, when it was taken (on the camera's own clock), the camera, any description saved in the file and where it was taken. Use these to tell photographs apart when their names do not. The same details are behind the *i* button beside a picture's name on the project's Files page, an organisation's shared resources and any list of attachments. Double-click a picture, or press *Use image*, to choose it.
 - **Tidying the library.** Each picture says whether it is used. Tick *Unused only* to list the pictures no layout uses, in its current version or any older saved one (a picture only an older version uses is labelled *Only in older versions*, since deleting it would lose it if that version is restored). *Delete several…* lets you mark pictures you own (all the ones shown, if you like) and delete them with one confirmation, which says how many are still used by a layout. Those layouts skip the picture until another is chosen. You can only delete pictures of the library you are in: a project cannot delete the organisation's.
 - **Alternative text** says what the picture shows, for readers who cannot see it; it is required unless you tick *Decorative*.
@@ -163,6 +163,34 @@ An **Image** block puts a picture from the image library into the report: on a l
 - In the text view an image is one line: `@image "<file id>" alt "The logo" width 85 mm align right caption "Our logo"`; a layered picture adds `placement behind anchor page x 2 y 3` (`x` across and `y` down, in cm).
 - A picture's GPS position, camera and other hidden details are removed when it is placed in a report. A picture that has been deleted is left out and the run warns about it.
 - A report that is exported or imported with its project carries the pictures it uses.
+
+**Example: a logo on a coloured plate.** A logo is often white on a transparent background, so it needs something behind it. Add a **Shape** (a rounded rectangle filled with `accent`, the organisation's report colour, placed *Behind the text*) and then an **Image** with the logo (placed *In front of the text*) at the same position. A layer is drawn above the one before it, so the logo sits on the plate in PDF, Word, OpenDocument and the preview. The demo organisation has this ready as **Project overview with logo**.
+
+```
+@shape rounded fill accent width 5 cm height 2.5 cm placement behind anchor paragraph x 12 y 0
+@image "<file id>" alt "Logo" height 1.75 cm placement front anchor paragraph x 12.75 y 0.375
+```
+
+## Shapes
+
+A **Shape** block draws a coloured rectangle, rounded rectangle, ellipse, triangle, line or arrow, or your own SVG. Use one as a plate behind a logo that is white on a transparent background, a banner, a callout box or a divider. It sits in line with the text, beside it, or behind or in front of it, exactly as a picture does.
+
+- **Shape** names the preset, or **Custom SVG** to paste your own markup (scripts, links to other files and embedded data are refused, and the SVG needs a `viewBox`, or a width and height). A custom shape is painted by its own SVG, so it has no fill or outline.
+- **Fill** and **Outline** take a hex colour such as `#475569`, or `accent` (your organisation's report accent), `white` or `black`; fill also takes `none`. A line or arrow has no fill and is drawn in the outline colour (black unless you set one); an arrow's **Height** is the size of its head. **Outline width** is in millimetres.
+- **Width** and **Height** are in centimetres or millimetres and are needed for a preset. A shape wider than the text is scaled down with its proportions kept.
+- **Placement**, **Position from**, **Across** and **Down** work as they do for an Image block. A block later in the layout is drawn above an earlier one, so to put a logo on a plate, add the Shape first and the Image after it, both placed behind the text at the same position.
+- Shapes need no alternative text: leave it empty and a reader using assistive technology skips the shape. Describe it when it carries meaning.
+- A shape is drawn as a vector in PDF and HTML. Word and OpenDocument get a sharp, transparent picture of it rather than an editable shape object. A table layout (CSV or spreadsheet) cannot hold a shape.
+- In the text view a shape is one line: `@shape rounded fill #475569 width 5 cm height 2 cm placement behind anchor page x 1 y 1`; a custom shape writes `@shape custom svg "<svg ...>" width 3 cm` (the SVG in quotes).
+
+```mermaid
+flowchart LR
+  A[Shape block] --> B{Kind}
+  B -->|Preset| C[Drawn from fill, outline and size]
+  B -->|Custom SVG| D[Checked, then drawn as written]
+  C --> E[Placed like a picture]
+  D --> E
+```
 
 ## Pictures attached to records
 

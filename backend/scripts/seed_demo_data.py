@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import httpx
 
@@ -590,6 +591,48 @@ def create_report_layout(headers: dict, path: str, name: str, description: str, 
     )
     r.raise_for_status()
     return r.json()
+
+
+#: The product mark: white on transparent, so a report places it on a coloured shape. Kept beside this script (not read from the
+#: repository root) so a container build, which copies only `backend/`, finds it.
+LOGO_PATH = Path(__file__).parent / "data" / "logo.svg"
+
+
+def upload_report_image(headers: dict, path: str, file_path: Path, content_type: str) -> dict:
+    """Adds a picture to a report image library at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-images`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-images", files={"file": (file_path.name, file_path.read_bytes(), content_type)}, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def project_overview_with_logo_layout(logo_file_id: str) -> dict:
+    """A cover banner (the product logo, white on transparent, in front of a plate in the organisation's report accent colour)
+    over the project name and a short requirements table. Both pictures are laid over the page beside the title, measured
+    from the title's paragraph, so the title stays readable."""
+    return {
+        "schema_version": 1, "family": "document", "orientation": "portrait",
+        "nodes": [
+            {
+                "type": "shape", "shape": "rounded", "fill": "accent", "width": 5, "height": 2.5, "alt": "",
+                "placement": "behind", "anchor": "paragraph", "offset_x": 12, "offset_y": 0,
+            },
+            {
+                "type": "image", "file": logo_file_id, "alt": "Solstice Robotics logo", "height": 1.75, "height_unit": "cm",
+                "placement": "front", "anchor": "paragraph", "offset_x": 12.75, "offset_y": 0.375,
+            },
+            {"type": "heading", "text": "{{project_name}}"},
+            {"type": "text", "text": "Requirements overview, generated {{generated_on}}."},
+            {"type": "heading", "level": 2, "text": "Requirements"},
+            {
+                "type": "table", "source": {"record_type": "requirement", "sort": [{"field": "code"}]},
+                "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}, {"field": "status", "label": "Status"}],
+                "empty_text": "No requirements.",
+            },
+        ],
+    }
 
 
 def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
@@ -2203,6 +2246,14 @@ def main() -> None:
     )
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
+    )
+    print("Seeding a report with the logo on a shape (the white mark over an accent plate), and making sure the Project Workbook starter is there...")
+    httpx.post(f"{BASE}/orgs/{org['id']}/report-layouts/starters", headers=h_pm, timeout=30).raise_for_status()
+    logo = upload_report_image(h_pm, f"/orgs/{org['id']}", LOGO_PATH, "image/svg+xml")
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Project overview with logo",
+        "A cover banner (the logo on a plate in the report accent colour), the project name and its requirements.",
+        project_overview_with_logo_layout(logo["id"]), folder="Handover",
     )
     print("Seeding a saved report snippet: the by-component grouping, kept for the organisation to insert into other layouts...")
     create_report_snippet(

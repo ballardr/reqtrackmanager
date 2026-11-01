@@ -453,6 +453,20 @@ Files such as supporting documents and uploaded attachments are stored in a conf
 
 **Implementation note (Pelion v2):** `backend/app/storage_backends/` defines a small `FileStorageBackend` protocol with two real implementations — `LocalFileStorageBackend` (filesystem) and `S3CompatibleFileStorageBackend` (boto3, works against any S3-compatible server or real S3) — selected via `STORAGE_BACKEND=local|s3`. The default Docker Compose stack runs the bundled SeaweedFS S3 gateway (formerly MinIO — see [decisions.md](decisions.md)'s "Storage backend: MinIO images no longer pullable, replaced with SeaweedFS" entry) and defaults to the `s3` backend so the object-storage path is exercised for real rather than only implemented in the abstract. The bundled gateway accepts a single S3 identity that may act on the application bucket only (the backend's credential), and everything except the S3 gateway listens on loopback because SeaweedFS's filer and master APIs are unauthenticated; both are plain compose configuration (see [deployment.md](deployment.md) §Storage credential scope and its hardening guide).
 
+### Picture Converter (optional)
+EPS and PDF logos uploaded to the report image library are converted to SVG once, at upload, by a separate `converter` container (`converter/`, a Compose profile that is off unless chosen). It exists so the backend never runs a PostScript interpreter (Ghostscript) or a PDF parser: both read hostile input and have a history of sandbox bypasses, so they run where an escape finds nothing to take.
+
+```mermaid
+flowchart LR
+    U[Browser] -->|"upload logo.eps"| BE[backend]
+    BE -->|"POST /convert/eps<br/>internal network only"| CV["converter<br/>no secrets, no egress,<br/>read-only, non-root"]
+    CV -->|"SVG (untrusted)"| BE
+    BE -->|"sanitise, store SVG"| ST[(storage)]
+    BE -.->|"report run: SVG only,<br/>converter never called"| R[Report]
+```
+
+Read left to right: the backend sends the file over a Compose network marked `internal` (shared with nothing but the backend, no route out), the converter replies with an SVG that the backend treats as untrusted and sanitises, and only that SVG is stored. A report run never calls the converter. Without the service, `REPORT_CONVERTER_URL` is empty and EPS and PDF are simply not offered; the rest of the product is unchanged. See [deployment.md](deployment.md#optional-eps-and-pdf-logos-the-converter) and `docs/decisions.md`'s "Custom reports: the converter service".
+
 ### Stateful Components and Backup Verification
 
 Everything a disaster recovery must restore lives in exactly three Compose volumes plus the operator's `.env`; every other service is rebuilt from its image.

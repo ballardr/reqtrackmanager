@@ -191,6 +191,17 @@ def test_a_starter_can_be_copied_into_the_organisation_too(client, admin_token):
     assert result["name"] == STARTERS[1].name and result["new_id"] in {r["id"] for r in listed(world, world).values()}
 
 
+def test_the_workbook_starter_is_copied_as_a_table_layout(client, admin_token):
+    world = World(client, admin_token, "Starter Org 3")
+    workbook = next(s for s in STARTERS if s.family == "table")
+
+    result = duplicated(world, world, kind="starter", starter_key=workbook.key, name="Our workbook")
+
+    made = listed(world, world)["Our workbook"]
+    assert made["family"] == "table" and made["id"] == result["new_id"]
+    assert detail(world, world, result["new_id"])["current"]["tree"]["family"] == "table"
+
+
 # ---- names ---------------------------------------------------------------------------------------------------------
 
 

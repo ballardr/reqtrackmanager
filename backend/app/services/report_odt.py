@@ -32,7 +32,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.services.branding import readable_on_white
-from app.services.report_image_layout import place_cell_pictures, placed_size_cm
+from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
     TONE_FILL,
@@ -542,7 +542,7 @@ class _Body:
             data = block.data
             if block.svg is not None:
                 try:
-                    data = svg_png(block.svg)  # a vector figure is shown as a picture, as in Word
+                    data = svg_block_png(block, self.usable_cm)  # a vector figure is shown as a picture, as in Word
                 except Exception:  # noqa: BLE001 - a figure that cannot be drawn must never break report generation
                     data = b""
             self._image_block(block, data)

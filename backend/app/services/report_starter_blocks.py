@@ -6,7 +6,7 @@ Small builders for the layout blocks of the starter report layouts, shared by th
 
 Responsibilities:
 - Name the starters (`BUSINESS_REQUIREMENTS_DOCUMENT`, `ENGINEERING_SPECIFICATION`, `REVIEW_PACKAGE`,
-  `REQUIREMENTS_BY_COMPONENT`) so a module's
+  `REQUIREMENTS_BY_COMPONENT`, `WORKBOOK`) so a module's
   section and the core assembler agree on a key.
 - Build a heading, a line of text, a table over a record type, a widget and a headed section as layout-tree dicts.
 - Give a starter table fixed column widths (`fixed_columns`): a field with a usual width (a code, a status) keeps it, so the
@@ -29,6 +29,7 @@ BUSINESS_REQUIREMENTS_DOCUMENT = "business-requirements-document"
 ENGINEERING_SPECIFICATION = "engineering-specification"
 REVIEW_PACKAGE = "review-package"
 REQUIREMENTS_BY_COMPONENT = "requirements-by-component"
+WORKBOOK = "project-workbook"
 
 
 def heading(text: str, level: int = 2) -> Node:

@@ -64,6 +64,7 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         bool_field("is_completed", "Completed", Requirement.is_completed),
         instant_field("completed_at", "Completed at", Requirement.completed_at),
         math_fields=("description", "reasoning", "clarification"),
+        core_fields=("description", "owner"),
     ),
     "requirement_action": from_search(
         CORE_SEARCH_PROVIDERS["requirement_action"],
@@ -74,12 +75,14 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
         principal_field("assignee", "Assignee", RequirementAction.assignee_type, RequirementAction.assignee_id),
         date_field("due_date", "Due date", RequirementAction.due_date),
         instant_field("completed_at", "Completed at", RequirementAction.completed_at),
+        core_fields=("description", "assignee"),
     ),
     "change_request": from_search(
         CORE_SEARCH_PROVIDERS["change_request"],
         enum_field("kind", "Kind", ChangeRequest.kind, ChangeRequestKind),
         instant_field("submitted_at", "Submitted at", ChangeRequest.submitted_at),
         instant_field("decided_at", "Decided at", ChangeRequest.decided_at),
+        core_fields=("description",),
     ),
 }
 

@@ -335,6 +335,15 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
+      - name: Build converter image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./converter
+          tags: container-converter:latest
+          load: true
+          cache-from: type=gha,scope=converter
+          cache-to: type=gha,mode=max,scope=converter
+
       # The dev/test stack (tests/container/docker-compose.yml) is the same
       # one developers run locally, and the only one the backend test suite
       # is allowed to run against — tests/conftest.py hard-fails if
@@ -353,7 +362,7 @@ jobs:
       # a second time with none of buildx's GHA cache wired in.
       - name: Start the dev/test stack (backend + its dependencies)
         working-directory: tests/container
-        run: docker compose up -d db storage mailhog backend
+        run: docker compose up -d db storage mailhog converter backend
 
       # Diagnostic only: `docker compose up -d` above fails outright (exit 1)
       # if a `depends_on: condition: service_healthy` dependency never
@@ -427,6 +436,10 @@ jobs:
       - name: Type-check backend (mypy)
         working-directory: tests/container
         run: docker compose exec -T backend python scripts/check_mypy.py
+
+      - name: Converter tests (real Ghostscript and poppler, inside the sandboxed container)
+        working-directory: tests/container
+        run: docker compose exec -T converter python -m unittest discover -s tests
 
       # The backup tool's tests need restic, age and pg_dump 16, which only the `backup` image
       # has; REQUIRE_DR_TOOLS makes a missing binary fail the test instead of skipping it, so the
@@ -583,6 +596,15 @@ jobs:
           load: true
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build converter image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./converter
+          tags: container-converter:latest
+          load: true
+          cache-from: type=gha,scope=converter
+          cache-to: type=gha,mode=max,scope=converter
 
       - name: Build frontend image (cached)
         uses: docker/build-push-action@v7
@@ -1053,6 +1075,14 @@ jobs:
           push: false
           tags: scan-mcp-server:ci
 
+      - name: Build converter image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./converter
+          load: true
+          push: false
+          tags: scan-converter:ci
+
       # HIGH and CRITICAL findings that have a fix available fail the job: fix
       # them by moving the base image or the dependency, never by an ignore
       # file. `--ignore-unfixed` leaves out only findings with no released fix,
@@ -1065,7 +1095,7 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
         run: |
           status=0
-          for image in scan-backend:ci scan-backup:ci scan-frontend:ci scan-mcp-server:ci docs-smoke:test; do
+          for image in scan-backend:ci scan-backup:ci scan-frontend:ci scan-mcp-server:ci scan-converter:ci docs-smoke:test; do
             echo "::group::Trivy $image"
             docker run --rm \
               -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY \
@@ -1177,7 +1207,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
-        image: [backend, backup, frontend, mcp-server, docs]
+        image: [backend, backup, frontend, mcp-server, converter, docs]
         include:
           - image: backend
             context: ./backend
@@ -1191,6 +1221,8 @@ jobs:
             version_args: true
           - image: mcp-server
             context: ./mcp-server
+          - image: converter
+            context: ./converter
           - image: docs
             context: ./docs/website
             file: ./docs/website/Dockerfile.prod
@@ -1210,7 +1242,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Only the images that declare the build identity ARGs get them; passing an unused build arg is a Docker
-      # warning. A multi-line step output keeps one build step for all five images.
+      # warning. A multi-line step output keeps one build step for all six images.
       - name: Compose build arguments
         id: args
         env:
@@ -1326,7 +1358,7 @@ jobs:
           SEMVER: ${{ needs.version.outputs.semver }}
         run: |
           cd "$RUNNER_TEMP/digests"
-          for image in backend backup frontend mcp-server docs; do
+          for image in backend backup frontend mcp-server converter docs; do
             repo="$REPOSITORY-$image"
             sources=""
             for file in "digests-$image-"*/*; do

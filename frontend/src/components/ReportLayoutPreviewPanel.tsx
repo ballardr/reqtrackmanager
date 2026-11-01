@@ -14,6 +14,8 @@
  *   values; the form follows the draft's `@var` lines, so it is refreshed only when those change, and a variable with
  *   no default and no value holds the preview back.
  * - Surface the run's warnings, its counters and any refusal (over a limit, no projects) in words.
+ * - Remember the chosen projects (and the child-projects switch) per viewer and layout, so the next preview opens on
+ *   them (`utils/reportPreviewMemory`); a remembered project the caller can no longer choose is dropped.
  *
  * Design decisions: the frame's `sandbox` attribute is deliberately empty; the preview never receives a token,
  * cookie or script. The result is dropped when the text changes (`stale`) rather than shown against text it was
@@ -32,6 +34,7 @@ import {
 } from "../api/reports";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
+import { readPreviewScope, writePreviewScope } from "../utils/reportPreviewMemory";
 import { ReportParamsForm } from "./ReportParamsForm";
 import { ReportVariablesForm } from "./ReportVariablesForm";
 import { ReportSectionTable } from "./ReportViewer";
@@ -39,15 +42,17 @@ import { Spinner } from "./Spinner";
 
 /**
  * @param api The calls, bound to the layout's scope.
+ * @param layoutId The layout being previewed; the remembered project choice is kept per layout.
  * @param text The draft text view to preview.
  * @param name The title to print on the report.
  * @param disabled True while the text has problems; the button is then disabled with the reason.
  * @param projectOptions Organisation scope: the projects a run can be narrowed to.
  */
 export function ReportLayoutPreviewPanel({
-  api, text: draft, name, disabled, projectOptions,
+  api, layoutId, text: draft, name, disabled, projectOptions,
 }: {
   api: ReportLayoutApi;
+  layoutId: string;
   text: string;
   name: string;
   disabled: boolean;
@@ -56,7 +61,21 @@ export function ReportLayoutPreviewPanel({
   const strings = useStrings();
   const text = strings.reportLayouts;
   const variableText = strings.reportVariables;
-  const [values, setValues] = useState<ReportRunValues>({});
+  // The remembered choice is read on every render (it is cheap), so the side panel and the preview dialog, which show
+  // the same panel twice, agree; it is re-checked against the projects on offer, which may arrive after the panel opens.
+  const [, setTick] = useState(0);
+  const organisationScope = api.scope.kind === "organization";
+  const offered = useMemo(() => new Set((projectOptions ?? []).map((project) => project.value)), [projectOptions]);
+  const stored = readPreviewScope(api.scope, layoutId, organisationScope ? offered : new Set());
+  const values: ReportRunValues = { include_children: stored.includeChildren, project_ids: stored.projectIds.join(",") };
+  function changeValue(key: string, value: ReportRunValues[string]) {
+    const next = { ...values, [key]: value };
+    writePreviewScope(api.scope, layoutId, {
+      projectIds: typeof next.project_ids === "string" && next.project_ids !== "" ? next.project_ids.split(",") : [],
+      includeChildren: next.include_children === true,
+    });
+    setTick((tick) => tick + 1);
+  }
   const [form, setForm] = useState<ReportVariable[]>([]);
   const [variableValues, setVariableValues] = useState<VariableValues>({});
   const [running, setRunning] = useState(false);
@@ -117,7 +136,7 @@ export function ReportLayoutPreviewPanel({
       <ReportParamsForm
         params={[]}
         values={values}
-        onChange={(key, value) => setValues((previous) => ({ ...previous, [key]: value }))}
+        onChange={changeValue}
         supportsIncludeChildren={api.scope.kind === "project"}
         projectMultiOptions={api.scope.kind === "organization" ? projectOptions : undefined}
       />

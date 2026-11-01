@@ -41,6 +41,8 @@ import { Modal } from "./Modal";
 import { Spinner } from "./Spinner";
 
 const ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
+/** Added when the deployment runs the converter service, which turns an EPS or PDF into an SVG. */
+const ACCEPT_CONVERTED = ",.eps,.pdf,application/pdf,application/postscript,application/eps,image/x-eps";
 
 /** The `file` that stands for the organisation's logo (`services.report_org_values.ORG_LOGO_FILE`). */
 export const ORG_LOGO_FILE = "org_logo";
@@ -119,7 +121,7 @@ export function ReportImageField({
       {loadError && <span role="alert" style={{ color: "var(--color-danger)" }}>{text.loadFailed}</span>}
       {open && (
         <ImageLibraryDialog
-          images={images} maxBytes={listing?.max_image_bytes ?? null} library={library} scope={scope} value={value} onReload={reload}
+          images={images} maxBytes={listing?.max_image_bytes ?? null} converterAvailable={listing?.converter_available ?? false} library={library} scope={scope} value={value} onReload={reload}
           onPick={(id) => { onChange(id); setOpen(false); }} onClose={() => setOpen(false)}
         />
       )}
@@ -129,10 +131,11 @@ export function ReportImageField({
 
 /** The dialog: search, upload, a grid of pictures, and the details of the one selected. */
 function ImageLibraryDialog({
-  images, maxBytes, library, scope, value, onReload, onPick, onClose,
+  images, maxBytes, converterAvailable, library, scope, value, onReload, onPick, onClose,
 }: {
   images: ReportImage[] | null;
   maxBytes: number | null;
+  converterAvailable: boolean;
   library: ReportImageLibrary;
   scope: "organization" | "project";
   value: string;
@@ -236,7 +239,7 @@ function ImageLibraryDialog({
           <div style={{ flex: 1 }}>
             <TextField label={text.search} value={search} onChange={setSearch} helpNotNeeded />
           </div>
-          <FileUploadTrigger accept={ACCEPT} onSelect={(file) => void upload(file)} disabled={busy} className="btn">
+          <FileUploadTrigger accept={converterAvailable ? ACCEPT + ACCEPT_CONVERTED : ACCEPT} onSelect={(file) => void upload(file)} disabled={busy} className="btn">
             {busy ? text.uploading : text.upload}
           </FileUploadTrigger>
         </div>
@@ -267,7 +270,7 @@ function ImageLibraryDialog({
         )}
         {error && <div role="alert" style={{ color: "var(--color-danger)" }}>{error}</div>}
         {images === null && <Spinner />}
-        {images !== null && images.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{text.empty}</p>}
+        {images !== null && images.length === 0 && <p className="text-muted" style={{ margin: 0 }}>{converterAvailable ? text.emptyWithConverter : text.empty}</p>}
         {images !== null && images.length > 0 && shown.length === 0 && (
           <p className="text-muted" style={{ margin: 0 }}>{unusedOnly && search.trim() === "" ? text.noUnused : text.noMatches}</p>
         )}

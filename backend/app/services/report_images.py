@@ -5,8 +5,8 @@ The pictures a report layout may embed: the library at each tier, the visibility
 stored file into the bytes a renderer draws.
 
 Responsibilities:
-- Accept an upload only when its *content* is a raster image (PNG, JPEG, GIF, WebP) or a sanitisable SVG, never its
-  declared type or file name.
+- Accept an upload only when its *content* is a raster image (PNG, JPEG, GIF, WebP), a sanitisable SVG or an EPS or PDF (converted
+  once, at upload, to an SVG by the separate converter service: `services.report_converter`), never its declared type or file name.
 - List the library a layout may use, upload to it and delete from it, naming the layouts that use an image.
 - Decide whether a layout may use a file (`usable_by_layout`) and report the layouts that break that rule at save
   (`image_problems`), so the check is made again at run time by `load_image` and a hand-typed id cannot cross it.
@@ -25,7 +25,7 @@ Design decisions:
   frame. The pixel count is read from the header before the image is decoded (decompression bombs).
 - **No remote URLs, ever.** Only files in the store are read.
 
-Dependencies: Pillow, `services.files`, `services.report_svg`, `services.report_layout_tree` (the tree vocabulary).
+Dependencies: Pillow, `services.files`, `services.report_svg`, `services.report_converter`, `services.report_layout_tree` (the tree vocabulary).
 """
 
 from __future__ import annotations
@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from PIL import Image as PilImage
-from PIL import ImageOps
 from sqlalchemy import Text, cast, or_, select
 from sqlalchemy.orm import Session
 
@@ -45,30 +44,31 @@ from app.config import get_settings
 from app.models.file import FileAsset
 from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_snippet import SavedReportSnippet
+from app.services import report_converter
 from app.services.files import delete_file, read_file, upload_file
 from app.services.report_layout_tree import TreeError
 from app.services.report_org_values import ORG_LOGO_FILE
+from app.services.report_raster import (
+    JPEG_QUALITY,
+    RASTER_TYPES,
+    ImageRejectedError,
+    NormalisedImage,
+    max_image_pixels,
+    normalise_raster,
+)
 from app.services.report_svg import UnsafeSvgError, sanitize_svg
 
 #: Raster formats embedded, by Pillow format name, and the content type each is stored and drawn as.
-RASTER_TYPES: dict[str, str] = {"PNG": "image/png", "JPEG": "image/jpeg", "GIF": "image/gif", "WEBP": "image/webp"}
 SVG_TYPE = "image/svg+xml"
 #: Most pictures one report run embeds (times the background multiplier). The size limits are deployment settings
 #: (`Settings.report_image_max_bytes`, `report_image_max_pixels`, `report_image_max_total_bytes`).
 MAX_REPORT_IMAGES = 200
-#: JPEG quality of a re-encoded photograph.
-JPEG_QUALITY = 90
 
 
 def max_image_bytes() -> int:
     """The largest picture the library accepts: the report-image setting, never above the general upload limit."""
     settings = get_settings()
     return min(settings.report_image_max_bytes, settings.max_upload_bytes)
-
-
-def max_image_pixels() -> int:
-    """The most pixels one raster picture may have (`REPORT_IMAGE_MAX_PIXELS`)."""
-    return get_settings().report_image_max_pixels
 
 
 def max_total_image_bytes() -> int:
@@ -78,26 +78,6 @@ def max_total_image_bytes() -> int:
 
 def _megabytes(value: int) -> str:
     return f"{value / (1024 * 1024):g} MB"
-
-
-class ImageRejectedError(ValueError):
-    """The bytes are not an image this library accepts (the message is shown to the author)."""
-
-
-@dataclass(frozen=True)
-class NormalisedImage:
-    """A raster ready to draw: re-encoded without metadata.
-
-    Attributes:
-        data: PNG or JPEG bytes.
-        content_type: `image/png` or `image/jpeg`.
-        width_px / height_px: The pixel size after the EXIF orientation was applied.
-    """
-
-    data: bytes
-    content_type: str
-    width_px: int
-    height_px: int
 
 
 @dataclass(frozen=True)
@@ -165,40 +145,6 @@ def sniff_image(data: bytes) -> str:
     except (UnicodeDecodeError, UnsafeSvgError):
         raise ImageRejectedError("Only PNG, JPEG, GIF, WebP and plain SVG images can be used in a report.") from None
     return SVG_TYPE
-
-
-def normalise_raster(data: bytes) -> NormalisedImage:
-    """Re-encodes a raster without its metadata (EXIF, GPS, comments), applying its orientation first.
-
-    Args:
-        data: A PNG, JPEG, GIF or WebP file.
-
-    Returns:
-        PNG bytes (JPEG bytes for a JPEG source).
-
-    Raises:
-        ImageRejectedError: Not a decodable image, or more pixels than `max_image_pixels()`.
-    """
-    try:
-        with PilImage.open(io.BytesIO(data), formats=list(RASTER_TYPES)) as img:
-            if img.size[0] * img.size[1] > max_image_pixels():
-                raise ImageRejectedError("The image has too many pixels.")
-            source_format = img.format
-            img.load()
-            oriented = ImageOps.exif_transpose(img)
-            out = io.BytesIO()
-            if source_format == "JPEG":
-                oriented.convert("RGB").save(out, "JPEG", quality=JPEG_QUALITY, optimize=True)
-                content_type = "image/jpeg"
-            else:
-                has_alpha = oriented.mode in ("RGBA", "LA", "P") or "transparency" in oriented.info
-                oriented.convert("RGBA" if has_alpha else "RGB").save(out, "PNG", optimize=True)
-                content_type = "image/png"
-            return NormalisedImage(out.getvalue(), content_type, oriented.size[0], oriented.size[1])
-    except ImageRejectedError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - a corrupt or unsupported file is a rejected image, never a crash
-        raise ImageRejectedError("The image could not be read.") from exc
 
 
 def usable_by_layout(asset: FileAsset | None, organization_id: uuid.UUID, layout_project_id: uuid.UUID | None) -> bool:
@@ -285,6 +231,37 @@ def _is_image(asset: FileAsset) -> bool:
     return asset.content_type == SVG_TYPE or asset.content_type in RASTER_TYPES.values()
 
 
+def prepare_upload(filename: str, data: bytes) -> tuple[str, bytes]:
+    """Turns an EPS or PDF upload into the SVG the library stores; anything else is returned unchanged.
+
+    Calls the converter service, so it can take seconds: call it off the event loop (`run_in_threadpool`).
+
+    Args:
+        filename: The uploaded name (`.svg` is appended to a converted file's name: `logo.eps` is stored as `logo.eps.svg`).
+        data: The uploaded bytes.
+
+    Returns:
+        `(filename, data)` to store.
+
+    Raises:
+        ImageRejectedError: An EPS or PDF that is too large, damaged, empty of drawing or cannot be converted here.
+    """
+    if report_converter.is_eps(data):
+        convert = report_converter.eps_to_svg
+    elif report_converter.is_pdf(data):
+        convert = report_converter.pdf_to_svg
+    else:
+        return filename, data
+    if len(data) > max_image_bytes():
+        raise ImageRejectedError(f"The image is too large (limit {_megabytes(max_image_bytes())}).")
+    try:
+        svg = convert(data)
+    except report_converter.ConversionError as exc:
+        raise ImageRejectedError(str(exc)) from exc
+    # The original name is kept ("logo.eps.svg"), so a converted file never collides with, or reads as, a hand-exported "logo.svg".
+    return f"{filename or 'image'}.svg", svg.encode("utf-8")
+
+
 def upload_library_image(
     db: Session, *, organization_id: uuid.UUID, project_id: uuid.UUID | None, uploaded_by: uuid.UUID, filename: str,
     data: bytes,
@@ -306,6 +283,7 @@ def upload_library_image(
         ImageRejectedError: Not an acceptable image.
         HTTPException: 413 from the upload cap (`services.files.upload_file`).
     """
+    filename, data = prepare_upload(filename, data)
     content_type = sniff_image(data)
     return upload_file(
         db, organization_id=organization_id, uploaded_by=uploaded_by, filename=filename or "image", content_type=content_type,
@@ -483,5 +461,5 @@ __all__ = [
     "JPEG_QUALITY", "MAX_REPORT_IMAGES", "max_image_bytes", "max_image_pixels", "max_total_image_bytes",
     "RASTER_TYPES", "SVG_TYPE", "ImageRejectedError", "LibraryImage", "NormalisedImage", "ResolvedImage",
     "delete_library_image", "image_nodes", "image_problems", "library_asset", "list_library", "load_image", "load_org_logo",
-    "normalise_raster", "sniff_image", "upload_library_image", "usable_by_layout", "used_by",
+    "normalise_raster", "prepare_upload", "sniff_image", "upload_library_image", "usable_by_layout", "used_by",
 ]

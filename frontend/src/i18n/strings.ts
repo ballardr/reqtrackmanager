@@ -2290,6 +2290,10 @@ const en = {
       arrange: { stacked: "Stacked, one under another", side_by_side: "Side by side, wrapping" },
       "column.width_unit": { cm: "Centimetres (cm)", mm: "Millimetres (mm)", percent: "% of the column's width" },
       caption_source: { file_name: "The file name", text: "Text I write", none: "No caption" },
+      shape: {
+        rectangle: "Rectangle", rounded: "Rounded rectangle", ellipse: "Ellipse", triangle: "Triangle", line: "Line", arrow: "Arrow",
+        custom: "Custom SVG",
+      },
     } as Record<string, Record<string, string>>,
     onePerLine: "One per line.",
     orientationLabels: { portrait: "Portrait", landscape: "Landscape" } as Record<string, string>,
@@ -2462,6 +2466,7 @@ const en = {
     use: "Use image",
     usedByNames: (names: string[]) => `Used by ${names.join(", ")}.`,
     empty: "No images yet. Upload a PNG, JPEG, GIF, WebP or SVG picture.",
+    emptyWithConverter: "No images yet. Upload a PNG, JPEG, GIF, WebP, SVG, EPS or PDF picture (an EPS or the first page of a PDF is converted to SVG).",
     noMatches: "No image matches your search.",
     uploadsTo: (where: string) => `Uploads go to ${where}.`,
     whereProject: "this project's library (only this project's layouts can use them)",
