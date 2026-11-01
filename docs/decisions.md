@@ -12317,3 +12317,7 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 ### joserfc bumped to 1.7.7 (CVE-2026-119283, CVE-2026-119284)
 
 **Decided by: Agent.** The dependency scan (`pip-audit`) and the image scan (Trivy) both failed on `joserfc==1.7.4` (unbounded-recipient denial of service, fixed in 1.7.5 and 1.7.6). `backend/requirements.txt` now pins `joserfc==1.7.7`, the latest release; `pip-audit` reports no known vulnerabilities and `tests/test_oidc_client.py` (the only consumer, ID-token verification) passes.
+
+### CI: the ruleset's required image check was reporting nothing
+
+**Decided by: Agent.** PR #42 sat as BLOCKED with every job green. The "Main Branch" ruleset requires a check named `Build, version, and push production container images`, which the single image job used to report; the multi-arch split replaced it with `docker-build` (a matrix) and `docker-publish`, so nothing reported that name and GitHub waited on it forever. A new `images-gate` job in `.github/workflows/ci.yml` reports the name again and passes only if `version` and every `docker-build` leg succeeded and `docker-publish` succeeded or was skipped (pull requests). Chosen over editing the ruleset because the ruleset is a repository-admin setting, and a gate keeps the ruleset stable if the matrix changes again. The branch-protection checklist in the change-management policy notes it.

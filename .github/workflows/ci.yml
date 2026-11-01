@@ -63,6 +63,10 @@
 #                          assembles each image's digests into a multi-arch
 #                          manifest tagged with the SemVer, commit SHA and
 #                          `latest` on ghcr.io, and verifies both platforms.
+#   6c. images-gate      - reports the ruleset's required check name
+#                          "Build, version, and push production container
+#                          images"; passes only if version, every docker-build
+#                          leg and (on main) docker-publish passed.
 #   7. docs              - builds docs/website/ (Docusaurus) and fails on any
 #                          broken internal link/anchor (onBrokenLinks/
 #                          onBrokenAnchors: 'throw'), on every push and PR —
@@ -1335,6 +1339,33 @@ jobs:
             done
             echo "::endgroup::"
           done
+
+  # The "Main Branch" ruleset requires a check named exactly "Build, version, and push production container
+  # images" (the name the single pre-matrix job had). docker-build and docker-publish replaced it, so nothing
+  # reported that name and every pull request sat on "Expected - waiting for status". This job reports it
+  # again, passing only when every image leg and (off pull requests) the manifest job passed, so the ruleset
+  # keeps gating on the whole image pipeline and a future matrix change needs no ruleset edit.
+  images-gate:
+    name: Build, version, and push production container images
+    runs-on: ubuntu-latest
+    needs: [version, docker-build, docker-publish]
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Require every image job to have succeeded (publish is skipped on pull requests)
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "needs results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::an image job finished as '$result'"; exit 1 ;;
+            esac
+          done
+          # docker-build must have actually run: a skipped build (an upstream failure) is not a pass.
+          [ "${{ needs.docker-build.result }}" = "success" ] \
+            || { echo "::error::docker-build did not succeed"; exit 1; }
 
   docs:
     name: Build documentation website
