@@ -19,7 +19,7 @@ flowchart LR
     V -->|"still over budget"| F
 ```
 
-## Cross-host results (commit d01093e, T0 to T4, full runs)
+## Cross-host results (commit d01093e, T0 to T4, full runs; the one-worker comparison on a common commit is in "One worker across hosts" below)
 
 | Host | Workers | Page of 50, T0 / T4 (4 users, p95) | Single record, T4 | Backend peak memory, T4 |
 |------|---------|------------------------------------|-------------------|-------------------------|
@@ -110,6 +110,32 @@ active people use 5-10 s per request. No run failed a request.
 - **A larger project cuts the ceiling by about 40%** (T3 against T2 on the Linux server: 143 against 233 req/s at the peak), as in the earlier T3 run (O12).
 - People figures follow the earlier assumption (one request per 5 s for a busy person, per 10 s for a relaxed one, a third of the signed-in
   people active); replace it with your own usage.
+
+## One worker across hosts (commit f299c390, 2026-10-31)
+
+The same nine light scenarios (browse, unpaged and filtered lists, search, links, edit, and the by-type lists, links and search), tiers T0-T4, one worker, default
+pool (5 + 10), three repeats, on the Linux server (shared with production, 4 backend cores and 2 database cores) and on the Raspberry Pi 5 (8 GiB, NVMe,
+dedicated, a 4 GiB budget: 2 backend cores, 1 database core). Mean latency in milliseconds, one simulated user; the ratio is Pi over Linux.
+
+| Request | T0 Linux / Pi | T2 | T3 | T4 | Ratio, T0-T4 |
+|---------|---------------|----|----|----|--------------|
+| Page of 50 requirements | 18 / 56 | 23 / 70 | 36 / 96 | 61 / 185 | 2.7-3.1x |
+| One requirement | 12 / 37 | 12 / 47 | 12 / 37 | 12 / 39 | 3.1-3.9x |
+| Project dashboard | 36 / 120 | 37 / 120 | 43 / 138 | 69 / 196 | 2.9-3.3x |
+| A requirement's links | 12 / 37 | 12 / 36 | 11 / 35 | 11 / 35 | 3.1-3.2x |
+| Project list | 16 / 49 | 15 / 47 | 16 / 51 | 16 / 53 | 3.1-3.3x |
+
+- **The Pi is about 3x slower per request, and that does not depend on the project size or the request.** The ratio stays between 2.7 and 3.9 at one user across five
+  request classes and all five tiers, which is what a CPU-bound service on a slower core looks like. With four simulated users on one worker it narrows to
+  1.5-2.8x at T0-T3 (the Linux server's own latency also rises, as the one worker queues) and grows to 4.2x for the page of 50 at T4 (74 / 309 ms).
+- **The shape is the same on both hosts.** The single record, the links, the comments and the project list are flat from 30 to 20,000 requirements on both; the page of 50 and the dashboard
+  grow together (Linux 18 to 61 ms, Pi 56 to 185 ms for the page), the O12 shape: the cost follows the project's size, and the Pi pays three times as much for it.
+  Nothing failed on either host.
+- **Memory does not depend on the architecture.** One worker holds the same on arm64 with 16 KB pages as on amd64: private memory 523 / 528 MiB (T0), 568 / 566 (T2), 785 / 781 (T3) and 1.32 /
+  1.51 GiB (T4), Pi / Linux. The database differs only by what its settings keep cached (0.43 / 0.72 GiB at T3).
+- **Limits of the comparison.** The Linux server is shared with production and the Pi was dedicated, so latency is not strictly comparable (the Linux figures are, if anything,
+  pessimistic). The two budgets differ (Linux 8 cores and 7.6 GiB, Pi 4 cores and 4 GiB), but a single worker uses about one core and neither run touched its memory cap,
+  so the caps do not shape the result. The load generator shares the Pi's four cores and takes more of its capacity than it does on the Linux server. The Dell workstation was not run.
 
 ## Capacity (T2, 1,000 requirements; the `capacity` scenario)
 
