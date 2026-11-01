@@ -198,11 +198,11 @@ perf/run_profile.sh workstation-wsl2 --full --dedicated --workers 4
 # A server that also serves production: browsing and writes at every tier, then the heavy scenarios in a quiet window.
 # --watch-url stops the run if production's health check slows; the load limit is raised because the load average counts the
 # run's own threads
-perf/run_profile.sh linux-vm-4c8g --full --workers 4 --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
-perf/run_profile.sh linux-vm-4c8g --full --workers 4 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-server --full --workers 4 --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-server --full --workers 4 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 
 # After a change to large-project behaviour: the two largest tiers and the scenarios that exercise them
-perf/run_profile.sh linux-vm-4c8g --full --tiers T3,T4 --scenarios edit,browse,list_filtered,bundle_import --workers 4 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-server --full --tiers T3,T4 --scenarios edit,browse,list_filtered,bundle_import --workers 4 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 
 # A Raspberry Pi 5 (8 GB, one worker, a 2.7 GiB budget; T3 and T4 do not fit unless nothing else is running)
 perf/run_profile.sh rpi5-8g --full --workers 1 --max-mem 2.7 --tiers T0,T1,T2 --max-load-per-core 4 --storage nvme
@@ -216,7 +216,7 @@ the six-worker capacity climb, plain and with the other types in the mix; a nest
 end lists each outcome. On a server that also serves production, set `PROD_HEALTH_URL` and use a quiet window:
 
 ```sh
-PROD_HEALTH_URL=https://prod.example/health perf/run_other_types.sh linux-vm-4c8g
+PROD_HEALTH_URL=https://prod.example/health perf/run_other_types.sh linux-server
 ```
 
 ### How throughput scales with workers
@@ -241,7 +241,7 @@ To find where a bigger stack saturates, raise the levels (`--capacity-users 256,
 is below the knee for six workers on six cores:
 
 ```sh
-perf/run_profile.sh linux-vm-4c8g --full --tiers T2 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-server --full --tiers T2 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 ```
 
 Every create takes its project's counter lock, so a capacity run whose writes all go to one project (the default `single`
@@ -249,14 +249,14 @@ shape) is limited by that project's create rate (about 14 per second) before the
 measure the CPU-bound ceiling:
 
 ```sh
-perf/run_profile.sh linux-vm-4c8g --full --tiers T2 --breadth projects-10 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-server --full --tiers T2 --breadth projects-10 --scenarios capacity --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 ```
 
 To see whether the ceiling depends on project size, run the same capacity climb at a larger tier (ten projects of 5,000
 requirements is 50,000 in all, so the dataset takes a while to build the first time):
 
 ```sh
-perf/run_profile.sh linux-vm-4c8g --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-server --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --capacity-users 256,384,512 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 ```
 
 To test the database's memory settings on the same climb (the T3 database no longer fits PostgreSQL's default `shared_buffers`),
@@ -264,7 +264,7 @@ set them for the perf stack only; the runner refuses a buffer larger than half t
 records the settings that were in force:
 
 ```sh
-perf/run_profile.sh linux-vm-4c8g --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --pg-shared-buffers 512MB --pg-work-mem 16MB --capacity-users 256,384 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
+perf/run_profile.sh linux-server --full --tiers T3 --breadth projects-10 --scenarios capacity --capacity-tier T3 --workers 6 --db-pool-size 4 --db-max-overflow 10 --max-cpus 12 --pg-shared-buffers 512MB --pg-work-mem 16MB --capacity-users 256,384 --allow-heavy --max-load-per-core 3 --watch-url $PROD_HEALTH_URL
 ```
 
 Read the result as requests per second per worker: it should stay near 50 while the backend's CPU is the limit. A fall
@@ -393,7 +393,7 @@ next, and the end lists each outcome.
 
 ```sh
 # Shared host (also serves production): quiet window, stops if production's health check slows
-PROD_HEALTH_URL=https://prod.example/health perf/run_baseline.sh linux-vm-4c8g
+PROD_HEALTH_URL=https://prod.example/health perf/run_baseline.sh linux-server
 # Dedicated host (nothing else runs on it)
 DEDICATED=1 perf/run_baseline.sh dell-workstation-wsl2
 ```
@@ -429,7 +429,7 @@ memory numbers are never gated in CI: they are read, from a run.
   the generators or the first runner.
 - Statements run by a streamed response or by a utility command are not in `pgstat.csv` (DML only, by design).
 - Statements run while a streamed response body is produced (some exports) are not counted in `queries.csv`.
-- The plotting script comes with the docs website work.
+- The figures on the website are drawn by `python3 perf/plot_results.py` from the bundles listed in its `BUNDLES` table (install `perf/requirements-plots.txt` first). The data stays in `perf/results/`, which is git-ignored, so only the SVGs are committed: the figures can be redrawn only where those bundles are.
 
 ## Re-measure when
 

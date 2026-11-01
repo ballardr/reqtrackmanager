@@ -41,6 +41,9 @@ from typing import Optional
 
 BUDGETS = Path(__file__).resolve().parent / "budgets.yaml"
 WARMUP_FRACTION = 0.2
+#: Samples are about two seconds apart; a longer gap in a soak trace means the stack was restarted (between tiers), and what follows
+#: is a new container booting, not the soak.
+SOAK_GAP_SECONDS = 20.0
 
 
 def slope(points: list) -> Optional[float]:
@@ -271,12 +274,24 @@ def memory_peaks(samples: list) -> dict:
     return peaks
 
 
+def soak_trace(samples: list, tier: str, scenario: str = "soak", service: str = "backend") -> list:
+    """`(seconds, MiB)` points of one scenario's memory trace, sorted, up to the first gap longer than `SOAK_GAP_SECONDS`."""
+    points = sorted((float(r["t_seconds"]), float(r["mem_mib"])) for r in samples if r["tier"] == tier and r["scenario"] == scenario and r["service"] == service)
+    for index in range(1, len(points)):
+        if points[index][0] - points[index - 1][0] > SOAK_GAP_SECONDS:
+            return points[:index]
+    return points
+
+
 def memory_slope_mib_per_hour(samples: list, tier: str, scenario: str = "soak", service: str = "backend") -> Optional[float]:
     """Backend memory growth after warm-up: least-squares slope (MiB per hour) of the rows after the first 20%.
 
+    The trace is cut at its first gap longer than `SOAK_GAP_SECONDS`: the stack restarts after a tier's last scenario, and the samples of
+    the new container's start (memory climbing from zero) are not part of the soak.
+
     Returns None with fewer than ten points after warm-up.
     """
-    points = sorted((float(r["t_seconds"]), float(r["mem_mib"])) for r in samples if r["tier"] == tier and r["scenario"] == scenario and r["service"] == service)
+    points = soak_trace(samples, tier, scenario, service)
     if len(points) < 10:
         return None
     points = points[int(len(points) * WARMUP_FRACTION):]

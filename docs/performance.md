@@ -5,9 +5,10 @@ The commands that produced these figures are in [perf/README.md](../perf/README.
 [Running on a server](../perf/README.md#running-on-a-server-tmux-and-sudo).
 
 What the profiling runs (`perf/`, how-to in [perf/README.md](../perf/README.md)) found about how the product scales,
-and what was done. One entry per finding, latest state only. Numbers are from Docker Desktop on a Mac (amd64, one
-backend worker, shared host), so **statement and row counts are exact and latencies are indicative**: untouched
-endpoints differed by 2-10x between two otherwise identical runs, so a latency difference alone is never taken as a
+and what was done. One entry per finding, latest state only. Each section states its host, commit and date, and "Hosts
+measured" below says what each host had available (the early findings were made on Docker Desktop on a Mac), so **statement
+and row counts are exact and latencies are indicative**: untouched endpoints differed by 2-10x between two otherwise
+identical runs on a shared host, so a latency difference alone is never taken as a
 finding or as proof of a fix.
 
 ```mermaid
@@ -36,6 +37,54 @@ flowchart LR
   (4-8 s at 20,000), CSV export (3.5 s), PDF report (39 s), project export (12 s) and project import (115 s Linux,
   186 s Dell at the run's commit; faster after F8, not re-measured).
 
+## Minimum requirements, choosing a size and the hosts measured
+
+The smallest configuration that was measured, and not a floor below which it is known to fail: `BACKEND_WORKERS=1` on a Raspberry Pi 5 (4 cores, 8 GiB, NVMe) with the stack held to **2 cores and 2.7 GiB**, running projects from 30 to 20,000 requirements without a failed request (the backend peaked at 1.4 GiB at 20,000 requirements).
+
+| | Minimum | Why |
+|---|---|---|
+| Processor | 2 cores, 64-bit (amd64 or arm64) | One worker is about one core of the API; the database, storage and frontend share the rest |
+| Memory | 4 GiB | The stack idles at about 0.7 GiB with one worker (backend 0.42, database about 0.12, storage 0.06, frontend and MCP server 0.07); a project of up to 1,000 requirements takes the worker to 0.6-0.9 GiB on a heavy request, and the operating system needs about 1 GiB |
+| Disk | 10 GiB free, SSD or NVMe | About 2 GiB of images; the database was 0.07 GiB at 1,000 requirements, 0.2 GiB at 5,000 and 0.7 GiB at 20,000 (test data, one project); attachments and backups are extra. The x86 servers measured here ran on hard disks as detected; the Pi on NVMe |
+| Software | Docker with Compose 2.23.1 or newer | The stack is Compose-based; images are published for amd64 and arm64 |
+
+A Raspberry Pi 5 with one worker serves about 40-80 people active at once on small projects. Below 4 GiB, below 2 cores, and four workers on a Pi were not measured.
+
+### Choosing a size by number of people
+
+Size by how many people are **active at once**, not how many have accounts. The table assumes a third of the people who can sign in are active at any moment, and that an active person makes a request every 5-10 seconds (a page view fires a few requests together and the person then reads). Both are guesses: replace the third with your own usage. It uses a conservative **30 requests per second per worker**, the rate measured with the other record types and links in the mix (about 45-60 for browsing alone).
+
+| People with accounts | Active at once | Requests per second | Workers | Cores | Memory | Notes |
+|----------------------|----------------|---------------------|---------|-------|--------|-------|
+| Up to 100 | about 35 | 3-7 | 1 | 2 | 4 GiB | A Raspberry Pi 5 (8 GiB) is enough for light use |
+| Up to 300 | about 100 | 10-20 | 1-2 | 4 | 8 GiB | Two workers for headroom and for one heavy request at a time |
+| Up to 1,000 | about 330 | 33-67 | 4 (default) | 8 | 8-16 GiB | The default configuration |
+| Up to 3,000 | about 1,000 | 100-200 | 6 | 12 | 16 GiB | Six workers, three cores for the database; near the most one stack delivered |
+| More than 5,000 | 1,700 or more | 170-340 | More than one stack | | | Beyond what was measured: several backend replicas against a larger database |
+
+- **Cores** are the workers, plus about half as many for the database, plus one for the frontend and the system. **Memory** is the backend limit from the formula below, plus the database (0.4-0.9 GiB), storage (up to 0.9 GiB with attachments), the frontend and MCP server (about 0.1 GiB) and about 1 GiB for the system, rounded up. These are planning figures built from the measurements, not separately measured configurations.
+- **Bigger projects need the next row.** At 5,000 requirements per project a stack delivers about 40% fewer requests per second and each worker needs about 1.3 GiB instead of 0.8; at 20,000 each needs 2.4 GiB or more and the database 2-3 GiB.
+- **Heavy work** (a report, a project or organisation export, a bundle import) takes one worker for seconds, so a deployment that runs several at once needs spare workers.
+- **People per request interval:** if your people click faster than every 5 seconds, or run many exports, size one row up.
+
+### Hosts measured and what each had available
+
+| | Linux server | Dell workstation | Raspberry Pi 5 |
+|---|---|---|---|
+| Processor | AMD, 16 cores | Intel, 16 cores | Arm Cortex-A76, 4 cores |
+| Memory | 30.4 GiB | 31.1 GiB visible to Docker | 7.8 GiB |
+| Storage (as detected) | hard disk | hard disk | NVMe |
+| Operating system | Linux | Windows, Docker Desktop (WSL2 virtual machine) | 64-bit Ubuntu 24 |
+| Other load | Shared with a production stack | Dedicated to the run | Dedicated to the run |
+| Capacity runs: the stack's budget | 12 cores, 7.6 GiB (backend 6 cores and 4.4 GiB, database 3 cores and 1.9 GiB) | 12 cores, 26.4 GiB (backend 6 cores and 15.3 GiB, database 3 cores and 6.6 GiB) | **2 cores, 2.7 GiB** (backend 1 core and 1.1 GiB, database half a core) |
+| Memory sweep (4 and 6 workers) | 12 cores, 16 GiB (backend 6 cores and 9.3 GiB, database 3 cores and 4 GiB) | not run | not run |
+| One-worker comparison | 8 cores, 7.6 GiB (backend 4 cores and 4.4 GiB, database 2 cores and 1.9 GiB) | not run | 4 cores, 4 GiB (backend 2 cores and 2.3 GiB, database 1 core and 1 GiB) |
+
+- **The budgets are caps the test put on the stack, not what the host could give.** A cap that is not reached does not shape a result: none of the runs shown here reached its memory cap except at 20,000 requirements, where the backend stopped at the 9.3 GiB cap (the figures say so).
+- **The Raspberry Pi's capacity figure understates the board.** Its capacity run was held to half of it (2 of 4 cores), so about 8 requests per second is for that budget; the later one-worker comparison used all four cores with a 4 GiB budget but measured latency, not capacity.
+- **The Linux server was shared with a production stack**, so its latencies are, if anything, pessimistic.
+- The Dell workstation's CPU time per request is about 1.4 times the Linux server's, and it scales worse past four workers: a property of that host and of WSL2, not of the application.
+
 ## Sizing: memory per service (Linux server, full mix, 4 and 6 workers, commit f93d8abb, 2026-10-29)
 
 Memory is what the stack needs on a host and what `docker-compose.yml` caps ([deployment.md](deployment.md#sizing-and-memory-limits)). Peaks are the
@@ -58,8 +107,10 @@ Per worker is the largest private memory of any worker after any scenario.
 - **The backend hit its 9.5 GiB cap at T4 with both worker counts**, so 9.5 is a floor for 20,000 requirements, not the need. Failures were
   only there: both organisation exports failed twice at T4, and at 6 workers one project import (the container was at its cap).
   At T0-T3 no request failed.
-- **No leak:** the backend's trend over the 30-minute soak was falling or flat at every tier and both worker counts (T0-T3 -90 to -640 MiB per hour
-  as earlier scenarios' memory was reused; T4 +12 MiB per hour at 6 workers, inside noise).
+- **No leak:** the backend's memory trend over the 30-minute soak, after warm-up, is within a few tens of MiB per hour on about 3-6 GiB at every tier and both worker
+  counts (4 workers: -2, +6, -9, -235 and -90 MiB/h at T0 to T4; 6 workers: +38, +21, +7, -26 and +12). The two large negative values are a step down of 0.1 GiB part way through, not
+  a trend. (An earlier reading of this sweep gave -90 to -640 MiB/h for T0-T3: those slopes included the new container's start-up that follows each tier's last scenario, because
+  the stack restarts between tiers; the analysis now cuts the trace at that gap, `analyse.soak_trace`.)
 - **Against the previous full run (4 workers, 4.5 GiB cap, commit 38efb504):** T2 backend peak 4.4 to 3.2 GiB, a T2 worker 1.67 to 0.91 GiB, a T3 worker 2.33 to
   1.50 GiB. The record export and import batching (F22) and the streaming exports (F23) account for it. The reports (T3 worker 1.1 GiB, set by the first
   heavy scenario) were not the largest cause by this run.
@@ -231,7 +282,7 @@ cost is the default ordering reading the whole project for every page.
 
 ## Other record types and the links between them (Linux server, commit 8b8a5161, 2026-10-27)
 
-Four runs on the shared Linux server (`linux-vm-4c8g`, 4 workers; 6 for the climb), dataset v3 with every registered type and a
+Four runs on the shared Linux server (`linux-server`, 4 workers; 6 for the climb), dataset v3 with every registered type and a
 1,000-link hub per type pair. All publishable, none aborted, no request failed. T2 is 1,000 requirements per project (105,505
 rows, 65 MiB), T3 5,000 (444,337 rows, 205 MiB). Means are over three repeats at one simulated user; each request class has
 only 2-50 samples per tier, so p95 is noisy and the means are the fair number.
@@ -380,7 +431,7 @@ whose cost grows with the total number of link events in the project.
 | O21 | A single slow request of 400-700 ms appears in almost every request class in the first repeat of each scenario (the mean is 15-50 ms), independent of type; likely the first request each of the four workers serves after warm-up (imports, caches, connection) | `latency.csv` max_ms, run 1 | Check whether it is the first request per worker: a longer warm-up, or logging the first request's time. Not yet explained |
 | O22 | **Partly fixed (F22, F23). A worker never gives memory back, so the backend needs workers x the heaviest request's high-water.** What caused the largest spikes is fixed: the 2.3 GiB a worker held after a T3 record export or import came from the per-record statements of F22 (after it, a T3 import preview worker peaks at 533 MiB, the by-type exports at 536; commit 963ba7c0), and the bundle exports now stream (F23, 263 to 178 MiB of growth at T2). **Server check (commit f93d8abb, 7 heavy scenarios, T2 and T3): a T3 worker now sits at 1.09-1.26 GiB, set by the first heavy scenario of the run; `report_pdf` (1,123 MiB) and `report_docx` (1,088) added nothing above it, so the reports are no longer the largest cause. Still open:** the project data collected for a bundle and the retained fragmentation, and a like-for-like full run (21 scenarios) before the limits are changed; the 7-scenario run is not comparable with the old full run. Reports are being rebuilt on another branch. Original finding: A worker is 0.42 GiB at idle and stays at the largest it has ever been: 0.8-0.9 GiB after one organisation bundle export at T0, 1.1-1.6 GiB at T2, 2.3 GiB after a requirement import preview at T3, 2-3 GiB at T4. Four workers reach 4.4-4.6 GiB at T2 and 8.3-11.4 GiB at T3-T4 on the Dell; the Linux server's 4.5 GiB cap was hit at T3-T4 and workers were probably killed. **Tested on the Mac (one worker, T2, organisation export then three more exports): idle 446 MiB, 709 after the exports; with `MALLOC_ARENA_MAX=2` 671 (idle 437); with a full garbage collection plus `malloc_trim` after every request over 2 s 660 (idle 438); the differences are inside the run-to-run noise, so neither lowers the high-water.** A memray heap profile after the same exports showed 572 MiB live against 415 MiB after a browse-only run: about 160 MiB of live Python objects (SQLAlchemy instances and rows, psycopg2 buffers, UUIDs) plus fragmentation that CPython does not return, not per-thread allocator pools | `processes.csv`, `samples.csv`, the Linux and Dell full runs; Mac runs of 2026-10-28/29 (`--malloc-arena-max`, `--profiling heap`) | The two cheap knobs are ruled out. **Worker recycling (`LIMIT_MAX_REQUESTS`, uvicorn `--limit-max-requests`, passed through by `docker-compose.yml`, off by default) was tested on the Linux server (2 workers, T2, 200 requests, against the same run without it): a worker is recycled to 400 MiB, but one organisation export puts it straight back at 650-670 MiB, the same peak as the control (two workers 649-688 MiB in both). Recycling lowers the average between heavy requests and costs a restart; it does not lower the peak a limit has to cover, and latencies were unchanged (mean 4.2-4.3 s for the bundle exports in both, no failures).** So it is not a sizing fix. In an isolated run a worker peaks at 0.65 GiB after the exports; the full run's 1.1-1.6 GiB at T2 came from many different heavy requests in turn, each lifting the worker further. The structural fix is to stream the exports and the bundle build and to import in chunks instead of holding the project (O7), its own change with tests. Until then size memory with the formula in the sizing section |
 | O23 | On the Dell workstation the backend spends 22-27 ms of CPU per request at 64 connections against 16-20 ms on the Linux server, and six workers deliver less than four (120 against 139 req/s) | `run.json` notes, capacity runs | Likely WSL2 and the CPU rather than the code; repeat on a second Linux host before concluding. Does not change the sizing on Linux |
-| O14 | (Planned as Phase 4c in `docs/plans/resource-profiling-plan.md`, with the links between types as its main subject.) Other record types are unmeasured and, by reading the code, likely carry the shapes fixed for requirements (list builds every row then slices; no paging on the module lists; one lookup per row for versions, comments and links) | `TRACKED_GAPS`, code review | A follow-up phase: a registry-driven scaling-shape test (statements and rows read at two sizes, per type) in the main suite, generators for the highest-volume types (change requests, risks, decisions, pain points), then the capacity climb with their lists in the mix |
+| O14 | (Planned as Phase 4c in `docs/plans/completed/resource-profiling-plan.md`, with the links between types as its main subject.) Other record types are unmeasured and, by reading the code, likely carry the shapes fixed for requirements (list builds every row then slices; no paging on the module lists; one lookup per row for versions, comments and links) | `TRACKED_GAPS`, code review | A follow-up phase: a registry-driven scaling-shape test (statements and rows read at two sizes, per type) in the main suite, generators for the highest-volume types (change requests, risks, decisions, pain points), then the capacity climb with their lists in the mix |
 | O15 | PgBouncer (or any pooler) is the usual way past the 97-connection limit but is untested and unsupported: the live-update `LISTEN` and the startup advisory lock use the request engine and need a direct connection | `services/pubsub.py`, `services/process_coordination.py` | Add a direct URL setting for those two, then measure; documented as untested in `docs/deployment.md` |
 | O4 | At 20,000 requirements the buffer cache hit rate falls to 86% (attachment) and 66% (soak) with the default `shared_buffers` of 128 MB; every other scenario stays above 99%, and no scenario wrote a temp file or deadlocked | `pgdb.csv`, Linux and Dell T4 | Re-run the soak at `shared_buffers` 512 MB and 1 GB and record the change before advising a setting |
 | O7 | The PDF report takes 39 s at 20,000 requirements (over the 30 s heavy budget) and the Word report 15 s; report, project export and project import hold the whole project, so each backend worker peaks near 1 GiB at 5,000 and 20,000 requirements | `latency.csv`, `processes.csv` | Stream or chunk the document build; until then size memory for the heavy requests (worker peak above, times the workers that may run one at once) |

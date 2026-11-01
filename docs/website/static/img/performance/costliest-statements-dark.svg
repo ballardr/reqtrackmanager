@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="532.8pt" height="252pt" viewBox="0 0 532.8 252" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>perf/plot_results.py</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 252 
+L 532.8 252 
+L 532.8 0 
+L 0 0 
+z
+" style="fill: #1a1a19"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 176.440625 215.739258 
+L 522.54 215.739258 
+L 522.54 10.26 
+L 176.440625 10.26 
+z
+" style="fill: #1a1a19"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <path d="M 176.440625 215.739258 
+L 176.440625 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_2"/>
+     <g id="text_1">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="176.440625" y="226.077148" transform="rotate(-0 176.440625 226.077148)">0</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_3">
+      <path d="M 221.598333 215.739258 
+L 221.598333 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_4"/>
+     <g id="text_2">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="221.598333" y="226.077148" transform="rotate(-0 221.598333 226.077148)">25</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_5">
+      <path d="M 266.756041 215.739258 
+L 266.756041 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_6"/>
+     <g id="text_3">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="266.756041" y="226.077148" transform="rotate(-0 266.756041 226.077148)">50</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_7">
+      <path d="M 311.913748 215.739258 
+L 311.913748 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_8"/>
+     <g id="text_4">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="311.913748" y="226.077148" transform="rotate(-0 311.913748 226.077148)">75</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_9">
+      <path d="M 357.071456 215.739258 
+L 357.071456 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_10"/>
+     <g id="text_5">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="357.071456" y="226.077148" transform="rotate(-0 357.071456 226.077148)">100</text>
+     </g>
+    </g>
+    <g id="xtick_6">
+     <g id="line2d_11">
+      <path d="M 402.229164 215.739258 
+L 402.229164 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_12"/>
+     <g id="text_6">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="402.229164" y="226.077148" transform="rotate(-0 402.229164 226.077148)">125</text>
+     </g>
+    </g>
+    <g id="xtick_7">
+     <g id="line2d_13">
+      <path d="M 447.386872 215.739258 
+L 447.386872 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_14"/>
+     <g id="text_7">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="447.386872" y="226.077148" transform="rotate(-0 447.386872 226.077148)">150</text>
+     </g>
+    </g>
+    <g id="xtick_8">
+     <g id="line2d_15">
+      <path d="M 492.54458 215.739258 
+L 492.54458 10.26 
+" clip-path="url(#p25cea59e3b)" style="fill: none; stroke: #2c2c2a; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_16"/>
+     <g id="text_8">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #898781" x="492.54458" y="226.077148" transform="rotate(-0 492.54458 226.077148)">175</text>
+     </g>
+    </g>
+    <g id="text_9">
+     <text style="font-size: 9.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: middle; fill: #c3c2b7" x="349.490313" y="239.457773" transform="rotate(-0 349.490313 239.457773)">Database time over the run (seconds)</text>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_17"/>
+     <g id="text_10">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="202.444931" transform="rotate(-0 172.940625 202.444931)">SELECT count artefact_tags</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_18"/>
+     <g id="text_11">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="177.866072" transform="rotate(-0 172.940625 177.866072)">SELECT audit_events</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_19"/>
+     <g id="text_12">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="153.287214" transform="rotate(-0 172.940625 153.287214)">SELECT audit_events (2)</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_20"/>
+     <g id="text_13">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="128.708004" transform="rotate(-0 172.940625 128.708004)">SELECT</text>
+     </g>
+    </g>
+    <g id="ytick_5">
+     <g id="line2d_21"/>
+     <g id="text_14">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="104.129496" transform="rotate(-0 172.940625 104.129496)">SELECT count requirements</text>
+     </g>
+    </g>
+    <g id="ytick_6">
+     <g id="line2d_22"/>
+     <g id="text_15">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="79.550638" transform="rotate(-0 172.940625 79.550638)">SELECT count requirement_versions</text>
+     </g>
+    </g>
+    <g id="ytick_7">
+     <g id="line2d_23"/>
+     <g id="text_16">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="54.971779" transform="rotate(-0 172.940625 54.971779)">SELECT projects</text>
+     </g>
+    </g>
+    <g id="ytick_8">
+     <g id="line2d_24"/>
+     <g id="text_17">
+      <text style="font-size: 9px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: end; fill: #898781" x="172.940625" y="30.392921" transform="rotate(-0 172.940625 30.392921)">SELECT requirements</text>
+     </g>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 176.440625 206.399292 
+L 194.748824 206.399292 
+L 194.748824 191.651976 
+L 176.440625 191.651976 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 176.440625 181.820433 
+L 196.006557 181.820433 
+L 196.006557 167.073118 
+L 176.440625 167.073118 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 176.440625 157.241574 
+L 196.158828 157.241574 
+L 196.158828 142.494259 
+L 176.440625 142.494259 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 176.440625 132.662716 
+L 201.065665 132.662716 
+L 201.065665 117.915401 
+L 176.440625 117.915401 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 176.440625 108.083857 
+L 213.062262 108.083857 
+L 213.062262 93.336542 
+L 176.440625 93.336542 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 176.440625 83.504999 
+L 222.285272 83.504999 
+L 222.285272 68.757683 
+L 176.440625 68.757683 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_9">
+    <path d="M 176.440625 58.92614 
+L 250.386372 58.92614 
+L 250.386372 44.178825 
+L 176.440625 44.178825 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_10">
+    <path d="M 176.440625 34.347281 
+L 374.211696 34.347281 
+L 374.211696 19.599966 
+L 176.440625 19.599966 
+z
+" clip-path="url(#p25cea59e3b)" style="fill: #3987e5; stroke: #1a1a19; stroke-width: 2; stroke-linejoin: miter"/>
+   </g>
+   <g id="patch_11">
+    <path d="M 176.440625 215.739258 
+L 176.440625 10.26 
+" style="fill: none; stroke: #383835; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_12">
+    <path d="M 176.440625 215.739258 
+L 522.54 215.739258 
+" style="fill: none; stroke: #383835; stroke-width: 0.8; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="text_18">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="200.748824" y="201.233974" transform="rotate(-0 200.748824 201.233974)">10 s: 1,915 calls at 5.3 ms</text>
+   </g>
+   <g id="text_19">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="202.006557" y="176.655115" transform="rotate(-0 202.006557 176.655115)">11 s: 2,795 calls at 3.9 ms</text>
+   </g>
+   <g id="text_20">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="202.158828" y="152.076257" transform="rotate(-0 202.158828 152.076257)">11 s: 2,795 calls at 3.9 ms</text>
+   </g>
+   <g id="text_21">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="207.065665" y="127.497398" transform="rotate(-0 207.065665 127.497398)">14 s: 9,292 calls at 1.5 ms</text>
+   </g>
+   <g id="text_22">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="219.062262" y="102.918539" transform="rotate(-0 219.062262 102.918539)">20 s: 4,650 calls at 4.4 ms</text>
+   </g>
+   <g id="text_23">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="228.285272" y="78.339681" transform="rotate(-0 228.285272 78.339681)">25 s: 2,832 calls at 9.0 ms</text>
+   </g>
+   <g id="text_24">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="256.386372" y="53.760822" transform="rotate(-0 256.386372 53.760822)">41 s: 3,370 calls at 12.1 ms</text>
+   </g>
+   <g id="text_25">
+    <text style="font-size: 8.5px; font-family: system-ui, -apple-system, 'Segoe UI', 'DejaVu Sans', sans-serif; text-anchor: start; fill: #c3c2b7" x="380.211696" y="29.181964" transform="rotate(-0 380.211696 29.181964)">109 s: 9,342 calls at 11.7 ms</text>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p25cea59e3b">
+   <rect x="176.440625" y="10.26" width="346.099375" height="205.479258"/>
+  </clipPath>
+ </defs>
+</svg>

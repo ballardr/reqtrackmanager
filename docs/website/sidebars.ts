@@ -34,6 +34,7 @@ const sidebars: SidebarsConfig = {
         'installation-deployment/tls-and-reverse-proxy',
         'installation-deployment/observability',
         'installation-deployment/scaling-and-modules',
+        'installation-deployment/sizing-and-performance',
         'installation-deployment/troubleshooting',
       ],
     },
@@ -217,6 +218,7 @@ const sidebars: SidebarsConfig = {
       label: 'Reference',
       items: [
         'reference/architecture-overview',
+        'reference/performance-testing-method',
         'reference/glossary',
         'reference/contributing',
       ],

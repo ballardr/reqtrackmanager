@@ -57,6 +57,8 @@ A Tier C module runs with **no sandbox at all** — same origin, same DOM, same 
 
 ## Scaling the backend
 
+Measured memory, throughput by worker count, and how latency grows with project size are on [Sizing and performance](./sizing-and-performance.mdx).
+
 Each backend container runs several worker processes — set `BACKEND_WORKERS` (default `4`) to the number of CPU cores the API should use. You can also run more backend replicas behind a load balancer. Workers and replicas share the database and coordinate through it, so nothing else is needed:
 
 ```mermaid

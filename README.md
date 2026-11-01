@@ -106,7 +106,19 @@ The full list of variables, defaults, and which are actually required is in [Con
 
 ### Sizing
 
-Memory follows the backend's worker count and the size of the largest project, not the number of users: a worker keeps the memory of the heaviest request it has served. Every always-on service has a memory limit in `docker-compose.yml` (overridable from `.env`); the backend's is roughly 0.1 GiB + `BACKEND_WORKERS` × 0.8 GiB for projects up to 1,000 requirements (1.3 GiB per worker at 5,000, 2.4 GiB or more at 20,000).
+**Minimum** (the smallest configuration measured): 2 cores, 4 GiB of memory, 10 GiB of free disk, 64-bit (amd64 or arm64), Docker Compose 2.23.1 or newer, with `BACKEND_WORKERS=1`. A Raspberry Pi 5 ran that way up to 20,000 requirements per project.
+
+Size by how many people are **active at once** (assumed a third of the people with accounts, one request every 5-10 seconds each; replace both with your own usage), at about 30 requests per second per backend worker:
+
+| People with accounts | Active at once | Workers | Cores | Memory |
+|----------------------|----------------|---------|-------|--------|
+| Up to 100 | about 35 | 1 | 2 | 4 GiB |
+| Up to 300 | about 100 | 1-2 | 4 | 8 GiB |
+| Up to 1,000 | about 330 | 4 (default) | 8 | 8-16 GiB |
+| Up to 3,000 | about 1,000 | 6 | 12 | 16 GiB |
+| More than 5,000 | 1,700 or more | beyond one stack (not measured) | | |
+
+Projects of about 5,000 requirements need the next row up (about 40% fewer requests per second, 1.3 GiB per worker instead of 0.8). Every always-on service has a memory limit in `docker-compose.yml` (overridable from `.env`); the backend's is roughly 0.1 GiB + `BACKEND_WORKERS` × 0.8 GiB for projects up to 1,000 requirements (1.3 GiB per worker at 5,000, 2.4 GiB or more at 20,000), because a worker keeps the memory of the heaviest request it has served.
 
 | Largest project | Backend, 4 workers (6 workers) | Database | Host RAM to plan for |
 |-----------------|--------------------------------|----------|----------------------|
@@ -114,7 +126,7 @@ Memory follows the backend's worker count and the size of the largest project, n
 | ~5,000 requirements | 5.0 GiB (6.6) | 0.9-2.7 GiB | 16 GiB |
 | 20,000 requirements | 9.5 GiB or more | 2-3 GiB | 32 GiB or more |
 
-Throughput is CPU-bound: on a 16-core Linux server with six cores for the API a one-worker stack serves about 60 requests a second and six workers about 190 (usable) to 230 (peak), roughly 300-1,900 active people; a Raspberry Pi 5 serves about 8 requests a second with one worker. Figures, method and how to repeat it (`perf/run_baseline.sh`) are in [docs/performance.md](docs/performance.md) and [docs/deployment.md](docs/deployment.md#sizing-and-memory-limits).
+Throughput is CPU-bound. Measured on a 16-core, 30 GiB Linux server (shared with production, the stack given 12 cores): one worker serves about 60 requests a second and six workers about 190 (usable) to 230 (peak), roughly 300-1,900 active people; a Raspberry Pi 5 (4 cores, 8 GiB; the capacity run held to 2 cores) serves about 8 requests a second with one worker. What each host had available, the figures, the method and how to repeat it (`perf/run_baseline.sh`) are in [docs/performance.md](docs/performance.md), [docs/deployment.md](docs/deployment.md#sizing-and-memory-limits) and, with charts, the [Sizing and performance](https://ballardr.github.io/reqtrackmanager/installation-deployment/sizing-and-performance) page.
 
 ### Optional observability stack
 

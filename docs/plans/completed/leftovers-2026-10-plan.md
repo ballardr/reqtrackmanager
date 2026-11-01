@@ -45,7 +45,7 @@ Read left to right: phases with no inbound arrow from Phase 0 can start immediat
 ## 1. Scope and exclusions
 
 - **In:** items 1–6 of the review (the three open questions, the unlocked version race, the unmigrated forms and report tables, the `SidePanel` sweep, the unnamed spacing/radius tokens, the storage credential gap, the SOC 2 tooling gaps).
-- **Out:** `docs/plans/module-*.md`, `resource-profiling-plan.md`, `disaster-recovery-backup-plan.md`. Decision self-approval stays as recorded (a product decision across core, Compliance and Decisions, not a bug) unless the user asks for it.
+- **Out:** `docs/plans/module-*.md`, `completed/resource-profiling-plan.md`, `disaster-recovery-backup-plan.md`. Decision self-approval stays as recorded (a product decision across core, Compliance and Decisions, not a bug) unless the user asks for it.
 - **Out, on purpose:** image-publishing changes (already live); "Still open `braces` alert 45" (no upstream patch exists; build-time only). Re-check it in Phase 10 when dependency scanning is added.
 
 ## 2. Questions for the user (Phase 0)

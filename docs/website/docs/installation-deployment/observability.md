@@ -6,6 +6,8 @@ sidebar_position: 7
 
 ReqTrackManager includes an optional observability stack — Prometheus for metrics, Loki for log aggregation, Tempo for distributed tracing, Grafana Alloy for shipping all three, and Grafana for dashboards.
 
+The measured memory and CPU of each service under load, and how to repeat the measurements, are in [Sizing and performance](./sizing-and-performance.mdx) and [Performance testing method](../reference/performance-testing-method.md).
+
 ```bash
 docker compose --profile observability up -d
 ```

@@ -1,6 +1,6 @@
 # CI Test Duration — Plan
 
-**Status:** planned 2026-10-25, not started. Split out of `resource-profiling-plan.md` (where it was Phase 7) on 2026-10-27, **Decided by: User**. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
+**Status:** planned 2026-10-25, not started. Split out of `completed/resource-profiling-plan.md` (where it was Phase 7) on 2026-10-27, **Decided by: User**. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`.
 
 ## Status / Resume Here
 

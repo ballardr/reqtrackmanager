@@ -488,7 +488,7 @@ def _clean_bundle(directory: Path) -> Path:
     host = hostinfo.collect(storage="ssd", run=_docker_info_runner())
     run = {
         "schema_version": 1,
-        "host_label": "linux-vm-4c8g",
+        "host_label": "linux-server",
         "commit": "a" * 40,
         "date": "2026-10-25",
         "mode": "quick",
@@ -541,7 +541,7 @@ def _clean_bundle(directory: Path) -> Path:
 
 
 def test_a_clean_bundle_passes_and_every_file_is_on_the_allowlist(tmp_path):
-    directory = _clean_bundle(tmp_path / "linux-vm-4c8g" / "2026-10-25-aaaaaaaa")
+    directory = _clean_bundle(tmp_path / "linux-server" / "2026-10-25-aaaaaaaa")
     assert scrub.scan_tree(directory, identities=["someoneelse"]) == []
     assert {p.name for p in directory.iterdir()} <= set(scrub.ALLOWED_FILES)
 
@@ -609,7 +609,7 @@ def test_the_writer_refuses_a_bundle_that_fails_the_check(tmp_path):
 
 
 def test_the_archive_carries_no_owner_or_time_and_is_reproducible(tmp_path):
-    directory = _clean_bundle(tmp_path / "linux-vm-4c8g" / "2026-10-25-aaaaaaaa")
+    directory = _clean_bundle(tmp_path / "linux-server" / "2026-10-25-aaaaaaaa")
     first = bundle.make_archive(directory, tmp_path / "one.tar.gz")
     (directory / "run.json").touch()
     second = bundle.make_archive(directory, tmp_path / "two.tar.gz")
@@ -676,6 +676,35 @@ def test_only_tracked_files_are_checked_so_a_local_file_cannot_fail_it_but_a_com
         assert any("allowlist" in finding for finding in _result_findings([stray.name]))
     finally:
         stray.unlink()
+
+
+def test_scan_files_checks_only_the_named_files(tmp_path):
+    """A clean bundle file passes; a stray archive beside it is invisible when not named and a finding when the directory is scanned."""
+    (tmp_path / "host.json").write_text(json.dumps({"schema_version": 1, "arch": "amd64"}))
+    (tmp_path / "copied-in.zip").write_bytes(b"PK")
+    assert scrub.scan_files(tmp_path, ["host.json"], identities=[]) == []
+    assert any("allowlist" in str(f) for f in scrub.scan_tree(tmp_path, identities=[]))
+    assert any("allowlist" in str(f) for f in scrub.scan_files(tmp_path, ["copied-in.zip"], identities=[]))
+
+
+def test_the_commit_hook_scans_tracked_results_only_so_a_local_archive_cannot_block_a_commit():
+    """`scrub_check.py --tracked` is what `.githooks/pre-commit` runs: a local zip or `.DS_Store` in `perf/results/` (git-ignored,
+    never committed) must not fail it, while the default whole-directory scan still reports it."""
+    import subprocess
+
+    stray = _PERF / "results" / "zz-hook-stray.zip"
+    stray.write_bytes(b"PK")
+    try:
+        check = [sys.executable, str(_PERF / "scrub_check.py")]
+        tracked = subprocess.run([*check, "--tracked"], capture_output=True, text=True, timeout=60)
+        whole = subprocess.run(check, capture_output=True, text=True, timeout=60)
+    finally:
+        stray.unlink()
+    if tracked.returncode == 2:
+        pytest.skip("git is not available to list the tracked result files")
+    assert tracked.returncode == 0, tracked.stdout + tracked.stderr
+    assert whole.returncode == 1 and "zz-hook-stray.zip" in whole.stdout
+    assert "scrub_check.py\" --tracked" in (_PERF.parent / ".githooks" / "pre-commit").read_text()  # the hook uses the tracked-only mode
 
 
 # --- catalogue, sampler and profile reading --------------------------------------------------------------
@@ -871,6 +900,21 @@ def test_memory_peaks_and_the_soak_growth_after_warm_up():
     assert analyse.memory_slope_mib_per_hour(samples[:5], "T1") is None
 
 
+def test_the_soak_trace_stops_at_the_restart_after_the_last_scenario():
+    """The stack restarts after a tier's last scenario, so the soak's final samples are a container booting (memory climbing from
+    zero). A flat soak must read as flat, not as a large negative trend from that drop."""
+    analyse = _analyse()
+
+    def row(t, mib):
+        return {"tier": "T2", "scenario": "soak", "service": "backend", "t_seconds": str(t), "mem_mib": str(mib)}
+
+    flat = [row(t, 3000) for t in range(0, 600, 2)]
+    restart = [row(t, mib) for t, mib in ((650, 700), (652, 1100), (654, 1500), (656, 1700), (658, 1700), (660, 1700))]
+    assert analyse.soak_trace(flat + restart, "T2")[-1][0] == 598  # cut at the 52 s gap
+    assert abs(analyse.memory_slope_mib_per_hour(flat + restart, "T2")) < 1
+    assert analyse.memory_slope_mib_per_hour(flat, "T2") == analyse.memory_slope_mib_per_hour(flat + restart, "T2")
+
+
 def test_budgets_file_parses_and_names_known_classes():
     yaml = pytest.importorskip("yaml")
     budgets = yaml.safe_load((_PERF / "budgets.yaml").read_text())
@@ -1005,13 +1049,13 @@ def test_the_perf_override_turns_profile_mode_on_without_a_port_or_endpoint():
 
 
 def test_a_profiling_bundle_with_every_new_file_passes_the_check_and_a_leaky_flamegraph_does_not(tmp_path):
-    directory = tmp_path / "linux-vm-4c8g" / "2026-10-25-aaaaaaaa"
+    directory = tmp_path / "linux-server" / "2026-10-25-aaaaaaaa"
     bundle.write_bundle(
         directory,
         host=hostinfo.collect(storage="ssd", run=_docker_info_runner()),
         run={
             "schema_version": 1,
-            "host_label": "linux-vm-4c8g",
+            "host_label": "linux-server",
             "commit": "a" * 40,
             "date": "2026-10-25",
             "mode": "quick",
@@ -1305,7 +1349,7 @@ def test_the_connection_poller_keeps_the_highest_reading_and_ignores_a_failed_on
 
 
 def test_a_bundle_with_the_database_files_passes_the_check_and_a_leaked_literal_does_not(tmp_path):
-    directory = tmp_path / "linux-vm-4c8g" / "2026-10-25-aaaaaaaa"
+    directory = tmp_path / "linux-server" / "2026-10-25-aaaaaaaa"
     statement = (
         "SELECT requirements.id::uuid, requirements.created_at::timestamptz FROM requirements "
         "WHERE requirements.project_id = $1::uuid AND requirements.title ILIKE $2 ORDER BY requirements.unique_code LIMIT $3 OFFSET $4"
@@ -1315,7 +1359,7 @@ def test_a_bundle_with_the_database_files_passes_the_check_and_a_leaked_literal_
         host=hostinfo.collect(storage="ssd", run=_docker_info_runner()),
         run={
             "schema_version": 1,
-            "host_label": "linux-vm-4c8g",
+            "host_label": "linux-server",
             "commit": "a" * 40,
             "date": "2026-10-25",
             "notes": [],

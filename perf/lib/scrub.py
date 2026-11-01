@@ -187,6 +187,27 @@ def scan_file(path: Path, root: Path, identities: Iterable) -> list:
     return findings + _scan_text(rel, text, identities, opaque=opaque)
 
 
+def scan_files(root: Path, paths: Iterable, identities: Optional[Iterable] = None) -> list:
+    """Scans the named files (paths under `root`, absolute or relative to it) and nothing else.
+
+    Args:
+        root: A bundle directory or `perf/results/`; findings are reported relative to it.
+        paths: The files to scan. A directory or a path that is not there is skipped.
+        identities: Strings to reject (defaults to `machine_identities()`).
+
+    Returns:
+        The findings, empty when clean. A symlink is itself a finding (it could point outside the tree).
+    """
+    names = list(machine_identities() if identities is None else identities)
+    findings: list = []
+    for path in sorted(root / p for p in paths):
+        if path.is_symlink():
+            findings.append(Finding(str(path.relative_to(root)), 0, "symbolic link"))
+        elif path.is_file():
+            findings.extend(scan_file(path, root, names))
+    return findings
+
+
 def scan_tree(root: Path, identities: Optional[Iterable] = None) -> list:
     """Scans every file under `root`.
 
@@ -197,11 +218,4 @@ def scan_tree(root: Path, identities: Optional[Iterable] = None) -> list:
     Returns:
         The findings, empty when clean. A symlink is itself a finding (it could point outside the tree).
     """
-    names = list(machine_identities() if identities is None else identities)
-    findings: list = []
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            findings.append(Finding(str(path.relative_to(root)), 0, "symbolic link"))
-        elif path.is_file():
-            findings.extend(scan_file(path, root, names))
-    return findings
+    return scan_files(root, root.rglob("*"), identities)

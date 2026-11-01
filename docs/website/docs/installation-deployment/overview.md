@@ -9,6 +9,7 @@ ReqTrackManager ships as a set of Docker containers, orchestrated by Docker Comp
 ## Prerequisites
 
 - Docker and Docker Compose 2.23.1 or newer (`docker compose`, not the legacy `docker-compose`).
+- A host of at least 2 cores, 4 GiB of memory and 10 GiB of free disk for a small deployment. How much more for a given number of people is in [Sizing and performance](./sizing-and-performance.mdx).
 - A host with persistent volume storage for PostgreSQL (and the bundled `storage` service, if using the bundled S3-compatible storage backend).
 - For production: a domain name and TLS termination in front of the frontend/backend — ReqTrackManager does not terminate TLS itself, see [TLS, reverse proxy, and same-origin deployment](./tls-and-reverse-proxy.md).
 

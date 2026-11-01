@@ -227,7 +227,7 @@ def read_profiles_summary(text: str) -> dict:
 def parse_args(argv: list) -> Options:
     """Parses the command line (see `--help`)."""
     parser = argparse.ArgumentParser(prog="run_profile.sh", description="Run the performance profile on this host and write an anonymised results bundle.")
-    parser.add_argument("label", nargs="?", help="generic host label, for example mac-docker-desktop, linux-vm-4c8g or rpi5-8g")
+    parser.add_argument("label", nargs="?", help="generic host label, for example mac-docker-desktop, linux-server or rpi5-8g")
     parser.add_argument("--quick", action="store_true", help="T0 and T1, one repeat, no soak (default)")
     parser.add_argument("--full", action="store_true", help="all tiers, repeats and the soak")
     parser.add_argument("--tiers", help="comma-separated tiers (default: the mode's)")
