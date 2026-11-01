@@ -10,7 +10,7 @@
  * - Leave the rest of the block (borders, alignment, colours) to the panel's ordinary fields.
  *
  * Design decisions: a table does not fit the side panel, so editing happens in a `Modal` as the custom shape's SVG does;
- * the panel keeps only a summary, which is Phase 53's rule that a block shows no editable value on itself. Undo history
+ * the panel keeps only a summary, because a block shows no editable value on itself (all edits are in the block editor). Undo history
  * lives here, not in the editor, so the editor stays a controlled component.
  */
 import { Redo2, Undo2 } from "lucide-react";
