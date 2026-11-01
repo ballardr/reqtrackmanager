@@ -48,7 +48,7 @@ from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.section import WD_ORIENT, WD_SECTION
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
@@ -61,6 +61,8 @@ from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
     SLOT_NAMES,
     TONE_FILL,
+    BottomEnd,
+    BottomStart,
     BulletList,
     Equation,
     Gap,
@@ -78,11 +80,12 @@ from app.services.report_model import (
     RunningBand,
     Styled,
     Table,
+    VerticalSpace,
     finalize_links,
     text_on,
     text_runs,
 )
-from app.services.report_page_styles import BAND_EDGE_CM
+from app.services.report_page_styles import BAND_EDGE_CM, BAND_LINE_CM
 from app.services.report_running import band_for_page, band_visible, cell_lines
 from app.services.report_svg import svg_png
 
@@ -570,6 +573,102 @@ def _cell_pictures(cell, value: ImageCell, column_cm: float, usable_height_cm: f
 _CELL_HEIGHT_SHARE = 0.9
 
 
+#: The plain page-number footer's line height, and the gap kept between a page-bottom run and the footer, in cm.
+_PLAIN_FOOTER_LINE_CM = 0.7
+_DEFAULT_FOOTER_DISTANCE_CM = 1.27
+_FOOTER_GAP_CM = 0.3
+
+
+def _bottom_offset_cm(doc: DocxDocument, style: PageStyle, running: bool) -> float:
+    """How far above the bottom edge of the sheet a page-bottom run ends in Word: the bottom margin, or the top of the footer
+    plus a small gap when the footer reaches above the margin.
+
+    The run's floating table is anchored to the page edge, not the bottom margin: Word's margin anchoring was measured
+    to land the table in places that did not follow the margin (it also ignores a footer taller than the margin), while
+    the page-edge anchor is exact, so the distance is made with the cell's bottom margin under the run.
+
+    Args:
+        doc: The document (its first section's footer distance is the plain footer's).
+        style: The page style the run lands in.
+        running: Whether the document uses running header and footer bands rather than the plain page-number footer.
+
+    Returns:
+        Centimetres from the sheet's bottom edge to the bottom of the run.
+    """
+    margin = style.margins.bottom
+    if running:
+        band = style.footer
+        if band is None or band.empty:
+            return margin
+        lines = max(
+            (1 + sum(part.count("\n") for part in band.slot(name) if isinstance(part, str)) for name in SLOT_NAMES if band.slot(name)),
+            default=0,
+        )
+        top = BAND_EDGE_CM + max(lines * BAND_LINE_CM, band.logo_height_cm if band.logo is not None else 0.0)
+    else:
+        distance = doc.sections[0].footer_distance  # unset only in a template that does not say (Word's own default is 1.27 cm)
+        top = (distance.cm if distance is not None else _DEFAULT_FOOTER_DISTANCE_CM) + _PLAIN_FOOTER_LINE_CM
+    return max(top + _FOOTER_GAP_CM, margin)
+
+
+def _is_blank(element) -> bool:
+    """Whether a body element is a paragraph with no text, picture or break (the spacer `_table` leaves after a table)."""
+    return element.tag == qn("w:p") and not element.xpath(".//w:t | .//w:drawing | .//w:pict | .//w:br | .//w:fldChar")
+
+
+def _anchor_to_bottom(doc: DocxDocument, start: int, usable_cm: float, offset_cm: float) -> None:
+    """Moves the body elements added since index `start` into one borderless, floating one-cell table at the page foot.
+
+    Word has no "flow to the bottom" setting. A floating table positioned against the bottom of the page (`tblpYSpec="bottom"`)
+    is the closest thing: the cell holds paragraphs and nested tables alike, so a table, text or a mix all work. Text
+    before it flows normally and wraps around it; the page break after it starts what follows on a fresh page, as the
+    PDF does. The elements keep their picture relationships because they are moved, not rebuilt.
+
+    Args:
+        doc: The document being written.
+        start: Index in the body of the first element of the run.
+        usable_cm: The text width of the current page style.
+        offset_cm: How far above the sheet's bottom edge the run ends (the cell's bottom margin).
+    """
+    body = doc.element.body
+    moved = [el for el in list(body)[start:] if el.tag != qn("w:sectPr")]
+    while moved and _is_blank(moved[-1]):  # the spacer paragraph after a table would sit as blank space under the run
+        body.remove(moved.pop())
+    if not moved:
+        return
+    table = doc.add_table(rows=1, cols=1)
+    table.autofit = False
+    table.columns[0].width = Cm(usable_cm)
+    cell = table.cell(0, 0)
+    cell.width = Cm(usable_cm)
+    tbl_pr = table._tbl.tblPr
+    for child in list(tbl_pr):
+        tbl_pr.remove(child)
+    for xml in (
+        '<w:tblpPr %s w:leftFromText="0" w:rightFromText="0" w:vertAnchor="page" w:horzAnchor="margin" '
+        'w:tblpXSpec="left" w:tblpYSpec="bottom"/>',
+        '<w:tblOverlap %s w:val="never"/>',
+        '<w:tblW %s w:w="%d" w:type="dxa"/>' % ("%s", round(usable_cm * 567)),
+        '<w:tblLayout %s w:type="fixed"/>',
+        '<w:tblCellMar %s><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar>',
+    ):
+        tbl_pr.append(parse_xml(xml % nsdecls("w")))
+    cell_xml = cell._tc
+    anchor = cell_xml.find(qn("w:p"))  # the cell's own empty paragraph: every cell must end with one, and it holds the clearance
+    for element in moved:
+        anchor.addprevious(element)
+    spacing = OxmlElement("w:spacing")
+    for key, value in (("before", "0"), ("after", "0"), ("line", "20"), ("lineRule", "exact")):  # a 1 pt closing paragraph
+        spacing.set(qn(f"w:{key}"), value)
+    anchor.get_or_add_pPr().append(spacing)
+    # The distance from the sheet's edge is the cell's bottom margin: unlike a trailing empty paragraph, LibreOffice and Word
+    # both keep it in the table's height.
+    cell_pr = cell_xml.get_or_add_tcPr()
+    cell_margins = parse_xml(f'<w:tcMar {nsdecls("w")}><w:bottom w:w="{round(offset_cm * 567)}" w:type="dxa"/></w:tcMar>')
+    cell_pr.append(cell_margins)
+    doc.add_page_break()
+
+
 def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float, usable_height_cm: float) -> None:
     """A real Word table: shaded, optionally repeating header row, optional zebra rows; image cells hold pictures."""
     if not block.columns:
@@ -652,8 +751,14 @@ def render_docx_document(document: ReportDocument) -> bytes:
     _cover(doc, document, accent, usable_cm)
 
     bookmarks = 0
+    bottom_from = 0  # the body length when the open page-bottom run began
+    current_style = document.style
     for block in document.blocks:
-        if isinstance(block, Heading):
+        if isinstance(block, BottomStart):
+            bottom_from = len(doc.element.body) - 1  # the body's last child is its section properties
+        elif isinstance(block, BottomEnd):
+            _anchor_to_bottom(doc, bottom_from, usable_cm, _bottom_offset_cm(doc, current_style, running))
+        elif isinstance(block, Heading):
             heading = doc.add_heading("", level=min(max(block.level, 1), 4))
             _add_text(heading, block.text)
             if block.anchor:
@@ -684,9 +789,17 @@ def render_docx_document(document: ReportDocument) -> bytes:
             section = doc.add_section(WD_SECTION.NEW_PAGE)
             section.different_first_page_header_footer = False  # the cover page's footer rule is for the first section only
             usable_cm = _apply_style(section, block.style)
+            current_style = block.style
             usable_height_cm = block.style.usable_height_cm
             if running:
                 _apply_bands(section, block.style, first_section=False, section_start=block.section_start, mirror=document.mirror)
+        elif isinstance(block, VerticalSpace):
+            # An empty paragraph with an exact line height: with "auto" or "at least" Word grows the line to the font.
+            spacer = doc.add_paragraph()
+            spacer.paragraph_format.space_before = Pt(0)
+            spacer.paragraph_format.space_after = Pt(0)
+            spacer.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+            spacer.paragraph_format.line_spacing = Cm(min(block.cm, usable_height_cm * 0.98))
         elif isinstance(block, Gap):
             continue  # a PDF layout hint; Word styles carry paragraph spacing
 

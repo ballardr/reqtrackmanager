@@ -1282,7 +1282,7 @@ flowchart LR
   version through `services.report_layouts.save_version`, which refuses a save based on a stale version
   (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
 - **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, header?, footer?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
-  `table`, `each`, `group`, `if`, `page_break`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
+  `table`, `each`, `group`, `if`, `page_break`, `spacer`, `bottom`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
 - **Images.** An `image` block names a library file by id (`services/report_images.py`): a project layout may use its
   own project's pictures (`file_assets.project_id`) and the organisation's shared resources, an organisation layout the

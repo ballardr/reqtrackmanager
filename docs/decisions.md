@@ -14582,3 +14582,87 @@ Time shapes: none. Verification: `test_seed_demo_report_layout.py` (the layout v
 | CI | The converter image is built (cached), its unit tests run inside it against real Ghostscript and poppler, it is Trivy-scanned and pushed to ghcr like the other images. | Agent |
 
 *Identify:* a PostScript or PDF exploit reaching the backend's database credentials, object-store keys or network; the converter reaching the internet; a hostile reply SVG; the converter being unavailable or busy. *Verify:* `converter/tests` (17, real tools, including a hostile file that tries to write a file and open a pipe, an infinite loop stopped by the timeout, the HTTP interface, IPv6 where available); `test_report_converter.py` (stand-in server over real HTTP: reply sanitised, reasons shown, nothing leaked, size cut-off, no redirects or proxy, not configured or unreachable, upload route, listing flag; the real-converter cases run in the container stack); a Playwright spec uploads a real EPS and a real PDF and a damaged PDF through the dialog; a Storybook story each for the dialog with and without the converter; network, filesystem and capabilities checked from inside the running container. *Remediate:* none outstanding. *Gaps:* the converter can still read the files of a conversion in flight (they are its input) and burn its own CPU and memory ceilings; both are bounded and neither reaches anything else. The `internal` network is a Docker feature: a deployment that runs the image another way (Kubernetes) must apply the equivalent egress policy, as `docs/deployment.md` says.
+
+## Custom reports Phase 60: the Add block menu scrolls (2026-11-01)
+
+**Decided by: Agent.** The User could not scroll the Add block menu to its last entry.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Where is the fix? | In `Popover`, not in `ActionMenu` or the Add block caller. The popover already capped its height and scrolled inside; its capture `scroll` listener on `window` also fired for its own scrolling, and each re-measure cleared the height cap, which reset `scrollTop` to 0. Scrolls inside the bubble are now ignored and the offset is restored after a re-measure. Every popover and menu (Snippets, the column chooser, list actions) gets the fix. | Agent |
+| Grouping of the Add block entries | Unchanged ("Most used" and "Other blocks" already exist). | Agent |
+
+*Identify:* a menu taller than the window whose wheel and keyboard focus scrolls are undone. *Verify:* a story (30 entries, short viewport; fails without the fix) and a Playwright spec at 600 px height (wheel to the last entry and add it; keyboard focus keeps it in view). *Remediate:* none outstanding.
+
+## Custom reports Phase 61: the snippet result is a toast (2026-11-01)
+
+**Decided by: Agent** (the toast, its wording and the rule for staying open); **Decided by: User** (feedback must not push the blocks down).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Replace the card? | `ReportSnippetNotice` and its strings are deleted. `useSnippetToast` shows a toast: "Inserted X" for a plain insertion. | Agent |
+| What was not lost | The first change line (the block count) is implied by the title. Any other line (a page style or variable added or reused) and the "n problems already in the layout" line are listed in the toast, which then stays until dismissed; a plain insertion times out like any success toast. | Agent |
+| Undo | `ToastContext` gains an optional `action` (label, handler; clicking runs it and dismisses) and `details`, and `showToast` returns an id for the new `dismissToast`: generic, used by any later Undo toast. Blocks has Ctrl+Z, so its toast says so in its text and has no button. Text view Undo is a button that restores the old text only if the draft still equals the inserted text, so it never discards later typing. Switching view removes the toast. | Agent |
+| Selection | Unchanged and now covered by a story: the first inserted block is selected and the panel's Block tab comes forward. | Agent |
+
+Time shapes: none. *Identify:* feedback that changes the height of the thing being edited; an Undo that outlives the text it undoes. *Verify:* Toast stories (action, details that outlast the timeout), designer stories (text insert, Undo, edit then Undo leaves typing, Blocks toast and selection), the three Playwright snippet specs. *Remediate:* none outstanding.
+
+## Custom reports Phase 62: pictures are drawn on a checkerboard (2026-11-01)
+
+**Decided by: User** (a white logo must be visible in the image previews); **Decided by: Agent** (always a checkerboard rather than detecting white marks, the switch and the places it applies).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Detect white-on-transparent or always draw a backdrop? | Always a checkerboard. Detection needs pixel analysis of every upload (SVGs too), flips with the theme and misses mid-grey marks; a checkerboard is never wrong. Built from `--color-surface` and `--color-surface-alt`, so it reads in light and dark. | Agent |
+| One style or per picker? | One `.picture-backdrop` class through `PictureImage` (`components/PictureImage.tsx`): the chosen-image thumbnail, the library grid, the large preview, the organisation logo preview on Branding and the server default logo preview. The page header logo and the report preview (a white page) are unchanged. | Agent |
+| Switch | Checkerboard, Light or Dark beside the large preview, for judging a logo against the page it prints on. One per-person display preference (`picture_backdrop`, `usePictureBackdrop` over `useUiPreference`), read by every `PictureImage`; an unknown stored value falls back to the checkerboard. | Agent |
+
+Side effect: any story that renders a picture now needs the auth context (`useUiPreference` reads the user); the image field, block field and running-band stories got `withStatefulAuth`. Time shapes: none. *Identify:* a logo invisible against the page's own background. *Verify:* `ReportImageField` story (class, default, switch), `report-image-backdrop` Playwright spec, the image and designer story files and `report-layout-images` spec. *Remediate:* none outstanding.
+
+## Custom reports Phase 63: image Width and Height say Auto (2026-11-01)
+
+**Decided by: User** (the author must be able to set width or height to auto to keep the ratio); **Decided by: Agent** (how Auto is shown, the warning and where it stops).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Change the tree? | No. An absent `width`/`height` already was Auto (ratio kept from the other, or the picture's own size), so there is no migration and saved layouts are unchanged. The gap was only that nothing said so. | Agent |
+| How is Auto shown? | A generic `BlockField.empty_label` (served as `empty_label`): the editor shows it as the empty box's placeholder. The image block's Width and Height set it to "Auto"; any later field whose empty value has a meaning can use it, with no per-block code. A checkbox or extra button was rejected: it would duplicate "empty" as a second state to keep in step. | Agent |
+| Stretch warning | `ImageStretchWarning` under the image block's fields (a role="status" note, not an error): shown when Width and Height are both lengths (cm or mm) whose ratio differs from the picture's by more than 5% (`utils/imageStretch.ts`). A width as a share of the text is not judged (the page width is not known in the browser) and an SVG has no pixel size; both say nothing. The pixel size comes from the existing library `details` call, so no backend response changed. | Agent |
+| Text view | `width auto` and `height auto` are read as no key and never written back, so round trips are stable; `auto` with a number for the same size is the usual "written once" error. | Agent |
+| Other blocks | The shape's size (no intrinsic ratio), the record-images block and the images column keep their settings. | Agent |
+
+Time shapes: none. *Identify:* an empty box was the only way to ask for Auto, so nobody found it. *Verify:* backend tests (text `auto` round trip and duplicate error, catalogue `empty_label` on image and not on shape), stories (`AnEmptyImageSizeSaysAuto`, `ImageStretchWarning`), `report-layout-images` Playwright spec (placeholder, preview style, warning, text view). *Remediate:* none outstanding.
+
+## Custom reports Phase 64: spacer block (2026-11-01)
+
+**Decided by: User** (report elements for vertical space); **Decided by: Agent** (bounds, defaults and the model change).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Reuse `Gap`? | No. `Gap` is a PDF-only layout hint that Word, ODT and HTML deliberately skip, so honouring it would change every existing report. A new `VerticalSpace(cm)` model block is kept in all four formats. | Agent |
+| Height | A number in cm or mm, 1 mm to 20 cm (default 1 cm). Text view `@spacer 1.5 cm`. A document-family block; allowed inside `section`, `each` and `group`; a table layout refuses it at save. | Agent |
+| PDF | A ReportLab `Spacer`, capped at 98% of the page style's text height so it cannot overflow a frame. At the top of a page it is kept (the paragraph's own space-before, which a frame drops at its very top, then applies after it: 6 pt). One taller than the room left moves to the next page. | Agent |
+| Word | An empty paragraph with an *exact* line height and no space before or after (`auto` or `at least` grow with the font). | Agent |
+| ODT | An empty paragraph with a fixed `fo:line-height`, one automatic style per distinct height. | Agent |
+| HTML | `<div class="spacer" aria-hidden="true">` of that height. | Agent |
+| Push to the bottom of the page | **Requested by the User during the phase, not built.** Not a height but a position: content that follows must be measured and bottom-anchored, which PDF can do exactly (measure, then fill) but Word and ODT only with frames or floating tables, and the HTML preview has no pages. Raised with the User as its own follow-up rather than a flag on this block; see the plan's Phase 64b. | User (request); Agent (split) |
+
+Time shapes: none. *Identify:* empty text blocks gave different gaps per format. *Verify:* `tests/test_report_spacer.py` (validation, text round trip, the PDF gap measured from text positions, a spacer at the top of a page, a spacer taller than a page, Word exact line height XML, ODT style, HTML), an evaluator test, a block-field story, `report-spacer.spec.ts`. *Remediate:* none outstanding.
+
+## Custom reports Phase 64b: content at the foot of the page (2026-11-01)
+
+**Decided by: User** (a table or text stays at the bottom while what is above grows; floating table or frame in Word and OpenDocument); **Decided by: Agent** (the container form and the details below).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Form | A container block `bottom` ("At page bottom"), not a flag on the spacer: a spacer cannot know how tall what follows is, and explicit children make "what follows" well defined. Document family only; allowed inside `section`, `each` and `group`; refused in a table layout; text view `@bottom` … `@end`. | Agent |
+| Not allowed inside | A page break, a section, a widget (a module report may bring either) and another `bottom`: all fail validation at save. | Agent |
+| Model | Flat markers `BottomStart` / `BottomEnd` around ordinary blocks (as `PageStyleChange` is flat), so a renderer needs no recursion; a run that produces nothing leaves no markers. | Agent |
+| PDF | Exact: measure the flowables at the text width, then a `CondPageBreak` (moves to a fresh page when they do not fit) and a filler that takes the rest of the page above them, 3 pt of slack so a measuring error never pushes the last line over. A run at least 95% of the text height is not anchored and flows normally. | Agent |
+| Word | The run's body elements are moved into one borderless, one-cell floating table (`tblpYSpec="bottom"` against the margin, zero cell margins, fixed width), so a table, text or a mix all work; a page break after it. Verified rendering in LibreOffice only; **Word is not checked and cannot be automated here**, so the User is asked to open a layout once. | User (floating table) / Agent |
+| OpenDocument | The run's chunks go into a `draw:text-box` in a frame anchored to the foot of the page content, in a paragraph that ends the page. LibreOffice sizes a frame holding a table only when its graphic style descends from its own `Frame` style, so that style is written and named as the parent (found by experiment: with any other parent the table silently disappeared). | Agent |
+| HTML | No pages, so the contents print in place (the block's description says so). | Agent |
+| Word position and footer clearance | **Found by the User opening samples in Word (2026-11-01), over several rounds.** The table first printed over the page-number footer. Adding clearance by estimate left a ~1 cm gap; tightening the footer's spacing changed nothing; a three-variant sample then showed (a) `_table` ends every table with an empty default-style paragraph (about 1.1 cm with its spacing) that travelled into the cell under the table, and (b) the margin anchor did not follow the bottom margin once that was removed (the table landed ~0.5 cm below it), whereas the page-edge anchor was exact (2.0 cm of space gave 2.0 cm). So: trailing blank paragraphs are dropped from the run (in ODT, the blank `Standard` paragraph); the floating table is anchored to the **page edge** (`vertAnchor="page"`, `tblpYSpec="bottom"`); and the distance from the edge is the cell's **bottom margin** (an empty trailing paragraph was kept by Word but dropped by LibreOffice): the bottom margin, or, when the footer reaches above it, the footer's top (plain footer: 1.27 cm up plus about 0.7 cm) plus 0.3 cm. Footer spacing was tried at the User's choice and reverted (no effect). Checked in LibreOffice; the page-edge anchor is the part measured in Word. | User (found, chose the footer try) / Agent |
+| What follows | Starts on a new page in every format: in PDF the filler uses the rest of the page, and Word and ODT end the page with the anchor paragraph, so the three agree. | Agent |
+
+Time shapes: none. *Identify:* a sign-off table could only be placed by guessing the height of what was above it. *Verify:* `tests/test_report_bottom.py` (validation, text round trip, PDF bottom edge equal however long the header is, no-fit moves to a new page, too-tall flows, Word floating-table XML and trailing paragraph, ODT frame and style, HTML in place), an evaluator test, a block story, `report-page-bottom.spec.ts`, and one sample rendered in PDF, Word and ODT through LibreOffice and compared by eye (the block sat at the foot in all three). *Remediate:* none outstanding; Word to be confirmed by the User.

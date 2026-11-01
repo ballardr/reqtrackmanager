@@ -32,7 +32,20 @@ from app.services.report_layout_eval import (
     matches_value,
 )
 from app.services.report_layout_tree import BLOCK_SPECS, InvalidLayoutError
-from app.services.report_model import CellLink, DataCell, Gap, Heading, LinkedText, Note, Paragraph, ReportDocument, Table
+from app.services.report_model import (
+    BottomEnd,
+    BottomStart,
+    CellLink,
+    DataCell,
+    Gap,
+    Heading,
+    LinkedText,
+    Note,
+    Paragraph,
+    ReportDocument,
+    Table,
+    VerticalSpace,
+)
 from tests.conftest import auth_headers
 from tests.link_world import REQ, World
 
@@ -608,6 +621,26 @@ def test_too_much_output_stops_the_run(world, db, monkeypatch):
 
     with pytest.raises(LayoutLimitError, match="too large"):
         run(db, world, project, tree)
+
+
+def test_a_spacer_becomes_a_vertical_space_in_centimetres_wherever_it_sits(world, db):
+    project = world.project("Spacer P")
+    out = run(db, world, project, doc(
+        {"type": "spacer", "height": 1.5}, {"type": "spacer", "height": 15, "height_unit": "mm"},
+        {"type": "group", "source": {"record_type": REQ}, "by": "status", "as": "g", "children": [{"type": "spacer", "height": 2}]},
+    ))
+    assert [b.cm for b in out.document.blocks if isinstance(b, VerticalSpace)] == [1.5, 1.5]
+
+
+def test_a_bottom_block_wraps_its_contents_in_markers_and_leaves_none_when_it_produces_nothing(world, db):
+    project = world.project("Bottom P")
+    out = run(db, world, project, doc(
+        {"type": "bottom", "children": [{"type": "text", "text": "Signed"}]},
+        {"type": "bottom", "children": [{"type": "each", "source": {"record_type": REQ}, "as": "r", "children": [{"type": "text", "text": "x"}]}]},
+    ))
+    kinds = [type(b) for b in out.document.blocks]
+    assert kinds.count(BottomStart) == 1 and kinds.count(BottomEnd) == 1
+    assert kinds.index(BottomStart) < kinds.index(Paragraph) < kinds.index(BottomEnd)
 
 
 def test_a_slow_run_times_out(world, db):

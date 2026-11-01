@@ -30,6 +30,7 @@ import { ServerModulesTab } from "./ServerModulesTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { PictureImage } from "../components/PictureImage";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
@@ -681,7 +682,7 @@ function PlatformBrandingTab() {
       {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
       {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.logoUploaded}</div>}
       {settings.default_logo_file_id && (
-        <img src={fileUrl(settings.default_logo_file_id)} alt="" style={{ height: 40 }} />
+        <PictureImage src={fileUrl(settings.default_logo_file_id)} style={{ height: 40 }} />
       )}
       <FormGrid minColumn="18rem">
         <TextField helpNotNeeded

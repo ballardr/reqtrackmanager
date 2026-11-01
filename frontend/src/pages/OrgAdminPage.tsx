@@ -107,6 +107,7 @@ import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
+import { PictureImage } from "../components/PictureImage";
 
 /**
  * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
@@ -3164,7 +3165,7 @@ export function OrgAdminPage() {
               {logoUploading && <Spinner />}
               {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
               {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
-              {org.logo_file_id && <img src={fileUrl(org.logo_file_id)} alt="" style={{ height: 40 }} />}
+              {org.logo_file_id && <PictureImage src={fileUrl(org.logo_file_id)} style={{ height: 40 }} />}
 
               {/* Login-background sits alongside the org logo (style guide
                   "after" diagram, G4a: "Branding — logo, colour, footer") —

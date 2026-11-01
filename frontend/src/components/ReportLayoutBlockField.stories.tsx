@@ -5,6 +5,7 @@ import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 import type { BlockField } from "../api/reportLayouts";
 import { buildBlockCatalogue, buildFieldCatalogue, buildImageLibrary, buildWidgets } from "../testing/reportLayoutFixtures";
 import { requiredCaptions } from "../testing/requiredMarkers";
+import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 import type { NameInScope, TreeNode } from "../utils/reportLayoutTree";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 
@@ -35,6 +36,7 @@ function Harness({ field, initial, names = [], problems = [], environment = env 
 const meta: Meta<typeof Harness> = {
   title: "Components/ReportLayoutBlockField",
   component: Harness,
+  decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))],
   args: { field: fieldOf("heading", "text"), initial: { type: "heading", text: "Hello" } },
 };
 export default meta;
@@ -217,6 +219,26 @@ export const AnImageBlockChoosesAPictureAndTakesDecimalSizes: Story = {
   },
 };
 
+/** An empty Width or Height says Auto in its box, so the ratio-keeping state is visible; typing replaces it and emptying restores it. */
+export const AnEmptyImageSizeSaysAuto: Story = {
+  args: { field: fieldOf("image", "width"), initial: { type: "image", file: "image-1" }, environment: withImages },
+  render: (args) => (
+    <div>
+      <Harness {...args} />
+      <Harness field={fieldOf("image", "height")} initial={{ type: "image", file: "image-1", height: 4 }} environment={withImages} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("spinbutton", { name: "Width" })).toHaveAttribute("placeholder", "Auto");
+    const height = canvas.getByRole("spinbutton", { name: "Height" });
+    await expect(height).toHaveValue(4);
+    await userEvent.clear(height);
+    await expect(height).toHaveAttribute("placeholder", "Auto");
+    await waitFor(() => expect(JSON.parse(canvas.getAllByTestId("node")[1].textContent ?? "{}")).not.toHaveProperty("height"));
+  },
+};
+
 /** A picture's placement is a choice in plain words, and a position is a signed decimal that can be emptied again. */
 export const AnImageBlockChoosesWhereItSitsAndPositionsALayer: Story = {
   args: { field: fieldOf("image", "placement"), initial: { type: "image", file: "image-1", alt: "a" }, environment: withImages },
@@ -317,7 +339,7 @@ export const ARecordImagesBlockEditsItsRulesAsLists: Story = {
 
 const fileNameField: BlockField = {
   key: "file_name", label: "File name", kind: "file_name", required: false, help: "", max_length: 200, minimum: null,
-  maximum: null, default: null, choices: [], features: [], depends_on: null, families: [],
+  maximum: null, default: null, choices: [], features: [], depends_on: null, families: [], empty_label: "",
 };
 
 /** The layout's File name is a template field: typing sets the key, emptying removes it, and the example is the server's. */
@@ -410,6 +432,24 @@ export const AnExplicitTrueIsShownOn: Story = {
   render: () => <Harness field={repeatField()} initial={{ family: "document", repeat_table_header: true }} />,
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByRole("checkbox", { name: "Repeat table header rows" })).toBeChecked();
+  },
+};
+
+/** A spacer's height starts at 1 and its unit is named in words; changing the unit keeps the number. */
+export const ASpacerBlockTakesAHeightInCentimetresOrMillimetres: Story = {
+  render: () => (
+    <div>
+      <Harness field={fieldOf("spacer", "height")} initial={{ type: "spacer", height: 1 }} />
+      <Harness field={fieldOf("spacer", "height_unit")} initial={{ type: "spacer", height: 1 }} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = (index: number) => JSON.parse(canvas.getAllByTestId("node")[index].textContent ?? "{}");
+    await expect(canvas.getByRole("spinbutton", { name: "Height" })).toHaveValue(1);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Height unit" }), "Millimetres (mm)");
+    await waitFor(() => expect(node(1).height_unit).toBe("mm"));
+    expect(node(1).height).toBe(1);
   },
 };
 

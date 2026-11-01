@@ -5,6 +5,7 @@ import { expect, userEvent, within } from "storybook/test";
 import { buildImageLibrary } from "../testing/reportLayoutFixtures";
 import type { RunningBand } from "../utils/reportPageSetup";
 import { RunningBandEditor } from "./RunningBandEditor";
+import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 
 /** Hosts the editor with the band it edits, and shows the band as JSON so a story can read what was written. */
 function Host({
@@ -30,7 +31,7 @@ function Host({
 }
 
 /** One header or footer: a row of left, centre and right cells with an optional logo, inherited, its own or empty. */
-const meta: Meta<typeof RunningBandEditor> = { title: "Components/RunningBandEditor", component: RunningBandEditor };
+const meta: Meta<typeof RunningBandEditor> = { title: "Components/RunningBandEditor", component: RunningBandEditor, decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))] };
 export default meta;
 
 type Story = StoryObj<typeof RunningBandEditor>;

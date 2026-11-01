@@ -53,11 +53,12 @@ import { insertedBlocks, withBlocksOf } from "../utils/reportSnippets";
 import { selectionOfBlock } from "../utils/reportSnippetSelection";
 import { MenuButton } from "./MenuButton";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
+import { ImageStretchWarning } from "./ImageStretchWarning";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 import { ReportLayoutSettings } from "./ReportLayoutSettings";
 import { ReportSnippetMenu } from "./ReportSnippetMenu";
 import { ReportSnippetPicker, type SnippetPlace } from "./ReportSnippetPicker";
-import type { SnippetNoticeData } from "./ReportSnippetNotice";
+import type { SnippetNoticeData } from "../hooks/useSnippetToast";
 
 /** Maps each block of the workspace to its tree path (`nodes[1].children[0]`). */
 function indexPaths(ws: Blockly.WorkspaceSvg): Map<string, string> {
@@ -435,6 +436,7 @@ export function ReportLayoutBlocks({
               }}
             />
           )}
+          {node.type === "image" && images && <ImageStretchWarning node={node} library={images.library} />}
           {!readOnly && type?.containers.map((container) => (
             <div key={container.key}>
               {addMenu(text.addInside(container.label), () => ({

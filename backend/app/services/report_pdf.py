@@ -35,11 +35,22 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import ActionFlowable, BaseDocTemplate, Frame, KeepTogether, ListFlowable, ListItem, PageTemplate, Spacer, TableStyle
+from reportlab.platypus import (
+    ActionFlowable,
+    BaseDocTemplate,
+    CondPageBreak,
+    Frame,
+    KeepTogether,
+    ListFlowable,
+    ListItem,
+    PageTemplate,
+    Spacer,
+    TableStyle,
+)
 from reportlab.platypus import PageBreak as RlPageBreak
 from reportlab.platypus import Paragraph as RlParagraph
 from reportlab.platypus import Table as RlTable
-from reportlab.platypus.flowables import ImageAndFlowables
+from reportlab.platypus.flowables import Flowable, ImageAndFlowables
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.report_column_width import resolve_table_widths_cm
@@ -57,6 +68,8 @@ from app.services.report_fonts import draw_centred, text_width
 from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
+    BottomEnd,
+    BottomStart,
     BulletList,
     Equation,
     Gap,
@@ -72,6 +85,7 @@ from app.services.report_model import (
     ReportDocument,
     Styled,
     Table,
+    VerticalSpace,
     finalize_links,
     text_runs,
 )
@@ -234,6 +248,46 @@ def _image_flowables(block: Image, usable_width: float) -> list:
         return [flowable]
     caption = RlParagraph(safe(block.caption), _CAPTIONS.get(block.align, _CAPTIONS["center"]))
     return [KeepTogether([caption, flowable] if block.caption_above else [flowable, caption])]
+
+
+#: Slack kept under blocks anchored to the page foot, so a measuring error moves nothing onto the next page.
+_BOTTOM_SLACK = 3.0
+#: A page-bottom run at least this share of the text height is not anchored (it would not leave room for anything above).
+_BOTTOM_MAX_SHARE = 0.95
+
+
+class _FillToBottom(Flowable):
+    """Takes all the height left in the frame except `below`, so the flowables that follow end at the frame's foot."""
+
+    def __init__(self, below: float) -> None:
+        super().__init__()
+        self.below = below
+
+    def wrap(self, available_width: float, available_height: float) -> tuple[float, float]:
+        """The whole width and the frame's remaining height less `below` (nothing when there is less than that)."""
+        return available_width, max(available_height - self.below, 0.0)
+
+    def draw(self) -> None:
+        """Draws nothing: it is only space."""
+
+
+def _anchored_to_bottom(flowables: list, usable_width: float, usable_height: float) -> list:
+    """The flowables of a page-bottom run, preceded by what puts them at the foot of the page they land on.
+
+    A conditional page break moves them to a fresh page when they do not fit in the room left, and `_FillToBottom` then
+    uses up the rest of the page above them. A run too tall to leave room for anything above it (or that cannot be
+    measured) is returned unchanged and flows as ordinary content.
+    """
+    total = 0.0
+    for flowable in flowables:
+        try:
+            total += flowable.wrap(usable_width, 100 * usable_height)[1] + flowable.getSpaceBefore() + flowable.getSpaceAfter()
+        except Exception:  # noqa: BLE001 - a flowable that cannot be measured is not anchored; the report must still render
+            return flowables
+    total += _BOTTOM_SLACK
+    if total <= _BOTTOM_SLACK or total >= usable_height * _BOTTOM_MAX_SHARE:
+        return flowables
+    return [CondPageBreak(total), _FillToBottom(total), *flowables]
 
 
 # Blocks the text of a wrapped picture can run through: anything that is a run of text. A table, an equation, another
@@ -431,6 +485,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     story: list = [_UseStyle(*_template_ids(0, document.style)), *title_flowables(document.title, branding)]
     images = _InlineImages()
     wrap: tuple[Image, list] | None = None  # a wrapped picture and the flowables that run beside it so far
+    bottom_from = 0  # where the story stood when the open page-bottom run began
 
     def flush_wrap() -> None:
         nonlocal wrap
@@ -466,6 +521,14 @@ def render_pdf_document(document: ReportDocument) -> bytes:
             story.append(_table(block, accent, usable_width, usable_height, images))
         elif isinstance(block, Gap):
             out.append(Spacer(1, block.cm * cm))
+        elif isinstance(block, BottomStart):
+            bottom_from = len(story)
+        elif isinstance(block, BottomEnd):
+            story[bottom_from:] = _anchored_to_bottom(story[bottom_from:], usable_width, usable_height)
+        elif isinstance(block, VerticalSpace):
+            # Kept at the top of a page; one taller than the room left moves to the next page, and the page's own text
+            # height caps it so it can never overflow a frame.
+            story.append(Spacer(1, min(block.cm * cm, usable_height * 0.98)))
         elif isinstance(block, PageBreak):
             story.append(RlPageBreak())
         elif isinstance(block, PageStyleChange):

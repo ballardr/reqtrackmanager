@@ -19,7 +19,7 @@
  *   view, the selected block's form (the block editor draws it into the panel). The panel collapses to a rail; the
  *   collapsed state and the last tab of each view are remembered per person. The version history and comparison are a
  *   second main tab.
- * - Insert a snippet (`ReportSnippetPicker`) from either view and report what the server did (`ReportSnippetNotice`). In
+ * - Insert a snippet (`ReportSnippetPicker`) from either view and report what the server did as a toast (`useSnippetToast`). In
  *   the Blocks view the editor places the blocks itself (Ctrl+Z undoes them); in the Text view the draft is read as a
  *   layout, the server inserts the snippet at the start or end of it and the text is written again from the result,
  *   with an Undo while that text stands.
@@ -45,6 +45,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useRequestSequence } from "../hooks/useRequestSequence";
+import { useSnippetToast } from "../hooks/useSnippetToast";
 import { useUiPreference } from "../hooks/useUiPreference";
 import {
   aliasesInScope, asBlock, insertAt, insertionRange, lineOfOffset, offsetOfLine,
@@ -66,7 +67,6 @@ import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 import { ReportLayoutWidgetPicker } from "./ReportLayoutWidgetPicker";
 import { ReportSaveSnippetDialog } from "./ReportSaveSnippetDialog";
 import { ReportSnippetMenu } from "./ReportSnippetMenu";
-import { ReportSnippetNotice, type SnippetNoticeData } from "./ReportSnippetNotice";
 import { ReportSnippetPicker } from "./ReportSnippetPicker";
 import { RecordHeader } from "./RecordHeader";
 import { SaveVersionButton } from "./SaveVersionButton";
@@ -87,13 +87,6 @@ type EditView = "text" | "blocks";
 const isTreeView = (view: EditView) => view !== "text";
 type AsideTab = "block" | "preview" | "fields" | "widgets";
 type Dialog = "details" | "delete" | "reload" | "leave" | "preview" | "duplicate" | "snippet" | "save-snippet";
-
-/** The last snippet insertion, for the notice above the views; `afterText` is the text view's text it produced (Undo is offered while it still stands). */
-interface SnippetNotice extends SnippetNoticeData {
-  view: EditView;
-  beforeText?: string;
-  afterText?: string;
-}
 
 /** What Save as snippet was asked to save: the draft tree, the blocks chosen and the words naming them. */
 interface SnippetToSave {
@@ -174,9 +167,9 @@ export function ReportLayoutDesigner({
   const [conflict, setConflict] = useState<number | null>(null);
   const [caretLine, setCaretLine] = useState(0);
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  /** The tree the Text view's snippet dialog applies to (the draft as read when the dialog opened), and the last insertion's notice. */
+  /** The tree the Text view's snippet dialog applies to (the draft as read when the dialog opened). */
   const [snippetTree, setSnippetTree] = useState<Tree | null>(null);
-  const [snippetNotice, setSnippetNotice] = useState<SnippetNotice | null>(null);
+  const snippetToast = useSnippetToast();
   /** The selection the Save as snippet dialog saves. */
   const [toSave, setToSave] = useState<SnippetToSave | null>(null);
   const editor = useRef<HTMLTextAreaElement>(null);
@@ -371,9 +364,15 @@ export function ReportLayoutDesigner({
     if (result.tree === null) return;
     try {
       const written = await api.formatTree(result.tree);
-      setSnippetNotice({
-        name: snippet.name, changes: result.changes, problemsElsewhere: result.problems_elsewhere, view: "text", beforeText: draft, afterText: written,
-      });
+      // Undo puts the old text back only while the inserted text still stands, so it never discards later typing.
+      const before = draft;
+      snippetToast.announce(
+        { name: snippet.name, changes: result.changes, problemsElsewhere: result.problems_elsewhere },
+        () => {
+          setDraft((current) => (current === written ? before : current));
+          setChecked(null);
+        },
+      );
       setDraft(written);
       setChecked(null);
     } catch {
@@ -397,7 +396,7 @@ export function ReportLayoutDesigner({
   async function switchView(next: EditView) {
     if (next === view) return;
     setViewNote(null);
-    setSnippetNotice(null);
+    snippetToast.clear();
     if (next === "text") {
       if (blockTree !== null && enteredTree !== null && stableJson(blockTree) !== stableJson(enteredTree)) {
         try {
@@ -573,15 +572,6 @@ export function ReportLayoutDesigner({
               active={view} onChange={(next) => void switchView(next)}
             />
             {viewNote && <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{viewNote}</p>}
-            {snippetNotice && snippetNotice.view === view && (
-              <ReportSnippetNotice
-                notice={snippetNotice} onDismiss={() => setSnippetNotice(null)}
-                hint={view === "text" ? undefined : strings.reportSnippets.undoBlocksHint}
-                onUndo={view === "text" && snippetNotice.afterText === draft && snippetNotice.beforeText !== undefined
-                  ? () => { setDraft(snippetNotice.beforeText ?? ""); setChecked(null); setSnippetNotice(null); }
-                  : undefined}
-              />
-            )}
             {view === "text" && (
               <div {...tabPanelProps("layout-view", "text")} className="stack">
               {editable && (
@@ -647,7 +637,7 @@ export function ReportLayoutDesigner({
                         images={{ library: api.images, scope: api.scope.kind }}
                         snippets={{
                           api,
-                          onInserted: (notice) => setSnippetNotice({ ...notice, view }),
+                          onInserted: (notice) => snippetToast.announce(notice),
                           onSave: (selection, label) => {
                             setToSave({ tree: blockTree, selection, label });
                             setDialog("save-snippet");

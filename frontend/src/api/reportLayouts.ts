@@ -207,6 +207,8 @@ export interface BlockField {
   depends_on: string | null;
   /** Families it applies to; empty means all. */
   families: string[];
+  /** What an empty value means ("Auto"), shown in the empty box; `""` for none. */
+  empty_label: string;
 }
 
 /** A list of child blocks a block holds. */

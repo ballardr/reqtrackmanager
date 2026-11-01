@@ -184,6 +184,22 @@ export const ASectionShowsItsPageStyleAndChoosesFromTheLayoutsStyles: Story = {
   },
 };
 
+/** An At page bottom block is a container: blocks added inside it stay inside it in the tree. */
+export const AnAtPageBottomBlockHoldsItsContents: Story = {
+  args: {
+    initial: {
+      schema_version: 1, family: "document",
+      nodes: [{ type: "bottom", children: [{ type: "text", text: "Signed" }] }],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    await waitFor(() => expect(blocksOf(ws, "bottom")).toHaveLength(1));
+    await waitFor(() => expect(blocksOf(ws, "text")).toHaveLength(1));
+    expect(treeOf(canvasElement).nodes[0]).toEqual({ type: "bottom", children: [{ type: "text", text: "Signed" }] });
+  },
+};
+
 /** Adds a block of `name` from the Add block menu. */
 async function addFromMenu(canvas: ReturnType<typeof within>, name: string) {
   await userEvent.click(canvas.getByRole("button", { name: "Add block" }));

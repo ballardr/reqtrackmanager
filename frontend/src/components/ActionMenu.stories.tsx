@@ -114,6 +114,35 @@ export const ItemsChangeWhileOpen: Story = {
   },
 };
 
+/** A menu taller than the window (the Add block menu grows with every block type) is capped to the room and
+ * scrolls inside: scrolling it must stay put (the popover once re-measured on its own scroll and reset it to the
+ * top), so the last entry can be reached and stays in view when it takes focus. */
+export const AMenuTallerThanTheWindowScrollsToItsLastEntry: Story = {
+  args: {
+    items: Array.from({ length: 30 }, (_, i) => ({ label: `Entry ${String(i + 1)}`, onSelect: fn() })),
+  },
+  decorators: [(Story) => <div style={{ height: 300, overflow: "hidden" }}><Story /></div>],
+  parameters: { viewport: { defaultViewport: "mobile1" } },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+    const popover = within(document.body).getByRole("dialog", { name: "Acme Corp actions" });
+    const menu = within(popover).getByRole("menu");
+    const last = within(menu).getByRole("menuitem", { name: "Entry 30" });
+    await waitFor(() => expect(popover.scrollHeight).toBeGreaterThan(popover.clientHeight));
+    await expect(popover.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight);
+
+    last.focus();
+    await waitFor(() => expect(popover.scrollTop).toBeGreaterThan(0));
+    const scrolled = popover.scrollTop;
+    // Let the scroll event (and any re-measure it wrongly triggers) settle, then check the offset held.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(popover.scrollTop).toBe(scrolled);
+    const rect = last.getBoundingClientRect();
+    await expect(rect.bottom).toBeLessThanOrEqual(window.innerHeight);
+    await expect(rect.top).toBeGreaterThanOrEqual(0);
+  },
+};
+
 export const LightTheme: Story = { globals: { theme: "light" } };
 export const DarkTheme: Story = { globals: { theme: "dark" } };
 

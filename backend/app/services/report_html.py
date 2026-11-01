@@ -62,6 +62,7 @@ from app.services.report_model import (
     RunningBand,
     Styled,
     Table,
+    VerticalSpace,
     finalize_links,
     text_on,
     text_runs,
@@ -86,7 +87,7 @@ th { background: var(--accent); color: %(head_text)s; text-align: left; }
 th, td { border: 1px solid #ccc; padding: .3rem .5rem; vertical-align: top; overflow-wrap: anywhere; }
 table.compact td { border-color: #ddd; } table.fixed { table-layout: fixed; }
 tbody tr:nth-child(even) td { background-color: #f5f5f5; }
-figure { margin: 1rem 0; } figure img, figure svg { max-width: 100%%; height: auto; }
+div.spacer { display: block; margin: 0; padding: 0; } figure { margin: 1rem 0; } figure img, figure svg { max-width: 100%%; height: auto; }
 figure.image { overflow-x: auto; } figure.image.align-center { text-align: center; } figure.image.align-right { text-align: right; }
 figure.image.wrap-left { float: left; margin: .2rem 1rem .5rem 0; } figure.image.wrap-right { float: right; margin: .2rem 0 .5rem 1rem; }
 table, .page-break { clear: both; }
@@ -433,6 +434,8 @@ def render_html_document(document: ReportDocument) -> bytes:
                 parts.append(figure)
         elif isinstance(block, Table):
             parts.append(_table(block))
+        elif isinstance(block, VerticalSpace):
+            parts.append(f'<div class="spacer" aria-hidden="true" style="height: {block.cm:g}cm"></div>')
         elif isinstance(block, PageBreak):
             parts.append('<hr class="page-break">')
         elif isinstance(block, PageStyleChange):

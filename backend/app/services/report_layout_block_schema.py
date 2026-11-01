@@ -75,6 +75,7 @@ class BlockField:
         depends_on: The key of a sibling field this one reads (a `record_field` names its source; widget settings
             name the widget).
         families: Layout families it applies to; empty means all.
+        empty_label: What an empty value means, in a word ("Auto"); the editor shows it in the empty box so the state is visible.
     """
 
     key: str
@@ -90,6 +91,7 @@ class BlockField:
     features: tuple[str, ...] = ()
     depends_on: str | None = None
     families: tuple[str, ...] = ()
+    empty_label: str = ""
 
 
 @dataclass(frozen=True)

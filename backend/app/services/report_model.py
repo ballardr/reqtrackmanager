@@ -8,7 +8,8 @@ place rather than once per output format.
 
 Responsibilities:
 - Block types: `Heading`, `Paragraph`, `Equation` (a display equation), `Note`, `BulletList`, `Image` (raster bytes or SVG markup), `Table`,
-  `Gap`, `PageBreak`, `PageStyleChange` (a new page in another `PageStyle`: paper, orientation, `Margins`), and the
+  `Gap`, `VerticalSpace`, `BottomStart`/`BottomEnd` (a run placed at the page foot), `PageBreak`,
+  `PageStyleChange` (a new page in another `PageStyle`: paper, orientation, `Margins`), and the
   `ReportDocument` that holds them with the title, branding and the page style of its own pages; `RunningBand` (a
   header or footer: an invisible left, centre and right table, with page fields and an optional logo).
 - `Sheet`: one named table of a table-family report (CSV, XLSX, ODS); not a
@@ -464,6 +465,30 @@ class Gap:
 
 
 @dataclass(frozen=True)
+class VerticalSpace:
+    """An author's vertical space of `cm` centimetres, kept in every format (unlike `Gap`, a PDF-only layout hint).
+
+    Attributes:
+        cm: The height, already clamped by the layout validation.
+    """
+
+    cm: float
+
+
+@dataclass(frozen=True)
+class BottomStart:
+    """Opens a run of blocks (closed by `BottomEnd`) that a renderer places at the foot of the page they land on.
+
+    The blocks between the two are ordinary blocks, but never a page break, page style change or another start.
+    """
+
+
+@dataclass(frozen=True)
+class BottomEnd:
+    """Closes the run of blocks a `BottomStart` opened."""
+
+
+@dataclass(frozen=True)
 class PageBreak:
     """Starts a new page."""
 
@@ -485,7 +510,10 @@ class PageStyleChange:
     section_start: bool = True
 
 
-Block = Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Gap | PageBreak | PageStyleChange
+Block = (
+    Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Gap | VerticalSpace | BottomStart | BottomEnd | PageBreak
+    | PageStyleChange
+)
 
 
 #: Most rows a sheet can hold in Excel and OpenDocument spreadsheets (a link past it cannot be made).

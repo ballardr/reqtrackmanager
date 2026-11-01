@@ -85,7 +85,7 @@ export function buildFieldCatalogue(): ReportFieldCatalogue {
 
 const field = (key: string, label: string, kind: string, extra: Partial<BlockField> = {}): BlockField => ({
   key, label, kind, required: false, help: `About ${label.toLowerCase()}.`, max_length: null, minimum: null, maximum: null, default: null,
-  choices: [], features: [], depends_on: null, families: [], ...extra,
+  choices: [], features: [], depends_on: null, families: [], empty_label: "", ...extra,
 });
 
 const source = field("source", "Records", "source", { required: true });
@@ -104,6 +104,13 @@ export function buildBlockCatalogue(): BlockCatalogue {
         fields: [field("text", "Text", "longtext", { required: true, features: ["placeholders", "markdown"] })],
       }),
       block("page_break", "Page break", { type: "page_break" }),
+      block("spacer", "Spacer", { type: "spacer", height: 1 }, {
+        fields: [
+          field("height", "Height", "number", { required: true, minimum: 0.1, maximum: 200, default: 1 }),
+          field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+        ],
+      }),
+      block("bottom", "At page bottom", { type: "bottom", children: [] }, { containers: [{ key: "children", label: "Contents" }] }),
       block("section", "Section", { type: "section", page_style: "", children: [] }, {
         fields: [field("page_style", "Page style", "page_style", { required: true })],
         containers: [{ key: "children", label: "Contents" }],
@@ -112,9 +119,9 @@ export function buildBlockCatalogue(): BlockCatalogue {
         fields: [
           field("file", "Image", "image", { required: true }), field("alt", "Alternative text", "text", { max_length: 300 }),
           field("decorative", "Decorative", "boolean", { default: false }),
-          field("width", "Width", "number", { minimum: 1, maximum: 1000 }),
+          field("width", "Width", "number", { minimum: 1, maximum: 1000, empty_label: "Auto" }),
           field("width_unit", "Width unit", "choice", { choices: ["cm", "mm", "percent"], default: "cm", depends_on: "width" }),
-          field("height", "Height", "number", { minimum: 0.5, maximum: 1000 }),
+          field("height", "Height", "number", { minimum: 0.5, maximum: 1000, empty_label: "Auto" }),
           field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
           field("align", "Alignment", "choice", { choices: ["left", "center", "right"], default: "center" }),
           field("placement", "Placement", "choice", { choices: ["inline", "wrap", "behind", "front"], default: "inline" }),

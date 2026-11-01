@@ -6,7 +6,8 @@ decides whether a tree may be saved or run.
 
 Responsibilities:
 - Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
-  `each`, `group`, `if`, `page_break`, `section` (its contents in another page style), `equation` (display TeX),
+  `each`, `group`, `if`, `page_break`, `spacer` (vertical space of an exact height), `bottom` (its contents at the foot of the page),
+  `section` (its contents in another page style), `equation` (display TeX),
   `image` (a picture from the layout tier's image library, with size, alignment, caption and alt text),
   `widget` (one component of a module report, by key), and the table-family block `sheet` (a root source plus
   optional left `joins` along links, one row per combination).
@@ -109,6 +110,10 @@ from app.services.report_widgets import find_widget, list_widgets, param_problem
 
 TREE_SCHEMA_VERSION = 1
 
+#: Bounds of a spacer's height, in mm (1 mm to 20 cm); a taller one is not a gap but a layout mistake.
+SPACER_HEIGHT_MM = (1.0, 200.0)
+#: Units a spacer's height may be written in.
+SPACER_UNITS = ("cm", "mm")
 MAX_DEPTH = 8
 MAX_NODES = 500
 MAX_COLUMNS = 30
@@ -371,6 +376,8 @@ class TreeValidator:
         #: Names of the layout's page styles, and whether the block being checked is inside a section.
         self.page_style_names: set[str] = set()
         self.in_section = False
+        #: Whether the block being checked is inside a page-bottom block (which holds no page-structure block).
+        self.in_bottom = False
 
     # --- driver ----------------------------------------------------------------------------
 
@@ -1403,6 +1410,38 @@ def _validate_record_images(v: TreeValidator, node: dict[str, Any], path: str) -
 
 def _validate_page_break(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type",))
+    if v.in_bottom:
+        v.error(path, _NOT_IN_BOTTOM.format("A page break"))
+
+
+def _validate_spacer(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(node, path, required=("type", "height"), optional=("height_unit",))
+    unit = node.get("height_unit", "cm")
+    if "height_unit" in node and unit not in SPACER_UNITS:
+        v.error(f"{path}.height_unit", f"Must be one of: {', '.join(SPACER_UNITS)}.")
+        unit = "cm"
+    if "height" not in node:
+        return
+    scale = 0.1 if unit == "cm" else 1
+    low, high = SPACER_HEIGHT_MM[0] * scale, SPACER_HEIGHT_MM[1] * scale
+    value = node["height"]
+    if not isinstance(value, int | float) or isinstance(value, bool) or not low <= value <= high:
+        v.error(f"{path}.height", f"The height must be a number from {low:g} to {high:g} {unit}.")
+
+
+#: What the page-bottom block says about a block that starts a page or brings blocks of its own.
+_NOT_IN_BOTTOM = "{} cannot be inside an At page bottom block: it holds the content that sits at the foot of one page."
+
+
+def _validate_bottom(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(node, path, required=("type", "children"))
+    if v.in_bottom:
+        v.error(path, "An At page bottom block cannot be inside another one.")
+    previous, v.in_bottom = v.in_bottom, True
+    try:
+        v.children(node, path)
+    finally:
+        v.in_bottom = previous
 
 
 def _validate_section(v: TreeValidator, node: dict[str, Any], path: str) -> None:
@@ -1413,6 +1452,8 @@ def _validate_section(v: TreeValidator, node: dict[str, Any], path: str) -> None
         v.error(f"{path}.page_style", f'"{style}" is not a page style of this layout. Page styles: {known}.')
     if v.in_section:
         v.error(path, "A section cannot be inside another section.")
+    if v.in_bottom:
+        v.error(path, _NOT_IN_BOTTOM.format("A section"))
     previous, v.in_section = v.in_section, True
     try:
         v.children(node, path)
@@ -1535,6 +1576,8 @@ def _widget_param_problems(v: TreeValidator, widget: Any, params: Any, path: str
 
 def _validate_widget(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type", "key"), optional=("params", "empty_text", "sort"))
+    if v.in_bottom:
+        v.error(path, _NOT_IN_BOTTOM.format("A widget"))
     key = v.text(node.get("key", MISSING), f"{path}.key", limit=100)
     if "sort" in node:
         _validate_widget_sort(v, node["sort"], f"{path}.sort")
@@ -1665,6 +1708,24 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         template={"type": "text", "text": "Some text."},
     ),
     "page_break": BlockSchema("Page break", "Starts a new page in PDF and Word output.", template={"type": "page_break"}),
+    "spacer": BlockSchema(
+        "Spacer", "Vertical space of an exact height, the same in PDF, Word, OpenDocument and the preview.",
+        (
+            BlockField("height", "Height", "number", required=True, minimum=0.1, maximum=200, default=1,
+                       help="How much space to leave. Typically 1 cm; from 1 mm to 20 cm. At the top of a page the space is kept, "
+                       "and one taller than the room left on the page carries over to the next."),
+            BlockField("height_unit", "Height unit", "choice", choices=SPACER_UNITS, default="cm", depends_on="height",
+                       help="Centimetres or millimetres."),
+        ),
+        template={"type": "spacer", "height": 1},
+    ),
+    "bottom": BlockSchema(
+        "At page bottom", "Puts its contents (a table, or a few lines such as a sign-off) at the foot of the page they land on; "
+        "what is before it flows as usual. The browser preview has no pages, so it shows them in place.",
+        (),
+        (_CHILDREN,),
+        template={"type": "bottom", "children": []},
+    ),
     "section": BlockSchema(
         "Section", "Lays out its contents in another page style (paper, orientation, margins), on pages of their own.",
         (BlockField("page_style", "Page style", "page_style", required=True,
@@ -1683,14 +1744,14 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
                        help="What the picture shows, for readers who cannot see it. Required unless the image is decorative."),
             BlockField("decorative", "Decorative", "boolean", default=False,
                        help="Tick for a picture that adds no information (a rule, a flourish): it needs no alternative text."),
-            BlockField("width", "Width", "number", minimum=1, maximum=1000,
-                       help="How wide to print it. Leave empty for its own size, never wider than the text. With no height "
-                       "the shape is kept."),
+            BlockField("width", "Width", "number", minimum=1, maximum=1000, empty_label="Auto",
+                       help="How wide to print it. Auto (leave it empty) uses the picture's own size, never wider than the text; "
+                       "with a height set, Auto keeps the picture's shape. Set only one of Width and Height to keep the ratio."),
             BlockField("width_unit", "Width unit", "choice", choices=IMAGE_UNITS, default="cm", depends_on="width",
                        help="Centimetres, millimetres, or a percentage of the width of the text."),
-            BlockField("height", "Height", "number", minimum=0.5, maximum=1000,
-                       help="Size by height instead, or set both to stretch the picture to an exact size. Leave empty to keep "
-                       "its shape."),
+            BlockField("height", "Height", "number", minimum=0.5, maximum=1000, empty_label="Auto",
+                       help="Size by height instead. Auto (leave it empty) keeps the picture's shape. Set both Width and Height "
+                       "to stretch the picture to an exact size."),
             BlockField("height_unit", "Height unit", "choice", choices=IMAGE_HEIGHT_UNITS, default="cm", depends_on="height",
                        help="Centimetres or millimetres."),
             BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
@@ -1885,6 +1946,8 @@ for _spec in (
     BlockSpec("heading", (FAMILY_DOCUMENT,), _validate_heading),
     BlockSpec("text", (FAMILY_DOCUMENT,), _validate_text),
     BlockSpec("page_break", (FAMILY_DOCUMENT,), _validate_page_break),
+    BlockSpec("spacer", (FAMILY_DOCUMENT,), _validate_spacer),
+    BlockSpec("bottom", (FAMILY_DOCUMENT,), _validate_bottom),
     BlockSpec("section", (FAMILY_DOCUMENT,), _validate_section),
     BlockSpec("image", (FAMILY_DOCUMENT,), _validate_image),
     BlockSpec("shape", (FAMILY_DOCUMENT,), _validate_shape),

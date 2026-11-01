@@ -122,6 +122,10 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     assert (level["minimum"], level["maximum"], level["default"]) == (1, 4, 1)
     sheet = next(b for b in body["blocks"] if b["type"] == "sheet")
     assert sheet["families"] == ["table"]
+    image = next(b for b in body["blocks"] if b["type"] == "image")
+    assert {f["key"]: f["empty_label"] for f in image["fields"] if f["key"] in ("width", "height", "alt")} == {
+        "width": "Auto", "height": "Auto", "alt": "",
+    }
     assert body["field_kinds"] == list(FIELD_KINDS)
     assert {f["key"] for f in body["layout_fields"]} == {
         "orientation", "page_size", "margins", "mirror_margins", "repeat_table_header", "page_styles", "header", "footer", "variables",

@@ -19,7 +19,8 @@
  *
  * Design decisions: the library comes in as a prop (`ReportImageLibrary`) so stories stay off the network; the file is
  * judged by the server (its bytes decide the type), so the client only rejects a file over the size cap before sending.
- * Pictures are shown through `fileUrl`, whose own gate admits only people who may read the picture.
+ * Pictures are drawn by `PictureImage` on a checkerboard (switchable beside the large preview), so a white-on-transparent
+ * logo is visible. Pictures are shown through `fileUrl`, whose own gate admits only people who may read the picture.
  */
 import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
@@ -38,6 +39,7 @@ import { useFileDetails, type FileDetailsState } from "../hooks/useFileDetails";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { TextField } from "./FormFields";
 import { Modal } from "./Modal";
+import { PictureBackdropSwitch, PictureImage } from "./PictureImage";
 import { Spinner } from "./Spinner";
 
 const ACCEPT = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml";
@@ -102,7 +104,7 @@ export function ReportImageField({
   return (
     <FieldShell label={label} controlId={controlId} help={help} required={required}>
       <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-        {value !== "" && !gone && !isOrgLogo && <img className="report-image-thumb" src={fileUrl(value)} alt="" />}
+        {value !== "" && !gone && !isOrgLogo && <PictureImage className="report-image-thumb" src={fileUrl(value)} />}
         <span className="text-muted" style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
           {isOrgLogo ? text.organizationLogo : (chosen?.filename ?? (gone ? text.missing : value === "" ? text.none : "…"))}
         </span>
@@ -283,7 +285,7 @@ function ImageLibraryDialog({
                     type="button" className="report-image-pick" aria-label={text.select(image.filename)} aria-pressed={image.id === selected}
                     onClick={() => setSelected(image.id)} onDoubleClick={() => onPick(image.id)}
                   >
-                    <img src={fileUrl(image.id)} alt="" loading="lazy" />
+                    <PictureImage src={fileUrl(image.id)} loading="lazy" />
                     <span className="report-image-name">{image.filename}</span>
                   </button>
                   <div className="row" style={{ gap: "var(--space-1)", justifyContent: "space-between", flexWrap: "wrap" }}>
@@ -339,7 +341,8 @@ function ImageDetailsPanel({ image, found }: { image: ReportImage | null; found:
   if (image === null) return <aside className="report-image-details text-muted" aria-label={text.details}>{text.selectPrompt}</aside>;
   return (
     <aside className="report-image-details stack" aria-label={text.details}>
-      <img src={fileUrl(image.id)} alt="" className="report-image-preview" />
+      <PictureImage src={fileUrl(image.id)} className="report-image-preview" />
+      <PictureBackdropSwitch />
       <strong style={{ overflowWrap: "anywhere" }}>{image.filename}</strong>
       <FileDetailsFacts found={found} />
       {image.used_by.length > 0 && <span className="text-muted">{text.usedByNames(image.used_by)}</span>}

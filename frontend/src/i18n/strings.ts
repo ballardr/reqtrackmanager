@@ -2202,6 +2202,8 @@ const en = {
     jsonFieldLabel: (label: string) => `${label} (JSON)`,
     jsonInvalid: "This is not valid JSON.",
     useDefault: (value: string) => `Default (${value})`,
+    imageStretched: (chosen: number, picture: number) =>
+      `This size is ${chosen.toFixed(2)}:1 (width to height) but the picture is ${picture.toFixed(2)}:1, so it will print stretched. Make Width or Height Auto to keep its shape.`,
     choose: "Choose…",
     insertField: "Insert a field",
     // Source
@@ -2358,12 +2360,10 @@ const en = {
     atEnd: "Inserting at the end of the layout",
     textNeedsFixes: "Fix the problems in the text before inserting a snippet: it is read as a layout first.",
     noticeTitle: (name: string) => `Inserted ${name}`,
+    noticeTitleWithUndoKey: (name: string) => `Inserted ${name}. Ctrl+Z (Cmd+Z on a Mac) undoes it.`,
     problemsElsewhere: (count: number) =>
       count === 1 ? "The layout already had 1 problem outside the snippet; it was left as it was." : `The layout already had ${count} problems outside the snippet; they were left as they were.`,
-    undoBlocksHint: "Ctrl+Z (Cmd+Z on a Mac) removes the inserted blocks; a page style the snippet added stays until you delete it.",
     undo: "Undo insertion",
-    dismiss: "Dismiss",
-    noticeLabel: "Snippet inserted",
     savedBadge: (origin: string) => `Saved · ${origin}`,
     saveButton: "Save as snippet",
     saveButtonHint: "Select a block first: it is saved with everything inside it.",
@@ -2461,6 +2461,10 @@ const en = {
     tooLarge: (limit: string) => `That file is too large (limit ${limit}).`,
     limit: (limit: string) => `Largest file: ${limit}.`,
     details: "Image details",
+    backdrop: {
+      label: "Background",
+      options: { checkerboard: "Checkerboard", light: "Light", dark: "Dark" } as Record<"checkerboard" | "light" | "dark", string>,
+    },
     selectPrompt: "Select a picture to see its details.",
     select: (name: string) => `Select ${name}`,
     use: "Use image",
@@ -2623,6 +2627,8 @@ const en = {
       if: "If … otherwise",
       equation: "Equation",
       page_break: "Page break",
+      spacer: "Spacer",
+      bottom: "At page bottom",
       section: "Section",
       sheet: "Sheet",
     } as Record<string, string>,

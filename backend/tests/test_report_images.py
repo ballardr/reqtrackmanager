@@ -137,6 +137,29 @@ def test_the_text_view_round_trips_every_image_property_and_leaves_absent_ones_a
     assert format_tree(parsed.tree) == text
 
 
+def test_auto_for_a_width_or_height_reads_as_no_key_and_is_never_written_back():
+    parsed = parse_text(f'@layout document\n\n@image "{FILE}" alt "a" width auto height 3 cm\n')
+    assert parsed.ok, parsed.errors
+    assert parsed.tree["nodes"][0] == {"type": "image", "file": FILE, "alt": "a", "height": 3, "height_unit": "cm"}
+    assert "auto" not in format_tree(parsed.tree)
+    both = parse_text(f'@layout document\n\n@image "{FILE}" alt "a" height auto width auto\n')
+    assert both.ok and both.tree["nodes"][0] == {"type": "image", "file": FILE, "alt": "a"}
+
+
+def test_auto_and_a_number_for_the_same_size_is_a_positioned_error():
+    result = parse_text(f'@layout document\n\n@image "{FILE}" alt "a" width auto width 5\n')
+    assert not result.ok and result.errors[0].line == 3 and "once" in result.errors[0].message
+
+
+def test_the_image_block_form_names_auto_for_width_and_height_but_the_shape_does_not():
+    from app.services.report_layout_designer import block_catalogue
+
+    blocks = {b.key: b.schema for b in block_catalogue().blocks}
+    labels = {f.key: f.empty_label for f in blocks["image"].fields if f.key in ("width", "height")}
+    assert labels == {"width": "Auto", "height": "Auto"}
+    assert all(f.empty_label == "" for f in blocks["shape"].fields)
+
+
 @pytest.mark.parametrize(
     ("line", "fragment"),
     [

@@ -251,6 +251,7 @@ class ReportBlockFieldOut(BaseModel):
     features: list[str]
     depends_on: str | None
     families: list[str]
+    empty_label: str
 
 
 class ReportBlockContainerOut(BaseModel):

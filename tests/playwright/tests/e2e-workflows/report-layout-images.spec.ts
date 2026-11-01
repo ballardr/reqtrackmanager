@@ -140,6 +140,55 @@ test.describe("Report layout images", () => {
     });
   });
 
+  test("an empty Width or Height says Auto, one Auto size keeps the picture's shape, and stretching it is warned about", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/admin`);
+    await selectProjectAdminGroup(page, "Reports");
+    await newLayout(page, `E2E auto size ${suffix}`);
+    const inspector = await addPicture(page, `square-${suffix}.png`);
+    const width = inspector.getByRole("spinbutton", { name: "Width", exact: true });
+    const height = inspector.getByRole("spinbutton", { name: "Height", exact: true });
+    const stretched = inspector.getByRole("status").filter({ hasText: "will print stretched" });
+    await inspector.getByRole("textbox", { name: "Alternative text" }).fill("A square picture");
+
+    await test.step("both sizes start as Auto", async () => {
+      await expect(width).toHaveAttribute("placeholder", "Auto");
+      await expect(height).toHaveAttribute("placeholder", "Auto");
+      await expect(stretched).toBeHidden();
+    });
+
+    await test.step("a width alone keeps the shape: no warning, and the preview scales the height with it", async () => {
+      await width.fill("6");
+      await expect(stretched).toBeHidden();
+      await openDesignerPreviewDialog(page);
+      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await dialog.getByRole("button", { name: "Run preview" }).click();
+      await expect(dialog.frameLocator('iframe[title="Report preview"]').locator("figure.image img")).toHaveAttribute("style", /width:6cm;[^"]*height:auto/);
+      await closeDesignerPreviewDialog(page);
+    });
+
+    await test.step("a height that stretches this 1:1 picture is warned about, and emptying it clears the warning", async () => {
+      await height.fill("2");
+      await expect(stretched).toContainText("3.00:1");
+      await expect(stretched).toContainText("1.00:1");
+      await height.fill("");
+      await expect(stretched).toBeHidden();
+    });
+
+    await test.step("the text view accepts auto and writes nothing for it", async () => {
+      await page.getByRole("tab", { name: "Text" }).click();
+      const text = page.getByRole("textbox", { name: "Layout text" });
+      const written = await text.inputValue();
+      await text.fill(written.replace(/width 6/, "width auto height 3"));
+      await saveNewVersion(page);
+      await expect(page.getByText("Saved as version 2.")).toBeVisible();
+      await page.reload();
+      await page.getByRole("tab", { name: "Text" }).click();
+      await expect(text).toHaveValue(/@image "[0-9a-f-]{36}" alt "A square picture" height 3/);
+      await expect(text).not.toHaveValue(/auto/);
+    });
+  });
+
   test("unused pictures are filtered and several are deleted together, leaving a picture a layout uses", async ({ page, request }) => {
     const { headers, project, suffix } = await setup(page, request);
     const base = `${API}/projects/${project.id}`;

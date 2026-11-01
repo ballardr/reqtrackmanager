@@ -102,7 +102,7 @@ test.describe("Saved report snippets", () => {
       await row.click();
       await expect(dialog.getByRole("list", { name: `Blocks in ${snippetName}` })).toContainText("House style heading");
       await dialog.getByRole("button", { name: "Insert", exact: true }).click();
-      await expect(page.getByRole("status", { name: "Snippet inserted" })).toContainText(`Inserted ${snippetName}`);
+      await expect(page.locator(".toast", { hasText: `Inserted ${snippetName}` })).toBeVisible();
       await page.getByRole("tab", { name: "Text" }).click();
       await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveValue(/@heading level=1 House style heading|@heading House style heading/);
     });
@@ -271,7 +271,7 @@ test.describe("Saved report snippets", () => {
       await dialog.getByRole("button", { name: `Select ${name}` }).click();
       await expect(dialog.getByRole("list", { name: `Blocks in ${name}` })).toContainText("Edited in setup");
       await dialog.getByRole("button", { name: "Insert", exact: true }).click();
-      await expect(page.getByRole("status", { name: "Snippet inserted" })).toContainText(`Inserted ${name}`);
+      await expect(page.locator(".toast", { hasText: `Inserted ${name}` })).toBeVisible();
     });
   });
 

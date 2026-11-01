@@ -79,8 +79,7 @@ test.describe("Report snippets", () => {
     });
 
     await test.step("the author is told what was added", async () => {
-      const notice = page.getByRole("status", { name: "Snippet inserted" });
-      await expect(notice).toContainText("Inserted Cover page");
+      const notice = page.locator(".toast", { hasText: "Inserted Cover page" });
       await expect(notice).toContainText('Added page style "Cover"');
       await expect(page.getByText("No problems.")).toBeVisible();
     });
@@ -126,7 +125,7 @@ test.describe("Report snippets", () => {
     await expect(dialog.getByRole("button", { name: "Insert", exact: true })).toBeEnabled();
     await dialog.getByRole("button", { name: "Insert", exact: true }).click();
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole("status", { name: "Snippet inserted" })).toContainText("Inserted Logo, top right of the first page");
+    await expect(page.locator(".toast", { hasText: "Inserted Logo, top right of the first page" })).toBeVisible();
     // The picture is on an Image block, in front of the text, placed from the page.
     await expect(page.getByLabel("Block details").getByText(fileName)).toBeVisible();
     await expect(page.getByLabel("Block details").getByRole("combobox", { name: "Placement" })).toHaveValue("front");
@@ -148,16 +147,16 @@ test.describe("Report snippets", () => {
       await dialog.getByRole("button", { name: "Insert", exact: true }).click();
       await expect(dialog).toBeHidden();
       await expect(editor).toHaveValue(/@heading Existing heading[\s\S]*Approvals/);
-      await expect(page.getByRole("status", { name: "Snippet inserted" })).toContainText("Inserted Approvals");
+      await expect(page.locator(".toast", { hasText: "Inserted Approvals" })).toBeVisible();
     });
 
     await test.step("Undo puts the text back as it was", async () => {
       await page.getByRole("button", { name: "Undo insertion" }).click();
       await expect(editor).toHaveValue("@layout document\n\n@heading Existing heading\n");
-      await expect(page.getByRole("status", { name: "Snippet inserted" })).toHaveCount(0);
+      await expect(page.locator(".toast", { hasText: "Inserted Approvals" })).toHaveCount(0);
     });
 
-    await test.step("insert at the start, then edit: Undo is no longer offered, and the layout saves", async () => {
+    await test.step("insert at the start, then edit: Undo leaves the typing alone, and the layout saves", async () => {
       await page.getByRole("button", { name: "Snippets" }).click();
       await page.getByRole("menuitem", { name: "Insert snippet" }).click();
       const dialog = picker(page);
@@ -167,7 +166,9 @@ test.describe("Report snippets", () => {
       await expect(editor).toHaveValue(/@layout document[\s\S]*Document control[\s\S]*Existing heading/);
       await editor.press("End");
       await editor.pressSequentially(" ");
-      await expect(page.getByRole("button", { name: "Undo insertion" })).toHaveCount(0);
+      const edited = await editor.inputValue();
+      await page.getByRole("button", { name: "Undo insertion" }).click();
+      await expect(editor).toHaveValue(edited);
       await expect(page.getByText("The text is valid.")).toBeVisible();
       await saveNewVersion(page);
       await expect(page.getByText("Saved as version 2.")).toBeVisible();

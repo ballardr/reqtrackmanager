@@ -4,6 +4,7 @@ import { expect, fn, screen, userEvent, waitFor, within } from "storybook/test";
 
 import type { ReportImageLibrary } from "../api/reportLayouts";
 import { buildImageLibrary, buildReportImages } from "../testing/reportLayoutFixtures";
+import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { ReportImageField } from "./ReportImageField";
 
@@ -18,7 +19,7 @@ function Host({ library, initial = "", scope = "project" }: { library: ReportIma
 }
 
 /** An image block's picture: its thumbnail and name, and a library dialog to pick, upload or delete a picture. */
-const meta: Meta<typeof Host> = { title: "Components/ReportImageField", component: Host, args: { library: buildImageLibrary() } };
+const meta: Meta<typeof Host> = { title: "Components/ReportImageField", component: Host, args: { library: buildImageLibrary() }, decorators: [withStatefulAuth(buildUser({ ui_preferences: {} }))] };
 export default meta;
 
 type Story = StoryObj<typeof Host>;
@@ -328,5 +329,22 @@ export const PicturesTheLibraryDoesNotOwnCannotBeMarked: Story = {
     await userEvent.click(await modal.findByRole("button", { name: "Delete several…" }));
     await expect(modal.getByRole("checkbox", { name: "Mark site-logo.png for deletion" })).toBeInTheDocument();
     await expect(modal.queryByRole("checkbox", { name: /organisation-wordmark/ })).toBeNull();
+  },
+};
+
+/** The chosen picture and the large preview are drawn on the checkerboard, so a white logo on transparent stays visible; the switch changes it. */
+export const PicturesAreDrawnOnACheckerboardThatCanBeSwitched: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Choose image…" }));
+    const modal = within(await dialog());
+    await userEvent.click(await modal.findByRole("button", { name: "Select site-logo.png" }));
+    const preview = (await dialog()).querySelector(".report-image-preview");
+    await expect(preview).toHaveClass("picture-backdrop");
+    await expect(preview).toHaveAttribute("data-backdrop", "checkerboard");
+    await userEvent.click(modal.getByRole("button", { name: "Dark" }));
+    await expect(preview).toHaveAttribute("data-backdrop", "dark");
+    await expect(modal.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(modal.getByRole("button", { name: "Checkerboard" }));
+    await expect(preview).toHaveAttribute("data-backdrop", "checkerboard");
   },
 };

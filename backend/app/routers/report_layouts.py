@@ -216,7 +216,7 @@ def _block_field_out(f: BlockField) -> ReportBlockFieldOut:
     return ReportBlockFieldOut(
         key=f.key, label=f.label, kind=f.kind, required=f.required, help=f.help, max_length=f.max_length,
         minimum=f.minimum, maximum=f.maximum, default=f.default, choices=list(f.choices), features=list(f.features),
-        depends_on=f.depends_on, families=list(f.families),
+        depends_on=f.depends_on, families=list(f.families), empty_label=f.empty_label,
     )
 
 

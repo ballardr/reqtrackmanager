@@ -36,6 +36,8 @@ from app.services.report_image_layout import place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
     TONE_FILL,
+    BottomEnd,
+    BottomStart,
     BulletList,
     Cell,
     Equation,
@@ -52,6 +54,7 @@ from app.services.report_model import (
     ReportDocument,
     Styled,
     Table,
+    VerticalSpace,
     finalize_links,
     text_on,
     text_runs,
@@ -107,6 +110,11 @@ def _floating_frame_styles() -> str:
 
 def _frame_style_xml() -> str:
     return _floating_frame_styles() + (
+        '<style:style style:name="fr_page_bottom" style:family="graphic" style:parent-style-name="Frame"><style:graphic-properties style:wrap="none" '
+        'style:horizontal-pos="left" style:horizontal-rel="page-content" style:vertical-pos="bottom" '
+        'style:vertical-rel="page-content" draw:fill="none" draw:stroke="none" fo:background-color="transparent" '
+        'fo:margin-left="0cm" fo:margin-right="0cm" '
+        'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"/></style:style>'
         '<style:style style:name="fr_block" style:family="graphic"><style:graphic-properties text:anchor-type="as-char" '
         'style:vertical-pos="top" style:vertical-rel="baseline" style:wrap="none" fo:margin-left="0cm" fo:margin-right="0cm" '
         'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"/></style:style>'
@@ -163,6 +171,11 @@ def _named_styles() -> str:
         for level, size in sizes.items()
     )
     return (
+        # LibreOffice sizes a text frame holding a table only when its style descends from its own "Frame" style.
+        '<style:style style:name="Frame" style:family="graphic"><style:graphic-properties text:anchor-type="paragraph" '
+        'svg:x="0cm" svg:y="0cm" style:wrap="parallel" style:number-wrapped-paragraphs="no-limit" style:wrap-contour="false" '
+        'style:vertical-pos="top" style:vertical-rel="paragraph-content" style:horizontal-pos="center" '
+        'style:horizontal-rel="paragraph-content"/></style:style>'
         '<style:default-style style:family="paragraph"><style:paragraph-properties fo:orphans="2" fo:widows="2"/>'
         '<style:text-properties style:font-name="Arial" fo:font-size="10pt"/></style:default-style>'
         + _paragraph_style("Standard", parent=None, extra=' style:class="text"', para='fo:margin-bottom="0.15cm"')
@@ -268,6 +281,8 @@ class _Body:
         self.page_styles = styles
         self.usable_cm = styles[0].usable_width_cm
         self.usable_height_cm = styles[0].usable_height_cm
+        self.space_styles: set[str] = set()
+        self.bottom_from = 0  # where the chunks stood when the open page-bottom run began
         branding = document.branding
         self.accent = colour(branding.accent_color_hex if branding else None)
         self.chunks: list[str] = []
@@ -364,6 +379,27 @@ class _Body:
             f'text:anchor-type="paragraph"{position} svg:width="{length_cm(size[0])}" svg:height="{length_cm(size[1])}" '
             f'draw:z-index="{self._frames}"><draw:image xlink:href="{path}" xlink:type="simple" xlink:show="embed" '
             f'xlink:actuate="onLoad"/>{title}</draw:frame></text:p>'
+        )
+
+    def _anchor_to_bottom(self) -> None:
+        """Moves the chunks of the open page-bottom run into a text frame fixed to the foot of the page's text area.
+
+        The frame is anchored to a paragraph of its own that ends the page, so the content that follows starts on a new
+        page, as in the PDF. Paragraphs and tables both sit inside a text box.
+        """
+        run = self.chunks[self.bottom_from:]
+        del self.chunks[self.bottom_from:]
+        while run and run[-1] == '<text:p text:style-name="Standard"/>':  # the spacer a table leaves would be blank space under the run
+            run.pop()
+        content = "".join(run)
+        if not content:
+            return
+        self._frames += 1
+        self.chunks.append(
+            f'<text:p text:style-name="P_Break"><draw:frame draw:style-name="fr_page_bottom" draw:name="PageBottom{self._frames}" '
+            f'text:anchor-type="paragraph" svg:width="{length_cm(self.usable_cm)}" '
+            f'draw:z-index="{self._frames}"><draw:text-box fo:min-height="0.1cm">{content}<text:p text:style-name="P_Float"/>'
+            "</draw:text-box></draw:frame></text:p>"
         )
 
     def _image_block(self, block: Image, data: bytes) -> None:
@@ -548,6 +584,20 @@ class _Body:
             self._image_block(block, data)
         elif isinstance(block, Table):
             self.table(block)
+        elif isinstance(block, BottomStart):
+            self.bottom_from = len(self.chunks)
+        elif isinstance(block, BottomEnd):
+            self._anchor_to_bottom()
+        elif isinstance(block, VerticalSpace):
+            # An empty paragraph with a fixed line height, one automatic style per distinct height.
+            height = round(min(block.cm, self.usable_height_cm * 0.98), 3)
+            name = f"P_Space{str(height).replace('.', '_')}"
+            if name not in self.space_styles:
+                self.space_styles.add(name)
+                self.styles.append(_paragraph_style(
+                    name, para=f'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:line-height="{height}cm"', text='fo:font-size="1pt"',
+                ))
+            self.chunks.append(f'<text:p text:style-name="{name}"/>')
         elif isinstance(block, PageBreak):
             self.chunks.append('<text:p text:style-name="P_Break"/>')
         elif isinstance(block, PageStyleChange):

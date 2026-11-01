@@ -130,7 +130,8 @@ export function ReportLayoutBlockField({
       control = (
         <TextField
           label={field.label} value={value === undefined ? "" : String(value)} disabled={disabled} help={help} required={field.required}
-          placeholder={field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : undefined}
+          placeholder={field.empty_label !== "" ? field.empty_label
+            : field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : undefined}
           inputProps={{ type: "number", step: "any" }}
           onChange={(t) => set(t.trim() === "" ? undefined : Number.isNaN(Number(t)) ? t : Number(t))}
         />

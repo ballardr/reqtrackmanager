@@ -556,9 +556,9 @@ export const InsertSnippetWritesItIntoTheTextAndReportsWhatChanged: Story = {
     await waitFor(() => expect(editor.value).toContain("@heading {{project_name}}"));
     await expect(editor.value).toMatch(/^@layout document/);
     await expect(editor.value.trimEnd()).toMatch(/@pagebreak$/);
-    const notice = within(canvasElement).getByRole("status", { name: "Snippet inserted" });
-    await expect(notice).toHaveTextContent("Inserted Cover page");
-    await expect(notice).toHaveTextContent("Inserted 3 blocks at nodes[");
+    // The result is a toast over the page, not a card that pushes the views down.
+    await expect(await screen.findByText(/^Inserted Cover page/)).toBeInTheDocument();
+    await expect(canvasElement.querySelector(".card[role=status]")).toBeNull();
     // The server applied it to the tree read from the text, at the end.
     await expect(args.api.applySnippet).toHaveBeenCalledWith(
       "cover_page", expect.objectContaining({ tree: expect.objectContaining({ family: "document" }), target: { container: "nodes", index: null } }),
@@ -583,22 +583,23 @@ export const UndoPutsTheTextBackWhileItStillStands: Story = {
     await userEvent.click(d.getByRole("button", { name: "Insert" }));
     const editor = await editorOf(canvasElement);
     await waitFor(() => expect(editor.value).toContain("@pagebreak"));
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Undo insertion" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Undo insertion" }));
     await waitFor(() => expect(editor.value).toBe(LAYOUT_TEXT));
-    await expect(within(canvasElement).queryByRole("status", { name: "Snippet inserted" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/^Inserted Cover page/)).not.toBeInTheDocument());
   },
 };
 
-export const OnceTheTextIsEditedUndoIsNoLongerOffered: Story = {
+export const OnceTheTextIsEditedUndoLeavesTheTypingAlone: Story = {
   play: async ({ canvasElement }) => {
     const d = await chooseSnippet(canvasElement, "Cover page");
     await userEvent.click(d.getByRole("button", { name: "Insert" }));
     const editor = await editorOf(canvasElement);
     await waitFor(() => expect(editor.value).toContain("@pagebreak"));
     await userEvent.type(editor, "x");
-    await expect(within(canvasElement).queryByRole("button", { name: "Undo insertion" })).not.toBeInTheDocument();
-    await userEvent.click(within(canvasElement).getByRole("button", { name: "Dismiss" }));
-    await expect(within(canvasElement).queryByRole("status", { name: "Snippet inserted" })).not.toBeInTheDocument();
+    const edited = editor.value;
+    // Undo no longer applies once the text has changed: it must not discard the typing.
+    await userEvent.click(await screen.findByRole("button", { name: "Undo insertion" }));
+    await expect(editor.value).toBe(edited);
   },
 };
 
@@ -612,7 +613,7 @@ export const TextThatDoesNotReadCleanlyIsNotAnInsertionTarget: Story = {
   },
 };
 
-export const InsertSnippetInTheBlocksViewShowsTheNoticeWithTheUndoHint: Story = {
+export const InsertSnippetInTheBlocksViewToastsTheUndoKeyAndLeavesTheNewBlockSelected: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
     const canvas = await toBlocks(canvasElement);
@@ -620,13 +621,17 @@ export const InsertSnippetInTheBlocksViewShowsTheNoticeWithTheUndoHint: Story = 
     const d = within(await screen.findByRole("dialog", { name: "Insert snippet" }));
     await userEvent.click(await d.findByRole("button", { name: "Select Cover page" }));
     await userEvent.click(d.getByRole("button", { name: "Insert" }));
-    const notice = await canvas.findByRole("status", { name: "Snippet inserted" });
-    await expect(notice).toHaveTextContent("Ctrl+Z");
-    await expect(within(notice).queryByRole("button", { name: "Undo insertion" })).not.toBeInTheDocument();
+    const toast = await screen.findByText(/^Inserted Cover page/);
+    await expect(toast).toHaveTextContent("Ctrl+Z");
+    // Blockly has its own undo, so the toast has no button for it.
+    await expect(screen.queryByRole("button", { name: "Undo insertion" })).not.toBeInTheDocument();
     await waitFor(() => expect(Blockly.getMainWorkspace()?.getAllBlocks(false).filter((b) => b.type === "rl_page_break")).toHaveLength(1));
-    // Leaving the view clears the notice.
+    // The inserted block is the selection, so the panel's Block tab is where the next edit starts.
+    await waitFor(() => expect(Blockly.common.getSelected()).not.toBeNull());
+    await waitFor(() => expect(canvas.getByRole("tab", { name: "Block" })).toHaveAttribute("aria-selected", "true"));
+    // Leaving the view removes the toast.
     await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
-    await expect(canvas.queryByRole("status", { name: "Snippet inserted" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/^Inserted Cover page/)).not.toBeInTheDocument());
   },
 };
 

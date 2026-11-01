@@ -103,6 +103,8 @@ from app.services.report_model import (
     MAX_SHEET_ROWS,
     SLOT_NAMES,
     Block,
+    BottomEnd,
+    BottomStart,
     BulletList,
     Cell,
     CellLink,
@@ -126,6 +128,7 @@ from app.services.report_model import (
     SlotPart,
     Styled,
     Table,
+    VerticalSpace,
     contents_sheet,
     link_problem,
     linked,
@@ -1278,6 +1281,23 @@ def _eval_page_break(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     run.emit(PageBreak())
 
 
+def _eval_spacer(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    height = _cm(node["height"], node.get("height_unit"))
+    run.emit(VerticalSpace(height if height is not None else 1.0))  # a validated spacer always has a height; 1 cm is the form's default
+
+
+def _eval_bottom(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """A page-bottom block: its contents between two markers; one that produces nothing leaves no markers."""
+    before = len(run.blocks)
+    run.children(node["children"], scope)
+    if len(run.blocks) == before:
+        return
+    run.blocks.insert(before, BottomStart())
+    run.stats.blocks += 1
+    run._count_output(1)
+    run.emit(BottomEnd())
+
+
 def _eval_section(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     """A section: a new page in its page style, its contents, then a new page back in the document's own style.
 
@@ -1506,7 +1526,8 @@ def _eval_widget(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 
 for _key, _fn in (
-    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("section", _eval_section),
+    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("spacer", _eval_spacer),
+    ("bottom", _eval_bottom), ("section", _eval_section),
     ("image", _eval_image), ("shape", _eval_shape), ("record_images", _eval_record_images),
     ("equation", _eval_equation), ("table", _eval_table), ("each", _eval_each), ("group", _eval_group), ("if", _eval_if),
     ("sheet", _eval_sheet), ("widget", _eval_widget),

@@ -43,7 +43,7 @@ Grammar (one statement per line; indentation is cosmetic):
   [portrait|landscape] [A3|…] [margins …]`. What a style leaves out is the layout's own. `@section "<name>"` … `@end`
   lays its contents out in that style, on pages of their own.
 - A block opens with `@name ...`; `each`, `group`, `if` (with `@else`), `table`, `sheet` and an explicit
-  `@text` end with `@end`. `heading`, `page_break` and the quoted `@text "..."` are one line.
+  `@text` end with `@end`. `heading`, `page_break`, `spacer` and the quoted `@text "..."` are one line.
 - A source is a record type, or `in <group name>`, followed by clauses in any order: `from <name>`,
   `via "<link type>", ...`, `direction <d>`, `archived true|false`, `where <condition>`,
   `sort <field> [asc|desc]`; a block adds `as <name>`, `by <field>` or `empty "<text>"` where its
@@ -55,10 +55,11 @@ Grammar (one statement per line; indentation is cosmetic):
 - An `@if` also takes `module <key>` (for example `@if module risk_management`): true where that module is
   available in the project being run, so a layout that spans modules can leave out the parts of one that is off.
 - An image block is `@image "<file id>"` followed by clauses in any order: `alt "<text>"`, `decorative true|false`,
-  `width <n> [cm|mm|percent]`, `height <n> [cm|mm]`, `align left|center|right`, `caption "<text>"`,
+  `width <n> [cm|mm|percent]|auto`, `height <n> [cm|mm]|auto`, `align left|center|right`, `caption "<text>"`,
   `caption_position above|below`, `numbering auto|always|never`, `placement inline|wrap|behind|front`,
   `anchor paragraph|margin|page`, and `x <cm>` and `y <cm>` (the offsets of a picture behind or in front of the text);
-  each is written only when the block has the key.
+  each is written only when the block has the key. `auto` for a width or height reads as no key (the ratio is kept), so it
+  is never written back.
 - A record-images block is `@record_images` (inside an `@each`) followed by clauses in any order: `names "<pattern>", ...`,
   `types <ext>, ...`, `max_count <n>`, `order name|uploaded`, `max_size_mb <n>`, `caption_source file_name|text|none`,
   `caption "<text>"`, `caption_position above|below`, `numbering auto|always|never`, `width <n> [cm|mm|percent]`,
@@ -887,10 +888,10 @@ class _Parser:
         try:
             form.parse(self, directive)
         except _Syntax:
-            if name in ("each", "group", "if", "section", "table", "sheet") and len(self.frames) == before:
+            if name in ("each", "group", "if", "section", "bottom", "table", "sheet") and len(self.frames) == before:
                 # Keep the @end of a block whose first line was wrong matched to it.
                 scratch: dict[str, Any] = {"type": name, "children": [], "columns": []}
-                self._push(_Frame("container" if name in ("each", "group", "if", "section") else name, scratch, "", line_no))
+                self._push(_Frame("container" if name in ("each", "group", "if", "section", "bottom") else name, scratch, "", line_no))
             raise
 
     def _page_style(self, directive: _Directive, indent: int, line_no: int) -> None:
@@ -1397,6 +1398,17 @@ def _write_page_break(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, "@page_break")
 
 
+def _parse_bottom(p: _Parser, d: _Directive) -> None:
+    d.cursor().expect_end()
+    p.open({"type": "bottom", "children": []}, d.line_no)
+
+
+def _write_bottom(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    w.line(depth, "@bottom")
+    w.blocks(node["children"], depth + 1)
+    w.line(depth, "@end")
+
+
 def _parse_section(p: _Parser, d: _Directive) -> None:
     cur = d.cursor()
     node: dict[str, Any] = {"type": "section", "page_style": cur.text("the page style's name in quotes"), "children": []}
@@ -1414,6 +1426,20 @@ _IMAGE_TEXT_CLAUSES = (
     "alt", "decorative", "width", "height", "align", "caption", "caption_position", "numbering", "placement", "anchor", "x", "y",
 )
 # The written clause for a key that is spelled differently in the tree.
+def _parse_spacer(p: _Parser, d: _Directive) -> None:
+    cur = d.cursor()
+    node: dict[str, Any] = {"type": "spacer", "height": _number_word(cur, "the height")}
+    if unit := cur.accept("cm", "mm"):
+        node["height_unit"] = unit
+    if (token := cur.peek()) is not None:
+        raise _Syntax(f"Unexpected {token.shown()}. Write @spacer 1.5 cm.", token.column)
+    p.add(node, d.line_no)
+
+
+def _write_spacer(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    w.line(depth, f"@spacer {json.dumps(node['height'])}" + (f" {node['height_unit']}" if "height_unit" in node else ""))
+
+
 _IMAGE_CLAUSE_KEYS = {"x": "offset_x", "y": "offset_y"}
 
 
@@ -1459,24 +1485,28 @@ def _number_word(cur: _Cursor, what: str) -> int | float:
 def _parse_image(p: _Parser, d: _Directive) -> None:
     cur = d.cursor()
     node: dict[str, Any] = {"type": "image", "file": cur.text("the image's file id in quotes")}
+    seen: set[str] = set()
     while (token := cur.peek()) is not None:
         word = cur.accept(*_IMAGE_TEXT_CLAUSES)
         if word is None:
             raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_IMAGE_TEXT_CLAUSES)}.", token.column)
-        if _IMAGE_CLAUSE_KEYS.get(word, word) in node:
+        if word in seen:
             raise _Syntax(f"{word} is written once.", token.column)
+        seen.add(word)
         if word in ("alt", "caption"):
             node[word] = cur.text(f"the {word} text in quotes")
         elif word == "decorative":
             node[word] = _boolean_word(cur, word)
         elif word == "width":
-            node["width"] = _number_word(cur, "the width")
-            if unit := cur.accept("cm", "mm", "percent"):
-                node["width_unit"] = unit
+            if cur.accept("auto") is None:  # auto is the same as no width: the key is left out
+                node["width"] = _number_word(cur, "the width")
+                if unit := cur.accept("cm", "mm", "percent"):
+                    node["width_unit"] = unit
         elif word == "height":
-            node["height"] = _number_word(cur, "the height")
-            if unit := cur.accept("cm", "mm"):
-                node["height_unit"] = unit
+            if cur.accept("auto") is None:
+                node["height"] = _number_word(cur, "the height")
+                if unit := cur.accept("cm", "mm"):
+                    node["height_unit"] = unit
         elif word in _IMAGE_CLAUSE_KEYS:
             node[_IMAGE_CLAUSE_KEYS[word]] = _number_word(cur, f"the {'across' if word == 'x' else 'down'} distance in cm")
         else:  # align, caption_position, numbering, placement, anchor
@@ -1876,7 +1906,9 @@ for _form in (
     TextForm("heading", _parse_heading, _write_heading),
     TextForm("text", _parse_text, _write_text),
     TextForm("page_break", _parse_page_break, _write_page_break),
+    TextForm("spacer", _parse_spacer, _write_spacer),
     TextForm("section", _parse_section, _write_section),
+    TextForm("bottom", _parse_bottom, _write_bottom),
     TextForm("image", _parse_image, _write_image),
     TextForm("shape", _parse_shape, _write_shape),
     TextForm("record_images", _parse_record_images, _write_record_images),

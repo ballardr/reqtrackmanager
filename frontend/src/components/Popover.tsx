@@ -33,7 +33,8 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
  * stable `anchorRef` for the trigger button.
  *
  * The position is re-measured when the window or any ancestor scrolls or resizes and when the content
- * changes size, so it stays attached to its anchor; if the content does not fit on the roomier side
+ * changes size, so it stays attached to its anchor (scrolling the popover's own content does not move it,
+ * so it is ignored); if the content does not fit on the roomier side
  * of the anchor it is capped to the room and scrolls inside, so no control is ever out of reach.
  *
  * A popover has no header, so it clears any enclosing dialog's header slots: a `FormActions` inside it
@@ -64,7 +65,9 @@ export function Popover({
       const anchor = anchorRef.current;
       const bubble = bubbleRef.current;
       if (!anchor || !bubble) return;
-      // Measure the content's natural height, not a height capped by an earlier pass.
+      // Measure the content's natural height, not a height capped by an earlier pass. Clearing the cap
+      // clamps the scroll offset to 0, so it is put back below once the cap is applied again.
+      const scrolled = bubble.scrollTop;
       bubble.style.maxHeight = "";
       const anchorRect = anchor.getBoundingClientRect();
       const bubbleRect = bubble.getBoundingClientRect();
@@ -82,6 +85,7 @@ export function Popover({
       if (bubbleRect.height > room) {
         bubble.style.maxHeight = `${room}px`;
         bubble.style.overflowY = "auto";
+        bubble.scrollTop = scrolled;
       }
       const top = below ? anchorRect.bottom + VERTICAL_GAP_PX : anchorRect.top - height - VERTICAL_GAP_PX;
 
@@ -95,11 +99,17 @@ export function Popover({
     const observer = new ResizeObserver(measure);
     if (bubbleRef.current) observer.observe(bubbleRef.current);
     window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
+    // Scrolling the popover's own content (wheel, or focus moving to an entry below the fold) must not
+    // re-measure: the anchor has not moved, and re-measuring would undo the scroll.
+    const onScroll = (e: Event) => {
+      if (e.target instanceof Node && bubbleRef.current?.contains(e.target)) return;
+      measure();
+    };
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [anchorRef]);
 
