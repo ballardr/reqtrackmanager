@@ -652,6 +652,7 @@ def test_core_generators_run_requirements_before_actions():
     assert generators["requirement"].order < generators["requirement_action"].order
 
 
+@needs_profiles
 def test_the_dataset_entry_the_runner_writes_passes_the_bundle_check(client, tmp_path):
     """The `dataset.json` entry built from a real generated manifest is accepted by the bundle writer and its
     anonymisation check. A key added to the entry without the allowlist once threw away a whole night's measurements at the

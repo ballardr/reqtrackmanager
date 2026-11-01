@@ -62,4 +62,4 @@ apscheduler==3.10.4
 # in transitively via authlib, drops an otherwise-unused dependency (and the
 # 10 open Dependabot alerts against it) entirely rather than just patching
 # its version.
-joserfc==1.7.4
+joserfc==1.7.7
