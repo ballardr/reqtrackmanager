@@ -667,15 +667,32 @@ def test_committed_results_pass_the_check():
     assert _result_findings(tracked) == []
 
 
-def test_only_tracked_files_are_checked_so_a_local_file_cannot_fail_it_but_a_committed_one_would():
-    """The same stray file is a finding when it is tracked and invisible to the check when it is not."""
-    stray = _PERF / "results" / "zz-stray-local-file.zip"
-    stray.write_bytes(b"PK")
+def _throwaway_results(tmp_path: Path) -> Path:
+    """A git repository under `tmp_path` laid out like this one (`perf/results/`) holding one tracked, clean file; the real
+    `perf/results/` is never written to (CI mounts it read-only). Skips when git is not available."""
+    import subprocess
+
+    results = tmp_path / "perf" / "results"
+    results.mkdir(parents=True)
+    (results / "host.json").write_text(json.dumps({"schema_version": 1, "arch": "amd64"}))
     try:
-        assert stray.name not in (_tracked_result_files() or [])
-        assert any("allowlist" in finding for finding in _result_findings([stray.name]))
-    finally:
-        stray.unlink()
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, capture_output=True, timeout=30)
+        subprocess.run(["git", "add", "perf/results/host.json"], cwd=tmp_path, check=True, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pytest.skip("git is not available to list the tracked result files")
+    return results
+
+
+def test_only_tracked_files_are_checked_so_a_local_file_cannot_fail_it_but_a_committed_one_would(tmp_path):
+    """The same stray file is a finding when it is tracked and invisible to the check when it is not."""
+    from perf import scrub_check
+
+    results = _throwaway_results(tmp_path)
+    (results / "zz-stray-local-file.zip").write_bytes(b"PK")
+    tracked = [str(p) for p in scrub_check.tracked_files(results)]
+    assert tracked == ["host.json"]
+    assert scrub.scan_files(results, tracked, identities=[]) == []
+    assert any("allowlist" in str(f) for f in scrub.scan_files(results, ["zz-stray-local-file.zip"], identities=[]))
 
 
 def test_scan_files_checks_only_the_named_files(tmp_path):
@@ -687,21 +704,16 @@ def test_scan_files_checks_only_the_named_files(tmp_path):
     assert any("allowlist" in str(f) for f in scrub.scan_files(tmp_path, ["copied-in.zip"], identities=[]))
 
 
-def test_the_commit_hook_scans_tracked_results_only_so_a_local_archive_cannot_block_a_commit():
+def test_the_commit_hook_scans_tracked_results_only_so_a_local_archive_cannot_block_a_commit(tmp_path):
     """`scrub_check.py --tracked` is what `.githooks/pre-commit` runs: a local zip or `.DS_Store` in `perf/results/` (git-ignored,
     never committed) must not fail it, while the default whole-directory scan still reports it."""
     import subprocess
 
-    stray = _PERF / "results" / "zz-hook-stray.zip"
-    stray.write_bytes(b"PK")
-    try:
-        check = [sys.executable, str(_PERF / "scrub_check.py")]
-        tracked = subprocess.run([*check, "--tracked"], capture_output=True, text=True, timeout=60)
-        whole = subprocess.run(check, capture_output=True, text=True, timeout=60)
-    finally:
-        stray.unlink()
-    if tracked.returncode == 2:
-        pytest.skip("git is not available to list the tracked result files")
+    results = _throwaway_results(tmp_path)
+    (results / "zz-hook-stray.zip").write_bytes(b"PK")
+    check = [sys.executable, str(_PERF / "scrub_check.py")]
+    tracked = subprocess.run([*check, "--tracked", str(results)], capture_output=True, text=True, timeout=60)
+    whole = subprocess.run([*check, str(results)], capture_output=True, text=True, timeout=60)
     assert tracked.returncode == 0, tracked.stdout + tracked.stderr
     assert whole.returncode == 1 and "zz-hook-stray.zip" in whole.stdout
     assert "scrub_check.py\" --tracked" in (_PERF.parent / ".githooks" / "pre-commit").read_text()  # the hook uses the tracked-only mode

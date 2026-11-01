@@ -6,7 +6,8 @@ Command line for the results anonymisation check (`perf/lib/scrub.py`).
 
 Usage:
     python3 perf/scrub_check.py [PATH ...]      (default: perf/results/, every file in it)
-    python3 perf/scrub_check.py --tracked       (only the files git tracks or has staged under perf/results/)
+    python3 perf/scrub_check.py --tracked [DIR] (only the files git tracks or has staged under perf/results/, or under DIR
+                                                 when given: a results directory inside a git repository two levels down)
 
 Exits 0 when clean, 1 with one line per finding (file, line, rule; never the matched text), 2 for a missing path
 or when git cannot list the files.
@@ -43,15 +44,17 @@ def tracked_files(root: Path) -> list:
 
 
 def main(argv: list) -> int:
-    """Scans each path (or, with `--tracked`, the tracked files of `perf/results/`) and prints findings; returns the exit status."""
+    """Scans each path (or, with `--tracked`, the tracked files of `perf/results/` or of the one directory named) and prints findings; returns the exit status."""
     problems = 0
     if "--tracked" in argv:
+        named = [arg for arg in argv if arg != "--tracked"]
+        results = Path(named[0]).resolve() if named else DEFAULT
         try:
-            files = tracked_files(DEFAULT)
+            files = tracked_files(results)
         except (OSError, subprocess.SubprocessError) as error:
             print(f"error: git cannot list the tracked result files ({type(error).__name__})", file=sys.stderr)
             return 2
-        for finding in scrub.scan_files(DEFAULT, files):
+        for finding in scrub.scan_files(results, files):
             print(finding)
             problems += 1
         if problems:
