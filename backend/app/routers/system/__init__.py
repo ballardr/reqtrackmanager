@@ -8,8 +8,8 @@ platform-wide PAT bulk revocation), `branding` (platform-wide branding
 get/put, the merged branding-image upload endpoint), `modules` (module
 entitlement policy get/put, module registry listing, per-organisation
 module entitlements, module-contributed MCP tool listing), `config`
-(build version, public signup config, deployment-wide test email) and `record_policy` (the server default for
-personal data in record export and import) — into
+(build version, public signup config, deployment-wide test email), `record_policy` (the server default for
+personal data in record export and import) and `report_fonts` (the extra report fonts the administrator mounts) — into
 the single `/api/v1/system` router `main.py` mounts.
 
 Split out from one ~960-line module (previously `routers/system.py`) so
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.routers.system import branding, config, modules, record_policy, users
+from app.routers.system import branding, config, modules, record_policy, report_fonts, users
 
 _PREFIX = "/api/v1/system"
 
@@ -36,3 +36,4 @@ router.include_router(branding.router, prefix=_PREFIX)
 router.include_router(modules.router, prefix=_PREFIX)
 router.include_router(config.router, prefix=_PREFIX)
 router.include_router(record_policy.router, prefix=_PREFIX)
+router.include_router(report_fonts.router, prefix=_PREFIX)

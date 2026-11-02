@@ -207,6 +207,9 @@ class Settings(BaseSettings):
         report_converter_url: Base URL of the picture converter service (`converter/`) that turns an uploaded EPS or
             PDF logo into an SVG, such as `http://converter:8300`. Empty means EPS and PDF uploads are refused as
             not available; the backend never runs the converter tools itself.
+        report_fonts_dir: A directory of extra `.ttf` fonts the server administrator provides (mounted read-only into the
+            container) for report authors to use, such as `/app/report-fonts`. Empty means only the four bundled
+            families; the path is never user-supplied (`services.report_font_directory`).
         max_request_body_bytes: Largest request body of any other endpoint (`body_limit`); above
             `max_upload_bytes` by the multipart framing. A reverse proxy's `client_max_body_size` should be
             set to the same order of magnitude.
@@ -358,6 +361,7 @@ class Settings(BaseSettings):
     report_image_max_pixels: int = Field(default=100_000_000, ge=1)
     report_image_max_total_bytes: int = Field(default=200 * 1024 * 1024, ge=1)
     report_converter_url: str = ""
+    report_fonts_dir: str = ""
     max_request_body_bytes: int = Field(default=52 * 1024 * 1024, ge=1)
     allow_external_modules: bool = False
     extra_modules_path: str | None = None

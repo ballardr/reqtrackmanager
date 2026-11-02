@@ -5,7 +5,12 @@ Lets PDF reports print text the built-in Helvetica cannot: Cyrillic, Polish and 
 Extended letters, Greek and anything else DejaVu Sans covers.
 
 Responsibilities:
-- Register the bundled DejaVu Sans (regular and bold) with ReportLab once.
+- Register the bundled DejaVu Sans (regular, bold, italic and bold italic) with ReportLab once.
+- `FAMILIES` / `get_family`: the closed table of document font families (Sans, Serif, Mono, Unicode Sans),
+  each with the PDF face files and the names Word, OpenDocument and HTML are told. Nothing reads it for
+  drawing yet; renderers adopt it one at a time.
+- `register_family`, `pdf_face`, `covers`: register a family's four faces with ReportLab, name the face for
+  a weight and slant, and say whether a family's face has a glyph for a character.
 - `mark_fallback`: wrap each run of characters Helvetica cannot encode in a `<font>` tag for the
   Paragraph markup `report_document.safe` produces.
 - `text_width`, `draw_aligned` and `draw_centred`: measure and draw mixed text where markup is not available
@@ -13,6 +18,13 @@ Responsibilities:
 - `needs_fallback`: tell a plain table cell that must become a Paragraph from one that can stay a string.
 
 Design decisions:
+- A family's PDF faces are metric-compatible with the name Word/ODT/HTML ask for (Liberation Sans for
+  Arial, Liberation Serif for Times New Roman, Liberation Mono for Courier New), so a line breaks the same
+  in all four formats when the reader has the named font or a metric-compatible one. Measured, with the
+  numbers, in docs/decisions.md (the custom reports fonts spike entry). A reader with neither substitutes a
+  different-width face and reflows; the generic fallback names below limit but do not remove that.
+- Fonts offered are a closed list: the four bundled families and the families a server administrator
+  mounts. Organisation-uploaded fonts are refused on purpose (untrusted bytes, unknown licence).
 - Text Helvetica can encode (Windows-1252, the encoding ReportLab's built-in fonts use) is left
   exactly as it was, so the look of existing reports is unchanged; only other characters switch font.
 - A fallback run inside a bold style stays bold because the caller says so (`bold`): a `<font>` tag
@@ -21,11 +33,13 @@ Design decisions:
   and CJK needs a font this module does not ship (those characters print as the font's missing-glyph
   box, as before). DOCX, ODT and HTML are unaffected.
 
-Dependencies: ReportLab; the font files in `app/assets/fonts` (DejaVu Sans, licence alongside).
+Dependencies: ReportLab (also reads each face's glyph coverage); the font files in `app/assets/fonts` (DejaVu Sans) and
+`app/assets/report_fonts` (Liberation Sans, Serif and Mono), each with its licence alongside.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -36,6 +50,11 @@ from reportlab.pdfbase.ttfonts import TTFont
 _FONT_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 UNICODE_FONT = "ReportUnicode"
 UNICODE_FONT_BOLD = "ReportUnicode-Bold"
+UNICODE_FONT_ITALIC = "ReportUnicode-Italic"
+UNICODE_FONT_BOLD_ITALIC = "ReportUnicode-BoldItalic"
+_LIBERATION_DIR = _FONT_DIR.parent / "report_fonts"
+
+STYLES = ("regular", "bold", "italic", "bolditalic")
 
 _registered = False
 
@@ -51,6 +70,8 @@ def _register() -> None:
         return
     pdfmetrics.registerFont(TTFont(UNICODE_FONT, str(_FONT_DIR / "DejaVuSans.ttf")))
     pdfmetrics.registerFont(TTFont(UNICODE_FONT_BOLD, str(_FONT_DIR / "DejaVuSans-Bold.ttf")))
+    pdfmetrics.registerFont(TTFont(UNICODE_FONT_ITALIC, str(_FONT_DIR / "DejaVuSans-Oblique.ttf")))
+    pdfmetrics.registerFont(TTFont(UNICODE_FONT_BOLD_ITALIC, str(_FONT_DIR / "DejaVuSans-BoldOblique.ttf")))
     pdfmetrics.registerFontFamily(
         UNICODE_FONT, normal=UNICODE_FONT, bold=UNICODE_FONT_BOLD, italic=UNICODE_FONT, boldItalic=UNICODE_FONT_BOLD,
     )
@@ -183,3 +204,156 @@ def draw_aligned(canvas, x: float, y: float, text: str, size: float, align: str 
 def draw_centred(canvas, x: float, y: float, text: str, size: float) -> None:
     """Draws `text` centred on `x` (see `draw_aligned`)."""
     draw_aligned(canvas, x, y, text, size, "center")
+
+
+@dataclass(frozen=True)
+class FontFamily:
+    """One document font family: what the PDF draws and what the other formats are told.
+
+    Attributes:
+        key: Stable identifier stored in layouts (`sans`, `serif`, `mono`, `unicode`).
+        label: Name shown to authors.
+        files: PDF face file per style in `STYLES` (regular, bold, italic, bolditalic).
+        word_name: Font name written to Word (`w:rFonts`), OpenDocument and HTML; a metric-compatible
+            PDF face is chosen so the layouts match where the reader has this font.
+        generic: Generic family for fallback: `sans-serif`, `serif` or `monospace`.
+        bundled: `False` for a family the server administrator mounted (`report_font_directory`).
+        faces_found: The styles the family really has a file for; a missing style reuses the nearest face in `files`.
+    """
+
+    key: str
+    label: str
+    files: dict[str, Path]
+    word_name: str
+    generic: str
+    bundled: bool = True
+    faces_found: tuple[str, ...] = STYLES
+
+    @property
+    def css_stack(self) -> str:
+        """The CSS `font-family` value: the name, then the generic family."""
+        return f'"{self.word_name}", {self.generic}'
+
+    @property
+    def odf_generic(self) -> str:
+        """The OpenDocument `style:font-family-generic` value for `generic`."""
+        return {"sans-serif": "swiss", "serif": "roman", "monospace": "modern"}[self.generic]
+
+    def pdf_name(self, style: str) -> str:
+        """The ReportLab font name this family's `style` face is registered under."""
+        return f"Report-{self.key}-{style}"
+
+
+def _faces(directory: Path, stem: str, names: tuple[str, str, str, str]) -> dict[str, Path]:
+    """Maps `STYLES` to the files `directory/stem-<name>.ttf` for the four style names given."""
+    return {style: directory / f"{stem}{name}.ttf" for style, name in zip(STYLES, names, strict=True)}
+
+
+_LIBERATION_NAMES = ("-Regular", "-Bold", "-Italic", "-BoldItalic")
+
+FAMILIES: dict[str, FontFamily] = {
+    f.key: f
+    for f in (
+        FontFamily("sans", "Sans", _faces(_LIBERATION_DIR, "LiberationSans", _LIBERATION_NAMES), "Arial", "sans-serif"),
+        FontFamily("serif", "Serif", _faces(_LIBERATION_DIR, "LiberationSerif", _LIBERATION_NAMES), "Times New Roman", "serif"),
+        FontFamily("mono", "Mono", _faces(_LIBERATION_DIR, "LiberationMono", _LIBERATION_NAMES), "Courier New", "monospace"),
+        FontFamily(
+            "unicode", "Unicode Sans", _faces(_FONT_DIR, "DejaVuSans", ("", "-Bold", "-Oblique", "-BoldOblique")),
+            "DejaVu Sans", "sans-serif",
+        ),
+    )
+}
+
+
+_extras: dict[str, FontFamily] = {}
+
+
+def set_extra_families(families: dict[str, FontFamily]) -> None:
+    """Replaces the administrator-provided families `get_family` also knows (`report_font_catalogue` calls this).
+
+    Args:
+        families: Extra families by key; a key that is also a bundled key is ignored.
+    """
+    global _extras
+    _extras = {k: f for k, f in families.items() if k not in FAMILIES}
+
+
+def get_family(key: str) -> FontFamily:
+    """Looks up a document font family, bundled or administrator-provided.
+
+    Args:
+        key: A key from `FAMILIES` or an extra family's `x-<slug>` key.
+
+    Returns:
+        The family.
+
+    Raises:
+        KeyError: If `key` is not an offered family.
+    """
+    return FAMILIES[key] if key in FAMILIES else _extras[key]
+
+
+def register_family(key: str) -> FontFamily:
+    """Registers a family's four faces with ReportLab (once) so `<b>` and `<i>` pick the right face.
+
+    Args:
+        key: A key from `FAMILIES`.
+
+    Returns:
+        The family.
+
+    Raises:
+        KeyError: If `key` is not an offered family.
+        OSError: If a bundled font file is missing from the installation.
+    """
+    family = get_family(key)
+    if family.pdf_name("regular") not in pdfmetrics.getRegisteredFontNames():
+        for style, path in family.files.items():
+            pdfmetrics.registerFont(TTFont(family.pdf_name(style), str(path)))
+        pdfmetrics.registerFontFamily(
+            family.pdf_name("regular"), normal=family.pdf_name("regular"), bold=family.pdf_name("bold"),
+            italic=family.pdf_name("italic"), boldItalic=family.pdf_name("bolditalic"),
+        )
+    return family
+
+
+def pdf_face(key: str, *, bold: bool = False, italic: bool = False) -> str:
+    """The ReportLab font name for a family's weight and slant, registering the family if needed.
+
+    Args:
+        key: A key from `FAMILIES`.
+        bold: Whether the text is bold.
+        italic: Whether the text is italic.
+
+    Returns:
+        The registered font name.
+
+    Raises:
+        KeyError: If `key` is not an offered family.
+    """
+    family = register_family(key)
+    return family.pdf_name(("bold" if bold else "") + ("italic" if italic else "") or "regular")
+
+
+@lru_cache(maxsize=16)
+def _cmap(path: Path) -> frozenset[int]:
+    """The code points a font file has a glyph for."""
+    return frozenset(TTFont("coverage", str(path)).face.charToGlyph)
+
+
+def covers(key: str, char: str) -> bool:
+    """Whether a family's regular face has a glyph for `char`.
+
+    Used to decide which characters need the Unicode Sans fallback inside another family.
+
+    Args:
+        key: A key from `FAMILIES`.
+        char: One character.
+
+    Returns:
+        `True` when the face draws it (whitespace always counts as covered).
+
+    Raises:
+        KeyError: If `key` is not an offered family.
+    """
+    return char.isspace() or ord(char) in _cmap(get_family(key).files["regular"])

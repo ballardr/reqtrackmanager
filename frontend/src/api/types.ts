@@ -1960,6 +1960,48 @@ export interface ServerModuleDefault {
   has_override: boolean;
 }
 
+/** One font family on the report fonts page — `GET /system/report-fonts`. */
+export interface ReportFont {
+  key: string;
+  label: string;
+  bundled: boolean;
+  enabled: boolean;
+  missing: boolean;
+  word_name: string;
+  generic: ReportFontGeneric;
+  faces: { style: ReportFontStyle; permission: string }[];
+}
+
+/** A file the font scan did not use, with the reason. */
+export interface ReportFontSkipped {
+  file_name: string;
+  reason: string;
+}
+
+/** `GET /system/report-fonts` and the answer to its changes and rescan. */
+export interface ReportFontsPage {
+  directory_configured: boolean;
+  max_file_mb: number;
+  families: ReportFont[];
+  skipped: ReportFontSkipped[];
+}
+
+export type ReportFontGeneric = "sans-serif" | "serif" | "monospace";
+export type ReportFontStyle = "regular" | "bold" | "italic" | "bolditalic";
+
+export const REPORT_FONT_GENERIC_LABEL: Record<ReportFontGeneric, string> = {
+  "sans-serif": "Sans-serif",
+  serif: "Serif",
+  monospace: "Monospace",
+};
+
+export const REPORT_FONT_STYLE_LABEL: Record<ReportFontStyle, string> = {
+  regular: "Regular",
+  bold: "Bold",
+  italic: "Italic",
+  bolditalic: "Bold italic",
+};
+
 /** Which tier decides whether a module is enabled for an organisation. */
 export type ModuleEnabledSource = "organization" | "server_default" | "registry";
 

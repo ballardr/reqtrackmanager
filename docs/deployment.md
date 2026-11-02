@@ -132,6 +132,26 @@ then `docker compose up -d`. The backend waits for the converter to be healthy w
 - A PDF contributes its first page; an EPS is cropped to its bounding box. Both are stored as `<name>.eps.svg` / `<name>.pdf.svg`. Text becomes shapes, so no font is needed when a report is run.
 - The image is published with the others (`ghcr.io/<owner>/<repo>-converter`).
 
+### Extra report fonts
+
+Reports offer four fonts out of the box: Sans, Serif and Mono (Liberation, which Word and OpenDocument show as Arial, Times New Roman and Courier New) and Unicode Sans (DejaVu Sans). A house typeface is added by putting its `.ttf` files in a directory the backend can read; nothing is uploaded through the application, because a font is parsed code-like data and a licence the organisation cannot vouch for.
+
+```mermaid
+flowchart LR
+    DIR["host directory<br/>REPORT_FONTS_HOST_DIR<br/>(default ./report-fonts)"] -->|"read-only mount"| BE["backend<br/>/app/report-fonts"]
+    BE -->|"scan at start,<br/>Rescan, or within 30 s of a change"| CAT["font families"]
+    CAT --> ADM["Server management ><br/>Report fonts"]
+    CAT --> PICK["authors' font picker"]
+```
+
+1. Copy the `.ttf` files into `report-fonts/` (or point `REPORT_FONTS_HOST_DIR` in `.env` at another host directory, such as a shared volume). The compose file mounts it read-only at `/app/report-fonts` and sets `REPORT_FONTS_DIR` to match; the image is not rebuilt.
+2. Open **Server management > Report fonts** and press **Rescan** (each backend worker also notices a changed directory within 30 seconds, so a multi-worker or multi-replica deployment follows without a restart; every replica must see the same files).
+3. Set each family's **Name in Word and OpenDocument** (default: the family's own name) and its **Generic fallback**, and hide a family from authors with **Offered to authors** off. A hidden family keeps working in layouts already using it.
+
+What is read: top-level `.ttf` files up to 10 MB each, grouped into a family by the font's own family name (`x-<name>` is its key). A family needs a regular face; a missing bold or italic face reuses the nearest one. Files that are skipped (with the reason on the page): `.otf`/`.ttc`, symbolic links, anything that is not TrueType, and **any font whose licence forbids embedding or subsetting** (`OS/2 fsType`), because the PDF drawing and the Word/OpenDocument embedding both copy font data. The licence of each font is your responsibility.
+
+PDF reports always carry the real face. Word and OpenDocument files only **name** the font (with the fallback you set), so a reader without it sees a similar font and the text may reflow; a layout can embed the fonts it uses (a layout setting, off by default) at the cost of the faces' file size. Docker-less installs set `REPORT_FONTS_DIR` to any readable directory.
+
 ### Hosting the documentation internally
 
 The header **Help** link opens the public documentation site by default. That shows the latest docs, not the version you run, and does not work without internet access. To host the docs yourself, run the `docs` image and point `HELP_URL` at it:

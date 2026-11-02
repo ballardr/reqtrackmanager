@@ -152,10 +152,15 @@ services:
       # EPS and PDF logo upload is off unless this is set. It needs the optional `converter` service (below): set
       # REPORT_CONVERTER_URL=http://converter:8300 and COMPOSE_PROFILES=converter (docs/deployment.md).
       REPORT_CONVERTER_URL: ${REPORT_CONVERTER_URL:-}
+      # Extra report fonts: the read-only mount below. Empty (or an empty host directory) means only the four bundled
+      # families (docs/deployment.md, "Extra report fonts").
+      REPORT_FONTS_DIR: ${REPORT_FONTS_DIR:-/app/report-fonts}
     networks:
       - default
       - converter
     volumes:
+      # Extra report fonts (.ttf) the server administrator provides; read-only, so adding a font needs no rebuild.
+      - ${REPORT_FONTS_HOST_DIR:-./report-fonts}:/app/report-fonts:ro
       # Only used if STORAGE_BACKEND=local is set (default is s3/storage
       # above). Named so it survives container recreation and so
       # scripts/backup.sh (I-M-04) can archive it alongside the database.

@@ -212,3 +212,7 @@ perf/results/*
 
 # macOS
 .DS_Store
+
+# Extra report fonts the server administrator provides (see report-fonts/README.md)
+/report-fonts/*
+!/report-fonts/README.md

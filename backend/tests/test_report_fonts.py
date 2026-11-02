@@ -1,4 +1,4 @@
-"""Tests for PDF text Helvetica cannot print (Cyrillic, Polish letters, Greek).
+"""Tests for PDF text Helvetica cannot print (Cyrillic, Polish letters, Greek) and the document font families.
 
 The PDF renderer used only the built-in Helvetica, which printed such characters as black boxes.
 These tests pin the fix: only the characters Helvetica cannot print switch to the bundled Unicode
@@ -11,9 +11,14 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfbase.ttfonts import FF_FORCEBOLD, FF_ITALIC, TTFont
 from reportlab.pdfgen.canvas import Canvas
 
+from app.services import report_fonts
 from app.services.report_document import ReportBranding, safe, styled_table
 from app.services.report_fonts import (
     UNICODE_FONT,
@@ -115,3 +120,87 @@ def test_footer_switches_font_per_run_and_is_centred() -> None:
     assert [(font, text) for font, text, _ in drawn] == [("Helvetica", "Acme "), (UNICODE_FONT, "Привет"), ("Helvetica", " "), (UNICODE_FONT, "мир")]
     first_x = drawn[0][2]
     assert abs((300 - first_x) - text_width(f"Acme {CYRILLIC}", 7) / 2) < 0.01
+
+
+# --- Document font families (the table every renderer will read) -------------------------------------------------
+
+# The PDF standard fonts whose widths Arial, Times New Roman and Courier New share for the Latin letters,
+# digits and punctuation a report uses; a Liberation face that drifts from them stops matching Word.
+_STANDARD = {
+    "sans": ("Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique"),
+    "serif": ("Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic"),
+    "mono": ("Courier", "Courier-Bold", "Courier-Oblique", "Courier-BoldOblique"),
+}
+# Characters where the Adobe core metrics and Microsoft's differ, so they are not a fair reference.
+_NOT_COMPARABLE = set("¯±µ·÷")
+_WRAP_CHARS = [chr(c) for c in range(32, 256) if not 127 <= c < 160 and chr(c) not in _NOT_COMPARABLE]
+
+
+def test_families_are_the_closed_list():
+    assert list(report_fonts.FAMILIES) == ["sans", "serif", "mono", "unicode"]
+    with pytest.raises(KeyError):
+        report_fonts.get_family("comic")
+
+
+@pytest.mark.parametrize("key", list(report_fonts.FAMILIES))
+def test_every_family_has_four_real_faces_with_a_licence_beside_them(key):
+    family = report_fonts.get_family(key)
+    assert list(family.files) == list(report_fonts.STYLES)
+    for style, path in family.files.items():
+        assert path.is_file(), f"{key} {style}"
+        # ReportLab refuses to load a face whose licence forbids embedding, so loading is the licence check
+        face = TTFont("probe", str(path)).face
+        flags = (bool(face.flags & FF_FORCEBOLD), bool(face.flags & FF_ITALIC))
+        assert flags == (style in ("bold", "bolditalic"), style in ("italic", "bolditalic")), (key, style)
+    licence = "LICENSE_DEJAVU" if key == "unicode" else "LICENSE_LIBERATION"
+    assert (next(iter(family.files.values())).parent / licence).is_file()
+
+
+@pytest.mark.parametrize("key", ["sans", "serif", "mono"])
+def test_liberation_widths_match_the_font_word_is_told(key):
+    """Line breaks agree across formats only while the PDF face has the named font's advance widths."""
+    report_fonts.register_family(key)
+    family = report_fonts.get_family(key)
+    for style, standard in zip(report_fonts.STYLES, _STANDARD[key], strict=True):
+        for char in _WRAP_CHARS:
+            ours = stringWidth(char, family.pdf_name(style), 1000)
+            assert abs(ours - stringWidth(char, standard, 1000)) <= 1.0, (key, style, char)
+
+
+def test_names_and_fallbacks_for_the_other_formats():
+    assert [(f.word_name, f.generic, f.odf_generic) for f in list(report_fonts.FAMILIES.values())[:3]] == [
+        ("Arial", "sans-serif", "swiss"), ("Times New Roman", "serif", "roman"), ("Courier New", "monospace", "modern"),
+    ]
+    assert report_fonts.get_family("serif").css_stack == '"Times New Roman", serif'
+    assert report_fonts.get_family("unicode").word_name == "DejaVu Sans"
+
+
+def test_pdf_face_registers_the_right_weight_and_slant():
+    assert report_fonts.pdf_face("serif") == "Report-serif-regular"
+    assert report_fonts.pdf_face("serif", bold=True, italic=True) == "Report-serif-bolditalic"
+    assert report_fonts.pdf_face("mono", italic=True) == "Report-mono-italic"
+    assert pdfmetrics.getFont("Report-sans-bold").face.name == b"LiberationSans-Bold"
+
+
+@pytest.mark.parametrize("key", ["sans", "serif", "mono"])
+def test_liberation_prints_latin_cyrillic_greek_and_polish_without_the_fallback(key):
+    for char in CYRILLIC + POLISH + GREEK + "ÀÿŁłŐő€–—“”…":
+        assert report_fonts.covers(key, char), (key, char)
+
+
+@pytest.mark.parametrize("key", ["sans", "serif", "mono"])
+def test_symbols_beyond_liberation_need_the_unicode_family(key):
+    for char in "✓✔☐★":
+        assert not report_fonts.covers(key, char)
+        assert report_fonts.covers("unicode", char)
+    assert report_fonts.covers(key, " ")
+
+
+def test_the_unicode_family_has_real_italic_faces():
+    """A fallback run in an italic paragraph has an oblique face, not the upright one."""
+    report_fonts.register_family("unicode")
+    assert pdfmetrics.getFont("Report-unicode-italic").face.name == b"DejaVuSans-Oblique"
+    assert pdfmetrics.getFont("Report-unicode-bolditalic").face.name == b"DejaVuSans-BoldOblique"
+    report_fonts.mark_fallback("✓")  # the existing fallback still registers its names
+    assert pdfmetrics.getFont(UNICODE_FONT_BOLD).face.name == b"DejaVuSans-Bold"
+    assert pdfmetrics.getFont(report_fonts.UNICODE_FONT_ITALIC).face.name == b"DejaVuSans-Oblique"

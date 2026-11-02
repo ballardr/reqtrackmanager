@@ -69,7 +69,7 @@ from app.routers import (
     tags,
     ws,
 )
-from app.services import pubsub
+from app.services import pubsub, report_font_catalogue
 from app.services.bootstrap import run_bootstrap
 from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
@@ -154,6 +154,10 @@ async def lifespan(_: FastAPI):
         singleton_tasks.clear()
         stop_scheduler()
 
+    try:  # a bad font directory must never stop the server: the scan itself skips what it cannot read
+        report_font_catalogue.rescan()
+    except Exception:  # noqa: BLE001
+        logger.exception("report font scan failed")
     leadership_task = asyncio.create_task(run_leadership_loop(start_singletons, stop_singletons))
     # Per worker (not leader-only): each process reports its own memory and pool usage.
     worker_gauge_task = asyncio.create_task(run_worker_gauge_loop(engine))
