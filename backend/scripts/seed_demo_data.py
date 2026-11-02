@@ -609,14 +609,21 @@ def upload_report_image(headers: dict, path: str, file_path: Path, content_type:
 
 
 def project_overview_with_logo_layout(logo_file_id: str) -> dict:
-    """A cover banner (the product logo, white on transparent, in front of a plate in the scheme's primary colour, the report accent)
-    over the project name and a short requirements table. Both pictures are laid over the page beside the title, measured
-    from the title's paragraph, so the title stays readable."""
+    """A cover banner (the product logo, white on transparent, in front of a plate in the layout's own `plate` colour, a shade of
+    the report accent) over the project name and a short requirements table. Both pictures are laid over the page beside the
+    title, measured from the title's paragraph, so the title stays readable.
+
+    It also shows the fonts and colours settings: its own colour scheme (`plate`, `highlight`; the organisation's `alert` and
+    `success` stay available), a serif body, sans headings in the plate colour, and an italic footer with the page numbers.
+    """
     return {
         "schema_version": 1, "family": "document", "orientation": "portrait",
+        "palette": [{"name": "plate", "colour": "accent_dark"}, {"name": "highlight", "colour": "#b45309"}],
+        "styles": {"body": {"font": "serif", "size": 11}, "headings": {"font": "sans", "colour": "plate"}},
+        "footer": {"left": "*{{project_name}}*", "right": "*Page {{page}} of {{pages}}*", "colour": "plate"},
         "nodes": [
             {
-                "type": "shape", "shape": "rounded", "fill": "primary", "width": 5, "height": 2.5, "alt": "",
+                "type": "shape", "shape": "rounded", "fill": "plate", "width": 5, "height": 2.5, "alt": "",
                 "placement": "behind", "anchor": "paragraph", "offset_x": 12, "offset_y": 0,
             },
             {

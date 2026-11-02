@@ -7,7 +7,7 @@
  * Responsibilities:
  * - Keep a draft of the table while the dialog is open, with undo and redo (Ctrl+Z, Ctrl+Y) over the draft, so Cancel discards
  *   every change and Save hands the columns, rows and header count back in one call.
- * - Leave the rest of the block (borders, alignment, colours) to the panel's ordinary fields.
+ * - Leave the rest of the block (borders, alignment, colours, the table's own font and size) to the panel's ordinary fields.
  *
  * Design decisions: a table does not fit the side panel, so editing happens in a `Modal` as the custom shape's SVG does;
  * the panel keeps only a summary, because a block shows no editable value on itself (all edits are in the block editor). Undo history
@@ -17,6 +17,7 @@ import { Redo2, Undo2 } from "lucide-react";
 import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
+import type { ReportFontChoice } from "../api/reportLayouts";
 import { gridCounts, shapeOf, type GridRow, type Obj } from "../utils/reportGrid";
 import { DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "../utils/reportColours";
 import { FieldCaption } from "./FieldHelp";
@@ -46,10 +47,11 @@ export interface GridPatch {
  * @param renderCellText Draws the field that edits one cell's text.
  * @param colours The branding colour and organisation scheme, which the colour fields offer.
  * @param palette The layout's own colour scheme.
+ * @param fonts The fonts a column may choose.
  * @param disabled Shows the summary only.
  */
 export function ReportGridField({
-  label, help, node, onSave, renderCellText, colours = DEFAULT_COLOUR_CONTEXT, palette = [], disabled = false,
+  label, help, node, onSave, renderCellText, colours = DEFAULT_COLOUR_CONTEXT, palette = [], fonts, disabled = false,
 }: {
   label: string;
   help?: string;
@@ -58,6 +60,7 @@ export function ReportGridField({
   renderCellText: (cell: Obj, onText: (text: string) => void, label: string) => ReactNode;
   colours?: ColourContext;
   palette?: ColourEntry[];
+  fonts?: ReportFontChoice[];
   disabled?: boolean;
 }) {
   const text = useStrings().reportGrid;
@@ -114,7 +117,7 @@ export function ReportGridField({
               />
             )}
             <ReportGridEditor
-              value={history.present} onChange={change} gridStyle={node} colours={colours} palette={palette}
+              value={history.present} onChange={change} gridStyle={node} colours={colours} palette={palette} fonts={fonts}
               renderCellText={renderCellText} readOnly={disabled}
             />
           </div>

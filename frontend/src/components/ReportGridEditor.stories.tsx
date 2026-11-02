@@ -217,6 +217,21 @@ export const RowHeightAndColumnWidthAreSetForTheSelectedCellsRowAndColumn: Story
   },
 };
 
+export const AColumnTakesItsOwnFontAndSizeAndInheritsWhenCleared: Story = {
+  args: { initial: grid3x3() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(cell(canvas, 2, 2));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Font of column 2" }), "mono");
+    await userEvent.type(canvas.getByRole("spinbutton", { name: "Size of column 2" }), "8");
+    await expect(value(canvas).columns[1]).toEqual({ font: "mono", size: 8 });
+    await expect(value(canvas).columns[0]).toEqual({});
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Font of column 2" }), "");
+    await userEvent.clear(canvas.getByRole("spinbutton", { name: "Size of column 2" }));
+    await expect(value(canvas).columns[1]).toEqual({});
+  },
+};
+
 export const AMergeAcrossTheHeaderIsRefusedWithAReason: Story = {
   args: { initial: { ...grid3x3(), header_rows: 1 } },
   play: async ({ canvasElement }) => {

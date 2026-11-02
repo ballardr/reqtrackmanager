@@ -126,12 +126,12 @@ def _printable(char: str) -> bool:
     return _builtin_ok(char) if key is None else covers(key, char)
 
 
-def active_face(bold: bool = False) -> str:
-    """The regular or bold face of the active font (Helvetica when no family is active)."""
+def active_face(bold: bool = False, italic: bool = False) -> str:
+    """The regular, bold, italic or bold italic face of the active font (Helvetica when no family is active)."""
     key = _active.get()
     if key is None:
-        return "Helvetica-Bold" if bold else "Helvetica"
-    return pdf_face(key, bold=bold)
+        return "Helvetica" + ("-" + ("Bold" if bold else "") + ("Oblique" if italic else "") if bold or italic else "")
+    return pdf_face(key, bold=bold, italic=italic)
 
 
 def _fallback_font(bold: bool, italic: bool) -> str:
@@ -205,28 +205,29 @@ def mark_fallback(escaped: str, *, bold: bool = False, italic: bool = False) -> 
     return "".join(parts)
 
 
-def text_width(text: str, size: float, *, bold: bool = False) -> float:
+def text_width(text: str, size: float, *, bold: bool = False, italic: bool = False) -> float:
     """The width of `text` in points, measuring each character in the font it will print in.
 
     Args:
         text: Plain (unescaped) text.
         size: Font size in points.
         bold: Whether the text is bold.
+        italic: Whether the text is italic.
 
     Returns:
         The summed width.
     """
     if not needs_fallback(text):
-        return stringWidth(text, active_face(bold), size)
+        return stringWidth(text, active_face(bold, italic), size)
     _register()
-    return sum(_run_width(run, unicode_font, size, bold) for run, unicode_font in _runs(text))
+    return sum(_run_width(run, unicode_font, size, bold, italic) for run, unicode_font in _runs(text))
 
 
-def _run_width(run: str, unicode_font: bool, size: float, bold: bool) -> float:
+def _run_width(run: str, unicode_font: bool, size: float, bold: bool, italic: bool = False) -> float:
     """Width of one single-font run."""
     if unicode_font:
-        return stringWidth(run, UNICODE_FONT_BOLD if bold else UNICODE_FONT, size)
-    return stringWidth(run, active_face(bold), size)
+        return stringWidth(run, _fallback_font(bold, italic), size)
+    return stringWidth(run, active_face(bold, italic), size)
 
 
 def draw_aligned(canvas, x: float, y: float, text: str, size: float, align: str = "center") -> None:
@@ -251,6 +252,34 @@ def draw_aligned(canvas, x: float, y: float, text: str, size: float, align: str 
         canvas.setFont(UNICODE_FONT if unicode_font else active_face(False), size)
         canvas.drawString(cursor, y, run)
         cursor += _run_width(run, unicode_font, size, False)
+
+
+def draw_run(canvas, x: float, y: float, text: str, size: float, *, bold: bool = False, italic: bool = False) -> float:
+    """Draws `text` from `x` in the active font's bold and italic faces, switching font per run.
+
+    Args:
+        canvas: The ReportLab canvas.
+        x: The left edge in points.
+        y: Baseline in points.
+        text: Plain text.
+        size: Font size in points.
+        bold: Whether the text is bold.
+        italic: Whether the text is italic.
+
+    Returns:
+        How far the text advanced, in points.
+    """
+    if not needs_fallback(text):
+        canvas.setFont(active_face(bold, italic), size)
+        canvas.drawString(x, y, text)
+        return stringWidth(text, active_face(bold, italic), size)
+    _register()
+    cursor = x
+    for run, unicode_font in _runs(text):
+        canvas.setFont(_fallback_font(bold, italic) if unicode_font else active_face(bold, italic), size)
+        canvas.drawString(cursor, y, run)
+        cursor += _run_width(run, unicode_font, size, bold, italic)
+    return cursor - x
 
 
 def draw_centred(canvas, x: float, y: float, text: str, size: float) -> None:

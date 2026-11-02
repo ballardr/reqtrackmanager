@@ -25,6 +25,7 @@ from app.models.project import Project
 from app.models.report_layout import ReportLayoutVersion
 from app.modules.registry import get_report_snippets
 from app.services.link_graph import ArtefactResolver
+from app.services.report_colours import RESERVED_WORDS, STANDARD_COLOURS
 from app.services.report_docx import render_docx_document
 from app.services.report_framework import ReportContext
 from app.services.report_html import render_html_document
@@ -505,6 +506,39 @@ def test_a_table_snippet_uses_only_colour_words_every_layout_has(world, key):
     }
     assert used <= {"black", "white"}, "no hex value and no scheme name the layout might lack"
     assert "colours" not in str(tree.get("palette", ""))
+
+
+def _settings_in(value: Any, keys: tuple[str, ...]) -> list[Any]:
+    """Every value stored under one of `keys`, anywhere in a nested snippet fragment."""
+    if isinstance(value, dict):
+        return [v for k, item in value.items() for v in ([item] if k in keys else []) + _settings_in(item, keys)]
+    if isinstance(value, list | tuple):
+        return [v for item in value for v in _settings_in(item, keys)]
+    return []
+
+
+def test_no_built_in_snippet_names_a_colour_or_font_a_layout_without_a_scheme_might_lack():
+    """Applying a snippet into a layout with no scheme must never carry a name that layout cannot resolve."""
+    colour_words = {*RESERVED_WORDS, *STANDARD_COLOURS}
+    for snippet in CORE_REPORT_SNIPPETS:
+        fragment = [*snippet.blocks, snippet.root]
+        colours = _settings_in(fragment, ("fill", "color", "colour", "outline", "border_color"))
+        assert set(colours) <= colour_words, f"{snippet.key}: {set(colours) - colour_words}"
+        assert all(isinstance(c, str) and not c.startswith("#") for c in colours), f"{snippet.key} stores a hex colour"
+        assert set(_settings_in(fragment, ("font",))) <= {"sans", "serif", "mono", "unicode"}, snippet.key
+        assert "palette" not in snippet.root and "styles" not in snippet.root, snippet.key
+
+
+@pytest.mark.parametrize("key", EXPECTED_KEYS)
+def test_each_snippet_applies_into_a_layout_with_a_scheme_and_leaves_the_scheme_and_fonts_alone(world, key):
+    base = org_base(world)
+    image = upload(world, f"{base[: -len('report-layouts')]}report-images")
+    layout = doc(palette=[{"name": "plate", "colour": "#102030"}], styles={"body": {"font": "serif", "size": 11}})
+
+    tree = ok(apply(world, base, key, layout, values_for(world, base, key, image)))["tree"]
+
+    assert validate_tree(tree, family="document").ok
+    assert tree["palette"] == layout["palette"] and tree["styles"] == layout["styles"]
 
 
 def test_document_details_fills_itself_in_from_the_run(world):

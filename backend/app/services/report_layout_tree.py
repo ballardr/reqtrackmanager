@@ -537,6 +537,10 @@ class TreeValidator:
             cells = holder.get(band)
             if not isinstance(cells, dict):
                 continue
+            if isinstance(cells.get("colour"), str) and (
+                message := colour_word_problem(cells["colour"], self.colour_names, allow_none=False)
+            ):
+                self.error(f"{prefix}{band}.colour", message)
             for slot in ("left", "centre", "right"):
                 text = cells.get(slot)
                 for match in PLACEHOLDER_RE.finditer(text) if isinstance(text, str) else ():
@@ -1589,9 +1593,11 @@ def _validate_grid_row(v: TreeValidator, row: Any, path: str) -> list[tuple[int,
 
 def _validate_grid(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(
-        node, path, required=("type", "columns", "rows"), optional=("header_rows", "borders", "border_color", *_GRID_STYLE_KEYS),
+        node, path, required=("type", "columns", "rows"),
+        optional=("header_rows", "borders", "border_color", "font", "size", *_GRID_STYLE_KEYS),
     )
     _validate_grid_style(v, node, path)
+    _check_block_look(v, node, path, colour=False)
     if "borders" in node and node["borders"] not in GRID_BORDERS:
         v.error(f"{path}.borders", f"Must be one of: {', '.join(GRID_BORDERS)}.")
     if "border_color" in node and (problem := colour_word_problem(node["border_color"], v.colour_names, allow_none=False)):
@@ -1602,9 +1608,10 @@ def _validate_grid(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         if not isinstance(column, dict):
             v.error(here, "Must be an object.")
             continue
-        v.check_keys(column, here, optional=("width", *_GRID_STYLE_KEYS))
+        v.check_keys(column, here, optional=("width", "font", "size", *_GRID_STYLE_KEYS))
         v.column_width(column, here)
         _validate_grid_style(v, column, here)
+        _check_block_look(v, column, here, colour=False)
     if columns is not None:
         widths = [c.get("width") for c in columns if isinstance(c, dict)]
         total = percent_total(widths)
@@ -2066,6 +2073,10 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
             BlockField("fill", "Fill", "colour", help="Background of every cell, unless a column, row or cell says otherwise."),
             BlockField("color", "Text colour", "colour", help="Colour of the text, unless a column, row or cell says otherwise."),
             BlockField("bold", "Bold", "boolean", default=False, help="Whether the text is bold, unless a column, row or cell says otherwise."),
+            BlockField("font", "Font", "font", empty_label="Document font",
+                       help="The font of every cell, unless a column says otherwise. Typically left empty so it follows the document's body font."),
+            BlockField("size", "Size", "number", minimum=6, maximum=72, empty_label="Table size (9)",
+                       help="The size of every cell in points, unless a column says otherwise. Typically 8 to 10."),
         ),
         template={
             "type": "grid", "columns": [{}, {}], "rows": [{"cells": [{"text": "Label"}, {"text": "Value"}]}],

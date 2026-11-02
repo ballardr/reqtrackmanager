@@ -20,7 +20,7 @@ import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { PageMarginsFields } from "./PageMarginsFields";
 import { PageOutline } from "./PageOutline";
-import { RunningBandEditor } from "./RunningBandEditor";
+import { RunningBandEditor, type BandLook } from "./RunningBandEditor";
 import { Tooltip } from "./Tooltip";
 
 /** What a style shares when it leaves a value out: the layout's own page. */
@@ -38,9 +38,10 @@ export interface PageStyleBase {
  * @param disabled Whether the editor is read-only.
  * @param images The picture library a header or footer logo is chosen from.
  * @param placeholders The placeholder names a header or footer offers.
+ * @param look The fonts and colours a header or footer's font and colour fields offer.
  */
 export function PageStylesEditor({
-  value, onChange, base, disabled = false, images, placeholders,
+  value, onChange, base, disabled = false, images, placeholders, look,
 }: {
   value: PageStyleSetup[];
   onChange: (next: PageStyleSetup[]) => void;
@@ -48,6 +49,7 @@ export function PageStylesEditor({
   disabled?: boolean;
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
   placeholders?: readonly string[];
+  look?: BandLook;
 }) {
   const strings = useStrings();
   const text = strings.pageSetup;
@@ -112,7 +114,7 @@ export function PageStylesEditor({
             />
             {(["header", "footer"] as const).map((kind) => (
               <RunningBandEditor
-                key={kind} kind={kind} value={style[kind]} inheritFrom="layout" disabled={disabled} images={images} placeholders={placeholders}
+                key={kind} kind={kind} value={style[kind]} inheritFrom="layout" disabled={disabled} images={images} placeholders={placeholders} look={look}
                 margin={(kind === "header" ? style.margins?.top ?? base.margins.top : style.margins?.bottom ?? base.margins.bottom) ?? DEFAULT_MARGIN_CM}
                 onChange={(next) => change(index, { [kind]: next })}
               />

@@ -45,6 +45,10 @@ export type BandFirstPage = (typeof BAND_FIRST_PAGE)[number];
 /** Space between the page edge and a header or footer, and the height of one line of its text, in cm (as the server checks). */
 export const BAND_EDGE_CM = 0.5;
 export const BAND_LINE_CM = 0.4;
+/** A band's default text size in points, and the range the server accepts. */
+export const BAND_SIZE_PT = 8;
+export const MIN_BAND_SIZE_PT = 6;
+export const MAX_BAND_SIZE_PT = 72;
 export const MIN_LOGO_CM = 0.3;
 export const MAX_LOGO_CM = 5;
 export const DEFAULT_LOGO_CM = 0.9;
@@ -56,6 +60,10 @@ export interface RunningBand {
   right?: string;
   logo?: { file: string; height: number; slot?: BandSlot };
   first_page?: BandFirstPage;
+  /** The band's font key, size in points and colour word; absent follows the document's body font, 8 pt and black. */
+  font?: string;
+  size?: number;
+  colour?: string;
 }
 
 /** A named page style a section can use; what it leaves out is the layout's own. */
@@ -181,6 +189,8 @@ function readBand(rest: string): RunningBand {
     const value = tokens[i + 1];
     if (word === "left" || word === "centre" || word === "right") band[word] = unquote(value);
     else if (word === "first" && (BAND_FIRST_PAGE as readonly string[]).includes(value ?? "")) band.first_page = value as BandFirstPage;
+    else if ((word === "font" || word === "colour") && value) band[word] = value;
+    else if (word === "size" && Number.isFinite(Number(value))) band.size = Number(value);
     else if (word === "logo") band.logo = { file: unquote(value), height: DEFAULT_LOGO_CM };
     else if (word === "height" && band.logo && Number.isFinite(Number(value))) band.logo.height = Number(value);
     else if (word === "slot" && band.logo && (BAND_SLOTS as readonly string[]).includes(value ?? "")) band.logo.slot = value as BandSlot;
@@ -199,6 +209,9 @@ function bandLine(kind: "header" | "footer", band: RunningBand): string {
     if (band.logo.slot) parts.push(`slot ${band.logo.slot}`);
   }
   if (band.first_page) parts.push(`first ${band.first_page}`);
+  if (band.font) parts.push(`font ${band.font}`);
+  if (band.size !== undefined) parts.push(`size ${band.size}`);
+  if (band.colour) parts.push(`colour ${band.colour}`);
   return parts.join(" ");
 }
 
@@ -286,6 +299,11 @@ export function styleToTree(style: PageStyleSetup): Record<string, unknown> {
   return entry;
 }
 
+/** The height in cm of one line of a band's text at `size` points: the default line, or taller for a larger size (as the server). */
+export function bandLineCm(size: number | undefined): number {
+  return Math.max(BAND_LINE_CM, (size ?? BAND_SIZE_PT) * 1.25 * (2.54 / 72));
+}
+
 /** The lines a band's text takes (a cell may hold up to three). */
 function lineCount(text: string | undefined): number {
   return text ? text.split("\n").length : 0;
@@ -299,7 +317,7 @@ export function bandNeedsCm(band: RunningBand | undefined): number {
   if (!band) return 0;
   const lines = Math.max(...BAND_SLOTS.map((slot) => lineCount(band[slot])));
   const logo = band.logo?.height ?? 0;
-  return lines > 0 || logo > 0 ? BAND_EDGE_CM + Math.max(lines * BAND_LINE_CM, logo) : 0;
+  return lines > 0 || logo > 0 ? BAND_EDGE_CM + Math.max(lines * bandLineCm(band.size), logo) : 0;
 }
 
 const SAMPLE_PAGE = "3";
@@ -320,12 +338,118 @@ export function insertAtCaret(text: string, snippet: string, start: number, end:
   return { text: `${text.slice(0, from)}${snippet}${text.slice(to)}`, caret: from + snippet.length };
 }
 
+/** One stretch of a cell's text with its marks. */
+export interface MarkedRun {
+  text: string;
+  bold: boolean;
+  italic: boolean;
+}
+
 /**
- * What a cell prints for page 3 of 12, or `null` when the cell holds no page field (nothing to show).
+ * A cell's text as stretches reading `**bold**`, `*italic*` and `***both***`, the way the server reads it: a mark opens before
+ * a word and closes after one, a lone `*`, `2 * 3` or an unclosed mark stays as written, and `\*` is a literal asterisk.
+ *
+ * @param text One cell's text.
+ * @returns The stretches in order, without empty ones.
+ */
+export function readMarks(text: string): MarkedRun[] {
+  type Item = { text: string } | { stars: number; canOpen: boolean; canClose: boolean; applied: boolean };
+  const items: Item[] = [];
+  let last = 0;
+  for (const match of text.matchAll(/\\\*|\*+/g)) {
+    const at = match.index ?? 0;
+    if (at > last) items.push({ text: text.slice(last, at) });
+    last = at + match[0].length;
+    if (match[0] === "\\*") {
+      items.push({ text: "*" });
+      continue;
+    }
+    const before = at > 0 ? text[at - 1] : "";
+    const after = last < text.length ? text[last] : "";
+    items.push({ stars: match[0].length, canOpen: after !== "" && !/\s/.test(after), canClose: before !== "" && !/\s/.test(before), applied: false });
+  }
+  if (last < text.length) items.push({ text: text.slice(last) });
+  const kinds: Record<number, ("bold" | "italic")[]> = { 1: ["italic"], 2: ["bold"], 3: ["bold", "italic"] };
+  const opened: Record<"bold" | "italic", number | null> = { bold: null, italic: null };
+  items.forEach((item, index) => {
+    if (!("stars" in item) || !kinds[item.stars]) return;
+    const wanted = kinds[item.stars];
+    if (wanted.every((k) => opened[k] !== null) && item.canClose) {
+      for (const k of wanted) {
+        (items[opened[k] as number] as { applied: boolean }).applied = true;
+        item.applied = true;
+        opened[k] = null;
+      }
+    } else if (wanted.every((k) => opened[k] === null) && item.canOpen) {
+      for (const k of wanted) opened[k] = index;
+    }
+  });
+  const runs: MarkedRun[] = [];
+  let bold = false;
+  let italic = false;
+  const push = (words: string) => {
+    const tail = runs[runs.length - 1];
+    if (tail && tail.bold === bold && tail.italic === italic) tail.text += words;
+    else if (words) runs.push({ text: words, bold, italic });
+  };
+  for (const item of items) {
+    if ("text" in item) push(item.text);
+    else if (item.applied && kinds[item.stars]) {
+      for (const k of kinds[item.stars]) {
+        if (k === "bold") bold = !bold;
+        else italic = !italic;
+      }
+    } else push("*".repeat(item.stars));
+  }
+  return runs;
+}
+
+/**
+ * `text` with the selection `start`..`end` wrapped in `marker` (`**` or `*`); with nothing selected the marker pair is written
+ * and the caret left between them, so typing continues inside the mark.
+ *
+ * @param text The cell's text.
+ * @param marker The mark to wrap in.
+ * @param start Selection start; clamped to the text.
+ * @param end Selection end; clamped to the text.
+ * @returns The new text and the selection after it (the wrapped words, or the caret between the markers).
+ */
+export function wrapMark(text: string, marker: string, start: number, end: number): { text: string; start: number; end: number } {
+  const from = Math.max(0, Math.min(start, text.length));
+  const to = Math.max(from, Math.min(end, text.length));
+  return {
+    text: `${text.slice(0, from)}${marker}${text.slice(from, to)}${marker}${text.slice(to)}`,
+    start: from + marker.length, end: to + marker.length,
+  };
+}
+
+/**
+ * What a cell prints for page 3 of 12 as marked stretches, or `null` when the cell holds neither a page field nor a mark
+ * (nothing to show).
  *
  * @param text The cell's text.
  */
-export function pageSample(text: string): string | null {
-  if (!/\{\{\s*pages?\s*\}\}/.test(text)) return null;
-  return text.replace(/\{\{\s*page\s*\}\}/g, SAMPLE_PAGE).replace(/\{\{\s*pages\s*\}\}/g, SAMPLE_PAGES);
+export function pageSample(text: string): MarkedRun[] | null {
+  const marked = readMarks(text);
+  const hasField = /\{\{\s*pages?\s*\}\}/.test(text);
+  if (!hasField && !marked.some((run) => run.bold || run.italic)) return null;
+  return marked.map((run) => ({
+    ...run, text: run.text.replace(/\{\{\s*page\s*\}\}/g, SAMPLE_PAGE).replace(/\{\{\s*pages\s*\}\}/g, SAMPLE_PAGES),
+  }));
+}
+
+/** The stretches of a sample as plain text. */
+export function sampleText(runs: MarkedRun[]): string {
+  return runs.map((run) => run.text).join("");
+}
+
+/**
+ * The readable palette of a layout's text: the `name=colour` pairs of its `@palette` line (empty when it has none).
+ *
+ * @param text The layout text.
+ */
+export function readPalette(text: string): { name: string; colour: string }[] {
+  const line = /^@palette\s+(.+)$/m.exec(text);
+  if (!line || line[1].trim() === "follow") return [];
+  return [...line[1].matchAll(/([a-z0-9_]+)=(\S+)/g)].map((m) => ({ name: m[1], colour: m[2] }));
 }

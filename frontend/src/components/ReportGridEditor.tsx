@@ -3,7 +3,7 @@
  *
  * The editor for a custom table (`grid` block): a drawn grid of cells that are selected with the mouse or the keyboard, a
  * toolbar that merges, aligns and colours the selection, controls that add and remove rows and columns, and fields for the
- * selected cell's text, its row's height and its column's width.
+ * selected cell's text, its row's height and its column's width, font and size.
  *
  * Responsibilities:
  * - Own the selection (anchor and focus positions, widened so a merged cell is never cut) and turn every toolbar action into
@@ -27,11 +27,13 @@ import { useStrings } from "../context/TerminologyContext";
 import { contrastRatio } from "../utils/color";
 import {
   addColumn, addRow, cellAt, effectiveStyle, hasMerged, mergeCells, originsIn, ownerOf, placedCells, removeColumn, removeRow,
-  selectionRect, setCellText, setColumnWidth, setHeaderRows, setRowHeight, styleCells, styleColumns, styleRows, unmergeCells,
+  selectionRect, setCellText, setColumnLook, setColumnWidth, setHeaderRows, setRowHeight, styleCells, styleColumns, styleRows, unmergeCells,
   type GridPos, type GridResult, type GridShape, type GridStylePatch, type Obj,
 } from "../utils/reportGrid";
 import { DEFAULT_COLOUR_CONTEXT, resolveColourWord, type ColourContext, type ColourEntry } from "../utils/reportColours";
+import type { ReportFontChoice } from "../api/reportLayouts";
 import { ColourChoiceField } from "./ColourChoiceField";
+import { FontChoiceField } from "./FontChoiceField";
 import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { Tooltip } from "./Tooltip";
@@ -79,17 +81,19 @@ function IconToggle({ label, pressed, onClick, disabled, children }: {
  * @param gridStyle The table's own style keys (`align`, `fill` ...), the last layer of the cascade.
  * @param colours The branding colour and the organisation's colour scheme, which the colour fields offer.
  * @param palette The layout's own colour scheme.
+ * @param fonts The fonts a column may choose; the four standard ones where absent.
  * @param renderCellText Draws the field that edits one cell's text (the block editor's text field with its placeholders).
  * @param readOnly Draws the table without any control that changes it.
  */
 export function ReportGridEditor({
-  value, onChange, gridStyle = {}, colours = DEFAULT_COLOUR_CONTEXT, palette = [], renderCellText, readOnly = false,
+  value, onChange, gridStyle = {}, colours = DEFAULT_COLOUR_CONTEXT, palette = [], fonts, renderCellText, readOnly = false,
 }: {
   value: GridDraft;
   onChange: (next: GridDraft) => void;
   gridStyle?: Obj;
   colours?: ColourContext;
   palette?: ColourEntry[];
+  fonts?: ReportFontChoice[];
   renderCellText: (cell: Obj, onText: (text: string) => void, label: string) => ReactNode;
   readOnly?: boolean;
 }) {
@@ -181,6 +185,8 @@ export function ReportGridEditor({
   const rowObj = (shape.rows[row] ?? {}) as Obj;
   const heightValue = typeof rowObj.height === "number" ? rowObj.height : undefined;
   const heightUnit = rowObj.height_unit === "mm" ? "mm" : "cm";
+  const columnFont = typeof shape.columns[column]?.font === "string" ? (shape.columns[column].font as string) : "";
+  const columnSize = typeof shape.columns[column]?.size === "number" ? (shape.columns[column].size as number) : undefined;
   const widthValue = typeof shape.columns[column]?.width === "string" ? (shape.columns[column].width as string) : "";
 
   const gridTemplate = shape.columns.map((c) => trackOf(c.width)).join(" ");
@@ -324,6 +330,18 @@ export function ReportGridEditor({
           <TextField
             help={text.columnWidthHelp} label={text.columnWidth(column + 1)} value={widthValue} placeholder={text.columnWidthPlaceholder}
             onChange={(t) => commit(setColumnWidth(shape, column, t))}
+          />
+          <FontChoiceField
+            help={text.columnFontHelp} label={text.columnFont(column + 1)} value={columnFont} fonts={fonts} emptyLabel={text.columnFontEmpty}
+            onChange={(key) => commit(setColumnLook(shape, column, "font", key))}
+          />
+          <TextField
+            help={text.columnSizeHelp} label={text.columnSize(column + 1)} value={columnSize === undefined ? "" : String(columnSize)}
+            placeholder={text.columnSizePlaceholder} inputProps={{ type: "number", step: 0.5, min: 6, max: 72 }}
+            onChange={(t) => {
+              if (t.trim() === "") commit(setColumnLook(shape, column, "size", undefined));
+              else if (Number.isFinite(Number(t))) commit(setColumnLook(shape, column, "size", Number(t)));
+            }}
           />
           <TextField
             help={text.headerRowsHelp} label={text.headerRows}

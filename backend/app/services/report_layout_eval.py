@@ -121,6 +121,7 @@ from app.services.report_model import (
     Heading,
     Image,
     ImageCell,
+    Marked,
     MathText,
     Note,
     NumberedList,
@@ -148,6 +149,7 @@ from app.services.report_model import (
 from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, org_value_kind, organization_colour_names, report_org_values
 from app.services.report_page_styles import effective_bands, resolve_page_styles
 from app.services.report_record_images import candidate_files, compile_pattern, load_attachment_image, record_files
+from app.services.report_running import read_marks
 from app.services.report_shapes import shape_svg
 from app.services.report_styles import resolve_styles
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
@@ -749,20 +751,28 @@ class _Run:
             if picture is not None:
                 logo = Image(data=picture.data, svg=picture.svg, decorative=True)
                 slot, height = spec.get("slot", "left"), float(spec["height"])
+        font, size = self.block_look(source)
+        colour = source.get("colour")
+        self.note_colours(colour)
         return RunningBand(
             **cells, logo=logo, logo_slot=slot, logo_height_cm=height, first_page=source.get("first_page", "same") != "none",
+            font=font, size=size,
+            colour=resolve_colour(colour, self.org_values["report_accent"], self.scheme) if colour else None,
         )
 
     def _running_cell(self, text: str) -> tuple[SlotPart, ...]:
-        """A cell's text as parts: the page fields apart, each stretch of text with its placeholders filled."""
+        """A cell's text as parts: `**bold**` and `*italic*` read first, then the page fields apart and each stretch of
+        text with its placeholders filled (so a value is plain text and never read for marks)."""
         parts: list[SlotPart] = []
-        last = 0
-        for match in PAGE_FIELD_RE.finditer(text):
-            parts.append(self.fill(text[last:match.start()], {}))
-            parts.append(PageField(match.group(1)))
-            last = match.end()
-        parts.append(self.fill(text[last:], {}))
-        return tuple(part for part in parts if part != "")
+        for words, bold, italic in read_marks(text):
+            last = 0
+            pieces: list[str | PageField] = []
+            for match in PAGE_FIELD_RE.finditer(words):
+                pieces += [self.fill(words[last:match.start()], {}), PageField(match.group(1))]
+                last = match.end()
+            pieces.append(self.fill(words[last:], {}))
+            parts += [Marked(piece, bold, italic) if bold or italic else piece for piece in pieces if piece != ""]
+        return tuple(parts)
 
     def warn(self, message: str) -> None:
         """Records a warning once."""
@@ -1421,18 +1431,24 @@ def _eval_grid(run: _Run, node: dict[str, Any], scope: Scope) -> None:
         run.note_colours(word)
         return resolve_colour(word, accent, run.scheme)
 
+    # Font and size are set by a column or the grid only (never a row or cell): the column's wins, else the grid's.
+    looks = [
+        run.block_look({key: column[key] if key in column else node[key] for key in ("font", "size") if key in column or key in node})
+        for column in columns
+    ]
     rows: list[GridRow] = []
     for r, row in enumerate(node["rows"]):
         cells: list[GridCell] = []
         for i, cell in enumerate(row["cells"]):
             layers = (cell, row, columns[starts[r][i]], node)
+            font, size = looks[starts[r][i]]
             style = {key: next((layer[key] for layer in layers if key in layer), None) for key in _GRID_STYLE_KEYS}
             fill, text_colour = colour(style["fill"]), colour(style["color"])
             unreadable += low_contrast(fill, text_colour or "#000000")
             cells.append(GridCell(
                 cell_paragraphs(run.text_blocks(cell["text"], scope)) if cell["text"].strip() else ("",),
                 cell.get("colspan", 1), cell.get("rowspan", 1), style["align"] or "left", style["valign"] or "top", fill, text_colour,
-                bool(style["bold"]),
+                bool(style["bold"]), font, size,
             ))
         height = _cm(row.get("height"), row.get("height_unit"))
         rows.append(GridRow(cells, height))

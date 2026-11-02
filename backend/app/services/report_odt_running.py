@@ -13,6 +13,9 @@ Responsibilities:
 Design decisions:
 - A header or footer is a borderless three-column table of left, centre and right cells, holding `text:page-number` and
   `text:page-count` fields and an optional logo frame.
+- A band that sets its own font, size or colour gets automatic paragraph styles over the `Band_<slot>` ones, and bold and
+  italic stretches are `text:span`s in three shared automatic text styles; the writer collects both (and the families)
+  for the parts that hold them.
 - The first page of a master page is its own `style:header-first`/`style:footer-first`, so a section's first page can
   differ; the return to the document's style uses a separate master page without one (a continuation).
 - The page layout of the cover page has no header or footer, as before.
@@ -24,11 +27,12 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from app.services.report_fonts import FontFamily
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_model import SLOT_NAMES, PageField, PageStyle, RunningBand
-from app.services.report_odf import OdfPackage, length_cm, raster_info, xml_text
+from app.services.report_odf import OdfPackage, colour, length_cm, raster_info, xml_attr, xml_text
 from app.services.report_page_styles import BAND_EDGE_CM
-from app.services.report_running import band_for_page, cell_lines
+from app.services.report_running import band_for_page, band_size_pt, cell_lines, unmark
 from app.services.report_svg import svg_png
 
 _ALIGN = {"left": "start", "centre": "center", "right": "end"}
@@ -92,6 +96,46 @@ class RunningWriter:
         self.package = package
         self.tables = 0
         self.pictures = 0
+        #: Automatic styles the bands need (own looks, marks), the families they name, and the look styles written so far.
+        self.styles: list[str] = []
+        self.families: list[FontFamily] = []
+        self._looks: dict[tuple, str] = {}
+        self._marks_written = False
+
+    def paragraph_style(self, band: RunningBand, slot: str) -> str:
+        """The paragraph style of a cell: the shared `Band_<slot>`, or an automatic one carrying the band's own look."""
+        if band.font is None and band.size is None and band.colour is None:
+            return f"Band_{slot}"
+        key = (slot, band.font.key if band.font else None, band.size, band.colour)
+        if key not in self._looks:
+            props = f'fo:font-size="{band_size_pt(band.size):g}pt"'
+            if band.font is not None:
+                props += f" style:font-name={xml_attr(band.font.word_name)}"
+                if band.font not in self.families:
+                    self.families.append(band.font)
+            if band.colour is not None:
+                props += f' fo:color="{colour(band.colour)}"'
+            name = f"BandLook{len(self._looks) + 1}_{slot}"
+            self._looks[key] = name
+            self.styles.append(
+                f'<style:style style:name="{name}" style:family="paragraph" style:parent-style-name="Band_{slot}">'
+                f"<style:text-properties {props}/></style:style>"
+            )
+        return self._looks[key]
+
+    def span(self, text: str, bold: bool, italic: bool) -> str:
+        """`text` (already escaped), in a span of the bold and/or italic automatic style when it is marked."""
+        if not (bold or italic):
+            return text
+        if not self._marks_written:
+            self._marks_written = True
+            for name, props in (("Band_b", 'fo:font-weight="bold"'), ("Band_i", 'fo:font-style="italic"'),
+                                ("Band_bi", 'fo:font-weight="bold" fo:font-style="italic"')):
+                self.styles.append(
+                    f'<style:style style:name="{name}" style:family="text"><style:text-properties {props}/></style:style>'
+                )
+        name = "Band_bi" if bold and italic else "Band_b" if bold else "Band_i"
+        return f'<text:span text:style-name="{name}">{text}</text:span>'
 
     def logo(self, band: RunningBand, cell_cm: float) -> str:
         """The logo's frame, or `""` when it cannot be drawn."""
@@ -128,11 +172,13 @@ class RunningWriter:
                     frame = self.logo(band, cell_cm)
                     content += frame + ('<text:s text:c="2"/>' if frame and line else "")
                 for part in line:
-                    content += (
-                        '<text:page-number text:select-page="current">1</text:page-number>' if part is PageField.PAGE
-                        else "<text:page-count>1</text:page-count>" if part is PageField.PAGES else xml_text(part)
+                    words, bold, italic = unmark(part)
+                    content += self.span(
+                        '<text:page-number text:select-page="current">1</text:page-number>' if words is PageField.PAGE
+                        else "<text:page-count>1</text:page-count>" if words is PageField.PAGES else xml_text(words),
+                        bold, italic,
                     )
-                paragraphs.append(f'<text:p text:style-name="Band_{slot}">{content}</text:p>')
+                paragraphs.append(f'<text:p text:style-name="{self.paragraph_style(band, slot)}">{content}</text:p>')
             cells.append(f'<table:table-cell table:style-name="C_band" office:value-type="string">{"".join(paragraphs)}</table:table-cell>')
         return (
             f'<table:table table:name="Band{self.tables}" table:style-name="T_band{index}">'

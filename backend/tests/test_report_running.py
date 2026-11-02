@@ -73,7 +73,7 @@ def test_a_header_and_footer_are_part_of_a_valid_tree_on_the_document_and_on_a_p
 
 
 @pytest.mark.parametrize(("band", "path", "fragment"), [
-    ({"colour": "red"}, "header.colour", "Unknown key"),
+    ({"background": "red"}, "header.background", "Unknown key"),
     ({"left": 3}, "header.left", "Must be text"),
     ({"left": "x" * 301}, "header.left", "Too long"),
     ({"left": "a\nb\nc\nd"}, "header.left", "Too long"),
@@ -142,7 +142,7 @@ def test_the_text_view_round_trips_headers_and_footers_on_the_document_and_a_pag
 
 @pytest.mark.parametrize(("text", "fragment"), [
     ('@layout document\n@header left "a" left "b"\n', "left is written once"),
-    ('@layout document\n@header colour "a"\n', "Unexpected"),
+    ('@layout document\n@header background "a"\n', "Unexpected"),
     ('@layout document\n@header height 1\n', "after the logo"),
     ('@layout document\n@header\n@header\n', "written once"),
     ('@layout document\n\nText\n\n@header\n', "before the first block"),

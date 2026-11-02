@@ -6,6 +6,8 @@ own organisation.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
@@ -245,3 +247,50 @@ def test_a_starter_still_runs_where_a_module_is_off(world, name):
 
     assert resp.status_code == 200, resp.text
 
+
+
+# ---- fonts and colours: the starters name the Branding colour and own no scheme -------------------------------------
+
+
+def heading_colour(html: str) -> str:
+    """The colour of the `h1, h2, ...` rule a document with a heading colour carries."""
+    match = re.search(r"h1, h2, h3, h4, h5 \{[^}]*color: (#[0-9a-f]{6})", html)
+    assert match, "the starter sets a heading colour"
+    return match.group(1)
+
+
+def test_every_document_starter_colours_its_headings_by_a_branding_name_and_owns_no_scheme_or_font():
+    for starter in (s for s in STARTERS if s.family == FAMILY_DOCUMENT):
+        tree = starter.tree
+        assert "palette" not in tree, starter.name
+        assert tree["styles"] == {"headings": {"colour": "primary"}}, starter.name
+        # With no organisation colours, a name outside the Branding set would be an error here.
+        assert not validate_tree(tree, family=starter.family, organization_colours=[]).errors, starter.name
+    assert "styles" not in next(s for s in STARTERS if s.family == FAMILY_TABLE).tree
+
+
+def test_a_starter_prints_its_headings_in_the_accent_with_no_scheme_and_follows_the_organisations_scheme(world):
+    project = world.project("Colours")
+    world.requirement(project, "The system shall log in users")
+
+    plain = heading_colour(run_starter(world, project, "Review Package", "html").text)
+    put = world.client.put(
+        f"/api/v1/orgs/{world.org['id']}/branding", json={"report_colour_scheme": [{"name": "primary", "colour": "#00aa44"}]},
+        headers=auth_headers(world.token),
+    )
+    assert put.status_code == 200, put.text
+    followed = heading_colour(run_starter(world, project, "Review Package", "html").text)
+
+    assert plain != "#00aa44"
+    assert followed == "#00aa44"
+
+
+@pytest.mark.parametrize("fmt", ["pdf", "docx", "odt"])
+def test_a_coloured_starter_runs_in_every_file_format(world, fmt):
+    project = world.project("Formats")
+    world.requirement(project, "The system shall log in users")
+
+    resp = run_starter(world, project, "Business Requirements Document", fmt)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.content

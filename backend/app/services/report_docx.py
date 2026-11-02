@@ -42,7 +42,7 @@ import re
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -52,6 +52,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
+from docx.oxml.text.run import CT_R
 from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
@@ -89,8 +90,8 @@ from app.services.report_model import (
     text_on,
     text_runs,
 )
-from app.services.report_page_styles import BAND_EDGE_CM, BAND_LINE_CM
-from app.services.report_running import band_for_page, band_visible, cell_lines
+from app.services.report_page_styles import BAND_EDGE_CM
+from app.services.report_running import band_for_page, band_line_cm, band_size_pt, band_visible, cell_lines, unmark
 from app.services.report_styles import used_extra_families
 from app.services.report_svg import svg_png
 
@@ -214,22 +215,18 @@ def _repeat_header(row) -> None:
     row._tr.get_or_add_trPr().append(OxmlElement("w:tblHeader"))
 
 
-def _page_number_field(paragraph, instruction: str = "PAGE", *, half_points: int | None = None) -> None:
-    """Appends a live `PAGE` or `NUMPAGES` field (a fixed field code, no user text), optionally at a size in half-points."""
+def _page_number_field(paragraph, instruction: str = "PAGE", *, style: Callable[[Run], None] | None = None) -> None:
+    """Appends a live `PAGE` or `NUMPAGES` field (a fixed field code, no user text), its run given `style` when one is."""
     field = OxmlElement("w:fldSimple")
     field.set(qn("w:instr"), instruction)
     run = OxmlElement("w:r")
-    if half_points is not None:
-        properties = OxmlElement("w:rPr")
-        size = OxmlElement("w:sz")
-        size.set(qn("w:val"), str(half_points))
-        properties.append(size)
-        run.append(properties)
     text = OxmlElement("w:t")
     text.text = "1"
     run.append(text)
     field.append(run)
     paragraph._p.append(field)
+    if style is not None:
+        style(Run(cast(CT_R, run), paragraph))
 
 
 def _apply_style(section, style: PageStyle) -> float:
@@ -276,9 +273,25 @@ def _footer(doc: DocxDocument, document: ReportDocument) -> None:
     _page_number_field(paragraph)
 
 
-_BAND_FONT = Pt(8)
 _FIELD_CODES = {PageField.PAGE: "PAGE", PageField.PAGES: "NUMPAGES"}
 _CELL_ALIGNMENT = {"left": WD_ALIGN_PARAGRAPH.LEFT, "centre": WD_ALIGN_PARAGRAPH.CENTER, "right": WD_ALIGN_PARAGRAPH.RIGHT}
+
+
+def _band_look(band: RunningBand, bold: bool, italic: bool) -> Callable[[Run], None]:
+    """What sets a band run's size, font, colour and marks (the size is always written; the body font is otherwise kept)."""
+
+    def apply(run: Run) -> None:
+        run.font.size = Pt(band_size_pt(band.size))
+        if band.font is not None:
+            _set_run_fonts(run._r.get_or_add_rPr(), band.font.word_name)
+        if band.colour is not None:
+            run.font.color.rgb = RGBColor.from_string(_hex(band.colour))
+        if bold:
+            run.bold = True
+        if italic:
+            run.italic = True
+
+    return apply
 
 
 def _logo_run(paragraph, band: RunningBand, cell_cm: float) -> None:
@@ -327,10 +340,12 @@ def _band_table(container, band: RunningBand, width_cm: float) -> None:
                 if line:
                     paragraph.add_run("  ")
             for part in line:
-                if isinstance(part, PageField):
-                    _page_number_field(paragraph, _FIELD_CODES[part], half_points=16)
+                words, bold, italic = unmark(part)
+                look = _band_look(band, bold, italic)
+                if isinstance(words, PageField):
+                    _page_number_field(paragraph, _FIELD_CODES[words], style=look)
                 else:
-                    paragraph.add_run(clean_text(part)).font.size = _BAND_FONT
+                    look(paragraph.add_run(clean_text(words)))
         cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
 
 
@@ -702,10 +717,13 @@ def _bottom_offset_cm(doc: DocxDocument, style: PageStyle, running: bool) -> flo
         if band is None or band.empty:
             return margin
         lines = max(
-            (1 + sum(part.count("\n") for part in band.slot(name) if isinstance(part, str)) for name in SLOT_NAMES if band.slot(name)),
+            (
+                1 + sum(words.count("\n") for words, _, _ in map(unmark, band.slot(name)) if isinstance(words, str))
+                for name in SLOT_NAMES if band.slot(name)
+            ),
             default=0,
         )
-        top = BAND_EDGE_CM + max(lines * BAND_LINE_CM, band.logo_height_cm if band.logo is not None else 0.0)
+        top = BAND_EDGE_CM + max(lines * band_line_cm(band.size), band.logo_height_cm if band.logo is not None else 0.0)
     else:
         distance = doc.sections[0].footer_distance  # unset only in a template that does not say (Word's own default is 1.27 cm)
         top = (distance.cm if distance is not None else _DEFAULT_FOOTER_DISTANCE_CM) + _PLAIN_FOOTER_LINE_CM
@@ -888,7 +906,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
         elif isinstance(block, Table):
             _table(doc, block, accent, usable_cm, usable_height_cm)
         elif isinstance(block, Grid):
-            docx_grid(doc, block, usable_cm, _add_text)
+            docx_grid(doc, block, usable_cm, _add_text, _block_look)
         elif isinstance(block, PageBreak):
             doc.add_page_break()
         elif isinstance(block, PageStyleChange):

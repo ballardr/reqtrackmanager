@@ -496,6 +496,8 @@ class GridCell:
         fill: Background as `#rrggbb`, or `None` for none.
         color: Text colour as `#rrggbb`, or `None` for the default.
         bold: Whether the text is bold.
+        font: The family its column or grid sets, or `None` for the document's.
+        size: The size in points its column or grid sets, or `None` for the table's own 9 pt.
     """
 
     paragraphs: tuple[str, ...] = ("",)
@@ -506,6 +508,8 @@ class GridCell:
     fill: str | None = None
     color: str | None = None
     bold: bool = False
+    font: FontFamily | None = None
+    size: float | None = None
 
 
 @dataclass(frozen=True)
@@ -767,8 +771,23 @@ class PageField(Enum):
     PAGES = "pages"
 
 
-#: A running slot is text and page fields in order; the text may hold line breaks (`\n`).
-SlotPart = str | PageField
+@dataclass(frozen=True)
+class Marked:
+    """A stretch of a running cell set in bold and/or italic (`**bold**`, `*italic*`).
+
+    Attributes:
+        part: The words, or a page field printed in the marks.
+        bold: Whether it is bold.
+        italic: Whether it is italic.
+    """
+
+    part: str | PageField
+    bold: bool = False
+    italic: bool = False
+
+
+#: A running slot is text, page fields and marked stretches in order; the text may hold line breaks (`\n`).
+SlotPart = str | PageField | Marked
 SLOT_NAMES = ("left", "centre", "right")
 
 
@@ -785,6 +804,9 @@ class RunningBand:
         logo_height_cm: The logo's height; its width keeps its shape.
         first_page: Whether the first page of the document (or of a section) shows the band; `False` for a cover
             page with no header.
+        font: The band's font family, `None` to follow the document's body font.
+        size: The band's text size in points, `None` for the default (8 pt).
+        colour: The band's text colour as `#rrggbb`, `None` for the default (black).
     """
 
     left: tuple[SlotPart, ...] = ()
@@ -794,6 +816,9 @@ class RunningBand:
     logo_slot: str = "left"
     logo_height_cm: float = 1.0
     first_page: bool = True
+    font: FontFamily | None = None
+    size: float | None = None
+    colour: str | None = None
 
     def slot(self, name: str) -> tuple[SlotPart, ...]:
         """The parts of cell `name` (`left`, `centre` or `right`)."""

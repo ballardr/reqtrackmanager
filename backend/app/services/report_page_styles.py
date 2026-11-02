@@ -32,6 +32,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.report_model import DEFAULT_MARGIN_CM, DEFAULT_PAGE_SIZE, Margins, PageStyle
+from app.services.report_running import band_line_cm
+from app.services.report_styles import font_key_form_problem, size_problem
 
 ORIENTATIONS = ("portrait", "landscape")
 #: The page sizes a document layout can choose (`report_model.PAGE_SIZES_CM`); A4 when none is written.
@@ -48,15 +50,14 @@ MAX_PAGE_STYLES = 10
 MAX_STYLE_NAME_CHARS = 40
 STYLE_KEYS = ("name", "page_size", "orientation", "margins", "header", "footer")
 #: A running header or footer: its three cells, a logo and whether the first page shows it.
-BAND_KEYS = ("left", "centre", "right", "logo", "first_page")
+BAND_KEYS = ("left", "centre", "right", "logo", "first_page", "font", "size", "colour")
 FIRST_PAGE_CHOICES = ("same", "none")
 MAX_SLOT_CHARS = 300
 MAX_SLOT_LINES = 3
 LOGO_KEYS = ("file", "height", "slot")
 MIN_LOGO_CM, MAX_LOGO_CM = 0.3, 5.0
-#: Space between the page edge and a header or footer, and the height of one line of its text, in cm.
+#: Space between the page edge and a header or footer, in cm; a line of its text is `report_running.band_line_cm` tall.
 BAND_EDGE_CM = 0.5
-BAND_LINE_CM = 0.4
 #: The names a header or footer may use beyond the layout's own: the page number and the number of pages.
 PAGE_FIELD_NAMES = ("page", "pages")
 
@@ -84,11 +85,13 @@ def margins_problems(margins: Any) -> list[tuple[str, str]]:
 
 
 def band_height_cm(band: dict[str, Any]) -> float:
-    """The height in cm a header or footer needs: its tallest cell (lines of text, or the logo) and the gap to the page edge."""
+    """The height in cm a header or footer needs: its tallest cell (lines of text at its size, or the logo) and the gap to the page edge."""
     lines = max((str(band.get(slot, "")).count("\n") + 1 for slot in ("left", "centre", "right") if band.get(slot)), default=0)
     logo = band.get("logo")
     logo_cm = float(logo["height"]) if isinstance(logo, dict) and isinstance(logo.get("height"), int | float) else 0.0
-    return BAND_EDGE_CM + max(lines * BAND_LINE_CM, logo_cm) if lines or logo_cm else 0.0
+    size = band.get("size")
+    line_cm = band_line_cm(size if isinstance(size, int | float) and not isinstance(size, bool) else None)
+    return BAND_EDGE_CM + max(lines * line_cm, logo_cm) if lines or logo_cm else 0.0
 
 
 def band_problems(band: Any) -> list[tuple[str, str]]:
@@ -112,6 +115,12 @@ def band_problems(band: Any) -> list[tuple[str, str]]:
             found.append((slot, "Must be text."))
         elif len(text) > MAX_SLOT_CHARS or text.count("\n") + 1 > MAX_SLOT_LINES:
             found.append((slot, f"Too long (at most {MAX_SLOT_CHARS} characters on {MAX_SLOT_LINES} lines)."))
+    if "font" in band and (message := font_key_form_problem(band["font"])):
+        found.append(("font", message))
+    if "size" in band and (message := size_problem(band["size"])):
+        found.append(("size", message))
+    if "colour" in band and not isinstance(band["colour"], str):
+        found.append(("colour", "Must be a colour word."))  # the word itself is checked against the layout's scheme by the tree
     if "first_page" in band and band["first_page"] not in FIRST_PAGE_CHOICES:
         found.append(("first_page", f"Must be one of: {', '.join(FIRST_PAGE_CHOICES)}."))
     if "logo" in band:
@@ -311,7 +320,7 @@ def document_style_problems(tree: dict[str, Any]) -> list[tuple[str, str]]:
 
 __all__ = [
     "DEFAULT_MARGIN_CM", "MARGIN_KEYS", "MARGIN_SIDES", "MAX_GUTTER_CM", "MAX_MARGIN_CM", "MAX_PAGE_STYLES", "MAX_STYLE_NAME_CHARS",
-    "BAND_EDGE_CM", "BAND_KEYS", "BAND_LINE_CM", "FIRST_PAGE_CHOICES", "MAX_LOGO_CM", "MAX_SLOT_CHARS", "MAX_SLOT_LINES",
+    "BAND_EDGE_CM", "BAND_KEYS", "FIRST_PAGE_CHOICES", "MAX_LOGO_CM", "MAX_SLOT_CHARS", "MAX_SLOT_LINES",
     "MIN_LOGO_CM", "MIN_MARGIN_CM", "MIN_TEXT_CM", "ORIENTATIONS", "PAGE_FIELD_NAMES", "PAGE_SIZES",
     "band_height_cm", "band_problems", "document_style_problems", "effective_bands", "margins_problems", "resolve_page_styles",
     "style_problems", "styles_problems",

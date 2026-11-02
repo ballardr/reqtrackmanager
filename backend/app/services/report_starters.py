@@ -30,6 +30,10 @@ Design decisions:
   core fields (`ReportField.core`, plus code, title, status and tags), each module's sheets wrapped in an `if` on that
   module like the document starters' parts, so a new module's type appears with no edit here and a project where the
   module is off has no sheet. A module that declares a type declares its core fields; a test fails for a type without one.
+- **A document starter's headings use the colour name `primary`, and it carries no scheme of its own.** `primary` is one
+  of the built-in Branding names (the organisation's report accent), so a starter prints in the accent with no scheme anywhere
+  and follows the organisation's scheme the moment it names `primary`. Tables already take the accent for their header row.
+  The body font is not set, so a starter keeps each format's own text face.
 - **No link types and no project vocabulary.** A starter names none, so it runs in any project and organisation.
 - Prose is the author's to edit: each section opens with a line saying what it is derived from, because a
   generated document is a derived output (never the source of truth) and a reader should know where to look.
@@ -66,6 +70,9 @@ from app.services.report_starter_blocks import (
 )
 
 Node = dict[str, Any]
+
+#: The colour name every document starter's headings use: a built-in Branding name, so it resolves with no scheme anywhere.
+STARTER_HEADING_COLOUR = "primary"
 
 STARTER_NOTE = "Starter layout: edit it freely; adding the starters again never overwrites it."
 
@@ -114,7 +121,10 @@ class StarterLayout:
         ]
         for _order, blocks in sorted(parts, key=lambda part: part[0]):
             nodes.extend(blocks)
-        return {"schema_version": 1, "family": FAMILY_DOCUMENT, "orientation": self.orientation, "nodes": nodes}
+        return {
+            "schema_version": 1, "family": FAMILY_DOCUMENT, "orientation": self.orientation, "nodes": nodes,
+            "styles": {"headings": {"colour": STARTER_HEADING_COLOUR}},
+        }
 
 
 BUSINESS_REQUIREMENTS = StarterLayout(

@@ -17,14 +17,14 @@ import { useState } from "react";
 
 import type { ReportImageLibrary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
-import { DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, readPageSetup, writePageSetup, type PageSetup } from "../utils/reportPageSetup";
+import { DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, readPageSetup, readPalette, writePageSetup, type PageSetup } from "../utils/reportPageSetup";
 import { CheckboxField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { PageMarginsFields } from "./PageMarginsFields";
 import { PageOutline } from "./PageOutline";
 import { PageStylesEditor } from "./PageStylesEditor";
-import { RunningBandEditor } from "./RunningBandEditor";
+import { RunningBandEditor, type BandLook } from "./RunningBandEditor";
 import { Tooltip } from "./Tooltip";
 
 /**
@@ -32,20 +32,23 @@ import { Tooltip } from "./Tooltip";
  * @param onChange Called with the new text.
  * @param images The picture library a header or footer logo is chosen from (absent: logos cannot be changed here).
  * @param placeholders The placeholder names a header or footer offers.
+ * @param look The fonts and colours a header or footer's font and colour fields offer (the layout's own palette is read from `text`).
  */
 export function ReportLayoutPageSetup({
-  text, onChange, images, placeholders,
+  text, onChange, images, placeholders, look,
 }: {
   text: string;
   onChange: (text: string) => void;
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
   placeholders?: readonly string[];
+  look?: Omit<BandLook, "palette">;
 }) {
   const strings = useStrings();
   const labels = strings.pageSetup;
   const [open, setOpen] = useState(false);
   const setup = readPageSetup(text);
   if (setup === null) return null;
+  const bandLook: BandLook = { ...look, palette: readPalette(text) };
   const set = (patch: Partial<PageSetup>) => onChange(writePageSetup(text, { ...setup, ...patch }));
   const marked = setup.orientation !== "portrait" || setup.size !== "A4" || setup.mirror || setup.repeatHeader === false
     || Object.keys(setup.margins).length > 0 || setup.styles.length > 0 || setup.header !== undefined || setup.footer !== undefined;
@@ -90,14 +93,14 @@ export function ReportLayoutPageSetup({
             <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{labels.band.intro}</p>
             {(["header", "footer"] as const).map((kind) => (
               <RunningBandEditor
-                key={kind} kind={kind} value={setup[kind]} inheritFrom="template" images={images} placeholders={placeholders}
+                key={kind} kind={kind} value={setup[kind]} inheritFrom="template" images={images} placeholders={placeholders} look={bandLook}
                 margin={(kind === "header" ? setup.margins.top : setup.margins.bottom) ?? DEFAULT_MARGIN_CM}
                 onChange={(next) => set({ [kind]: next })}
               />
             ))}
             <h3 style={{ margin: 0 }}>{labels.stylesTitle}</h3>
             <PageStylesEditor
-              images={images} placeholders={placeholders}
+              images={images} placeholders={placeholders} look={bandLook}
               value={setup.styles} onChange={(styles) => set({ styles })}
               base={{ size: setup.size, orientation: setup.orientation, margins: setup.margins, mirror: setup.mirror }}
             />

@@ -37,18 +37,21 @@ from app.services.report_colours import colour_word_problem, is_name, resolve_co
 from app.services.report_font_parts import FontUse
 from app.services.report_fonts import FontFamily
 from app.services.report_model import (
+    SLOT_NAMES,
     BulletList,
     DocumentStyles,
     Grid,
     Heading,
     Note,
     NumberedList,
+    PageStyleChange,
     Paragraph,
     ReportDocument,
     Styled,
     Table,
     text_runs,
 )
+from app.services.report_running import unmark
 
 MIN_SIZE = 6.0
 MAX_SIZE = 72.0
@@ -122,10 +125,13 @@ def document_styles_problems(styles: Any, names: frozenset[str] | None, path: st
 
 
 def _block_fonts(value: Any) -> Iterable[str]:
-    """The `font` of every text and heading block under `value` (a node, or a list of them), at any depth."""
+    """The `font` of every text and heading block, and of every custom table and its columns, under `value` (a node, or a
+    list of them), at any depth."""
     if isinstance(value, dict):
-        if value.get("type") in ("text", "heading") and isinstance(value.get("font"), str):
+        if value.get("type") in ("text", "heading", "grid") and isinstance(value.get("font"), str):
             yield value["font"]
+        if value.get("type") == "grid" and isinstance(value.get("columns"), list):
+            yield from (c["font"] for c in value["columns"] if isinstance(c, dict) and isinstance(c.get("font"), str))
         for child in value.values():
             if isinstance(child, dict | list):
                 yield from _block_fonts(child)
@@ -134,13 +140,24 @@ def _block_fonts(value: Any) -> Iterable[str]:
             yield from _block_fonts(child)
 
 
+def _band_fonts(tree: Mapping[str, Any]) -> Iterable[str]:
+    """The `font` of the header and footer of the root and of each page style."""
+    holders = [tree, *(s for s in tree.get("page_styles") or [] if isinstance(s, dict))]
+    for holder in holders:
+        for kind in ("header", "footer"):
+            band = holder.get(kind)
+            if isinstance(band, dict) and isinstance(band.get("font"), str):
+                yield band["font"]
+
+
 def font_keys(tree: Mapping[str, Any]) -> list[str]:
-    """The font keys a tree names, in the order body, headings, then blocks, without repeats."""
+    """The font keys a tree names, in the order body, headings, blocks, then header and footer bands, without repeats."""
     styles = tree.get("styles")
     keys: list[Any] = []
     if isinstance(styles, dict):
         keys = [(styles.get(part) or {}).get("font") for part in ("body", "headings") if isinstance(styles.get(part), dict)]
     keys.extend(_block_fonts(tree.get("nodes")))
+    keys.extend(_band_fonts(tree))
     return list(dict.fromkeys(k for k in keys if isinstance(k, str)))
 
 
@@ -228,6 +245,13 @@ def used_extra_families(document: ReportDocument) -> list[FontUse]:
             if isinstance(run, Styled):
                 bold = bold or run.bold
                 italic = italic or run.italic
+    bands = [
+        band for style in (document.style, *(b.style for b in document.blocks if isinstance(b, PageStyleChange)))
+        for band in (style.header, style.footer) if band is not None and not band.empty
+    ]
+    marks = [(b, i) for band in bands if band.font is None for slot in SLOT_NAMES for _, b, i in map(unmark, band.slot(slot))]
+    bold = bold or any(b for b, _ in marks)  # a band without a font of its own is set in the body font
+    italic = italic or any(i for _, i in marks)
     has_tables = any(isinstance(b, Table) for b in document.blocks)
     uses: dict[str, FontUse] = {}
 
@@ -244,6 +268,11 @@ def used_extra_families(document: ReportDocument) -> list[FontUse]:
     heading_bold = styles.heading_bold is not False  # the title is always set in the heading face
     heading_style = ("bold" if heading_bold else "") + ("italic" if styles.heading_italic else "")
     add(styles.text_font, heading_style or "regular")
+    for band in bands:
+        if band.font is not None:
+            parts = [unmark(p) for slot in SLOT_NAMES for p in band.slot(slot)]
+            wanted = (["bold"] if any(b for _, b, _ in parts) else []) + (["italic"] if any(i for _, _, i in parts) else [])
+            add(band.font, "regular", *wanted, *(["bolditalic"] if any(b and i for _, b, i in parts) else []))
     for block in document.blocks:
         if isinstance(block, Heading | Paragraph | BulletList | NumberedList) and block.font is not None:
             texts = [block.text] if isinstance(block, Heading | Paragraph) else block.items
@@ -254,4 +283,11 @@ def used_extra_families(document: ReportDocument) -> list[FontUse]:
                 wanted += ["bold"] if heading_bold else []
                 wanted += ["italic"] if styles.heading_italic else []
             add(block.font, "regular", *wanted, *(["bolditalic"] if {"bold", "italic"} <= set(wanted) else []))
+        if isinstance(block, Grid):
+            for row in block.rows:
+                for cell in row.cells:
+                    runs = [run for text in cell.paragraphs for run in text_runs(text) if isinstance(run, Styled)]
+                    wanted = ["bold"] if cell.bold or any(r.bold for r in runs) else []
+                    wanted += ["italic"] if any(r.italic for r in runs) else []
+                    add(cell.font, "regular", *wanted, *(["bolditalic"] if {"bold", "italic"} <= set(wanted) else []))
     return list(uses.values())

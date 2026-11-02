@@ -131,9 +131,11 @@ flowchart LR
 - Each cell holds up to three lines of text. **Insert placeholder** writes one at the cursor in the cell you last edited (at the end if you have not clicked in it). **Page number**, **Total pages** and **Page X of Y** are always at the top of the list, and a line under the cell shows what it prints ("Prints as: Page 3 of 12"). The others are `{{report_title}}`, `{{project_name}}`, `{{project_code}}`, `{{organisation}}`, `{{generated_on}}` (the date you ran the report, on your own calendar), `{{layout_version}}`, the organisation's `{{org.footer_text}}`, with the page fields `{{page}}` (this page) and `{{pages}}` (the total) behind the first three entries. Page numbers carry on across sections.
 - A **logo** from the image library can sit in any cell, beside that cell's text, at a height you set. The logo follows the same library rule as an Image block.
 - **First page** can be *Skipped*, for a cover page. For a page style it applies to the first page of each section in that style.
+- **Font, size and text colour** apply to the whole header or footer (its three cells share them). Left empty, it follows the document's body font, prints at 8 points and in black; choose a scheme colour to keep it in step with the branding. A larger size takes a taller line, so it needs a taller margin. A page style's header or footer has its own, independent of the layout's.
+- A cell reads **bold** and *italic* marks: select words and press **B** or **I**, or write `**bold**`, `*italic*` and `***both***` yourself. A page number can be marked too (`**Page {{page}}**`). Only those marks are read (no code, links or equations), a lone `*` stays as written, and `\*` is a literal asterisk. A web page printed from the browser can show a mark only when it covers the whole cell.
 - A header or footer must fit in its margin (the editor says how much it takes and the check refuses one that does not fit), so raise the top or bottom margin for a bigger logo or more lines.
 - When margins **mirror** for double-sided printing, the left and right cells swap on left-hand pages, so a page number stays at the outer edge.
-- In the text view they are `@header left "…" centre "…" right "…" logo "<file id>" height 0.8 slot left first none` and `@footer …`, written under the `@layout` line, or under the `@pagestyle` line they belong to. `@footer` on its own means no footer.
+- In the text view they are `@header left "…" centre "…" right "…" logo "<file id>" height 0.8 slot left first none font serif size 9 colour primary` and `@footer …`, written under the `@layout` line, or under the `@pagestyle` line they belong to. `@footer` on its own means no footer.
 - PDF, Word and OpenDocument files show them with live page numbers. The HTML preview shows them as a row above and below each page style's part of the report, with `n` and `N` in place of the numbers; printing the HTML page from a browser that supports CSS page margin boxes (Chrome and Edge do; Firefox does not yet) prints them with the real numbers, but not the logo. A table layout has no pages, so no header or footer.
 
 ## Images
@@ -222,7 +224,7 @@ A saved report records the colours it used and what each was that day, so a repo
 
 A document layout sets its fonts once, in the layout's settings (select the **Layout** block), under **Fonts**. Every block then follows.
 
-- **Body font** and **Body size (pt)** set the text, lists, tables, notes and the header and footer. The size is in points, from 6 to 72 in half points, and headings scale with it; table text, captions and notes keep their own smaller sizes.
+- **Body font** and **Body size (pt)** set the text, lists, tables and notes; a header or footer follows the body font (but has its own size, 8 points unless it sets one). The size is in points, from 6 to 72 in half points, and headings scale with it; table text, captions and notes keep their own smaller sizes.
 - **Heading font** sets headings and the title. Left on *Same as the body font*, headings follow the body text. **Bold headings** and **Italic headings** set the weight and slant, and **Heading colour** uses the [colour control](#colours), so headings can follow the branding.
 - Choose from **Sans**, **Serif**, **Mono** and **Unicode Sans** (for text beyond Latin letters), then any font your server administrator provides. Leave a setting empty and each format keeps its own look (PDF in Helvetica, Word in its template font).
 - Text view: `@style body font=serif size=11` and `@style headings font=sans colour=primary bold italic` before the first block (`nobold` and `noitalic` switch a heading setting off).
@@ -259,12 +261,19 @@ flowchart LR
 
 A font the server does not have saves with a warning and prints in a standard font of the same kind, as for the layout's fonts.
 
+### Fonts and colours in the starter layouts
+
+The four document starters (Business Requirements Document, Engineering Specification, Review Package, Requirements by Component) colour their headings with the standard colour `primary`. They carry no colour scheme and no font of their own, so each prints its headings in your branding colour and follows your organisation's colours the moment they set `primary`. Tables already use the branding colour for their heading row. Existing copies of a starter are not changed; to get the new look, rename or delete the old copy and use **Add missing starters**.
+
+The built-in snippets (document details, review and control, approvals, cover page and the rest) use only white, black and the standard colours, so they insert cleanly into a layout that has no scheme, and they leave the layout's colours and fonts alone.
+
 ## Custom tables
 
 A **Table (custom)** block is a table you write cell by cell: a document-details box, a review and sign-off sheet, a form. It is the counterpart of **Table (records)**, which has one row per record. Cells can be **merged**, and each can be aligned and coloured; the PDF, Word, OpenDocument and the preview draw it the same way. A table layout (a spreadsheet) has no use for one and refuses it.
 
 - **Merging.** A cell can span several columns and rows. A merged cell is written once, on its top-left position, and the positions it covers are left out of the rows. A merge that overlaps another, runs past the table or leaves a row short is a problem at save, naming the row and the cell.
 - **Style cascade.** Alignment, vertical alignment, fill, text colour and bold can be set on the whole table, a column, a row or a cell; the most specific wins. "The first and third columns black with white bold text" is one setting per column, not one per cell. Colours are a hex colour, a name from the [colour scheme](#colours), or one of the reserved words (`accent`, `white`, `black`, `none`).
+- **Font and size.** The whole table and each column can set a **Font** and a **Size** (points, 6 to 72 in half points); the column wins over the table, and empty means the document's font and the table's own 9 points. A row or a cell never sets either, so a column of codes in **Mono**, or a dense table at 8 points, is one setting. A font the server does not have saves with a warning and prints in a standard font of the same kind.
 - **Text.** A cell holds the same text as a text block: bold, italic, code, links, lists, `{{placeholders}}` and equations. Inside a *For each record* block, `{{record.field}}` fills each cell from the record. A cell can be blank, and a row can have a minimum height, so there is room to write in a printed sign-off sheet.
 - **Widths and borders.** A column can have a width (`25%`, `4cm`, `40mm`); the others share the rest, and a word too long for its column breaks inside it. Borders are **all**, **outer** (round the table only), **horizontal** (lines between rows) or **none**.
 - **Headings and pages.** The first rows can be **header rows**, printed again at the top of each page unless the layout turns repeated headings off. A row stays whole on a page, and the rows of a merged cell stay together. A row taller than a page is split rather than failing the report.
@@ -280,7 +289,7 @@ Select the **Table (custom)** block. The block's panel shows a summary (for exam
 - **Align** (left, centre, right, justify; top, middle, bottom), **Bold**, **Fill** and **Text colour** apply to the selection. Set **Apply to** to *Whole columns* or *Whole rows* to colour a column in two clicks: the first and third columns black with white text is one setting for each, not one per cell. Fill and text colour offer your branding colour, the layout's colours, white, black and a custom colour.
 - **Add and remove** rows and columns from the buttons above the table; a merge that spans the place you add to grows with it. The table keeps at least one row and one column, and at most 20 columns and 200 rows.
 - **Cell text** is typed in the box under the table (Enter moves you there). It takes the same text as a text block, including `{{placeholders}}`. A blank cell shows a dashed *blank* marker.
-- **Row height**, **column width** and **header rows** are set under the table for the selected cell's row and column.
+- **Row height**, **column width**, **column font**, **column size** and **header rows** are set under the table for the selected cell's row and column. Leave a column's font or size empty to follow the table's. The table's own font and size are in the block's panel.
 - **Undo** and **Redo** (or Ctrl+Z and Ctrl+Y) step through your changes; **Cancel** throws all of them away and **Save** puts them in the layout. Borders and the table-wide settings stay in the block's panel.
 
 If a cell's text and fill are hard to read together, the editor warns you; it does not stop you.
@@ -307,7 +316,7 @@ In the text view the table is `@grid` … `@end`, with one line of cells per row
 @end
 ```
 
-`@col` sets a column's width and style, `@row` (before a line of cells) a row's height and style, and `{…}` at the start of a cell sets its merge and style. In a cell, `\|` is a bar, `\\` a backslash and `\n` a new line.
+`@col` sets a column's width, font, size and style (`@col 2 font=mono size=8`; the same `font=` and `size=` words go on `@grid`), `@row` (before a line of cells) a row's height and style, and `{…}` at the start of a cell sets its merge and style. In a cell, `\|` is a bar, `\\` a backslash and `\n` a new line.
 
 ```mermaid
 flowchart LR

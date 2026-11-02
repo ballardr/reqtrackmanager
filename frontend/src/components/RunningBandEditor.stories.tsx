@@ -75,7 +75,8 @@ export const PageFieldsAreOfferedWhateverTheCatalogueHolds: Story = {
     await expect(within(insert).getByRole("option", { name: "Total pages ({{pages}})" })).toBeInTheDocument();
     await userEvent.selectOptions(insert, "page_of_pages");
     await expect(band(canvasElement).left).toBe("Page {{page}} of {{pages}}");
-    await expect(view.getByText("Prints as: Page 3 of 12")).toBeInTheDocument();
+    await expect(view.getByText("Page 3 of 12")).toBeInTheDocument();
+    await expect(view.getByText("Page 3 of 12").parentElement).toHaveTextContent("Prints as: Page 3 of 12");
   },
 };
 
@@ -147,5 +148,67 @@ export const ReadOnly: Story = {
   render: () => <Host initial={{ left: "Fixed" }} disabled />,
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByRole("textbox", { name: "Header, left cell" })).toBeDisabled();
+  },
+};
+
+/** Font, size and colour are set for the whole band, and each setting is removed again when emptied. */
+export const FontSizeAndColourApplyToTheWholeBand: Story = {
+  render: () => <Host initial={{ left: "A" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    await userEvent.selectOptions(view.getByRole("combobox", { name: "Footer: font" }), "serif");
+    const size = view.getByRole("spinbutton", { name: "Footer: size (pt)" });
+    await userEvent.type(size, "10");
+    await expect(band(canvasElement)).toEqual({ left: "A", font: "serif", size: 10 });
+    await userEvent.selectOptions(view.getByRole("combobox", { name: "Footer: font" }), "");
+    await userEvent.clear(size);
+    await expect(band(canvasElement)).toEqual({ left: "A" });
+  },
+};
+
+/** The Bold and Italic buttons wrap the selected words of the cell last edited in the marks the server reads. */
+export const BoldAndItalicWrapTheSelection: Story = {
+  render: () => <Host initial={{ centre: "Draft copy" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const cell = view.getByRole("textbox", { name: "Footer, centre cell" }) as HTMLTextAreaElement;
+    cell.focus();
+    cell.setSelectionRange(0, 5);
+    await userEvent.click(view.getByRole("button", { name: "Footer: Bold" }));
+    await expect(band(canvasElement).centre).toBe("**Draft** copy");
+    cell.focus();
+    cell.setSelectionRange(10, 14);
+    await userEvent.click(view.getByRole("button", { name: "Footer: Italic" }));
+    await expect(band(canvasElement).centre).toBe("**Draft** *copy*");
+  },
+};
+
+/** With nothing selected a mark pair is written, so typing continues inside it. */
+export const NothingSelectedWritesAMarkPair: Story = {
+  render: () => <Host initial={{ left: "" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    await userEvent.click(view.getByRole("textbox", { name: "Footer, left cell" }));
+    await userEvent.click(view.getByRole("button", { name: "Footer: Bold" }));
+    await expect(band(canvasElement).left).toBe("****");
+  },
+};
+
+/** The sample under a cell shows its marks, drawn in the band's own colour. */
+export const TheSampleShowsTheMarks: Story = {
+  render: () => <Host initial={{ right: "**Page {{page}}** of {{pages}}", colour: "#ff0000" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const bold = view.getByText("Page 3");
+    await expect(bold).toHaveStyle("font-weight: 700");
+    await expect(bold.parentElement).toHaveTextContent("Prints as: Page 3 of 12");
+  },
+};
+
+/** A taller line (a larger size) needs a taller margin, and the editor says so before the save is refused. */
+export const ALargerSizeNeedsATallerMargin: Story = {
+  render: () => <Host initial={{ left: "a\nb\nc", size: 24 }} kind="footer" margin={1.5} />,
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("The footer needs a bottom margin of at least");
   },
 };

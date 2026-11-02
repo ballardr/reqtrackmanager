@@ -15065,3 +15065,98 @@ Backend `test_report_block_fonts.py` (39): the tree rules (valid, 9 bad values w
 | 1 | **The per-test cleanup deletes only the tables that hold rows, with foreign-key triggers off for that transaction** (`_clean_tables` in `tests/conftest.py`). `TRUNCATE ... CASCADE` of every table cost about 1.4 s per test, because the cascade also truncates every table that references a populated one; the delete takes about 0.05 s. A role that is not a superuser falls back to the truncate. The empty database each test starts from is unchanged. | Agent |
 | 2 | **Tests hash passwords at bcrypt's minimum cost.** Every test creates users and logs in, and 12 rounds cost about a quarter of a second each time (setup median 0.64 s to 0.14 s). Production keeps the library default; hashes carry their own cost, so verification is unaffected. | Agent |
 | 3 | **Result.** The full suite (6,554 tests) ran in 17m48s with `-n 8` on a 12-core laptop, against 84 minutes before. CI keeps `-n 4` to match its 4-vCPU runners. | Agent |
+
+## Custom reports Phase 76: font, size, colour and marks in the page header and footer (2026-11-02)
+
+A header or footer band (the layout's, and each page style's) takes optional `font`, `size` and `colour` for the whole band, and its cells read `**bold**` and `*italic*`. The bands are the "headers" reading of the User's request that Phase 75 did not cover.
+
+```mermaid
+flowchart LR
+    T["band: left/centre/right + font, size, colour"] --> R["read_marks per cell<br/>then fill placeholders per stretch"]
+    R --> M["RunningBand: cells of str / PageField / Marked<br/>font family, size, #rrggbb"]
+    M --> P["PDF: draw_run per run, family-aware width"]
+    M --> W["Word: run properties on each run and field"]
+    M --> O["ODT: BandLook styles + Band_b/i/bi spans"]
+    M --> H["HTML: strong/em on screen, box look in print"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **One setting for the band, not per cell** (the plan's suggestion): `font` (a Phase 73 key), `size` (6 to 72, same rule as a block) and `colour` (a colour word, `none` refused) sit beside `left`/`centre`/`right` in the `header`/`footer` object, at the root and in each page style. The page style's band replaces the layout's whole, as before, so its look is independent. Absent means: the document's body font, 8 pt, black. No migration. | Agent |
+| 2 | **Marks are `**bold**`, `*italic*` and `***both***` only** (no code, links or equations, as the plan says), read by a small reader of its own (`report_running.read_marks`) rather than the Markdown reader, because a band must not read `_` (placeholders such as `{{org.footer_text}}` contain it) and must read a mark across a page field (`**Page {{page}}**`). A mark opens before a word and closes after one, so `2 * 3` and an unclosed mark stay literal; `\*` is a literal asterisk. Marks are read **before** placeholders are filled, stretch by stretch, so a value holding `*` is never read for marks. A band that held a literal `*word*` now prints `word` in italic: the one visible change to existing layouts. | Agent |
+| 3 | **Model:** `RunningBand` gains `font` (a resolved `FontFamily`), `size` and `colour` (`#rrggbb`); `SlotPart` gains `Marked(part, bold, italic)`, which wraps text or a page field. The evaluator resolves the font through `block_look` (the fallback family and run note of Phase 75) and the colour through `resolve_colour` with the run's scheme, noting scheme names in the run provenance. | Agent |
+| 4 | **PDF.** The band is drawn in the family active for the whole render (the body font) unless it names one; text is measured and drawn run by run in the bold, italic or bold-italic face (`report_fonts.draw_run`, `text_width(bold=, italic=)`), including the Unicode fallback face, so a long or marked cell still aligns. **Word:** the size is always written on the runs (as before), the font and colour only when set, bold and italic on the run, and the same on the `PAGE`/`NUMPAGES` field runs. **ODT:** a band with its own look gets automatic paragraph styles (`BandLook<n>_<slot>`) over `Band_<slot>`, and a mark is a `text:span` of one of three shared automatic text styles (`Band_b`, `Band_i`, `Band_bi`); the writer collects the styles and families and `styles.xml` declares them. **HTML:** on screen the band carries the look as validated inline CSS and marks are `<strong>`/`<em>`; the print margin boxes carry the size, font and colour, and bold or italic only when every word of the cell is marked, because a CSS `content` string cannot style part of itself (stated in the website page). | Agent |
+| 5 | **Margin fit follows the size.** The line height is `max(0.4 cm, size x 1.25)` (`band_line_cm`, replacing the fixed `BAND_LINE_CM`), used by the server's fit check, the PDF, Word's page-bottom offset and the editor's arithmetic, so a 24 pt footer is refused where its margin is too small, not clipped. | Agent |
+| 6 | **Embedding includes band fonts.** `font_keys` (the save and validate warning) and `used_extra_families` count an administrator-provided family named only by a band, with the bold and italic faces its marks need; a band marked bold or italic with no font of its own adds those faces to the body family. | Agent |
+| 7 | **Text view.** `@header … font serif size 9.5 colour primary` (clauses after the cells and logo, each once, written in that order). The cells keep their quoted text, so the marks round trip as typed. | Agent |
+| 8 | **Designer.** `RunningBandEditor` (used by the Page setup dialog, each page style and the Blocks view's layout settings) gets the shared `FontChoiceField`, a size field and the shared `ColourChoiceField` (no "No colour"), a **B** and **I** pair that wraps the selection of the cell last edited (with nothing selected it writes the pair and leaves the caret between), and the sample line under a cell now shows its marks, in the band's size, colour and typeface kind. The text view's dialog reads the layout's palette from its `@palette` line. All three call sites pass the fonts and colours. | Agent |
+| 9 | **Not applicable / not built:** a project-scoped vocabulary table (no nested-project fallback or hide and restore), users and groups, human codes and search (a band is not a record), time shapes, a module edit to a core file (nothing per module). Not built: a font per cell, marks across a line break in the print margin boxes, a real-typeface sample. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a band font, size or colour reaching CSS, XML or a Word font table; the new mark reader fed hostile cell text (a very long run of asterisks, nesting, an unterminated mark); a placeholder value read for marks after it is filled; a band colour name resolving outside the layout's scheme. Verify: the font key, size and colour are checked at save by the rules text and heading blocks use (`font_key_form_problem`, `size_problem`, `colour_word_problem` against the layout and organisation scheme) and only ever resolved through the catalogue; the CSS and XML come from the family's restricted name, a number and `#rrggbb`, in escaped attributes or lxml; the mark reader is one linear pass over a cell capped at 300 characters and three lines, runs of four or more asterisks stay literal, and marks are read before any value is filled in. Remediate: nothing outstanding. Residual: as Phase 74, a font key names a family on the server and no font bytes or paths appear in a response.
+
+### Verification
+
+Backend `test_report_band_fonts.py` (41): the mark reader (10 shapes, a line break, line height), the tree rules (valid on both levels, 7 bad values with their paths, fit at a larger size, a scheme name), the text view (exact round trip, 4 mistakes), PDF (family, bold and italic faces, colour operator, 8 pt and 14 pt, body font followed, band font beating it), Word (size, font, colour, marks and the page fields), ODT (look styles, spans, well-formed XML, none when plain), HTML (marks on screen, the print boxes, whole-cell rule), embedding, and an API run in all four formats. The existing `test_report_running.py` (two cases that used `colour` as an unknown word changed to another), `test_report_bottom.py`, `test_report_styles.py` and `test_report_block_fonts.py` pass. Storybook `RunningBandEditor` (14, six new). Playwright `report-band-fonts.spec.ts`. The field-help and required-marker checks are clean. **Not done:** Word itself was not opened; the seed scripts and starters are for the next phase.
+
+## Custom reports Phase 77: fonts and colours in the snippets, the starters and the demo data (2026-11-02)
+
+Closes the fonts-and-colours run (Phases 72 to 76) by making the things people copy from use it, and by pinning that the built-ins do not depend on a scheme the layout lacks.
+
+```mermaid
+flowchart LR
+    S["Starter tree: styles.headings.colour = primary"] --> R{"Colour name primary"}
+    R -->|"organisation scheme has it"| O["Organisation's colour"]
+    R -->|"no"| B["Built-in Branding set: the report accent"]
+    D["Demo layout: own palette plate, highlight"] --> L["Layout's scheme wins over the organisation's"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Starters:** each document starter's tree gains `styles: {"headings": {"colour": "primary"}}` and nothing else (no `palette`, no `font`). `primary` is a built-in name, so the starter prints in the report accent with no scheme anywhere and follows the organisation's scheme live. The workbook (a table layout) gets no styles. The plan also listed table header fill and rules: a table block already paints its header row in the accent and has no fill or rule setting, so there is nothing to name there; adding one would be a new feature, not asked for. Existing organisation copies are not rewritten (the Phase 55 precedent); an organisation gets the new look by removing a copy and using Add missing starters. This is a visible change to the four starters and **needs the User's review in PDF and Word** before the checkpoint. | User (the wish); Agent (the reading, as the plan) |
+| 2 | **Snippets:** read and found already correct (the table snippets use `black` and `white`; the cover, logo, record-images and landscape snippets set no colour or font). A test now walks every built-in snippet and fails on a hex colour, a scheme name outside the reserved and standard words, a font outside the Phase 73 keys, or a `palette`/`styles` key in its root; a second test applies each snippet into a layout that has a scheme and fonts and checks both survive untouched. | Agent |
+| 3 | **Demo data:** "Project overview with logo" gets its own scheme (`plate` = `accent_dark`, `highlight` = `#b45309`; the shape's fill is now `plate`), a serif body at 11 pt, sans headings in `plate`, and an italic footer (`*project*` left, `*Page {{page}} of {{pages}}*` right, in `plate`). The organisation scheme (`alert`, `success`) was already seeded in Phase 72. `seed_e2e_dataset.py` is unchanged (no spec reads these). | Agent |
+
+Not applicable: a project-scoped vocabulary table, users and groups, human codes and search, time shapes, module boundary (nothing per module), a bundle (no new stored field).
+
+### Security review (identify, verify, remediate)
+
+Identify: a starter or snippet carrying a colour or font name that a receiving layout cannot resolve (a validation error or a silent wrong colour). Verify: the tests above; the starter tree validates with no organisation colours. Remediate: nothing outstanding.
+
+### Verification
+
+`test_report_starters.py` (heading colour in every document starter and none in the workbook; the heading colour in HTML follows the Branding set and then an organisation `primary`; PDF, Word and ODT runs), `test_report_snippets.py` (colour and font vocabulary of every built-in; each snippet into a layout with a scheme), `test_seed_demo_report_layout.py` (the demo layout validates with the organisation's names, keeps its own scheme, and runs in HTML, PDF, Word and ODT, with the serif body, the sans bold headings and the plate colour read back). **Not done:** the seed was not run against a fresh database (the shared test database) and Word itself was not opened; the User reviews the starters' look.
+
+## Custom reports Phase 78: a custom table's font and size, at grid and column level (2026-11-02)
+
+A custom table (`grid`) takes optional `font` and `size` on the grid and on each column. A column's setting wins over the grid's; a grid that sets neither prints as before (the document's font, the table's own 9 pt). A row and a cell never set either.
+
+```mermaid
+flowchart LR
+    C["column font, size"] -->|"wins"| R["_eval_grid: one look per column<br/>(block_look, once per key per run)"]
+    G["grid font, size"] -->|"else"| R
+    R --> K["GridCell.font, size"]
+    K --> P["PDF: face + size per cell style"]
+    K --> W["Word: run properties"]
+    K --> O["ODT: cell paragraph style"]
+    K --> H["HTML: validated inline CSS on td"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Tree keys.** `grid` and `columns[]` accept `font` and `size`, checked by the same rules as a text block (`font_key_form_problem`, `size_problem`) so one rule serves every font setting. They are not in the cascading style keys that rows and cells share, so a row or cell naming either is an "Unknown key" at its path. No migration. | User (grid and column level, not per cell); Agent (the shape) |
+| 2 | **Resolved onto each cell.** The evaluator resolves one look per column (the column's key, else the grid's) with `_Run.block_look`, so a missing family falls back with the run note of Phase 75, and `GridCell` carries `font` and `size`. The renderers read the cell, not the tree. | Agent |
+| 3 | **Renderers.** PDF: the cell style's face and size follow the cell (bold uses that family's bold face; fallback characters follow the family through `using_family`); leading is size + 2 as before. Word: the existing run callback sets size and, through the renderer's own `_block_look` passed in as a callback (an import would be circular), the family. ODT: the cell paragraph style carries `style:font-name` and `fo:font-size` and the family is declared with the other block fonts. HTML: `font-family` / `font-size` on the `td`, built from a validated family and a number, attribute-escaped. Cells that look alike still share one style. | Agent |
+| 4 | **Embedding and the fonts warning include grids.** `font_keys` finds a grid's and its columns' fonts at any depth; `used_extra_families` adds an administrator-provided family a cell uses, with the faces its bold and italic text need. | Agent |
+| 5 | **Text view.** `@grid columns=2 font=serif size=9` and `@col 2 font=mono size=10.5`, each once; `size` must be a number of points. Rows and cells do not accept them. | Agent |
+| 6 | **Designer.** The grid-level Font and Size are two more schema fields, drawn by the generic `font` and `number` kinds in the block panel. A column's are in the table editor beside its width (Font of column N, Size of column N), using the shared `FontChoiceField`; the editor had no gear popover to put them in. An empty font reads "Table font" and an empty size "Table size". | Agent |
+| 7 | **Not applicable / not built:** a project-scoped vocabulary table, users and groups, human codes and search, time shapes, a module edit to a core file (nothing per module), a bundle field (the tree travels whole). Not built: a font or size per row, cell or selection (the User asked for grid and column level only). Stored layouts and bundles need no change; a tree without the keys is valid as before. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a font key or size reaching CSS, ODT XML, Word's font table or a file path from a grid or column. Verify: both are checked at save by the rules text blocks use and only ever resolved through the font catalogue (a key never becomes a path); HTML builds the style from the administrator-restricted family name and a number and escapes the attribute; ODT quotes the family name as an attribute; Word writes the name through lxml. Remediate: nothing outstanding.
+
+### Verification
+
+`backend/tests/test_report_grid_fonts.py` (28): the tree rules and paths, a row or cell naming either refused, the fonts found at any depth, the text view (exact round trip, three mistakes, no font on a row), the cascade through the evaluator, an unchanged grid, a missing family's run note, the PDF faces and sizes, Word runs of that column only, ODT shared and declared styles, HTML, embedding, and a run through the API in all four formats. Storybook story for the column fields; Playwright `report-grid-fonts.spec.ts` (set a column to Mono in the table editor, read it in the Word XML, PDF and HTML).

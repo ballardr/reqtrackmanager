@@ -10,7 +10,8 @@ Responsibilities:
 - `PageNote`: what a page records about itself while it is laid out (its style, side and whether it is the first page
   of a section) for the canvas to draw later.
 - `draw_band`: one header or footer as an invisible three-column table in the page margin: left, centre and right
-  cells, each holding up to three lines, and a logo at the start of one of them.
+  cells, each holding up to three lines of runs in the band's font, size and colour (bold and italic where marked),
+  and a logo at the start of one of them.
 
 Design decisions:
 - The band is drawn after the page's content, in the margin the layout checked it fits, never inside the text frame, so
@@ -18,6 +19,9 @@ Design decisions:
 - A cell is left-, centre- or right-aligned in a third of the text width (the same widths for every page of a style),
   and the row is as tall as its tallest cell; the text is centred on the logo when there is one.
 - A logo that cannot be decoded is left out: a bad picture never breaks a report.
+
+- A band with no font follows the document's body font (the family active for the whole render); one with a font draws
+  and measures in that family.
 
 Dependencies: ReportLab, `services.report_fonts`, `services.report_image_layout`, `services.report_running`,
 `services.report_svg`.
@@ -27,23 +31,24 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from typing import Any
 
 from reportlab.graphics import renderPDF
+from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 
-from app.services.report_fonts import draw_aligned, text_width
+from app.services.report_fonts import draw_run, text_width, using_family
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_model import SLOT_NAMES, PageField, PageStyle, RunningBand
-from app.services.report_page_styles import BAND_EDGE_CM, BAND_LINE_CM
+from app.services.report_page_styles import BAND_EDGE_CM
 from app.services.report_pdf_floating import Floater, draw_floaters
-from app.services.report_running import band_for_page, band_visible, cell_lines
+from app.services.report_running import band_for_page, band_line_cm, band_size_pt, band_visible, cell_lines, unmark
 from app.services.report_svg import svg_flowable
 
-_SIZE = 8
 _GAP = 0.2 * cm
 _ALIGN = {"left": "left", "centre": "center", "right": "right"}
 
@@ -96,11 +101,22 @@ class RunningCanvas(Canvas):
         super().save()
 
 
-def _text_of(parts, number: int, total: int) -> str:
-    """A line's parts as text, with the page fields filled."""
-    return "".join(
-        str(number) if part is PageField.PAGE else str(total) if part is PageField.PAGES else part for part in parts
-    )
+def _runs_of(parts, number: int, total: int) -> list[tuple[str, bool, bool]]:
+    """A line's parts as `(text, bold, italic)` runs, with the page fields filled."""
+    runs: list[tuple[str, bool, bool]] = []
+    for part in parts:
+        words, bold, italic = unmark(part)
+        text = str(number) if words is PageField.PAGE else str(total) if words is PageField.PAGES else words
+        if runs and runs[-1][1:] == (bold, italic):
+            runs[-1] = (runs[-1][0] + text, bold, italic)
+        else:
+            runs.append((text, bold, italic))
+    return runs
+
+
+def _width(runs: list[tuple[str, bool, bool]], size: float) -> float:
+    """The width of a line's runs in points."""
+    return sum(text_width(text, size, bold=bold, italic=italic) for text, bold, italic in runs)
 
 
 def _logo(band: RunningBand, cell_cm: float):
@@ -144,29 +160,35 @@ def draw_band(canvas: Any, band: RunningBand | None, note: PageNote, total: int,
     cell_w = (page_w - left - right) / 3
     logo = _logo(band, cell_w / cm)
     lines = {slot: cell_lines(band.slot(slot)) for slot in SLOT_NAMES}
-    leading = BAND_LINE_CM * cm
+    size = band_size_pt(band.size)
+    leading = band_line_cm(band.size) * cm
     row_h = max(max((len(v) for v in lines.values()), default=0) * leading, logo[2] if logo else 0.0)
     bottom = page_h - BAND_EDGE_CM * cm - row_h if header else BAND_EDGE_CM * cm
     canvas.saveState()
-    for index, slot in enumerate(SLOT_NAMES):
-        x0 = left + index * cell_w
-        x1 = x0 + cell_w
-        align = _ALIGN[slot]
-        text_lines = [_text_of(line, note.number, total) for line in lines[slot]]
-        text_w = max((text_width(t, _SIZE) for t in text_lines), default=0.0)
-        logo_w = logo[1] if logo and band.logo_slot == slot else 0.0
-        gap = _GAP if logo_w and text_lines else 0.0
-        group = logo_w + gap + text_w
-        start = x0 if align == "left" else x1 - group if align == "right" else (x0 + x1) / 2 - group / 2
-        if logo_w:
-            _draw_logo(canvas, logo, start, bottom + (row_h - logo[2]) / 2)
-            start += logo_w + gap
-        block_h = len(text_lines) * leading
-        top = bottom + (row_h + block_h) / 2
-        for k, text in enumerate(text_lines):
-            baseline = top - (k + 1) * leading + (leading - _SIZE) / 2 + 0.2 * _SIZE
-            anchor = start if align == "left" else start + text_w if align == "right" else start + text_w / 2
-            draw_aligned(canvas, anchor, baseline, text, _SIZE, align)
+    if band.colour:
+        canvas.setFillColor(colors.HexColor(band.colour))
+    with using_family(band.font.key) if band.font else nullcontext():
+        for index, slot in enumerate(SLOT_NAMES):
+            x0 = left + index * cell_w
+            x1 = x0 + cell_w
+            align = _ALIGN[slot]
+            text_lines = [_runs_of(line, note.number, total) for line in lines[slot]]
+            widths = [_width(runs, size) for runs in text_lines]
+            text_w = max(widths, default=0.0)
+            logo_w = logo[1] if logo and band.logo_slot == slot else 0.0
+            gap = _GAP if logo_w and text_lines else 0.0
+            group = logo_w + gap + text_w
+            start = x0 if align == "left" else x1 - group if align == "right" else (x0 + x1) / 2 - group / 2
+            if logo_w:
+                _draw_logo(canvas, logo, start, bottom + (row_h - logo[2]) / 2)
+                start += logo_w + gap
+            block_h = len(text_lines) * leading
+            top = bottom + (row_h + block_h) / 2
+            for k, (runs, line_w) in enumerate(zip(text_lines, widths, strict=True)):
+                baseline = top - (k + 1) * leading + (leading - size) / 2 + 0.2 * size
+                x = start if align == "left" else start + text_w - line_w if align == "right" else start + (text_w - line_w) / 2
+                for text, bold, italic in runs:
+                    x += draw_run(canvas, x, baseline, text, size, bold=bold, italic=italic)
     canvas.restoreState()
 
 

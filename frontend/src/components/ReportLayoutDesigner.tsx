@@ -586,7 +586,7 @@ export function ReportLayoutDesigner({
                   {blockTypes && <ReportSnippetMenu onInsert={() => void openTextSnippets()} onSave={() => void openTextSave()} />}
                   <ReportLayoutPageSetup
                     text={draft} onChange={setDraft} images={{ library: api.images, scope: api.scope.kind }}
-                    placeholders={catalogue?.placeholders}
+                    placeholders={catalogue?.placeholders} look={{ fonts, colours }}
                   />
                 </div>
               )}

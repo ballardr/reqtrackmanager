@@ -283,7 +283,7 @@ def _styles_xml(document: ReportDocument, styles: list[PageStyle], package: OdfP
             f'<style:master-page style:name="{_master_name(i)}" style:page-layout-name="PL{i}">{footer_xml}</style:master-page>'
             for i in range(len(styles))
         )
-        cover, automatic = '<style:master-page style:name="Cover" style:page-layout-name="PL0"/>', ""
+        cover, automatic, families = '<style:master-page style:name="Cover" style:page-layout-name="PL0"/>', "", []
     else:
         writer = RunningWriter(package)
         has_cover = bool(document.branding and document.branding.include_cover_page)
@@ -295,10 +295,11 @@ def _styles_xml(document: ReportDocument, styles: list[PageStyle], package: OdfP
             for i, style in enumerate(styles)
         ) + writer.master_page("Continue", "PL0", 0, styles[0], first_differs=False)
         cover = '<style:master-page style:name="Cover" style:page-layout-name="PLC"/>'
-        automatic = _frame_style_xml() + "".join(running_styles(i, style) for i, style in enumerate(styles))
+        automatic = _frame_style_xml() + "".join(running_styles(i, style) for i, style in enumerate(styles)) + "".join(writer.styles)
+        families = writer.families
     return (
         f'{XML_DECLARATION}<office:document-styles {namespace_attrs(*_ALL_NS)} office:version="{ODF_VERSION}">'
-        f"{font_faces(document.styles.families)}"
+        f"{font_faces([*document.styles.families, *families])}"
         f"<office:styles>{_named_styles(document.styles)}</office:styles>"
         f"<office:automatic-styles>{layouts}{automatic}</office:automatic-styles>"
         f"<office:master-styles>{masters}{cover}</office:master-styles>"
@@ -650,7 +651,7 @@ class _Body:
             self.table(block)
         elif isinstance(block, Grid):
             self._grids += 1
-            self.chunks.append(odt_grid(block, f"Grid{self._grids}", self.usable_cm, self._inline, self.styles))
+            self.chunks.append(odt_grid(block, f"Grid{self._grids}", self.usable_cm, self._inline, self.styles, self._own_families))
         elif isinstance(block, BottomStart):
             self.bottom_from = len(self.chunks)
         elif isinstance(block, BottomEnd):

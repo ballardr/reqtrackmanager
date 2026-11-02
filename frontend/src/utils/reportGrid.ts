@@ -351,6 +351,18 @@ export function setColumnWidth(shape: GridShape, column: number, width: string |
   return { ...shape, columns };
 }
 
+/** Sets or clears (`undefined`) a column's own `font` (a font key) or `size` (points). A row or cell never sets either. */
+export function setColumnLook(shape: GridShape, column: number, key: "font" | "size", value: string | number | undefined): GridShape {
+  const columns = shape.columns.map((c, i) => {
+    if (i !== column) return c;
+    const next: Obj = { ...c };
+    if (value === undefined || value === "") delete next[key];
+    else next[key] = value;
+    return next;
+  });
+  return { ...shape, columns };
+}
+
 /** Sets or clears (`undefined`) a row's minimum height; clearing also clears the unit. */
 export function setRowHeight(shape: GridShape, row: number, height: number | undefined, unit: "cm" | "mm"): GridShape {
   const rows = shape.rows.map((r, i) => {

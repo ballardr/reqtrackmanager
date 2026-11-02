@@ -71,7 +71,7 @@ from app.services.report_model import (
     text_on,
     text_runs,
 )
-from app.services.report_running import cell_lines
+from app.services.report_running import band_size_pt, cell_lines, unmark
 from app.services.report_svg import UnsafeSvgError, sanitize_svg
 
 _HEX = re.compile(r"^#?([0-9A-Fa-f]{6})$")
@@ -171,14 +171,7 @@ def _band_html(band: RunningBand | None, kind: str) -> str:
         return ""
     cells = []
     for slot in SLOT_NAMES:
-        text = "<br>".join(
-            "".join(
-                '<span class="pf" title="Filled in when printed">' + ("n" if part is PageField.PAGE else "N") + "</span>"
-                if isinstance(part, PageField) else _esc(part)
-                for part in line
-            )
-            for line in cell_lines(band.slot(slot))
-        )
+        text = "<br>".join("".join(_band_part_html(part) for part in line) for line in cell_lines(band.slot(slot)))
         logo = ""
         if band.logo is not None and band.logo_slot == slot:
             uri = _data_uri(band.logo.data) if band.logo.data else None
@@ -189,7 +182,18 @@ def _band_html(band: RunningBand | None, kind: str) -> str:
                     uri = None
             logo = f'<img src="{uri}" alt="" style="height:{band.logo_height_cm:g}cm">' if uri else ""
         cells.append(f'<div class="cell {slot}">{logo}<span>{text}</span></div>')
-    return f'<div class="band {kind}">{"".join(cells)}</div>'
+    look = _own_style(band.font, band.size, band.colour)
+    return f'<div class="band {kind}"{look}>{"".join(cells)}</div>'
+
+
+def _band_part_html(part) -> str:
+    """One part of a band cell: its words (escaped) or the page-number stand-in, in `<strong>` and `<em>` where marked."""
+    words, bold, italic = unmark(part)
+    html_text = (
+        '<span class="pf" title="Filled in when printed">' + ("n" if words is PageField.PAGE else "N") + "</span>"
+        if isinstance(words, PageField) else _esc(words)
+    )
+    return ("<strong>" if bold else "") + ("<em>" if italic else "") + html_text + ("</em>" if italic else "") + ("</strong>" if bold else "")
 
 
 def _css_string(text: str) -> str:
@@ -211,11 +215,28 @@ def _box_content(parts: tuple) -> str:
     """The CSS `content` value of a margin box: strings and page counters."""
     tokens = []
     for part in parts:
-        if isinstance(part, PageField):
-            tokens.append("counter(page)" if part is PageField.PAGE else "counter(pages)")
+        words = unmark(part)[0]
+        if isinstance(words, PageField):
+            tokens.append("counter(page)" if words is PageField.PAGE else "counter(pages)")
         else:
-            tokens.append(f'"{_css_string(part)}"')
+            tokens.append(f'"{_css_string(words)}"')
     return " ".join(tokens) or '""'
+
+
+def _box_look(band: RunningBand, parts: tuple) -> str:
+    """The declarations a margin box sets: the band's size (8 pt by default), font and colour, and bold or italic when
+    every word of the cell is marked (a margin box prints one string, so a mark on part of a cell is shown on screen only)."""
+    words = [unmark(part) for part in parts if not isinstance(unmark(part)[0], PageField)]
+    rules = [f"font-size: {band_size_pt(band.size):g}pt"]
+    if band.font is not None:
+        rules.append(f"font-family: {band.font.css_stack}")
+    if band.colour is not None:
+        rules.append(f"color: {band.colour}")
+    if words and all(bold for _, bold, _ in words):
+        rules.append("font-weight: bold")
+    if words and all(italic for _, _, italic in words):
+        rules.append("font-style: italic")
+    return "; ".join(rules)
 
 
 def _box_rules(selector: str, style: PageStyle) -> str:
@@ -231,13 +252,10 @@ def _box_rules(selector: str, style: PageStyle) -> str:
         for slot in SLOT_NAMES:
             box = _BOXES[(kind, slot)]
             swapped = _BOXES[(kind, {"left": "right", "centre": "centre", "right": "left"}[slot])]
-            rules.append(
-                f"@page{selector} {{ @{box} {{ content: {_box_content(band.slot(slot))}; font-size: 8pt; white-space: pre-line; }} }}"
-            )
+            declarations = f"content: {_box_content(band.slot(slot))}; {_box_look(band, band.slot(slot))}; white-space: pre-line;"
+            rules.append(f"@page{selector} {{ @{box} {{ {declarations} }} }}")
             if style.mirror:
-                rules.append(
-                    f"@page{selector}:left {{ @{swapped} {{ content: {_box_content(band.slot(slot))}; font-size: 8pt; white-space: pre-line; }} }}"
-                )
+                rules.append(f"@page{selector}:left {{ @{swapped} {{ {declarations} }} }}")
             if not band.first_page:
                 rules.append(f"@page{selector}:first {{ @{box} {{ content: none; }} }}")
     return "\n".join(rules)

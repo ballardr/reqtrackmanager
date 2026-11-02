@@ -67,11 +67,13 @@ Grammar (one statement per line; indentation is cosmetic):
   `caption "<text>"`, `caption_position above|below`, `numbering auto|always|never`, `width <n> [cm|mm|percent]`,
   `height <n> [cm|mm]`, `align left|center|right`, `placement inline|wrap` and `empty "<text>"`; each is written only when
   the block has the key.
-- A custom table is `@grid columns=<n> [headerrows=<n>] [borders=all|outer|horizontal|none] [bordercolor=<colour>] [<style>]`,
-  then `@col <n> [width=25%|4cm|40mm] [<style>]` for a column that sets anything, then one line of cells per row, `| a | b |`,
+- A custom table is `@grid columns=<n> [headerrows=<n>] [borders=all|outer|horizontal|none] [bordercolor=<colour>] [font=<key>]
+  [size=<pt>] [<style>]`, then `@col <n> [width=25%|4cm|40mm] [font=<key>] [size=<pt>] [<style>]` for a column that sets anything,
+  then one line of cells per row, `| a | b |`,
   each row optionally preceded by `@row [height=2cm|15mm|2] [<style>]`, and `@end`. The `<style>` words are `align=left|center|right|
   justify`, `valign=top|middle|bottom`, `fill=<colour>`, `color=<colour>` and `bold` / `notbold`; the most specific of grid,
-  column, row and cell wins. A cell may start with `{colspan=3 rowspan=2 <style>}` (the cell it merges is written once and the
+  column, row and cell wins; `font` and `size` are the exception, set on the grid and on a column only (the column wins).
+  A cell may start with `{colspan=3 rowspan=2 <style>}` (the cell it merges is written once and the
   positions it covers are left out of their rows). In a cell `\\\\` is a backslash, `\\|` a bar, `\\n` a new line and a leading `\\{` a
   brace; an empty row is `||`. Cell text is Markdown with placeholders, as in a text block.
 - An equation block is `@equation <TeX>` on one line (`@equation \\frac{a}{b} = c`). Equations inside a text line
@@ -92,6 +94,8 @@ Grammar (one statement per line; indentation is cosmetic):
 - `@heading level=2 font=sans size=18 colour=primary Title` and `@text font=serif size=11` … `@end` (or `@text font=serif
   "quoted"`) give one block its own font, size and, for a heading, colour; each is optional and falls back to the
   document's. They apply to the whole block. A heading's words take `*italic*`, `**bold**` and `` `code` `` marks.
+- `@header left "Draft" right "**Page {{page}}** of {{pages}}" font serif size 9 colour primary` (and `@footer`) may
+  end with `font`, `size` (points) and `colour` clauses for the whole band; a cell reads `**bold**` and `*italic*`.
 - `@palette primary=#1f3a5f secondary=accent warn=#b45309` (before the first block, once) is the layout's own colour
   scheme: up to 8 `name=colour` pairs a block can use as a colour by name. `@palette follow` says the layout has none of
   its own (it follows the organisation's) and is the same as no line.
@@ -1002,6 +1006,10 @@ class _Parser:
                 band[word] = cur.text(f"the {word} text in quotes")
             elif word == "first":
                 band["first_page"] = cur.word("same or none")
+            elif word == "size":
+                band["size"] = _number_word(cur, "the text size in points")
+            elif word in ("font", "colour"):
+                band[word] = cur.word(f"the {word}")
             elif word == "logo":
                 band["logo"] = {"file": cur.text("the logo's file id in quotes")}
             else:  # height, slot: belong to the logo written before them
@@ -1440,7 +1448,7 @@ def _variable_text(declaration: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-_BAND_CLAUSES = ("left", "centre", "right", "logo", "height", "slot", "first")
+_BAND_CLAUSES = ("left", "centre", "right", "logo", "height", "slot", "first", "font", "size", "colour")
 
 
 def _write_bands(writer: _Writer, holder: dict[str, Any]) -> None:
@@ -1451,6 +1459,7 @@ def _write_bands(writer: _Writer, holder: dict[str, Any]) -> None:
         band = holder[kind]
         parts = [f"@{kind}"]
         parts += [f"{slot} {_quote(band[slot])}" for slot in ("left", "centre", "right") if slot in band]
+        parts += [f"{key} {json.dumps(band[key]) if key == 'size' else band[key]}" for key in ("font", "size", "colour") if key in band]
         if "logo" in band:
             logo = band["logo"]
             parts.append(f"logo {_quote(logo['file'])}")
@@ -1942,14 +1951,17 @@ def _write_table(w: _Writer, node: dict[str, Any], depth: int) -> None:
 _GRID_STYLE_KEYS: dict[str, tuple[str, str]] = {
     "align": ("align", "text"), "valign": ("valign", "text"), "fill": ("fill", "text"), "color": ("color", "text"),
 }
+#: Font and size are set on the grid and on a column only, never on a row or cell.
+_GRID_LOOK_KEYS: dict[str, tuple[str, str]] = {"font": ("font", "text"), "size": ("size", "size")}
 _GRID_HEADER_KEYS = {
     "columns": ("columns", "int"), "headerrows": ("header_rows", "int"), "borders": ("borders", "text"),
-    "bordercolor": ("border_color", "text"), **_GRID_STYLE_KEYS,
+    "bordercolor": ("border_color", "text"), **_GRID_STYLE_KEYS, **_GRID_LOOK_KEYS,
 }
-_GRID_COLUMN_KEYS = {"width": ("width", "width"), **_GRID_STYLE_KEYS}
+_GRID_COLUMN_KEYS = {"width": ("width", "width"), **_GRID_STYLE_KEYS, **_GRID_LOOK_KEYS}
 _GRID_ROW_KEYS = {"height": ("height", "height"), **_GRID_STYLE_KEYS}
 _GRID_CELL_KEYS = {"colspan": ("colspan", "int"), "rowspan": ("rowspan", "int"), **_GRID_STYLE_KEYS}
 _GRID_INT = re.compile(r"\d{1,6}")
+_GRID_SIZE = re.compile(r"\d{1,3}(?:\.\d{1,2})?")
 _GRID_HEIGHT = re.compile(r"(\d+(?:\.\d+)?)(cm|mm)?")
 _GRID_ATTRS = re.compile(r"\{([^{}]*)\}")
 _GRID_ESCAPES = {"\\": "\\", "|": "|", "n": "\n", "r": "\r", "{": "{"}
@@ -1984,6 +1996,10 @@ def _grid_word(node: dict[str, Any], word: str, column: int, keys: dict[str, tup
         if problem:
             raise _Syntax(problem, column)
         node[tree_key] = canonical_width(spec)
+    elif kind == "size":
+        if not _GRID_SIZE.fullmatch(value):
+            raise _Syntax(f"The size is a number of points such as 9 or 10.5, not {value!r}.", column)
+        node[tree_key] = json.loads(value)
     elif kind == "height":
         match = _GRID_HEIGHT.fullmatch(value)
         if match is None:

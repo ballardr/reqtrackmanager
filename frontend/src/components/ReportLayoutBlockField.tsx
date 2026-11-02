@@ -353,7 +353,7 @@ export function ReportLayoutBlockField({
       const gridText = strings.reportGrid;
       control = (
         <ReportGridField
-          label={gridText.fieldLabel} help={gridText.fieldHelp} node={node} disabled={disabled} colours={env.colours} palette={env.palette}
+          label={gridText.fieldLabel} help={gridText.fieldHelp} node={node} disabled={disabled} colours={env.colours} palette={env.palette} fonts={env.fonts}
           onSave={(patch) => (onChangeMany ? onChangeMany({ ...patch }) : Object.entries(patch).forEach(([key, v]) => onChange(key, v)))}
           renderCellText={(cell, onText, label) => (
             <ReportLayoutBlockField
@@ -406,6 +406,7 @@ export function ReportLayoutBlockField({
           <legend><strong>{field.label}</strong></legend>
           <PageStylesEditor
             value={entries.map(styleFromTree)} disabled={disabled} images={env.images} placeholders={env.catalogue.placeholders}
+            look={{ fonts: env.fonts, colours: env.colours, palette: env.palette }}
             base={{ size, orientation, margins: (node.margins ?? {}) as PageMargins, mirror: node.mirror_margins === true }}
             onChange={(next) => set(next.length === 0 ? undefined : next.map(styleToTree))}
           />
@@ -419,7 +420,7 @@ export function ReportLayoutBlockField({
         <RunningBandEditor
           kind={field.key === "footer" ? "footer" : "header"} value={value as RunningBand | undefined} onChange={set} inheritFrom="template"
           margin={(field.key === "footer" ? margins.bottom : margins.top) ?? DEFAULT_MARGIN_CM} images={env.images}
-          placeholders={env.catalogue.placeholders} disabled={disabled}
+          placeholders={env.catalogue.placeholders} look={{ fonts: env.fonts, colours: env.colours, palette: env.palette }} disabled={disabled}
         />
       );
       break;

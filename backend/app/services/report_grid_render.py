@@ -17,10 +17,12 @@ Design decisions:
 - **A row taller than a page must not fail the run.** ReportLab raises `LayoutError` for one, so the PDF drawing gives a cell's
   text as a list of paragraphs, cuts a paragraph that alone exceeds a page, leaves such a row's height to ReportLab and allows
   splitting inside rows only for a grid that has one.
+- **Font and size come from the column or the grid** (resolved onto each cell by the evaluator; never a row or cell). A cell
+  without them keeps the document's font and the table's own 9 pt, so a grid that sets nothing draws as before.
 - **No author text reaches markup except as escaped text.** A colour is written only from the `#rrggbb` the colour resolver
   returned (checked again here), alignments come from closed tables, and numbers are formatted by this module.
 
-Dependencies: reportlab, python-docx, `services.report_grid`, `services.report_column_width`.
+Dependencies: reportlab, python-docx, `services.report_grid`, `services.report_column_width`, `services.report_fonts`.
 """
 
 from __future__ import annotations
@@ -28,7 +30,9 @@ from __future__ import annotations
 import html
 import re
 from collections.abc import Callable
+from contextlib import nullcontext
 from typing import Any
+from xml.sax.saxutils import quoteattr
 
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import OxmlElement
@@ -43,7 +47,7 @@ from reportlab.platypus import Table as RlTable
 from reportlab.platypus import TableStyle
 
 from app.services.report_column_width import resolve_table_widths_cm
-from app.services.report_fonts import active_face
+from app.services.report_fonts import FontFamily, active_face, pdf_face, using_family
 from app.services.report_grid import PlacedCell, border_edges, place_grid
 from app.services.report_model import Grid
 
@@ -109,14 +113,17 @@ def pdf_grid(grid: Grid, usable_width: float, frame_height: float, markup: Calla
     needed = [0.0] * len(grid.rows)
     for item in placed:
         cell = item.cell
+        points = cell.size or _CELL_POINTS
         style = ParagraphStyle(
-            f"grid_{item.row}_{item.col}", fontName=active_face(cell.bold), fontSize=_CELL_POINTS, leading=_CELL_POINTS + 2,
-            alignment=_PDF_ALIGN[cell.align], textColor=colors.HexColor(_hex(cell.color) or "#000000"),
+            f"grid_{item.row}_{item.col}", fontName=pdf_face(cell.font.key, bold=cell.bold) if cell.font else active_face(cell.bold),
+            fontSize=points, leading=points + 2, alignment=_PDF_ALIGN[cell.align],
+            textColor=colors.HexColor(_hex(cell.color) or "#000000"),
         )
         span_width = sum(widths[item.col : item.last_col + 1]) - 8
+        with using_family(cell.font.key) if cell.font else nullcontext():  # fallback characters follow the cell's family
+            marked = [markup(text, cell.bold) or "&nbsp;" for text in cell.paragraphs]
         paragraphs = _fit(
-            [RlParagraph(markup(text, cell.bold) or "&nbsp;", style) for text in cell.paragraphs], max(span_width, 1),
-            frame_height * _MAX_PARAGRAPH_SHARE,
+            [RlParagraph(text, style) for text in marked], max(span_width, 1), frame_height * _MAX_PARAGRAPH_SHARE,
         )
         data[item.row][item.col] = paragraphs
         if cell.rowspan == 1:
@@ -178,7 +185,10 @@ def _docx_borders(table: Any, borders: str, colour: str) -> None:
     table._tbl.tblPr.append(element)
 
 
-def docx_grid(doc: Any, grid: Grid, usable_cm: float, add_text: Callable[..., Any]) -> Any:
+def docx_grid(
+    doc: Any, grid: Grid, usable_cm: float, add_text: Callable[..., Any],
+    font_look: Callable[[FontFamily | None, float | None], Callable[[Any], None] | None] | None = None,
+) -> Any:
     """The grid as a real Word table, followed by an empty paragraph that keeps two tables from merging.
 
     Args:
@@ -187,6 +197,8 @@ def docx_grid(doc: Any, grid: Grid, usable_cm: float, add_text: Callable[..., An
         usable_cm: The width of the text area.
         add_text: `(paragraph, text, style)` writes model text into a paragraph, calling `style(run)` on each plain run (the
             renderer's own `_add_text`).
+        font_look: `(family, size)` to the function that sets that family on a run (the renderer's own `_block_look`), or
+            `None` when the renderer has none; only called for a cell whose column or grid sets a family.
     """
     placed = place_grid(grid)
     widths = resolve_table_widths_cm(grid.widths, usable_cm)
@@ -216,8 +228,14 @@ def docx_grid(doc: Any, grid: Grid, usable_cm: float, add_text: Callable[..., An
             extra._p.getparent().remove(extra._p)
         colour = _hex(item.cell.color)
 
-        def style(run: Any, bold: bool = item.cell.bold, colour: str | None = colour) -> None:
-            run.font.size = Pt(_CELL_POINTS)
+        family = font_look(item.cell.font, None) if font_look is not None and item.cell.font is not None else None
+
+        points = item.cell.size or _CELL_POINTS
+
+        def style(run: Any, bold: bool = item.cell.bold, colour: str | None = colour, family: Any = family, points: float = points) -> None:
+            run.font.size = Pt(points)
+            if family is not None:
+                family(run)
             if bold:
                 run.font.bold = True
             if colour:
@@ -245,8 +263,11 @@ def docx_grid(doc: Any, grid: Grid, usable_cm: float, add_text: Callable[..., An
 # ---- ODT --------------------------------------------------------------------------------------------------------
 
 
-def odt_grid(grid: Grid, name: str, usable_cm: float, inline: Callable[[str], str], styles: list[str]) -> str:
-    """The grid as OpenDocument table markup; appends the automatic styles it uses to `styles`.
+def odt_grid(
+    grid: Grid, name: str, usable_cm: float, inline: Callable[[str], str], styles: list[str], families: list[FontFamily] | None = None,
+) -> str:
+    """The grid as OpenDocument table markup; appends the automatic styles it uses to `styles` and each font family a cell
+    sets to `families` (so the document declares it).
 
     A merge is `number-columns-spanned` / `number-rows-spanned` on its top-left cell plus a `covered-table-cell` for every
     other position; header rows are one `table:table-header-rows` group; a row's minimum height and `keep-together` are row
@@ -272,7 +293,10 @@ def odt_grid(grid: Grid, name: str, usable_cm: float, inline: Callable[[str], st
 
     def cell_styles(item: PlacedCell) -> tuple[str, str]:
         cell = item.cell
-        key = (cell.align, cell.valign, _hex(cell.fill), _hex(cell.color), cell.bold, border_edges(grid.borders, item, columns, count))
+        key = (
+            cell.align, cell.valign, _hex(cell.fill), _hex(cell.color), cell.bold, border_edges(grid.borders, item, columns, count),
+            cell.font.key if cell.font else None, cell.size,
+        )
         if key not in known:
             tag = f"{name}_s{len(known)}"
             known[key] = tag
@@ -283,6 +307,11 @@ def odt_grid(grid: Grid, name: str, usable_cm: float, inline: Callable[[str], st
             fill = f' fo:background-color="{key[2]}"' if key[2] else ""
             weight = ' fo:font-weight="bold"' if cell.bold else ""
             colour = f' fo:color="{key[3]}"' if key[3] else ""
+            face = ""
+            if cell.font is not None:
+                face = f" style:font-name={quoteattr(cell.font.word_name)}"
+                if families is not None and cell.font not in families:
+                    families.append(cell.font)
             styles.append(
                 f'<style:style style:name="{tag}" style:family="table-cell"><style:table-cell-properties{edges} fo:padding="0.08cm" '
                 f'style:vertical-align="{cell.valign}"{fill}/></style:style>'
@@ -290,7 +319,7 @@ def odt_grid(grid: Grid, name: str, usable_cm: float, inline: Callable[[str], st
             styles.append(
                 f'<style:style style:name="{tag}p" style:family="paragraph" style:parent-style-name="Standard">'
                 f'<style:paragraph-properties fo:text-align="{_ODT_ALIGN[cell.align]}" fo:margin-top="0cm" fo:margin-bottom="0cm"/>'
-                f'<style:text-properties fo:font-size="{_CELL_POINTS:g}pt"{weight}{colour}/></style:style>'
+                f'<style:text-properties fo:font-size="{cell.size or _CELL_POINTS:g}pt"{face}{weight}{colour}/></style:style>'
             )
         return known[key], f"{known[key]}p"
 
@@ -367,8 +396,10 @@ def html_grid(grid: Grid, inline: Callable[[str], str]) -> str:
             style = ";".join(
                 part for part in (
                     f"background-color:{fill}" if fill else "", f"color:{colour}" if colour else "", "font-weight:bold" if cell.bold else "",
+                    f"font-family:{cell.font.css_stack}" if cell.font else "", f"font-size:{cell.size:g}pt" if cell.size else "",
                 ) if part
             )
+            style = html.escape(style, quote=True)
             attrs = f' class="{classes}"'
             if cell.colspan > 1:
                 attrs += f' colspan="{cell.colspan}"'
