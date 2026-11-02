@@ -153,6 +153,7 @@ from app.modules.compliance.schemas import (
 )
 from app.schemas.principal import PrincipalOut
 from app.services import relationships
+from app.services.client_date import effective_today
 from app.services.permissions import encode_permission
 from app.services.principals import principal_labels, principal_ref
 
@@ -1275,7 +1276,7 @@ def complete_review(
         project_compliance_id=review.project_compliance_id,
         frequency_label=review.frequency_label,
         recurrence_days=review.recurrence_days,
-        next_due_date=date.today() + timedelta(days=review.recurrence_days),
+        next_due_date=effective_today() + timedelta(days=review.recurrence_days),
         owner_type=review.owner_type,
         owner_id=review.owner_id,
         created_by=actor_id,
