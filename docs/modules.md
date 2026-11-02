@@ -2147,7 +2147,7 @@ flowchart LR
 - **The logo is an image source**: an `image` block's or a header/footer logo's `file` may be `org_logo` (no library file; the
   run warns once and leaves it out when the organisation has no logo). It is not a library picture, so image visibility,
   "used by" and bundles skip it.
-- **Migration 0121** folded the old `report_templates` into the organisation (the default template, else the only one; extras are
+- **Migration 0125** folded the old `report_templates` into the organisation (the default template, else the only one; extras are
   dropped and counted in the log) and saved a **new version** of each document layout whose effective template had a footer,
   a cover page or a logo, so it reads the values where the old output printed them. The cover is an `if` block of the
   organisation's logo, the title and a page break; the engine's plain title still prints above it, which the old cover page replaced.

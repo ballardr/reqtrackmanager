@@ -1,7 +1,7 @@
 """Report packs and their immutable versions; pack run provenance columns
 
-Revision ID: 0111
-Revises: 0110
+Revision ID: 0115
+Revises: 0114
 Create Date: 2026-10-27
 
 Adds `report_packs` (organisation- or project-level, `project_id` NULL for the organisation) and
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0111"
-down_revision: str | None = "0110"
+revision: str = "0115"
+down_revision: str | None = "0114"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

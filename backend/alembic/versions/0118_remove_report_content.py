@@ -1,7 +1,7 @@
 """Remove report content and the project default report template
 
-Revision ID: 0114
-Revises: 0113
+Revision ID: 0118
+Revises: 0117
 Create Date: 2026-10-28
 
 Drops `report_contents` (the introductions, chapters and appendices a template, project or organisation held per
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0114"
-down_revision: str | None = "0113"
+revision: str = "0118"
+down_revision: str | None = "0117"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

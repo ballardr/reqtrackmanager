@@ -1,7 +1,7 @@
 """Custom report layouts and their immutable versions
 
-Revision ID: 0107
-Revises: 0106
+Revision ID: 0111
+Revises: 0110
 Create Date: 2026-10-26
 
 Adds `report_layouts` (organisation- or project-level, `project_id` NULL for the organisation) and
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0107"
-down_revision: str | None = "0106"
+revision: str = "0111"
+down_revision: str | None = "0110"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

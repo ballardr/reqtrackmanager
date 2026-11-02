@@ -17,7 +17,7 @@ def test_the_demo_logo_report_layout_is_valid_and_layers_the_logo_over_a_shape()
     tree = seed_demo_data.project_overview_with_logo_layout(str(uuid.uuid4()))
     assert_valid(tree)
     shape, image = tree["nodes"][:2]
-    assert (shape["type"], shape["placement"], shape["fill"]) == ("shape", "behind", "accent")
+    assert (shape["type"], shape["placement"], shape["fill"]) == ("shape", "behind", "primary")
     assert (image["type"], image["placement"]) == ("image", "front")
 
 

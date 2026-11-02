@@ -96,6 +96,7 @@ project_id`) — no org-scoped file branch, same as Pain Point.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -611,7 +612,7 @@ def retire_project_strategy(
 # --- Comments -----------------------------------------------------------
 
 
-def _comments_to_out(db: Session, comments: list[StrategyComment]) -> list[StrategyCommentOut]:
+def _comments_to_out(db: Session, comments: Sequence[StrategyComment]) -> list[StrategyCommentOut]:
     return comments_out(db, comments, out=StrategyCommentOut, fk="strategy_id", file_model=StrategyCommentFile)
 
 
@@ -1070,7 +1071,7 @@ def retire_project_future_state(
 # --- Future State comments ----------------------------------------------------
 
 
-def _fs_comments_to_out(db: Session, comments: list[FutureStateComment]) -> list[FutureStateCommentOut]:
+def _fs_comments_to_out(db: Session, comments: Sequence[FutureStateComment]) -> list[FutureStateCommentOut]:
     return comments_out(db, comments, out=FutureStateCommentOut, fk="future_state_id", file_model=FutureStateCommentFile)
 
 
@@ -1758,7 +1759,7 @@ def close_project_pain_point(
 # --- Pain Point comments -------------------------------------------------------
 
 
-def _pp_comments_to_out(db: Session, comments: list[PainPointComment]) -> list[PainPointCommentOut]:
+def _pp_comments_to_out(db: Session, comments: Sequence[PainPointComment]) -> list[PainPointCommentOut]:
     return comments_out(db, comments, out=PainPointCommentOut, fk="pain_point_id", file_model=PainPointCommentFile)
 
 
@@ -2247,7 +2248,7 @@ def retire_project_guiding_principle(
 # --- Guiding Principle comments -----------------------------------------------
 
 
-def _gp_comments_to_out(db: Session, comments: list[GuidingPrincipleComment]) -> list[GuidingPrincipleCommentOut]:
+def _gp_comments_to_out(db: Session, comments: Sequence[GuidingPrincipleComment]) -> list[GuidingPrincipleCommentOut]:
     return comments_out(db, comments, out=GuidingPrincipleCommentOut, fk="guiding_principle_id", file_model=GuidingPrincipleCommentFile)
 
 
@@ -2657,7 +2658,7 @@ def resolve_project_open_question(
 # --- Open Question comments ----------------------------------------------------
 
 
-def _oq_comments_to_out(db: Session, comments: list[OpenQuestionComment]) -> list[OpenQuestionCommentOut]:
+def _oq_comments_to_out(db: Session, comments: Sequence[OpenQuestionComment]) -> list[OpenQuestionCommentOut]:
     return comments_out(db, comments, out=OpenQuestionCommentOut, fk="open_question_id", file_model=OpenQuestionCommentFile)
 
 

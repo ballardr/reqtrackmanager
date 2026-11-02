@@ -245,8 +245,8 @@ def list_incoming(
     one of these relationships to the target. The caller has resolved the target
     within `project`; holders the project cannot see are left out."""
     kinds = _link_type_ids(db, project.organization_id)
-    models = {STAKEHOLDER_ARTEFACT_TYPE: Stakeholder, PERSONA_ARTEFACT_TYPE: Persona}
-    rows = []
+    models: dict[str, type[Stakeholder] | type[Persona]] = {STAKEHOLDER_ARTEFACT_TYPE: Stakeholder, PERSONA_ARTEFACT_TYPE: Persona}
+    rows: list[tuple[Any, RelationshipKind, str, Stakeholder | Persona]] = []
     for link in get_all_links(db, target_type, target_id):
         kind = kinds.get(link.link_type_id) if link.link_type_id else None
         if kind is None or link.target_id != target_id or link.target_type != target_type:
@@ -254,7 +254,7 @@ def list_incoming(
         if link.source_type not in models or link.source_type not in kind.holder_types:
             continue
         holder = db.get(models[link.source_type], link.source_id)
-        if holder is not None:
+        if isinstance(holder, Stakeholder | Persona):
             rows.append((link, kind, link.source_type, holder))
     return rows
 

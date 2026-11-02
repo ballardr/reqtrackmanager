@@ -44,10 +44,10 @@ def comments_to_out(db: Session, comments: list[ReviewComment], current_user_id:
         return []
     ids = [c.id for c in comments]
     authors = {u.id: u for u in db.scalars(select(User).where(User.id.in_({c.author_id for c in comments})))}
-    reaction_counts = dict(db.execute(
+    reaction_counts = {comment_id: total for comment_id, total in db.execute(
         select(CommentReaction.comment_id, func.count(CommentReaction.id))
         .where(CommentReaction.comment_id.in_(ids)).group_by(CommentReaction.comment_id)
-    ).all())
+    ).all()}
     reacted = set(db.scalars(select(CommentReaction.comment_id).where(
         CommentReaction.comment_id.in_(ids), CommentReaction.user_id == current_user_id,
     )).all())

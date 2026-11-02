@@ -1,7 +1,7 @@
 """A project's report-image library: file_assets.project_id
 
-Revision ID: 0117
-Revises: 0116
+Revision ID: 0121
+Revises: 0120
 Create Date: 2026-10-30
 
 Adds the nullable `file_assets.project_id`, set only for a picture in a project's own report-image library. Guarded: a
@@ -12,8 +12,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0117"
-down_revision: str | None = "0116"
+revision: str = "0121"
+down_revision: str | None = "0120"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

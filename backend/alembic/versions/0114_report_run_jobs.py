@@ -1,7 +1,7 @@
 """Background custom report runs: job state, stored output and the organisation retention setting
 
-Revision ID: 0110
-Revises: 0109
+Revision ID: 0114
+Revises: 0113
 Create Date: 2026-10-27
 
 Adds the job columns of `generated_reports` (`status`, `started_at`, `finished_at`, `expires_at`,
@@ -14,8 +14,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0110"
-down_revision: str | None = "0109"
+revision: str = "0114"
+down_revision: str | None = "0113"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

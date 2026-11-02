@@ -130,8 +130,8 @@ def test_unserialisable_content_is_refused():
 
 
 def test_an_unknown_key_is_an_error_not_ignored():
-    found = errors(doc({"type": "heading", "text": "x", "colour": "red"}))
-    assert found == {"nodes[0].colour": "Unknown key."}
+    found = errors(doc({"type": "heading", "text": "x", "tint": "red"}))
+    assert found == {"nodes[0].tint": "Unknown key."}
 
 
 def test_missing_required_keys_are_named():

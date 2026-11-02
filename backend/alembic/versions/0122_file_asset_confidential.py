@@ -1,7 +1,7 @@
 """A file can be marked confidential: file_assets.confidential
 
-Revision ID: 0118
-Revises: 0117
+Revision ID: 0122
+Revises: 0121
 Create Date: 2026-10-30
 
 Adds `file_assets.confidential` (default false). A confidential file is never printed by a report's record-images block.
@@ -12,8 +12,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0118"
-down_revision: str | None = "0117"
+revision: str = "0122"
+down_revision: str | None = "0121"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

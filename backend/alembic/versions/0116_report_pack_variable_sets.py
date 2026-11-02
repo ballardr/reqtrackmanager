@@ -1,7 +1,7 @@
 """Saved variable sets for report packs, and per-project overrides of them
 
-Revision ID: 0112
-Revises: 0111
+Revision ID: 0116
+Revises: 0115
 Create Date: 2026-10-27
 
 Adds `report_pack_variable_sets` (named values for a pack's variables, defined with the pack or added by a project)
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0112"
-down_revision: str | None = "0111"
+revision: str = "0116"
+down_revision: str | None = "0115"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -1,7 +1,7 @@
 """An organisation can set a default report file name: organizations.report_file_name
 
-Revision ID: 0119
-Revises: 0118
+Revision ID: 0123
+Revises: 0122
 Create Date: 2026-10-30
 
 Adds `organizations.report_file_name` (nullable text, a `{{placeholder}}` template without extension). Guarded: a
@@ -12,8 +12,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0119"
-down_revision: str | None = "0118"
+revision: str = "0123"
+down_revision: str | None = "0122"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

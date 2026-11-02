@@ -26,7 +26,7 @@ from app.services.report_layout_tree import empty_tree, validate_tree
 from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
 from tests.link_world import World
 
-MIGRATION = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0121_org_report_look.py"
+MIGRATION = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0125_org_report_look.py"
 
 
 @pytest.fixture
@@ -315,7 +315,7 @@ def test_an_old_bundle_with_templates_becomes_the_look_and_extra_templates_are_d
 
 
 def _migration():
-    spec = importlib.util.spec_from_file_location("migration_0121", MIGRATION)
+    spec = importlib.util.spec_from_file_location("migration_0125", MIGRATION)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     return module
@@ -344,12 +344,12 @@ def test_a_migration_keeps_a_layouts_own_header_and_footer():
 
 def test_the_migration_is_one_revision_after_the_last_and_no_template_table_remains(world):
     text = MIGRATION.read_text()
-    assert 'down_revision: str | None = "0120"' in text
+    assert 'down_revision: str | None = "0124"' in text
     from sqlalchemy import inspect
     with SessionLocal() as db:
         assert not inspect(db.get_bind()).has_table("report_templates")
         assert "report_template_id" not in {c["name"] for c in inspect(db.get_bind()).get_columns("report_layouts")}
-    assert re.search(r"^revision: str = \"0121\"", text, re.M)
+    assert re.search(r"^revision: str = \"0125\"", text, re.M)
 
 
 def _rows(sql: str, **params):

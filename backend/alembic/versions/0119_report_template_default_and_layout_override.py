@@ -1,7 +1,7 @@
 """Default report template and a layout's template override
 
-Revision ID: 0115
-Revises: 0114
+Revision ID: 0119
+Revises: 0118
 Create Date: 2026-10-29
 
 Adds `report_templates.is_default` (at most one per organisation, a partial unique index) and
@@ -12,10 +12,11 @@ default). Existing rows get no default and no override, so no report changes unt
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
-revision: str = "0115"
-down_revision: str | None = "0114"
+revision: str = "0119"
+down_revision: str | None = "0118"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

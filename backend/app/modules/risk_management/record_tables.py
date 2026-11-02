@@ -113,7 +113,7 @@ class _Prepared:
         self.people = PrincipalCells.load(db, [principal_ref(v.owner_type, v.owner_id) for v in self.versions.values()])
         self.tags = tag_service.tag_names_for_records(db, RISK_ARTEFACT_TYPE, ids) if ids else {}
         names = RISK_TYPES.display_names(db, [(None, v.project_type_id) for v in self.versions.values() if v.project_type_id is not None])
-        self.type_names: dict[uuid.UUID, str] = {type_id: name or "" for (_org, type_id), name in names.items()}
+        self.type_names: dict[uuid.UUID, str] = {type_id: name or "" for (_org, type_id), name in names.items() if type_id is not None}
         self.level_names = {
             level.id: level.name
             for levels in list_levels(db, project.organization_id, RISK_SCORING_SCHEME_KEY).values() for level in levels

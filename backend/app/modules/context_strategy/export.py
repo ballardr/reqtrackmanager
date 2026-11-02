@@ -465,21 +465,21 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     emails.update(_emails(db, scorer_ids))
     prime_record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
     prime_file_links(db, PainPointFile, "pain_point_id", [p.id for p in pain_points])
-    type_rows = {
+    pain_point_type_rows = {
         r.id: r for r in db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.id.in_({p.pain_point_type_id for p in pain_points})))
     } if pain_points else {}
     org_types = {
         t.id: t for t in db.scalars(select(PainPointTypeDefinition).where(
-            PainPointTypeDefinition.id.in_({r.org_type_id for r in type_rows.values() if r.org_type_id is not None})
+            PainPointTypeDefinition.id.in_({r.org_type_id for r in pain_point_type_rows.values() if r.org_type_id is not None})
         ))
-    } if type_rows else {}
+    } if pain_point_type_rows else {}
     scores_by_pain_point: dict[uuid.UUID, list[PainPointScore]] = {}
     for score in db.scalars(
         select(PainPointScore).where(PainPointScore.pain_point_id.in_([p.id for p in pain_points])).order_by(PainPointScore.created_at)
     ) if pain_points else []:
         scores_by_pain_point.setdefault(score.pain_point_id, []).append(score)
     out["pain_points"] = [
-        _pain_point_json(db, project, p, emails, assets, levels, persona_labels, type_rows, org_types, scores_by_pain_point)
+        _pain_point_json(db, project, p, emails, assets, levels, persona_labels, pain_point_type_rows, org_types, scores_by_pain_point)
         for p in pain_points
     ]
     refs[PAIN_POINT_ARTEFACT_TYPE] = {p.id: p.unique_code for p in pain_points}

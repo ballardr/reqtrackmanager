@@ -435,7 +435,11 @@ def pain_point_type_names(db: Session, type_ids: Sequence[uuid.UUID]) -> dict[uu
         {t.id: t.name for t in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.id.in_(org_ids)))}
         if org_ids else {}
     )
-    return {r.id: r.name_override if r.name_override is not None else org_names.get(r.org_type_id, "Unknown type") for r in rows}
+    return {
+        r.id: r.name_override if r.name_override is not None
+        else org_names.get(r.org_type_id, "Unknown type") if r.org_type_id is not None else "Unknown type"
+        for r in rows
+    }
 
 
 def pain_point_to_out(

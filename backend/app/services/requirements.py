@@ -524,6 +524,7 @@ def _sql_order(sort: str | None, descending: bool) -> list:
     column. Text is ordered by its lower-cased bytes (`COLLATE "C"`, the same order as Python's `str.lower()`
     comparison), never the database's locale, so the order does not depend on the server's collation. The
     creation time and id break ties so a page is stable."""
+    keys: list[Any]
     if sort is None:
         keys = [ProjectComponent.sort_order, ProjectCategory.sort_order, RequirementVersion.sort_order]
     else:
@@ -650,7 +651,7 @@ def filter_requirement_rows(
 
     if not paged_in_sql:
         keywords = tag_service.keywords_for_requirements(db, [row.id for row in rows]) if rows else {}
-        wanted = filters.keyword.casefold()
+        wanted = (filters.keyword or "").casefold()  # not paged in SQL means a keyword was given
         rows = [row for row in rows if wanted in {k.casefold() for k in keywords.get(row.id, [])}]
         total = len(rows)
         if limit is not None:

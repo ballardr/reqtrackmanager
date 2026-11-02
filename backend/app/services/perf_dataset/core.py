@@ -31,6 +31,7 @@ import math
 import random
 import uuid
 from datetime import date, datetime, timedelta
+from typing import Any
 
 from app.models.audit import AuditEvent
 from app.models.change_request import ReviewComment
@@ -299,7 +300,7 @@ def _generate_tags(
     rng, spec = ctx.rng, ctx.spec
     vocabulary = max(1, spec.ratios.tag_vocabulary)
     names = [(_TAG_WORDS[i % len(_TAG_WORDS)] + ("" if i < len(_TAG_WORDS) else f"-{i // len(_TAG_WORDS) + 1}")) for i in range(vocabulary)]
-    tags = [
+    tags: list[dict[str, Any]] = [
         {
             "id": uuid_from(rng),
             "organization_id": org_id,
@@ -473,7 +474,7 @@ def _generate_links(ctx: PerfProjectContext, audit: AuditBuffer, requirement_ids
         cross = round(len(seen) * spec.ratios.cross_level_link_fraction)
         for _ in range(cross):
             source = rng.randrange(n)
-            target = rng.choice(parent_ids)
+            parent_target = rng.choice(parent_ids)
             link_type_id, _scope = rng.choice(cross_types)
             at = _at(rng, created[source], ANCHOR)
             link_id = uuid_from(rng)
@@ -484,7 +485,7 @@ def _generate_links(ctx: PerfProjectContext, audit: AuditBuffer, requirement_ids
                     "source_type": ArtefactType.REQUIREMENT.value,
                     "source_id": requirement_ids[source],
                     "target_type": ArtefactType.REQUIREMENT.value,
-                    "target_id": target,
+                    "target_id": parent_target,
                     "link_type_id": link_type_id,
                     "source_project_id": ctx.project_uuid,
                     "target_project_id": uuid.UUID(ctx.project.parent_id),

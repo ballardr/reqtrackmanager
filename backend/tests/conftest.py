@@ -64,6 +64,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401  (populates Base.metadata)
+import app.security as app_security
 from alembic.config import Config
 from app.config import get_settings
 from app.database import Base, SessionLocal
@@ -73,6 +74,11 @@ from app.modules.registry import configure_alembic_version_locations, import_all
 from app.services.bootstrap import run_bootstrap
 
 import_all_module_models()  # populates Base.metadata for every registered module's own models
+
+# Every test creates users and logs in, and bcrypt at the production cost (12 rounds, about a quarter of a second
+# per hash or check) was a large share of the suite's runtime. The minimum cost is enough to exercise the same code
+# path; hashes carry their own cost, so verification is unaffected. Production keeps the library default.
+app_security._pwd_context.update(bcrypt__default_rounds=4)
 
 
 def build_alembic_config() -> Config:
@@ -167,17 +173,58 @@ def _default_security_posture(monkeypatch):
         monkeypatch.setattr(settings, name, False)
 
 
+_NON_EMPTY_PROBE: str | None = None
+_CAN_SKIP_FK_TRIGGERS: bool | None = None
+
+
+def _non_empty_tables(conn) -> list[str]:
+    """The names of the model tables that currently hold at least one row, in one statement.
+
+    Args:
+        conn: An open connection to the test database.
+
+    Returns:
+        The tables with a row. The rest are left alone: a test touches a few dozen of the schema's well over a
+        hundred tables.
+    """
+    global _NON_EMPTY_PROBE
+    if _NON_EMPTY_PROBE is None:
+        _NON_EMPTY_PROBE = " UNION ALL ".join(
+            f"SELECT '{t.name}' WHERE EXISTS (SELECT 1 FROM \"{t.name}\")" for t in Base.metadata.sorted_tables
+        )
+    return [row[0] for row in conn.execute(text(_NON_EMPTY_PROBE))]
+
+
+def _can_skip_fk_triggers(conn) -> bool:
+    """Whether the test role may set `session_replication_role` (a superuser may). Cached for the process."""
+    global _CAN_SKIP_FK_TRIGGERS
+    if _CAN_SKIP_FK_TRIGGERS is None:
+        _CAN_SKIP_FK_TRIGGERS = bool(conn.scalar(text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")))
+    return _CAN_SKIP_FK_TRIGGERS
+
+
 @pytest.fixture(autouse=True)
 def _clean_tables():
+    """Empties every table the test wrote to, so the next test starts from an empty database.
+
+    Deleting only the populated tables with foreign-key triggers off takes milliseconds. `TRUNCATE ... CASCADE`
+    took about a second per test because it also truncates every table that references a populated one, which is
+    most of the schema; it remains the fallback when the role cannot switch the triggers off. Both leave the same
+    empty tables (the FK cycles some tables have via use_alter columns, e.g. users.avatar_file_id -> file_assets
+    and file_assets.uploaded_by -> users, rule out deleting in dependency order with the triggers on).
+    """
     yield
     with app_engine.begin() as conn:
-        # A single TRUNCATE ... CASCADE (rather than per-table DELETE in
-        # dependency order) sidesteps the FK cycles some tables have via
-        # use_alter columns (e.g. users.avatar_file_id -> file_assets,
-        # file_assets.uploaded_by -> users), which `sorted_tables` ordering
-        # cannot fully resolve for deletion purposes.
-        table_names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
-        conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
+        touched = _non_empty_tables(conn)
+        if not touched:
+            return
+        if _can_skip_fk_triggers(conn):
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            for name in touched:
+                conn.execute(text(f'DELETE FROM "{name}"'))
+        else:
+            all_tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+            conn.execute(text(f"TRUNCATE TABLE {all_tables} CASCADE"))
 
 
 @pytest.fixture(scope="session")

@@ -1,7 +1,7 @@
 """Server report fonts: server_report_fonts
 
-Revision ID: 0123
-Revises: 0122
+Revision ID: 0127
+Revises: 0126
 Create Date: 2026-11-02
 
 Adds `server_report_fonts`: the server administrator's per-family settings for the extra report fonts found in the
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0123"
-down_revision: str | None = "0122"
+revision: str = "0127"
+down_revision: str | None = "0126"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -1,7 +1,7 @@
 """Organisation report colour scheme: organizations.report_colour_scheme
 
-Revision ID: 0122
-Revises: 0121
+Revision ID: 0126
+Revises: 0125
 Create Date: 2026-11-02
 
 Adds `organizations.report_colour_scheme` (JSONB, NULL = none set): the organisation's named report colours, which a custom
@@ -12,8 +12,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0122"
-down_revision: str | None = "0121"
+revision: str = "0126"
+down_revision: str | None = "0125"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

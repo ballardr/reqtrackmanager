@@ -1,7 +1,7 @@
 """Provenance rows for custom report runs
 
-Revision ID: 0108
-Revises: 0107
+Revision ID: 0112
+Revises: 0111
 Create Date: 2026-10-26
 
 Adds `generated_reports`: one row per run of a report layout (layout and version, caller, UTC time, engine
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0108"
-down_revision: str | None = "0107"
+revision: str = "0112"
+down_revision: str | None = "0111"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

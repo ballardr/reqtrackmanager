@@ -1,7 +1,7 @@
 """A folder for report layouts and packs, and report placements
 
-Revision ID: 0113
-Revises: 0112
+Revision ID: 0117
+Revises: 0116
 Create Date: 2026-10-28
 
 Adds `folder` (the path the Reports picker files the row under; empty = the picker's default folder) to
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0113"
-down_revision: str | None = "0112"
+revision: str = "0117"
+down_revision: str | None = "0116"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

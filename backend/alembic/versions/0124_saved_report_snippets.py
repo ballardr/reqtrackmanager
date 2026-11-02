@@ -1,7 +1,7 @@
 """Author-saved report snippets: report_snippets
 
-Revision ID: 0120
-Revises: 0119
+Revision ID: 0124
+Revises: 0123
 Create Date: 2026-10-30
 
 Adds `report_snippets` (organisation- or project-level, `project_id` NULL for the organisation): a named fragment of a
@@ -13,8 +13,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "0120"
-down_revision: str | None = "0119"
+revision: str = "0124"
+down_revision: str | None = "0123"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

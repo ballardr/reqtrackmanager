@@ -1,7 +1,7 @@
 """One report look per organisation: report templates are folded into the organisation
 
-Revision ID: 0121
-Revises: 0120
+Revision ID: 0125
+Revises: 0124
 Create Date: 2026-10-31
 
 Adds the organisation's report look to `organizations` (`report_accent_color_hex`, `report_include_logo`,
@@ -27,10 +27,11 @@ from collections.abc import Sequence
 from typing import Any
 
 import sqlalchemy as sa
+
 from alembic import op
 
-revision: str = "0121"
-down_revision: str | None = "0120"
+revision: str = "0125"
+down_revision: str | None = "0124"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -107,7 +108,10 @@ def _migrate_layouts(conn: sa.Connection, templates: dict[Any, Any], defaults: d
             "id": uuid.uuid4(), "layout_id": layout_id, "version": version + 1, "previous": version,
             "tree": json.dumps(migrated, ensure_ascii=False), "hash": _tree_hash(migrated), "comment": MIGRATION_COMMENT,
         })
-        conn.execute(sa.text("UPDATE report_layouts SET current_version = :version, updated_at = now() WHERE id = :id"), {"id": layout_id, "version": version + 1})
+        conn.execute(
+            sa.text("UPDATE report_layouts SET current_version = :version, updated_at = now() WHERE id = :id"),
+            {"id": layout_id, "version": version + 1},
+        )
         count += 1
     return count
 

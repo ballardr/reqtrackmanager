@@ -53,6 +53,7 @@ sibling of this router, and `_shared.py` for the helpers both share.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -442,7 +443,7 @@ def retire_org_strategy(
 # --- Comments -----------------------------------------------------------
 
 
-def _comments_to_out(db: Session, comments: list[StrategyComment]) -> list[StrategyCommentOut]:
+def _comments_to_out(db: Session, comments: Sequence[StrategyComment]) -> list[StrategyCommentOut]:
     return comments_out(db, comments, out=StrategyCommentOut, fk="strategy_id", file_model=StrategyCommentFile)
 
 
@@ -855,7 +856,7 @@ def retire_org_future_state(
 # --- Future State comments ----------------------------------------------------
 
 
-def _fs_comments_to_out(db: Session, comments: list[FutureStateComment]) -> list[FutureStateCommentOut]:
+def _fs_comments_to_out(db: Session, comments: Sequence[FutureStateComment]) -> list[FutureStateCommentOut]:
     return comments_out(db, comments, out=FutureStateCommentOut, fk="future_state_id", file_model=FutureStateCommentFile)
 
 
@@ -1427,7 +1428,7 @@ def retire_org_guiding_principle(
 # --- Guiding Principle comments -----------------------------------------------
 
 
-def _gp_comments_to_out(db: Session, comments: list[GuidingPrincipleComment]) -> list[GuidingPrincipleCommentOut]:
+def _gp_comments_to_out(db: Session, comments: Sequence[GuidingPrincipleComment]) -> list[GuidingPrincipleCommentOut]:
     return comments_out(db, comments, out=GuidingPrincipleCommentOut, fk="guiding_principle_id", file_model=GuidingPrincipleCommentFile)
 
 

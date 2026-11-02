@@ -1130,9 +1130,9 @@ def _project_counts(db: Session, pid: UUID) -> _ProjectCounts:
             .join(Requirement, Requirement.id == RequirementFile.requirement_id)
             .where(*live)
         ) or 0
-    by_outcome = dict(db.execute(
+    by_outcome = {outcome: total for outcome, total in db.execute(
         select(ChangeRequest.status, func.count()).where(ChangeRequest.project_id == pid).group_by(ChangeRequest.status)
-    ).all())
+    ).all()}
     counts.proposed = by_outcome.get(ChangeRequestStatus.SUBMITTED, 0) + by_outcome.get(ChangeRequestStatus.IN_REVIEW, 0)
     counts.approved = by_outcome.get(ChangeRequestStatus.APPROVED, 0)
     counts.rejected = by_outcome.get(ChangeRequestStatus.REJECTED, 0)
