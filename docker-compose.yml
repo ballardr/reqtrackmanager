@@ -13,8 +13,9 @@
 #
 # backend/frontend/mcp-server each declare both `image:` and `build:`.
 # `image:` names the same picture .github/workflows/ci.yml pushes to
-# ghcr.io on every merge to main (tagged with GitVersion's SemVer, the
-# commit SHA, and `latest`) — set IMAGE_TAG in your `.env` to pin a specific
+# ghcr.io on every merge to main (a multi-arch manifest for linux/amd64 and
+# linux/arm64, so a pull on a Raspberry Pi or Apple-silicon host gets the
+# right image; tagged with GitVersion's SemVer, the commit SHA, and `latest`) — set IMAGE_TAG in your `.env` to pin a specific
 # released version instead of always tracking `latest`, then
 # `docker compose pull && docker compose up -d` to deploy it without
 # building anything locally. `build:` is what `docker compose up --build`
@@ -29,6 +30,11 @@ services:
       POSTGRES_DB: reqtrack
       POSTGRES_USER: reqtrack
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}
+    # Memory limits (this and the other services) come from the measured peaks in docs/performance.md; sizing and
+    # how to raise them are in docs/deployment.md, "Sizing". Each is overridable from `.env`; 0 removes the limit.
+    # Measured peak 0.7-0.9 GiB at 1,000 requirements, 2.1-2.7 GiB at 20,000; 1.7-2.7 GiB at 5,000 with
+    # `shared_buffers` 512MB: raise it with that setting.
+    mem_limit: ${DB_MEM_LIMIT:-3g}
     volumes:
       - reqtrack_db_data:/var/lib/postgresql/data
     # No host port published: nothing outside the Compose network needs
@@ -65,6 +71,8 @@ services:
     configs:
       - source: storage_identity
         target: /etc/seaweedfs/s3.json
+    # Measured peak 0.86 GiB under sustained attachment uploads.
+    mem_limit: ${STORAGE_MEM_LIMIT:-2g}
     volumes:
       - reqtrack_storage_data:/data
     # No host port published: only the backend talks to this over the
@@ -84,23 +92,28 @@ services:
       start_period: 30s
 
   backend:
-    # Deliberately single-process (no `--workers`/replica count here): login
-    # verifies via bcrypt (cost factor 12, ~200ms of CPU-bound work per
-    # call), which already parallelises across whatever cores this
-    # container has (bcrypt's C extension releases the GIL) — so under a
-    # login burst (e.g. many users at shift start), the safe lever is
-    # allocating this container more CPU, not more worker processes.
-    # Naively adding `--workers`/replicas would duplicate the in-process
-    # scheduler (backend/app/services/scheduler.py — daily review-reminder
-    # emails, stage auto-approval sweeps, module jobs), sending N-fold
-    # duplicate emails, since that scheduler has no leader-election guard
-    # yet. See docs/decisions.md, "bcrypt login cost under concurrent load".
+    # BACKEND_WORKERS worker processes (default 4), coordinated through PostgreSQL (startup lock, leader election
+    # for the scheduler and other singleton jobs, LISTEN/NOTIFY): see docs/deployment.md, "Scaling the backend".
+    # Login verifies via bcrypt (cost 12, ~200 ms CPU), which parallelises across the container's cores.
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
     build:
       context: ./backend
+    # A worker keeps the memory of the heaviest request it has served (an organisation export, a bundle, a report):
+    # about 0.8 GiB each on projects up to 1,000 requirements, 1.3 GiB at 5,000 and 2.4 GiB and more at 20,000. 5g fits
+    # four to six workers on the first; raise it with the worker count and project size (formula in docs/deployment.md).
+    mem_limit: ${BACKEND_MEM_LIMIT:-5g}
     environment:
       # Worker processes (CPU cores the API can use); see backend/docker-entrypoint.sh.
       BACKEND_WORKERS: ${BACKEND_WORKERS:-4}
+      # Optional: replace each worker after this many requests (uvicorn --limit-max-requests; empty = never), which hands
+      # a worker's retained memory back at the cost of a restart. Off by default: see docs/performance.md, O22.
+      UVICORN_LIMIT_MAX_REQUESTS: ${LIMIT_MAX_REQUESTS:-}
+      # Per-worker database pool: at most DB_POOL_SIZE + DB_MAX_OVERFLOW connections (plus two dedicated) each.
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      # Requests a worker serves at once (0 = the pool's capacity) and how long an extra one waits before a 503.
+      MAX_CONCURRENT_REQUESTS: ${MAX_CONCURRENT_REQUESTS:-0}
+      REQUEST_QUEUE_TIMEOUT_SECONDS: ${REQUEST_QUEUE_TIMEOUT_SECONDS:-30}
       DATABASE_URL: postgresql://reqtrack:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in production}@db:5432/reqtrack
       # Refuse to start on a placeholder or short JWT secret, a placeholder encryption key or the bundled object
       # store's default key (config.py's weak_secret_problems). Set to false only for a throwaway stack.
@@ -278,6 +291,8 @@ services:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
+    # Static files behind nginx: about 11 MiB measured at idle.
+    mem_limit: ${FRONTEND_MEM_LIMIT:-128m}
     environment:
       # No colon in ${PUBLIC_API_BASE_URL-...} deliberately: with a colon,
       # an explicitly-empty PUBLIC_API_BASE_URL= (same-origin subpath
@@ -319,6 +334,8 @@ services:
     image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-mcp-server:${IMAGE_TAG:-latest}
     build:
       context: ./mcp-server
+    # About 57 MiB measured at idle.
+    mem_limit: ${MCP_MEM_LIMIT:-256m}
     environment:
       REQTRACK_API_URL: http://backend:8000
       REQTRACK_PUBLIC_API_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
@@ -418,12 +435,44 @@ services:
       - tempo
       - prometheus
 
+  # Per-container CPU and memory for the "Resource usage" dashboard. It needs read access to the host's cgroups
+  # and Docker's data directory, so it lives only in this profile, publishes no port (Prometheus reaches it on the
+  # compose network) and mounts everything read-only. On Docker Desktop it reports the Linux VM's containers.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    profiles: ["observability"]
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=15s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
+    volumes:
+      - /:/rootfs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    # The kernel log is where OOM kills are reported (container_oom_events_total); reading it needs this one
+    # capability, which is far narrower than `privileged`.
+    devices:
+      - /dev/kmsg:/dev/kmsg:r
+    cap_add:
+      - SYSLOG
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      start_period: 30s
+      timeout: 5s
+      retries: 5
+
   grafana:
     image: grafana/grafana:11.2.0
     profiles: ["observability"]
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3300:3000"
     depends_on:

@@ -97,6 +97,12 @@ ENTRY_POINT_GROUP = "reqtrackmanager.modules"
 _module_state_memo: contextvars.ContextVar[dict | None] = contextvars.ContextVar("module_state_memo", default=None)
 
 
+def module_state_memo() -> dict | None:
+    """The active `memoize_module_state()` block's cache, or `None` outside one. Read-only code that wants to keep a
+    bulk-loaded answer for the rest of an export (the tags or attachments of every record of a type) stores it here."""
+    return _module_state_memo.get()
+
+
 def scoped_memo(fn: Callable) -> Callable:
     """Memoises `fn(db, *args)` while `memoize_module_state()` is active (keyed by its arguments after `db`).
 
@@ -1637,6 +1643,9 @@ class OrganizationRecordTable:
         list_records: `(db, user, organization, filters) -> records`: the organisation's own records, with the
             filters of the organisation list (the endpoint and the provider share one query).
         find: `(db, organization, unique_code) -> record | None`, searching **this organisation's own records only**.
+        find_many: `(db, organization, codes) -> {UPPER code: record}`: `find` for many codes in one statement (see
+            `services.record_tables.find_many_by_code`), so an import reads the named records once, not once per row. `None`
+            falls back to `find` per code.
         prepare: `(db, organization, records) -> prepared`: batch lookups handed to every column's `get`.
         create: `(ctx, values) -> record` through the organisation endpoint's own create path (`ctx.project` is
             `None`; use `ctx.organization`). `None` for a type import cannot create.
@@ -1650,6 +1659,7 @@ class OrganizationRecordTable:
     columns: Callable[[Session, Any], Sequence[RecordColumn]]
     list_records: Callable[[Session, Any, Any, RecordFilters], list[Any]]
     find: Callable[[Session, Any, str], Any | None]
+    find_many: Callable[[Session, Any, Sequence[str]], dict[str, Any]] | None = None
     prepare: Callable[[Session, Any, list[Any]], Any] | None = None
     create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None = None
     update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None = None
@@ -1676,6 +1686,9 @@ class RecordTableProvider:
             list endpoint (the endpoint and the provider share one query function, so a filter reaches both).
             Archived rows only when asked, as the list does.
         find: `(db, project, unique_code) -> record | None`, searching **this project only**.
+        find_many: `(db, project, codes) -> {UPPER code: record}`: `find` for many codes in one statement
+            (`services.record_tables.find_many_by_code`), so an import reads the named records once, not once per row.
+            `None` falls back to `find` per code.
         prepare: `(db, project, records) -> prepared`: batch lookups handed to every column's `get`.
         create: `(ctx, values) -> record` through the type's own create path; `values` holds every importable
             column in the file, parsed. `None` for a type that import cannot create.
@@ -1716,6 +1729,7 @@ class RecordTableProvider:
     columns: Callable[[Session, Any], Sequence[RecordColumn]]
     list_records: Callable[[Session, Any, uuid.UUID, RecordFilters], list[Any]]
     find: Callable[[Session, Any, str], Any | None]
+    find_many: Callable[[Session, Any, Sequence[str]], dict[str, Any]] | None = None
     prepare: Callable[[Session, Any, list[Any]], Any] | None = None
     create: Callable[[RecordImportContext, Mapping[str, Any]], Any] | None = None
     update: Callable[[RecordImportContext, Any, Mapping[str, Any]], None] | None = None
@@ -1731,6 +1745,58 @@ class RecordTableProvider:
     read_only_reason: Callable[[Any, Any], str | None] | None = None
     count: Callable[[Session, Any, uuid.UUID], int] | None = None
     in_overview: bool = True
+
+
+@dataclass(frozen=True)
+class PerfDatasetGenerator:
+    """How a module's own records are generated in bulk for the performance tooling (`perf/`), so a dataset
+    scaled to thousands of requirements also scales this module's records and their links.
+
+    Attributes:
+        generate: Called once per generated project with a `services.perf_dataset.context.PerfProjectContext`;
+            writes the type's rows (bulk inserts through `insert_rows`, populating every column the application's
+            own create path populates, and a never-reused code through the project's sequence counter) and returns
+            the rows written by table name.
+        order: Lower runs first. Core requirements run at 10 and actions at 20; a type that links to requirements
+            runs after them and finds their ids in `ctx.shared["requirement"]`.
+    """
+
+    generate: Callable[[Any], dict[str, int]]
+    order: int = 100
+
+
+@dataclass(frozen=True)
+class ScalingProbe:
+    """How the scaling-shape guard fills and reads one artefact type through its public API, so a test can
+    compare the cost of the type's list, detail, comments and link graph at two data sizes.
+
+    Attributes:
+        list_path: The type's project list endpoint, relative to `/api/v1/projects/{project_id}/` (for example
+            `modules/risk_management/risks`). Its detail is `<list_path>/{id}` and its comments
+            `<list_path>/{id}/comments`.
+        create: `create(api, project_id, start, count)` creates `count` records through the real create endpoint
+            (`start` numbers them, so titles stay distinct across calls) and returns their ids. It fetches any
+            prerequisite (a type vocabulary, a parent record) itself, since it is called once per size. `api` is
+            a `ScalingProbeApi`.
+        has_comments: Whether the type has a comment thread at `<detail>/comments`.
+        has_detail: Whether the type has a detail endpoint at `<list_path>/{id}`.
+    """
+
+    list_path: str
+    create: Callable[[Any, str, int, int], list[str]]
+    has_comments: bool = True
+    has_detail: bool = True
+
+
+class ScalingProbeApi:
+    """The calls a `ScalingProbe.create` makes: `post(path, body)` and `get(path)` return the decoded JSON and
+    raise on a failure status. Paths are absolute from `/api/v1`. The guard supplies the implementation."""
+
+    def post(self, path: str, body: dict[str, Any] | None = None) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
+
+    def get(self, path: str) -> Any:  # pragma: no cover - interface
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -2409,6 +2475,19 @@ class ModuleDefinition:
             it cannot be imported in `not_importable` (and still registers a provider for export).
         not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
             test fails for a type that has neither a provider able to import nor a reason.
+        perf_generators: Maps one of this module's own `artefact_types` to a `PerfDatasetGenerator`, so the
+            performance tooling's dataset tiers scale this type's records and their links. Read via
+            `get_perf_generators`. A backend test fails for a registered type with neither a generator, a reason in
+            `no_perf_generator`, nor an entry in that test's shrinking list of tracked gaps.
+        scaling_probes: Maps one of this module's own `artefact_types` to a `ScalingProbe`, so the scaling-shape
+            guard can create the type's records through its API at two sizes and assert the statements behind its
+            list, detail, comments and link graph do not grow with the records. Read via `get_scaling_probes`. A
+            backend test fails for a registered type with neither a probe, a reason in `no_scaling_probe`, nor an
+            entry in that test's shrinking list of tracked gaps.
+        no_scaling_probe: `{artefact type: reason}` for a type the guard cannot fill through an API (a record only
+            a workflow produces).
+        no_perf_generator: `{artefact type: reason}` for a type that is not generated (a record produced by a
+            workflow whose volume is not a function of the requirement count).
         reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -2501,6 +2580,10 @@ class ModuleDefinition:
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
+    perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
+    scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
+    no_scaling_probe: dict[str, str] = field(default_factory=dict)
+    no_perf_generator: dict[str, str] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -4152,6 +4235,46 @@ def get_not_importable_types() -> dict[str, str]:
     reasons: dict[str, str] = dict(CORE_NOT_IMPORTABLE)
     for definition in get_module_registry().values():
         reasons.update(definition.not_importable)
+    return reasons
+
+
+def get_perf_generators() -> dict[str, PerfDatasetGenerator]:
+    """Every registered artefact type's `PerfDatasetGenerator`: the core types'
+    (`services.perf_dataset.core`) plus each module's `perf_generators`. A type claimed twice keeps the first."""
+    from app.services.perf_dataset.registry import CORE_PERF_GENERATORS
+
+    merged: dict[str, PerfDatasetGenerator] = dict(CORE_PERF_GENERATORS)
+    for definition in get_module_registry().values():
+        for artefact_type, generator in definition.perf_generators.items():
+            merged.setdefault(artefact_type, generator)
+    return merged
+
+
+def get_no_perf_generator_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared not generated for the performance tooling."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_perf_generator)
+    return reasons
+
+
+def get_scaling_probes() -> dict[str, ScalingProbe]:
+    """Every registered artefact type's `ScalingProbe`: the core types' (`services.scaling_probes_core`) plus each
+    module's `scaling_probes`. A type claimed twice keeps the first."""
+    from app.services.scaling_probes_core import CORE_SCALING_PROBES
+
+    merged: dict[str, ScalingProbe] = dict(CORE_SCALING_PROBES)
+    for definition in get_module_registry().values():
+        for artefact_type, probe in definition.scaling_probes.items():
+            merged.setdefault(artefact_type, probe)
+    return merged
+
+
+def get_no_scaling_probe_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared cannot be filled through its API."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_scaling_probe)
     return reasons
 
 

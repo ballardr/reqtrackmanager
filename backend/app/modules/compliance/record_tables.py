@@ -88,9 +88,10 @@ from app.services import tags as tag_service
 from app.services.client_date import effective_today
 from app.services.principals import principal_ref
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
-from app.services.record_tables import PrincipalCells
+from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
     bool_cell,
+    count_rows,
     date_parser,
     enum_filter,
     instant_cell,
@@ -231,6 +232,7 @@ EVIDENCE_TABLE = RecordTableProvider(
     columns=_evidence_columns,
     list_records=_list_evidence,
     find=_find_evidence,
+    find_many=find_many_by_code(ComplianceEvidence, "project_id"),
     prepare=lambda db, project, records: _EvidencePrepared(db, records),
     create=_create_evidence,
     update=_update_evidence,
@@ -238,6 +240,7 @@ EVIDENCE_TABLE = RecordTableProvider(
     gate=(COMPLIANCE_MODULE_KEY, None),
     can_create=_may_manage_evidence,
     can_update=_may_manage_evidence,
+    count=lambda db, user, project_id: count_rows(db, ComplianceEvidence, project_id, live_only=True),
 )
 
 

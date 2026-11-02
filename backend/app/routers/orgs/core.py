@@ -19,7 +19,8 @@ import json
 from datetime import UTC
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -32,7 +33,7 @@ from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
-from app.modules.registry import get_org_creation_choices, run_on_org_created_hooks
+from app.modules.registry import get_org_creation_choices, memoize_module_state, run_on_org_created_hooks
 
 # `_accessible_project_ids` (the overview-stats endpoint reuses the
 # exact same project-visibility computation `GET /projects` already uses,
@@ -60,12 +61,13 @@ from app.schemas.org import (
     OrgProjectSummaryOut,
 )
 from app.services.audit import log_event
+from app.services.bundle_common import bundle_size, iter_bundle_file
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.downloads import filename_safe
 from app.services.org_deletion import delete_organization_cascade
 from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
-from app.services.rbac import get_effective_org_roles, require_org_role, require_server_admin
+from app.services.rbac import get_effective_org_roles, memoize_user_lookups, require_org_role, require_server_admin
 
 router = APIRouter(tags=["organizations-core"])
 
@@ -164,10 +166,16 @@ def export_organization(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found.")
-    zip_bytes = build_org_bundle(db, org, current_user)
-    return Response(
-        content=zip_bytes, media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organization")}-export.zip"'},
+    # Read-only: each person, group, tag list and attachment set is read once for the whole export, not once per
+    # record of every project.
+    with memoize_module_state(), memoize_user_lookups():
+        bundle = build_org_bundle(db, org, current_user)
+    return StreamingResponse(
+        iter_bundle_file(bundle), media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename_safe(org.name, fallback="organization")}-export.zip"',
+            "Content-Length": str(bundle_size(bundle)),
+        },
     )
 
 

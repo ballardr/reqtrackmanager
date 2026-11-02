@@ -8,7 +8,6 @@ keys must not collide with each other or with a core section (a collision would 
 
 from __future__ import annotations
 
-import io
 import json
 import uuid
 import zipfile
@@ -55,8 +54,8 @@ def test_module_bundle_sections_do_not_collide_with_each_other_or_core(client, a
         monkeypatch.setattr(project_export, "get_all_module_project_bundle_hooks", lambda: [])
         monkeypatch.setattr(org_export, "get_all_module_org_bundle_hooks", lambda: [])
         core_project = set(project_export.collect_project_data(db, project)[0])
-        bundle = org_export.build_org_bundle(db, org, exporter)
-        core_org = set(json.loads(zipfile.ZipFile(io.BytesIO(bundle)).read("org.json")))
+        with org_export.build_org_bundle(db, org, exporter) as bundle:
+            core_org = set(json.loads(zipfile.ZipFile(bundle).read("org.json")))
     finally:
         db.close()
 

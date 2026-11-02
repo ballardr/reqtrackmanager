@@ -19,7 +19,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -51,6 +52,20 @@ class AuditEvent(UUIDPKMixin, Base):
     """
 
     __tablename__ = "audit_events"
+    # The table grows with every write and was read by sequential scan: a record's activity timeline filters on
+    # (entity_type, entity_id) and on (project_id, entity_type); the project column also makes the `SET NULL` of a
+    # project's deletion an index lookup instead of a scan of the whole trail.
+    __table_args__ = (
+        Index("ix_audit_events_entity", "entity_type", "entity_id"),
+        Index("ix_audit_events_project_type", "project_id", "entity_type", "created_at"),
+        # A record's change history asks for a project's events about one record by id alone (its events may carry
+        # several entity types), which `ix_audit_events_project_type` cannot narrow.
+        Index("ix_audit_events_project_entity", "project_id", "entity_id"),
+        # A record's activity timeline asks for the generic link events naming it at either end by the id kept in
+        # `detail`; these partial expression indexes make that a lookup, not a read of every link event of the project.
+        Index("ix_audit_events_link_source", sa_text("(detail ->> 'source_id')"), postgresql_where=sa_text("entity_type = 'artefact_link'")),
+        Index("ix_audit_events_link_target", sa_text("(detail ->> 'target_id')"), postgresql_where=sa_text("entity_type = 'artefact_link'")),
+    )
 
     organization_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True

@@ -50,6 +50,7 @@ from app.modules.registry import (
     get_artefact_summary,
     has_artefact_summary_provider,
     list_artefact_summaries,
+    scoped_memo,
 )
 from app.modules.stakeholders.engagements import (
     AUDIENCE_FORWARD,
@@ -175,6 +176,7 @@ def list_targets(db: Session, project: Project, target_type: str) -> list[Artefa
     return list_artefact_summaries(db, project.id, target_type)
 
 
+@scoped_memo
 def _link_type_ids(db: Session, organization_id: uuid.UUID) -> dict[uuid.UUID, RelationshipKind]:
     """`{link_type_id: kind}` for the kinds whose org link type exists."""
     rows = db.execute(

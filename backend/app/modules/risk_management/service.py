@@ -52,6 +52,7 @@ from app.modules.risk_management.models import (
 )
 from app.modules.risk_management.ratings import RatingContext, rate_version
 from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_SCHEME_KEY
+from app.services.current_versions import primed_current_version
 from app.services.sequences import generate_unique_code
 from app.services.type_vocabulary import TypeVocabulary
 
@@ -92,6 +93,9 @@ def get_current_risk_version(db: Session, risk_id: uuid.UUID) -> RiskVersion:
     Raises:
         ValueError: If none exists (a data-integrity bug).
     """
+    primed = primed_current_version(RiskVersion, risk_id)
+    if primed is not None:
+        return primed
     version = db.scalar(select(RiskVersion).where(RiskVersion.risk_id == risk_id, RiskVersion.valid_to.is_(None)))
     if version is None:
         raise ValueError(f"Risk {risk_id} has no current version.")

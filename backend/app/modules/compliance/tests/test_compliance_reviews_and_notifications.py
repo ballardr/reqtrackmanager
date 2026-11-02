@@ -13,7 +13,7 @@ api.py`'s helpers for setup, the same way `test_compliance_evidence_api.py`/
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from app.database import SessionLocal
 from app.modules.compliance.scheduler import (
@@ -142,10 +142,12 @@ def test_complete_review_with_recurrence_schedules_next_cycle(client, admin_toke
         headers=auth_headers(admin_token),
     ).json()
 
+    day_before = datetime.now(UTC).date()
     completed = client.post(
         f"{_project_base(project['id'])}/reviews/{review['id']}/complete",
         json={"outcome": "action_required", "notes": "Found two gaps."}, headers=auth_headers(admin_token),
     )
+    day_after = datetime.now(UTC).date()
     assert completed.status_code == 200, completed.text
     body = completed.json()
     assert body["status"] == "completed"
@@ -163,7 +165,11 @@ def test_complete_review_with_recurrence_schedules_next_cycle(client, admin_toke
     next_row = next(r for r in history if r["id"] != review["id"])
     assert completed_row["status"] == "completed"
     assert next_row["status"] == "scheduled"
-    assert next_row["next_due_date"] == (TODAY + timedelta(days=365)).isoformat()
+    # The next cycle is dated from the day of completion; a run straddling UTC midnight may land on either day.
+    assert next_row["next_due_date"] in {
+        (day_before + timedelta(days=365)).isoformat(),
+        (day_after + timedelta(days=365)).isoformat(),
+    }
 
     # 409 on a second completion attempt of the already-completed row.
     again = client.post(

@@ -104,13 +104,37 @@ The full list of variables, defaults, and which are actually required is in [Con
 
    This exact config was verified against the real running stack (proxied and direct responses byte-identical). The one thing that **will** break it: `PUBLIC_API_BASE_URL` must be left **empty**, not set to `/api` or a full URL containing it. The frontend already prepends `/api/v1/...` to whatever `PUBLIC_API_BASE_URL` is — setting it to `/api` produces requests to `/api/api/v1/...`, which 404s. Leaving it empty makes the frontend call the API via relative paths against its own origin instead, which is the entire point of routing by path in the first place. See [docs/deployment.md](docs/deployment.md#same-origin-subpath-deployment-avoiding-cors) for the full recipe, including the extra one-to-one blocks needed if you also want `/docs`/`/metrics`/`/health` reachable through the public subpath.
 
+### Sizing
+
+**Minimum** (the smallest configuration measured): 2 cores, 4 GiB of memory, 10 GiB of free disk, 64-bit (amd64 or arm64), Docker Compose 2.23.1 or newer, with `BACKEND_WORKERS=1`. A Raspberry Pi 5 ran that way up to 20,000 requirements per project.
+
+Size by how many people are **active at once** (assumed a third of the people with accounts, one request every 5-10 seconds each; replace both with your own usage), at about 30 requests per second per backend worker:
+
+| People with accounts | Active at once | Workers | Cores | Memory |
+|----------------------|----------------|---------|-------|--------|
+| Up to 100 | about 35 | 1 | 2 | 4 GiB |
+| Up to 300 | about 100 | 1-2 | 4 | 8 GiB |
+| Up to 1,000 | about 330 | 4 (default) | 8 | 8-16 GiB |
+| Up to 3,000 | about 1,000 | 6 | 12 | 16 GiB |
+| More than 5,000 | 1,700 or more | beyond one stack (not measured) | | |
+
+Projects of about 5,000 requirements need the next row up (about 40% fewer requests per second, 1.3 GiB per worker instead of 0.8). Every always-on service has a memory limit in `docker-compose.yml` (overridable from `.env`); the backend's is roughly 0.1 GiB + `BACKEND_WORKERS` × 0.8 GiB for projects up to 1,000 requirements (1.3 GiB per worker at 5,000, 2.4 GiB or more at 20,000), because a worker keeps the memory of the heaviest request it has served.
+
+| Largest project | Backend, 4 workers (6 workers) | Database | Host RAM to plan for |
+|-----------------|--------------------------------|----------|----------------------|
+| Up to ~1,000 requirements | 3.2 GiB (4.2) | 0.7-0.9 GiB | 8 GiB |
+| ~5,000 requirements | 5.0 GiB (6.6) | 0.9-2.7 GiB | 16 GiB |
+| 20,000 requirements | 9.5 GiB or more | 2-3 GiB | 32 GiB or more |
+
+Throughput is CPU-bound. Measured on a 16-core, 30 GiB Linux server (shared with production, the stack given 12 cores): one worker serves about 60 requests a second and six workers about 190 (usable) to 230 (peak), roughly 300-1,900 active people; a Raspberry Pi 5 (4 cores, 8 GiB; the capacity run held to 2 cores) serves about 8 requests a second with one worker. What each host had available, the figures, the method and how to repeat it (`perf/run_baseline.sh`) are in [docs/performance.md](docs/performance.md), [docs/deployment.md](docs/deployment.md#sizing-and-memory-limits) and, with charts, the [Sizing and performance](https://ballardr.github.io/reqtrackmanager/installation-deployment/sizing-and-performance) page.
+
 ### Optional observability stack
 
 ```bash
 docker compose --profile observability up -d
 ```
 
-Adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, and Grafana (http://localhost:3300, anonymous viewer access enabled for local use — put it behind auth in production). Prometheus is pre-configured to scrape the backend's `/metrics` endpoint (including `http_requests_total` and `db_statements_total`; PromQL for requests/min and DB reads/writes per 15 min is in [deployment.md](docs/deployment.md#observability)); Grafana has no data sources or dashboards provisioned; Alloy ships container logs to Loki and exposes an OTLP receiver on `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry (not yet done — see decisions log).
+Adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, cAdvisor (per-container CPU and memory), and Grafana (http://localhost:3300, anonymous viewer access enabled for local use — put it behind auth in production). Prometheus is pre-configured to scrape the backend's `/metrics` endpoint (including `http_requests_total` and `db_statements_total`; PromQL for requests/min and DB reads/writes per 15 min is in [deployment.md](docs/deployment.md#observability)); Grafana comes with Prometheus and a **Resource usage** dashboard (per-container and per-worker memory, CPU, pool connections, restarts, OOM kills) provisioned; Alloy ships container logs to Loki and exposes an OTLP receiver on `4317` ready to forward traces to Tempo once the backend is instrumented with OpenTelemetry (not yet done — see decisions log).
 
 ### Backup and disaster recovery
 
@@ -153,6 +177,9 @@ Backend environment variables (set via `docker-compose.yml`, a `.env` file, or y
 | `STORAGE_HEALTH_CHECK_ENABLED` / `STORAGE_HEALTH_CHECK_INTERVAL_SECONDS` | `true` / `300` | — | Periodic write probe of the file storage (alerts server admins when it stops accepting writes). Each probe is one write, read and delete, so set `false` (or raise the interval, minimum 60) to avoid request charges on a metered S3 provider |
 | `WEBSOCKET_ENABLED` | `true` | — | Whether the optional live-update WebSocket interface is mounted at all (I-A-04) |
 | `BACKEND_WORKERS` | `4` | — | Backend worker processes per container (CPU cores the API can use). Workers coordinate via PostgreSQL; see the deployment guide's scaling section for connection/memory sizing |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | — | Database connections each backend worker keeps / may add under load. A worker holds at most `DB_POOL_SIZE + DB_MAX_OVERFLOW` plus two dedicated connections (17 by default), so `BACKEND_WORKERS × replicas × 17` must stay under PostgreSQL's `max_connections` (100 by default, 3 reserved) |
+| `MAX_CONCURRENT_REQUESTS` / `REQUEST_QUEUE_TIMEOUT_SECONDS` | `0` / `30` | — | Requests one backend worker serves at once (`0` = the database pool's capacity, `DB_POOL_SIZE + DB_MAX_OVERFLOW`), and how many seconds an extra request waits for a slot before a `503` with `Retry-After`. The limit keeps requests from holding every connection while waiting for a thread; raise it only together with the pool. `/health` and `/metrics` are never held |
+| `BACKEND_MEM_LIMIT` / `DB_MEM_LIMIT` / `STORAGE_MEM_LIMIT` / `FRONTEND_MEM_LIMIT` / `MCP_MEM_LIMIT` | `5g` / `3g` / `2g` / `128m` / `256m` | — | Memory limit of each always-on Compose service (`0` removes it). Defaults come from measured peaks; raise the backend's with the worker count and project size, see the [sizing guide](docs/deployment.md#sizing-and-memory-limits) |
 | `GEOIP_LOOKUP_ENABLED` | `false` | — | Whether login events resolve an approximate location for the client IP via a third-party lookup (C-A-07). Off by default since it's an external network dependency; login is never blocked by it regardless |
 | `GEOIP_LOOKUP_EXCLUDE_CIDRS` | private/loopback ranges | — | Comma-separated CIDR ranges never sent to the geolocation lookup, even when enabled |
 | `PUBLIC_BACKEND_URL` | `http://localhost:8000` | Recommended if SSO is used | This backend's own externally-reachable base URL — must exactly match the redirect URI registered on any OIDC identity provider (E-U-01) |
@@ -187,6 +214,8 @@ flowchart LR
 The frontend is a single-page app talking to a REST/JSON API (I-A-01, I-A-02), documented via OpenAPI (I-A-03). The backend enforces the full permission and workflow model server-side — the frontend has no independent business logic. See [docs/solution-architecture.md](docs/solution-architecture.md) for the full domain model, ER diagrams, and deployment topology, and [docs/decisions.md](docs/decisions.md) for why specific implementation choices were made.
 
 ## Known limitations
+
+Published container images are multi-arch (`linux/amd64` and `linux/arm64`, including a 64-bit Raspberry Pi); the `arm64` images are smoke tested in CI but the full test suites run on `amd64` only, and a Raspberry Pi 5 (8 GiB) ran one worker up to 20,000 requirements in 1.4 GiB of backend memory but serves only about 8 requests a second, and smaller boards and the default four workers are unmeasured (see [Supported platforms](docs/deployment.md#obtaining-container-images) and [Sizing](#sizing)).
 
 Backups give a recovery point equal to the backup interval (nightly by default); there is no point-in-time recovery between backups, and the recovery time on a clean machine has not yet been measured (see [docs/disaster-recovery.md](docs/disaster-recovery.md)). Deferred to a follow-up session or later, per `docs/requirements.md`: the standalone separate-port provisioning API (E-P-02) — scoped as an implementable blueprint rather than built, since it's effectively its own project (see [docs/enterprise-integration.md](docs/enterprise-integration.md)) — plus Murchison (v4)'s AI-assisted authoring and legacy-tool import/export (E-C-01). (SCIM provisioning, E-U-02, was subsequently built — see the Enterprise-ready section above.) A small number of Ossa/Pelion/Massif-tagged items were implemented with a deliberately scoped-down approach (documented in [docs/decisions.md](docs/decisions.md)): login IP is logged but not geolocated, requirement/component/category ordering is move-up/move-down rather than drag-and-drop, the backend does not yet emit OpenTelemetry traces (the Alloy/Tempo pipeline is wired and ready for it), permission-revocation does not currently send a notification (only grant does), and notification email/digest delivery plus the disk-usage monitor and the review/stage-deadline scheduler run as in-process background tasks rather than a separate worker service. Project/organisation bundle export deliberately excludes Restricted secrets and project-level group *membership* (only group structure is recreated, to avoid a cross-tenant privilege-escalation path on import) — see [decisions.md](docs/decisions.md)'s "Bundle export/import" entry for the full reasoning and what a re-imported project/org needs re-populated by hand. See [docs/soc2/](docs/soc2/) for the fuller, ongoing catalogue of known gaps against a SOC 2 Security + Confidentiality control set (e.g. no login rate limiting, no branch protection enforcing CI) and their remediation status. On the frontend UX side: [docs/plans/completed/ux-audit-2026-08.md](docs/plans/completed/ux-audit-2026-08.md) catalogues navigation/settings-hierarchy inconsistency, inconsistent destructive-action confirmation, custom terminology overrides only actually taking effect on a small fraction of the surface they claim to, and two list views (project change-history, the server-admin user directory) with no pagination — tracked in that document's roadmap against [docs/ux-style-guide.md](docs/ux-style-guide.md)'s rules, not yet all implemented.
 

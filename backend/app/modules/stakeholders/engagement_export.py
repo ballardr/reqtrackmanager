@@ -46,16 +46,18 @@ from app.modules.stakeholders.models import (
     EngagementFile,
     EngagementPrompt,
     Persona,
+    ResearchFinding,
     Stakeholder,
 )
 from app.modules.stakeholders.service import (
     get_current_persona_version,
     get_current_stakeholder_version,
 )
-from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
+from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.codes import label_title
 from app.services.principals import principal_from_bundle, principal_to_bundle
-from app.services.tags import record_tag_names, restore_record_tags
+from app.services.relationships import prime_links
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 _KEY = "project_engagements"
 _TEXT_FIELDS = ("title", "purpose", "summary", "notes")
@@ -84,8 +86,17 @@ def _group_path(universe: dict[UUID, Any], group_id: UUID) -> list[dict[str, str
 
 
 def _engagement_json(
-    db: Session, engagement: Engagement, project: Project, universe: dict[UUID, Any], emails: dict[UUID, str]
+    db: Session, engagement: Engagement, project: Project, universe: dict[UUID, Any], emails: dict[UUID, str],
+    extras: dict[str, dict[UUID, list]] | None = None,
 ) -> dict[str, Any]:
+    """One engagement as a bundle entry. `extras` holds the facilitators, prompts, anonymous participants and findings of
+    every exported engagement, read once by the caller; omitted, they are read for this engagement."""
+    extras = extras or {
+        "facilitators": eng.list_facilitators(db, [engagement.id]),
+        "prompts": {engagement.id: eng.list_prompts(db, engagement.id)},
+        "anonymous": {engagement.id: eng.list_anonymous_participants(db, engagement.id)},
+        "findings": {engagement.id: eng.list_findings(db, engagement.id)},
+    }
     organization_id = project.organization_id
     participants = []
     for link in eng.list_participant_links(db, engagement, organization_id):
@@ -107,10 +118,10 @@ def _engagement_json(
             "created_at": _j(f.created_at), "outcomes": _outcomes_json(db, project, FINDING_ARTEFACT_TYPE, f.id),
             "tags": record_tag_names(db, FINDING_ARTEFACT_TYPE, f.id),
         }
-        for f in eng.list_findings(db, engagement.id)
+        for f in extras["findings"].get(engagement.id, [])
     ]
     anonymous = []
-    for a in eng.list_anonymous_participants(db, engagement.id):
+    for a in extras["anonymous"].get(engagement.id, []):
         persona = db.get(Persona, a.persona_id) if a.persona_id else None
         anonymous.append({
             "label": a.label,
@@ -123,42 +134,59 @@ def _engagement_json(
         "engagement_date": _j(engagement.engagement_date), "retain_until": _j(engagement.retain_until),
         "consent_recorded": engagement.consent_recorded,
         "facilitators": [
-            entry for ref in eng.list_facilitators(db, [engagement.id]).get(engagement.id, [])
+            entry for ref in extras["facilitators"].get(engagement.id, [])
             if (entry := principal_to_bundle(db, ref.type.value, ref.id)) is not None
         ],
         "created_by_email": emails.get(engagement.creator_id), "created_at": _j(engagement.created_at),
         "participants": participants, "personas": personas, "audiences": audiences,
         "outcomes": _outcomes_json(db, project, ENGAGEMENT_ARTEFACT_TYPE, engagement.id),
         "prompts": [
-            {"prompt": p.prompt, "response_notes": p.response_notes} for p in eng.list_prompts(db, engagement.id)
+            {"prompt": p.prompt, "response_notes": p.response_notes} for p in extras["prompts"].get(engagement.id, [])
         ],
         "anonymous_participants": anonymous, "findings": findings,
         "tags": record_tag_names(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id),
     }
 
 
+def _engagement_extras(db: Session, engagement_ids: list[UUID]) -> dict[str, dict[UUID, list]]:
+    """The facilitators, prompts, anonymous participants and findings of the engagements, one statement each."""
+    prompts: dict[UUID, list] = {}
+    anonymous: dict[UUID, list] = {}
+    findings: dict[UUID, list] = {}
+    if engagement_ids:
+        queries = (
+            (prompts, select(EngagementPrompt).where(EngagementPrompt.engagement_id.in_(engagement_ids))
+             .order_by(EngagementPrompt.sort_order, EngagementPrompt.created_at)),
+            (anonymous, select(EngagementAnonymousParticipant).where(EngagementAnonymousParticipant.engagement_id.in_(engagement_ids))
+             .order_by(EngagementAnonymousParticipant.created_at)),
+            (findings, select(ResearchFinding).where(ResearchFinding.engagement_id.in_(engagement_ids))
+             .order_by(ResearchFinding.created_at)),
+        )
+        for target, query in queries:
+            for row in db.scalars(query):
+                target.setdefault(row.engagement_id, []).append(row)
+    return {"facilitators": eng.list_facilitators(db, engagement_ids), "prompts": prompts, "anonymous": anonymous, "findings": findings}
+
+
 def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], dict[UUID, FileAsset]]:
     """The project's engagements with their participants, outcomes, extras and attachments."""
     engagements = eng.list_project_engagements(db, project.id)
-    findings = [f for e in engagements for f in eng.list_findings(db, e.id)]
+    ids = [e.id for e in engagements]
+    extras = _engagement_extras(db, ids)
+    findings = [f for fs in extras["findings"].values() for f in fs]
     user_ids = {e.creator_id for e in engagements} | {f.creator_id for f in findings}
     emails = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(user_ids)))} if user_ids else {}
     universe = grp.load_groups(db, project.organization_id, project.id)
     assets: dict[UUID, FileAsset] = {}
+    prime_links(db, ENGAGEMENT_ARTEFACT_TYPE, ids)
+    prime_links(db, FINDING_ARTEFACT_TYPE, [f.id for f in findings])
+    prime_record_tag_names(db, ENGAGEMENT_ARTEFACT_TYPE, ids)
+    prime_record_tag_names(db, FINDING_ARTEFACT_TYPE, [f.id for f in findings])
+    prime_file_links(db, EngagementFile, "engagement_id", [e.id for e in engagements])
     out = []
     for engagement in engagements:
-        entry = _engagement_json(db, engagement, project, universe, emails)
-        attachments = []
-        for asset, linked_by in db.execute(
-            select(FileAsset, User).join(EngagementFile, EngagementFile.file_id == FileAsset.id)
-            .join(User, User.id == EngagementFile.linked_by).where(EngagementFile.engagement_id == engagement.id)
-        ).all():
-            assets[asset.id] = asset
-            attachments.append({
-                "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": linked_by.email,
-            })
-        entry["attachments"] = attachments
+        entry = _engagement_json(db, engagement, project, universe, emails, extras)
+        entry["attachments"] = export_file_links(db, EngagementFile, "engagement_id", engagement.id, assets)
         out.append(entry)
     return {_KEY: out}, assets
 

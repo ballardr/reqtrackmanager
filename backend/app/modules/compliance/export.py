@@ -1221,17 +1221,23 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         })
 
     evidence_json = []
-    for e in evidence_rows:
-        revalidations = list(
-            db.scalars(select(ComplianceEvidenceRevalidation).where(ComplianceEvidenceRevalidation.evidence_id == e.id)).all()
-        )
-        attachments = []
+    evidence_ids = [e.id for e in evidence_rows]
+    revalidations_by_evidence: dict[UUID, list[ComplianceEvidenceRevalidation]] = {}
+    files_by_evidence: dict[UUID, list[tuple]] = {}
+    if evidence_ids:
+        for row in db.scalars(select(ComplianceEvidenceRevalidation).where(ComplianceEvidenceRevalidation.evidence_id.in_(evidence_ids))):
+            revalidations_by_evidence.setdefault(row.evidence_id, []).append(row)
         for _ef, asset, uploader in db.execute(
             select(ComplianceEvidenceFile, FileAsset, User)
             .join(FileAsset, FileAsset.id == ComplianceEvidenceFile.file_id)
             .join(User, User.id == ComplianceEvidenceFile.linked_by)
-            .where(ComplianceEvidenceFile.evidence_id == e.id)
+            .where(ComplianceEvidenceFile.evidence_id.in_(evidence_ids))
         ).all():
+            files_by_evidence.setdefault(_ef.evidence_id, []).append((asset, uploader))
+    for e in evidence_rows:
+        revalidations = revalidations_by_evidence.get(e.id, [])
+        attachments = []
+        for asset, uploader in files_by_evidence.get(e.id, []):
             file_assets_by_id[asset.id] = asset
             attachments.append({
                 "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,

@@ -5,6 +5,7 @@ This guide covers installing and configuring a new ReqTrackManager instance, fro
 ## Prerequisites
 
 - Docker and Docker Compose 2.23.1 or newer (`docker compose`, not the legacy `docker-compose`).
+- A host of at least 2 cores, 4 GiB of memory and 10 GiB of free disk for a small deployment; how many cores and how much memory for a given number of people is in [Sizing and memory limits](#sizing-and-memory-limits) and, with the measurements, [performance.md](performance.md#minimum-requirements-choosing-a-size-and-the-hosts-measured).
 - A host with persistent volume storage for PostgreSQL (and the bundled `storage` service, if using the bundled S3-compatible storage backend).
 - For production: a domain name and TLS termination in front of the frontend/backend (ReqTrackManager does not terminate TLS itself — see [Production deployment](#production-deployment) below).
 
@@ -39,7 +40,7 @@ flowchart TD
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
-| `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
+| `prometheus`, `loki`, `tempo`, `grafana`, `alloy`, `cadvisor` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
 
 ## Local / evaluation deployment
 
@@ -85,13 +86,13 @@ The full list of backend environment variables, with defaults, is documented in 
 
 ### Obtaining container images
 
-CI (`.github/workflows/ci.yml`) builds the production `backend`, `frontend`, `mcp-server`, and `docs` images on every change and, once the `frontend`, `backend-tests`, `e2e-tests` and `dependency-scan` jobs pass on a push to `main`, pushes all four to `ghcr.io/<owner>/<repo>-{backend,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI (`.github/workflows/ci.yml`) builds the production `backend`, `backup`, `frontend`, `mcp-server`, and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once the `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan` and `restore-test` jobs pass on a push to `main`, publishes all five to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 
 - **`latest`** — always the most recent build from `main`. What `IMAGE_TAG` defaults to below.
 - **`<git sha>`** — the exact commit it was built from, for pinning to a specific build without needing a release version.
-- **a SemVer** (e.g. `1.4.0`) — computed by [GitVersion](https://gitversion.net/) (`GitVersion.yml`, repo root) from the commit graph in `Mainline` mode: every merge to `main` is a release, so the version increments automatically without anyone pushing a git tag by hand.
+- **a SemVer** (e.g. `1.4.0`) — computed by [GitVersion](https://gitversion.net/) (`GitVersion.yml`, repo root) from the commit graph in `ContinuousDeployment` mode: every merge to `main` is a release, so the version increments automatically without anyone pushing a git tag by hand.
 
 `docker-compose.yml` declares both `image:` (pointing at these published tags) and `build:` (a local Dockerfile build) for `backend`/`frontend`/`mcp-server`. This means:
 
@@ -100,7 +101,16 @@ Each image is tagged three ways:
 
 If your images live in a different registry/namespace (e.g. a private mirror), override `GHCR_IMAGE_PREFIX` in your `.env` instead of editing `docker-compose.yml`.
 
-**Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is also baked into it at build time (`APP_VERSION`/`GIT_SHA`/`BUILD_DATE` build args, set by the `docker-build` CI job — see `backend/Dockerfile` and `frontend/Dockerfile`), so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's own bundled version and the backend's, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no `--build-arg`s (the default for the two paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
+**Checking what's actually deployed.** The same SemVer/commit SHA used to tag an image is also baked into it at build time (`APP_VERSION`/`GIT_SHA`/`BUILD_DATE` build args, set by the `docker-build` CI jobs — see `backend/Dockerfile` and `frontend/Dockerfile`), so a running instance can report its own build identity without shell access to the host: the signed-in nav rail shows both the frontend's own bundled version and the backend's, fetched from `GET /api/v1/system/version`. A local `docker compose build` with no `--build-arg`s (the default for the two paths above) reports placeholder `dev`/`unknown` values instead of failing — only images built by CI carry a real version.
+
+**Supported platforms.** Each tag is a multi-arch manifest, so `docker compose pull` fetches the right image for the host with no configuration:
+
+| Host | Supported | Notes |
+|------|-----------|-------|
+| x86-64 Linux, Docker Desktop on Intel | `linux/amd64` | Fully tested (unit, backend and end-to-end suites). |
+| Apple silicon, arm64 Linux servers, Raspberry Pi 4/5 | `linux/arm64` | Built natively and smoke tested in CI (the backend starts, migrates and answers authenticated requests); the full test suites are not run on arm. A Raspberry Pi needs a **64-bit** OS (64-bit Raspberry Pi OS or Ubuntu); 32-bit images are not published. A Raspberry Pi 5 (8 GiB, NVMe) ran one worker up to 20,000 requirements in 1.4 GiB of backend memory; boards with less RAM are unmeasured (see [Sizing and memory limits](#sizing-and-memory-limits)). |
+
+CI runners use 4 KB memory pages while a Raspberry Pi 5 uses 16 KB, which some native libraries mishandle; CI cannot catch that, so check a first run on a Pi with `docker compose ps` and the backend logs. The optional MailHog mail catcher in the development stack ([tests/container/](../tests/container/docker-compose.yml)) is amd64-only upstream and is not part of the production stack.
 
 ### Hosting the documentation internally
 
@@ -345,7 +355,7 @@ The modular feature system's frontend half also supports a genuinely third-party
 docker compose --profile observability up -d
 ```
 
-Adds Prometheus, Loki, Tempo, Grafana Alloy, and Grafana. In production, put Grafana behind the same authentication/reverse-proxy layer as the rest of the stack — the bundled Grafana config enables anonymous viewer access, which is appropriate for local development only. See the [README](../README.md#optional-observability-stack) for the exposed ports and scrape config. No Grafana data sources or dashboards are provisioned; add Prometheus (`http://prometheus:9090`), Loki and Tempo in Grafana yourself.
+Adds Prometheus, Loki, Tempo, Grafana Alloy, and Grafana. In production, put Grafana behind the same authentication/reverse-proxy layer as the rest of the stack — the bundled Grafana config enables anonymous viewer access, which is appropriate for local development only. See the [README](../README.md#optional-observability-stack) for the exposed ports and scrape config. Grafana provisions Prometheus and a **Resource usage** dashboard (cAdvisor container metrics plus the backend's `worker_resident_memory_bytes` and `db_pool_connections`); add Loki and Tempo in Grafana yourself. cAdvisor mounts the Docker socket and `/sys` read-only and holds the `SYSLOG` capability, so it only runs when this profile is enabled.
 
 Two counters cover traffic and database load (ready-to-paste PromQL; each replica is scraped separately, so `sum` across targets):
 
@@ -366,7 +376,54 @@ Each backend container runs `BACKEND_WORKERS` uvicorn worker processes (default 
 - **WebSocket broadcasts** fan out to every process via `LISTEN`/`NOTIFY`, so a client receives events whichever process it's connected to.
 - **Metrics:** `/metrics` aggregates all workers of one container (Prometheus multi-process mode); scrape each replica separately.
 
-Sizing: each worker holds up to 15 database connections (SQLAlchemy's default pool) plus two dedicated ones, so keep `BACKEND_WORKERS × replicas × ~17` under Postgres's `max_connections` (default 100), and budget roughly 150–250 MB of memory per worker. `BACKEND_WORKERS=1` restores single-process behaviour.
+Sizing: each worker holds up to `DB_POOL_SIZE + DB_MAX_OVERFLOW` database connections (default 5 + 10 = 15) plus two dedicated ones (the `LISTEN` listener and the leadership lock), so keep `BACKEND_WORKERS × replicas × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2)` (68 for the defaults) under Postgres's `max_connections` (default 100). Each worker also admits at most `MAX_CONCURRENT_REQUESTS` requests at a time (default: the pool's 15); the rest wait up to `REQUEST_QUEUE_TIMEOUT_SECONDS` and then get a `503` with `Retry-After`, so a burst queues instead of every thread and connection waiting on the other. `BACKEND_WORKERS=1` restores single-process behaviour (served by `app/serve.py` on a dual-stack socket). Memory per worker is in [Sizing and memory limits](#sizing-and-memory-limits).
+
+**More workers than PostgreSQL's connection limit allows: PgBouncer (not tested, not yet supported).** At six workers with a
+4 + 10 pool the stack held 91 of the 97 connections PostgreSQL allows, so a seventh worker would be refused connections before the
+CPU ran out. A connection pooler in front of PostgreSQL, such as PgBouncer in *transaction* mode, lets many application
+connections share a few database connections and is the usual remedy. It has **not** been run with this application and the
+performance effect is unmeasured. Two things stand in the way, both found by reading the code:
+
+- Each worker keeps two connections that need a *session*, not a transaction: the `LISTEN` that drives live updates
+  (`services/pubsub.py`) and the startup advisory lock (`services/process_coordination.py`). Both are taken from the same engine as
+  the request pool, so behind a transaction-mode pooler they would fail or lose their state. Supporting a pooler needs a
+  separate direct URL for those two connections; that setting does not exist yet.
+- Row locks (`FOR NO KEY UPDATE`), `SET LOCAL` and ordinary transactions work in transaction mode; session-level `SET`, prepared
+  statements held across transactions and advisory locks do not.
+
+Until that change is made and measured, the supported ways to add workers are a smaller pool per worker
+(`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`; the per-worker request limit follows it) or a higher PostgreSQL `max_connections` with memory
+to match.
+
+## Sizing and memory limits
+
+Every always-on service has a memory limit in `docker-compose.yml`, set from the peaks in [performance.md](performance.md) and overridable from `.env` (`0` removes a limit). A service over its limit is killed by the kernel and restarted, so raise the limit before the load that needs it, not after the first restart.
+
+| Service | Variable | Default | Measured |
+|---------|----------|---------|----------|
+| `backend` | `BACKEND_MEM_LIMIT` | `5g` | 4 workers: 1.7 GiB idle, 2.2 GiB at 30 requirements, 3.2 GiB at 1,000, 5.0 GiB at 5,000 and 9.5 GiB or more at 20,000 (the test's cap); 6 workers: 4.2 GiB at 1,000, 6.6 GiB at 5,000 |
+| `db` | `DB_MEM_LIMIT` | `3g` | 0.4 GiB at 100 requirements, 0.7-0.9 GiB at 1,000 and 5,000, 2.1-2.7 GiB at 20,000; more with a larger `shared_buffers` (1.7-2.7 GiB at 5,000 with 512 MB) |
+| `storage` | `STORAGE_MEM_LIMIT` | `2g` | 0.3-0.86 GiB, the top under sustained attachment uploads |
+| `frontend` | `FRONTEND_MEM_LIMIT` | `128m` | about 11 MiB (idle snapshot) |
+| `mcp-server` | `MCP_MEM_LIMIT` | `256m` | about 57 MiB (idle snapshot) |
+
+A backend worker keeps the memory of the heaviest request it has served, so memory is a worker count and a project size, not a user count:
+
+> backend limit ≈ 0.1 GiB + `BACKEND_WORKERS` × the high-water of a worker (about 0.8 GiB for projects up to 1,000 requirements, 1.3 GiB around 5,000, 2.4-3.2 GiB and more at 20,000)
+
+Every worker eventually serves a heavy request (a project or organisation export, a bundle or CSV import, a report), so count all of them. The default covers up to six workers on projects up to about 1,000 requirements. A deployment with larger projects raises it (four workers on 5,000-requirement projects: `BACKEND_MEM_LIMIT=6g`; on 20,000-requirement projects use 12g or more, and expect heavy requests to need more than the 9.5 GiB the tests allowed), or runs fewer workers, which also cuts throughput: see the capacity table in [performance.md](performance.md). A rise in the limit has to fit the host's RAM together with the database and the operating system. The backend logs a `WARNING` at start if its limit is below the formula for its worker count at 1,000 requirements.
+
+```mermaid
+flowchart TD
+    A["Largest project: how many requirements?"] --> B{"Up to ~1,000?"}
+    B -->|yes| C["BACKEND_WORKERS = cores for the API<br/>(default 4); default limits"]
+    B -->|"5,000 or more"| D["Add 0.5 GiB per concurrent heavy request<br/>to BACKEND_MEM_LIMIT; set shared_buffers<br/>to the database size (a quarter of RAM at most)"]
+    C --> E["Host RAM ≥ backend + db + storage limits<br/>+ 1 GiB for the system"]
+    D --> E
+    E --> F["Workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW + 2) < max_connections"]
+```
+
+Memory did not grow over a 30-minute soak (the growth happens at the first heavy request, then stops), so a limit is a ceiling for load, not a leak guard. The measurements were taken on amd64 Linux and a Windows (WSL2) workstation; a Raspberry Pi 5 with 8 GiB ran one worker with a 0.6 GiB backend up to 1,000 requirements and 1.4 GiB at 20,000, but serves only about 8 requests a second of the mixed load (40-80 active people). Four workers need about 4.9 GiB for the backend alone before the database, so run one or two on a 4 GiB board (unmeasured).
 
 ## Troubleshooting
 

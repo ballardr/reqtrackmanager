@@ -250,6 +250,22 @@ class Settings(BaseSettings):
             (logs and returns `None`) — mechanically enforced, not trusted
             from the module's own declaration, mirroring the
             path-prefix enforcement for MCP tools.
+        db_pool_size: Connections each worker process keeps in its database pool (SQLAlchemy `pool_size`).
+        db_max_overflow: Extra connections a worker may open above `db_pool_size` under load, closed again when
+            returned. A worker holds at most `db_pool_size + db_max_overflow` pooled connections, plus two dedicated
+            ones; keep `workers x replicas x (that + 2)` below PostgreSQL's `max_connections`.
+        max_concurrent_requests: HTTP requests one worker serves at once; the rest wait (no thread, no connection)
+            and are refused with 503 after `request_queue_timeout_seconds`. 0 means the database pool's capacity
+            (`db_pool_size + db_max_overflow`), the largest number that cannot exhaust the pool; raise it only
+            together with the pool.
+        request_queue_timeout_seconds: How long a request waits for a slot before it is refused with 503.
+        profile_mode: Developer profiling (`app.profiling`): counts database statements per request by route and
+            writes the totals to `profile_output_dir`. Off by default and never set by the production Compose
+            file; it adds no endpoint.
+        profile_output_dir: Where profile mode writes its files (one per worker process).
+        profile_tracemalloc: In profile mode, also track Python allocations and write the lines that grew since a
+            baseline taken `profile_baseline_seconds` after the worker started (or on `SIGUSR2`).
+        profile_baseline_seconds: Worker age at which the allocation baseline is taken, after warm-up.
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -322,6 +338,16 @@ class Settings(BaseSettings):
     allow_external_modules: bool = False
     extra_modules_path: str | None = None
     module_frame_allowed_origins: str = ""
+
+    db_pool_size: int = Field(default=5, ge=1)
+    db_max_overflow: int = Field(default=10, ge=0)
+    max_concurrent_requests: int = Field(default=0, ge=0)
+    request_queue_timeout_seconds: int = Field(default=30, ge=1)
+
+    profile_mode: bool = False
+    profile_output_dir: str = "/tmp/profile"
+    profile_tracemalloc: bool = False
+    profile_baseline_seconds: int = Field(default=120, ge=0)
 
     def weak_secret_problems(self) -> list[str]:
         """Lists the secrets that are still the built-in placeholder or too short to protect anything.

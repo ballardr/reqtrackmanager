@@ -77,7 +77,7 @@ def list_comments(
         .where(ReviewComment.target_type == ReviewTargetType.REQUIREMENT, ReviewComment.target_id == requirement_id)
         .order_by(ReviewComment.created_at)
     ).all()
-    return [engagement.comment_to_out(db, c, current_user.id) for c in comments]
+    return engagement.comments_to_out(db, list(comments), current_user.id)
 
 
 @router.patch("/{requirement_id}/comments/{comment_id}", response_model=CommentOut)

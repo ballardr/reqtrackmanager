@@ -12,9 +12,13 @@ or read, so they live here rather than being duplicated per bundle type.
 
 from __future__ import annotations
 
+import io
+import json
+import tempfile
 import zipfile
+from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import IO, Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -33,6 +37,43 @@ from app.services.files import upload_file
 # not just before the whole request is accepted.
 MAX_IMPORT_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_BUNDLE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+
+
+#: A built bundle stays in memory up to this size and spills to a temporary file beyond it.
+BUNDLE_SPOOL_BYTES = 4 * 1024 * 1024
+#: The size of one piece of a bundle sent to the client.
+BUNDLE_CHUNK_BYTES = 1024 * 1024
+
+
+def new_bundle_file() -> IO[bytes]:
+    """An empty spooled file to build a bundle zip into: memory for a small bundle, a temporary file for a large one,
+    so a big export never holds its whole zip (and then a copy of it) in the worker's memory."""
+    return tempfile.SpooledTemporaryFile(max_size=BUNDLE_SPOOL_BYTES)
+
+
+def write_json_entry(zf: zipfile.ZipFile, name: str, data: Any) -> None:
+    """Writes `data` as a pretty-printed JSON entry of the zip, a piece at a time, so the whole document is never one
+    string in memory (the previous `json.dumps` held the text, and its encoded bytes, beside the data itself)."""
+    with zf.open(name, "w") as entry, io.TextIOWrapper(entry, encoding="utf-8") as text:
+        json.dump(data, text, indent=2)
+
+
+def iter_bundle_file(bundle: IO[bytes]) -> Iterator[bytes]:
+    """The chunks of a finished bundle file from its start, closing (and so deleting) it at the end or on a failure."""
+    try:
+        bundle.seek(0)
+        while chunk := bundle.read(BUNDLE_CHUNK_BYTES):
+            yield chunk
+    finally:
+        bundle.close()
+
+
+def bundle_size(bundle: IO[bytes]) -> int:
+    """The size in bytes of a finished bundle file."""
+    bundle.seek(0, io.SEEK_END)
+    size = bundle.tell()
+    bundle.seek(0)
+    return size
 
 
 def enforce_upload_size_limit(data: bytes, *, what: str) -> None:
@@ -171,17 +212,54 @@ def export_file_links(
     Returns:
         One `{"file_ref", "filename", "content_type", "linked_by_email"}` entry per attachment.
     """
+    primed = _primed_file_links(file_model, record_id)
+    rows = primed if primed is not None else _file_link_rows(db, file_model, fk, [record_id]).get(record_id, [])
     out = []
-    for asset, linked_by in db.execute(
-        select(FileAsset, User).join(file_model, file_model.file_id == FileAsset.id)
-        .join(User, User.id == file_model.linked_by).where(getattr(file_model, fk) == record_id)
-    ).all():
+    for asset, linked_by_email in rows:
         assets[asset.id] = asset
         out.append({
             "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-            "content_type": asset.content_type, "linked_by_email": linked_by.email,
+            "content_type": asset.content_type, "linked_by_email": linked_by_email,
         })
     return out
+
+
+def _file_link_rows(db: Session, file_model: type, fk: str, record_ids: list[UUID]) -> dict[UUID, list[tuple[FileAsset, str]]]:
+    """`{record id: [(asset, linker's email)]}` for the records, in one statement."""
+    found: dict[UUID, list[tuple[FileAsset, str]]] = {}
+    if not record_ids:
+        return found
+    column = getattr(file_model, fk)
+    for record_id, asset, linked_by in db.execute(
+        select(column, FileAsset, User).join(file_model, file_model.file_id == FileAsset.id)
+        .join(User, User.id == file_model.linked_by).where(column.in_(record_ids))
+    ).all():
+        found.setdefault(record_id, []).append((asset, linked_by.email))
+    return found
+
+
+def _primed_file_links(file_model: type, record_id: UUID) -> list[tuple[FileAsset, str]] | None:
+    """The attachments `prime_file_links` read for the record, or `None` when it did not prime them."""
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    return None if memo is None else memo.get(("file_links", file_model.__name__, record_id))
+
+
+def prime_file_links(db: Session, file_model: type, fk: str, record_ids: list[UUID]) -> None:
+    """Reads the direct attachments of many records in one statement, for `export_file_links` to answer from.
+
+    Like `services.tags.prime_record_tag_names`: effective only inside a `memoize_module_state()` block (an export),
+    and a no-op elsewhere.
+    """
+    from app.modules.registry import module_state_memo
+
+    memo = module_state_memo()
+    if memo is None:
+        return
+    found = _file_link_rows(db, file_model, fk, list(record_ids))
+    for record_id in record_ids:
+        memo[("file_links", file_model.__name__, record_id)] = found.get(record_id, [])
 
 
 def import_file_links(

@@ -90,7 +90,7 @@ def set_policy(org: Organization, policy: CodePolicy) -> None:
 def _lock_organization(db: Session, organization_id: uuid.UUID) -> Organization:
     """Reads the organisation row `FOR UPDATE`, serialising code generation within it."""
     return db.execute(
-        select(Organization).where(Organization.id == organization_id).with_for_update()
+        select(Organization).where(Organization.id == organization_id).with_for_update(key_share=True)
     ).scalar_one()
 
 

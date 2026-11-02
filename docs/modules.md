@@ -371,6 +371,8 @@ class ModuleDefinition:
     search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
     record_tables: dict[str, RecordTableProvider] = {}  # a type's list as an exportable, importable table (§4l)
     not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
+    scaling_probes: dict[str, ScalingProbe] = {}  # how the scaling-shape guard fills and reads a type through its API
+    no_scaling_probe: dict[str, str] = {}  # artefact types the guard cannot fill through an API, with the reason
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -2034,6 +2036,14 @@ a list that takes `ProjectScope` (nested-project filter) and `TagFilter`; and `Q
 offers Save and activate only when activating needs nothing beyond permission to create. A nav entry that serves
 several sub-components sets `ModuleNavEntry.sub_components_any`. Each of these is a registration or a shared
 component, never an edit to a core file.
+
+**Scaling probe.** Each type also registers a `ScalingProbe` (`ModuleDefinition.scaling_probes`, or a `no_scaling_probe`
+reason): its list path and a `create(api, project_id, start, count)` that makes records through the real create
+endpoint. `backend/tests/test_scaling_shapes.py` fills a project with a few and then more records and fails if the
+statements behind the type's list, detail, comments, link graph or project bundle export grow with them (a lookup per row). A module's export reads its records' tags, attachments, versions and links in bulk first (`prime_record_tag_names`, `prime_file_links`, `prime_current_versions`, `prime_links`) so its per-record code stays cheap. Growth that is
+known and tracked is listed in that test's `KNOWN_GROWING`, strict both ways, so the list shrinks as fixes land.
+
+**Perf generator.** Each type also registers a `PerfDatasetGenerator` in `ModuleDefinition.perf_generators` (or a `no_perf_generator` reason), so the performance tooling's dataset tiers scale it. Build it from `services/perf_dataset/records.py` (`RecordBatch`, `add_comments`, `add_tags`, `link_to_earlier`) and add its ratio to `perf/datasets/profiles.yaml`; `backend/tests/test_perf_dataset.py` fails for a type with none, and its parity test compares the generated rows with an API-created one.
 
 **Reports.** If your module reports on its records, declare `ReportDefinition`s
 (§4g) rather than building routes, PDF/CSV code or a catalogue of your own. Name each

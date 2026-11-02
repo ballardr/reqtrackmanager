@@ -49,7 +49,7 @@ from app.models.project import Project
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.scoring import ScoringLevel
 from app.models.user import User
-from app.modules.registry import ScoringTarget, is_module_subcomponent_enabled
+from app.modules.registry import ScoringTarget, is_module_subcomponent_enabled, scoped_memo
 from app.modules.stakeholders.enums import (
     NeedStatus,
     PersonaScope,
@@ -79,6 +79,7 @@ from app.modules.stakeholders.models import (
 )
 from app.modules.stakeholders.scoring import INFLUENCE_AXIS_KEY, INTEREST_AXIS_KEY, STAKEHOLDER_SCORING_SCHEME_KEY
 from app.services.audit import log_event
+from app.services.current_versions import current_versions, primed_current_version
 from app.services.files import delete_file
 from app.services.link_types import ensure_org_link_type
 from app.services.project_hierarchy import get_ancestor_chain
@@ -133,6 +134,9 @@ def get_current_persona_version(db: Session, persona_id: uuid.UUID) -> PersonaVe
     Raises:
         ValueError: If none exists (a data-integrity bug).
     """
+    primed = primed_current_version(PersonaVersion, persona_id)
+    if primed is not None:
+        return primed
     version = db.scalar(
         select(PersonaVersion).where(PersonaVersion.persona_id == persona_id, PersonaVersion.valid_to.is_(None))
     )
@@ -303,6 +307,39 @@ def resolve_persona_weight_with_source(
     return own_weight, "persona" if own_weight is not None else "none"
 
 
+def resolve_persona_weights(
+    db: Session, project_id: uuid.UUID, own_weights: dict[uuid.UUID, float | None]
+) -> dict[uuid.UUID, tuple[float | None, str, float | None]]:
+    """`resolve_persona_weight_with_source` for many personas in two statements (the ancestor chain, then every
+    override), however many personas.
+
+    Args:
+        db: Active session (read only).
+        project_id: The project.
+        own_weights: `{persona id: the persona's own weight}`.
+
+    Returns:
+        `{persona id: (effective weight, source tier, this project's own override or None)}`.
+    """
+    chain = [project_id, *(p.id for p in reversed(get_ancestor_chain(db, project_id)))]
+    overrides: dict[uuid.UUID, dict[uuid.UUID, float]] = {}
+    if own_weights:
+        for row in db.scalars(
+            select(ProjectPersonaWeight).where(
+                ProjectPersonaWeight.persona_id.in_(list(own_weights)), ProjectPersonaWeight.project_id.in_(chain)
+            )
+        ):
+            overrides.setdefault(row.persona_id, {})[row.project_id] = row.weight
+    out = {}
+    for persona_id, own in own_weights.items():
+        found = overrides.get(persona_id, {})
+        here = found.get(project_id)
+        resolved = next(((found[pid], "project" if pid == project_id else "ancestor_project") for pid in chain if pid in found), None)
+        weight, source = resolved if resolved else (own, "persona" if own is not None else "none")
+        out[persona_id] = (weight, source, here)
+    return out
+
+
 def resolve_persona_weight(db: Session, project_id: uuid.UUID, persona_id: uuid.UUID, own_weight: float | None) -> float | None:
     """The effective weight alone; see `resolve_persona_weight_with_source`."""
     return resolve_persona_weight_with_source(db, project_id, persona_id, own_weight)[0]
@@ -390,15 +427,16 @@ def persona_scoring_targets(db: Session, project_id: uuid.UUID) -> list[ScoringT
     project = db.get(Project, project_id)
     if project is None or not is_module_subcomponent_enabled(db, project_id, STAKEHOLDERS_MODULE_KEY, "persona"):
         return []
-    targets: list[ScoringTarget] = []
-    for persona in list_project_visible_personas(db, project):
-        version = get_current_persona_version(db, persona.id)
-        targets.append(ScoringTarget(
-            id=persona.id, label=version.name,
-            weight=resolve_persona_weight(db, project_id, persona.id, version.weight),
-            is_active=version.status == PersonaStatus.ACTIVE,
-        ))
-    return targets
+    personas = list_project_visible_personas(db, project)
+    versions = current_versions(db, PersonaVersion, "persona_id", [p.id for p in personas])
+    weights = resolve_persona_weights(db, project_id, {p.id: versions[p.id].weight for p in personas})
+    return [
+        ScoringTarget(
+            id=persona.id, label=versions[persona.id].name, weight=weights[persona.id][0],
+            is_active=versions[persona.id].status == PersonaStatus.ACTIVE,
+        )
+        for persona in personas
+    ]
 
 
 # --- File ownership ----------------------------------------------------------
@@ -472,6 +510,9 @@ def get_current_stakeholder_version(db: Session, stakeholder_id: uuid.UUID) -> S
     Raises:
         ValueError: If none exists (a data-integrity bug).
     """
+    primed = primed_current_version(StakeholderVersion, stakeholder_id)
+    if primed is not None:
+        return primed
     version = db.scalar(
         select(StakeholderVersion).where(
             StakeholderVersion.stakeholder_id == stakeholder_id, StakeholderVersion.valid_to.is_(None)
@@ -833,6 +874,7 @@ def get_or_create_link_type(
     return ensure_org_link_type(db, organization_id, forward_name, reverse_name)
 
 
+@scoped_memo
 def link_type_id_if_exists(db: Session, organization_id: uuid.UUID, forward_name: str) -> uuid.UUID | None:
     """The id of the org's link type named `forward_name`, or `None` when it has
     not been created yet (so there can be no such links to list)."""
@@ -989,6 +1031,9 @@ def get_current_need_version(db: Session, need_id: uuid.UUID) -> StakeholderNeed
     Raises:
         ValueError: If none exists (a data-integrity bug).
     """
+    primed = primed_current_version(StakeholderNeedVersion, need_id)
+    if primed is not None:
+        return primed
     version = db.scalar(
         select(StakeholderNeedVersion).where(
             StakeholderNeedVersion.need_id == need_id, StakeholderNeedVersion.valid_to.is_(None)

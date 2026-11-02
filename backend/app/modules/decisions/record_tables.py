@@ -50,9 +50,10 @@ from app.modules.registry import (
 )
 from app.services import tags as tag_service
 from app.services.principals import principal_ref
-from app.services.record_tables import PrincipalCells
+from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
     cached_lookup,
+    count_rows,
     date_parser,
     enum_filter,
     list_cell,
@@ -191,6 +192,7 @@ DECISION_TABLE = RecordTableProvider(
     columns=_decision_columns,
     list_records=_list_decisions,
     find=_find,
+    find_many=find_many_by_code(Decision, "project_id"),
     prepare=lambda db, project, records: _Prepared(db, records),
     create=_create,
     update=_update,
@@ -199,6 +201,7 @@ DECISION_TABLE = RecordTableProvider(
     can_create=_may_create,
     can_update=_may_update,
     approval_gated=True,
+    count=lambda db, user, project_id: count_rows(db, Decision, project_id, live_only=True),
 )
 
 RECORD_TABLES: dict[str, RecordTableProvider] = {DECISION_ARTEFACT_TYPE: DECISION_TABLE}

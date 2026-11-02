@@ -309,6 +309,9 @@ def _load_stakeholder_rows(db: Session, req: ReportContext, projects: list[Proje
             continue
         pairs = [(s, v) for s, v in _current_stakeholders(db, project) if members is None or s.id in members]
         refs = grp.group_refs(db, [s.id for s, _ in pairs], universe) if universe else {}
+        unnamed = {(v.org_type_id, v.project_type_id) for _s, v in pairs} - set(type_names)
+        if unnamed:
+            type_names.update({key: name or "" for key, name in STAKEHOLDER_TYPES.display_names(db, unnamed).items()})
         for stakeholder, version in pairs:
             pair = (version.influence_level_id, version.interest_level_id)
             if pair not in quadrants:
@@ -319,10 +322,6 @@ def _load_stakeholder_rows(db: Session, req: ReportContext, projects: list[Proje
                 except ValueError:
                     quadrants[pair] = None  # a level that is no longer valid leaves the stakeholder unscored
             type_key = (version.org_type_id, version.project_type_id)
-            if type_key not in type_names:
-                type_names[type_key] = STAKEHOLDER_TYPES.display_name(
-                    db, org_type_id=version.org_type_id, project_type_id=version.project_type_id,
-                ) or ""
             influence = levels.get(version.influence_level_id) if version.influence_level_id else None
             interest = levels.get(version.interest_level_id) if version.interest_level_id else None
             row = StakeholderRow(

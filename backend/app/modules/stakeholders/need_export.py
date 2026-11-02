@@ -34,7 +34,7 @@ from app.models.requirement import Requirement
 from app.models.user import User
 from app.modules.stakeholders._principals import NEED_PRINCIPAL_FIELDS, principals_from_bundle, principals_to_bundle
 from app.modules.stakeholders.enums import NeedStatus, PersonaScope, StakeholderScope
-from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderNeed, StakeholderNeedFile
+from app.modules.stakeholders.models import Persona, Stakeholder, StakeholderNeed, StakeholderNeedFile, StakeholderNeedVersion
 from app.modules.stakeholders.service import (
     NEED_ARTEFACT_TYPE,
     STAKEHOLDER_ARTEFACT_TYPE,
@@ -47,8 +47,10 @@ from app.modules.stakeholders.service import (
     list_need_holders,
     list_need_requirement_links,
 )
-from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
-from app.services.tags import record_tag_names, restore_record_tags
+from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
+from app.services.current_versions import prime_current_versions
+from app.services.relationships import prime_links
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 _TEXT_FIELDS = ("name", "description", "rationale")
 
@@ -92,20 +94,15 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     user_ids = {need.creator_id for need in needs}
     emails = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(user_ids)))} if user_ids else {}
     assets: dict[UUID, FileAsset] = {}
+    ids = [n.id for n in needs]
+    prime_current_versions(db, StakeholderNeedVersion, "need_id", ids)
+    prime_links(db, NEED_ARTEFACT_TYPE, ids)
+    prime_record_tag_names(db, NEED_ARTEFACT_TYPE, ids)
+    prime_file_links(db, StakeholderNeedFile, "need_id", ids)
     out = []
     for need in needs:
         entry = _need_json(db, need, project, emails)
-        attachments = []
-        for asset, linked_by in db.execute(
-            select(FileAsset, User).join(StakeholderNeedFile, StakeholderNeedFile.file_id == FileAsset.id)
-            .join(User, User.id == StakeholderNeedFile.linked_by).where(StakeholderNeedFile.need_id == need.id)
-        ).all():
-            assets[asset.id] = asset
-            attachments.append({
-                "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": linked_by.email,
-            })
-        entry["attachments"] = attachments
+        entry["attachments"] = export_file_links(db, StakeholderNeedFile, "need_id", need.id, assets)
         out.append(entry)
     return {"project_stakeholder_needs": out}, assets
 

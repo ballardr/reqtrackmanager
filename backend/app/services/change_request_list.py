@@ -24,7 +24,7 @@ import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.change_request import ChangeRequest, ChangeRequestVersion
 from app.models.enums import ChangeRequestStatus
@@ -82,12 +82,22 @@ def latest_versions(db: Session, change_requests: Sequence[ChangeRequest]) -> di
     ids = [cr.id for cr in change_requests]
     if not ids:
         return {}
-    newest: dict[uuid.UUID, ChangeRequestVersion] = {}
-    for version in db.scalars(select(ChangeRequestVersion).where(ChangeRequestVersion.change_request_id.in_(ids))).all():
-        held = newest.get(version.change_request_id)
-        if held is None or version.version_number > held.version_number:
-            newest[version.change_request_id] = version
-    return newest
+    latest_number = (
+        select(ChangeRequestVersion.change_request_id.label("cr_id"), func.max(ChangeRequestVersion.version_number).label("n"))
+        .where(ChangeRequestVersion.change_request_id.in_(ids))
+        .group_by(ChangeRequestVersion.change_request_id)
+        .subquery()
+    )
+    rows = db.scalars(
+        select(ChangeRequestVersion)
+        .join(
+            latest_number,
+            (latest_number.c.cr_id == ChangeRequestVersion.change_request_id)
+            & (latest_number.c.n == ChangeRequestVersion.version_number),
+        )
+        .options(selectinload(ChangeRequestVersion.proposed_links))
+    ).all()
+    return {version.change_request_id: version for version in rows}
 
 
 def narrow_change_requests(

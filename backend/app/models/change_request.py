@@ -267,6 +267,9 @@ class ReviewComment(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "review_comments"
+    # Every comment list and per-record comment count filters on (target_type, target_id); without this the
+    # planner reads the whole table for each list page (seen as a sequential scan in the PostgreSQL profile).
+    __table_args__ = (Index("ix_review_comments_target", "target_type", "target_id"),)
 
     target_type: Mapped[ReviewTargetType] = mapped_column(str_enum(ReviewTargetType, 20))
     target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))

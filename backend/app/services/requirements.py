@@ -16,10 +16,10 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import String, and_, cast, exists, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.change_request import ChangeRequest
+from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.custom_field import CustomFieldEntityKind
 from app.models.engagement import Subscription
 from app.models.enums import (
@@ -427,12 +427,54 @@ class RequirementFilters:
 
 
 @dataclass
+class ListRow:
+    """A requirement as the list filters, orders and pages it: plain values read as columns, no ORM entity,
+    so a project of 20,000 is a list of small objects rather than 20,000 mapped instances. Only one UUID column
+    is read per row (the id): turning a UUID cell into a Python object costs more than the query, so the
+    stage filter and the component/category order are applied in SQL instead of read back.
+
+    Attributes:
+        id / project_id / unique_code / created_at: The identity row's values (`project_id` is the project asked for).
+        name / status / sort_order: The current version's values the list filters and orders by.
+        from_project_id / from_project_name / from_project_code: Set by `ProjectScope.collect` on a row of
+            another project.
+    """
+
+    id: UUID
+    project_id: UUID
+    unique_code: str
+    created_at: datetime
+    name: str
+    status: RequirementStatus
+    sort_order: int
+    from_project_id: UUID | None = None
+    from_project_name: str | None = None
+    from_project_code: str | None = None
+
+
+@dataclass
+class FilteredRows:
+    """A project's requirement rows after `filter_requirement_rows`.
+
+    Attributes:
+        rows: The matching rows (the requested page when `limit` was given), in the requested order.
+        total: How many rows match the filters, before paging.
+        unfiltered: How many requirements the project has before any filter beyond archived visibility.
+    """
+
+    rows: list[ListRow]
+    total: int
+    unfiltered: int
+
+
+@dataclass
 class FilteredRequirements:
     """A project's requirements after `filter_requirements`.
 
     Attributes:
         requirements: The matching requirements, in component/category order when asked.
-        prefetch: The lookups for exactly those rows (versions, people, counts).
+        prefetch: The lookups for exactly those rows (versions, people, counts); empty when the caller asked
+            for none (`prefetch=False`).
         unfiltered: How many requirements the project has before any filter beyond archived visibility.
     """
 
@@ -441,70 +483,175 @@ class FilteredRequirements:
     unfiltered: int
 
 
-def filter_requirements(
-    db: Session, project_id: UUID, current_user_id: UUID, filters: RequirementFilters, *, structural_order: bool
-) -> FilteredRequirements:
-    """One project's requirements narrowed by `filters`: the single implementation behind the list endpoint
-    and the record table export, so a filter added here reaches both.
+LIST_SORT_COLUMNS = ("unique_code", "name", "status", "created_at")
+"""The columns `GET .../requirements?sort=` accepts."""
+
+
+def _sql_order(sort: str | None, descending: bool) -> list:
+    """The ORDER BY for a list: the project's component, category and manual order when `sort` is None, else one
+    column. Text is ordered by its lower-cased bytes (`COLLATE "C"`, the same order as Python's `str.lower()`
+    comparison), never the database's locale, so the order does not depend on the server's collation. The
+    creation time and id break ties so a page is stable."""
+    if sort is None:
+        keys = [ProjectComponent.sort_order, ProjectCategory.sort_order, RequirementVersion.sort_order]
+    else:
+        column = {
+            "unique_code": func.lower(Requirement.unique_code).collate("C"),
+            "name": func.lower(RequirementVersion.name).collate("C"),
+            "status": cast(RequirementVersion.status, String).collate("C"),
+            "created_at": Requirement.created_at,
+        }[sort]
+        keys = [column.desc() if descending else column]
+    return [*keys, Requirement.created_at, Requirement.id]
+
+
+def filter_requirement_rows(
+    db: Session, project_id: UUID, current_user_id: UUID, filters: RequirementFilters, *,
+    sort: str | None = None, descending: bool = False, limit: int | None = None, offset: int = 0,
+) -> FilteredRows:
+    """One project's requirements narrowed by `filters`, ordered and optionally paged, as plain rows: the single
+    implementation behind the list endpoint and the record table export, so a filter added here reaches both.
+
+    The database applies every filter, the order and the page; one query returns only the rows asked for, with
+    one UUID column each (turning a UUID cell into a Python object costs more than the query). The one exception
+    is `filters.keyword`, which needs tag names: it narrows in Python, after the rows are read. Nothing is
+    loaded per row; a caller loads the full records for the page it returns (`requirements_by_ids`,
+    `prefetch_for_list`).
 
     Args:
         db: Active session (read only).
         project_id: The project.
-        current_user_id: The caller (for `only_watched` and the subscription lookup).
+        current_user_id: The caller (for `only_watched`).
         filters: The filters.
-        structural_order: Order by the project's component, category and sort order (the list's default
-            when no explicit sort is requested).
+        sort: One of `LIST_SORT_COLUMNS`, or None for the project's component, category and manual order.
+        descending: Reverse a column sort.
+        limit: Return only this many rows (after `offset`); None returns all matching.
+        offset: Rows to skip.
 
     Returns:
-        The rows, their prefetched lookups and the unfiltered count.
+        The rows, the matching total and the unfiltered count.
+
+    Raises:
+        HTTPException: 500 if a requirement has no current version (broken data).
     """
-    query = select(Requirement).where(Requirement.project_id == project_id)
+    conditions = [Requirement.project_id == project_id]
     if not filters.include_archived:
-        query = query.where(Requirement.is_archived.is_(False))
-    unfiltered = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+        conditions.append(Requirement.is_archived.is_(False))
+    unfiltered = db.scalar(select(func.count()).select_from(Requirement).where(*conditions)) or 0
 
     if filters.is_completed is not None:
-        query = query.where(Requirement.is_completed.is_(filters.is_completed))
+        conditions.append(Requirement.is_completed.is_(filters.is_completed))
     if filters.component_id:
-        query = query.where(Requirement.component_id == filters.component_id)
+        conditions.append(Requirement.component_id == filters.component_id)
     if filters.category_id:
-        query = query.where(Requirement.category_id == filters.category_id)
+        conditions.append(Requirement.category_id == filters.category_id)
     if any(t.strip() for t in filters.tag_names):
-        query = query.where(Requirement.id.in_(
+        conditions.append(Requirement.id.in_(
             tag_service.tagged_ids(
                 db, project=db.get(Project, project_id), artefact_type="requirement",
                 names=list(filters.tag_names), match_all=filters.tag_match_all,
             )
         ))
-    candidates = list(db.scalars(query).all())
-    prefetch = prefetch_for_list(db, [r.id for r in candidates], current_user_id)
+    if filters.target_stage_id:
+        conditions.append(RequirementVersion.target_stage_id == filters.target_stage_id)
+    if filters.status:
+        conditions.append(RequirementVersion.status == filters.status)
+    if filters.search:
+        needle = filters.search.lower()
+        conditions.append(or_(
+            func.strpos(func.lower(RequirementVersion.name), needle) > 0,
+            func.strpos(func.lower(Requirement.unique_code), needle) > 0,
+        ))
+    if filters.has_comments:
+        conditions.append(exists().where(
+            ReviewComment.target_type == ReviewTargetType.REQUIREMENT, ReviewComment.target_id == Requirement.id,
+        ))
+    if filters.only_watched:
+        conditions.append(exists().where(
+            Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == current_user_id,
+            Subscription.entity_type == "requirement", Subscription.entity_id == Requirement.id,
+        ))
 
-    kept: list[Requirement] = []
-    for req in candidates:
-        version = prefetch.versions[req.id]
-        if filters.keyword and filters.keyword.casefold() not in {k.casefold() for k in prefetch.keywords.get(req.id, [])}:
-            continue
-        if filters.search:
-            needle = filters.search.lower()
-            if needle not in version.name.lower() and needle not in req.unique_code.lower():
-                continue
-        if filters.status and version.status != filters.status:
-            continue
-        if filters.target_stage_id and version.target_stage_id != filters.target_stage_id:
-            continue
-        if filters.has_comments and prefetch.comment_counts.get(req.id, 0) == 0:
-            continue
-        if filters.only_watched and req.id not in prefetch.subscribed:
-            continue
-        kept.append(req)
+    def joined(query):
+        query = query.outerjoin(RequirementVersion, and_(
+            RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
+        ))
+        if sort is None:
+            query = query.join(ProjectComponent, ProjectComponent.id == Requirement.component_id).join(
+                ProjectCategory, ProjectCategory.id == Requirement.category_id,
+            )
+        return query.where(*conditions)
 
-    if structural_order:
-        comp_order = {c.id: c.sort_order for c in db.scalars(
-            select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
-        cat_order = {c.id: c.sort_order for c in db.scalars(
-            select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
-        kept.sort(key=lambda r: (comp_order.get(r.component_id, 0), cat_order.get(r.category_id, 0), prefetch.versions[r.id].sort_order))
-    return FilteredRequirements(requirements=kept, prefetch=prefetch, unfiltered=unfiltered)
+    def matching_count() -> int:
+        """How many requirements match, counted from the requirement table alone unless a filter reads the version
+        (status, stage, text): the version and the component and category joins only order and label the page."""
+        query = select(func.count()).select_from(Requirement)
+        if filters.status or filters.target_stage_id or filters.search:
+            query = query.outerjoin(RequirementVersion, and_(
+                RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
+            ))
+        return db.scalar(query.where(*conditions)) or 0
+
+    # A keyword narrows in Python, so the page is cut after it; every other filter is already in the query.
+    paged_in_sql = not filters.keyword
+    query = joined(select(
+        Requirement.id, Requirement.unique_code, Requirement.created_at,
+        RequirementVersion.name, RequirementVersion.status, RequirementVersion.sort_order,
+    )).order_by(*_sql_order(sort, descending))
+    if paged_in_sql and limit is not None:
+        query = query.limit(limit).offset(offset)
+    rows = [ListRow(row[0], project_id, *row[1:]) for row in db.execute(query).all()]
+    if any(row.status is None for row in rows):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Requirement has no current version.")
+    if paged_in_sql:
+        # Every row, or a page that did not fill (and is not past the end), already says how many there are: no second
+        # query to count them.
+        if limit is None:
+            total = len(rows)
+        elif len(rows) < limit and (rows or offset == 0):
+            total = offset + len(rows)
+        else:
+            total = matching_count()
+
+    if not paged_in_sql:
+        keywords = tag_service.keywords_for_requirements(db, [row.id for row in rows]) if rows else {}
+        wanted = filters.keyword.casefold()
+        rows = [row for row in rows if wanted in {k.casefold() for k in keywords.get(row.id, [])}]
+        total = len(rows)
+        if limit is not None:
+            rows = rows[offset:offset + limit]
+    return FilteredRows(rows=rows, total=total, unfiltered=unfiltered)
+
+
+def requirements_by_ids(db: Session, ids: list[UUID]) -> list[Requirement]:
+    """The requirements with these ids, in the order given (an unknown id is skipped)."""
+    if not ids:
+        return []
+    found = {r.id: r for r in db.scalars(select(Requirement).where(Requirement.id.in_(ids)))}
+    return [found[i] for i in ids if i in found]
+
+
+def filter_requirements(
+    db: Session, project_id: UUID, current_user_id: UUID, filters: RequirementFilters, *, prefetch: bool = True,
+) -> FilteredRequirements:
+    """`filter_requirement_rows` with the full `Requirement` records loaded for every kept row, and (by default)
+    their `ListPrefetch`: for a caller that works on all matching records (the record table export).
+
+    Args:
+        db / project_id / current_user_id / filters: As for `filter_requirement_rows`; rows come in the project's
+            component, category and manual order.
+        prefetch: Load the per-row lookups for the kept rows (default); `False` returns an empty prefetch.
+
+    Returns:
+        The records, their prefetched lookups (unless skipped) and the unfiltered count.
+    """
+    found = filter_requirement_rows(db, project_id, current_user_id, filters)
+    requirements = requirements_by_ids(db, [row.id for row in found.rows])
+    return FilteredRequirements(
+        requirements=requirements,
+        prefetch=prefetch_for_list(db, [r.id for r in requirements], current_user_id) if prefetch else ListPrefetch(),
+        unfiltered=found.unfiltered,
+    )
 
 
 # --- direct edit (shared by the edit endpoint and the record table import) -------------------------

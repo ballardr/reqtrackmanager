@@ -142,7 +142,7 @@ class RequirementLinkOut(BaseModel):
     `display_name`/`other_requirement_*` are resolved server-side per
     request rather than left for the frontend to infer, since only the
     server can cheaply tell whether the requirement being viewed is the
-    link's source or target (see `routers.requirements::_link_to_out`).
+    link's source or target (see `routers.requirements.links::_links_to_out`).
     """
 
     id: UUID

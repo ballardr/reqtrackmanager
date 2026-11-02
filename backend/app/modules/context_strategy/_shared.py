@@ -70,6 +70,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import ArtefactType, PermissionLevel
@@ -114,6 +115,7 @@ from app.modules.context_strategy.service import (
     is_pain_point_locked,
 )
 from app.schemas.principal import PrincipalOut
+from app.services.current_versions import current_versions
 from app.services.permissions import encode_permission
 from app.services.principals import principal_labels, principal_ref
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
@@ -424,7 +426,21 @@ def owner_of(labels: OwnerLabels, row: Any) -> PrincipalOut | None:
     return None if row.owner_id is None else labels[(row.owner_type, row.owner_id)]
 
 
-def pain_point_to_out(db: Session, pain_point: PainPoint, labels: OwnerLabels | None = None) -> PainPointOut:
+def pain_point_type_names(db: Session, type_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """The effective display name of each project pain point type, in two statements however many types: the project
+    rows, then the organisation types the rows without an override point at."""
+    rows = db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.id.in_(set(type_ids)))).all()
+    org_ids = {r.org_type_id for r in rows if r.name_override is None and r.org_type_id is not None}
+    org_names = (
+        {t.id: t.name for t in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.id.in_(org_ids)))}
+        if org_ids else {}
+    )
+    return {r.id: r.name_override if r.name_override is not None else org_names.get(r.org_type_id, "Unknown type") for r in rows}
+
+
+def pain_point_to_out(
+    db: Session, pain_point: PainPoint, labels: OwnerLabels | None = None, type_names: dict[uuid.UUID, str] | None = None
+) -> PainPointOut:
     """Builds the API-facing shape for a `PainPoint` — no separate version
     row to merge in (see `models.py`'s own docstring), so this reads
     `pain_point`'s own columns directly plus its effective type name
@@ -432,12 +448,11 @@ def pain_point_to_out(db: Session, pain_point: PainPoint, labels: OwnerLabels | 
 
     Args:
         labels: Pre-resolved owner labels (`owner_labels`) when building many; resolved here when omitted.
+        type_names: Pre-resolved type names (`pain_point_type_names`) when building many; resolved here when omitted.
     """
     labels = labels if labels is not None else owner_labels(db, [pain_point])
-    project_pain_point_type = db.get(ProjectPainPointType, pain_point.pain_point_type_id)
-    type_name = (
-        _effective_pain_point_type_name(db, project_pain_point_type) if project_pain_point_type is not None else ""
-    )
+    type_names = type_names if type_names is not None else pain_point_type_names(db, [pain_point.pain_point_type_id])
+    type_name = type_names.get(pain_point.pain_point_type_id, "")
     return PainPointOut(
         id=pain_point.id, project_id=pain_point.project_id, unique_code=pain_point.unique_code,
         pain_point_type_id=pain_point.pain_point_type_id,
@@ -547,7 +562,8 @@ def guiding_principle_to_out(
 
 def guiding_principles_to_out(db: Session, guiding_principles: Sequence[GuidingPrinciple]) -> list[GuidingPrincipleOut]:
     """Builds the list response, loading each current version and resolving every owner in one batch."""
-    versions = [get_current_guiding_principle_version(db, gp.id) for gp in guiding_principles]
+    by_id = current_versions(db, GuidingPrincipleVersion, "guiding_principle_id", [gp.id for gp in guiding_principles])
+    versions = [by_id[gp.id] for gp in guiding_principles]
     labels = owner_labels(db, versions)
     return [guiding_principle_to_out(db, gp, v, labels) for gp, v in zip(guiding_principles, versions, strict=True)]
 

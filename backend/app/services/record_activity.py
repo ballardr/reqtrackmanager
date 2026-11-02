@@ -125,13 +125,21 @@ def _generic_link_entries(
     return entries
 
 
+#: The event types of the older per-pair link tables (every `*_link` entity type except the generic one). A closed list,
+#: not a `LIKE '%_link'`, so the database can use the project and entity-type index instead of reading the project's
+#: whole audit trail; `test_every_legacy_link_event_type_is_listed` fails if a router logs one that is missing.
+LEGACY_LINK_EVENT_TYPES = (
+    "context_strategy_link", "decision_link", "requirement_action_link", "requirement_link",
+)
+
+
 def _legacy_link_entries(
     db: Session, project: Project, artefact_id: uuid.UUID,
 ) -> list[ChangeEntryOut]:
     """Events of the older per-pair link tables (`*_link` other than the generic one) that name the record."""
     events = db.scalars(
         select(AuditEvent).where(
-            AuditEvent.entity_type.like("%\\_link", escape="\\"), AuditEvent.entity_type != _GENERIC_LINK,
+            AuditEvent.entity_type.in_(LEGACY_LINK_EVENT_TYPES),
             or_(
                 AuditEvent.project_id == project.id,
                 (AuditEvent.project_id.is_(None)) & (AuditEvent.organization_id == project.organization_id),
