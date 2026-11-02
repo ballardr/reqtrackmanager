@@ -271,6 +271,8 @@ def _queue(
         )
     except report_run_jobs.TooManyActiveRunsError as exc:
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
+    except report_run_jobs.TokenScopeError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     db.commit()
     return ReportRunOut.of(row)
 

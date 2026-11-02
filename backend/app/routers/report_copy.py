@@ -36,6 +36,7 @@ from app.services.rbac import (
     get_effective_project_roles,
     permission_satisfied,
     require_permission,
+    session_may_reach_project,
 )
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/report-copy", tags=["report-copy"])
@@ -92,7 +93,7 @@ def list_copy_targets(
     ).all()
     return [
         ReportCopyTargetOut(id=p.id, name=p.name, parent_project_id=p.parent_project_id)
-        for p in candidates if _manages(db, current_user, p)
+        for p in candidates if session_may_reach_project(db, p.id) and _manages(db, current_user, p)
     ]
 
 

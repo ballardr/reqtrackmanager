@@ -285,6 +285,10 @@ def upload_library_image(
     """
     filename, data = prepare_upload(filename, data)
     content_type = sniff_image(data)
+    if content_type == SVG_TYPE:
+        # Store the allow-listed copy, not the upload: a script, `foreignObject` or external reference never rests in
+        # the library for a download or another consumer to meet. (`sniff_image` has just shown it parses and passes.)
+        data = sanitize_svg(data.decode("utf-8")).encode("utf-8")
     return upload_file(
         db, organization_id=organization_id, uploaded_by=uploaded_by, filename=filename or "image", content_type=content_type,
         data=data, is_org_resource=project_id is None, project_id=project_id,

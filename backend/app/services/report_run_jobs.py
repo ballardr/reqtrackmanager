@@ -77,7 +77,7 @@ from app.services import custom_report_run, report_layout_scope, report_layouts,
 from app.services.client_date import effective_today, reset_client_date, set_client_date
 from app.services.files import get_storage_backend
 from app.services.notifications import notify
-from app.services.rbac import get_effective_org_roles, get_effective_project_roles
+from app.services.rbac import get_effective_org_roles, get_effective_project_roles, session_may_reach_project
 from app.services.report_layout_eval import ASYNC_TIMEOUT_SECONDS, LayoutLimitError, LayoutTimeoutError
 from app.services.report_variables import VariableValueError, resolve_values
 
@@ -102,11 +102,16 @@ FAILURE_OUTPUT = "The finished file is too large to keep. Narrow the layout or c
 FAILURE_OTHER = "The report could not be produced."
 FAILURE_PACK_NOTHING = "None of the reports in the pack could be produced."
 FAILURE_PACK_VALUES = "The values or saved set chosen for the pack are no longer valid."
+TOKEN_SCOPE_MESSAGE = "This access token is limited to some projects; it can prepare only a one-project report without child projects."
 FAILURE_LOST = "The report was interrupted and was not produced. Run it again."
 
 
 class TooManyActiveRunsError(RuntimeError):
     """The requester already has `MAX_ACTIVE_PER_USER` background runs queued or running."""
+
+
+class TokenScopeError(PermissionError):
+    """The request's credential is limited to some projects and the run would reach beyond them."""
 
 
 class RunNotAvailableError(LookupError):
@@ -152,6 +157,39 @@ def _check_capacity(db: Session, user: User) -> None:
         )
 
 
+def token_allows_run(db: Session, *, project_id: uuid.UUID | None, include_children: bool) -> bool:
+    """Whether the request's credential may queue, see or fetch a background run of this reach.
+
+    A job runs later in the worker, with no request and so no token, and its file is kept for the requester. A token
+    limited to some projects (a Personal Access Token with `allowed_project_ids`, a module-frame token) would
+    otherwise widen itself by queueing an organisation-wide run, or one over child projects, and fetching the result.
+    Such a credential may therefore use only a plain run of one project it can reach.
+
+    Args:
+        db: The request's session (it carries the credential's limits).
+        project_id: The run's project, `None` for an organisation-wide run.
+        include_children: Whether the run also reads child projects.
+
+    Returns:
+        True for an unrestricted credential, else only for a one-project run without children inside its limit.
+    """
+    limited = db.info.get("pat_allowed_project_ids") is not None or "module_frame_project_id" in db.info
+    if not limited:
+        return True
+    return project_id is not None and not include_children and session_may_reach_project(db, project_id)
+
+
+def token_allows_row(db: Session, row: GeneratedReport) -> bool:
+    """`token_allows_run` for an existing run, judged by the reach it was queued with."""
+    allowed_orgs = db.info.get("pat_allowed_org_ids")
+    if allowed_orgs is not None and row.organization_id not in allowed_orgs:
+        return False
+    return token_allows_run(
+        db, project_id=row.project_id if row.scope == SCOPE_PROJECT else None,
+        include_children=bool((row.params or {}).get("include_children")),
+    )
+
+
 def enqueue(
     db: Session, user: User, *, organization: Organization, project: Project | None, layout: ReportLayout,
     version: ReportLayoutVersion, fmt: str, include_children: bool = False,
@@ -181,7 +219,10 @@ def enqueue(
     Raises:
         TooManyActiveRunsError: The requester already has `MAX_ACTIVE_PER_USER` active background runs.
         custom_report_run.RunScopeError: The request does not fit the layout's `run_scope`.
+        TokenScopeError: The credential is limited to some projects and the run reaches beyond them.
     """
+    if not token_allows_run(db, project_id=project.id if project else None, include_children=include_children):
+        raise TokenScopeError(TOKEN_SCOPE_MESSAGE)
     custom_report_run.check_run_scope(
         version, include_children=include_children,
         chosen=None if project else len(set(requested_project_ids)) if requested_project_ids is not None else 0,
@@ -224,7 +265,10 @@ def enqueue_pack(
 
     Raises:
         TooManyActiveRunsError: The requester already has `MAX_ACTIVE_PER_USER` active background runs.
+        TokenScopeError: The credential is limited to some projects and the run reaches beyond them.
     """
+    if not token_allows_run(db, project_id=project.id if project else None, include_children=include_children):
+        raise TokenScopeError(TOKEN_SCOPE_MESSAGE)
     _check_capacity(db, user)
     params = custom_report_run.run_params(include_children, requested_project_ids, variables)
     params.update({

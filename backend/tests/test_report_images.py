@@ -1038,3 +1038,19 @@ def test_saving_a_layout_with_a_caption_on_a_floating_picture_is_refused_with_th
     body = layout_body("Bad", file_id, placement="behind", caption="no")
     resp = world.client.post(f"/api/v1/projects/{project['id']}/report-layouts", json=body, headers=auth_headers(world.token))
     assert resp.status_code == 422 and "nodes[0].caption" in resp.text
+
+
+def test_an_svg_is_stored_without_a_script_or_foreign_content(world):
+    """The library keeps the allow-listed copy, so nothing active rests in storage for a download to meet."""
+    project = world.project("Alpha")
+    hostile = (
+        b'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" onload="alert(1)">'
+        b'<script>alert(1)</script><foreignObject><div>x</div></foreignObject><rect width="10" height="10"/></svg>'
+    )
+
+    uploaded = upload(world, project_images(project), hostile, "hostile.svg")
+
+    assert uploaded.status_code == 201, uploaded.text
+    stored = world.client.get(f"/api/v1/files/{uploaded.json()['id']}", headers=auth_headers(world.token))
+    assert stored.status_code == 200 and b"<rect" in stored.content
+    assert not any(bad in stored.content.lower() for bad in (b"<script", b"foreignobject", b"onload"))

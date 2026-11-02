@@ -418,6 +418,8 @@ def _queue(
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
     except custom_report_run.RunScopeError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except report_run_jobs.TokenScopeError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     db.commit()
     return ReportRunOut.of(row)
 
@@ -485,6 +487,8 @@ def _own_run(db: Session, user: User, run_id: UUID, request: Request) -> Generat
     except report_run_jobs.RunNotAvailableError as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     check_pat_scope(request, row.organization_id)
+    if not report_run_jobs.token_allows_row(db, row):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found.")  # a run beyond the token's projects reads as absent
     return row
 
 
@@ -496,7 +500,7 @@ def list_report_runs(
 ) -> list[ReportRunOut]:
     """The caller's own background runs, newest first (nobody else's)."""
     rows = report_run_jobs.list_for(db, current_user, organization_id, active_only=active)
-    return [ReportRunOut.of(r) for r in rows]
+    return [ReportRunOut.of(r) for r in rows if report_run_jobs.token_allows_row(db, r)]
 
 
 @runs_router.get("/{run_id}", response_model=ReportRunOut)

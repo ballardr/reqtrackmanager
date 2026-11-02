@@ -99,6 +99,7 @@ from app.services.rbac import (
     require_org_module_enabled,
     require_project_any_subcomponent_enabled,
     require_project_module_enabled,
+    session_may_reach_project,
     user_satisfies_module_role,
 )
 from app.services.report_column_width import parse_width
@@ -360,7 +361,11 @@ def readable_projects(
 
     Only projects on which the user holds an effective project role are
     returned (an org admin without a project role is not), so an aggregate
-    report never exposes a project its reader cannot open. For a project
+    report never exposes a project its reader cannot open. A project outside
+    the request credential's own limit (a Personal Access Token restricted to
+    some projects, a module-frame token) is left out too
+    (`rbac.session_may_reach_project`), so a limited token cannot widen itself
+    through an organisation-wide or include-children run. For a project
     report the root is always included (the caller's route dependency has
     already authorised it); child projects are added only when requested and
     only if readable.
@@ -389,7 +394,8 @@ def readable_projects(
         prefetch_project_roles(db, user.id, [p.id for p in candidates])
         readable = [
             p for p in candidates
-            if (root_project is not None and p.id == root_project.id) or get_effective_project_roles(db, user.id, p.id)
+            if session_may_reach_project(db, p.id)
+            and ((root_project is not None and p.id == root_project.id) or get_effective_project_roles(db, user.id, p.id))
         ]
     return sorted(readable, key=lambda p: (p.name.lower(), str(p.id)))
 
@@ -418,7 +424,10 @@ def scope_projects(
         The in-scope projects, ordered by name.
     """
     if root_project is None and definition.org_scope == "all_org_projects":
-        projects = db.scalars(select(Project).where(Project.organization_id == organization.id)).all()
+        projects = [
+            p for p in db.scalars(select(Project).where(Project.organization_id == organization.id)).all()
+            if session_may_reach_project(db, p.id)  # a token limited to some projects does not cover the others
+        ]
         return sorted(projects, key=lambda p: (p.name.lower(), str(p.id)))
     return readable_projects(
         db, user, organization=organization, root_project=root_project, include_children=include_children,

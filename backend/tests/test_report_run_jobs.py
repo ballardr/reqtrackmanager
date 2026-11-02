@@ -569,3 +569,46 @@ def test_the_organisation_admin_sets_the_retention_in_the_advanced_settings(worl
     drain()
     row = run_row(db, run["id"])
     assert abs((row.expires_at - row.finished_at) - timedelta(days=3)) < timedelta(seconds=5)
+
+
+# ---- a token limited to some projects --------------------------------------------------------------------------
+
+
+def _limited_token(world: World, *projects: dict) -> str:
+    resp = world.client.post(
+        "/api/v1/me/pats",
+        json={"name": "limited", "allowed_organization_ids": [world.org["id"]], "allowed_project_ids": [p["id"] for p in projects]},
+        headers=auth_headers(world.token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["token"]
+
+
+def test_a_token_limited_to_some_projects_cannot_queue_a_run_that_reaches_beyond_them(world):
+    """The job runs later without the token, so the token's limit is applied when the run is queued."""
+    alpha, beta = world.project("Alpha"), world.project("Beta")
+    world.requirement(alpha, "A")
+    layout = make_layout(world, document_tree(), "Everywhere")
+    narrow = _limited_token(world, alpha)
+
+    assert queue_org(world, layout, token=narrow).status_code == 403
+    assert queue(world, alpha, layout, token=narrow, include_children=True).status_code == 403
+    assert queue(world, beta, layout, token=narrow).status_code == 403
+    assert queue(world, alpha, layout, token=narrow).status_code == 202
+
+
+def test_a_limited_token_does_not_see_or_fetch_a_wider_run_its_user_queued(world):
+    alpha = world.project("Alpha")
+    world.requirement(alpha, "A")
+    layout = make_layout(world, document_tree(), "Everywhere")
+    wide = queue_org(world, layout).json()
+    own = queue(world, alpha, layout).json()
+    drain()
+    narrow = _limited_token(world, alpha)
+
+    assert get_run(world, wide["id"], token=narrow).status_code == 404
+    assert download(world, wide["id"], token=narrow).status_code == 404
+    assert download(world, own["id"], token=narrow).status_code == 200
+    listed = world.client.get("/api/v1/report-runs", headers=auth_headers(narrow)).json()
+    assert [r["id"] for r in listed] == [own["id"]]
+    assert download(world, wide["id"]).status_code == 200

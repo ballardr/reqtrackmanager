@@ -494,3 +494,19 @@ def test_layouts_are_stored_only_for_the_target_project(world, db):
     copied(world, source, target, layout_ids=[layout["id"]])
     rows = db.scalars(select(ReportLayout).where(ReportLayout.name == "Report", ReportLayout.organization_id == uuid.UUID(world.org["id"]))).all()
     assert sorted(str(r.project_id) for r in rows) == sorted([source["id"], target["id"]])
+
+
+def test_a_token_limited_to_some_projects_is_offered_only_those_as_copy_targets(world):
+    source, inside, outside = world.project("Source"), world.project("Inside"), world.project("Outside")
+    pat = world.client.post(
+        "/api/v1/me/pats",
+        json={"name": "limited", "allowed_organization_ids": [world.org["id"]], "allowed_project_ids": [source["id"], inside["id"]]},
+        headers=auth_headers(world.token),
+    )
+    assert pat.status_code == 201, pat.text
+
+    offered = world.client.get(f"{copy_url(source)}/targets", headers=auth_headers(pat.json()["token"])).json()
+
+    assert outside and [t["name"] for t in offered] == ["Inside"]
+    full = world.client.get(f"{copy_url(source)}/targets", headers=auth_headers(world.token)).json()
+    assert {t["name"] for t in full} == {"Inside", "Outside"}

@@ -397,6 +397,46 @@ def test_the_project_selection_narrows_the_run(world):
     assert org_run(world, layout, project_ids="").json()["eligible_projects"] == 2
 
 
+def _project_limited_token(world: World, *projects: dict) -> str:
+    """A Personal Access Token of the admin limited to `projects`, in the admin's organisation."""
+    resp = world.client.post(
+        "/api/v1/me/pats",
+        json={"name": "limited", "allowed_organization_ids": [world.org["id"]], "allowed_project_ids": [p["id"] for p in projects]},
+        headers=auth_headers(world.token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["token"]
+
+
+def test_an_organisation_run_stays_inside_a_tokens_project_scope(world):
+    """A token limited to one project does not reach another project through the organisation-wide run, though its
+    user holds a role in both."""
+    alpha, beta = world.project("Alpha"), world.project("Beta")
+    world.requirement(alpha, "Alpha rule")
+    world.requirement(beta, "Beta rule")
+    layout = make_layout(world, sheet_tree("Reqs"), "Everywhere")
+    narrow = _project_limited_token(world, alpha)
+
+    report = org_run(world, layout, token=narrow).json()
+
+    assert [(r[0], r[2]) for r in rows_of(report)] == [("Alpha", "Alpha rule")] and report["eligible_projects"] == 1
+    assert org_run(world, layout, token=narrow, project_ids=beta["id"]).status_code == 404
+    assert org_run(world, layout).json()["eligible_projects"] == 2
+
+
+def test_include_children_stays_inside_a_tokens_project_scope(world):
+    parent = world.project("Parent")
+    child = world.project("Child", parent=parent)
+    world.requirement(parent, "In parent")
+    world.requirement(child, "In child")
+    layout = make_layout(world, document_tree(), "Doc", project=parent)
+    narrow = _project_limited_token(world, parent)
+
+    report = project_run(world, parent, layout, token=narrow, include_children=True).json()
+
+    assert report["metrics"][0]["value"] == 1 and report["eligible_projects"] == 1
+
+
 def test_a_selection_can_only_narrow_what_the_caller_can_read(world):
     alpha, beta = world.project("Alpha"), world.project("Beta")
     world.requirement(alpha, "Alpha rule")
