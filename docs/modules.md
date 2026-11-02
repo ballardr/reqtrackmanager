@@ -2253,6 +2253,35 @@ flowchart LR
   `{"module": key}` (`@if module <key>`).
 - **Width.** Sheet columns carry absolute widths so any number of core fields fits.
 
+### 4af. Custom reports: document fonts (Module 10 Phase 74)
+
+A document layout's tree has two optional root keys: `styles` (`{"body": {"font", "size"}, "headings": {"font", "bold", "italic", "colour"}}`, every key optional, no empty object) and `embed_fonts` (boolean). Table layouts refuse both.
+
+```mermaid
+flowchart LR
+    T["tree: styles, embed_fonts"] --> V["document_styles_problems<br/>(save, validate, run)"]
+    T --> R["resolve_styles<br/>(font keys -> families, colour word -> #rrggbb)"]
+    CAT["report_font_catalogue<br/>family_or_fallback"] --> R
+    R --> D["ReportDocument.styles<br/>(DocumentStyles)"]
+    D --> PDF["report_pdf: _Look + using_family"]
+    D --> DOCX["report_docx: docDefaults + heading styles"]
+    D --> ODT["report_odt: default + heading styles, font-face"]
+    D --> HTML["report_html: validated CSS"]
+    DOCX --> EMB["embed_in_docx / embed_in_odt<br/>(extra families, when embed_fonts)"]
+    ODT --> EMB
+```
+
+- **Keys.** A font key is `sans`, `serif`, `mono`, `unicode` or `x-<slug>`; its *form* is checked at save, not that the server has it, so a layout moved between servers keeps its key. A size is 6 to 72 in half points. `headings.colour` is a colour word (`none` is refused), checked like any colour field.
+- **Resolution.** `report_styles.resolve_styles` turns keys into `FontFamily` objects (`family_or_fallback`: an unavailable family becomes the bundled one of the same generic kind with a run note), and the colour word into `#rrggbb`; a scheme name used is added to the run's `stats.colours`. A heading with no font of its own follows the body font.
+- **Renderers read only `ReportDocument.styles`.** PDF: `_Look` derives the paragraph styles once per distinct setting, `report_fonts.using_family` makes the fallback and `text_width` family-aware for the whole render, and headings scale with the body size from ReportLab's 10 pt. Word: `w:docDefaults` and the Title and Heading 1 to 4 styles (headings scale from Word's 11 pt body), not a run per paragraph. ODT: the default style, `Title` and `Heading`, and `style:font-face` declarations. HTML: a `body` and a heading rule built from validated names, numbers and `#rrggbb` only. With nothing set every renderer keeps its own look.
+- **Embedding.** After a Word or ODT file is built, `embed_in_docx` / `embed_in_odt` run with `used_extra_families(document)` (administrator-provided families only, and the faces the document uses; `embed=embed_fonts`). The bundled families are never embedded.
+- **Warnings.** `GET .../report-layouts/{id}` and `POST .../validate` carry `warnings` for a font key the server lacks.
+- **Text view.** `@style body font=serif size=11`, `@style headings font=sans colour=primary bold italic` (`nobold`, `noitalic`), and `embedfonts` / `noembedfonts` on the `@layout` line.
+- **Designer.** The `document_styles` field kind (`ReportDocumentStylesField`) draws the Fonts group from `GET /system/report-fonts/choices`; `embed_fonts` is an ordinary boolean field.
+- **A block's own look.** A `text` block takes optional `font` and `size`, a `heading` block `font`, `size` and `colour` (the same rules as `styles`: a font key's form, 6 to 72 in half points, a colour word with `none` refused). The evaluator resolves them (`_Run.block_look`, one family lookup per key per run, a missing family a run note) onto `Heading.font/size/colour` and `Paragraph`/`BulletList`/`NumberedList` `font/size`; a Markdown heading inside a text block keeps the heading style. Renderers: PDF derives a style per distinct look (`_Look.body_for` / `heading_for`); Word writes the run properties on that block's runs only; ODT writes one automatic paragraph style per look over the block's parent style (`P_Own<n>`, so the heading keeps its outline level) and declares the font; HTML adds an inline `style` built from the validated family, number and `#rrggbb`. `used_extra_families` includes block fonts, so `embed_fonts` embeds them. `font_keys` walks the tree for the save warning.
+- **Marks in headings.** A heading's text is read for `*italic*`, `**bold**` and `` `code` `` by `report_model.inline_markdown` (the Markdown reader's inline half: equations set aside and put back, placeholders filled afterwards run by run), so a heading and a text block read marks identically. The anchor and contents words are the text without the marks.
+- **Text view.** `@heading level=2 font=sans size=18 colour=primary …`, `@text font=serif size=11` … `@end` or `@text font=serif "…"`; a text block with no font or size is still plain prose. The block editor draws the new `font` field kind with the shared `FontChoiceField` (also used by the Fonts group).
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on

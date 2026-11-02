@@ -267,6 +267,17 @@ export interface TreeCheck {
   ok: boolean;
   errors: TreeProblem[];
   node_count: number;
+  /** Things that do not stop a save or a run, for example a font this server does not have. */
+  warnings?: string[];
+}
+
+/** A font family an author may choose for a layout — `GET /system/report-fonts/choices`. */
+export interface ReportFontChoice {
+  key: string;
+  label: string;
+  /** `true` for the four standard fonts; `false` for one the server administrator provides. */
+  bundled: boolean;
+  generic: "sans-serif" | "serif" | "monospace";
 }
 
 /** One sheet of a table preview, capped; `total_rows` is the real count. */
@@ -390,6 +401,8 @@ export interface ReportLayoutApi {
   blocks(): Promise<BlockCatalogue>;
   /** The organisation's branding colour and colour scheme, for the colour fields (stock values where a client has no call). */
   colours?(): Promise<ColourContext>;
+  /** The fonts an author may choose (stock four where a client has no call). */
+  fonts?(): Promise<ReportFontChoice[]>;
   /** Checks a draft tree and lists every problem with its path (nothing is stored). */
   validate(tree: ReportLayoutTree): Promise<TreeCheck>;
   /** The snippets the scope can insert, with each parameter's choices. */
@@ -445,6 +458,7 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     widgets: () => api.get<ReportWidget[]>(`${base}/widgets`),
     blocks: () => api.get<BlockCatalogue>(`${base}/blocks`),
     colours: () => api.get<ColourContext>(`${base}/colours`),
+    fonts: () => api.get<ReportFontChoice[]>("/api/v1/system/report-fonts/choices"),
     validate: (tree) => api.post<TreeCheck>(`${base}/validate`, { tree }),
     snippets: () => api.get<ReportSnippet[]>(`${base}/snippets`),
     applySnippet: (key, body) => api.post<SnippetApplyResult>(`${base}/snippets/${encodeURIComponent(key)}/apply`, body),

@@ -43,6 +43,7 @@ from reportlab.platypus import Table as RlTable
 from reportlab.platypus import TableStyle
 
 from app.services.report_column_width import resolve_table_widths_cm
+from app.services.report_fonts import active_face
 from app.services.report_grid import PlacedCell, border_edges, place_grid
 from app.services.report_model import Grid
 
@@ -109,7 +110,7 @@ def pdf_grid(grid: Grid, usable_width: float, frame_height: float, markup: Calla
     for item in placed:
         cell = item.cell
         style = ParagraphStyle(
-            f"grid_{item.row}_{item.col}", fontName="Helvetica-Bold" if cell.bold else "Helvetica", fontSize=_CELL_POINTS, leading=_CELL_POINTS + 2,
+            f"grid_{item.row}_{item.col}", fontName=active_face(cell.bold), fontSize=_CELL_POINTS, leading=_CELL_POINTS + 2,
             alignment=_PDF_ALIGN[cell.align], textColor=colors.HexColor(_hex(cell.color) or "#000000"),
         )
         span_width = sum(widths[item.col : item.last_col + 1]) - 8

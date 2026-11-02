@@ -154,9 +154,15 @@ class ReportLayoutVersionOut(BaseModel):
 
 
 class ReportLayoutDetailOut(ReportLayoutOut):
-    """A layout with its current version's tree."""
+    """A layout with its current version's tree.
+
+    Attributes:
+        warnings: Things that do not stop a save or a run but the author should know, for example a font this server
+            does not have (the report prints in a fallback).
+    """
 
     current: ReportLayoutVersionOut
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ReportLayoutVersionSummaryOut(BaseModel):
@@ -348,6 +354,7 @@ class ReportLayoutValidateOut(BaseModel):
     ok: bool
     errors: list[ReportLayoutTreeErrorOut]
     node_count: int
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ReportLayoutPreviewRequest(BaseModel):

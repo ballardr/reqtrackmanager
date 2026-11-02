@@ -107,10 +107,20 @@ export function buildBlockCatalogue(): BlockCatalogue {
   return {
     blocks: [
       block("heading", "Heading", { type: "heading", text: "Heading", level: 2 }, {
-        fields: [field("text", "Heading", "text", { required: true, max_length: 500, features: ["placeholders"] }), field("level", "Level", "integer", { minimum: 1, maximum: 4, default: 1 })],
+        fields: [
+          field("text", "Heading", "text", { required: true, max_length: 500, features: ["placeholders"] }),
+          field("level", "Level", "integer", { minimum: 1, maximum: 4, default: 1 }),
+          field("font", "Font", "font", { empty_label: "Document heading font" }),
+          field("size", "Size", "number", { minimum: 6, maximum: 72, empty_label: "Document size" }),
+          field("colour", "Colour", "colour", { empty_label: "Document heading colour" }),
+        ],
       }),
       block("text", "Text", { type: "text", text: "Some text." }, {
-        fields: [field("text", "Text", "longtext", { required: true, features: ["placeholders", "markdown"] })],
+        fields: [
+          field("text", "Text", "longtext", { required: true, features: ["placeholders", "markdown"] }),
+          field("font", "Font", "font", { empty_label: "Document font" }),
+          field("size", "Size", "number", { minimum: 6, maximum: 72, empty_label: "Document size" }),
+        ],
       }),
       block("page_break", "Page break", { type: "page_break" }),
       block("spacer", "Spacer", { type: "spacer", height: 1 }, {
@@ -219,6 +229,8 @@ export function buildBlockCatalogue(): BlockCatalogue {
       field("repeat_table_header", "Repeat table header rows", "boolean", { default: true, families: ["document"] }),
       field("run_scope", "Projects it runs for", "choice", { choices: ["any", "one", "one_and_children"], default: "any", empty_label: "Not set (any number of projects)" }),
       field("palette", "Colour scheme", "palette", { families: ["document"] }),
+      field("styles", "Fonts", "document_styles", { families: ["document"] }),
+      field("embed_fonts", "Embed fonts", "boolean", { families: ["document"], help: "Put the font files of the extra fonts inside Word and OpenDocument files." }),
       field("page_styles", "Page styles", "page_styles", { families: ["document"] }),
       field("header", "Header", "running_band", { families: ["document"] }),
       field("footer", "Footer", "running_band", { families: ["document"] }),

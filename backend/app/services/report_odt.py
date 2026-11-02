@@ -32,6 +32,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.services.branding import readable_on_white
+from app.services.report_font_parts import embed_in_odt
+from app.services.report_fonts import FontFamily
 from app.services.report_grid_render import odt_grid
 from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import png_of, typeset
@@ -41,6 +43,7 @@ from app.services.report_model import (
     BottomStart,
     BulletList,
     Cell,
+    DocumentStyles,
     Equation,
     Gap,
     Grid,
@@ -62,12 +65,12 @@ from app.services.report_model import (
     text_runs,
 )
 from app.services.report_odf import (
-    FONT_FACES,
     MIME_ODT,
     ODF_VERSION,
     XML_DECLARATION,
     OdfPackage,
     colour,
+    font_faces,
     length_cm,
     namespace_attrs,
     raster_info,
@@ -75,6 +78,7 @@ from app.services.report_odf import (
     xml_text,
 )
 from app.services.report_odt_running import RunningWriter, first_differs, page_layout, running_styles
+from app.services.report_styles import used_extra_families
 from app.services.report_svg import svg_png
 
 _POINTS_PER_CM = 28.3465
@@ -138,6 +142,9 @@ def _paragraph_style(name: str, *, parent: str | None = "Standard", para: str = 
 _CELL_HEIGHT_SHARE = 0.9
 
 #: The character styles of bold / italic / code runs, by name, as `style:text-properties` attributes.
+#: The size of the body text in points when a layout sets none, which the heading sizes are relative to.
+_BODY_POINTS = 10.0
+
 _SPAN_STYLES: dict[str, str] = {
     "T_Bold": 'fo:font-weight="bold"',
     "T_Italic": 'fo:font-style="italic"',
@@ -162,13 +169,38 @@ def _span_style(run: Styled) -> str:
     return "T_" + ("Bold" if run.bold else "") + ("Italic" if run.italic else "") + ("Code" if run.code else "")
 
 
-def _named_styles() -> str:
-    """The `office:styles` content that does not depend on the document: default text, headings, notes, the list."""
+def _heading_text(styles: DocumentStyles, size: float | None = None) -> str:
+    """The `style:text-properties` attributes of a heading style: its weight, and the document's heading font, slant and colour.
+
+    Args:
+        styles: The layout's document styles.
+        size: A font size in points to add (the Title; the heading levels carry their own).
+    """
+    props = f'fo:font-size="{size:g}pt" ' if size is not None else ""
+    props += f'fo:font-weight="{"normal" if styles.heading_bold is False else "bold"}"'
+    if styles.text_font:
+        props += f" style:font-name={xml_attr(styles.text_font.word_name)}"
+    if styles.heading_italic:
+        props += ' fo:font-style="italic"'
+    if styles.heading_colour:
+        props += f' fo:color="{colour(styles.heading_colour)}"'
+    return props
+
+
+def _named_styles(styles: DocumentStyles) -> str:
+    """The `office:styles` content that does not depend on the page styles: default text, headings, notes, the list.
+
+    Args:
+        styles: The layout's document styles; headings scale with the body size (10 pt unless set).
+    """
+    scale = (styles.body_size or _BODY_POINTS) / _BODY_POINTS
+    body_font = xml_attr(styles.body_font.word_name) if styles.body_font else '"Arial"'
+    body_size = f"{styles.body_size or _BODY_POINTS:g}pt"
     sizes = {1: 16, 2: 14, 3: 12, 4: 11}
     headings = "".join(
         _paragraph_style(
             f"Heading_20_{level}", parent="Heading", extra=f' style:display-name="Heading {level}" style:default-outline-level="{level}"',
-            text=f'fo:font-size="{size}pt" fo:font-weight="bold"',
+            text=f'fo:font-size="{size * scale:g}pt"',
         )
         for level, size in sizes.items()
     )
@@ -179,15 +211,15 @@ def _named_styles() -> str:
         'style:vertical-pos="top" style:vertical-rel="paragraph-content" style:horizontal-pos="center" '
         'style:horizontal-rel="paragraph-content"/></style:style>'
         '<style:default-style style:family="paragraph"><style:paragraph-properties fo:orphans="2" fo:widows="2"/>'
-        '<style:text-properties style:font-name="Arial" fo:font-size="10pt"/></style:default-style>'
+        '<style:text-properties style:font-name=' + body_font + ' fo:font-size="' + body_size + '"/></style:default-style>'
         + _paragraph_style("Standard", parent=None, extra=' style:class="text"', para='fo:margin-bottom="0.15cm"')
         + _paragraph_style(
             "Title", extra=' style:next-style-name="Standard"', para='fo:margin-top="0.2cm" fo:margin-bottom="0.4cm"',
-            text='fo:font-size="20pt" fo:font-weight="bold"',
+            text=_heading_text(styles, 20 * scale),
         )
         + _paragraph_style(
             "Heading", extra=' style:next-style-name="Standard" style:class="text"',
-            para='fo:margin-top="0.4cm" fo:margin-bottom="0.2cm" fo:keep-with-next="always"', text='fo:font-weight="bold"',
+            para='fo:margin-top="0.4cm" fo:margin-bottom="0.2cm" fo:keep-with-next="always"', text=_heading_text(styles),
         )
         + headings
         + _paragraph_style("Note", text=f'fo:font-size="8.5pt" fo:font-style="italic" fo:color="{_NOTE_GREY}"')
@@ -266,8 +298,8 @@ def _styles_xml(document: ReportDocument, styles: list[PageStyle], package: OdfP
         automatic = _frame_style_xml() + "".join(running_styles(i, style) for i, style in enumerate(styles))
     return (
         f'{XML_DECLARATION}<office:document-styles {namespace_attrs(*_ALL_NS)} office:version="{ODF_VERSION}">'
-        f"{FONT_FACES}"
-        f"<office:styles>{_named_styles()}</office:styles>"
+        f"{font_faces(document.styles.families)}"
+        f"<office:styles>{_named_styles(document.styles)}</office:styles>"
         f"<office:automatic-styles>{layouts}{automatic}</office:automatic-styles>"
         f"<office:master-styles>{masters}{cover}</office:master-styles>"
         "</office:document-styles>"
@@ -292,6 +324,8 @@ class _Body:
         self._frames = 0
         self._tables = 0
         self._grids = 0
+        self._own_styles: dict[tuple, str] = {}
+        self._own_families: list[FontFamily] = []
         self._static_styles()
 
     # --- styles ---------------------------------------------------------------------------------------------
@@ -459,6 +493,30 @@ class _Body:
             inner = f'<text:a xlink:type="simple" xlink:href={xml_attr(run.href)} text:style-name="Internet_20_link">{inner}</text:a>'
         return inner
 
+    def _own_style(self, parent: str, font: FontFamily | None, size: float | None, tint: str | None = None) -> str:
+        """The paragraph style for a block that sets its own font, size or colour: `parent` with those over it.
+
+        One automatic style is written for each distinct combination; the block's font is declared with the others.
+        Returns `parent` itself when the block sets nothing.
+        """
+        if font is None and size is None and tint is None:
+            return parent
+        key = (parent, font.key if font else None, size, tint)
+        if key not in self._own_styles:
+            props = ""
+            if font is not None:
+                props += f" style:font-name={xml_attr(font.word_name)}"
+                if font not in self._own_families:
+                    self._own_families.append(font)
+            if size is not None:
+                props += f' fo:font-size="{size:g}pt"'
+            if tint is not None:
+                props += f' fo:color="{colour(tint)}"'
+            name = f"P_Own{len(self._own_styles) + 1}"
+            self._own_styles[key] = name
+            self.styles.append(_paragraph_style(name, parent=parent, text=props.strip()))
+        return self._own_styles[key]
+
     def _paragraph(self, style: str, content: str) -> None:
         self.chunks.append(f'<text:p text:style-name="{style}">{content}</text:p>')
 
@@ -556,24 +614,27 @@ class _Body:
         if isinstance(block, Heading):
             level = min(max(block.level, 1), 4)
             mark = f"<text:bookmark text:name={xml_attr(block.anchor)}/>" if block.anchor else ""
+            style = self._own_style(f"Heading_20_{level}", block.font, block.size, block.colour)
             self.chunks.append(
-                f'<text:h text:style-name="Heading_20_{level}" text:outline-level="{level}">{mark}{self._inline(block.text)}</text:h>',
+                f'<text:h text:style-name="{style}" text:outline-level="{level}">{mark}{self._inline(block.text)}</text:h>',
             )
         elif isinstance(block, Paragraph):
-            self._paragraph("Standard", self._inline(block.text))
+            self._paragraph(self._own_style("Standard", block.font, block.size), self._inline(block.text))
         elif isinstance(block, Equation):
             self._paragraph("Display_20_Equation", self._equation_frame(block) or xml_text(block.text))
         elif isinstance(block, Note):
             self._paragraph("Note", xml_text(block.text))
         elif isinstance(block, BulletList):
+            style = self._own_style("List_20_Bullet", block.font, block.size)
             items = "".join(
-                f'<text:list-item><text:p text:style-name="List_20_Bullet">{self._inline(item)}</text:p></text:list-item>' for item in block.items
+                f'<text:list-item><text:p text:style-name="{style}">{self._inline(item)}</text:p></text:list-item>' for item in block.items
             )
             if items:
                 self.chunks.append(f'<text:list text:style-name="L_Bullet">{items}</text:list>')
         elif isinstance(block, NumberedList):
+            style = self._own_style("List_20_Number", block.font, block.size)
             items = "".join(
-                f'<text:list-item><text:p text:style-name="List_20_Number">{self._inline(item)}</text:p></text:list-item>' for item in block.items
+                f'<text:list-item><text:p text:style-name="{style}">{self._inline(item)}</text:p></text:list-item>' for item in block.items
             )
             if items:
                 self.chunks.append(f'<text:list text:style-name="L_Number">{items}</text:list>')
@@ -620,7 +681,7 @@ class _Body:
         """`content.xml` as text chunks: the prolog and automatic styles (known only now), then the body."""
         yield (
             f'{XML_DECLARATION}<office:document-content {namespace_attrs(*_ALL_NS)} office:version="{ODF_VERSION}">'
-            f"{FONT_FACES}"
+            f"{font_faces([*self.document.styles.families, *self._own_families])}"
             f'<office:automatic-styles>{"".join(self.styles)}</office:automatic-styles><office:body><office:text>'
         )
         yield from self.chunks
@@ -648,7 +709,7 @@ def render_odt_document(document: ReportDocument) -> bytes:
         body.block(block)
     package.add("content.xml", "text/xml", body.content())
     package.add("styles.xml", "text/xml", _styles_xml(document, styles, package))
-    return package.finish()
+    return embed_in_odt(package.finish(), used_extra_families(document), embed=document.styles.embed_fonts)
 
 
 __all__ = ["render_odt_document"]

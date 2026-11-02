@@ -56,6 +56,7 @@ from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
+from app.services.report_font_parts import embed_in_docx
 from app.services.report_grid_render import docx_grid
 from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import OMML_NS, omml, png_of, typeset
@@ -65,6 +66,7 @@ from app.services.report_model import (
     BottomEnd,
     BottomStart,
     BulletList,
+    DocumentStyles,
     Equation,
     Gap,
     Grid,
@@ -89,6 +91,7 @@ from app.services.report_model import (
 )
 from app.services.report_page_styles import BAND_EDGE_CM, BAND_LINE_CM
 from app.services.report_running import band_for_page, band_visible, cell_lines
+from app.services.report_styles import used_extra_families
 from app.services.report_svg import svg_png
 
 DOCX_AUTHOR = "ReqTrackManager"
@@ -98,6 +101,83 @@ _ZEBRA = "F5F5F5"
 _NOTE_GREY = RGBColor(0x55, 0x55, 0x55)
 #: The font of an inline code span.
 _CODE_FONT = "Courier New"
+
+
+#: Heading sizes in points at Word's 11 pt body, each level a step smaller (Word's own Heading 3 and 4 would both be body size).
+_WORD_BODY_POINTS = 11.0
+_WORD_HEADING_POINTS = {"Heading 1": 14.0, "Heading 2": 13.0, "Heading 3": 12.0, "Heading 4": 11.0, "Title": 26.0}
+
+
+#: The order of the run-property elements Word's schema requires (those this module writes).
+_RPR_ORDER = ("rFonts", "b", "bCs", "i", "iCs", "color", "sz", "szCs")
+
+
+def _rpr_element(rpr, tag: str):
+    """The `w:<tag>` child of a run-properties element, created in schema order when absent."""
+    found = rpr.find(qn(f"w:{tag}"))
+    if found is not None:
+        return found
+    element = OxmlElement(f"w:{tag}")
+    later = _RPR_ORDER[_RPR_ORDER.index(tag) + 1 :]
+    for index, child in enumerate(rpr):
+        if child.tag.rsplit("}", 1)[-1] in later:
+            rpr.insert(index, element)
+            return element
+    rpr.append(element)
+    return element
+
+
+def _set_run_fonts(rpr, name: str) -> None:
+    """Makes the `w:rFonts` of a run-properties element name `name` for every script, replacing any theme font."""
+    fonts = _rpr_element(rpr, "rFonts")
+    for attribute in list(fonts.attrib):
+        del fonts.attrib[attribute]
+    for script in ("ascii", "hAnsi", "cs", "eastAsia"):
+        fonts.set(qn(f"w:{script}"), name)
+
+
+def _set_toggle(rpr, tag: str, on: bool) -> None:
+    """Sets `w:b` / `w:i` (and the complex-script twin) in a style's run properties on or explicitly off."""
+    for name in (tag, f"{tag}Cs"):
+        element = _rpr_element(rpr, name)
+        if on:
+            element.attrib.pop(qn("w:val"), None)
+        else:
+            element.set(qn("w:val"), "0")
+
+
+def _apply_styles(doc: DocxDocument, styles: DocumentStyles) -> None:
+    """Writes the layout's document styles into the Word styles: the document defaults and the heading styles.
+
+    Done in the styles, not on every run, so someone who restyles in Word gets the whole document. Nothing set leaves
+    the template as it is.
+    """
+    if styles.is_default:
+        return
+    defaults = doc.styles.element.find(qn("w:docDefaults")).find(qn("w:rPrDefault")).find(qn("w:rPr"))
+    if styles.body_font is not None:
+        _set_run_fonts(defaults, styles.body_font.word_name)
+    scale = 1.0
+    if styles.body_size is not None:
+        scale = styles.body_size / _WORD_BODY_POINTS
+        for tag in ("sz", "szCs"):
+            _rpr_element(defaults, tag).set(qn("w:val"), str(round(styles.body_size * 2)))
+    heading_family = styles.text_font
+    for name, native in _WORD_HEADING_POINTS.items():
+        rpr = doc.styles[name].element.get_or_add_rPr()
+        if heading_family is not None:
+            _set_run_fonts(rpr, heading_family.word_name)
+        if styles.heading_bold is not None:
+            _set_toggle(rpr, "b", styles.heading_bold)
+        if styles.heading_italic:
+            _set_toggle(rpr, "i", True)
+        if styles.heading_colour is not None:
+            colour = _rpr_element(rpr, "color")
+            for attribute in list(colour.attrib):
+                del colour.attrib[attribute]
+            colour.set(qn("w:val"), _hex(styles.heading_colour))
+        for tag in ("sz", "szCs"):  # always written, so each level stays a step smaller than the one above
+            _rpr_element(rpr, tag).set(qn("w:val"), str(round(native * scale * 2)))
 
 
 def clean_text(text: str) -> str:
@@ -491,6 +571,25 @@ def _link(paragraph, run: Run, href: str) -> None:
     run.font.underline = True
 
 
+def _block_look(font, size: float | None, colour: str | None = None) -> Callable[[Run], None] | None:
+    """What sets a block's own font, size and colour on each of its runs (`None` when it sets none, so the styles rule).
+
+    Only the exceptions are written on runs; the document's fonts stay in the Word styles.
+    """
+    if font is None and size is None and colour is None:
+        return None
+
+    def apply(run: Run) -> None:
+        if font is not None:
+            _set_run_fonts(run._r.get_or_add_rPr(), font.word_name)
+        if size is not None:
+            run.font.size = Pt(size)
+        if colour is not None:
+            run.font.color.rgb = RGBColor.from_string(_hex(colour))
+
+    return apply
+
+
 def _add_text(paragraph, value: str, style: Callable[[Run], None] | None = None) -> list[Run]:
     """Appends model text to `paragraph`: a run per plain piece (given `style`), a Word equation or picture per
     inline equation. Returns the plain runs."""
@@ -731,6 +830,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
     """
     document = finalize_links(document)
     doc = Document()
+    _apply_styles(doc, document.styles)
     usable_cm = _apply_style(doc.sections[0], document.style)
     usable_height_cm = document.style.usable_height_cm
     if document.mirror:
@@ -762,12 +862,12 @@ def render_docx_document(document: ReportDocument) -> bytes:
             _anchor_to_bottom(doc, bottom_from, usable_cm, _bottom_offset_cm(doc, current_style, running))
         elif isinstance(block, Heading):
             heading = doc.add_heading("", level=min(max(block.level, 1), 4))
-            _add_text(heading, block.text)
+            _add_text(heading, block.text, _block_look(block.font, block.size, block.colour))
             if block.anchor:
                 bookmarks += 1
                 _bookmark(heading, block.anchor, bookmarks)
         elif isinstance(block, Paragraph):
-            _add_text(doc.add_paragraph(), block.text)
+            _add_text(doc.add_paragraph(), block.text, _block_look(block.font, block.size))
         elif isinstance(block, Equation):
             _display_equation(doc, block, usable_cm)
         elif isinstance(block, Note):
@@ -776,11 +876,13 @@ def render_docx_document(document: ReportDocument) -> bytes:
             run.font.size = Pt(8.5)
             run.font.color.rgb = _NOTE_GREY
         elif isinstance(block, BulletList):
+            look = _block_look(block.font, block.size)
             for item in block.items:
-                _add_text(doc.add_paragraph(style="List Bullet"), item)
+                _add_text(doc.add_paragraph(style="List Bullet"), item, look)
         elif isinstance(block, NumberedList):
+            look = _block_look(block.font, block.size)
             for item in block.items:
-                _add_text(doc.add_paragraph(style="List Number"), item)
+                _add_text(doc.add_paragraph(style="List Number"), item, look)
         elif isinstance(block, Image):
             _image_block(doc, block, usable_cm)
         elif isinstance(block, Table):
@@ -809,4 +911,4 @@ def render_docx_document(document: ReportDocument) -> bytes:
 
     buffer = io.BytesIO()
     doc.save(buffer)
-    return buffer.getvalue()
+    return embed_in_docx(buffer.getvalue(), used_extra_families(document), embed=document.styles.embed_fonts)

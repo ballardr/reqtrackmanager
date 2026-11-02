@@ -426,7 +426,7 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
             if index:
                 blocks.append(PageBreak())
             blocks.append(Heading(project.name, 1))
-            blocks += [Heading(b.text, min(b.level + 1, 4)) if isinstance(b, Heading) else b for b in part.document.blocks]
+            blocks += [replace(b, level=min(b.level + 1, 4)) if isinstance(b, Heading) else b for b in part.document.blocks]
         first = parts[0][1].document
         document = replace(first, title=title, blocks=blocks) if first else ReportDocument(title=title, blocks=blocks)
     else:

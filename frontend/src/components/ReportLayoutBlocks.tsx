@@ -36,7 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type {
-  BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportImageLibrary, ReportLayoutApi, ReportSnippet, ReportWidget, SnippetApplyResult,
+  BlockCatalogue, BlockType, LayoutFamily, ReportFieldCatalogue, ReportFontChoice, ReportImageLibrary, ReportLayoutApi, ReportSnippet, ReportWidget, SnippetApplyResult,
   TreeProblem,
 } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
@@ -133,12 +133,13 @@ function describeBlock(node: TreeNode, type: BlockType | undefined): string {
  * @param onInspect Called when a block is selected or the layout's settings are opened.
  * @param images The picture library an image block chooses from (absent where the layout has none).
  * @param colours The branding colour and the organisation's colour scheme (stock values when absent).
+ * @param fonts The fonts an author may choose (the four standard ones when absent).
  * @param colours The branding colour and the organisation's colour scheme (stock values when absent).
  * @param snippets The snippet calls, and what to tell the designer after an insertion; with `images` (a snippet may need a
  *   picture), else no Insert snippet button. `onSave`, when given, adds Save as snippet for the selected block.
  */
 export function ReportLayoutBlocks({
-  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, inspectorHost, onInspect, images, colours, snippets,
+  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, inspectorHost, onInspect, images, colours, fonts, snippets,
 }: {
   tree: Tree;
   onChange: (next: Tree) => void;
@@ -153,6 +154,7 @@ export function ReportLayoutBlocks({
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
   /** The branding colour and the organisation's colour scheme, which colour fields offer. */
   colours?: ColourContext;
+  fonts?: ReportFontChoice[];
   snippets?: {
     api: Pick<ReportLayoutApi, "snippets" | "applySnippet">;
     onInserted: (notice: SnippetNoticeData) => void;
@@ -191,7 +193,7 @@ export function ReportLayoutBlocks({
     .filter((n) => n.type === "sheet" && typeof n.name === "string" && n.name !== "")
     .map((n) => ({ name: String(n.name), recordType: sourceRecordType(n.source, []) }));
   const palette = (Array.isArray(tree.palette) ? tree.palette : []) as ColourEntry[];
-  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, sheets, images, colours, palette, readOnly };
+  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, sheets, images, colours, fonts, palette, readOnly };
 
   // The workspace lives as long as the catalogue, family and mode it was built for.
   useEffect(() => {

@@ -85,11 +85,13 @@ from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
+from app.services import report_font_catalogue
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.report_colours import effective_scheme, is_name, resolve_colour
 from app.services.report_column_width import sheet_widths_cm
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
+from app.services.report_fonts import FontFamily
 from app.services.report_framework import ReportContext, ReportResult
 from app.services.report_grid import DEFAULT_BORDER_COLOUR, cell_paragraphs, low_contrast, place_spans
 from app.services.report_images import MAX_REPORT_IMAGES, ResolvedImage, load_image, load_org_logo, max_total_image_bytes
@@ -110,6 +112,7 @@ from app.services.report_model import (
     BulletList,
     Cell,
     CellLink,
+    DocumentStyles,
     Equation,
     Gap,
     Grid,
@@ -135,6 +138,7 @@ from app.services.report_model import (
     Table,
     VerticalSpace,
     contents_sheet,
+    inline_markdown,
     link_problem,
     linked,
     markdown_to_blocks,
@@ -145,6 +149,7 @@ from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, org_value_
 from app.services.report_page_styles import effective_bands, resolve_page_styles
 from app.services.report_record_images import candidate_files, compile_pattern, load_attachment_image, record_files
 from app.services.report_shapes import shape_svg
+from app.services.report_styles import resolve_styles
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
 from app.services.report_variables import (
     PLACEHOLDER_FAMILY,
@@ -379,6 +384,12 @@ def evaluate_layout(
     if tree["family"] == FAMILY_DOCUMENT:
         run.page_styles = run.with_running_bands(tree, *resolve_page_styles(tree))
         run.repeat_table_header = tree.get("repeat_table_header", True)
+        run.document_styles, font_notes, heading_colours = resolve_styles(
+            db, tree, accent=run.org_values["report_accent"], scheme=run.scheme,
+        )
+        run.colours_used.update(heading_colours)
+        for note in font_notes:
+            run.warn(note)
     for warning in stale_value_warnings(db, declared, values, run.project_ids):
         run.warn(warning)
     for node in tree["nodes"]:
@@ -393,7 +404,7 @@ def evaluate_layout(
         style = run.page_styles[0]
         document = ReportDocument(
             title=title, blocks=run.blocks, landscape=style.landscape, page_size=style.page_size, margins=style.margins,
-            mirror=style.mirror, header=style.header, footer=style.footer,
+            mirror=style.mirror, header=style.header, footer=style.footer, styles=run.document_styles,
         )
     versions, truncated = run.record_versions()
     for artefact_type, pooled in run._pool.items():
@@ -430,6 +441,7 @@ class _Run:
         #: block used with the colour each resolved to.
         self.scheme: dict[str, str] = {}
         self.colours_used: dict[str, str] = {}
+        self._block_families: dict[str, FontFamily] = {}
         self.placeholders: dict[str, str] = {
             "project_name": ctx.scope_label, "report_title": title,
             "project_code": getattr(project, "code", "") or "", "project_description": getattr(project, "summary", "") or "",
@@ -445,6 +457,8 @@ class _Run:
         self.page_styles = resolve_page_styles({})
         #: Whether a document table's header row is printed again on each page (the layout's `repeat_table_header`).
         self.repeat_table_header = True
+        #: The document's fonts and heading colour (the layout's `styles`), resolved for this run.
+        self.document_styles = DocumentStyles()
         self.sheets: list[Sheet] = []
         #: Per sheet (same order), `{(record type, id): index of its first row}` for the records of the sheet's own source,
         #: and the cells waiting for a link: `(row, column, record key, target sheet name)`.
@@ -667,6 +681,23 @@ class _Run:
             self.stats.record_image_files.append(str(asset.id))
         self.stats.record_images += 1
         return image
+
+    def block_look(self, node: dict[str, Any]) -> tuple[FontFamily | None, float | None]:
+        """The font family and size a text or heading block sets for itself (`None` for each it leaves to the document).
+
+        A family this server no longer has prints in the standard one of its kind, with a run note.
+        """
+        key = node.get("font")
+        family = None
+        if key is not None:
+            if key not in self._block_families:  # looked up once per run, however many blocks name it
+                found, note = report_font_catalogue.family_or_fallback(self.db, key)
+                self._block_families[key] = found
+                if note:
+                    self.warn(note)
+            family = self._block_families[key]
+        size = node.get("size")
+        return family, float(size) if size is not None else None
 
     def note_colours(self, *words: Any) -> None:
         """Records the scheme names among `words` with the colour each resolved to in this run (for the provenance row)."""
@@ -1181,11 +1212,22 @@ def matches_value(actual: Any, kind: str, op: str, expected: Any) -> bool:
 
 
 def _eval_heading(run: _Run, node: dict[str, Any], scope: Scope) -> None:
-    run.emit(Heading(run.rich(node["text"], scope), node.get("level", 1)))
+    font, size = run.block_look(node)
+    colour = node.get("colour")
+    run.note_colours(colour)
+    resolved = resolve_colour(colour, run.org_values["report_accent"], run.scheme) if colour else None
+    run.emit(Heading(
+        run.rich(inline_markdown(node["text"]), scope), node.get("level", 1), font=font, size=size, colour=resolved,
+    ))
 
 
 def _eval_text(run: _Run, node: dict[str, Any], scope: Scope) -> None:
-    run.emit(*run.text_blocks(node["text"], scope))
+    font, size = run.block_look(node)
+    blocks = run.text_blocks(node["text"], scope)
+    if font is not None or size is not None:
+        # The block's own look goes on what it writes as body text; a Markdown heading inside it keeps the heading style.
+        blocks = [replace(b, font=font, size=size) if isinstance(b, Paragraph | BulletList | NumberedList) else b for b in blocks]
+    run.emit(*blocks)
 
 
 def _eval_equation(run: _Run, node: dict[str, Any], scope: Scope) -> None:

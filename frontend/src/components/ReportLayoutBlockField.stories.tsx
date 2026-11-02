@@ -96,6 +96,38 @@ export const ANumberFieldShowsItsBoundsAndDefault: Story = {
   },
 };
 
+export const ABlockFontIsAnInheritingSelectThatStoresOnlyWhatWasChosen: Story = {
+  args: { field: fieldOf("text", "font"), initial: { type: "text", text: "x" } },
+  play: async ({ canvasElement }) => {
+    const select = within(canvasElement).getByRole("combobox", { name: "Font" }) as HTMLSelectElement;
+    await expect(Array.from(select.options).map((o) => o.text)).toEqual(["Document font", "Sans", "Serif", "Mono", "Unicode Sans"]);
+    await userEvent.selectOptions(select, "serif");
+    await waitFor(() => expect(nodeOf(canvasElement).font).toBe("serif"));
+    await userEvent.selectOptions(select, "");
+    await waitFor(() => expect(nodeOf(canvasElement)).toEqual({ type: "text", text: "x" }));
+  },
+};
+
+export const ABlockSizeSaysItFollowsTheDocumentWhenEmpty: Story = {
+  args: { field: fieldOf("text", "size"), initial: { type: "text", text: "x" } },
+  play: async ({ canvasElement }) => {
+    const size = within(canvasElement).getByRole("spinbutton", { name: "Size" });
+    await expect(size).toHaveAttribute("placeholder", "Document size");
+    await userEvent.type(size, "11.5");
+    await waitFor(() => expect(nodeOf(canvasElement).size).toBe(11.5));
+  },
+};
+
+export const AHeadingColourOffersNoNoneOptionBecauseEmptyMeansTheDocumentsColour: Story = {
+  args: { field: fieldOf("heading", "colour"), initial: { type: "heading", text: "x" } },
+  play: async ({ canvasElement }) => {
+    const button = within(canvasElement).getByRole("button", { name: /^Colour:/ });
+    await expect(button).toHaveTextContent("Document heading colour");
+    await userEvent.click(button);
+    await expect(within(await screen.findByRole("dialog")).queryByText("No colour")).not.toBeInTheDocument();
+  },
+};
+
 export const AChoiceShowsItsDefaultAndNamesTheOptions: Story = {
   args: { field: { ...fieldOf("heading", "text"), key: "orientation", label: "Page orientation", kind: "choice", choices: ["portrait", "landscape"], default: "portrait", features: [] }, initial: {} },
   play: async ({ canvasElement }) => {

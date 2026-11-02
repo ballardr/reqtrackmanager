@@ -16,6 +16,8 @@ Responsibilities:
 - `text_width`, `draw_aligned` and `draw_centred`: measure and draw mixed text where markup is not available
   (column sizing, the page footer).
 - `needs_fallback`: tell a plain table cell that must become a Paragraph from one that can stay a string.
+- `using_family`: draw and measure in a document font family for the duration of one render (a layout's body font);
+  with none active everything is Helvetica as before.
 
 Design decisions:
 - A family's PDF faces are metric-compatible with the name Word/ODT/HTML ask for (Liberation Sans for
@@ -27,8 +29,10 @@ Design decisions:
   mounts. Organisation-uploaded fonts are refused on purpose (untrusted bytes, unknown licence).
 - Text Helvetica can encode (Windows-1252, the encoding ReportLab's built-in fonts use) is left
   exactly as it was, so the look of existing reports is unchanged; only other characters switch font.
-- A fallback run inside a bold style stays bold because the caller says so (`bold`): a `<font>` tag
-  replaces the style's font name, so the weight cannot be inherited.
+- A fallback run inside a bold or italic style keeps that style because the caller says so (`bold`, `italic`): a
+  `<font>` tag replaces the style's font name, so weight and slant cannot be inherited.
+- The active family is a context variable, not a parameter, because `safe` and `text_width` are called from a hundred
+  places that do not know the layout; `render_pdf_document` sets it once around a whole render.
 - ReportLab does not shape or reorder text, so Arabic and Indic scripts remain unsupported in PDFs,
   and CJK needs a font this module does not ship (those characters print as the font's missing-glyph
   box, as before). DOCX, ODT and HTML are unaffected.
@@ -39,6 +43,9 @@ Dependencies: ReportLab (also reads each face's glyph coverage); the font files 
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -90,8 +97,52 @@ def _builtin_ok(char: str) -> bool:
     return True
 
 
+_active: ContextVar[str | None] = ContextVar("report_font_family", default=None)
+
+
+@contextmanager
+def using_family(key: str | None) -> Iterator[None]:
+    """Makes `key` the family the fallback and the measuring functions draw in, until the block ends.
+
+    Args:
+        key: A family key, or `None` for the built-in Helvetica.
+
+    Raises:
+        KeyError: If `key` is not an offered family.
+        OSError: If a bundled font file is missing from the installation.
+    """
+    if key is not None:
+        register_family(key)
+    token = _active.set(key)
+    try:
+        yield
+    finally:
+        _active.reset(token)
+
+
+def _printable(char: str) -> bool:
+    """Whether the active font (the family's regular face, else Helvetica) has a glyph for `char`."""
+    key = _active.get()
+    return _builtin_ok(char) if key is None else covers(key, char)
+
+
+def active_face(bold: bool = False) -> str:
+    """The regular or bold face of the active font (Helvetica when no family is active)."""
+    key = _active.get()
+    if key is None:
+        return "Helvetica-Bold" if bold else "Helvetica"
+    return pdf_face(key, bold=bold)
+
+
+def _fallback_font(bold: bool, italic: bool) -> str:
+    """The bundled Unicode face for a weight and slant."""
+    if bold and italic:
+        return UNICODE_FONT_BOLD_ITALIC
+    return UNICODE_FONT_BOLD if bold else UNICODE_FONT_ITALIC if italic else UNICODE_FONT
+
+
 def needs_fallback(text: str) -> bool:
-    """Whether `text` has a character Helvetica cannot print.
+    """Whether `text` has a character the active font (Helvetica unless a family is active) cannot print.
 
     Args:
         text: Any string.
@@ -99,14 +150,14 @@ def needs_fallback(text: str) -> bool:
     Returns:
         `True` when the Unicode font is needed for part of it.
     """
-    return any(not _builtin_ok(c) for c in text)
+    return any(not _printable(c) for c in text)
 
 
 def _runs(text: str) -> list[tuple[str, bool]]:
     """Splits `text` into consecutive `(run, uses_unicode_font)` pieces, joining neighbours of one kind."""
     runs: list[tuple[str, bool]] = []
     for char in text:
-        unicode_char = not _builtin_ok(char)
+        unicode_char = not _printable(char)
         if runs and runs[-1][1] == unicode_char:
             runs[-1] = (runs[-1][0] + char, unicode_char)
         else:
@@ -114,13 +165,14 @@ def _runs(text: str) -> list[tuple[str, bool]]:
     return runs
 
 
-def mark_fallback(escaped: str, *, bold: bool = False) -> str:
-    """Wraps the characters Helvetica cannot print in a Unicode `<font>` tag.
+def mark_fallback(escaped: str, *, bold: bool = False, italic: bool = False) -> str:
+    """Wraps the characters the active font cannot print in a Unicode `<font>` tag.
 
     Args:
         escaped: Text already escaped for Paragraph markup (`&`, `<`, `>` replaced); the tag is the
             only markup added, and an entity such as `&amp;` is plain ASCII so it is never wrapped.
         bold: `True` when the paragraph's style is bold, so the fallback run is bold too.
+        italic: `True` when the text is italic, so the fallback run is too.
 
     Returns:
         The text with each run of unprintable characters wrapped; unchanged when there are none.
@@ -128,12 +180,12 @@ def mark_fallback(escaped: str, *, bold: bool = False) -> str:
     if not needs_fallback(escaped):
         return escaped
     _register()
-    name = UNICODE_FONT_BOLD if bold else UNICODE_FONT
+    name = _fallback_font(bold, italic)
     parts: list[str] = []
     pending_space = ""
     in_run = False
     for char in escaped:
-        if not _builtin_ok(char):
+        if not _printable(char):
             if not in_run:
                 parts.append(f'<font name="{name}">')
                 in_run = True
@@ -165,7 +217,7 @@ def text_width(text: str, size: float, *, bold: bool = False) -> float:
         The summed width.
     """
     if not needs_fallback(text):
-        return stringWidth(text, "Helvetica-Bold" if bold else "Helvetica", size)
+        return stringWidth(text, active_face(bold), size)
     _register()
     return sum(_run_width(run, unicode_font, size, bold) for run, unicode_font in _runs(text))
 
@@ -174,7 +226,7 @@ def _run_width(run: str, unicode_font: bool, size: float, bold: bool) -> float:
     """Width of one single-font run."""
     if unicode_font:
         return stringWidth(run, UNICODE_FONT_BOLD if bold else UNICODE_FONT, size)
-    return stringWidth(run, "Helvetica-Bold" if bold else "Helvetica", size)
+    return stringWidth(run, active_face(bold), size)
 
 
 def draw_aligned(canvas, x: float, y: float, text: str, size: float, align: str = "center") -> None:
@@ -190,13 +242,13 @@ def draw_aligned(canvas, x: float, y: float, text: str, size: float, align: str 
     """
     start = x - text_width(text, size) * {"left": 0.0, "center": 0.5, "right": 1.0}[align]
     if not needs_fallback(text):
-        canvas.setFont("Helvetica", size)
+        canvas.setFont(active_face(False), size)
         canvas.drawString(start, y, text)
         return
     _register()
     cursor = start
     for run, unicode_font in _runs(text):
-        canvas.setFont(UNICODE_FONT if unicode_font else "Helvetica", size)
+        canvas.setFont(UNICODE_FONT if unicode_font else active_face(False), size)
         canvas.drawString(cursor, y, run)
         cursor += _run_width(run, unicode_font, size, False)
 

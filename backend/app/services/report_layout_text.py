@@ -85,6 +85,13 @@ Grammar (one statement per line; indentation is cosmetic):
 - `@filename "<template>"` (before the first block, once) is the default name of a downloaded copy, without the
   extension: `{{report_title}}`, `{{project_code}}`, `{{generated_on}}`, `{{var.name}}` and so on
   (`services.report_file_names`).
+- `@style body font=serif size=11` and `@style headings font=sans bold italic colour=primary` (before the first block, each once)
+  set the document's fonts: the body font (`sans`, `serif`, `mono`, `unicode` or a family the administrator provides) and size
+  in points, and the heading font, `bold`/`nobold`, `italic`/`noitalic` and colour. A `@layout document` line may add
+  `embedfonts` (or `noembedfonts`) to carry the administrator-provided fonts used inside Word and OpenDocument files.
+- `@heading level=2 font=sans size=18 colour=primary Title` and `@text font=serif size=11` … `@end` (or `@text font=serif
+  "quoted"`) give one block its own font, size and, for a heading, colour; each is optional and falls back to the
+  document's. They apply to the whole block. A heading's words take `*italic*`, `**bold**` and `` `code` `` marks.
 - `@palette primary=#1f3a5f secondary=accent warn=#b45309` (before the first block, once) is the layout's own colour
   scheme: up to 8 `name=colour` pairs a block can use as a colour by name. `@palette follow` says the layout has none of
   its own (it follows the organisation's) and is the same as no line.
@@ -154,7 +161,10 @@ _STRING_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"')
 _WORD_TOKEN = re.compile(r'[^\s,"()]+')
 _NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _BARE = re.compile(r"[A-Za-z_][A-Za-z0-9_\-]*")
-_LEVEL_ATTR = re.compile(r"level=(\S*)(?:\s+|$)")
+_BLOCK_ATTR = re.compile(r"([a-z]+)=(\S*)(?:\s+|$)")
+#: The `key=value` words a `@heading` and a `@text` line take, in the order they are written.
+HEADING_ATTRS = ("level", "font", "size", "colour")
+TEXT_ATTRS = ("font", "size")
 _ATTR_LOOKALIKE = re.compile(r"[a-z_]+=")
 #: A tree path that names a block (`nodes[2]`, `nodes[2].children[0]`), as opposed to a column, join or page style.
 _BLOCK_PATH = re.compile(r"nodes(?:\[\d+\]\.(?:children|else_children))*\[\d+\]")
@@ -163,6 +173,10 @@ VARIABLE_CLAUSES = ("label", "default", "options", "from")
 #: Layout line words for whether a table's header row is printed again on each page it runs onto (on unless `norepeatheader`).
 HEADER_REPEAT_WORDS = ("repeatheader", "norepeatheader")
 CONTENTS_WORDS = ("contents", "nocontents")
+EMBED_WORDS = ("embedfonts", "noembedfonts")
+#: The settings of an `@style` line by part, and the flag words of the heading part (`word` then its negation).
+STYLE_PARTS = ("body", "headings")
+_STYLE_FLAGS = {"bold": "bold", "nobold": "bold", "italic": "italic", "noitalic": "italic"}
 #: Layout line words for which projects the report runs for, by the tree's `run_scope`.
 RUN_SCOPE_WORDS = {"anyprojects": RUN_SCOPE_ANY, "oneproject": RUN_SCOPE_ONE, "projecttree": RUN_SCOPE_ONE_AND_CHILDREN}
 _RUN_SCOPE_WORD = {scope: word for word, scope in RUN_SCOPE_WORDS.items()}
@@ -746,6 +760,14 @@ def _margins_text(margins: dict[str, Any]) -> str:
     return " margins " + " ".join(f"{key}={json.dumps(margins[key])}" for key in MARGIN_KEYS if key in margins)
 
 
+def _style_words(part: str, settings: dict[str, Any]) -> list[str]:
+    """The words of an `@style` line after its part, each preceded by a space, in the order the parser reads them."""
+    words = [f" {key}={json.dumps(settings[key]) if key == 'size' else settings[key]}" for key in ("font", "size", "colour") if key in settings]
+    if part == "headings":
+        words += [f" {'' if settings[key] else 'no'}{key}" for key in ("bold", "italic") if key in settings]
+    return words
+
+
 def _page_style_words(style: dict[str, Any]) -> str:
     """The orientation, size and margins of a root or named style, each preceded by a space."""
     words = ""
@@ -764,6 +786,7 @@ class _Parser:
         self.errors: list[TextError] = []
         self.line_of: dict[str, int] = {}
         self._palette_seen = False
+        self._style_parts: set[str] = set()
         self.node_count = 0
         self.root: dict[str, Any] = {"nodes": []}
         self.frames: list[_Frame] = [_Frame("root", self.root, "", 1)]
@@ -851,19 +874,20 @@ class _Parser:
         self.tree["family"] = family
         # The orientation, the page size and `mirror` may come in any order, each at most once; `margins` ends the line.
         while word := cur.accept(
-            *ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS, *CONTENTS_WORDS, *RUN_SCOPE_WORDS,
+            *ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS, *CONTENTS_WORDS, *EMBED_WORDS, *RUN_SCOPE_WORDS,
         ):
             key = (
                 "orientation" if word in ORIENTATION_WORDS else "mirror_margins" if word == "mirror"
                 else "repeat_table_header" if word in HEADER_REPEAT_WORDS
                 else "contents_sheet" if word in CONTENTS_WORDS
+                else "embed_fonts" if word in EMBED_WORDS
                 else "run_scope" if word in RUN_SCOPE_WORDS else "page_size"
             )
             if key in self.tree:
                 raise _Syntax(f"The {key.replace('_', ' ')} is written once.", offset)
             self.tree[key] = (
                 RUN_SCOPE_WORDS[word] if key == "run_scope"
-                else word in ("repeatheader", "contents") if key in ("repeat_table_header", "contents_sheet")
+                else word in ("repeatheader", "contents", "embedfonts") if key in ("repeat_table_header", "contents_sheet", "embed_fonts")
                 else True if word == "mirror" else word
             )
         if cur.accept("margins"):
@@ -887,6 +911,9 @@ class _Parser:
             return
         if name == "palette":
             self._palette(directive, indent, line_no)
+            return
+        if name == "style":
+            self._style(directive, indent, line_no)
             return
         if name == "pagestyle":
             self._page_style(directive, indent, line_no)
@@ -1020,6 +1047,47 @@ class _Parser:
         self.line_of["palette"] = line_no
         for i in range(len(entries)):
             self.line_of[f"palette[{i}]"] = line_no
+
+    def _style(self, directive: _Directive, indent: int, line_no: int) -> None:
+        """Reads an `@style body …` or `@style headings …` line into the root's `styles` (before the first block)."""
+        if len(self.frames) > 1 or self.root["nodes"]:
+            raise _Syntax("@style sets the fonts of the whole layout: put it before the first block.", indent + 1)
+        cur = directive.cursor()
+        part = cur.word(f"{' or '.join(STYLE_PARTS)}")
+        if part not in STYLE_PARTS:
+            raise _Syntax(f"Write @style body … or @style headings …, not {part!r}.", directive.offset + 1)
+        if part in self._style_parts:
+            raise _Syntax(f"@style {part} is written once.", indent + 1)
+        self._style_parts.add(part)
+        settings: dict[str, Any] = {}
+        allowed = ("font", "size") if part == "body" else ("font", "colour")
+        while (token := cur.peek()) is not None:
+            word = cur.word("a setting").strip()
+            key, equals, value = word.partition("=")
+            if not equals:
+                if part == "headings" and key in _STYLE_FLAGS:
+                    flag = _STYLE_FLAGS[key]
+                    if flag in settings:
+                        raise _Syntax(f"The heading {flag} is given twice.", token.column)
+                    settings[flag] = not key.startswith("no")
+                    continue
+                expected = ", ".join(allowed) + (", bold or italic" if part == "headings" else "")
+                raise _Syntax(f"Expected {expected}, found {token.shown()}.", token.column)
+            if key not in allowed or not value:
+                raise _Syntax(f"Unknown or empty setting {key!r}. Use: {', '.join(allowed)}.", token.column)
+            if key in settings:
+                raise _Syntax(f'"{key}" is given twice.', token.column)
+            if key == "size":
+                if not _NUMBER.fullmatch(value):
+                    raise _Syntax("Write the size as a number of points, for example size=11.", token.column)
+                settings[key] = json.loads(value)
+            else:
+                settings[key] = value
+        if not settings:
+            raise _Syntax(f"Write at least one setting after @style {part}.", directive.offset + 1)
+        self.tree.setdefault("styles", {})[part] = settings
+        self.line_of["styles"] = self.line_of.get("styles", line_no)
+        self.line_of[f"styles.{part}"] = line_no
 
     def _variable(self, directive: _Directive, indent: int, line_no: int) -> None:
         """Reads an `@var` line into the root's `variables` (it belongs before the first block)."""
@@ -1251,9 +1319,9 @@ class _Parser:
     def _push(self, frame: _Frame) -> None:
         self.frames.append(frame)
 
-    def start_text(self, line_no: int) -> None:
-        """Begins an explicit `@text` block, whose lines are read verbatim until `@end`."""
-        self._push(_Frame("text", {}, "", line_no))
+    def start_text(self, line_no: int, attrs: dict[str, Any]) -> None:
+        """Begins an explicit `@text` block, whose lines are read verbatim until `@end`; `attrs` are its font and size."""
+        self._push(_Frame("text", attrs, "", line_no))
 
     # --- text
 
@@ -1291,7 +1359,7 @@ class _Parser:
         if _is_directive(stripped):
             if stripped.rstrip() == "@end":
                 self.frames.pop()
-                self.add({"type": "text", "text": "\n".join(frame.body)}, frame.line)
+                self.add({"type": "text", **frame.node, "text": "\n".join(frame.body)}, frame.line)
             else:
                 self.error(
                     line_no, 1 + len(raw) - len(stripped),
@@ -1413,6 +1481,8 @@ def format_tree(tree: dict[str, Any]) -> str:
         header += " repeatheader" if tree["repeat_table_header"] else " norepeatheader"
     if "contents_sheet" in tree:
         header += " contents" if tree["contents_sheet"] else " nocontents"
+    if "embed_fonts" in tree:
+        header += " embedfonts" if tree["embed_fonts"] else " noembedfonts"
     if "run_scope" in tree:
         header += f" {_RUN_SCOPE_WORD[tree['run_scope']]}"
     if "margins" in tree:
@@ -1425,6 +1495,10 @@ def format_tree(tree: dict[str, Any]) -> str:
         _write_bands(writer, style)
     for declaration in tree.get("variables", []):
         writer.line(0, _variable_text(declaration))
+    for part in STYLE_PARTS:
+        settings = tree.get("styles", {}).get(part)
+        if settings:
+            writer.line(0, f"@style {part}" + "".join(_style_words(part, settings)))
     if tree.get("palette"):
         writer.line(0, "@palette " + " ".join(f"{e['name']}={e['colour']}" for e in tree["palette"]))
     if "file_name" in tree:
@@ -1438,16 +1512,50 @@ def format_tree(tree: dict[str, Any]) -> str:
 # --- block types -----------------------------------------------------------------------------------
 
 
+def _block_attrs(rest: str, allowed: tuple[str, ...], offset: int) -> tuple[dict[str, Any], str]:
+    """Reads the leading `key=value` words of a `@heading` or `@text` line (`level`, `font`, `size`, `colour`).
+
+    Args:
+        rest: The line after the directive name.
+        allowed: The keys this block takes; another `key=` is left in the rest as text.
+        offset: The column to report a problem at.
+
+    Returns:
+        The attributes read (a level as an int, a size as a number) and what follows them.
+
+    Raises:
+        _Syntax: For a repeated key or a value that is not of the right shape.
+    """
+    attrs: dict[str, Any] = {}
+    while (match := _BLOCK_ATTR.match(rest)) and match.group(1) in allowed:
+        key, raw = match.group(1), match.group(2)
+        if key in attrs:
+            raise _Syntax(f'"{key}" is given twice.', offset)
+        if key == "level":
+            if not re.fullmatch(r"-?\d+", raw):
+                raise _Syntax("The level must be a number from 1 to 4.", offset)
+            attrs[key] = int(raw)
+        elif key == "size":
+            if not _NUMBER.fullmatch(raw):
+                raise _Syntax("Write the size as a number of points, for example size=11.", offset)
+            attrs[key] = json.loads(raw)
+        else:
+            if not raw:
+                raise _Syntax(f"Write a {'font' if key == 'font' else 'colour'} after {key}=.", offset)
+            attrs[key] = raw
+        rest = rest[match.end():]
+    return attrs, rest
+
+
+def _attr_words(node: dict[str, Any], keys: tuple[str, ...]) -> str:
+    """` key=value` for each of `keys` the node sets, in the order the parser reads them."""
+    return "".join(f" {key}={json.dumps(node[key]) if key == 'size' else node[key]}" for key in keys if key in node)
+
+
 def _parse_heading(p: _Parser, d: _Directive) -> None:
     node: dict[str, Any] = {"type": "heading"}
-    rest = d.rest.strip()
-    match = _LEVEL_ATTR.match(rest)
-    if match:
-        raw_level = match.group(1)
-        if not re.fullmatch(r"-?\d+", raw_level):
-            raise _Syntax("The level must be a number from 1 to 4.", d.offset + 1)
-        node["level"] = int(raw_level)
-        rest = rest[match.end():]
+    attrs, rest = _block_attrs(d.rest.strip(), HEADING_ATTRS, d.offset + 1)
+    node.update(attrs)
     if rest.startswith('"'):
         try:
             node["text"] = json.loads(rest)
@@ -1466,14 +1574,13 @@ def _write_heading(w: _Writer, node: dict[str, Any], depth: int) -> None:
         text == text.strip() and not text.startswith('"') and not _ATTR_LOOKALIKE.match(text)
         and all(ord(c) >= 32 and ord(c) != 127 for c in text)
     )
-    level = f" level={node['level']}" if "level" in node else ""
-    w.line(depth, f"@heading{level} {text if plain else _quote(text)}")
+    w.line(depth, f"@heading{_attr_words(node, HEADING_ATTRS)} {text if plain else _quote(text)}")
 
 
 def _parse_text(p: _Parser, d: _Directive) -> None:
-    rest = d.rest.strip()
+    attrs, rest = _block_attrs(d.rest.strip(), TEXT_ATTRS, d.offset + 1)
     if not rest:
-        p.start_text(d.line_no)
+        p.start_text(d.line_no, attrs)
         return
     if not rest.startswith('"'):
         raise _Syntax('Write @text on its own line, then the text, then @end; or @text "quoted text".', d.offset + 1)
@@ -1483,23 +1590,24 @@ def _parse_text(p: _Parser, d: _Directive) -> None:
         raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', d.offset + 1) from None
     if not isinstance(value, str):
         raise _Syntax("Not valid quoted text.", d.offset + 1)
-    p.add({"type": "text", "text": value}, d.line_no)
+    p.add({"type": "text", **attrs, "text": value}, d.line_no)
 
 
 def _write_text(w: _Writer, node: dict[str, Any], depth: int) -> None:
     text = node["text"]
+    words = _attr_words(node, TEXT_ATTRS)
     if "\r" in text:
-        w.line(depth, f"@text {_quote(text)}")
+        w.line(depth, f"@text{words} {_quote(text)}")
         w.prev_implicit_text = False
         return
     lines = text.split("\n")
     reads_as_block = any(_bracketed_form(line.lstrip(" \t")) is not None for line in lines)
-    if not w.prev_implicit_text and lines[0].strip() and lines[-1].strip() and not reads_as_block:
+    if not words and not w.prev_implicit_text and lines[0].strip() and lines[-1].strip() and not reads_as_block:
         for line in lines:
             w.lines.append(INDENT * depth + _escape(line) if line else "")
         w.prev_implicit_text = True
         return
-    w.line(depth, "@text")
+    w.line(depth, f"@text{words}")
     for line in lines:
         w.lines.append(INDENT * depth + _escape(line) if line else "")
     w.line(depth, "@end")

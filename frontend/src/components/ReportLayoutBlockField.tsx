@@ -14,22 +14,25 @@
  * Design decisions: the field only edits its own key; it never judges the value. An optional key that is
  * emptied is removed from the node, a required one keeps an empty value so the server says it is missing.
  */
-import type { BlockCatalogue, BlockField, ReportFieldCatalogue, ReportImageLibrary, ReportWidget } from "../api/reportLayouts";
+import type { BlockCatalogue, BlockField, ReportFieldCatalogue, ReportFontChoice, ReportImageLibrary, ReportWidget } from "../api/reportLayouts";
 import type { PackVariableDeclaration } from "../api/reportPacks";
 import { useStrings } from "../context/TerminologyContext";
 import { newLeaf, sourceRecordType, type NameInScope, type TreeNode } from "../utils/reportLayoutTree";
 import {
   DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize, type RunningBand,
 } from "../utils/reportPageSetup";
+import type { DocumentStyles } from "../utils/reportFonts";
 import { colourNamesUsed, DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "../utils/reportColours";
 import { ColourChoiceField } from "./ColourChoiceField";
 import { FileNameField } from "./FileNameField";
+import { FontChoiceField } from "./FontChoiceField";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { ReportImageField } from "./ReportImageField";
 import { TextListField } from "./TextListField";
 import { LabeledSelect } from "./LabeledSelect";
 import { ConditionNodeEditor, type Condition, type ConditionEnv } from "./ReportLayoutConditionEditor";
 import { ReportColourSchemeEditor } from "./ReportColourSchemeEditor";
+import { ReportDocumentStylesField } from "./ReportDocumentStylesField";
 import { ReportGridField } from "./ReportGridField";
 import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayoutColumnsEditor";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
@@ -56,6 +59,8 @@ export interface BlockEnv {
   images?: { library: ReportImageLibrary; scope: "organization" | "project" };
   /** The branding colour and the organisation's colour scheme, which a colour field offers; stock values where absent. */
   colours?: ColourContext;
+  /** The fonts an author may choose; the four standard ones where absent. */
+  fonts?: ReportFontChoice[];
   /** The layout's own colour scheme (the root's `palette`). */
   palette?: ColourEntry[];
   readOnly: boolean;
@@ -310,7 +315,7 @@ export function ReportLayoutBlockField({
       control = (
         <ColourChoiceField
           label={field.label} value={asText} disabled={disabled} help={help} required={field.required}
-          context={env.colours ?? DEFAULT_COLOUR_CONTEXT} layoutPalette={layoutPalette} allowNone={field.key !== "outline"}
+          context={env.colours ?? DEFAULT_COLOUR_CONTEXT} layoutPalette={layoutPalette} allowNone={field.key !== "outline" && field.key !== "colour"}
           emptyLabel={field.empty_label || (field.default !== null && field.default !== undefined ? text.useDefault(String(field.default)) : undefined)}
           onChange={setText}
         />
@@ -325,6 +330,22 @@ export function ReportLayoutBlockField({
             used={colourNamesUsed(node, env.blocks)} onChange={(next) => set(next.length === 0 ? undefined : next)}
           />
         </fieldset>
+      );
+      break;
+    case "font":
+      control = (
+        <FontChoiceField
+          label={field.label} value={asText} fonts={env.fonts} disabled={disabled} help={help} emptyLabel={field.empty_label}
+          onChange={(key) => set(key === "" ? undefined : key)}
+        />
+      );
+      break;
+    case "document_styles":
+      control = (
+        <ReportDocumentStylesField
+          label={field.label} value={(value ?? undefined) as DocumentStyles | undefined} disabled={disabled} fonts={env.fonts}
+          colours={env.colours ?? DEFAULT_COLOUR_CONTEXT} palette={env.palette} onChange={set}
+        />
       );
       break;
     case "grid_columns": {

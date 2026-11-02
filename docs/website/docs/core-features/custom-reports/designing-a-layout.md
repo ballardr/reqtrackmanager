@@ -218,6 +218,47 @@ flowchart LR
 
 A saved report records the colours it used and what each was that day, so a report stays explainable after the scheme changes.
 
+## Fonts
+
+A document layout sets its fonts once, in the layout's settings (select the **Layout** block), under **Fonts**. Every block then follows.
+
+- **Body font** and **Body size (pt)** set the text, lists, tables, notes and the header and footer. The size is in points, from 6 to 72 in half points, and headings scale with it; table text, captions and notes keep their own smaller sizes.
+- **Heading font** sets headings and the title. Left on *Same as the body font*, headings follow the body text. **Bold headings** and **Italic headings** set the weight and slant, and **Heading colour** uses the [colour control](#colours), so headings can follow the branding.
+- Choose from **Sans**, **Serif**, **Mono** and **Unicode Sans** (for text beyond Latin letters), then any font your server administrator provides. Leave a setting empty and each format keeps its own look (PDF in Helvetica, Word in its template font).
+- Text view: `@style body font=serif size=11` and `@style headings font=sans colour=primary bold italic` before the first block (`nobold` and `noitalic` switch a heading setting off).
+
+```mermaid
+flowchart LR
+  A[Fonts in Layout settings] --> B[PDF: the real font file is used]
+  A --> C[Word and OpenDocument: the font is named in the styles]
+  A --> D[Web page: a CSS font family]
+  C --> E{Embed fonts on?}
+  E -->|yes| F[Extra fonts' files are put inside the file]
+  E -->|no| G[A reader without the font sees a similar one]
+```
+
+**PDF always prints in the font you chose.** Word, OpenDocument and the web page name the font, so a reader whose machine lacks it sees a similar one and lines may break differently. The four standard fonts match common fonts (Sans is Arial, Serif is Times New Roman, Mono is Courier New), so they print the same wherever those are installed. For a font your server administrator provides, switch **Embed fonts** on to put the font files inside Word and OpenDocument files; the file grows by roughly 0.3 to 0.4 MB for each face used, and Word on the web and some Mac versions ignore embedded fonts. A font whose licence forbids embedding is never offered.
+
+If a layout names a font the server no longer has (for example after moving the layout to another server), it still saves and runs: the report prints in a standard font of the same kind, and the run says so.
+
+### A block's own font and size
+
+The layout's fonts are the rule; a block can be the exception. Select a **Text** or **Heading** block and its panel shows **Font** and **Size**; a heading also has **Colour**. Left empty (*Document font*, *Document size*, *Document heading colour*) the block follows the layout. A setting applies to the whole block, not to a selection, and a size on a heading never changes its level, so the contents list and Word's navigation are unaffected.
+
+- A **text block** sets the font and size of the paragraphs and lists it writes. A Markdown heading written inside the text block keeps the layout's heading style.
+- A **heading block** can carry **bold**, *italic* and `code` in its words, the same way a text block does: `A *plan* for **review**`. A heading is bold already unless the layout's heading style turns that off, so `**` matters only then. A contents entry shows the words without the marks.
+- Text view: `@heading level=2 font=sans size=18 colour=primary A *plan*` and `@text font=serif size=11` … `@end` (or `@text font=serif "one line"`).
+- Table and sheet cells, list items and captions keep their block's or the layout's setting.
+
+```mermaid
+flowchart LR
+  D[Each format's own look] --> L[Layout Fonts]
+  L --> B[Block Font and Size]
+  B --> P[What prints]
+```
+
+A font the server does not have saves with a warning and prints in a standard font of the same kind, as for the layout's fonts.
+
 ## Custom tables
 
 A **Table (custom)** block is a table you write cell by cell: a document-details box, a review and sign-off sheet, a form. It is the counterpart of **Table (records)**, which has one row per record. Cells can be **merged**, and each can be aligned and coloured; the PDF, Word, OpenDocument and the preview draw it the same way. A table layout (a spreadsheet) has no use for one and refuses it.

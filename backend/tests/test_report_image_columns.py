@@ -412,12 +412,12 @@ def long_table_layout(world: World, **root: Any) -> tuple[dict, dict]:
 def test_the_pdf_table_repeats_its_header_unless_switched_off(world):
     from reportlab.lib import colors
 
-    from app.services.report_model import Table
-    from app.services.report_pdf import _InlineImages, _table
+    from app.services.report_model import DocumentStyles, Table
+    from app.services.report_pdf import _InlineImages, _look_for, _table
 
-    accent, images = colors.HexColor("#336699"), _InlineImages()
-    on = _table(Table(["A"], [["x"]] * 3), accent, 500.0, 700.0, images)
-    off = _table(Table(["A"], [["x"]] * 3, repeat_header=False), accent, 500.0, 700.0, images)
+    accent, images, look = colors.HexColor("#336699"), _InlineImages(), _look_for(DocumentStyles())
+    on = _table(Table(["A"], [["x"]] * 3), accent, 500.0, 700.0, images, look)
+    off = _table(Table(["A"], [["x"]] * 3, repeat_header=False), accent, 500.0, 700.0, images, look)
     images.close()
     assert on.repeatRows == 1 and off.repeatRows == 0
 

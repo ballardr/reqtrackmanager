@@ -28,8 +28,9 @@ from __future__ import annotations
 import html
 import io
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -64,7 +65,7 @@ from app.services.report_document import (
     title_flowables,
     toned_paragraph,
 )
-from app.services.report_fonts import draw_centred, text_width
+from app.services.report_fonts import FontFamily, draw_centred, pdf_face, text_width, using_family
 from app.services.report_grid_render import pdf_grid
 from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
@@ -72,6 +73,7 @@ from app.services.report_model import (
     BottomEnd,
     BottomStart,
     BulletList,
+    DocumentStyles,
     Equation,
     Gap,
     Grid,
@@ -110,6 +112,106 @@ _MAX_CELL_POINTS = 70.0
 _MAX_WORD_POINTS = 100.0  # a pasted unbroken string must not claim the page; ReportLab breaks it
 _CELL_PADDING_POINTS = 14.0
 _FOOTER_SIZE = 7
+
+
+_BODY_POINTS = 10.0  # the size of ReportLab's BodyText, which headings scale with
+
+
+def _helvetica(bold: bool, italic: bool) -> str:
+    """The built-in Helvetica face for a weight and slant."""
+    if bold and italic:
+        return "Helvetica-BoldOblique"
+    return "Helvetica-Bold" if bold else "Helvetica-Oblique" if italic else "Helvetica"
+
+
+def _derive(name: str, parent: ParagraphStyle, **changes: Any) -> ParagraphStyle:
+    """A paragraph style that is `parent` with `changes` (ReportLab style attributes by name)."""
+    return ParagraphStyle(name, parent=parent, **changes)
+
+
+class _Look:
+    """The paragraph styles of one render: ReportLab's own, or those a layout's document styles derive from them.
+
+    With nothing set every attribute is the module constant, so a layout without `styles` renders exactly as before.
+    A family's text size is the layout's body size; table, caption and note sizes stay their own (their fonts follow
+    the family), and headings keep their usual ratio to the body size.
+    """
+
+    def __init__(self, styles: DocumentStyles) -> None:
+        self.body = cast(ParagraphStyle, STYLES["BodyText"])
+        self.note, self.cell, self.head, self.plain_cell = _NOTE, _CELL, _HEAD, _PLAIN_CELL
+        self.captions = _CAPTIONS
+        self.heading_bold = styles.heading_bold is not False
+        self.heading_italic = styles.heading_italic
+        self.body_key = styles.body_font.key if styles.body_font else None
+        self.heading_key = styles.text_font.key if styles.text_font else None
+        self.heading_colour = colors.HexColor(styles.heading_colour) if styles.heading_colour else None
+        self.title_face: str | None = None
+        self.headings = {level: cast(ParagraphStyle, STYLES[f"Heading{level}"]) for level in range(1, 5)}
+        self.bullet_font = "Helvetica"
+        self._blocks: dict[tuple, ParagraphStyle] = {}
+        if styles.is_default:
+            return
+        regular = pdf_face(self.body_key) if self.body_key else None
+        bold = pdf_face(self.body_key, bold=True) if self.body_key else None
+        scale = (styles.body_size or _BODY_POINTS) / _BODY_POINTS
+        if regular and bold:
+            self.bullet_font = regular
+            self.cell = _derive("report_cell_f", _CELL, fontName=regular)
+            self.head = _derive("report_head_f", self.cell, fontName=bold)
+            self.plain_cell = _derive("cell_f", _PLAIN_CELL, fontName=regular)
+            self.note = _derive("report_note_f", _NOTE, fontName=regular)
+            self.captions = {a: _derive(f"{c.name}_f", c, fontName=regular) for a, c in _CAPTIONS.items()}
+        if regular or styles.body_size:
+            changes: dict[str, Any] = {}
+            if regular:
+                changes["fontName"] = regular
+            if styles.body_size:
+                changes.update(fontSize=styles.body_size, leading=styles.body_size * 1.2)
+            self.body = _derive("body_f", self.body, **changes)
+        heading_face = (
+            pdf_face(self.heading_key, bold=self.heading_bold, italic=self.heading_italic) if self.heading_key
+            else _helvetica(self.heading_bold, self.heading_italic)
+        )
+        self.title_face = heading_face
+        for level, base in list(self.headings.items()):
+            self.headings[level] = _derive(
+                f"heading{level}_f", base, fontName=heading_face, fontSize=base.fontSize * scale, leading=base.leading * scale,
+                **({"textColor": self.heading_colour} if self.heading_colour else {}),
+            )
+
+    def body_for(self, font: FontFamily | None, size: float | None) -> ParagraphStyle:
+        """The body style for a block that sets its own font or size (the document's body style when it sets neither)."""
+        if font is None and size is None:
+            return self.body
+        key = ("body", font.key if font else None, size)
+        if key not in self._blocks:
+            changes: dict[str, Any] = {}
+            if font is not None:
+                changes["fontName"] = pdf_face(font.key)
+            if size is not None:
+                changes.update(fontSize=size, leading=size * 1.2)
+            self._blocks[key] = _derive(f"body_{font.key if font else 'doc'}_{size}", self.body, **changes)
+        return self._blocks[key]
+
+    def heading_for(self, block: Heading) -> ParagraphStyle:
+        """The style of a heading: its level's, with the heading's own font, size and colour over it."""
+        level = self.headings[min(max(block.level, 1), 4)]
+        if block.font is None and block.size is None and block.colour is None:
+            return level
+        key = ("heading", block.level, block.font.key if block.font else None, block.size, block.colour)
+        if key not in self._blocks:
+            changes: dict[str, Any] = {}
+            if block.font is not None:
+                changes["fontName"] = pdf_face(block.font.key, bold=self.heading_bold, italic=self.heading_italic)
+            if block.size is not None:
+                changes.update(fontSize=block.size, leading=block.size * 1.2)
+            if block.colour is not None:
+                changes["textColor"] = colors.HexColor(block.colour)
+            self._blocks[key] = _derive(f"heading{block.level}_{len(self._blocks)}", level, **changes)
+        return self._blocks[key]
+
+
 #: Where the footer text sits above the bottom edge, in points; kept inside a small bottom margin.
 _FOOTER_BASELINE = 1 * cm
 
@@ -147,9 +249,9 @@ def _inline_equation(equation: Equation, images: _InlineImages) -> str:
     return f'<img src="{path}" width="{drawn.width:.2f}" height="{drawn.height:.2f}" valign="{-drawn.descent:.2f}"/>'
 
 
-def _styled_markup(run: Styled, *, bold: bool) -> str:
+def _styled_markup(run: Styled, *, bold: bool, italic: bool = False) -> str:
     """Paragraph markup for a bold / italic / code run: the escaped words inside the matching tags."""
-    inner = safe(run.text, bold=bold or run.bold)
+    inner = safe(run.text, bold=bold or run.bold, italic=run.italic or italic)
     if run.code:
         inner = f'<font face="Courier">{inner}</font>'
     if run.italic:
@@ -162,28 +264,39 @@ def _styled_markup(run: Styled, *, bold: bool) -> str:
     return inner
 
 
-def _markup(value: str, images: _InlineImages, *, bold: bool = False) -> str:
-    """Paragraph markup for model text: its runs escaped, its styles applied and its equations drawn inline."""
+def _markup(value: str, images: _InlineImages, *, bold: bool = False, italic: bool = False) -> str:
+    """Paragraph markup for model text: its runs escaped, its styles applied and its equations drawn inline.
+
+    `bold` and `italic` say the paragraph's own style already is, so fallback characters take the same weight and slant.
+    """
     return "".join(
-        safe(run, bold=bold) if isinstance(run, str)
-        else _styled_markup(run, bold=bold) if isinstance(run, Styled)
+        safe(run, bold=bold, italic=italic) if isinstance(run, str)
+        else _styled_markup(run, bold=bold, italic=italic) if isinstance(run, Styled)
         else _inline_equation(run, images)
         for run in text_runs(value)
     )
 
 
-def _list(items: list[str], images: _InlineImages, bullet_type: str) -> ListFlowable:
-    """A bulleted (`"bullet"`) or numbered (`"1"`) list of marked-up items."""
-    flowables: list[Any] = [ListItem(RlParagraph(_markup(item, images), STYLES["BodyText"])) for item in items]
-    return ListFlowable(flowables, bulletType=bullet_type, bulletFormat="%s." if bullet_type == "1" else None)
+def _list(
+    items: list[str], images: _InlineImages, bullet_type: str, look: _Look, font: FontFamily | None = None, size: float | None = None,
+) -> ListFlowable:
+    """A bulleted (`"bullet"`) or numbered (`"1"`) list of marked-up items, in the list's own font and size when it sets them."""
+    style = look.body_for(font, size)
+    with using_family(font.key) if font else nullcontext():
+        flowables: list[Any] = [ListItem(RlParagraph(_markup(item, images), style)) for item in items]
+    bullet_font = pdf_face(font.key) if font else look.bullet_font
+    options: dict[str, Any] = {} if bullet_font == "Helvetica" else {"bulletFontName": bullet_font}
+    if size is not None:
+        options["bulletFontSize"] = size
+    return ListFlowable(flowables, bulletType=bullet_type, bulletFormat="%s." if bullet_type == "1" else None, **options)
 
 
-def _display_equation(block: Equation, usable_width: float) -> list:
+def _display_equation(block: Equation, usable_width: float, look: _Look) -> list:
     """Flowables for a display equation: the centred vector drawing between small gaps, or its source."""
     drawn = typeset(block.tex, True)
     drawing = svg_flowable(drawn.svg, usable_width) if drawn is not None else None
     if drawing is None:
-        return [RlParagraph(safe(block.text), STYLES["BodyText"])]
+        return [RlParagraph(safe(block.text), look.body)]
     drawing.hAlign = "CENTER"
     return [Spacer(1, 4), drawing, Spacer(1, 6)]
 
@@ -238,7 +351,7 @@ def _sized_picture(block: Image, usable_width: float) -> Any:
     return flowable
 
 
-def _image_flowables(block: Image, usable_width: float) -> list:
+def _image_flowables(block: Image, usable_width: float, look: _Look) -> list:
     """An image block as flowables: the picture at its placed size and alignment, with its caption kept beside it.
 
     Returns `[]` when the picture cannot be drawn, so a bad image never breaks the report.
@@ -248,7 +361,7 @@ def _image_flowables(block: Image, usable_width: float) -> list:
         return []
     if not block.caption:
         return [flowable]
-    caption = RlParagraph(safe(block.caption), _CAPTIONS.get(block.align, _CAPTIONS["center"]))
+    caption = RlParagraph(safe(block.caption), look.captions.get(block.align, look.captions["center"]))
     return [KeepTogether([caption, flowable] if block.caption_above else [flowable, caption])]
 
 
@@ -360,7 +473,7 @@ def _image_cell(cell: ImageCell, column_width: float, usable_height: float) -> l
     return flowables or ""
 
 
-def _table(block: Table, accent, usable_width: float, usable_height: float, images: _InlineImages):
+def _table(block: Table, accent, usable_width: float, usable_height: float, images: _InlineImages, look: _Look):
     """A block table as a styled ReportLab table (compact or plain grid)."""
     if block.widths:
         widths = [w * cm for w in resolve_table_widths_cm(block.widths, usable_width / cm, block.weights)]
@@ -372,8 +485,8 @@ def _table(block: Table, accent, usable_width: float, usable_height: float, imag
         widths = _content_widths(block, usable_width)
     else:
         widths = [usable_width / len(block.columns)] * len(block.columns)
-    body_style = _CELL if block.compact else _PLAIN_CELL
-    head_style = ParagraphStyle("report_head_text", parent=_HEAD, textColor=header_text_color(accent))
+    body_style = look.cell if block.compact else look.plain_cell
+    head_style = ParagraphStyle("report_head_text", parent=look.head, textColor=header_text_color(accent))
     data: list[list[Any]] = [[RlParagraph(safe(c, bold=True), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
     data += [
         [
@@ -468,8 +581,24 @@ def _build_pdf(story: list, styles: list[PageStyle], footer_text: str | None, ti
     return buffer.getvalue()
 
 
+_LOOKS: dict[tuple, _Look] = {}
+
+
+def _look_for(styles: DocumentStyles) -> _Look:
+    """The paragraph styles for `styles`, built once per distinct setting (the style objects are cached by identity downstream)."""
+    key = (
+        styles.body_font.key if styles.body_font else None, styles.body_size, styles.text_font.key if styles.text_font else None,
+        styles.heading_bold, styles.heading_italic, styles.heading_colour,
+    )
+    if key not in _LOOKS:
+        if len(_LOOKS) >= 64:
+            _LOOKS.clear()
+        _LOOKS[key] = _Look(styles)
+    return _LOOKS[key]
+
+
 def render_pdf_document(document: ReportDocument) -> bytes:
-    """Renders `document` as a PDF.
+    """Renders `document` as a PDF, in the fonts its styles name (Helvetica and ReportLab's own sizes when none).
 
     Args:
         document: The neutral report.
@@ -477,6 +606,13 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     Returns:
         PDF bytes.
     """
+    look = _look_for(document.styles)
+    with using_family(look.body_key):
+        return _render_pdf(document, look)
+
+
+def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
+    """`render_pdf_document` with the font family already active."""
     document = finalize_links(document)
     branding = document.branding
     accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
@@ -484,7 +620,8 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     usable_width = document.style.usable_width_cm * cm
     usable_height = document.style.usable_height_cm * cm
 
-    story: list = [_UseStyle(*_template_ids(0, document.style)), *title_flowables(document.title, branding)]
+    title = title_flowables(document.title, branding, face=look.title_face, colour=look.heading_colour)
+    story: list = [_UseStyle(*_template_ids(0, document.style)), *title]
     images = _InlineImages()
     wrap: tuple[Image, list] | None = None  # a wrapped picture and the flowables that run beside it so far
     bottom_from = 0  # where the story stood when the open page-bottom run began
@@ -501,26 +638,30 @@ def render_pdf_document(document: ReportDocument) -> bytes:
         out = wrap[1] if wrap is not None else story
         if isinstance(block, Heading):
             target = f'<a name="{html.escape(block.anchor, quote=True)}"/>' if block.anchor else ""
-            out.append(RlParagraph(target + _markup(block.text, images, bold=True), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
+            with using_family(block.font.key if block.font else look.heading_key or look.body_key):
+                heading = _markup(block.text, images, bold=look.heading_bold, italic=look.heading_italic)
+            out.append(RlParagraph(target + heading, look.heading_for(block)))
         elif isinstance(block, Paragraph):
-            out.append(RlParagraph(_markup(block.text, images), STYLES["BodyText"]))
+            with using_family(block.font.key) if block.font else nullcontext():
+                paragraph = _markup(block.text, images)
+            out.append(RlParagraph(paragraph, look.body_for(block.font, block.size)))
         elif isinstance(block, Equation):
-            story.extend(_display_equation(block, usable_width))
+            story.extend(_display_equation(block, usable_width, look))
         elif isinstance(block, Note):
-            out.append(RlParagraph(safe(block.text), _NOTE))
+            out.append(RlParagraph(safe(block.text), look.note))
         elif isinstance(block, NumberedList):
-            out.append(_list(block.items, images, "1"))
+            out.append(_list(block.items, images, "1", look, block.font, block.size))
         elif isinstance(block, BulletList):
-            out.append(_list(block.items, images, "bullet"))
+            out.append(_list(block.items, images, "bullet", look, block.font, block.size))
         elif isinstance(block, Image):
             if block.placement == "wrap":
                 wrap = (block, [])
             elif block.floats:
                 story.append(FloatingPicture(block, usable_width / cm))
             else:
-                story.extend(_image_flowables(block, usable_width))
+                story.extend(_image_flowables(block, usable_width, look))
         elif isinstance(block, Table):
-            story.append(_table(block, accent, usable_width, usable_height, images))
+            story.append(_table(block, accent, usable_width, usable_height, images, look))
         elif isinstance(block, Grid):
             story.append(pdf_grid(block, usable_width, usable_height, lambda text, bold: _markup(text, images, bold=bold)))
         elif isinstance(block, Gap):

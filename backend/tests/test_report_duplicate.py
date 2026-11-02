@@ -153,6 +153,16 @@ def test_the_variables_and_default_file_name_travel_with_the_tree(world):
     assert got["variables"] == variables and got["file_name"] == "{{project_name}}-report"
 
 
+def test_the_document_fonts_travel_with_the_tree(world):
+    project = world.project("Work")
+    styles = {"body": {"font": "serif", "size": 11}, "headings": {"font": "x-house-face", "italic": True}}
+    body = {**tree("T"), "styles": styles, "embed_fonts": True}
+    shared = new_layout(world, world, "Typeset", body=body)
+    made = duplicated(world, project, kind="layout", source_id=shared["id"], name="Mine")
+    got = detail(world, project, made["new_id"])["current"]["tree"]
+    assert got["styles"] == styles and got["embed_fonts"] is True  # a font this server lacks is kept, as a moved layout must
+
+
 def test_the_colour_scheme_travels_with_the_tree(world):
     project = world.project("Work")
     scheme = [{"name": "plate", "colour": "accent"}, {"name": "ink", "colour": "#102030"}]

@@ -80,6 +80,7 @@ from app.services.report_column_width import resolve_table_widths_cm
 
 if TYPE_CHECKING:
     from app.services.report_document import ReportBranding
+    from app.services.report_fonts import FontFamily
 
 class _ReportMarkdown(MarkdownIt):
     """The Markdown reader with the author's link addresses left exactly as written.
@@ -224,18 +225,32 @@ class Heading:
         level: 1 to 4.
         anchor: The name an in-document link points at (see `heading_anchor`); set by `finalize_links` just before a
             document is rendered, `None` before.
+        font: The family this heading alone is set in, `None` for the document's heading font.
+        size: This heading's size in points, replacing its level's size; `None` for the level's own.
+        colour: This heading's colour as `#rrggbb`; `None` for the document's heading colour.
     """
 
     text: str
     level: int = 1
     anchor: str | None = None
+    font: FontFamily | None = None
+    size: float | None = None
+    colour: str | None = None
 
 
 @dataclass(frozen=True)
 class Paragraph:
-    """A body paragraph of plain text."""
+    """A body paragraph of plain text.
+
+    Attributes:
+        text: The words (a `MathText` when it holds styles or equations).
+        font: The family this paragraph alone is set in, `None` for the document's body font.
+        size: This paragraph's size in points, `None` for the document's body size.
+    """
 
     text: str
+    font: FontFamily | None = None
+    size: float | None = None
 
 
 @dataclass(frozen=True)
@@ -309,16 +324,26 @@ class Note:
 
 @dataclass(frozen=True)
 class BulletList:
-    """A bulleted list of items (plain text, or `MathText` with styles and equations)."""
+    """A bulleted list of items (plain text, or `MathText` with styles and equations).
+
+    `font` and `size` are as on `Paragraph`: set for this list alone, `None` for the document's body.
+    """
 
     items: list[str]
+    font: FontFamily | None = None
+    size: float | None = None
 
 
 @dataclass(frozen=True)
 class NumberedList:
-    """A numbered list of items (plain text, or `MathText` with styles and equations); numbering starts at 1."""
+    """A numbered list of items (plain text, or `MathText` with styles and equations); numbering starts at 1.
+
+    `font` and `size` are as on `Paragraph`.
+    """
 
     items: list[str]
+    font: FontFamily | None = None
+    size: float | None = None
 
 
 @dataclass(frozen=True)
@@ -837,6 +862,47 @@ class PageStyle:
         return (outer, inner) if self.mirror and verso else (inner, outer)
 
 
+@dataclass(frozen=True)
+class DocumentStyles:
+    """The fonts and colour a layout sets once for the whole document (`report_styles.resolve_styles` builds it).
+
+    Every field is optional; an unset one leaves that format's own look exactly as it was.
+
+    Attributes:
+        body_font: The family text, lists, tables, notes and the running bands are set in.
+        body_size: The body size in points; headings, which scale with it, and text and lists follow it.
+        heading_font: The family headings and the title are set in; the body family when unset.
+        heading_bold: `False` to turn the heading weight off; `None` leaves headings bold.
+        heading_italic: Whether headings are italic.
+        heading_colour: The heading colour as `#rrggbb`.
+        embed_fonts: Whether Word and OpenDocument files carry the files of the administrator-provided families used.
+    """
+
+    body_font: FontFamily | None = None
+    body_size: float | None = None
+    heading_font: FontFamily | None = None
+    heading_bold: bool | None = None
+    heading_italic: bool = False
+    heading_colour: str | None = None
+    embed_fonts: bool = False
+
+    @property
+    def text_font(self) -> FontFamily | None:
+        """The family the headings are set in: their own, else the body's."""
+        return self.heading_font or self.body_font
+
+    @property
+    def families(self) -> list[FontFamily]:
+        """The families named, body first, without repeats."""
+        found = [f for f in (self.body_font, self.heading_font) if f is not None]
+        return [f for i, f in enumerate(found) if f.key not in {g.key for g in found[:i]}]
+
+    @property
+    def is_default(self) -> bool:
+        """Whether nothing is set, so every renderer keeps its own look."""
+        return self == DocumentStyles()
+
+
 @dataclass
 class ReportDocument:
     """A complete report, ready for any renderer.
@@ -854,6 +920,7 @@ class ReportDocument:
         header: The running header of the document's own pages (`None`: a plain report, which prints none).
         footer: The running footer of the document's own pages (`None`: the branding's footer text and page number
             as before; a layout's document always has one).
+        styles: The document's fonts and heading colour (nothing set: each format's own look).
     """
 
     title: str
@@ -865,6 +932,7 @@ class ReportDocument:
     mirror: bool = False
     header: RunningBand | None = None
     footer: RunningBand | None = None
+    styles: DocumentStyles = field(default_factory=DocumentStyles)
 
     @property
     def style(self) -> PageStyle:
@@ -981,6 +1049,23 @@ def _rich_text(parts: list[str | Styled]) -> str:
     if all(isinstance(part, str) for part in parts):
         return "".join(str(part) for part in parts)
     return MathText(parts)
+
+
+def inline_markdown(markdown_text: str) -> str:
+    """Reads the bold, italic and code marks of one line of text, with no block syntax (a heading's words).
+
+    Equations are set aside and put back unread, as in `markdown_to_blocks`; placeholders are left in the words, for the
+    evaluator to fill run by run so a value is never read for marks.
+
+    Args:
+        markdown_text: One line; a leading `#`, `-` or `1.` stays as written.
+
+    Returns:
+        A plain string when nothing is marked, else a `MathText` carrying the runs.
+    """
+    source, written = _set_aside(markdown_text)
+    tokens = _md.parseInline(source)
+    return _rich_text(_inline_parts(tokens[0], written, None)) if tokens else markdown_text
 
 
 _LIST_OPEN = ("bullet_list_open", "ordered_list_open")
@@ -1106,11 +1191,11 @@ def finalize_links(document: ReportDocument) -> ReportDocument:
     blocks: list[Block] = []
     for block in anchored:
         if isinstance(block, Paragraph):
-            block = Paragraph(_resolved_links(block.text, taken))
+            block = replace(block, text=_resolved_links(block.text, taken))
         elif isinstance(block, BulletList):
-            block = BulletList([_resolved_links(item, taken) for item in block.items])
+            block = replace(block, items=[_resolved_links(item, taken) for item in block.items])
         elif isinstance(block, NumberedList):
-            block = NumberedList([_resolved_links(item, taken) for item in block.items])
+            block = replace(block, items=[_resolved_links(item, taken) for item in block.items])
         elif isinstance(block, Grid):
             block = replace(block, rows=[
                 replace(row, cells=[replace(cell, paragraphs=tuple(_resolved_links(p, taken) for p in cell.paragraphs)) for cell in row.cells])

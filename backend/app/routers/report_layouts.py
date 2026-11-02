@@ -118,6 +118,7 @@ from app.services.report_layout_block_schema import BlockField
 from app.services.report_layout_scope import Origin, ScopedLayout
 from app.services.report_layout_tree import InvalidLayoutError
 from app.services.report_org_values import organization_colour_names, report_accent_hex
+from app.services.report_styles import font_warnings
 from app.services.report_variables import describe_variables
 from app.services.report_widgets import WidgetInfo, widgets_for_organization, widgets_for_project
 
@@ -149,7 +150,10 @@ def _version_out(version: ReportLayoutVersion) -> ReportLayoutVersionOut:
 def _detail(db: Session, layout: ReportLayout, origin: Origin, *, hidden: bool = False, editable: bool = True) -> ReportLayoutDetailOut:
     current = report_layouts.get_version(db, layout.id, layout.current_version)
     assert current is not None  # a layout always has its current version
-    return ReportLayoutDetailOut(**_summary(layout, origin, hidden=hidden, editable=editable).model_dump(), current=_version_out(current))
+    return ReportLayoutDetailOut(
+        **_summary(layout, origin, hidden=hidden, editable=editable).model_dump(), current=_version_out(current),
+        warnings=font_warnings(db, current.tree),
+    )
 
 
 def _bad_request(exc: Exception) -> HTTPException:
@@ -262,7 +266,7 @@ def _validate_tree(
         errors += report_images.image_problems(db, organization_id, project_id, body.tree)
     return ReportLayoutValidateOut(
         ok=not errors, errors=[ReportLayoutTreeErrorOut(path=e.path, message=e.message) for e in errors],
-        node_count=analysis.node_count,
+        node_count=analysis.node_count, warnings=font_warnings(db, body.tree) if analysis.ok else [],
     )
 
 

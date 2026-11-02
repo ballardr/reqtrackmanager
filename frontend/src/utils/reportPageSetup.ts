@@ -75,6 +75,8 @@ export interface PageSetup {
   mirror: boolean;
   /** Whether a table's heading row is printed again on each page: `false` for `norepeatheader`, `true` for an explicit `repeatheader`, `undefined` when the line says neither (on). */
   repeatHeader?: boolean;
+  /** Whether the extra fonts are embedded in Word and OpenDocument files: `true` for `embedfonts`, `false` for `noembedfonts`, `undefined` when the line says neither. Carried so the page setup dialog rewrites the line without losing it. */
+  embedFonts?: boolean;
   /** Which projects the layout runs for, as the line states it (`undefined` when it states none, which means any). */
   runScope?: RunScope;
   margins: PageMargins;
@@ -216,6 +218,7 @@ export function readPageSetup(text: string): PageSetup | null {
     size: size ?? "A4",
     mirror: before.includes("mirror"),
     repeatHeader: before.includes("norepeatheader") ? false : before.includes("repeatheader") ? true : undefined,
+    embedFonts: before.includes("noembedfonts") ? false : before.includes("embedfonts") ? true : undefined,
     runScope: runScopeOfWords(before),
     margins: readMargins(margins),
     styles: [],
@@ -246,6 +249,7 @@ export function writePageSetup(text: string, setup: PageSetup): string {
     ...(setup.size === "A4" ? [] : [setup.size]),
     ...(setup.mirror ? ["mirror"] : []),
     ...(setup.repeatHeader === undefined ? [] : [setup.repeatHeader ? "repeatheader" : "norepeatheader"]),
+    ...(setup.embedFonts === undefined ? [] : [setup.embedFonts ? "embedfonts" : "noembedfonts"]),
     ...(setup.runScope === undefined ? [] : [RUN_SCOPE_WORDS[setup.runScope]]),
   ].join(" ") + marginsText(setup.margins);
   const styles = setup.styles.map((style) => {

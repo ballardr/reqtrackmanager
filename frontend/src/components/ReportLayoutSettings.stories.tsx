@@ -124,3 +124,36 @@ export const ATableLayoutHasNoColourScheme: Story = {
     await expect(within(canvasElement).queryByText("Colour scheme")).not.toBeInTheDocument();
   },
 };
+
+export const FontsAreSetOnTheTreeAndTheHeadingColourCanUseTheLayoutsScheme: Story = {
+  args: { initial: { palette: [{ name: "plate", colour: "#0f62fe" }] } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Body font" }), "serif");
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Heading font" }), "mono");
+    await userEvent.click(canvas.getByRole("button", { name: "Heading colour: Default (each format's own colour)" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: /^plate/ }));
+    await waitFor(() => expect(JSON.parse(canvas.getByTestId("tree").textContent ?? "{}").styles).toEqual({
+      body: { font: "serif" }, headings: { font: "mono", colour: "plate" },
+    }));
+  },
+};
+
+export const EmbedFontsIsAnOrdinarySwitchStoredOnlyWhenOn: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const box = canvas.getByRole("checkbox", { name: "Embed fonts" });
+    await userEvent.click(box);
+    await waitFor(() => expect(JSON.parse(canvas.getByTestId("tree").textContent ?? "{}").embed_fonts).toBe(true));
+    await userEvent.click(box);
+    await waitFor(() => expect("embed_fonts" in JSON.parse(canvas.getByTestId("tree").textContent ?? "{}")).toBe(false));
+  },
+};
+
+export const ATableLayoutHasNoFonts: Story = {
+  args: { family: "table" },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("combobox", { name: "Body font" })).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("checkbox", { name: "Embed fonts" })).not.toBeInTheDocument();
+  },
+};

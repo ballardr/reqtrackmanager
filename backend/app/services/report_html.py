@@ -40,6 +40,7 @@ from PIL import Image as PilImage
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.report_column_width import parse_width
+from app.services.report_fonts import FontFamily
 from app.services.report_grid_render import GRID_CSS, html_grid
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import INLINE_SIZE_PT, scaled_svg, typeset
@@ -47,6 +48,7 @@ from app.services.report_model import (
     SLOT_NAMES,
     TONE_FILL,
     BulletList,
+    DocumentStyles,
     Equation,
     Gap,
     Grid,
@@ -251,6 +253,48 @@ def _frame_label(style: PageStyle) -> str:
     return f"Page style: {style.page_size} {direction}; margins (top / bottom / left / right) {sides}{gutter}{mirrored}"
 
 
+def _style_rules(styles: DocumentStyles) -> str:
+    """The CSS for the layout's document styles: the body family and size, and the headings' family, weight, slant and colour.
+
+    Every value is built from a validated font name, a number or a `#rrggbb` colour, never from author text.
+    """
+    rules = ""
+    body = []
+    if styles.body_font:
+        body.append(f"font-family: {styles.body_font.css_stack}")
+    if styles.body_size:
+        body.append(f"font-size: {styles.body_size:g}pt")
+    if body:
+        rules += f"body {{ {'; '.join(body)}; }}\n"
+    headings = []
+    if styles.text_font:
+        headings.append(f"font-family: {styles.text_font.css_stack}")
+    if styles.heading_bold is not None:
+        headings.append(f"font-weight: {'bold' if styles.heading_bold else 'normal'}")
+    if styles.heading_italic:
+        headings.append("font-style: italic")
+    if styles.heading_colour:
+        headings.append(f"color: {styles.heading_colour}")
+    if headings:
+        rules += f"h1, h2, h3, h4, h5 {{ {'; '.join(headings)}; }}\n"
+    return rules
+
+
+def _own_style(font: FontFamily | None, size: float | None, tint: str | None = None) -> str:
+    """The `style` attribute (with its leading space) for a block that sets its own font, size or colour; `""` when none.
+
+    Built from a validated family, a number and a `#rrggbb` colour only, never from author text.
+    """
+    rules = []
+    if font is not None:
+        rules.append(f"font-family: {font.css_stack}")
+    if size is not None:
+        rules.append(f"font-size: {size:g}pt")
+    if tint is not None:
+        rules.append(f"color: {tint}")
+    return f' style="{html.escape("; ".join(rules), quote=True)}"' if rules else ""
+
+
 def _esc(text: str) -> str:
     return html.escape(text, quote=True)
 
@@ -420,17 +464,17 @@ def render_html_document(document: ReportDocument) -> bytes:
         if isinstance(block, Heading):
             tag = f"h{min(max(block.level, 1), 4) + 1}"
             anchor = f' id="{_esc(block.anchor)}"' if block.anchor else ""
-            parts.append(f"<{tag}{anchor}>{_rich(block.text)}</{tag}>")
+            parts.append(f"<{tag}{anchor}{_own_style(block.font, block.size, block.colour)}>{_rich(block.text)}</{tag}>")
         elif isinstance(block, Paragraph):
-            parts.append(f"<p>{_rich(block.text)}</p>")
+            parts.append(f"<p{_own_style(block.font, block.size)}>{_rich(block.text)}</p>")
         elif isinstance(block, Equation):
             parts.append(_equation(block))
         elif isinstance(block, Note):
             parts.append(f'<p class="note">{_esc(block.text)}</p>')
         elif isinstance(block, BulletList):
-            parts.append("<ul>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ul>")
+            parts.append(f"<ul{_own_style(block.font, block.size)}>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ul>")
         elif isinstance(block, NumberedList):
-            parts.append("<ol>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ol>")
+            parts.append(f"<ol{_own_style(block.font, block.size)}>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ol>")
         elif isinstance(block, Image):
             figure = _figure(block, current.usable_width_cm)
             if figure:
@@ -464,6 +508,7 @@ def render_html_document(document: ReportDocument) -> bytes:
     css = _CSS % {
         "accent": accent, "width": f"{_width_rem(document.style):g}rem", "head_text": "#" + text_on(accent.lstrip("#")), "grid_css": GRID_CSS,
     }
+    css += _style_rules(document.styles)
     # `@page` rules sit outside `@media`: browsers ignore them on screen and do not accept them inside a media query.
     css += _page_rules("", document.style) + "\n" + _box_rules("", document.style) + "\n"
     for style, index in sections.items():

@@ -32,12 +32,16 @@ import re
 import zipfile
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape, quoteattr
 
 from PIL import Image as PilImage
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.report_docx import DOCX_AUTHOR, clean_text
+
+if TYPE_CHECKING:
+    from app.services.report_fonts import FontFamily
 
 #: ODF version written. 1.2 is read by every current office suite (LibreOffice, Word, OnlyOffice, Google Docs).
 ODF_VERSION = "1.2"
@@ -62,6 +66,27 @@ FONT_FACES = (
     '<office:font-face-decls><style:font-face style:name="Arial" svg:font-family="Arial" '
     'style:font-family-generic="swiss"/></office:font-face-decls>'
 )
+
+
+def font_faces(families: Iterable[FontFamily] = ()) -> str:
+    """The `office:font-face-decls` of a part: Arial and each other family the document names (once each).
+
+    Args:
+        families: The document's font families (their names are limited to a safe character set).
+
+    Returns:
+        The declarations element.
+    """
+    decls = {"Arial": ("Arial", "swiss")}
+    for family in families:
+        decls.setdefault(family.word_name, (f"'{family.word_name}'" if " " in family.word_name else family.word_name, family.odf_generic))
+    faces = "".join(
+        f'<style:font-face style:name={xml_attr(name)} svg:font-family={xml_attr(css)} style:font-family-generic="{generic}"/>'
+        for name, (css, generic) in decls.items()
+    )
+    return f"<office:font-face-decls>{faces}</office:font-face-decls>"
+
+
 MIME_ODT = "application/vnd.oasis.opendocument.text"
 MIME_ODS = "application/vnd.oasis.opendocument.spreadsheet"
 XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -198,6 +223,6 @@ class OdfPackage:
 
 
 __all__ = [
-    "FONT_FACES", "MIME_ODS", "MIME_ODT", "NAMESPACES", "ODF_VERSION", "XML_DECLARATION", "OdfPackage", "colour", "length_cm",
+    "FONT_FACES", "MIME_ODS", "MIME_ODT", "font_faces", "NAMESPACES", "ODF_VERSION", "XML_DECLARATION", "OdfPackage", "colour", "length_cm",
     "namespace_attrs", "raster_info", "xml_attr", "xml_text",
 ]

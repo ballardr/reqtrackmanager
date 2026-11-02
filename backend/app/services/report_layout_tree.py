@@ -106,6 +106,7 @@ from app.services.report_shapes import (
     colour_problem,
     svg_problem,
 )
+from app.services.report_styles import document_styles_problems, font_key_form_problem, size_problem
 from app.services.report_variables import (
     FIELD_KINDS,
     MAX_LIST_VALUES,
@@ -418,7 +419,7 @@ class TreeValidator:
             tree, "", required=("schema_version", "family", "nodes"),
             optional=(
                 "orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name",
-                "repeat_table_header", "contents_sheet", "run_scope", "palette",
+                "repeat_table_header", "contents_sheet", "run_scope", "palette", "styles", "embed_fonts",
             ),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
@@ -454,6 +455,17 @@ class TreeValidator:
             for path, message in palette_problems(tree["palette"]):
                 self.error(path, message)
         self.colour_names = known_names(tree.get("palette"), self._organization_colours)
+        if "styles" in tree:
+            if declared != FAMILY_DOCUMENT:
+                self.error("styles", "Only a document layout has fonts to set.")
+            else:
+                for path, message in document_styles_problems(tree["styles"], self.colour_names):
+                    self.error(path, message)
+        if "embed_fonts" in tree:
+            if declared != FAMILY_DOCUMENT:
+                self.error("embed_fonts", "Only a document layout has Word and OpenDocument files to embed fonts in.")
+            elif not isinstance(tree["embed_fonts"], bool):
+                self.error("embed_fonts", "Must be true or false.")
         if "contents_sheet" in tree:
             if declared != FAMILY_TABLE:
                 self.error("contents_sheet", "Only a table layout has sheets for a contents sheet to list.")
@@ -1145,8 +1157,19 @@ def _check_authored_math(v: TreeValidator, text: str | None, path: str) -> None:
             v.error(path, f"An equation in the text: {problem}")
 
 
+def _check_block_look(v: TreeValidator, node: dict[str, Any], path: str, *, colour: bool) -> None:
+    """The optional `font`, `size` (and for a heading `colour`) a text or heading block sets for itself."""
+    if "font" in node and (message := font_key_form_problem(node["font"])):
+        v.error(f"{path}.font", message)
+    if "size" in node and (message := size_problem(node["size"])):
+        v.error(f"{path}.size", message)
+    if colour and "colour" in node and (message := colour_word_problem(node["colour"], v.colour_names, allow_none=False)):
+        v.error(f"{path}.colour", message)
+
+
 def _validate_heading(v: TreeValidator, node: dict[str, Any], path: str) -> None:
-    v.check_keys(node, path, required=("type", "text"), optional=("level",))
+    v.check_keys(node, path, required=("type", "text"), optional=("level", "font", "size", "colour"))
+    _check_block_look(v, node, path, colour=True)
     text = v.text(node.get("text", MISSING), f"{path}.text", limit=500)
     v.placeholders(text, f"{path}.text")
     _check_authored_math(v, text, f"{path}.text")
@@ -1155,7 +1178,8 @@ def _validate_heading(v: TreeValidator, node: dict[str, Any], path: str) -> None
 
 
 def _validate_text(v: TreeValidator, node: dict[str, Any], path: str) -> None:
-    v.check_keys(node, path, required=("type", "text"))
+    v.check_keys(node, path, required=("type", "text"), optional=("font", "size"))
+    _check_block_look(v, node, path, colour=False)
     text = v.text(node.get("text", MISSING), f"{path}.text")
     v.placeholders(text, f"{path}.text")
     _check_authored_math(v, text, f"{path}.text")
@@ -1833,16 +1857,28 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         "Heading", "A heading in the document.",
         (
             BlockField("text", "Heading", "text", required=True, max_length=500, features=("placeholders", "math"),
-                       help=f"The heading's words. {_PLACEHOLDER_HELP}"),
+                       help=f"The heading's words. {_PLACEHOLDER_HELP} *Italic*, **bold** and `code` marks work as in text; a heading "
+                       "is bold already unless the document's heading style turns that off."),
             BlockField("level", "Level", "integer", minimum=1, maximum=4, default=1,
                        help="1 is the largest. Levels 1 to 4 appear in the contents list."),
+            BlockField("font", "Font", "font", empty_label="Document heading font",
+                       help="The font of this heading only. Typically left empty so it follows the document's heading font."),
+            BlockField("size", "Size", "number", minimum=6, maximum=72, empty_label="Document size",
+                       help="The size of this heading in points, in place of its level's size. A heading's level, and so its place "
+                       "in the contents list, does not change. Typically 14 to 28."),
+            BlockField("colour", "Colour", "colour", empty_label="Document heading colour",
+                       help="The colour of this heading only. Typically left empty so it follows the document's heading colour."),
         ),
         template={"type": "heading", "text": "Heading", "level": 2},
     ),
     "text": BlockSchema(
         "Text", "A paragraph, list or other formatted text.",
         (BlockField("text", "Text", "longtext", required=True, max_length=MAX_TEXT_CHARS,
-                    features=("placeholders", "math", "markdown"), help=f"Formatted text. {_PLACEHOLDER_HELP}"),),
+                    features=("placeholders", "math", "markdown"), help=f"Formatted text. {_PLACEHOLDER_HELP}"),
+         BlockField("font", "Font", "font", empty_label="Document font",
+                    help="The font of this block's paragraphs and lists. Typically left empty so it follows the document's body font."),
+         BlockField("size", "Size", "number", minimum=6, maximum=72, empty_label="Document size",
+                    help="The size of this block's paragraphs and lists in points. Typically 9 to 14."),),
         template={"type": "text", "text": "Some text."},
     ),
     "page_break": BlockSchema("Page break", "Starts a new page in PDF and Word output.", template={"type": "page_break"}),

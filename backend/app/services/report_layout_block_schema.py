@@ -58,6 +58,8 @@ FIELD_KINDS: tuple[str, ...] = (
     "file_name",  # a file name template: one line of text with the placeholders a file name allows and a live example
     "colour",  # a colour word: a hex colour, a reserved word (accent, white, ...) or a name in the layout's colour scheme
     "palette",  # the layout's colour scheme: up to 8 named colours
+    "font",  # a font key (sans, serif, mono, unicode or a family the server administrator provides); empty inherits
+    "document_styles",  # the layout's body and heading fonts (family, size, weight, slant, colour)
     "grid_columns",  # the columns of a custom table: width and the style their cells start from
     "grid_rows",  # the rows and cells of a custom table
 )
@@ -181,6 +183,18 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         help="Named colours for this layout, so a block uses a colour by name (primary, warning) and changing the scheme changes "
         "every block that uses it. With none of its own the layout follows the organisation's scheme, then the standard four "
         "(primary, secondary, tint, neutral) taken from the branding colour.", families=("document",),
+    ),
+    BlockField(
+        "styles", "Fonts", "document_styles",
+        help="The document's body font and size, and its headings' font, weight, slant and colour, set once so every block "
+        "follows. Left alone, each format keeps its own look. PDF always prints in the font chosen; Word, OpenDocument and the "
+        "web page name it, so a reader without it sees a similar font unless Embed fonts is on.", families=("document",),
+    ),
+    BlockField(
+        "embed_fonts", "Embed fonts", "boolean", default=False,
+        help="Put the font files of the extra fonts the server administrator provides inside Word and OpenDocument files, so they "
+        "print the same where the font is not installed. The file grows by about 0.3 to 0.4 MB for each face used; the four "
+        "standard fonts are never embedded, and Word on the web and some Mac versions ignore embedded fonts.", families=("document",),
     ),
     BlockField(
         "contents_sheet", "Contents sheet", "boolean", default=False,

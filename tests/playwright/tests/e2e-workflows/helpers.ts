@@ -756,3 +756,35 @@ export async function closeDesignerPreviewDialog(page: Page): Promise<void> {
   const block = page.getByRole("complementary", { name: "Designer tools" }).getByRole("tab", { name: "Block", exact: true });
   if (await block.count() > 0) await block.click();
 }
+
+/**
+ * A disposable organisation with an organisation admin, a project and one saved document layout (a heading and a text
+ * block), for a spec that needs a layout to open in the designer. The organisation is deleted on cleanup.
+ *
+ * @returns The admin's email and auth headers, the project and the layout (both as the API returns them).
+ */
+export async function createDocumentLayoutWorld(request: APIRequestContext, label: string) {
+  const api = "http://localhost:8000/api/v1";
+  const login = async (email: string, password: string) => {
+    const resp = await request.post(`${api}/auth/login`, { data: { email, password } });
+    return { Authorization: `Bearer ${(await resp.json()).access_token}` };
+  };
+  const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  const adminEmail = `e2e-${label}-${suffix}@example.com`;
+  const serverHeaders = await login(SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
+  const org = await (await request.post(`${api}/orgs`, { headers: serverHeaders, data: { name: `E2E ${label} ${suffix}` } })).json();
+  deleteOrgOnCleanup({ id: org.id });
+  await request.post(`${api}/orgs/${org.id}/users`, {
+    headers: serverHeaders, data: { email: adminEmail, display_name: `E2E ${label} Admin`, password: PASSWORD, role: "org_admin" },
+  });
+  const headers = await login(adminEmail, PASSWORD);
+  const project = await (await request.post(`${api}/projects`, { headers, data: { organization_id: org.id, name: `${label} project ${suffix}`, summary: "" } })).json();
+  const tree = {
+    schema_version: 1, family: "document",
+    nodes: [{ type: "heading", text: "A report", level: 1 }, { type: "text", text: "Some body text." }],
+  };
+  const layout = await (await request.post(`${api}/projects/${project.id}/report-layouts`, {
+    headers, data: { name: `E2E ${label} ${suffix}`, description: "", family: "document", tree },
+  })).json();
+  return { adminEmail, headers, project, layout };
+}

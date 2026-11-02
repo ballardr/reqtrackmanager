@@ -36,7 +36,7 @@ import { useNavigate } from "react-router-dom";
 
 import {
   conflictVersion, LAYOUT_FAMILY_LABEL, LAYOUT_ORIGIN_LABEL, reportLayoutPath, treeProblems,
-  type BlockCatalogue, type ReportFieldCatalogue, type ReportLayoutApi, type ReportLayoutDetail, type ReportSnippet, type ReportWidget,
+  type BlockCatalogue, type ReportFieldCatalogue, type ReportFontChoice, type ReportLayoutApi, type ReportLayoutDetail, type ReportSnippet, type ReportWidget,
   type SnippetApplyResult, type TextParseResult, type TreeCheck,
 } from "../api/reportLayouts";
 import { reportDuplicateApi, type DuplicateResult, type ReportDuplicateApi } from "../api/reportDuplicate";
@@ -146,6 +146,7 @@ export function ReportLayoutDesigner({
   const [widgets, setWidgets] = useState<ReportWidget[] | null>(null);
   const [blockTypes, setBlockTypes] = useState<BlockCatalogue | null>(null);
   const [colours, setColours] = useState<ColourContext | undefined>(undefined);
+  const [fonts, setFonts] = useState<ReportFontChoice[] | undefined>(undefined);
   const [view, setView] = useState<EditView>("text");
   /** The tree the block editor edits, and the tree it started from (so a switch back leaves unedited text alone). */
   const [blockTree, setBlockTree] = useState<Tree | null>(null);
@@ -207,6 +208,7 @@ export function ReportLayoutDesigner({
       setBlockTypes(blocks);
       // The colours are a convenience: a failure leaves the stock choices rather than blocking the designer.
       setColours(await (api.colours?.() ?? Promise.resolve(undefined)).catch(() => undefined));
+      setFonts(await (api.fonts?.() ?? Promise.resolve(undefined)).catch(() => undefined));
       setToolsFailed(false);
     } catch {
       setToolsFailed(true);
@@ -638,7 +640,7 @@ export function ReportLayoutDesigner({
                         tree={blockTree} onChange={setBlockTree} family={detail.family} blocks={blockTypes} catalogue={catalogue}
                         widgets={widgets} problems={blockProblems} readOnly={!editable}
                         inspectorHost={inspectorHost} onInspect={() => setBlocksTab("block")}
-                        images={{ library: api.images, scope: api.scope.kind }} colours={colours}
+                        images={{ library: api.images, scope: api.scope.kind }} colours={colours} fonts={fonts}
                         snippets={{
                           api,
                           onInserted: (notice) => snippetToast.announce(notice),

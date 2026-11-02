@@ -178,3 +178,13 @@ export const TheRunScopeWordIsKeptWhenThePageSetupIsRewritten: Story = {
     await expect(text(canvasElement).textContent).toBe("@layout document A3 projecttree\n\n@heading Hello\n");
   },
 };
+
+/** The embed-fonts word on the header line (set under Fonts, not in this dialog) survives a rewrite of the line. */
+export const TheEmbedFontsWordIsKeptWhenThePageSetupIsRewritten: Story = {
+  render: () => <Host initial={"@layout document embedfonts\n\n@heading Hello\n"} />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
+    await expect(text(canvasElement).textContent).toBe("@layout document A3 embedfonts\n\n@heading Hello\n");
+  },
+};

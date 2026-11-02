@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, onCleanup, installCleanupHook, SERVER_ADMIN_LOGIN } from "./helpers";
+import { createDocumentLayoutWorld, loginAs, logout, onCleanup, installCleanupHook, PASSWORD, SERVER_ADMIN_LOGIN } from "./helpers";
 
 installCleanupHook();
 
@@ -25,6 +25,21 @@ test("a server admin hides a provided report font from authors, renames it for W
   const choices = async () =>
     ((await (await page.request.get(`${API}/system/report-fonts/choices`, { headers })).json()) as { key: string }[]).map((c) => c.key);
 
+  // An author's Body font picker, in a layout of a disposable organisation: it lists the provided font only while it is offered.
+  const world = await createDocumentLayoutWorld(page.request, "fonts-picker");
+  const bodyFontOptions = async () => {
+    await page.goto(`/projects/${world.project.id}/report-layouts/${world.layout.id}`);
+    await page.getByRole("tab", { name: "Blocks" }).click();
+    await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+    const picker = page.getByLabel("Block details").getByRole("combobox", { name: "Body font" });
+    await expect(picker.locator("option", { hasText: "Sans" }).first()).toBeAttached();
+    return picker.locator("option").allTextContents();
+  };
+
+  await loginAs(page, world.adminEmail, PASSWORD);
+  expect(await bodyFontOptions()).toContain("Liberation Mono (provided by the server administrator)");
+
+  await logout(page);
   await loginAs(page, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
   await page.goto("/server/management/reportFonts");
   const list = page.getByRole("list", { name: "Report fonts" });
@@ -38,6 +53,12 @@ test("a server admin hides a provided report font from authors, renames it for W
   await row.getByRole("switch", { name: "Offered to authors: Liberation Mono" }).click();
   await expect(page.getByText("Liberation Mono saved.")).toBeVisible();
   await expect.poll(choices).not.toContain(FAMILY_KEY);
+  await logout(page);
+  await loginAs(page, world.adminEmail, PASSWORD);
+  expect(await bodyFontOptions()).not.toContain("Liberation Mono (provided by the server administrator)");
+  await logout(page);
+  await loginAs(page, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
+  await page.goto("/server/management/reportFonts");
 
   // Give it a different name for Word and OpenDocument.
   await row.getByRole("button", { name: "Settings: Liberation Mono" }).click();

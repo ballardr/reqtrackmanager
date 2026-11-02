@@ -59,7 +59,7 @@ from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
 from app.services.files import read_file
-from app.services.report_fonts import draw_centred, mark_fallback, needs_fallback
+from app.services.report_fonts import active_face, draw_centred, mark_fallback, needs_fallback
 from app.services.report_model import TONE_FILL, text_on
 from app.services.report_org_values import report_accent_hex
 
@@ -68,7 +68,7 @@ _MAX_IMAGE_WIDTH = A4[0] - 4 * cm  # matches SimpleDocTemplate's leftMargin+righ
 _ATTACHMENT_REF = re.compile(r"attachment:([0-9a-fA-F-]{36})")
 
 
-def safe(text: str, *, bold: bool = False) -> str:
+def safe(text: str, *, bold: bool = False, italic: bool = False) -> str:
     """Escapes `&`/`<`/`>` before handing text to a ReportLab `Paragraph`.
 
     ReportLab's `Paragraph` does not treat its `text` argument as plain
@@ -88,11 +88,12 @@ def safe(text: str, *, bold: bool = False) -> str:
     Args:
         text: Untrusted text.
         bold: `True` when the paragraph's style is bold, so those characters are bold too.
+        italic: `True` when the text is italic, so those characters are too.
 
     Returns:
         The text with markup characters escaped.
     """
-    return mark_fallback(_xml_escape(text), bold=bold)
+    return mark_fallback(_xml_escape(text), bold=bold, italic=italic)
 
 
 @dataclass
@@ -148,7 +149,9 @@ def layout_branding(db: Session, organization: Organization | None) -> ReportBra
     return ReportBranding(accent_color_hex=report_accent_hex(db, organization))
 
 
-def title_flowables(title: str, branding: ReportBranding | None) -> list:
+def title_flowables(
+    title: str, branding: ReportBranding | None, *, face: str | None = None, colour: colors.Color | None = None,
+) -> list:
     """The opening block of a report: a branded cover page when the branding
     asks for one (logo, accent-coloured title, page break), otherwise a plain
     title.
@@ -156,14 +159,24 @@ def title_flowables(title: str, branding: ReportBranding | None) -> list:
     Args:
         title: The report title (escaped here).
         branding: Optional branding.
+        face: A ReportLab font name for the title (the document's heading font); the default title font when `None`.
+        colour: The title colour of a plain title (a cover title keeps the accent); the default when `None`.
 
     Returns:
         Flowables to start the story with.
     """
     story: list = []
+    title_style = STYLES["Title"]
+    if face is not None or colour is not None:
+        title_style = ParagraphStyle("document_title", parent=title_style)
+        if face is not None:
+            title_style.fontName = face
+        if colour is not None:
+            title_style.textColor = colour
     if branding and branding.include_cover_page:
         accent_color = colors.HexColor(readable_on_white(branding.accent_color_hex))  # text on white paper
-        cover_style = ParagraphStyle("cover_title", parent=STYLES["Title"], textColor=accent_color, fontSize=28)
+        cover_style = ParagraphStyle(
+            "cover_title", parent=title_style, textColor=accent_color, fontSize=28)
         story.append(Spacer(1, 6 * cm))
         if branding.logo_bytes:
             try:
@@ -175,7 +188,7 @@ def title_flowables(title: str, branding: ReportBranding | None) -> list:
         story.append(PageBreak())
         story.append(Spacer(1, 0.5 * cm))
     else:
-        story.append(Paragraph(safe(title, bold=True), STYLES["Title"]))
+        story.append(Paragraph(safe(title, bold=True), title_style))
         story.append(Spacer(1, 0.5 * cm))
     return story
 
@@ -271,7 +284,7 @@ def _unicode_cell(cell, header: bool, accent_color):
         return cell
     style = ParagraphStyle(
         "unicode_cell", parent=STYLES["BodyText"], fontSize=10, leading=12,
-        fontName="Helvetica", textColor=header_text_color(accent_color) if header else colors.black,
+        fontName=active_face(), textColor=header_text_color(accent_color) if header else colors.black,
     )
     return Paragraph(safe(cell), style)
 
@@ -296,6 +309,8 @@ def styled_table(
     """
     data = [[_unicode_cell(cell, r == 0, accent_color) for cell in row] for r, row in enumerate(data)]
     table = Table(data, repeatRows=1 if repeat_header else 0, colWidths=col_widths)
+    if active_face() != "Helvetica":  # a document font is active: a plain string cell is drawn in it too
+        table.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), active_face())]))
     if compact:
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), accent_color),
