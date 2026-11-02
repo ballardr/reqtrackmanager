@@ -5,8 +5,8 @@
  * Edit table button that opens the table editor in a dialog at full width.
  *
  * Responsibilities:
- * - Keep a draft of the table while the dialog is open, with undo and redo (Ctrl+Z, Ctrl+Y) over the draft, so Cancel discards
- *   every change and Save hands the columns, rows and header count back in one call.
+ * - Keep a draft of the table while the dialog is open, with undo and redo (Ctrl+Z, Ctrl+Y) over the draft, so closing with changes asks
+ *   before it discards them and Save hands the columns, rows and header count back in one call.
  * - Leave the rest of the block (borders, alignment, colours, the table's own font and size) to the panel's ordinary fields.
  *
  * Design decisions: a table does not fit the side panel, so editing happens in a `Modal` as the custom shape's SVG does;
@@ -18,9 +18,10 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { useStrings } from "../context/TerminologyContext";
 import type { ReportFontChoice } from "../api/reportLayouts";
+import { stableJson } from "../utils/reportLayoutTree";
 import { gridCounts, shapeOf, type GridRow, type Obj } from "../utils/reportGrid";
 import { DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "../utils/reportColours";
-import { FieldCaption } from "./FieldHelp";
+import { FieldCaption, FieldHelp } from "./FieldHelp";
 import { FormActions } from "./FormActions";
 import { Modal } from "./Modal";
 import { ReportGridEditor, type GridDraft } from "./ReportGridEditor";
@@ -84,13 +85,15 @@ export function ReportGridField({
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
       <FieldCaption label={label} help={help} />
-      <p style={{ margin: 0 }} data-testid="grid-summary">{text.summary(counts.columns, counts.rows, counts.merged)}</p>
-      <p className="text-muted" style={{ margin: 0 }}>{text.summaryHint}</p>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
+        <p style={{ margin: 0 }} data-testid="grid-summary">{text.summary(counts.columns, counts.rows, counts.merged)}</p>
+        <FieldHelp label={text.summaryHelpLabel} help={text.summaryHint} />
+      </div>
       <div>
         <button type="button" className="btn btn-sm" onClick={open}>{disabled ? text.view : text.edit}</button>
       </div>
       {history && (
-        <Modal title={text.dialogTitle} size="lg" onClose={() => setHistory(null)}>
+        <Modal title={text.dialogTitle} size="lg" onClose={() => setHistory(null)} dirty={!disabled && stableJson(history.present) !== stableJson(shapeOf(node))}>
           {/* The keys are handled on the dialog's body so Ctrl+Z works once focus is anywhere inside it. */}
           <div className="stack" onKeyDown={onKeyDown}>
             {/* A read-only table has nothing to save; the dialog's own close button ends the view. */}

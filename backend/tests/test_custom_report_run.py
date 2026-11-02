@@ -464,6 +464,43 @@ def test_an_organisation_document_has_a_heading_and_a_page_break_per_project(wor
     assert org_run(world, layout, format="pdf").content.startswith(b"%PDF")
 
 
+def test_an_organisation_run_lines_up_each_projects_table_with_the_others(world):
+    alpha, beta = world.project("Alpha"), world.project("Beta")
+    world.requirement(alpha, "Alpha rule")
+    world.requirement(beta, "A much longer Beta rule that needs a wider column than the Alpha one does")
+    tree = {
+        **empty_tree("document"),
+        "nodes": [{"type": "table", "source": {"record_type": REQ}, "columns": [{"field": "code"}, {"field": "title"}]}],
+    }
+    layout = make_layout(world, tree, "Everywhere")
+
+    run = _run_org(world, layout)
+
+    from app.services.report_model import Table
+
+    tables = [b for b in run.evaluated.document.blocks if isinstance(b, Table)]
+    assert len(tables) == 2 and tables[0].weights == tables[1].weights and tables[0].aligned
+
+
+def test_the_on_screen_sections_carry_the_alignment_weights_only_when_tables_line_up(world):
+    alpha, beta = world.project("Alpha"), world.project("Beta")
+    world.requirement(alpha, "Alpha rule")
+    world.requirement(beta, "A much longer Beta rule that needs a wider column than the Alpha one does")
+    tree = {
+        **empty_tree("document"),
+        "nodes": [{"type": "table", "source": {"record_type": REQ}, "columns": [{"field": "code"}, {"field": "title"}]}],
+    }
+    layout = make_layout(world, tree, "Everywhere")
+
+    lined_up = org_run(world, layout).json()["sections"]
+    alone = world.client.get(
+        f"/api/v1/projects/{alpha['id']}/custom-reports/{layout['id']}/run", headers=auth_headers(world.token),
+    ).json()["sections"]
+
+    assert lined_up[0]["weights"] == lined_up[1]["weights"] and len(lined_up[0]["weights"]) == 2
+    assert alone[0]["weights"] is None
+
+
 def test_the_on_screen_sections_of_an_organisation_run_are_titled_by_project_then_heading(world):
     alpha, beta = world.project("Alpha"), world.project("Beta")
     world.requirement(alpha, "Alpha rule")

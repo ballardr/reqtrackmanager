@@ -305,7 +305,7 @@ export const NewFromAStarterOpensTheStarterDialog: Story = {
     await userEvent.click(await screen.findByRole("menuitem", { name: "New from a starter…" }));
     const dialog = within(await screen.findByRole("dialog", { name: "New layout from a starter" }));
     await expect(dialog.getByRole("button", { name: "Create copy" })).toBeDisabled();
-    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
   },
 };
 
@@ -454,7 +454,7 @@ export const CopyModeTicksReportsAndAFolderCoversWhatIsInsideIt: Story = {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Copy…" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Copy 1 item to another project" }));
     await waitFor(() => expect(args.copyApi!.targets).toHaveBeenCalledWith("project-1"));
-    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Cancel" }));
     await expect(grid.queryByRole("checkbox")).not.toBeInTheDocument();
   },

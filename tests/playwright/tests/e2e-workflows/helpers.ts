@@ -732,10 +732,19 @@ export async function selectOptionContaining(select: Locator, text: string): Pro
  * @param note A note on the change to type first; omit it to save without one.
  */
 export async function saveNewVersion(page: Page, note?: string): Promise<void> {
-  await page.getByRole("button", { name: "Save new version" }).click();
+  // A long layout also has a Save at the foot; the first is the pinned one at the top.
+  await page.getByRole("button", { name: "Save new version" }).first().click();
   const popover = page.getByRole("dialog", { name: "Save new version" });
   if (note !== undefined) await popover.getByRole("textbox", { name: "Note on this change" }).fill(note);
   await popover.getByRole("button", { name: "Save", exact: true }).click();
+}
+
+/**
+ * Opens the report designer's Text view. A layout opens on Blocks, so a spec that edits the layout as text (or uses the
+ * Fields and Widgets tabs, which belong to it) switches first; switching to the open view does nothing.
+ */
+export async function openDesignerTextView(page: Page): Promise<void> {
+  await page.getByRole("tab", { name: "Text", exact: true }).click();
 }
 
 /**
@@ -787,4 +796,22 @@ export async function createDocumentLayoutWorld(request: APIRequestContext, labe
     headers, data: { name: `E2E ${label} ${suffix}`, description: "", family: "document", tree },
   })).json();
   return { adminEmail, headers, project, layout };
+}
+
+/**
+ * Leave a form dialog without saving. A dialog has no Cancel: the header's Close button is the only way out, and
+ * with unsaved changes it asks first, so this answers "Discard changes" when the prompt appears.
+ *
+ * @param dialog The dialog to close.
+ * @param options.unsaved True when the test changed something, so the discard prompt is expected (and asserted).
+ */
+export async function closeDialogWithoutSaving(dialog: Locator, options: { unsaved: boolean }): Promise<void> {
+  const page = dialog.page();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  if (options.unsaved) {
+    const prompt = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole("button", { name: "Discard changes" }).click();
+  }
+  await expect(dialog).toHaveCount(0);
 }

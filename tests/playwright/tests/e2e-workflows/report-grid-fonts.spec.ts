@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion } from "./helpers";
+import { createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -30,6 +30,7 @@ test.describe("Report custom table fonts", () => {
     const { adminEmail, headers, project, layout } = await createDocumentLayoutWorld(request, "grid-fonts");
     await loginAs(page, adminEmail, PASSWORD);
     await page.goto(`/projects/${project.id}/report-layouts/${layout.id}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
     await test.step("the text view writes a grid's and a column's font and size", async () => {

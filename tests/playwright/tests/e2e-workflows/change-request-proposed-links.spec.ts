@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Locator, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openProject, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openProject, PASSWORD, PERSONAS, PROJECT_NAMES, closeDialogWithoutSaving } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -140,7 +140,7 @@ test.describe("change requests: proposed links", () => {
     await expect(dialog.getByRole("checkbox", { name: /Merge link/ })).toHaveCount(3);
     await expect(dialog.getByRole("checkbox", { name: /Merge link/, checked: true })).toHaveCount(2);
     await expect(dialog.getByText("Already linked, will be skipped")).toBeVisible();
-    await dialog.getByRole("button", { name: "Cancel" }).click();  // read-only: the fixture is never decided
+    await closeDialogWithoutSaving(dialog, { unsaved: false });  // read-only: the fixture is never decided
     await expect(dialog).toBeHidden();
   });
 

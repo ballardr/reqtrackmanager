@@ -176,6 +176,32 @@ export function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** The tree as the JSON view shows it: two-space indented, every key in the order the server sent it. */
+export function treeToJson(tree: Tree): string {
+  return JSON.stringify(tree, null, 2);
+}
+
+/** The result of reading the JSON view's text: the tree, or the reason it is not one (`error` is the parser's own message, with its position). */
+export type TreeJson = { tree: Tree; error?: undefined } | { tree: null; error: string; notObject?: true };
+
+/**
+ * Reads the JSON view's text as a layout tree. Only the shape is checked here (a JSON object); the server's `validate`
+ * is the judge of the content.
+ *
+ * @param text The text in the JSON view.
+ * @returns The tree, or `error` when the text is not JSON, or `notObject` when it is JSON but not an object.
+ */
+export function parseTreeJson(text: string): TreeJson {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (err) {
+    return { tree: null, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return { tree: null, error: "", notObject: true };
+  return { tree: value as Tree };
+}
+
 /** A fresh condition test: `{field, op, value}` over a record's fields, or `{ref: "name.field", op, value}` in an `if`. */
 export function newLeaf(mode: "record" | "ref"): Record<string, unknown> {
   return mode === "record" ? { field: "", op: "eq", value: "" } : { ref: "", op: "eq", value: "" };

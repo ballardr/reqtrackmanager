@@ -185,7 +185,7 @@ def test_html_draws_a_shape_inline_and_a_layered_shape_over_the_page():
     html = render_html_document(document_with(
         picture_of(), picture_of(placement="behind", anchor="page", offset_x_cm=2, offset_y_cm=3),
     )).decode()
-    assert html.count("<ellipse") == 2 and '<div class="layer-anchor behind">' in html and "left:2cm;top:3cm" in html
+    assert html.count("<ellipse") == 2 and '<div class="layer-anchor behind">' in html and "left:9.52%;top:3cm" in html
 
 
 def plate(colour: str, **keys: Any) -> Image:

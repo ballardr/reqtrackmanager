@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, closeDialogWithoutSaving } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -185,7 +185,7 @@ test.describe("project nav: personal order, More, per-project override", () => {
     await expect(page.getByText("UI preferences are limited to 200 keys.")).toBeVisible();
     await expect(page.getByText("Navigation saved")).toHaveCount(0);
     await expect(editor(page)).toBeVisible();
-    await editor(page).getByRole("button", { name: "Cancel" }).click();
+    await closeDialogWithoutSaving(editor(page), { unsaved: false });
     expect(await navLinkNames(page)).toEqual(before);
   });
 

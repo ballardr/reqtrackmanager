@@ -317,7 +317,8 @@ export const PatsTabCreateModalCancel: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "New personal access token" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New personal access token" });
     await userEvent.type(within(dialog).getByPlaceholderText('e.g. "MCP server"'), "Discarded token");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Discard changes" }));
 
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     await expect(api.post).not.toHaveBeenCalled();

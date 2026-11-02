@@ -118,7 +118,8 @@ def test_pdf_columns_are_sized_so_a_qualified_code_stays_on_one_line():
     from reportlab.pdfbase.pdfmetrics import stringWidth
 
     from app.services.report_model import Table
-    from app.services.report_pdf import _CELL_FONT_SIZE, _content_widths
+    from app.services.report_pdf import _content_widths
+    from app.services.report_table_alignment import CELL_FONT_SIZE as _CELL_FONT_SIZE
 
     columns = ["Code", "Persona", "Project", "Status", "Weight", "Linked stakeholders", "Engagements", "Anonymous participants",
                "Findings", "Last engagement", "Evidence", "Tags"]

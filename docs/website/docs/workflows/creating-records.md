@@ -36,7 +36,7 @@ Some records start as a draft: Personas, Stakeholders and Stakeholder Needs. Whe
 
 ## The form header and long text
 
-Every form in a dialog or side panel keeps its **title, Cancel and Save** (and **Save and activate** where offered) in a header row that stays in view; only the fields below it scroll. However long the form is, you can save from where you are, and create and edit forms behave the same way. Press **Enter** in a single-line field to save, as before.
+Every form in a dialog or side panel keeps its **title, Save and Close (✕)** (and **Save and activate** where offered) in a header row that stays in view; only the fields below it scroll. However long the form is, you can save from where you are, and create and edit forms behave the same way. A dialog has no Cancel: close it with ✕ or Escape. If you have unsaved changes it asks whether to **Discard changes** or **Keep editing**, and a click outside the dialog does nothing, so a stray click cannot lose your work. Press **Enter** in a single-line field to save, as before.
 
 A field meant for longer writing (a description, rationale, notes, evidence) grows as you type, up to a limit, after which it scrolls inside the field. Short fields such as a name stay one line.
 

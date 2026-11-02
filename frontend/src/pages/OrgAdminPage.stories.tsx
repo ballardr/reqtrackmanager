@@ -327,7 +327,8 @@ export const NewUserModalCancel: Story = {
     await userEvent.click(within(document.body).getByRole("menuitem", { name: "New user" }));
     const dialog = within(document.body).getByRole("dialog", { name: "New user" });
     await userEvent.type(within(dialog).getByLabelText("Email"), "discarded@example.com");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Discard changes" }));
 
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     await expect(api.post).not.toHaveBeenCalled();
@@ -676,7 +677,8 @@ export const InviteUserModalCancel: Story = {
     await userEvent.click(within(document.body).getByRole("menuitem", { name: "Invite user" }));
     const dialog = within(document.body).getByRole("dialog", { name: "Invite user" });
     await userEvent.type(within(dialog).getByLabelText("Email"), "discarded@example.com");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Discard changes" }));
 
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     await expect(api.post).not.toHaveBeenCalled();
@@ -2141,7 +2143,7 @@ export const ManageUsersModalAddMemberNestedModalOpen: Story = {
     await userEvent.click(within(outerModal).getByRole("button", { name: "Add member" }));
     const addMemberModal = body.getByRole("dialog", { name: "Add member" });
 
-    await userEvent.click(within(addMemberModal).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(addMemberModal).getByRole("button", { name: "Close" }));
     await expect(body.queryByRole("dialog", { name: "Add member" })).not.toBeInTheDocument();
     // The outer "manage users" modal stays open — only the sub-form closed.
     await expect(body.getByRole("dialog", { name: "Manage users — Beta" })).toBeInTheDocument();

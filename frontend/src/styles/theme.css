@@ -777,7 +777,7 @@ select.input[size] {
   padding: 0.3rem 0.55rem;
   border-radius: var(--radius-md);
   white-space: nowrap;
-  /* Above every overlay a control can sit in (Modal and SidePanel 1100, Popover 1150) so field help opened
+  /* Above every overlay a control can sit in (Modal, SidePanel and Popover, all 1100) so field help opened
      inside a dialog is not hidden behind it; below the toast stack (1200). */
   z-index: 1175;
   pointer-events: none;
@@ -993,6 +993,11 @@ a.figure-projects-link:hover {
   background: var(--color-surface-alt);
 }
 
+.report-table-aligned {
+  /* Column widths come from the <colgroup>, so two tables with the same headings line up; a long word breaks in its column. */
+  table-layout: fixed;
+  overflow-wrap: anywhere;
+}
 .report-section {
   scroll-margin-top: 4.5rem; /* clear the sticky app header when a figure links to a section */
 }
@@ -3039,6 +3044,43 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   .layout-designer--panel-folded {
     grid-template-columns: minmax(0, 1fr) auto;
   }
+
+  /* The JSON view has no side panel. */
+  .layout-designer--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The designer's view tabs and Save, pinned under the app header so Save is in reach however long the layout is. */
+.designer-bar {
+  position: sticky;
+  top: var(--header-height);
+  z-index: 10;
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.designer-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.designer-bar__tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.designer-bar__save {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-1);
 }
 
 .designer-panel {

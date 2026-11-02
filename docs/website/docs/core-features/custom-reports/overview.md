@@ -30,7 +30,7 @@ Every organisation starts with four ready-made document layouts and one workbook
 |---|---|
 | **Business Requirements Document** | Purpose and scope, Pain Points, stakeholders and Personas, needs, Strategy, Future State, requirements, constraints and assumptions, decisions, risks, traceability coverage, Open Questions and the approval state of each record. |
 | **Engineering Specification** | Scope, guiding principles, requirements by component, requirement types, needs, constraints, compliance obligations, decisions, traceability coverage and each requirement's review date. |
-| **Review Package** | What needs a person now: requirements still in draft or reviewed, change requests under review, decisions awaiting approval, open and overdue questions and risk reviews. |
+| **Review Package** | What needs a person now: requirements still in draft or reviewed, change requests under review, decisions awaiting approval, overdue questions then open ones not yet overdue (no question prints twice), and risk reviews. |
 | **Requirements by Component** | Every requirement grouped under its component and then its category, with its reasoning, status and tags, between an Introduction and an Appendices section for you to write. It is the requirements report as a layout. |
 | **Project Workbook** | A spreadsheet with a sheet for each kind of record in the project (requirements, actions, change requests and those of each module you use), each listing the code, title, status, tags, the person responsible and the main description, behind a Contents sheet. Download it as Excel, OpenDocument or CSV. A module the project does not use has no sheet. |
 

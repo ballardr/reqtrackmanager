@@ -265,3 +265,14 @@ export const ReadOnlyShowsTheGridWithoutControls: Story = {
     await expect(canvas.getAllByRole("gridcell")).toHaveLength(9);
   },
 };
+
+/** The selection how-to is behind a (?) in the structure toolbar, not a paragraph above the grid. */
+export const TheSelectionHintIsBehindAHelpButton: Story = {
+  args: { initial: blankShape(2, 2) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByText(/Shift\+click or Shift\+arrow keys/)).not.toBeInTheDocument();
+    canvas.getByRole("button", { name: "Help: Selecting cells" }).focus();
+    await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent(/Shift\+click/);
+  },
+};

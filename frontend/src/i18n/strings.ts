@@ -2199,6 +2199,7 @@ const en = {
     blocksLabel: "Block editor",
     workspaceLabel: "Block workspace",
     inspectorLabel: "Block details",
+    blocksHelpLabel: "Using the block editor",
     blocksHint:
       "Add a block with Add block: the line beside it says where it will go. Drag blocks on the canvas to reorder them or drop them inside another block, and select a block to edit its other settings. Ctrl+Z (Cmd+Z on a Mac) undoes the last change. With the keyboard, move around the blocks with the arrow keys.",
     blocksReadOnlyHint: "This layout is shared from elsewhere, so its blocks can be looked at but not changed.",
@@ -2335,6 +2336,14 @@ const en = {
     // Designer
     textView: "Text",
     outlineView: "Blocks",
+    jsonView: "JSON",
+    jsonLabel: "Layout JSON",
+    jsonNote: "For advanced use only. This is the raw layout behind the Blocks and Text views; saving it replaces both.",
+    jsonNeedsFixes: "Fix the problems in the JSON first; the other views need a layout that checks cleanly.",
+    jsonNeedsTextFixes: "Fix the problems in the text first; the JSON view needs a layout that reads cleanly.",
+    jsonNotObject: "A layout is a JSON object.",
+    jsonWrongKind: (kind: string) => `This is a ${kind} layout; the JSON must say so in its "family".`,
+    jsonProblemsTitle: (count: number) => (count === 1 ? "1 problem to fix" : `${count} problems to fix`),
     outlineNeedsFixes: "Fix the problems in the text first; the block editor needs a layout that reads cleanly.",
     outlineChecking: "Checking…",
     outlineNoProblems: "No problems.",
@@ -2598,6 +2607,7 @@ const en = {
     fieldLabel: "Table",
     fieldHelp: "The table's columns, rows and cells. Open the editor to select cells, merge them, align them and give them colours.",
     cellTextHelp: "What the cell prints: text with the same formatting and {{placeholders}} as a text block. Leave it empty for a blank cell to write in by hand.",
+    summaryHelpLabel: "Editing the table",
     summaryHint: "The table is edited in its own window, where cells are selected, merged and coloured.",
     edit: "Edit table",
     view: "View table",
@@ -2606,6 +2616,7 @@ const en = {
     cellName: (row: number, column: number) => `Row ${row}, column ${column}`,
     cellSpan: (rows: number, columns: number) => `${rows} × ${columns}`,
     blankCell: "blank",
+    selectionHelpLabel: "Selecting cells",
     selectionHint: "Click a cell to select it, Shift+click or Shift+arrow keys to select a range, and Enter to edit its text. Ctrl+Z undoes the last change.",
     formatting: "Cell formatting",
     structure: "Table structure",
@@ -2666,6 +2677,7 @@ const en = {
     orientationLabels: { portrait: "Portrait", landscape: "Landscape" } as Record<string, string>,
     mirrorLabel: "Mirror margins",
     repeatHeaderLabel: "Repeat table header rows",
+    alignTablesLabel: "Line up tables with the same columns",
     marginsTitle: "Margins (cm)",
     sideLabels: { top: "Top", bottom: "Bottom", left: "Left", right: "Right", gutter: "Gutter" } as Record<string, string>,
     innerLabel: "Left (inner)",
@@ -2805,6 +2817,8 @@ const en = {
       sheet: "Sheet",
     } as Record<string, string>,
     problemsTitle: (count: number) => (count === 1 ? "1 problem to fix" : `${count} problems to fix`),
+    // Beside the pinned Save, saying why it is off (the list of problems is in the view).
+    saveBlocked: (count: number) => (count === 1 ? "Fix 1 problem to save" : `Fix ${count} problems to save`),
     problemLine: (line: number, column: number | null) => (column === null ? `Line ${line}` : `Line ${line}, column ${column}`),
     noProblems: "The text is valid.",
     familyMismatch: (family: string) =>
@@ -3455,6 +3469,7 @@ const en = {
     layoutPageSize: "The paper size of the PDF, Word and OpenDocument versions of this report (A4 unless you choose another). The on-screen and HTML views are not paged.",
     layoutOrientation: "Portrait suits text; landscape suits wide tables. It applies to every page of the report except a section in another page style.",
     layoutRepeatTableHeader: "Whether a table's column headings are printed again at the top of every page the table runs onto. On unless switched off; it applies to every table in the layout.",
+    layoutAlignTables: "Whether tables with the same column headings share one set of column widths, so they read as one list. On unless switched off; turn it off to let each table size its columns from its own content.",
     layoutMirrorMargins: "For double-sided printing. Left and the gutter become the inner edge of every page and right the outer edge, so they swap sides on facing pages. It applies to every page style of the layout.",
     layoutMarginLeft: "The white space left of the text in cm, 1 to 10. When margins mirror, this is the inner edge (the binding side).",
     layoutMarginRight: "The white space right of the text in cm, 1 to 10. When margins mirror, this is the outer edge.",
@@ -3591,6 +3606,11 @@ const en = {
     noMatchingOptions: "Nothing matches.",
     selectOption: "Select…",
     typeToConfirmLabel: (name: string) => `Type "${name}" to confirm`,
+    // The prompt a dialog with unsaved changes shows when it is closed (`useDialogGuard`).
+    discardTitle: "Discard unsaved changes?",
+    discardMessage: "This dialog has changes that are not saved. If you close it they are lost.",
+    discardConfirm: "Discard changes",
+    keepEditing: "Keep editing",
     // `SplitButtonTrigger`'s chevron affordance (style guide "Pattern:
     // split-button trigger") — generic across every call site, not
     // per-instance, since the chevron's own job ("reveal the alternatives")

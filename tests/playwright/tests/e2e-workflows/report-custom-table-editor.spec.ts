@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { expect, type APIRequestContext, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -156,7 +156,7 @@ test.describe("Report layout custom table editor", () => {
       expect((await run("pdf")).subarray(0, 5).toString()).toBe("%PDF-");
     });
 
-    await test.step("reopening the editor shows the saved table, and Cancel discards a change", async () => {
+    await test.step("reopening the editor shows the saved table; a click outside does nothing and closing asks before discarding", async () => {
       await page.reload();
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText.rl-block-title", { hasText: /^Table.\(custom\)/ }).first().click();
@@ -167,7 +167,26 @@ test.describe("Report layout custom table editor", () => {
       await cell(1, 1).click();
       await editor.getByRole("button", { name: "Remove row" }).click();
       await expect(editor.getByRole("gridcell")).toHaveCount(8);
-      await editor.getByRole("button", { name: "Cancel" }).click();
+      // A click outside the dialog does nothing: the edit is still there.
+      await page.mouse.click(5, 5);
+      await expect(editor).toBeVisible();
+      await expect(editor.getByRole("gridcell")).toHaveCount(8);
+      // Closing asks first; Keep editing returns to the unsaved edit.
+      await editor.getByRole("button", { name: "Close", exact: true }).click();
+      const prompt = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+      await expect(prompt).toBeVisible();
+      await prompt.getByRole("button", { name: "Keep editing" }).click();
+      await expect(prompt).toHaveCount(0);
+      await expect(editor.getByRole("gridcell")).toHaveCount(8);
+      // Undoing the edit makes the table match the saved one again, so Close leaves at once.
+      await editor.getByRole("button", { name: "Undo" }).click();
+      await expect(editor.getByRole("gridcell")).toHaveCount(11);
+      await closeDialogWithoutSaving(editor, { unsaved: false });
+      // Discard drops the edit.
+      await inspector.getByRole("button", { name: "Edit table" }).click();
+      await cell(1, 1).click();
+      await editor.getByRole("button", { name: "Remove row" }).click();
+      await closeDialogWithoutSaving(editor, { unsaved: true });
       await expect(inspector.getByTestId("grid-summary")).toHaveText("3 columns · 4 rows · 1 merged");
     });
   });

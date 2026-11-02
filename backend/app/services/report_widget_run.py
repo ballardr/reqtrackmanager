@@ -48,6 +48,7 @@ from app.services.report_framework import (
     ReportContext,
     ReportResult,
     apply_cell_tones,
+    apply_usual_widths,
     normalise_metrics,
 )
 from app.services.report_model import Block, Note, Table
@@ -72,7 +73,7 @@ def widget_context(base: ReportContext, widget: WidgetInfo, params: dict[str, An
 
 
 def collect_widget(db: Session, widget: WidgetInfo, ctx: ReportContext) -> ReportResult:
-    """Runs the report's collector and applies its declared cell tones.
+    """Runs the report's collector and applies its declared cell tones and usual column widths.
 
     Args:
         db: Active session (read only).
@@ -86,7 +87,8 @@ def collect_widget(db: Session, widget: WidgetInfo, ctx: ReportContext) -> Repor
         HTTPException: A collector refused its parameters (for example an unknown group id); the caller
             decides how the layout shows that.
     """
-    return apply_cell_tones(widget.definition.collector(db, ctx), widget.definition.cell_tones)
+    result = apply_cell_tones(widget.definition.collector(db, ctx), widget.definition.cell_tones)
+    return apply_usual_widths(result, widget.definition.usual_widths)
 
 
 _NUMBER_CELL = re.compile(r"[+-]?\d[\d,]*(?:\.\d+)?%?")
@@ -166,17 +168,17 @@ def part_blocks(
             columns, rows = ["Group", "Measure", "Value"], [[m.group or "", m.label, str(m.value)] for m in metrics]
         else:
             columns, rows = ["Measure", "Value"], [[m.label, str(m.value)] for m in metrics]
-        tones = None
+        tones = usual = None
     else:
         section = next((s for s in result.sections if s.key == part.key), None)
         if section is None or not section.rows or not section.columns:
             return []
-        columns, rows, tones = section.columns, section.rows, section.tones
+        columns, rows, tones, usual = section.columns, section.rows, section.tones, section.usual_widths
     if sort:
         order = sorted_order(columns, rows, sort, say)
         rows = [rows[i] for i in order]
         tones = [tones[i] for i in order] if tones else None
-    return [Table(columns, rows, compact=True, tones=tones)]
+    return [Table(columns, rows, compact=True, tones=tones, usual_widths=usual)]
 
 
 def output_digest(result: ReportResult) -> str:

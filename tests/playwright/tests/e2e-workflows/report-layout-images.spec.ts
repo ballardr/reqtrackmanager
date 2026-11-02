@@ -77,7 +77,7 @@ test.describe("Report layout images", () => {
 
     await test.step("an image needs alternative text unless it is decorative", async () => {
       await expect(inspector.getByText("Describe the image for someone who cannot see it, or mark it decorative.")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
       await inspector.getByRole("textbox", { name: "Alternative text" }).fill("The company logo");
       await expect(page.getByText("No problems.")).toBeVisible();
     });
@@ -308,7 +308,7 @@ test.describe("Report layout images", () => {
     await test.step("text wraps only beside a picture that says which side it is on", async () => {
       await inspector.getByRole("combobox", { name: "Placement" }).selectOption({ label: "Text wraps beside it" });
       await expect(inspector.getByText("Text wraps beside a picture aligned left or right: choose which side the picture is on.")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
       await inspector.getByRole("combobox", { name: "Alignment" }).selectOption("right");
       await expect(page.getByText("No problems.")).toBeVisible();
       const { dialog, frame } = await previewFrame();
@@ -341,7 +341,10 @@ test.describe("Report layout images", () => {
       const dialog = page.getByRole("dialog", { name: "Report preview" });
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
-      await expect(frame.locator("div.layer-anchor.behind figure.image[style*='left:2cm'][style*='top:3cm'] img[alt='A watermark']")).toBeVisible();
+      // The page has no pages on screen, so the position across is a share of the page width (2 cm of an A4's 21 cm).
+      await expect(frame.locator("div.layer-anchor.behind figure.image[style*='left:9.52%'][style*='top:3cm'] img[alt='A watermark']")).toBeVisible();
+      // The layout holds no title block, so the preview prints no title of its own.
+      await expect(frame.locator("h1")).toHaveCount(0);
       await closeDesignerPreviewDialog(page);
     });
 

@@ -61,7 +61,7 @@ export const DuplicateOpensTheDialogForThePack: Story = {
     await userEvent.click(await screen.findByRole("menuitem", { name: "Duplicate…" }));
     const dialog = within(await screen.findByRole("dialog", { name: "Duplicate pack" }));
     await waitFor(() => expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Handover pack (copy)"));
-    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
   },
 };
 

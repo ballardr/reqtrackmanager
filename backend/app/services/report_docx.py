@@ -643,7 +643,9 @@ def _display_equation(doc: DocxDocument, equation: Equation, usable_cm: float) -
 
 def _cover(doc: DocxDocument, document: ReportDocument, accent: str, usable_cm: float) -> None:
     """The opening block: a branded cover page (logo, accent title, page
-    break) when branding asks for one, otherwise a plain title line."""
+    break) when branding asks for one, otherwise a plain title line; nothing when the document prints no title of its own."""
+    if not document.show_title:
+        return
     title = clean_text(document.title)
     branding = document.branding
     if branding and branding.include_cover_page:

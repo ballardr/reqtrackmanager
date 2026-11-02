@@ -419,7 +419,7 @@ class TreeValidator:
             tree, "", required=("schema_version", "family", "nodes"),
             optional=(
                 "orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name",
-                "repeat_table_header", "contents_sheet", "run_scope", "palette", "styles", "embed_fonts",
+                "repeat_table_header", "align_tables", "contents_sheet", "run_scope", "palette", "styles", "embed_fonts",
             ),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
@@ -447,6 +447,11 @@ class TreeValidator:
                 self.error("repeat_table_header", "Only a document layout has pages for a header row to repeat on.")
             elif not isinstance(tree["repeat_table_header"], bool):
                 self.error("repeat_table_header", "Must be true or false.")
+        if "align_tables" in tree:
+            if declared != FAMILY_DOCUMENT:
+                self.error("align_tables", "Only a document layout has tables to line up.")
+            elif not isinstance(tree["align_tables"], bool):
+                self.error("align_tables", "Must be true or false.")
         if "run_scope" in tree and tree["run_scope"] not in RUN_SCOPES:
             self.error("run_scope", f"Must be one of: {', '.join(RUN_SCOPES)}.")
         if "palette" in tree:

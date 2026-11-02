@@ -140,6 +140,8 @@ export interface ReportSection {
   gap: boolean;
   /** `false` for a table that only exists for the PDF/CSV exports; the screen skips it. */
   screen?: boolean;
+  /** Relative column widths when the report lines tables with the same headings up; the browser sizes the columns otherwise. */
+  weights?: number[] | null;
 }
 
 /**

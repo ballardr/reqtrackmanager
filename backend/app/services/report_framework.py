@@ -101,6 +101,7 @@ from app.services.rbac import (
     require_project_module_enabled,
     user_satisfies_module_role,
 )
+from app.services.report_column_width import parse_width
 from app.services.report_document import ReportBranding, resolve_branding
 from app.services.report_docx import render_docx_document
 from app.services.report_file_names import org_default_stem
@@ -135,6 +136,8 @@ class ReportSection:
         screen: Whether the on-screen view shows this table. `False` keeps a
             table that only exists for the exports (a flat form of figures the
             screen already shows as tiles); PDF and CSV always include it.
+        weights: Relative column widths already decided (the on-screen view of an aligned custom report).
+        usual_widths: A usual width per column from `ReportDefinition.usual_widths` (`None` = none), one per column.
         tones: Optional tone per cell, shaped exactly like `rows` (`None` = no
             tone), for a cell the screen colours (a rating band, a matrix
             cell). PDF and Word fill the cell; CSV and JSON carry the text
@@ -154,8 +157,14 @@ class ReportSection:
     gap: bool = False
     screen: bool = True
     tones: list[list[str | None]] | None = None
+    weights: list[float] | None = None
+    usual_widths: list[str | None] | None = None
 
     def __post_init__(self) -> None:
+        if self.weights is not None and len(self.weights) != len(self.columns):
+            raise ValueError(f"Report section '{self.key}': weights must have one value per column.")
+        if self.usual_widths is not None and len(self.usual_widths) != len(self.columns):
+            raise ValueError(f"Report section '{self.key}': usual_widths must have one value per column.")
         if self.tones is None:
             return
         if len(self.tones) != len(self.rows) or any(len(t) != len(r) for t, r in zip(self.tones, self.rows, strict=True)):
@@ -495,6 +504,42 @@ def apply_cell_tones(result: ReportResult, cell_tones: Mapping[str, Mapping[str,
     return result
 
 
+def apply_usual_widths(result: ReportResult, usual_widths: Mapping[str, str]) -> ReportResult:
+    """Gives each section the usual width of every column whose heading the report declared one for.
+
+    Args:
+        result: The collected report; its sections are replaced, never mutated in place.
+        usual_widths: `ReportDefinition.usual_widths`.
+
+    Returns:
+        `result`, with `usual_widths` filled in on each section that has a declared heading.
+    """
+    if not usual_widths:
+        return result
+    result.sections = [
+        replace(section, usual_widths=[usual_widths.get(heading) for heading in section.columns])
+        if any(heading in usual_widths for heading in section.columns) else section
+        for section in result.sections
+    ]
+    return result
+
+
+def unknown_usual_widths(sections: Sequence[Sequence[str]], usual_widths: Mapping[str, str]) -> list[str]:
+    """The declared headings that no section of a collected report has, and the declared widths that are not widths.
+
+    Args:
+        sections: The column headings of each section of a collected report (a section has its columns even with no rows).
+        usual_widths: `ReportDefinition.usual_widths`.
+
+    Returns:
+        One message per problem; empty when every declaration is sound.
+    """
+    present = {heading for columns in sections for heading in columns}
+    problems = [f'No section has a column "{heading}".' for heading in usual_widths if heading not in present]
+    problems += [f'"{heading}": "{spec}" is not a width.' for heading, spec in usual_widths.items() if parse_width(spec) is None]
+    return problems
+
+
 def build_result_document(result: ReportResult, *, branding: ReportBranding | None = None) -> ReportDocument:
     """Builds the neutral landscape document for a collected report, which the
     PDF and DOCX renderers both consume.
@@ -599,6 +644,7 @@ class ReportSectionOut(BaseModel):
     note: str = ""
     gap: bool = False
     screen: bool = True
+    weights: list[float] | None = None
 
 
 _LINK_TARGET = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")

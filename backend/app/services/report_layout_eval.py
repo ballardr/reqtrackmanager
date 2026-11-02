@@ -152,6 +152,7 @@ from app.services.report_record_images import candidate_files, compile_pattern, 
 from app.services.report_running import read_marks
 from app.services.report_shapes import shape_svg
 from app.services.report_styles import resolve_styles
+from app.services.report_table_alignment import align_tables
 from app.services.report_traversal import MAX_LINKED, MAX_ROOTS, LinkDirection, linked_records, root_records
 from app.services.report_variables import (
     PLACEHOLDER_FAMILY,
@@ -407,7 +408,10 @@ def evaluate_layout(
         document = ReportDocument(
             title=title, blocks=run.blocks, landscape=style.landscape, page_size=style.page_size, margins=style.margins,
             mirror=style.mirror, header=style.header, footer=style.footer, styles=run.document_styles,
+            show_title=False,  # the layout's own blocks print any title
+            align_tables=tree.get("align_tables", True),
         )
+        document = align_tables(document)
     versions, truncated = run.record_versions()
     for artefact_type, pooled in run._pool.items():
         run.stats.records_included[artefact_type] = len(pooled)

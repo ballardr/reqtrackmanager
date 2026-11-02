@@ -102,7 +102,6 @@ from app.services.report_model import (
     CellLink,
     DataCell,
     Equation,
-    Gap,
     Grid,
     Heading,
     LinkedText,
@@ -119,6 +118,7 @@ from app.services.report_model import (
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
 from app.services.report_running import apply_default_bands
+from app.services.report_table_alignment import align_tables
 from app.services.report_variables import describe_variables, variable_text
 
 ENGINE_VERSION = "1"
@@ -428,7 +428,8 @@ def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: s
             blocks.append(Heading(project.name, 1))
             blocks += [replace(b, level=min(b.level + 1, 4)) if isinstance(b, Heading) else b for b in part.document.blocks]
         first = parts[0][1].document
-        document = replace(first, title=title, blocks=blocks) if first else ReportDocument(title=title, blocks=blocks)
+        document = replace(first, title=title, blocks=blocks) if first else ReportDocument(title=title, blocks=blocks, show_title=False)
+        document = align_tables(document)  # the per-project tables of one report line up across projects
     else:
         sheets = _merge_sheets([part for _, part in parts], [project.name for project, _ in parts])
     widgets = sorted({key for _, part in parts for key in part.widgets})
@@ -485,10 +486,6 @@ def _merge_sheets(parts: Sequence[EvaluatedLayout], project_names: Sequence[str]
 # --- output ------------------------------------------------------------------------------------------------
 
 
-def _scope_line(run: LayoutRun) -> str:
-    return f"{run.scope_label} · generated {run.generated_at.strftime('%Y-%m-%d %H:%M')} UTC"
-
-
 def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection], list[str]]:
     """The tables of a document as sections, with the text around them (see the module docstring).
 
@@ -516,6 +513,7 @@ def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection],
             sections.append(ReportSection(
                 key=f"section-{len(sections) + 1}", title=" / ".join(text for _, text in trail) or f"Table {len(sections) + 1}",
                 columns=block.columns, rows=[[str(cell) for cell in row] for row in block.rows], note=" ".join(lines), tones=block.tones,
+                weights=block.weights if block.aligned else None,
             ))
             unused, lines = [], []
         # Gap, PageBreak and Image carry no text.
@@ -560,12 +558,12 @@ def document_for(run: LayoutRun, *, branding: ReportBranding | None) -> ReportDo
         branding: The branding for the renderers (the accent colour), or `None`.
 
     Returns:
-        The document: a scope line, the run's notes, then the evaluated blocks.
+        The document: the evaluated blocks and nothing else. The scope line and the run's remarks are not printed in the
+        file (a layout prints only what it contains); the run's result carries them for the screen.
     """
     document = run.evaluated.document
     assert document is not None
-    blocks: list[Block] = [Note(_scope_line(run)), Gap(0.2), *[Note(n) for n in run.notes], *document.blocks]
-    return apply_default_bands(replace(document, title=run.layout.name, blocks=blocks, branding=branding))
+    return apply_default_bands(replace(document, title=run.layout.name, blocks=list(document.blocks), branding=branding))
 
 
 def render_input_for(run: LayoutRun, *, branding: ReportBranding | None = None) -> RenderInput:

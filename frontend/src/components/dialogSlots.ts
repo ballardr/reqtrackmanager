@@ -11,6 +11,8 @@ import { createContext, useContext } from "react";
 export interface DialogSlots {
   actions: HTMLElement | null;
   error: HTMLElement | null;
+  /** Called (in an effect) by a `FormActions` mounted in the dialog; returns the cleanup. Marks the dialog as a form. */
+  registerForm?: () => () => void;
 }
 
 export const DialogSlotContext = createContext<DialogSlots | null>(null);

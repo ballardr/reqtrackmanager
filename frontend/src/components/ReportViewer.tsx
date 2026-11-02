@@ -103,6 +103,7 @@ export function ReportSummary({ result, figureAction }: { result: ReportResult; 
 export function ReportSectionTable({ section }: { section: ReportSection }) {
   const [visible, setVisible] = useState(REPORT_TABLE_PAGE_SIZE);
   const shown = Math.min(visible, section.rows.length);
+  const weightTotal = section.weights?.reduce((sum, weight) => sum + weight, 0) || 1;
   return (
     <section id={`report-section-${section.key}`} className="stack report-section" style={{ gap: "var(--space-3)" }} aria-label={section.title}>
       <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
@@ -124,7 +125,14 @@ export function ReportSectionTable({ section }: { section: ReportSection }) {
         </p>
       ) : (
         <div className="card" style={{ overflowX: "auto" }}>
-          <table>
+          <table className={section.weights ? "report-table-aligned" : undefined}>
+            {section.weights && (
+              <colgroup>
+                {section.weights.map((weight, index) => (
+                  <col key={index} style={{ width: `${(weight / weightTotal) * 100}%` }} />
+                ))}
+              </colgroup>
+            )}
             <thead>
               <tr>
                 {section.columns.map((column) => (

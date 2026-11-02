@@ -65,7 +65,7 @@ from app.services.report_document import (
     title_flowables,
     toned_paragraph,
 )
-from app.services.report_fonts import FontFamily, draw_centred, pdf_face, text_width, using_family
+from app.services.report_fonts import FontFamily, draw_centred, pdf_face, using_family
 from app.services.report_grid_render import pdf_grid
 from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm
 from app.services.report_math import png_of, typeset
@@ -96,6 +96,7 @@ from app.services.report_model import (
 from app.services.report_pdf_floating import FloatingPicture
 from app.services.report_pdf_running import PageNote, RunningCanvas
 from app.services.report_svg import svg_flowable
+from app.services.report_table_alignment import column_needs
 
 _CAPTION_ALIGN: dict[str, Any] = {"left": TA_LEFT, "center": TA_CENTER, "right": TA_RIGHT}
 _CAPTIONS = {
@@ -107,10 +108,8 @@ _NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, l
 _CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5)
 _HEAD = ParagraphStyle("report_head", parent=_CELL, fontName="Helvetica-Bold")
 _PLAIN_CELL = ParagraphStyle("cell", parent=STYLES["BodyText"], fontSize=8, leading=10)
-_CELL_FONT_SIZE = 7.5
-_MAX_CELL_POINTS = 70.0
-_MAX_WORD_POINTS = 100.0  # a pasted unbroken string must not claim the page; ReportLab breaks it
-_CELL_PADDING_POINTS = 14.0
+#: Space after a table that is followed by another table, in cm (the gap Word gives between them).
+TABLE_GAP_CM = 0.4
 _FOOTER_SIZE = 7
 
 
@@ -318,15 +317,7 @@ def _content_widths(block: Table, usable_width: float) -> list[float]:
     Returns:
         One width per column, summing to `usable_width`.
     """
-    needs = []
-    for index, heading in enumerate(block.columns):
-        cells = [str(row[index]) for row in block.rows if index < len(row)]
-        words = max(
-            (text_width(word, _CELL_FONT_SIZE, bold=True) for word in heading.split()), default=0.0,
-        )
-        words = max([words, *(text_width(word, _CELL_FONT_SIZE) for cell in cells for word in cell.split())])
-        whole = max((text_width(cell, _CELL_FONT_SIZE) for cell in cells), default=0.0)
-        needs.append(max(min(words, _MAX_WORD_POINTS), min(whole, _MAX_CELL_POINTS)) + _CELL_PADDING_POINTS)
+    needs = column_needs(block.columns, block.rows)
     if sum(needs) >= usable_width:
         return [usable_width * need / sum(needs) for need in needs]
     spare = usable_width - sum(needs)
@@ -620,7 +611,7 @@ def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
     usable_width = document.style.usable_width_cm * cm
     usable_height = document.style.usable_height_cm * cm
 
-    title = title_flowables(document.title, branding, face=look.title_face, colour=look.heading_colour)
+    title = title_flowables(document.title, branding, face=look.title_face, colour=look.heading_colour) if document.show_title else []
     story: list = [_UseStyle(*_template_ids(0, document.style)), *title]
     images = _InlineImages()
     wrap: tuple[Image, list] | None = None  # a wrapped picture and the flowables that run beside it so far
@@ -632,7 +623,7 @@ def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
             story.extend(_wrapped(wrap[0], wrap[1], usable_width))
             wrap = None
 
-    for block in document.blocks:
+    for position, block in enumerate(document.blocks):
         if not isinstance(block, _WRAPPABLE):
             flush_wrap()
         out = wrap[1] if wrap is not None else story
@@ -662,6 +653,8 @@ def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
                 story.extend(_image_flowables(block, usable_width, look))
         elif isinstance(block, Table):
             story.append(_table(block, accent, usable_width, usable_height, images, look))
+            if any(isinstance(following, Table) for following in document.blocks[position + 1:position + 2]):
+                story.append(Spacer(1, TABLE_GAP_CM * cm))  # tables that follow one another must not touch
         elif isinstance(block, Grid):
             story.append(pdf_grid(block, usable_width, usable_height, lambda text, bold: _markup(text, images, bold=bold)))
         elif isinstance(block, Gap):

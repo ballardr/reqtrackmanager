@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook, openOrgGroupPanel, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
+import { installCleanupHook, openOrgGroupPanel, selectOrgAdminGroup, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "../stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -72,7 +72,7 @@ test.describe("Compliance: groups as owners and assignees", () => {
     const editDialog = page.getByRole("dialog", { name: "Edit standard" });
     await editDialog.getByRole("combobox", { name: "Standard owner" }).fill("Field Squad");
     await expect(editDialog.getByRole("option", { name: new RegExp(squadName) })).toHaveCount(0);
-    await editDialog.getByRole("button", { name: "Cancel" }).click();
+    await closeDialogWithoutSaving(editDialog, { unsaved: true });
 
     // --- A required action can be assigned to the project's group.
     await page.goto(`/projects/${project.id}/modules/compliance`);

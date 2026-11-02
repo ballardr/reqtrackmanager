@@ -172,6 +172,11 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         "switched off; applies to every table in the layout.", families=("document",),
     ),
     BlockField(
+        "align_tables", "Line up tables with the same columns", "boolean", default=True,
+        help="Whether tables with the same column headings share one set of column widths, so they read as one list. On "
+        "unless switched off; turn it off to let each table size its columns from its own content.", families=("document",),
+    ),
+    BlockField(
         "run_scope", "Projects it runs for", "choice", choices=RUN_SCOPES, default=RUN_SCOPE_ANY,
         empty_label="Not set (any number of projects)",
         help="Whether the report may cover several projects (an organisation-wide run merges them), exactly one project (for a "

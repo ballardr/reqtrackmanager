@@ -25,7 +25,7 @@ The chosen report is in the page's link (`?report=…`), so a link to a report o
 
 ## Filing your own layouts and packs
 
-A layout or a pack has an optional **Folder** in its create and edit form. The field only says where it is filed now (the folder path, or **No folder**); press it to open a small panel with a tree of the folders already in use, so nothing is misspelt. Choosing a folder closes the panel and the field shows it; the move is saved with the form's **Save**, and **Cancel** discards it. Choose **No folder** to file it under **Custom reports** (layouts) or **Report packs**. In the panel, beside the tree:
+A layout or a pack has an optional **Folder** in its create and edit form. The field only says where it is filed now (the folder path, or **No folder**); press it to open a small panel with a tree of the folders already in use, so nothing is misspelt. Choosing a folder closes the panel and the field shows it; the move is saved with the form's **Save**, and closing the form without saving discards it. Choose **No folder** to file it under **Custom reports** (layouts) or **Report packs**. In the panel, beside the tree:
 
 - **New folder** adds one inside the folder you have chosen (or at the top level when none is), up to three levels deep, and chooses it.
 - **Rename** changes the last level of the folder you chose. Reports filed in it, and in the folders inside it, follow.

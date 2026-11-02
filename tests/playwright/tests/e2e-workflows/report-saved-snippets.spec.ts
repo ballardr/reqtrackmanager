@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -119,6 +119,7 @@ test.describe("Saved report snippets", () => {
   test("the Text view saves the blocks the caret is in, and says when there is none", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await newLayout(page, project.id, `E2E saved text ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
     await editor.fill("@layout document\n\n@heading First block\n\n@heading Second block\n");
     await expect(page.getByText("The text is valid.")).toBeVisible();

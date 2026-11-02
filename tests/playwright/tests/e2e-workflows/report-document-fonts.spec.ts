@@ -40,8 +40,8 @@ test.describe("Report document fonts", () => {
       await preview.getByRole("button", { name: "Run preview" }).click();
       const frame = preview.frameLocator('iframe[title="Report preview"]');
       await expect(frame.locator("body")).toHaveCSS("font-family", /Times New Roman/);
-      await expect(frame.locator("h1").first()).toHaveCSS("font-family", /Courier New/);
-      await expect(frame.locator("h1").first()).toHaveCSS("font-style", "italic");
+      await expect(frame.locator("h2").first()).toHaveCSS("font-family", /Courier New/);
+      await expect(frame.locator("h2").first()).toHaveCSS("font-style", "italic");
       await closeDesignerPreviewDialog(page);
     });
 

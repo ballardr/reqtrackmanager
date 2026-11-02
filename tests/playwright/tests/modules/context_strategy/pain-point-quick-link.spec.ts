@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { installCleanupHook, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "../stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -90,7 +90,7 @@ test("'Link to' on two different create forms finds a requirement by title and b
     const dialog = page.getByRole("dialog", { name: "New Pain Point" });
     await dialog.getByRole("combobox", { name: "Link to" }).fill(requirementName.slice(0, 12));
     await expect(dialog.getByRole("option", { name: new RegExp(requirementName) })).toBeVisible();
-    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await closeDialogWithoutSaving(dialog, { unsaved: true });
   });
 
   await test.step("a Persona form finds it by the code as displayed elsewhere", async () => {

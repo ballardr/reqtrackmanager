@@ -132,7 +132,9 @@ export function Popover({
       tabIndex={-1}
       style={{
         position: "fixed",
-        zIndex: 1150,
+        // The same layer as Modal and SidePanel, so whichever opened last is on top (DOM order): a popover opened
+        // inside a dialog sits over it, and a confirm dialog opened from a popover sits over the popover.
+        zIndex: 1100,
         width: fit ? "max-content" : 280,
         visibility: "hidden",
       }}

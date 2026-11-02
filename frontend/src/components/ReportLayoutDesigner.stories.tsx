@@ -29,9 +29,11 @@ type Story = StoryObj<typeof ReportLayoutDesigner>;
 
 const body = () => within(document.body);
 
-/** The editor once the layout has loaded. */
+/** The text editor, after opening the Text view (a layout opens on Blocks). */
 async function editorOf(canvasElement: HTMLElement): Promise<HTMLTextAreaElement> {
-  return (await within(canvasElement).findByRole("textbox", { name: "Layout text" })) as HTMLTextAreaElement;
+  const canvas = within(canvasElement);
+  await userEvent.click(await canvas.findByRole("tab", { name: "Text" }));
+  return (await canvas.findByRole("textbox", { name: "Layout text" })) as HTMLTextAreaElement;
 }
 
 /** Puts the caret at the start of the given 1-based line and tells the editor, as a real caret move would. */
@@ -107,6 +109,56 @@ export const SavingSendsTheParsedTreeAndTheVersionItStartedFrom: Story = {
   },
 };
 
+/** Save sits in the pinned bar with the view tabs, and a short layout has no second one at the foot. */
+export const SaveIsPinnedAtTheTopAndAShortLayoutHasOnlyThatOne: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await editorOf(canvasElement);
+    const bar = canvasElement.querySelector<HTMLElement>(".designer-bar");
+    await expect(bar).not.toBeNull();
+    await expect(within(bar as HTMLElement).getByRole("button", { name: "Save new version" })).toBeInTheDocument();
+    await expect(within(bar as HTMLElement).getByRole("tab", { name: "Text" })).toBeInTheDocument();
+    await expect(canvas.getAllByRole("button", { name: "Save new version" })).toHaveLength(1);
+    await expect(getComputedStyle(bar as HTMLElement).position).toBe("sticky");
+  },
+};
+
+/** A layout taller than the window gets a second Save at the foot; both are one button's state, so one save disables both. */
+export const ALongLayoutAlsoOffersSaveAtTheFoot: Story = {
+  args: {
+    api: buildLayoutApi([buildLayoutSummary()], {
+      stateful: false,
+      get: async () => buildLayoutDetail({}, `@layout document\n${Array.from({ length: 120 }, (_, i) => `\n@heading Section ${i + 1}\n`).join("")}`),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Save new version" })).toHaveLength(2));
+    const [top, foot] = canvas.getAllByRole("button", { name: "Save new version" });
+    await expect(canvasElement.querySelector(".designer-bar")).toContainElement(top);
+    await expect(canvasElement.querySelector(".designer-bar")).not.toContainElement(foot);
+    editor.focus();
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+    await userEvent.keyboard("More.");
+    await waitFor(() => expect(top).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
+    await expect(foot).toBeEnabled();
+  },
+};
+
+/** A disabled Save explains itself next to the button: the count of problems stays in view with the pinned bar. */
+export const TheProblemCountSitsBesideSave: Story = {
+  play: async ({ canvasElement }) => {
+    const editor = await editorOf(canvasElement);
+    editor.focus();
+    editor.setSelectionRange(0, 0);
+    await userEvent.keyboard("BROKEN ");
+    const bar = canvasElement.querySelector<HTMLElement>(".designer-bar") as HTMLElement;
+    await within(bar).findByText("Fix 1 problem to save", undefined, { timeout: TEXT_CHECKED_MS });
+    await expect(within(bar).getByRole("button", { name: "Save new version" })).toBeDisabled();
+  },
+};
+
 export const SavingATreeTheServerRefusesShowsItsProblems: Story = {
   args: {
     api: buildLayoutApi([buildLayoutSummary()], {
@@ -147,6 +199,7 @@ export const ASaveThatFindsTheLayoutMovedOnOffersAReload: Story = {
     await expect(await canvas.findByRole("alert")).toHaveTextContent("Someone saved version 3 while you were editing.");
     await userEvent.click(canvas.getByRole("button", { name: "Reload latest" }));
     await userEvent.click(within(await screen.findByRole("dialog", { name: "Replace your text with the latest version?" })).getByRole("button", { name: "Reload latest" }));
+    await userEvent.click(await canvas.findByRole("tab", { name: "Text" }));
     await waitFor(() => expect((canvas.getByRole("textbox", { name: "Layout text" }) as HTMLTextAreaElement).value).toBe(LAYOUT_TEXT));
     await expect(mocked(args.api.get).mock.calls.length).toBe(loads + 1);
   },
@@ -299,7 +352,7 @@ export const DuplicateOpensTheDialogOnTheSavedVersion: Story = {
     const dialog = within(await screen.findByRole("dialog", { name: "Duplicate layout" }));
     await expect(dialog.queryByRole("note")).not.toBeInTheDocument();
     await waitFor(() => expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Requirements by component (copy)"));
-    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
     await expect(args.duplicateApi!.duplicate).not.toHaveBeenCalledWith(expect.objectContaining({ dry_run: false }));
   },
 };
@@ -339,8 +392,7 @@ function blocksApi() {
 
 const toBlocks = async (canvasElement: HTMLElement) => {
   const canvas = within(canvasElement);
-  await editorOf(canvasElement);
-  await userEvent.click(canvas.getByRole("tab", { name: "Blocks" }));
+  await userEvent.click(await canvas.findByRole("tab", { name: "Blocks" }));
   return canvas;
 };
 
@@ -466,6 +518,147 @@ export const ThePanelFoldsAndUnfoldsInBothViews: Story = {
   },
 };
 
+// ---- the JSON view ------------------------------------------------------------------------------------------------
+
+/** The outline tree with its first heading's words replaced. */
+function outlineWithHeading(words: string) {
+  const tree = buildOutlineTree();
+  (tree.nodes as { text?: string }[])[0].text = words;
+  return tree;
+}
+
+/** Replaces everything in the JSON box with `json`, as a paste would. */
+async function pasteJson(canvasElement: HTMLElement, json: string) {
+  const box = await within(canvasElement).findByRole("textbox", { name: "Layout JSON" });
+  await userEvent.clear(box);
+  await userEvent.click(box);
+  await userEvent.paste(json);
+}
+
+export const ALayoutOpensOnBlocksWithBlocksTextAndJsonInThatOrder: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const tabs = await canvas.findAllByRole("tab", { name: /^(Blocks|Text|JSON)$/ });
+    await expect(tabs.map((tab) => tab.textContent)).toEqual(["Blocks", "Text", "JSON"]);
+    await expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    await expect(canvas.queryByRole("textbox", { name: "Layout text" })).not.toBeInTheDocument();
+  },
+};
+
+export const TheJsonViewShowsTheRawTreeAndOnlyANoteAboutIt: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "JSON" }));
+    const box = (await canvas.findByRole("textbox", { name: "Layout JSON" })) as HTMLTextAreaElement;
+    await expect(JSON.parse(box.value)).toEqual(buildOutlineTree());
+    await expect(canvas.getByRole("note")).toHaveTextContent("For advanced use only.");
+    // No helpers: no toolbar, snippets, side panel (Block, Preview, Fields, Widgets) or help.
+    await expect(canvas.queryByRole("button", { name: "Snippets" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("tab", { name: "Preview" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("tab", { name: "Block" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("tab", { name: "Fields" })).not.toBeInTheDocument();
+    // Save is the only action; a long tree may add the second one at the foot.
+    await expect(canvas.getAllByRole("button", { name: "Save new version" })[0]).toBeInTheDocument();
+    await expect(await canvas.findByText("No problems.", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
+    await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  },
+};
+
+export const EditingTheJsonSavesThatTreeAndTheOtherViewsShowIt: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = await toBlocks(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "JSON" }));
+    await pasteJson(canvasElement, JSON.stringify(outlineWithHeading("From the JSON")));
+    await expect(await canvas.findByText("Unsaved changes")).toBeInTheDocument();
+    const save = canvas.getAllByRole("button", { name: "Save new version" })[0];
+    await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
+    await saveVersion(save);
+    await waitFor(() => expect(args.api.save).toHaveBeenCalledWith("layout-1", expect.objectContaining({ base_version: 2, tree: outlineWithHeading("From the JSON") })));
+    await expect(await body().findByText("Saved as version 3.")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
+    await waitFor(async () => expect((await canvas.findByRole("textbox", { name: "Layout text" }) as HTMLTextAreaElement).value).toBe("@layout document\n@heading From the JSON\n"));
+  },
+};
+
+export const JsonEditedWithoutSavingCarriesIntoTheBlocks: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "JSON" }));
+    await pasteJson(canvasElement, JSON.stringify(outlineWithHeading("Carried over")));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Save new version" })[0]).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
+    await userEvent.click(canvas.getByRole("tab", { name: "Blocks" }));
+    Blockly.common.setSelected(await firstHeading());
+    await expect(await within(await canvas.findByTestId("block-inspector")).findByRole("textbox", { name: "Heading" })).toHaveValue("Carried over");
+    await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
+  },
+};
+
+export const JsonThatIsNotJsonBlocksSaveAndTheSwitch: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "JSON" }));
+    await pasteJson(canvasElement, "{ nope");
+    await expect(await canvas.findByText("1 problem to fix")).toBeInTheDocument();
+    await expect(canvas.getAllByRole("button", { name: "Save new version" })[0]).toBeDisabled();
+    await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
+    await expect(await canvas.findByRole("alert")).toBeInTheDocument();
+    await expect(canvas.getByRole("tab", { name: "JSON" })).toHaveAttribute("aria-selected", "true");
+  },
+};
+
+export const JsonTheServerRefusesIsListedByPathAndCannotBeSaved: Story = {
+  args: { api: blocksApi() },
+  play: async ({ canvasElement }) => {
+    const canvas = await toBlocks(canvasElement);
+    await userEvent.click(canvas.getByRole("tab", { name: "JSON" }));
+    await pasteJson(canvasElement, JSON.stringify(outlineWithHeading("")));
+    await expect(await canvas.findByText("nodes[0].text: Must not be empty.", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
+    await expect(canvas.getAllByRole("button", { name: "Save new version" })[0]).toBeDisabled();
+    await expect(canvas.getByText("Fix 1 problem to save")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("tab", { name: "Blocks" }));
+    await expect(await canvas.findByText("Fix the problems in the JSON first; the other views need a layout that checks cleanly.")).toBeInTheDocument();
+    await expect(canvas.getByRole("tab", { name: "JSON" })).toHaveAttribute("aria-selected", "true");
+  },
+};
+
+export const ASharedLayoutsJsonIsReadOnly: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false }) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("tab", { name: "JSON" }));
+    await expect(await canvas.findByRole("textbox", { name: "Layout JSON" })).toHaveAttribute("readonly");
+    await expect(canvas.queryByRole("button", { name: "Save new version" })).not.toBeInTheDocument();
+  },
+};
+
+/** A check of the Blocks view still in flight when the author moves to Text must not write over what they type there. */
+export const ASlowBlocksCheckDoesNotOverwriteTextTypedMeanwhile: Story = {
+  args: {
+    api: (() => {
+      const api = blocksApi();
+      api.validate = fn(async (tree) => {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        return fakeValidate(tree);
+      });
+      return api;
+    })(),
+  },
+  play: async ({ canvasElement }) => {
+    const editor = await editorOf(canvasElement);
+    editor.focus();
+    editor.setSelectionRange(editor.value.length, editor.value.length);
+    await userEvent.keyboard("@text Typed early");
+    // Wait past the slow check's answer.
+    await new Promise((resolve) => setTimeout(resolve, 1600));
+    await expect(editor.value).toContain("@text Typed early");
+  },
+};
+
 export const SwitchingBackToTextShowsTheBlocksChanges: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
@@ -485,6 +678,8 @@ export const SwitchingBackWithoutEditsLeavesTheTextAsTyped: Story = {
     // The original text is untouched: not re-formatted just because the blocks were opened.
     await expect((await editorOf(canvasElement)).value).toBe("@layout document\n@heading Requirements of {{project_name}}\n");
     await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    // The text is checked on arrival even though it is the same text the Blocks view last wrote.
+    await expect(await canvas.findByText("The text is valid.", undefined, { timeout: TEXT_CHECKED_MS })).toBeInTheDocument();
   },
 };
 

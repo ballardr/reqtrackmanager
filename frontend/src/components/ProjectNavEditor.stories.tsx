@@ -225,7 +225,7 @@ export const SaveKeepsOverridesWhenReachabilityIsUnknown: Story = {
 export const CancelWritesNothing: Story = {
   decorators: [withPrefs({})],
   play: async () => {
-    await userEvent.click(dialog().getByRole("button", { name: "Cancel" }));
+    await userEvent.click(dialog().getByRole("button", { name: "Close" }));
     await expect(onClose).toHaveBeenCalled();
     await expect(onWrite).not.toHaveBeenCalled();
   },

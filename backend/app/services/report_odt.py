@@ -524,7 +524,10 @@ class _Body:
     # --- blocks ----------------------------------------------------------------------------------------------
 
     def cover(self) -> None:
-        """The opening block: a branded cover page (logo, accent title, then the page the body starts on) or a title line."""
+        """The opening block: a branded cover page (logo, accent title, then the page the body starts on) or a title line;
+        nothing when the document prints no title of its own."""
+        if not self.document.show_title:
+            return
         title = self.document.title
         branding = self.document.branding
         if branding and branding.include_cover_page:

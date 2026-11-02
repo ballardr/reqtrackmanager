@@ -85,6 +85,7 @@ Lists unresolved Open Questions, with overdue and unowned ones flagged on the ro
 | --- | --- | --- |
 | Open Questions | Priority, status, owner, due date, days open | Working top-down. |
 | **Overdue** / **Unowned** (gap) | Past-due questions; questions with no owner | Assigning an owner, or resolving or withdrawing it. |
+| Open, not yet overdue | The open questions the **Overdue** table does not list, with the same columns | Placing it under **Overdue** in a custom report (as the Review Package does), so no question prints twice. |
 | By priority, By owner | Open counts; a group owner is one row, named with its kind | Balancing the load. |
 
 ## R5 Future State roadmap

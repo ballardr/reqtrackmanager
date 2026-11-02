@@ -7,6 +7,7 @@ own organisation.
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
 
 import pytest
 
@@ -193,6 +194,21 @@ def test_the_business_requirements_document_lists_what_the_project_holds(client,
     assert "Slow sign in" in html.text
     assert "The system shall log in users" in html.text
     assert "Business Requirements Document" in html.text
+
+
+def test_the_review_package_prints_each_open_question_once_under_one_heading(client, admin_token):
+    world = World(client, admin_token, "Starter Questions", context_strategy=True, keep_starter_layouts=True)
+    project = world.project("Questions")
+    cs = f"/api/v1/projects/{project['id']}/modules/context_strategy/open-questions"
+    past = (date.today() - timedelta(days=400)).isoformat()
+    for body in ({"question": "Cut-over date", "due_date": past}, {"question": "Keep Q2 pricing"}):
+        assert client.post(cs, json=body, headers=auth_headers(world.token)).status_code == 201
+
+    html = run_starter(world, project, "Review Package", "html").text
+
+    assert html.count("Cut-over date") == 1 and html.count("Keep Q2 pricing") == 1
+    assert html.index("Cut-over date") < html.index("Keep Q2 pricing")  # overdue first, then the open, not yet overdue
+    assert html.count("Open Questions</h") == 1
 
 
 def test_requirements_by_component_prints_each_requirement_under_its_component_and_category(world):

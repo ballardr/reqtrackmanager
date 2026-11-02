@@ -457,6 +457,10 @@ class Table:
         widths: The author's forced width per column (`30%`, `4 cm`, `40 mm`, or `None` for auto), or `None` when no column
             has one. Takes precedence over `col_widths_cm` and `weights`: every renderer then lays the table out with
             fixed columns (`services.report_column_width.resolve_table_widths_cm`).
+        aligned: Whether `weights` were set by the alignment rule (`services.report_table_alignment`), which may recompute them.
+        usual_widths: The usual width per column a module report declared (`ReportDefinition.usual_widths`; `None` for a column
+            with none), or `None` when it declared none. Unlike `widths` it is a starting point: the alignment rule fixes those
+            columns at the width and sizes the rest by content, and nothing happens when the layout turns the rule off.
     """
 
     columns: list[str]
@@ -467,6 +471,8 @@ class Table:
     weights: list[float] | None = None
     repeat_header: bool = True
     widths: list[str | None] | None = None
+    aligned: bool = False
+    usual_widths: list[str | None] | None = None
 
     def relative_widths(self, usable_cm: float) -> list[float]:
         """The column widths a word-processor renderer scales to the page: the forced widths resolved against `usable_cm`,
@@ -946,6 +952,10 @@ class ReportDocument:
         footer: The running footer of the document's own pages (`None`: the branding's footer text and page number
             as before; a layout's document always has one).
         styles: The document's fonts and heading colour (nothing set: each format's own look).
+        show_title: Whether the renderer prints `title` itself (a cover page or a title line). A custom layout's document
+            sets this off: it prints a title only through a block of its own, and `title` stays the file's metadata.
+        align_tables: Whether tables with the same headings are given one set of column widths (the layout's
+            `align_tables` setting; `services.report_table_alignment`).
     """
 
     title: str
@@ -958,6 +968,8 @@ class ReportDocument:
     header: RunningBand | None = None
     footer: RunningBand | None = None
     styles: DocumentStyles = field(default_factory=DocumentStyles)
+    show_title: bool = True
+    align_tables: bool = True
 
     @property
     def style(self) -> PageStyle:

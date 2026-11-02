@@ -390,7 +390,7 @@ def _table(block: Table) -> str:
             style = f' style="background-color:#{TONE_FILL[tone]};color:#{text_on(TONE_FILL[tone])}"' if tone else ""
             cells.append(f"<td{style}>{_cell_images(cell) if isinstance(cell, ImageCell) else _rich(cell)}</td>")
         rows.append(f"<tr>{''.join(cells)}</tr>")
-    classes = [*(["compact"] if block.compact else []), *(["fixed"] if block.widths else [])]
+    classes = [*(["compact"] if block.compact else []), *(["fixed"] if block.widths or block.aligned else [])]
     css = f' class="{" ".join(classes)}"' if classes else ""
     columns = ""
     if block.widths:
@@ -402,12 +402,32 @@ def _table(block: Table) -> str:
     return f"<table{css}>{columns}{first}{''.join(rows)}</tbody></table>"
 
 
-def _figure(block: Image, usable_cm: float) -> str | None:
+def _layer_left(block: Image, style: PageStyle) -> str:
+    """The CSS `left` of a picture laid over the page.
+
+    The browser has no pages, so the top is measured from where the block sits. The left is a share of the page's width
+    (the page is as wide as the view, never wider), so a margin or page anchor stays at the same place across the page in
+    a narrow preview pane instead of running off its edge.
+
+    Args:
+        block: A `behind` or `front` image.
+        style: The page style the block is on.
+
+    Returns:
+        A length in `cm` (a paragraph anchor) or a percentage of the page width.
+    """
+    if block.anchor == "paragraph":
+        return f"{block.offset_x_cm:g}cm"
+    from_page_edge = block.offset_x_cm + (style.margins.left + style.margins.gutter if block.anchor == "margin" else 0.0)
+    return f"{100 * from_page_edge / style.dimensions_cm[0]:.2f}%"
+
+
+def _figure(block: Image, page: PageStyle) -> str | None:
     """An image block as a `<figure>`: the picture at its placed width, alignment and alternative text, with its caption.
 
     A decorative picture has an empty `alt` and is hidden from assistive technology. `None` when it cannot be drawn.
     """
-    size = placed_size_cm(block, usable_cm)
+    size = placed_size_cm(block, page.usable_width_cm)
     if size is None:
         return None
     width, height = size
@@ -435,8 +455,7 @@ def _figure(block: Image, usable_cm: float) -> str | None:
         side = "left" if block.align == "left" else "right"
         return f'<figure class="image wrap-{side}" style="width:{width:g}cm;max-width:60%">{picture}</figure>'
     if block.floats:
-        # The browser has no pages: a margin or page anchor is measured from where the block sits, as a paragraph anchor is.
-        place = f' style="left:{block.offset_x_cm:g}cm;top:{block.offset_y_cm:g}cm"'
+        place = f' style="left:{_layer_left(block, page)};top:{block.offset_y_cm:g}cm"'
         return f'<div class="layer-anchor {block.placement}"><figure class="image"{place}>{picture}</figure></div>'
     align = block.align if block.align in ("left", "center", "right") else "center"
     inner = caption + picture if block.caption_above else picture + caption
@@ -468,7 +487,7 @@ def render_html_document(document: ReportDocument) -> bytes:
     """
     document = finalize_links(document)
     accent = _accent(document)
-    parts = [f"<h1>{_esc(document.title)}</h1>"]
+    parts = [f"<h1>{_esc(document.title)}</h1>"] if document.show_title else []
     branding = document.branding
     if branding and branding.logo_bytes:
         uri = _data_uri(branding.logo_bytes)
@@ -494,7 +513,7 @@ def render_html_document(document: ReportDocument) -> bytes:
         elif isinstance(block, NumberedList):
             parts.append(f"<ol{_own_style(block.font, block.size)}>" + "".join(f"<li>{_rich(item)}</li>" for item in block.items) + "</ol>")
         elif isinstance(block, Image):
-            figure = _figure(block, current.usable_width_cm)
+            figure = _figure(block, current)
             if figure:
                 parts.append(figure)
         elif isinstance(block, Table):

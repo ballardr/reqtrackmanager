@@ -3,7 +3,7 @@ import { expect } from "storybook/test";
 
 import { buildBlockCatalogue, buildOutlineTree } from "../testing/reportLayoutFixtures";
 import {
-  formatPath, getAt, insertNode, namesInScope, nodeAt, owningNode, parsePath, setAt, stableJson, summarise,
+  formatPath, getAt, insertNode, namesInScope, nodeAt, owningNode, parsePath, setAt, stableJson, summarise, parseTreeJson, treeToJson,
 } from "./reportLayoutTree";
 
 /** The pure helpers behind the block editor, exercised as plain functions (the stories render nothing). */
@@ -86,5 +86,18 @@ export const StableJsonIgnoresKeyOrder: Story = {
   play: async () => {
     await expect(stableJson({ b: 1, a: [2, { d: 1, c: 2 }] })).toBe(stableJson({ a: [2, { c: 2, d: 1 }], b: 1 }));
     await expect(stableJson({ a: 1 })).not.toBe(stableJson({ a: 2 }));
+  },
+};
+
+export const TheJsonViewReadsAnObjectAndExplainsAnythingElse: Story = {
+  play: async () => {
+    const tree = buildOutlineTree();
+    await expect(parseTreeJson(treeToJson(tree))).toEqual({ tree });
+    await expect(treeToJson({ a: 1 })).toBe('{\n  "a": 1\n}');
+    const broken = parseTreeJson("{ nope");
+    await expect(broken.tree).toBeNull();
+    await expect(broken.error).not.toBe("");
+    // JSON that is not an object is not a layout; the caller words the reason.
+    for (const text of ["[]", "3", "null", '"x"']) await expect(parseTreeJson(text)).toEqual({ tree: null, error: "", notObject: true });
   },
 };

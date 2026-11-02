@@ -659,7 +659,7 @@ Read top to bottom: the branch point is what kind of list this is; everything be
 
 ## Pattern: entity detail panel (view, not just create)
 
-`SidePanel` isn't only for creating something new — the same shape (a layer anchored to the row that opened it, portalled above the page, the list underneath left untouched) is also the right container for *viewing* one record's full detail without navigating away from the list it's part of. Open it read-only: no form fields, no Save button, just the data, with the same close affordance (✕, Escape, backdrop click) every other `SidePanel`/`Modal` already gives.
+`SidePanel` isn't only for creating something new — the same shape (a layer anchored to the row that opened it, portalled above the page, the list underneath left untouched) is also the right container for *viewing* one record's full detail without navigating away from the list it's part of. Open it read-only: no form fields, no Save button, just the data, with the same close affordance (✕, Escape, backdrop click, as it holds no form) every other `SidePanel`/`Modal` already gives.
 
 *Why:* every entity in the app worth looking at closely already gets a detail page or panel — a requirement, a change request, an action — except a user, who can be listed in Org Admin's Users table but never opened. An org admin auditing what one person actually has access to (which projects, which role on each, which org/project groups) has no equivalent of `RequirementDetailPage` to check, and has to reconstruct the answer by hand, project by project. The first candidate for this pattern is exactly that: a "view user" panel opened from a row in Org Admin's Users table (or a member row inside a group), listing their projects/roles/groups at a glance — see the roadmap in [docs/plans/completed/ux-audit-2026-08.md](plans/completed/ux-audit-2026-08.md#no-way-to-view-a-users-access).
 
@@ -871,7 +871,7 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 | Pick a person or group | `PrincipalFormField` (create/edit forms), `RecordPrincipalField` (detail pages; always the compact picker) |
 | A yes/no chosen while filling the form in, or a setting with a hint | `CheckboxField`; `ToggleField` for an on/off setting |
 | Layout | `FormGrid` with `FormGridFull` for titles, text areas and notes; `minColumn="18rem"` in a dialog (give the `Modal` `size="lg"`) |
-| The footer | `FormActions` (error, Cancel, primary; `leading` for a Back or Reset button) |
+| The footer | `FormActions` (error, primary; Cancel only outside a dialog; `leading` for a Back or Reset button) |
 | A pending upload that can still be dropped | `RemovableChip` |
 
 - Every field has a visible label. Where specs or users already know a field by an example placeholder, keep the placeholder as well, never instead of the label.
@@ -1063,6 +1063,7 @@ Every form field that is not self-explanatory carries a `(?)` help button after 
 - **Copy:** the text lives in `strings.help` in `frontend/src/i18n/strings.ts`, written for the end user in one or two sentences: what the field is, what it affects, a typical value. Terminology tokens (`{requirement}`, `{project}`) are filled in per organisation, so help follows the renamed terms.
 - **Opt out:** a self-explanatory field (a name, a title, a comment, an email) passes `helpNotNeeded` instead, which keeps the decision greppable. A field whose visible `hint` already explains it opts out too; do not show the same sentence twice. Never pass both.
 - **Enforced:** `scripts/check_field_help.py` (a pytest, `backend/tests/test_field_help.py`) fails on a field with neither prop. Its baseline (`scripts/field_help_baseline.json`) is empty: a new field decides when it is written.
+- **Instructions for a surface (not a field):** a paragraph that only teaches how to use an editor (the Blocks how-to, the grid editor's selection keys) goes behind a `FieldHelp` (?) placed beside the control it explains, not in a permanent line of canvas. A line that reports a *state* (read-only, conflict, unsaved, where the next block will go) stays visible.
 - **Definition-driven fields** (a custom field's label comes from its definition, a list of text areas from a field table) opt out: the label is data, not a place to hard-code copy.
 
 ## Pattern: list actions (export and import)
@@ -1100,12 +1101,29 @@ A list page keeps its place. After opening a record and returning (Back, or the 
 
 ## Pattern: form header
 
-A form in a `Modal` or `SidePanel` has a **header row** with the title and the form's actions (Cancel, Save, and Save and activate where [allowed](#pattern-save-and-activate)), and a **scrollable body**. Reason: Save below the fold on a long form means scrolling to the end to commit, and the foot of a different form is a different place every time.
+A form in a `Modal` or `SidePanel` has a **header row** with the title, the form's actions (Save, and Save and activate where [allowed](#pattern-save-and-activate)) and the Close (x) button, and a **scrollable body**. Reason: Save below the fold on a long form means scrolling to the end to commit, and the foot of a different form is a different place every time.
 
-- Create and edit forms are the same in this; there is no short-form exception. Close (x) and Escape behave as today.
-- The actions are `FormActions`, written where the form always put them: inside a `Modal` or `SidePanel` it portals its buttons into the dialog's header (and a save error under the title, so it is seen without scrolling) through `DialogFrame`; handlers and state stay in the form. A form that is a real `<form>` element submits with Enter as usual. Inside a `Popover`, or outside any dialog, it renders inline.
-- A dialog that is a form never hand-writes its own Cancel/primary row; `FormActions` takes `saveTone="danger"`, `cancelDisabled` and an optional `onSave` for the variations. A confirmation dialog (`ConfirmDialog`) is not a form and keeps its short footer.
+- Create and edit forms are the same in this; there is no short-form exception.
+- **There is no Cancel in a dialog.** Close (x) is the one way out besides Save, so two buttons never leave by different names. Outside a dialog (an inline form, a `Popover`) `FormActions` still shows Cancel.
+- **Leaving never loses work silently.** Escape and Close go through one close request: a dialog with nothing unsaved closes at once; one with unsaved changes asks "Discard unsaved changes?" with **Keep editing** (the default focus) and **Discard changes**. A click on the backdrop does nothing in a dialog that holds a form (a viewer, picker or confirm with no form still closes on it), and a browser tab close or reload with unsaved changes is warned about.
+- "Unsaved" is compared by value, so an edit undone back to the opened value is clean. A `Modal`/`SidePanel` that renders `FormActions` is measured from its inputs (their values at the first interaction against now). A form whose state the DOM does not show (a drawn table, a multi-step wizard that replaces its own fields) passes `dirty` itself; `dirty={false}` is for a step-by-step dialog with no typed work to lose.
+- The actions are `FormActions`, written where the form always put them: inside a `Modal` or `SidePanel` it portals its buttons into the dialog's header (and a save error under the title, so it is seen without scrolling) through `DialogFrame`; handlers and state stay in the form. A form that is a real `<form>` element submits with Enter as usual.
+- A dialog that is a form never hand-writes its own Cancel/primary row; `FormActions` takes `saveTone="danger"` and an optional `onSave` for the variations. A confirmation dialog (`ConfirmDialog`) is not a form and keeps its short footer, with its own Cancel.
 - Do not render Save at the foot as well, and do not hand-write a header row.
+- **A page-level editor** (the report layout designer) has no dialog header, so its Save sits in a bar pinned under the app header beside the view tabs (`.designer-bar`), with the count of problems that block it and any problems the server returned on save, so a disabled Save explains itself without scrolling. This is the one place a second Save at the foot is allowed: only when the view's content is taller than the window (`useTallerThanViewport`), because on a long page the foot is out of sight. Both are the same `SaveVersionButton` over one `saving` state.
+- Layering: `Modal`, `SidePanel` and `Popover` share one layer, so whichever opened last is on top (a popover inside a dialog, and a confirm opened from a popover, both sit over what opened them).
+
+```mermaid
+flowchart TD
+    A["Escape, Close (x)"] --> B{"Unsaved changes?"}
+    B -->|"no"| C["Dialog closes"]
+    B -->|"yes"| D["Discard unsaved changes?"]
+    D -->|"Keep editing"| E["Back to the form, changes intact"]
+    D -->|"Discard changes"| C
+    F["Backdrop click"] -->|"form dialog"| G["Nothing happens"]
+    F -->|"viewer, picker, confirm"| B
+    H["Save"] --> I["Saved, dialog closes"]
+```
 
 ## Pattern: bulk edit grid
 
@@ -1186,7 +1204,7 @@ Any colour a person sets on a report layout is chosen with `ColourChoiceField` (
 
 ## Pattern: custom table editor
 
-A table the author writes cell by cell (the report layout's **Table (custom)** block) is edited in a dialog, never in the side panel and never as JSON. The block's panel shows a read-only summary ("3 columns · 4 rows · 1 merged") and an **Edit table** button (`ReportGridField`); the dialog is a `Modal` with Undo, Redo, Cancel and Save in its header (`FormActions`), and Cancel discards every change. Inside it, `ReportGridEditor` draws the cells as `role="grid"` (one tab stop, arrow keys move, Shift extends, Enter edits the text; each cell is named "Row r, column c"): a blank cell has a dashed marker, a merged cell shows its span, and colours are drawn as printed. A toolbar of named icon toggles (merge, unmerge, horizontal and vertical alignment, bold) and two `ColourChoiceField`s (fill, text colour) apply to the selection, **or to whole columns or rows** through an "Apply to" choice, so a black first column is two clicks. Cell text is edited in the field under the grid, not in the drawn cell, so a merged cell has one editing target and the panel keeps its rule that a block shows no editable value on itself. A refused action says why (a merge may not cross the header rows); a text and fill pair that is hard to read warns and never blocks. Borders and the grid-wide style stay ordinary panel fields. A new editor that changes several keys of a block at once uses `ReportLayoutBlockField`'s `onChangeMany` so its Save is one tree change.
+A table the author writes cell by cell (the report layout's **Table (custom)** block) is edited in a dialog, never in the side panel and never as JSON. The block's panel shows a read-only summary ("3 columns · 4 rows · 1 merged") and an **Edit table** button (`ReportGridField`); the dialog is a `Modal` with Undo, Redo and Save in its header (`FormActions`); it passes `dirty` (the draft against the opened table), so closing with changes asks before discarding them. Inside it, `ReportGridEditor` draws the cells as `role="grid"` (one tab stop, arrow keys move, Shift extends, Enter edits the text; each cell is named "Row r, column c"): a blank cell has a dashed marker, a merged cell shows its span, and colours are drawn as printed. A toolbar of named icon toggles (merge, unmerge, horizontal and vertical alignment, bold) and two `ColourChoiceField`s (fill, text colour) apply to the selection, **or to whole columns or rows** through an "Apply to" choice, so a black first column is two clicks. Cell text is edited in the field under the grid, not in the drawn cell, so a merged cell has one editing target and the panel keeps its rule that a block shows no editable value on itself. A refused action says why (a merge may not cross the header rows); a text and fill pair that is hard to read warns and never blocks. Borders and the grid-wide style stay ordinary panel fields. A new editor that changes several keys of a block at once uses `ReportLayoutBlockField`'s `onChangeMany` so its Save is one tree change.
 
 ## Pattern: arranging what a scope is offered (placements)
 

@@ -132,7 +132,7 @@ export const UnsavedChangesAreSaidNotToBeCopied: Story = {
 export const CancelClosesWithoutCreating: Story = {
   play: async ({ args }) => {
     const d = await dialog();
-    await userEvent.click(d.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(d.getByRole("button", { name: "Close" }));
     await expect(args.onClose).toHaveBeenCalled();
     await expect(args.onDuplicated).not.toHaveBeenCalled();
   },

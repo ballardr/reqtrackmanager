@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, type MockInstance, spyOn, within } from "storybook/test";
+import { expect, type MockInstance, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../api/client";
 import { buildFieldCatalogue, buildLayoutDetail, buildWidgets, LAYOUT_TEXT, treeOf } from "../testing/reportLayoutFixtures";
@@ -39,6 +39,7 @@ export const OpensAProjectLayoutFromItsUrl: Story = {
   decorators: [withRouter("/projects/project-1/report-layouts/layout-1", "/projects/:projectId/report-layouts/:layoutId")],
   beforeEach: mockApis,
   play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("tab", { name: "Text" }));
     const editor = (await within(canvasElement).findByRole("textbox", { name: "Layout text" })) as HTMLTextAreaElement;
     await expect(editor.value).toBe(LAYOUT_TEXT);
     await expect(getSpy).toHaveBeenCalledWith("/api/v1/projects/project-1/report-layouts/layout-1");
@@ -49,6 +50,7 @@ export const OpensAnOrganisationLayoutFromItsUrl: Story = {
   decorators: [withRouter("/orgs/org-1/report-layouts/layout-1", "/orgs/:orgId/report-layouts/:layoutId")],
   beforeEach: mockApis,
   play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("tab", { name: "Text" }));
     await within(canvasElement).findByRole("textbox", { name: "Layout text" });
     await expect(getSpy).toHaveBeenCalledWith("/api/v1/orgs/org-1/report-layouts/layout-1");
     // An organisation layout previews across the organisation's projects, so it lists them to choose from.

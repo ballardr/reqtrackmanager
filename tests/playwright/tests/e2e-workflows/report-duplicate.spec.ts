@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectProjectAdminGroup, closeDialogWithoutSaving, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -67,6 +67,7 @@ test.describe("Duplicate a report", () => {
     await dialog.getByRole("button", { name: "Create copy" }).click();
 
     await expect(page.getByRole("heading", { name: `${name} (copy)` })).toBeVisible();
+    await openDesignerTextView(page);
     await expect(page.getByRole("textbox", { name: "Layout text" })).not.toHaveAttribute("readonly", "");
   });
 
@@ -119,7 +120,7 @@ test.describe("Duplicate a report", () => {
 
     await dialog.getByRole("combobox", { name: "Copy into" }).selectOption({ label: "This project" });
     await expect(dialog.getByRole("button", { name: "Create copy" })).toBeEnabled();
-    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await closeDialogWithoutSaving(dialog, { unsaved: false });
     const orgLayouts = await (await request.get(`${API}/orgs/${org.id}/report-layouts`, { headers })).json();
     expect(orgLayouts.map((l: { name: string }) => l.name)).not.toContain(`${name} (copy)`);
   });

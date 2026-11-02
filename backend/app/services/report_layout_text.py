@@ -30,10 +30,11 @@ Responsibilities:
 - Let other block types add their text form (`register_text_form`), as they add a validator and an evaluator.
 
 Grammar (one statement per line; indentation is cosmetic):
-- `@layout document [portrait|landscape] [A3|A4|A5|Letter|Legal] [mirror] [repeatheader|norepeatheader] [margins top=<cm>
+- `@layout document [portrait|landscape] [A3|A4|A5|Letter|Legal] [mirror] [repeatheader|norepeatheader] [align|noalign] [margins top=<cm>
   bottom=<cm> left=<cm> right=<cm> gutter=<cm>]` or `@layout table` is the first line. The orientation, size, `mirror`
-  (mirrored margins for double-sided printing) and `norepeatheader` (do not print a table's heading row again on each page it
-  runs onto; on otherwise) come in any order, each once; `margins` comes last and each side is optional.
+  (mirrored margins for double-sided printing), `norepeatheader` (do not print a table's heading row again on each page it
+  runs onto; on otherwise) and `noalign` (do not give tables with the same headings one set of column widths; on otherwise)
+  come in any order, each once; `margins` comes last and each side is optional.
 - Either `@layout` line may add `anyprojects`, `oneproject` or `projecttree`: the projects the report runs for (any number, exactly one,
   or exactly one with its readable child projects merged in). Left out, any number.
 - A `@layout table` line may add `contents` (or `nocontents`): start the workbook with a generated Contents sheet. A
@@ -176,6 +177,8 @@ _BLOCK_PATH = re.compile(r"nodes(?:\[\d+\]\.(?:children|else_children))*\[\d+\]"
 VARIABLE_CLAUSES = ("label", "default", "options", "from")
 #: Layout line words for whether a table's header row is printed again on each page it runs onto (on unless `norepeatheader`).
 HEADER_REPEAT_WORDS = ("repeatheader", "norepeatheader")
+#: Layout line words for whether tables with the same headings share column widths (on unless `noalign`).
+ALIGN_WORDS = ("align", "noalign")
 CONTENTS_WORDS = ("contents", "nocontents")
 EMBED_WORDS = ("embedfonts", "noembedfonts")
 #: The settings of an `@style` line by part, and the flag words of the heading part (`word` then its negation).
@@ -878,11 +881,12 @@ class _Parser:
         self.tree["family"] = family
         # The orientation, the page size and `mirror` may come in any order, each at most once; `margins` ends the line.
         while word := cur.accept(
-            *ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS, *CONTENTS_WORDS, *EMBED_WORDS, *RUN_SCOPE_WORDS,
+            *ORIENTATION_WORDS, *PAGE_SIZE_WORDS, "mirror", *HEADER_REPEAT_WORDS, *ALIGN_WORDS, *CONTENTS_WORDS, *EMBED_WORDS, *RUN_SCOPE_WORDS,
         ):
             key = (
                 "orientation" if word in ORIENTATION_WORDS else "mirror_margins" if word == "mirror"
                 else "repeat_table_header" if word in HEADER_REPEAT_WORDS
+                else "align_tables" if word in ALIGN_WORDS
                 else "contents_sheet" if word in CONTENTS_WORDS
                 else "embed_fonts" if word in EMBED_WORDS
                 else "run_scope" if word in RUN_SCOPE_WORDS else "page_size"
@@ -891,7 +895,8 @@ class _Parser:
                 raise _Syntax(f"The {key.replace('_', ' ')} is written once.", offset)
             self.tree[key] = (
                 RUN_SCOPE_WORDS[word] if key == "run_scope"
-                else word in ("repeatheader", "contents", "embedfonts") if key in ("repeat_table_header", "contents_sheet", "embed_fonts")
+                else word in ("repeatheader", "align", "contents", "embedfonts")
+                if key in ("repeat_table_header", "align_tables", "contents_sheet", "embed_fonts")
                 else True if word == "mirror" else word
             )
         if cur.accept("margins"):
@@ -1488,6 +1493,8 @@ def format_tree(tree: dict[str, Any]) -> str:
         header += " mirror"
     if "repeat_table_header" in tree:
         header += " repeatheader" if tree["repeat_table_header"] else " norepeatheader"
+    if "align_tables" in tree:
+        header += " align" if tree["align_tables"] else " noalign"
     if "contents_sheet" in tree:
         header += " contents" if tree["contents_sheet"] else " nocontents"
     if "embed_fonts" in tree:

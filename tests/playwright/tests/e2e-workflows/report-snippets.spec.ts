@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { closeDesignerPreviewDialog, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { closeDesignerPreviewDialog, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -134,6 +134,7 @@ test.describe("Report snippets", () => {
   test("the Text view writes a snippet into the text, reports it, and undoes it while the text stands", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await newLayout(page, project.id, `E2E snippet text ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
     await editor.fill("@layout document\n\n@heading Existing heading\n");
     await expect(page.getByText("The text is valid.")).toBeVisible();
@@ -213,6 +214,7 @@ test.describe("Report snippets", () => {
   test("text with problems is not an insertion target, and a picture from a project's library is refused for an organisation layout", async ({ page, request }) => {
     const { org, headers, project, suffix } = await setup(page, request);
     await newLayout(page, project.id, `E2E snippet refusals ${suffix}`);
+    await openDesignerTextView(page);
     await page.getByRole("textbox", { name: "Layout text" }).fill("@layout document\n\n@nonsense here\n");
     await page.getByRole("button", { name: "Snippets" }).click();
     await page.getByRole("menuitem", { name: "Insert snippet" }).click();

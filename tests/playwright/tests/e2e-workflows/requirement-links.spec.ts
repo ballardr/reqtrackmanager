@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES, showLinkRelationships } from "./helpers";
+import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES, showLinkRelationships, closeDialogWithoutSaving } from "./helpers";
 
 /**
  * Job to be done: two requirements can be linked with a typed, bidirectional
@@ -121,7 +121,7 @@ test.describe("requirement traceability links", () => {
       // The search actually filters: only the matching requirement is offered.
       await expect(modal.getByLabel("Record").locator("option", { hasText: "SW-PERF-008" })).toHaveCount(1);
       await expect(modal.getByLabel("Record").locator("option", { hasText: "HW-FN-001" })).toHaveCount(0);
-      await modal.getByRole("button", { name: "Cancel" }).click();
+      await closeDialogWithoutSaving(modal, { unsaved: true });
       await addRequirementLink(page, "Depends on", "SW-PERF-008");
       await expect(linkBadge(page, "Depends on")).toBeVisible();
       await expect(page.getByRole("link", { name: /SW-PERF-008/ })).toBeVisible();

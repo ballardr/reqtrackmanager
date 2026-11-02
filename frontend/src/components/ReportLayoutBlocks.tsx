@@ -51,6 +51,7 @@ import {
 import type { SnippetSelection } from "../api/reportSnippets";
 import { insertedBlocks, withBlocksOf } from "../utils/reportSnippets";
 import { selectionOfBlock } from "../utils/reportSnippetSelection";
+import { FieldHelp } from "./FieldHelp";
 import { MenuButton } from "./MenuButton";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
 import { ImageStretchWarning } from "./ImageStretchWarning";
@@ -463,11 +464,12 @@ export function ReportLayoutBlocks({
 
   return (
     <div className="stack" role="region" aria-label={text.blocksLabel}>
-      <p className="text-muted" style={{ margin: 0 }}>{readOnly ? text.blocksReadOnlyHint : text.blocksHint}</p>
+      {readOnly && <p className="text-muted" style={{ margin: 0 }}>{text.blocksReadOnlyHint}</p>}
       <div className="row blocks-toolbar">
         {!readOnly && (
           <>
             {addMenu(text.addBlock, () => target)}
+            <FieldHelp label={text.blocksHelpLabel} help={text.blocksHint} />
             {snippets && images && (
               <ReportSnippetMenu
                 onInsert={() => setPickerOpen(true)}

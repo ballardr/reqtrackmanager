@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -64,12 +64,13 @@ test.describe("Report layout designer", () => {
     const { project, requirements, suffix } = await setup(page, request);
     const name = `E2E designed layout ${suffix}`;
     await createFromProjectAdmin(page, project.id, name);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
     await test.step("a new layout starts empty and valid", async () => {
       await expect(page.getByText("Version 1")).toBeVisible();
       await expect(page.getByText("The text is valid.")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
     });
 
     await test.step("a block shortcut writes the starting text and the checker accepts the result", async () => {
@@ -98,6 +99,7 @@ test.describe("Report layout designer", () => {
 
     await test.step("a reload shows the saved text", async () => {
       await page.reload();
+      await openDesignerTextView(page);
       await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveValue(/@each requirement sort title as req/);
     });
   });
@@ -113,6 +115,12 @@ test.describe("Report layout designer", () => {
       await expect(page.getByRole("region", { name: "Block editor" })).toBeVisible();
       await expect(inspector.getByText("Select a block to edit its settings.")).toBeVisible();
       await expect(page.getByText("Adding at the end of the layout")).toBeVisible();
+      // The how-to paragraph is not on the canvas; the (?) beside Add block opens it, and Escape closes it.
+      await expect(page.getByText(/Drag blocks on the canvas/)).toHaveCount(0);
+      await page.getByRole("button", { name: "Help: Using the block editor" }).focus();
+      await expect(page.getByRole("tooltip")).toContainText("Drag blocks on the canvas");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
       await expect(page.locator(".blocklyToolboxFlyout, .blocklyFlyout").first()).toBeHidden();
       await expect(page.getByRole("button", { name: "Run preview" })).toHaveCount(0);
       // Layout settings are not a section above the blocks: they open from the layout block.
@@ -191,7 +199,7 @@ test.describe("Report layout designer", () => {
     await test.step("a block with a problem says so and holds back saving", async () => {
       await inspector.getByRole("textbox", { name: "Heading", exact: true }).fill("");
       await expect(inspector.getByText("Must not be empty.")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
       await inspector.getByRole("textbox", { name: "Heading", exact: true }).fill("{{req.title}}");
       await expect(page.getByText("No problems.")).toBeVisible();
     });
@@ -216,6 +224,7 @@ test.describe("Report layout designer", () => {
     const panel = page.getByRole("complementary", { name: "Designer tools" });
 
     await test.step("the Text view's panel has Preview, Fields and Widgets", async () => {
+      await openDesignerTextView(page);
       await expect(panel.getByRole("tab")).toHaveText(["Preview", "Fields", "Widgets"]);
       await panel.getByRole("tab", { name: "Widgets" }).click();
       await expect(panel.getByRole("tab", { name: "Widgets" })).toHaveAttribute("aria-selected", "true");
@@ -243,6 +252,7 @@ test.describe("Report layout designer", () => {
 
     await test.step("a reload keeps the last tab of the Text view and the fold", async () => {
       await page.reload();
+      await openDesignerTextView(page);
       await expect(panel.getByRole("tab", { name: "Widgets" })).toHaveAttribute("aria-selected", "true");
       await page.getByRole("button", { name: "Hide designer panel" }).click();
       await page.reload();
@@ -254,6 +264,7 @@ test.describe("Report layout designer", () => {
   test("formatting and links written in the text view are previewed, saved and read back in the block editor", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E formatted layout ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
     await test.step("a heading and a formatted paragraph with a web link and a section link are typed", async () => {
@@ -285,6 +296,7 @@ test.describe("Report layout designer", () => {
   test("page orientation and size are set from the toolbar, written into the first line and used by the preview", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E page layout ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
     await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
@@ -299,12 +311,14 @@ test.describe("Report layout designer", () => {
     await saveNewVersion(page);
     await expect(page.getByText("Saved as version 2.")).toBeVisible();
     await page.reload();
+    await openDesignerTextView(page);
     await expect(page.getByRole("button", { name: "Page setup: Letter, landscape" })).toBeVisible();
   });
 
   test("margins and a page style are set in the Page setup dialog, used by a section, saved and read back in the block editor", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E page styles ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
     await test.step("margins, mirroring and a landscape A3 style are written as header lines", async () => {
@@ -350,6 +364,7 @@ test.describe("Report layout designer", () => {
   test("a header and footer are set in the Page setup dialog, shown with page numbers in the preview, saved and read back in the block editor", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E header layout ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
     await test.step("own text in the header's centre cell and the footer's right cell is written as @header and @footer lines", async () => {
@@ -398,6 +413,7 @@ test.describe("Report layout designer", () => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E fields layout ${suffix}`);
     // The caret sits inside an unfinished For each, so its name (req) is in scope.
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
     await editor.fill("@layout document\n\n@each requirement sort title as req\n  ");
     await editor.press("End");
@@ -416,6 +432,7 @@ test.describe("Report layout designer", () => {
   test("an equation is inserted, drawn in the preview, and a command that is not allowed is refused", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E equation layout ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
     const frame = page.frameLocator('iframe[title="Report preview"]');
 
@@ -439,13 +456,14 @@ test.describe("Report layout designer", () => {
     await test.step("a command outside the allowed list is a problem on its line and blocks saving", async () => {
       await editor.fill("@layout document\n\n@equation \\href{http://example.com}{x}\n");
       await expect(page.getByRole("button", { name: /^Line 3: .*\\href is not supported/ })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
     });
   });
 
   test("a mistake is listed by line, blocks saving and previewing, and a click goes to it", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E broken layout ${suffix}`);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
     await editor.fill("@layout document\n\n@heading Fine\n\n@bogus nothing\n");
@@ -453,19 +471,20 @@ test.describe("Report layout designer", () => {
     const problem = page.getByRole("button", { name: /^Line 5, column 1:/ });
     await expect(problem).toBeVisible();
     await expect(page.getByText("1 problem to fix")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
     await expect(page.getByRole("button", { name: "Run preview" })).toBeDisabled();
     await problem.click();
     await expect(editor).toBeFocused();
 
     await editor.fill("@layout document\n\n@heading Fine\n");
     await expect(page.getByText("The text is valid.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Save new version" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeEnabled();
   });
 
   test("leaving with unsaved changes asks first", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E unsaved layout ${suffix}`);
+    await openDesignerTextView(page);
     await page.getByRole("textbox", { name: "Layout text" }).fill("@layout document\n\n@heading Draft\n");
 
     await page.getByRole("button", { name: "Report layouts" }).click();
@@ -498,6 +517,7 @@ test.describe("Report layout designer", () => {
       const table = await searchReportSetup(page, name);
       await expect(table.getByRole("row", { name: new RegExp(`${name}.*The organisation`) })).toBeVisible();
       await item(table).click();
+      await openDesignerTextView(page);
       await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveAttribute("readonly", "");
       await expect(page.getByRole("note")).toContainText("read-only here");
       await expect(page.getByRole("button", { name: "Save new version" })).toHaveCount(0);
@@ -525,6 +545,7 @@ test.describe("Report layout designer", () => {
       await expect(duplicate.getByRole("textbox", { name: "Name" })).toHaveValue(`${name} (copy)`);
       await duplicate.getByRole("button", { name: "Create copy" }).click();
       await expect(page.getByRole("heading", { name: `${name} (copy)` })).toBeVisible();
+      await openDesignerTextView(page);
       await expect(page.getByRole("textbox", { name: "Layout text" })).not.toHaveAttribute("readonly", "");
       await expect(page.getByRole("textbox", { name: "Layout text" })).toHaveValue(/Shared heading/);
     });
@@ -546,6 +567,7 @@ test.describe("Report layout designer", () => {
     await expect(page.getByRole("heading", { name })).toBeVisible();
 
     await test.step("text declaring the other kind is refused before anything runs", async () => {
+      await openDesignerTextView(page);
       await page.getByRole("textbox", { name: "Layout text" }).fill("@layout document\n");
       await expect(page.getByRole("button", { name: /^Line 1: This is a table layout/ })).toBeVisible();
       await expect(page.getByRole("button", { name: "Run preview" })).toBeDisabled();
@@ -583,6 +605,7 @@ test.describe("Report layout designer", () => {
 
     await test.step("a fresh layout previews every project", async () => {
       await page.goto(designer);
+      await page.getByRole("tab", { name: "Preview", exact: true }).click();
       await page.getByRole("button", { name: /Projects/ }).click();
       await expect(checkbox(second.name)).not.toBeChecked();
       await expect(checkbox(project.name)).not.toBeChecked();
@@ -594,6 +617,7 @@ test.describe("Report layout designer", () => {
       await checkbox(second.name).check();
       await page.keyboard.press("Escape");
       await page.goto(designer);
+      await page.getByRole("tab", { name: "Preview", exact: true }).click();
       await page.getByRole("button", { name: /Projects/ }).click();
       await expect(checkbox(second.name)).toBeChecked();
       await expect(checkbox(project.name)).not.toBeChecked();
@@ -605,6 +629,7 @@ test.describe("Report layout designer", () => {
         `reqtrack.reportPreviewScope.organization.${org.id}.${layoutId}`, [second.id, "00000000-0000-0000-0000-000000000000"],
       ] as const);
       await page.reload();
+      await page.getByRole("tab", { name: "Preview", exact: true }).click();
       await page.getByRole("button", { name: /Projects/ }).click();
       await expect(checkbox(second.name)).toBeChecked();
       await page.keyboard.press("Escape");

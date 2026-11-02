@@ -518,3 +518,17 @@ export const AProblemInTheLayoutSettingsIsAWarningOnTheLayoutBlock: Story = {
     await expect(await canvas.findByText("Must be lower-case letters.")).toBeVisible();
   },
 };
+
+/** The instructions are one (?) away: not in the page until it is opened, reachable by keyboard, closed by Escape. */
+export const TheInstructionsAreBehindAHelpButton: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await workspaceOf();
+    await expect(canvas.queryByText(/Drag blocks on the canvas/)).not.toBeInTheDocument();
+    const help = canvas.getByRole("button", { name: "Help: Using the block editor" });
+    help.focus();
+    await expect(await screen.findByRole("tooltip", { hidden: true })).toHaveTextContent(/Drag blocks on the canvas/);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument());
+  },
+};

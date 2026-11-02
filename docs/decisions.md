@@ -15160,3 +15160,223 @@ Identify: a font key or size reaching CSS, ODT XML, Word's font table or a file 
 ### Verification
 
 `backend/tests/test_report_grid_fonts.py` (28): the tree rules and paths, a row or cell naming either refused, the fonts found at any depth, the text view (exact round trip, three mistakes, no font on a row), the cascade through the evaluator, an unchanged grid, a missing family's run note, the PDF faces and sizes, Word runs of that column only, ODT shared and declared styles, HTML, embedding, and a run through the API in all four formats. Storybook story for the column fields; Playwright `report-grid-fonts.spec.ts` (set a column to Mono in the table editor, read it in the Word XML, PDF and HTML).
+
+## Custom reports Phase 79: dialogs no longer close on an outside click, and closing with unsaved changes asks (2026-11-02)
+
+**Decided by: User** for the behaviour (a click outside does nothing; the only ways out are Close or Save; no separate Cancel; ask before discarding unsaved work; close at once when nothing is unsaved) and for the scope (every form dialog, not only the table editor). Everything marked Agent below is the implementing session's judgement and can be revisited.
+
+The cause was the shared `Modal`: every backdrop click closed it, and a form's draft state died with it. The fix is in the shared dialogs, so every form dialog behaves the same.
+
+```mermaid
+flowchart LR
+    M["Modal, SidePanel"] --> G["useDialogGuard<br/>requestClose, dirty, backdrop rule"]
+    G --> P["DiscardChangesDialog<br/>(on ModalBase, never guarded)"]
+    F["FormActions (in a dialog)"] -->|"registers: this dialog holds a form"| G
+    F -->|"Save only, no Cancel"| H["DialogFrame header"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **One guard for `Modal` and `SidePanel`.** `useDialogGuard` owns the close request: Escape and the header Close go through it; clean closes at once, unsaved opens `DiscardChangesDialog` (Keep editing is the first control, so it has focus). The prompt is built on `ModalBase` (the old `Modal` chrome, now unguarded), so it cannot itself ask. | User (behaviour); Agent (structure) |
+| 2 | **Backdrop.** A dialog that holds a form (it renders `FormActions`) or is given `dirty` ignores a backdrop click; a dialog with neither (a viewer, picker, `ConfirmDialog`) keeps closing on it. `dismissOnBackdrop` overrides. | User (form dialogs); Agent (viewers keep it) |
+| 3 | **Unsaved is by value.** A caller passes `dirty` when it can compare (the table editor compares its draft with the opened table, so an edit then undo is clean). A form that passes none is measured from the DOM: input, textarea, select and rich-text values are recorded at the first focus, pointer or key event inside the body and compared at close. Recording at the first interaction, not at mount, keeps a form that loads its values asynchronously from reading as edited. | Agent |
+| 4 | **Known limit of the measured form.** It sees only controls inside the dialog body: state a control does not show (a drawn table), or controls in a `Popover` portal, is invisible to it, so such a form passes `dirty`. An edit made with no preceding focus, pointer or key event (only a scripted one) is not seen. A step-by-step dialog replaces its own fields, so the measured values would always differ: `CsvImportWizard` passes `dirty={false}` (its file and mapping are re-derived on reopening). | Agent |
+| 5 | **No Cancel in a dialog.** `FormActions` renders Save (and Save and activate) only when it is inside a `Modal`/`SidePanel`; outside one (an inline form, a `Popover`) it keeps Cancel. A dialog with nothing but a Cancel (a read-only viewer built on `FormActions`) shows no button row; its Close is the header. `cancelLabel`/`cancelDisabled` apply to the inline case only. | User (no Cancel); Agent (inline keeps it) |
+| 6 | **Tab close or reload while unsaved** is warned about (`beforeunload`), the way the designer's own leave already is; the handler asks at event time, so it is never stale. | User (asked for); Agent (mechanism) |
+| 7 | **Found and fixed on the way: a dialog opened from a popover sat under it.** `Popover` was layer 1150 and `Modal`/`SidePanel` 1100, so the delete-folder confirm (opened from the folder popover) was covered by the popover and its Delete button could not be pressed (`report-picker-and-folders.spec.ts` failed on the unchanged code too). All three now share layer 1100, so DOM order decides: whatever opened last is on top, which keeps a popover over the dialog it was opened in. The field-help tooltip (1175) still sits above all of them. | Agent |
+| 8 | **Found and fixed on the way: a spec that predates the Reports list.** `custom-report-variables.spec.ts` looked for a layout link on the Reports page, which now lists layouts inside collapsed folders; it uses `openSetupReport` like the other report specs. | Agent |
+| 9 | **Not applicable:** a project-scoped vocabulary table, users and groups, human codes and search, time shapes, a bundle or export field, MCP tools, a per-module edit to a core file (the guard is generic and reads nothing about a module). | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a change to what dialogs do on close, with no change to authorisation, secrets, logging, retention or tenant isolation; the one data-handling point is that the measured form reads the dialog's own field values in the browser. Verify: the values are compared in memory and never stored, logged, sent or put in a URL (a typed secret in a form is not retained after the dialog closes; `beforeunload` carries no value, only the browser's own generic prompt). Remediate: nothing needed.
+
+### Verification
+
+Storybook: `Modal` (form ignores the backdrop, no Cancel, unchanged closes at once, changed asks and Keep editing keeps the change, Escape asks and Discard closes, edit-then-undo is clean, explicit `dirty` guards a dialog with no form), `SidePanel` (the same for a panel), `FormActions` (no Cancel in a dialog), `ReportGridField` (closing with changes asks, an outside click does nothing, undo back to the opened table closes at once); the 18 stories that clicked Cancel or typed then closed now click Close and answer the prompt. Playwright: the custom table editor spec covers a click outside, Keep editing, an undone edit closing at once and Discard; the 15 specs that clicked a form dialog's Cancel use `closeDialogWithoutSaving` (`e2e-workflows/helpers.ts`), and the Pain Point form spec covers Escape asking. Full Storybook suite and the affected Playwright specs pass.
+
+## Custom reports Phase 80: the preview prints only the layout's own title, and shows a page-anchored logo (2026-11-02)
+
+**Decided by: User** for the rule (a title prints only when the layout contains something that prints it; the layout's name stays the file's metadata title; confirmed 2026-11-02); **Decided by: Agent** for the mechanism and the HTML placement.
+
+**Reproduced** on the User's layout (project `b36758b7…`, layout `5c2fef61…`, version 4): a document layout with no title block, a header (`{{report_title}}` left, `{{project_name}}` right), one `heading` (`{{project_name}} - {{report_title}}`), an empty `grid`, a one-column requirement `table`, and an `image` block (SVG from the project library, 2.25 cm × 12 mm, `placement front`, `anchor page`, `offset_x 17.25`, `offset_y 0.5`).
+
+| Finding | Cause | Fix |
+|---|---|---|
+| A report title at the top of the first page that the layout does not contain | `report_html.py`, `report_pdf.py`, `report_docx.py` and `report_odt.py` each printed `document.title` (the layout's name) as a title line for every document, whatever its blocks; a starter's own `{{report_title}}` heading therefore appeared twice | `ReportDocument.show_title` (default on, for built-in reports); a layout's evaluated document sets it off (`report_layout_eval.py`, and the merged project fallback in `custom_report_run.py`). The four renderers print no title or cover when it is off; the name stays in `<title>`, the PDF information dictionary, Word core properties and ODT `meta.xml`. A layout never had a cover (its branding carries the accent colour only), so nothing else changes. |
+| The logo missing from the preview (PDF, Word and ODT drew it) | The HTML view has no pages; it put a `page` or `margin` anchored picture at `left: <offset> cm` from the block's own left edge. 17.25 cm across a pane narrower than about 21 cm put the picture past the right edge (clipped, and a horizontal scrollbar). The SVG itself was read and sanitised correctly | `_layer_left` in `report_html.py`: a `margin` or `page` anchor is placed across the page as a share of the page's width (the HTML page is as wide as the view, never wider): `(offset + left margin and gutter for a margin anchor) / page width`. A `paragraph` anchor keeps its cm offset; the offset down stays in cm from the block (the HTML has no page tops). Rendered in a 700 px window the logo is now at x 565 to 650, no overflow. |
+
+**Also removed (User, 2026-11-02):** a downloaded layout file opened with a line the layout did not contain (`<scope> · generated <date> UTC`, from `document_for`) and with the run's remarks (for example "N project(s) were left out because they have hidden this report"). A layout prints only what it contains, so `document_for` now returns the evaluated blocks only. The remarks are still in the run result, which the screen shows. Built-in module reports keep their scope line (`report_framework.py`). Vertical placement of a page-anchored picture in the preview is still approximate (it follows the block, not the page top).
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | A flag on the neutral `ReportDocument`, not a per-renderer rule, so the preview and the three downloads cannot disagree. Built-in reports keep their title and cover. | Agent |
+| 2 | HTML places margin and page anchors as a percentage of the page width. A parity test renders one fixture (header logo, body picture, page-anchored picture, no title) in all four formats and counts the pictures. | Agent |
+| 3 | The scope line and run remarks are dropped from a layout's file, not moved. | User |
+| 4 | **Not applicable:** a project-scoped vocabulary table, users and groups, human codes and search, time shapes, a bundle or export field (no stored field changes), MCP tools, a per-module edit to a core file. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a rendering change with no change to authorisation, secrets, logging, retention or tenant isolation. Verify: the title was already escaped by every renderer and still is; the new `left` value is built from numbers only (never from text) and the picture is still sanitised before it is inlined. Remediate: nothing needed.
+
+### Verification
+
+Backend: `test_report_layout_title_and_logos.py` (the title prints only when asked in HTML, PDF, Word and ODT; the name stays the metadata title; the four formats draw the same three pictures; the percentage placement for page, margin and paragraph anchors); `test_report_images.py` (the preview of a layout with a page-anchored logo and no title block prints no `<h1>`, and the heading block prints once) and the four older tests that pinned the centimetre placement now pin the percentage. The report suite passes (one unrelated `test_report_run_jobs` case failed once under `-n 4` and passes alone and on re-run). Playwright: `report-layout-images.spec.ts` checks the preview's placement and that no `<h1>` is printed.
+
+## Custom reports Phase 81: the designer's Save is pinned at the top (2026-11-02)
+
+**Decided by: User** for the behaviour (Save always at the top; a second one at the foot is optional); **Decided by: Agent** for pinning it, measuring "long" and the problem count.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The view tabs, the Save button, a "Fix N problems to save" count and the problems the server returned on save are one bar (`.designer-bar`), sticky under the app header, so Save is reachable on a layout of any length and a disabled Save says why without scrolling. The count has its own wording ("Fix 1 problem to save") so it never duplicates the view's own "1 problem to fix" heading. | Agent |
+| 2 | A second Save appears at the foot only when the view's content is taller than the window (`useTallerThanViewport`, a `ResizeObserver` on the content, not on the foot, so the answer cannot flip around the threshold). Both are the same `SaveVersionButton` over one `saving` state. The Blocks canvas is tall by design, so in a normal window the Blocks view shows both; the Text view shows one until it is long. | Agent |
+| 3 | Specs that find Save by role take `.first()` (the pinned one); `saveNewVersion` does too. | Agent |
+| 4 | **Not applicable:** the report pack editor keeps its single Save (a short form); a project-scoped vocabulary table, users and groups, human codes and search, time shapes, bundles and exports (no stored field changes), MCP tools, a per-module edit to a core file. | Agent |
+
+Security review (identify, verify, remediate): a layout change only; no authorisation, secrets, logging, retention or tenant isolation is touched, and the save path (version check, server validation) is unchanged.
+
+Verification: Storybook `ReportLayoutDesigner` (pinned bar with a single Save for a short layout, two for a long one with both enabled together, the problem count beside Save); Playwright `report-designer-save-bar.spec.ts` (one Save when short, two when long, both in view after scrolling to the bottom, the top one saves, the count explains a disabled Save), and the existing designer, images and spacer specs updated to the pinned button.
+
+## Custom reports Phase 82: the designer's how-to paragraphs are behind a (?) (2026-11-02)
+
+**Decided by: User** for the Blocks hint behind a (?); **Decided by: Agent** for the sweep and the reuse of `FieldHelp`.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `FieldHelp` (label + text) is already a standalone pinnable tooltip button, so it is used directly beside a control; no second help component was written. The Blocks hint (`outline.blocksHint`) is the (?) beside **Add block** ("Help: Using the block editor"); the text is unchanged. | User (hint); Agent (reuse) |
+| 2 | **Moved:** Blocks `blocksHint`; the grid editor's `selectionHint` (a (?) at the end of the structure toolbar, "Help: Selecting cells"); the table field's `summaryHint` (a (?) after the "2 columns · 1 row" summary, "Help: Editing the table"). | Agent |
+| 3 | **Kept visible (state, not teaching):** `blocksReadOnlyHint` (why editing is off), the read-only and conflict notices, the checking / no-problems line, problem lists, and the "adding at the end of the layout" target line (it changes with the selection). In a read-only grid there is no toolbar, so the selection hint is not offered (selecting does nothing there). | Agent |
+| 4 | **Not applicable:** the Text view has no permanent teaching paragraph, so nothing moved there. Not applicable: vocabulary tables, human codes, search, time shapes, bundles, exports, MCP tools, a per-module edit to a core file. | Agent |
+
+Security review (identify, verify, remediate): copy and layout only; no authorisation, secrets, logging, retention or tenant isolation is touched.
+
+Verification: Storybook `ReportLayoutBlocks` (paragraph absent, (?) shows it on focus, Escape closes), `ReportGridEditor` (selection hint behind (?)); Playwright `report-layout-designer.spec.ts` block-editor test (paragraph not in the page, (?) opens it, Escape closes it); `scripts/check_field_help.py` passes.
+
+## Custom reports Phase 83: the designer's views are Blocks, Text and JSON (2026-11-03)
+
+**Decided by: User** for the tab order, opening on Blocks, the raw-tree content, the single note and that the JSON is editable; **Decided by: Agent** for the validation design and the state handling.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `EditView` is `"blocks" \| "text" \| "json"`, tabs in that order; a layout (and a reload after a conflict) opens on Blocks. No per-person memory of the last view yet. | User |
+| 2 | The JSON view is the editable raw tree: pretty-printed JSON in the shared auto-growing textarea (`aria-label` "Layout JSON"), one note ("For advanced use only. …"), no toolbar, snippets, pickers or side panel (the grid collapses to one column through `layout-designer--single`). The page's single Save (with the foot copy for a long tree) is the only action. | User (content, note, editable) |
+| 3 | Every path to Save goes through the existing `validate` endpoint after the text is parsed with `JSON.parse` (`parseTreeJson`); the parser's own message (with its position), a wrong `family`, and the server's problems by path are listed; Save stays disabled while any exist. The client checks only that the text is a JSON object; the server stays the only judge of content (depth and node caps, field names, no raw HTML block), so a pasted tree is never trusted. | Agent |
+| 4 | Switching **away** from the JSON needs valid JSON of the layout's kind that passes `validate`, else the switch is refused with the reason and the view stays (as Text does). Switching with valid JSON adopts the tree: Blocks takes it as its tree, and the text view's text is regenerated from it (`formatTree`), so the three forms cannot drift. Blocks → JSON shows the tree whatever its problems (it is a raw view); Text → JSON needs text that reads cleanly. | Agent |
+| 5 | The author's own wording is kept when the tree has not changed: Text → JSON → Text with the same tree leaves the text alone (`enteredTree` compared with `stableJson`). | Agent |
+| 6 | Dirty is by value: the parsed JSON against the saved tree (invalid JSON counts as changed). After a save from the JSON, the draft text, the block tree and the entered tree are set from the saved tree. | Agent |
+| 7 | `ReportLayoutJsonField` (JSON for a tree-valued block parameter) is unrelated and untouched; the new view is built into the designer (`jsonView` strings), not a second field component. | Agent |
+| 8 | Two defects the new default exposed were fixed in the same change: the Text view did not check its text on arrival when it was unchanged (Preview stayed disabled), and a Blocks check still in flight could write over text typed in the Text view in the first moments after a layout opened. Each view's check now stops writing once the view is left (`left` flag in its effect), and the Text check depends on the view. | Agent |
+| 9 | **Not applicable:** no new field or record type (nothing for help text, required markers, codes, search, bundles, export/import, perf probes), no new module setting, no time or user/group reference. Only the designer's default view changes: the Playwright specs that edit the layout as text now switch to it first (`openDesignerTextView`). | Agent |
+
+Security review (identify, verify, remediate): no authorisation, secrets, logging or tenant isolation is touched. The JSON a person pastes is untrusted input and goes through the same server-side `validate` and save as every other view, with the version lock; the text is held in the browser only and is not logged or put in a URL.
+
+Verification: Storybook `ReportLayoutDesigner` (tab order and Blocks default, JSON shows the raw tree and only a note, edit then save sends that tree and Text shows it, unsaved JSON carries into Blocks, invalid JSON and server problems block Save and the switch, read-only JSON); Playwright `report-designer-views.spec.ts` and the existing designer specs (updated for the new default view, and for two stale selectors: the *Table (records)* block title and the h2 a level-1 heading prints as), 104 + 29 passing across `report-*` and `custom-report-*`.
+
+
+## Custom reports Phase 84: tables with the same columns, measured and the mechanism chosen (2026-11-03)
+
+Investigation only: no product code changed. **Decided by: User** for the mechanism (alignment by rule, plus usual widths declared by module reports) and for Q1; **Decided by: Agent** for the findings and the reading of the cause.
+
+**Cause, measured** with the Review Package's Open Questions pair (nine identical headings; the *Open* table has three rows, *Overdue* one), as a width-less compact `Table` (what `report_widget_run.part_blocks` emits):
+
+| Format | Today | Lines up? |
+|---|---|---|
+| PDF | each table sized from its own cells (`_content_widths`): column 2 is 2.30 cm in one, 1.75 cm in the other | no |
+| HTML preview | no `colgroup`; the browser lays out each table from its cells | no |
+| Word | `Table.relative_widths` gives equal columns (2.00 cm × 9) | yes, but ignores the content |
+| OpenDocument | the same equal columns | yes, but ignores the content |
+| XLSX / ODS | a widget is a document-layout block; a sheet layout stacks same-named sheets under a Project column (`_merge_sheets`), so one sheet | not applicable |
+
+- **The nested merge is not a cause.** A merged project tree gives the widget collector several projects and one table with a Project column; an organisation-wide run evaluates the layout once per project and concatenates the documents under one heading per project (`custom_report_run`), so it prints one pair per project. Every one of these reaches the renderers as the same width-less `Table`, which is why one rule covers all three.
+- **The plan misread `ReportSection.gap`.** It means "this table lists problems to fix" (`report_framework.ReportSection`), not spacing. The tables touch in the **PDF** only: its story adds nothing after a table. Word (an empty paragraph), OpenDocument (0.2 cm after the table) and the preview (0.8 rem margin) already separate them.
+- **All four renderers already honour `weights`** on a width-less table (PDF `weights` branch, HTML `colgroup`, Word and ODT through `Table.relative_widths`), so the rule is computed once in the evaluator and needs no per-renderer alignment code. Word and ODT will change from equal to content-based columns.
+- **Same-heading pairs on the starters:** the Review Package's Open/Overdue widgets (same report, same columns) are the only adjacent pair with identical headings; its other adjacent widgets (review schedule, treatment coverage) are different reports and the Business Requirements Document's adjacent record tables differ in their columns. Module reports with several sections sharing one column list (Open Questions open/overdue/unowned, Decisions, Risks, Stakeholders, Strategy cascade gaps) are what an author can place together, so Phase 87 reads each as rendered.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | Alignment by rule: same-heading tables in a document share one set of widths from the evaluator (Phase 85), an off switch per layout and usual widths declared by module reports (Phase 86). No per-widget width control. | User |
+| 2 | The Review Package's first Open Questions table shows only the not-yet-overdue questions, so no row prints twice. The register's `open` section is unchanged; a new `not_overdue` section feeds the starter (Phase 85e). | User |
+| 3 | The PDF gets a fixed gap after a table that is followed by another table; the other formats already separate them (Phase 85c). | Agent |
+| 4 | A skipped target test per format (`tests/test_report_table_alignment.py`) holds the pair; Phase 85 removes the skips. One test passes now and records today's per-table sizing. | Agent |
+
+**Not applicable:** no field, record type, setting, user/group reference, time value, bundle, export/import, perf probe or MCP tool changed (Phase 85e will touch the module's MCP reference). The scaling probes are unaffected.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched; only reading and a test file.
+
+Verification: `tests/test_report_table_alignment.py` (1 passed, 4 skipped by design). Widths measured by rendering the pair through the four renderers.
+
+## Custom reports Phase 85: tables with the same headings share one set of column widths (2026-11-03)
+
+Built to the mechanism the User chose in Phase 84. **Decided by: User** for the rule and for the Open Questions change (Q1); **Decided by: Agent** for the details below.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `services/report_table_alignment.align_tables` runs on the finished document: tables with identical headings and the same usable page width (tracked through `PageStyleChange`) form a group; each column takes the largest `column_needs` in the group, resolved by `resolve_table_widths_cm` (8 mm floor) and written to `Table.weights` with `aligned=True`. No renderer has alignment code. | User (rule), Agent (details) |
+| 2 | The author wins: a table with `widths`, `col_widths_cm` or an engine `weights` (image column) is never regrouped. An empty table, a one-column table and a lone table are left as they are. `aligned` marks the rule's own weights so it can recompute them. | Agent |
+| 3 | An organisation-wide run applies the rule again after joining the projects' documents, so the per-project tables line up across projects. | Agent |
+| 4 | The HTML preview adds `table-layout: fixed` to an aligned table; `<col>` percentages alone are a hint the browser overrides with the content. | Agent |
+| 5 | The PDF puts `TABLE_GAP_CM` (0.4 cm) after a table that is followed by a table. The PDF's lone-table sizing (`_content_widths`) now uses the shared `column_needs`. | Agent |
+| 6 | The register report gains a section `not_overdue` ("Open, not yet overdue", the same nine columns); the Review Package prints *Overdue* then that, so no question prints twice. The register's own `open` section is unchanged, but the standalone report now also lists the new section. | User (Q1), Agent (placement) |
+
+**Measured:** the Open/Overdue pair now has equal column widths in the PDF, Word, OpenDocument and the preview (`tests/test_report_table_alignment.py`; the Phase 84 skips are removed). Word and OpenDocument change from equal columns to content-based ones.
+
+**On-screen run view (added after the User agreed, 2026-11-03; Decided by: User):** `ReportSection` and `ReportSectionOut` gain optional `weights`; a layout run sets them from an aligned `Table` (`_sections_of_document`), and a module report leaves them `None`. `ReportSectionTable` lays a section with weights out with a `<colgroup>` in percentages and the `report-table-aligned` class (`table-layout: fixed`, long words break in their column), so the on-screen sections line up like the documents. Only the rule's own weights are carried (an author's forced widths and image-column weights are not shown on screen, as before).
+
+**Not applicable:** no field, record type, setting, user/group reference, time value, bundle, export/import or perf probe changed. The MCP module-tools reference is generated from the report definitions and did not change (the part list is not in it). The change is in memory after collection (no queries, no per-row calls), so no T2 re-run of the report-run scenario is needed.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched.
+
+Verification: `test_report_table_alignment.py`, the report/starter/run test files (2911 passed; one `test_report_run_jobs` test failed under `-n 4` and passed alone), mypy ratchet, ruff, and the Playwright spec `report-table-alignment.spec.ts` (preview and on-screen columns measured from the rendered boxes), plus the `ReportViewer` story `AlignedSectionsShareColumnWidths`.
+
+
+## Custom reports Phase 86: an alignment switch per layout and usual widths from module reports (2026-11-03)
+
+Adds the off switch and the module-declared widths the Phase 84 decision called for. **Decided by: User** for the existence of both (Phase 84 answer); **Decided by: Agent** for the details.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The layout root gains `align_tables` (boolean, default on, document layouts only), next to `repeat_table_header`: text words `align`/`noalign` on the `@layout` line, a **Line up tables with the same columns** checkbox in Page setup, the generic Blocks layout-settings field from the block schema, `ReportDocument.align_tables`. It is part of the tree, so it travels in bundles and copies with no bundle code. | Agent |
+| 2 | `align_tables` returns the document unchanged when the switch is off, and the usual widths are then not applied either: off means the sizing from before the rule existed. | Agent |
+| 3 | `ReportDefinition.usual_widths` (column heading to `30%`/`4 cm`/`40 mm`, in every table of the report, the `cell_tones` precedent) is the registry extension point; no core file names a module. `collect_widget` copies it onto each section (`ReportSection.usual_widths`) and `part_blocks` onto `Table.usual_widths`. | Agent |
+| 4 | The rule fixes the named columns at their width and the others share the rest by content (`resolve_table_widths_cm`), for a group and for a lone table with usual widths. An author's forced width still wins. | Agent |
+| 5 | Declared only for short, predictable columns (status, priority, dates, counts, code) on Open Question register, Decision register and Approval ageing; long-text columns are left to share by content. Requirements are not a module report (the starters' record tables already use `USUAL_WIDTHS`). Only widgets use usual widths; a module report's own PDF is unchanged. | Agent |
+| 6 | The plan allowed dropping the usual widths if Phase 85 read well; they were kept because the User chose them in Phase 84. | User |
+
+**Tests:** `test_report_table_alignment.py` (switch off, usual widths for a lone table and a group, off ignores them, the author wins, tree validation and text round trip), each declaring module's report tests (`unknown_usual_widths` names no heading the report lacks and every spec is a width), the layout-settings field list, the `ReportLayoutPageSetup` story `TheAlignTablesSwitchIsWrittenAsAWordAndKept`, and the Playwright spec (a layout with `align_tables: false` leaves the two tables differently sized).
+
+**Not applicable:** no table, column, record type, user/group reference, time value, export/import or perf probe changed. The MCP tools are unchanged; the skill's prose mentions the new layout key (`mcp-server/skill/reqtrack-mcp/SKILL.md`), and the module-tools reference did not change. The rule still runs in memory after collection, so no T2 re-run is needed.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched; the new tree key is validated as a boolean and refused on a table layout.
+
+Verification: the files above plus the report, starter, run, widget and skill-reference suites (244 passed with `-n 4`), the layout tree/text/image-column tests (393 passed), ruff, the mypy ratchet (no new errors), `tsc`, eslint, the two Storybook files and `report-table-alignment.spec.ts` (3 passed against a rebuilt stack). Not run: the full backend suite (Phase 87 runs it once, alone) and `mcp-server/tests/test_skill.py`, whose `fastmcp` import is not installed in this virtualenv (it errors before and after this change).
+
+## Custom reports Phase 87: the starters read as rendered, and the aligned tables checked across formats (2026-11-03)
+
+Closes the twelfth review. **Decided by: Agent** throughout (no new choice was needed).
+
+**Read as rendered.** The Review Package (on a merged project tree, a parent and a child with open questions, two overdue) and the Business Requirements Document were run to PDF, Word, OpenDocument and HTML and read: the PDF as page images, the Word and OpenDocument files by their table grids (no LibreOffice or Word is installed on the host, so they were not opened in an application), the preview by its `<col>` widths.
+
+| Check | Result |
+|---|---|
+| Review Package, Overdue and *Open, not yet overdue* tables | Same nine widths in every format; content-based (question 6.5 cm, project 3.0 cm, priority 2.1 cm on A4 landscape in Word), not the equal columns Word and OpenDocument used before the rule |
+| A question printing twice | None: OQ-001 and OQ-003 (and the child's copies) are under *Overdue* only, *Keep Q2 pricing* under the second table only |
+| Gap between consecutive tables in the PDF | 0.4 cm, as the page image shows |
+| Merged project tree | One Project column, the pair aligned; the child's questions are rows in the same table |
+| Business Requirements Document | Its adjacent tables have different headings and are left alone, as Phase 84 found; the three *Measure / Value* tables are identical in width |
+| Other starters | Covered by the parametrised test below (they hold no same-heading pair today) |
+| `{{generated_on}}` | The caller's day, as before (the test client sends no `X-Client-Date`, so it prints the UTC day there) |
+
+No defect was found. XLSX and ODS were not re-read: Phase 84 recorded that a sheet layout stacks same-named sheets under one Project column, so alignment does not apply.
+
+**Tests.** `tests/test_report_starter_alignment.py`: every document starter runs on a project holding open questions, a requirement, a pain point and a decision, in the preview, Word and OpenDocument, and every group of tables with identical headings must have one set of widths (grouped by the headings found, so a later starter or module report is covered without an edit); the Review Package pair must exist in each format and Word/OpenDocument must follow content, not equal columns (so the check fails if the rule is removed, which was verified by disabling `align_tables`); the same for a parent with a child merged and for an organisation-wide run over two projects. The preview alone cannot tell the rule is off in a way that fails the grouping (an unaligned table has no `<col>`), so the Review Package test also requires a compared group.
+
+**Seeds.** No new field, setting or record type: `seed_demo_data.py` and `seed_e2e_dataset.py` are unchanged. The seeded Review Package still has the *Overdue* and *Open, not yet overdue* pair, since both start from the Open Question register. Neither script was run (the test database is shared).
+
+**Performance pages reviewed:** `sizing-and-performance.mdx` and `performance-testing-method.md` need no change. The alignment rule runs in memory after collection (no queries, no per-row calls), so no measured number moves and no T2 re-run is needed.
+
+**Docs.** The designer page and `docs/modules.md` already describe the rule and the switch (Phases 85 and 86). This phase adds the Review Package's wording and the *Open, not yet overdue* section to the Custom reports overview and the Context & Strategy report reference.
+
+**Not applicable:** no field, record type, user/group reference, time value, bundle, export/import, perf probe or MCP tool changed.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched; a test file and documentation only.

@@ -69,7 +69,7 @@ test.describe("Report column widths", () => {
     await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
     await page.getByRole("tab", { name: "Blocks" }).click();
-    await page.locator(".blocklyText.rl-block-title", { hasText: /^Table$/ }).first().click();
+    await page.locator(".blocklyText.rl-block-title", { hasText: /^Table.\(records\)$/ }).first().click();
     const inspector = page.getByLabel("Block details");
 
     await test.step("each column has a Width, automatic until set", async () => {

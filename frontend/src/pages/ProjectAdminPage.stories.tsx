@@ -934,7 +934,7 @@ export const MembersTabAddMemberModalOpen: Story = {
     // The table underneath stays visible — a layer, not a page reflow.
     await expect(canvas.getByText("Priya Shah")).toBeInTheDocument();
 
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   },

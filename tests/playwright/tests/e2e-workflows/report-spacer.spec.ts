@@ -55,7 +55,7 @@ test.describe("Report layout spacer", () => {
       const inspector = page.getByLabel("Block details");
       await inspector.getByRole("spinbutton", { name: "Height", exact: true }).fill("500");
       await expect(page.getByText(/The height must be a number from 0\.1 to 20 cm/)).toBeVisible();
-      await expect(page.getByRole("button", { name: "Save new version" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
       await inspector.getByRole("combobox", { name: "Height unit" }).selectOption({ label: "Millimetres (mm)" });
       await inspector.getByRole("spinbutton", { name: "Height", exact: true }).fill("15");
       await expect(page.getByText("No problems.")).toBeVisible();

@@ -80,8 +80,8 @@ REPORT_STARTER_SECTIONS: tuple[ReportStarterSection, ...] = (
     )),
     ReportStarterSection(REVIEW, 40, section(
         "Open Questions",
-        "Questions still open, and those past their due date.",
-        widget("context_strategy.open-question-register.open", "No Open Questions."),
+        "Questions past their due date, then those still open.",
         widget("context_strategy.open-question-register.overdue", "No Open Questions are overdue."),
+        widget("context_strategy.open-question-register.not_overdue", "No other Open Questions."),
     )),
 )

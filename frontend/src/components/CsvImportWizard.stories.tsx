@@ -182,9 +182,7 @@ export const FailedRowsOfferAnErrorFile: Story = {
     await expect(await modal.findByText("Row 3: Unknown component 'ZZZ'.")).toBeInTheDocument();
     await expect(modal.getByRole("button", { name: "Download error file" })).toBeEnabled();
     await expect(args.onClose).not.toHaveBeenCalled();
-    // The dialog's own ✕ is also named "Close"; the text button is the one in the header actions.
-    const textClose = modal.getAllByRole("button", { name: "Close" }).find((b) => b.textContent === "Close")!;
-    await userEvent.click(textClose);
+    await userEvent.click(modal.getByRole("button", { name: "Close" }));
     await expect(args.onClose).toHaveBeenCalledOnce();
   },
 };

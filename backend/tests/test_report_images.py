@@ -515,6 +515,20 @@ def preview(world: World, project: dict, tree: dict) -> dict:
     return resp.json()
 
 
+def test_the_preview_prints_a_title_only_when_the_layout_has_a_block_for_it_and_draws_a_page_anchored_logo(world):
+    project = world.project("Alpha")
+    file_id = upload(world, project_images(project), png()).json()["id"]
+    logo = {
+        "type": "image", "file": file_id, "alt": "Logo", "placement": "front", "anchor": "page",
+        "offset_x": 17.25, "offset_y": 0.5, "width": 2.25,
+    }
+    bare = preview(world, project, {**empty_tree("document"), "nodes": [logo, {"type": "text", "text": "Body"}]})["html"]
+    assert "<h1>" not in bare and "Alpha</h1>" not in bare
+    assert '<figure class="image" style="left:82.14%;top:0.5cm"><img' in bare
+    titled = preview(world, project, {**empty_tree("document"), "nodes": [logo, {"type": "heading", "text": "{{report_title}}", "level": 1}]})["html"]
+    assert "<h1>" not in titled and titled.count("<h2") == 1
+
+
 def test_a_run_draws_the_picture_with_numbered_captions_in_order(world):
     project = world.project("Alpha")
     first = upload(world, project_images(project), png()).json()["id"]
@@ -994,7 +1008,7 @@ def test_html_floats_a_wrapped_picture_to_the_side_it_is_aligned_to():
 @pytest.mark.parametrize("placement", ["behind", "front"])
 def test_html_lays_a_layered_picture_over_the_text_at_its_offsets(placement):
     html = render_html_document(document_with(layered(placement=placement, anchor="page", offset_x_cm=2, offset_y_cm=-1.5))).decode()
-    assert f'<div class="layer-anchor {placement}"><figure class="image" style="left:2cm;top:-1.5cm"><img' in html
+    assert f'<div class="layer-anchor {placement}"><figure class="image" style="left:9.52%;top:-1.5cm"><img' in html
     assert "div.layer-anchor.behind > figure.image { z-index: -1; }" in html and "body { isolation: isolate;" in html
 
 
@@ -1015,7 +1029,7 @@ def test_a_run_carries_placement_anchor_and_offsets_into_every_format(world):
         {"type": "image", "file": file_id, "alt": "b", "placement": "behind", "anchor": "page", "offset_x": 2, "offset_y": 3, "width": 6},
     ]
     html = preview(world, project, {**empty_tree("document"), "nodes": nodes})["html"]
-    assert 'class="image wrap-right"' in html and '<div class="layer-anchor behind"><figure class="image" style="left:2cm;top:3cm"' in html
+    assert 'class="image wrap-right"' in html and '<div class="layer-anchor behind"><figure class="image" style="left:9.52%;top:3cm"' in html
 
 
 def test_saving_a_layout_with_a_caption_on_a_floating_picture_is_refused_with_the_path(world):

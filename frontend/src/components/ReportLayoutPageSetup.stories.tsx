@@ -139,6 +139,23 @@ export const ReadsHeadersAndFootersFromTheText: Story = {
   },
 };
 
+/** The alignment switch is written as `noalign`, kept when the rest of the setup is rewritten, and dropped when switched back on. */
+export const TheAlignTablesSwitchIsWrittenAsAWordAndKept: Story = {
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const box = dialog.getByRole("checkbox", { name: "Line up tables with the same columns" });
+    await expect(box).toBeChecked();
+    await userEvent.click(box);
+    await expect(text(canvasElement).textContent).toBe("@layout document noalign\n\n@heading Hello\n");
+    await expect(within(canvasElement).getByRole("button", { name: "Page setup: A4, portrait" })).toHaveClass("btn-marked");
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Repeat table header rows" }));
+    await expect(text(canvasElement).textContent).toBe("@layout document norepeatheader noalign\n\n@heading Hello\n");
+    await userEvent.click(dialog.getByRole("checkbox", { name: "Repeat table header rows" }));
+    await userEvent.click(box);
+    await expect(text(canvasElement).textContent).toBe("@layout document\n\n@heading Hello\n");
+  },
+};
+
 /** The heading-row switch is written on the header line as a word, kept when the rest of the setup is rewritten, and dropped when switched back on. */
 export const TheRepeatHeaderSwitchIsWrittenAsAWordAndKept: Story = {
   play: async ({ canvasElement }) => {

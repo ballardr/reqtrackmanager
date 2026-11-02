@@ -3,7 +3,7 @@ import zlib from "node:zlib";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -97,7 +97,7 @@ test.describe("Report image columns", () => {
     await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
     await page.getByRole("tab", { name: "Blocks" }).click();
-    await page.locator(".blocklyText.rl-block-title", { hasText: /^Table$/ }).first().click();
+    await page.locator(".blocklyText.rl-block-title", { hasText: /^Table.\(records\)$/ }).first().click();
     const inspector = page.getByLabel("Block details");
 
     await test.step("Add images column offers the shared settings, with the size a share of the column", async () => {
@@ -141,6 +141,7 @@ test.describe("Report image columns", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
+    await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
     await editor.fill("@layout document\n\n@table pain_point\n  @column code\n  @images types png width 80 percent\n@end\n");
     await expect(page.getByText("The text is valid.")).toBeVisible();

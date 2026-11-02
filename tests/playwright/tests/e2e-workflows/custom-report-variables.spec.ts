@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { chooseReport } from "./reportPicker";
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openSetupReport, PASSWORD, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -139,11 +139,12 @@ test.describe("Custom report variables", () => {
 
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
-    await page.getByRole("link", { name }).click();
+    await openSetupReport(page, name);
     await expect(page.getByRole("heading", { name })).toBeVisible();
     expect(layout.id).toBeTruthy();
 
     await test.step("writing a variable puts its form in the preview and holds the preview back", async () => {
+      await openDesignerTextView(page);
       await page.getByRole("textbox", { name: "Layout text" }).fill(text());
       await expect(page.getByText("The text is valid.")).toBeVisible();
       await expect(page.getByRole("button", { name: /Categories/ })).toBeVisible();

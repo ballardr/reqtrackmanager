@@ -35,6 +35,7 @@ import type { ReportFontChoice } from "../api/reportLayouts";
 import { ColourChoiceField } from "./ColourChoiceField";
 import { FontChoiceField } from "./FontChoiceField";
 import { TextField } from "./FormFields";
+import { FieldHelp } from "./FieldHelp";
 import { LabeledSelect } from "./LabeledSelect";
 import { Tooltip } from "./Tooltip";
 
@@ -256,10 +257,10 @@ export function ReportGridEditor({
             >
               {text.removeColumn}
             </button>
+            <FieldHelp label={text.selectionHelpLabel} help={text.selectionHint} />
           </div>
         </>
       )}
-      <p className="text-muted" style={{ margin: 0 }}>{text.selectionHint}</p>
       <div className="grid-editor__scroller">
         <div
           role="grid" aria-label={text.gridLabel} aria-rowcount={rowCount} aria-colcount={columnCount} aria-multiselectable="true"

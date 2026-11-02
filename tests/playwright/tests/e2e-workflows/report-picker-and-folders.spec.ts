@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, closeDialogWithoutSaving, openDesignerTextView } from "./helpers";
 import { chooseReport, listReports, openReportPicker, reportPickerButton } from "./reportPicker";
 
 const API = "http://localhost:8000/api/v1";
@@ -320,7 +320,7 @@ test.describe("Report picker, folders and placements", () => {
       await confirm.getByRole("button", { name: "Delete", exact: true }).click();
       await expect(page.getByText(/Folder Delivery\/Quarterly deleted\. 1 filed item moved up\./)).toBeVisible();
       await expect(popover().getByRole("radio", { name: "Delivery" })).toBeChecked();
-      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await closeDialogWithoutSaving(dialog, { unsaved: false });
       expect(await folderOf()).toBe("Delivery/Archive");
     });
   });
@@ -359,6 +359,7 @@ test.describe("Report picker, folders and placements", () => {
 
     await test.step("the widget list starts collapsed and says each module once", async () => {
       await page.goto(`/projects/${alpha.id}/report-layouts/${created.id}`);
+      await openDesignerTextView(page);
       await page.getByRole("tab", { name: "Widgets" }).click();
       await expect(page.getByRole("button", { name: "Expand Decision Management" })).toHaveAttribute("aria-expanded", "false");
       await expect(page.getByRole("button", { name: "Decision register" })).toHaveCount(0);

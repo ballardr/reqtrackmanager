@@ -2177,6 +2177,12 @@ class ReportDefinition:
             report, as the screen's badge does. Build the inner maps with `report_framework.tones_by_label` from the
             module's label and tone maps. A cell whose text is not listed is left plain. Ratings are toned by the
             collector (`ReportSection.tones`), which wins over this.
+        usual_widths: A usual width by column heading (`{"Priority": "8%", "Due": "9%"}`: `30%`, `4 cm` or `40 mm`) for
+            a column whose content has a predictable size, in every table of the report. It sizes the report's tables
+            when a custom report layout embeds them (a widget): those columns take the width, the others share the
+            rest by content, and tables with the same headings still line up. A heading a table lacks is ignored.
+            Only headings that a section of the report really has may be declared (`report_framework.unknown_usual_widths`
+            checks a collected report in the module's tests).
         parts: The report's tables a custom report layout can embed one at a time (widgets), by the
             `ReportSection.key` the collector gives them. Declare every table whose key is fixed; a table whose
             key depends on the data is not embeddable. Every report also offers `figures` (its headline figures)
@@ -2197,6 +2203,7 @@ class ReportDefinition:
     record_types: tuple[str, ...] = field(default=())
     view_only: bool = False
     cell_tones: Mapping[str, Mapping[str, str]] = field(default_factory=dict, compare=False)
+    usual_widths: Mapping[str, str] = field(default_factory=dict, compare=False)
     parts: tuple[ReportPartDefinition, ...] = field(default=())
 
 

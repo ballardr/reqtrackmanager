@@ -332,8 +332,10 @@ def test_a_failed_run_can_be_generated_again_and_says_when_the_layout_changed(wo
         headers=auth_headers(world.token),
     )
 
-    body = again(world, run["id"]).json()
+    resp = again(world, run["id"])
 
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
     assert body["definition_changed"] is True
     assert run_row(db, body["run"]["id"]).layout_version == layout["current_version"] + 1  # today's version, not the old one
 

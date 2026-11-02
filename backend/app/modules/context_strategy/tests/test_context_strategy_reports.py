@@ -22,7 +22,9 @@ from sqlalchemy import update
 from app.database import SessionLocal
 from app.modules.context_strategy.enums import GuidingPrincipleStatus, StrategyStatus
 from app.modules.context_strategy.models import GuidingPrincipleVersion, StrategyVersion
+from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.services.codes import label_title
+from app.services.report_framework import unknown_usual_widths
 from app.services.report_model import TONE_FILL
 from tests.conftest import (
     auth_headers,
@@ -458,6 +460,8 @@ def test_r4_overdue_unowned_and_resolved_excluded(client, admin_token):
     assert _titles(_section(report, "open"), "Question") == ["Late?", "Owned?"]  # high priority first; withdrawn omitted
     assert _titles(_section(report, "overdue"), "Question") == ["Late?"]
     assert _titles(_section(report, "unowned"), "Question") == ["Late?"]
+    assert _titles(_section(report, "not_overdue"), "Question") == ["Owned?"]  # the open ones the overdue table does not list
+    assert _section(report, "not_overdue")["columns"] == _section(report, "overdue")["columns"]  # so the two tables line up
     by_owner = dict(_section(report, "by_owner")["rows"])
     assert by_owner["Unowned"] == "1" and sum(int(v) for v in by_owner.values()) == 2
     assert [i["is_overdue"] for i in report["data"]["items"]] == [True, False]
@@ -855,3 +859,13 @@ def test_report_codes_and_tags_follow_the_shared_rule(client, admin_token):
     body = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": True}
     assert client.put(f"/api/v1/orgs/{org['id']}/code-policy", json=body, headers=auth_headers(admin)).status_code == 200
     assert {code for code, _ in ranking().values()} == {f"{parent['code']}-PP-001", f"{child['code']}-PP-001"}
+
+
+def test_every_declared_usual_width_names_a_column_of_its_report(client, admin_token):
+    """A usual width for a heading no table of the report has would be dead; a spec that is not a width is a typo."""
+    _, project, token = _setup(client, admin_token, "Usual Widths")
+    declared = {d.slug: d.usual_widths for d in REPORT_DEFINITIONS if d.usual_widths}
+    assert "open-question-register" in declared
+    for slug, widths in declared.items():
+        report = _report(client, token, project["id"], slug)
+        assert unknown_usual_widths([s["columns"] for s in report["sections"]], widths) == [], slug

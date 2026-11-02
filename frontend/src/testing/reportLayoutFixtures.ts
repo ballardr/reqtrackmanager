@@ -227,6 +227,7 @@ export function buildBlockCatalogue(): BlockCatalogue {
       field("margins", "Margins", "margins", { families: ["document"] }),
       field("mirror_margins", "Mirror margins", "boolean", { families: ["document"] }),
       field("repeat_table_header", "Repeat table header rows", "boolean", { default: true, families: ["document"] }),
+      field("align_tables", "Line up tables with the same columns", "boolean", { default: true, families: ["document"] }),
       field("run_scope", "Projects it runs for", "choice", { choices: ["any", "one", "one_and_children"], default: "any", empty_label: "Not set (any number of projects)" }),
       field("palette", "Colour scheme", "palette", { families: ["document"] }),
       field("styles", "Fonts", "document_styles", { families: ["document"] }),

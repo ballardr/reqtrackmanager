@@ -7,8 +7,9 @@
  * Responsibilities:
  * - Load a layout and show its current tree as the text view (`ReportLayoutApi.formatTree`), editable in a
  *   monospace box with block shortcuts; a layout shared from elsewhere opens read-only with a "make a copy" route.
- * - Edit the same tree in two views, switchable at any time: the text view and the block editor
- *   (`ReportLayoutBlocks`). The block editor edits one copy of the tree, which it checks with the server's `validate` a
+ * - Edit the same tree in three views, switchable at any time and opening on Blocks: the block editor
+ *   (`ReportLayoutBlocks`), the text view and the JSON view (the raw tree, for advanced use, with no helpers and no side
+ *   panel; it is checked with the server's `validate` and a switch away from invalid JSON is refused). The block editor edits one copy of the tree, which it checks with the server's `validate` a
  *   moment after each change and uses to keep the text view's text up to date, so the preview, Save and the switch
  *   back to text all read one layout. A switch from text that has problems is refused, with the reason.
  * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
@@ -25,6 +26,9 @@
  *   with an Undo while that text stands.
  * - Save a selection as a snippet (`ReportSaveSnippetDialog`): the selected block of the Blocks view, or the top-level blocks
  *   the Text view's selection or caret touches (the server's parse says which line each block starts on).
+ * - Keep Save at the top: the view tabs, Save, the count of problems that block it and any problems the server returned
+ *   on save sit in one pinned bar (`.designer-bar`); a second Save appears at the foot only when the view's content is
+ *   taller than the window (`useTallerThanViewport`). Both are the same button over the same `saving` state.
  * - Warn before leaving with unsaved changes (the Back link and the browser's own unload prompt).
  *
  * Design decisions: the text view is the only editing surface here and the server the only parser, so the client
@@ -46,12 +50,13 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { useSnippetToast } from "../hooks/useSnippetToast";
+import { useTallerThanViewport } from "../hooks/useTallerThanViewport";
 import { useUiPreference } from "../hooks/useUiPreference";
 import {
   aliasesInScope, asBlock, insertAt, insertionRange, lineOfOffset, offsetOfLine,
 } from "../utils/reportLayoutText";
 import type { ColourContext } from "../utils/reportColours";
-import { stableJson, type Tree } from "../utils/reportLayoutTree";
+import { parseTreeJson, stableJson, treeToJson, type Tree } from "../utils/reportLayoutTree";
 import { selectionFromLines } from "../utils/reportSnippetSelection";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
@@ -83,9 +88,9 @@ type MainTab = "design" | "history";
 /** Blockly is large, so the block editor is fetched only when the author opens the Blocks view. */
 const ReportLayoutBlocks = lazy(() => import("./ReportLayoutBlocks").then((m) => ({ default: m.ReportLayoutBlocks })));
 
-type EditView = "text" | "blocks";
-/** The views that edit the tree itself (the text view edits text). */
-const isTreeView = (view: EditView) => view !== "text";
+type EditView = "blocks" | "text" | "json";
+/** The view that edits the tree through the block editor. */
+const isTreeView = (view: EditView) => view === "blocks";
 type AsideTab = "block" | "preview" | "fields" | "widgets";
 type Dialog = "details" | "delete" | "reload" | "leave" | "preview" | "duplicate" | "snippet" | "save-snippet";
 
@@ -98,6 +103,13 @@ interface SnippetToSave {
 
 /** The outcome of checking one exact block-editor tree. */
 interface TreeChecked {
+  tree: Tree;
+  /** `null` when the check itself could not run. */
+  result: TreeCheck | null;
+}
+
+/** The outcome of checking one exact tree read from the JSON view. */
+interface JsonChecked {
   tree: Tree;
   /** `null` when the check itself could not run. */
   result: TreeCheck | null;
@@ -147,7 +159,10 @@ export function ReportLayoutDesigner({
   const [blockTypes, setBlockTypes] = useState<BlockCatalogue | null>(null);
   const [colours, setColours] = useState<ColourContext | undefined>(undefined);
   const [fonts, setFonts] = useState<ReportFontChoice[] | undefined>(undefined);
-  const [view, setView] = useState<EditView>("text");
+  const [view, setView] = useState<EditView>("blocks");
+  /** The JSON view's text, written from the tree on entry and then the author's own. */
+  const [jsonText, setJsonText] = useState("");
+  const [jsonChecked, setJsonChecked] = useState<JsonChecked | null>(null);
   /** The tree the block editor edits, and the tree it started from (so a switch back leaves unedited text alone). */
   const [blockTree, setBlockTree] = useState<Tree | null>(null);
   const [enteredTree, setEnteredTree] = useState<Tree | null>(null);
@@ -165,6 +180,9 @@ export function ReportLayoutDesigner({
   const [panelFolded, setPanelFolded] = useUiPreference<boolean>("report_designer_panel_collapsed", false);
   /** The element the block editor draws the selected block's form into (inside the panel's Block tab). */
   const [inspectorHost, setInspectorHost] = useState<HTMLElement | null>(null);
+  /** The view's content (not the save bars): when it is taller than the window the foot offers a second Save. */
+  const [content, setContent] = useState<HTMLElement | null>(null);
+  const longContent = useTallerThanViewport(content);
   const [saving, setSaving] = useState(false);
   const [saveProblems, setSaveProblems] = useState<string[]>([]);
   const [conflict, setConflict] = useState<number | null>(null);
@@ -187,9 +205,11 @@ export function ReportLayoutDesigner({
       setDetail(loaded);
       setSaved(written);
       setDraft(written);
-      setView("text");
-      setBlockTree(null);
-      setEnteredTree(null);
+      setView("blocks");
+      setBlockTree(loaded.current.tree);
+      setEnteredTree(loaded.current.tree);
+      setTextFor(loaded.current.tree);
+      setTreeChecked(null);
       setViewNote(null);
       setChecked(null);
       setConflict(null);
@@ -220,42 +240,62 @@ export function ReportLayoutDesigner({
 
   const loaded = detail !== null;
 
-  // Check the text once typing pauses; a response for text that has since changed is dropped.
+  // Check the text once typing pauses; a response for text that has since changed is dropped. Opening the view checks the text
+  // it shows, which may be unchanged since the last check was cleared.
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || view !== "text") return;
+    let left = false;
     const timer = setTimeout(() => {
       const isLatest = beginCheck();
       api.parseText(draft).then(
-        (result) => { if (isLatest()) setChecked({ text: draft, result }); },
-        () => { if (isLatest()) setChecked({ text: draft, result: null }); },
+        (result) => { if (isLatest() && !left) setChecked({ text: draft, result }); },
+        () => { if (isLatest() && !left) setChecked({ text: draft, result: null }); },
       );
     }, TEXT_CHECK_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [draft, loaded, api, beginCheck]);
+    return () => { left = true; clearTimeout(timer); };
+  }, [draft, loaded, view, api, beginCheck]);
 
   // In the block editor: check the tree once editing pauses, and keep the text view's text in step with it.
   useEffect(() => {
     if (!loaded || !isTreeView(view) || blockTree === null) return;
     const tree = blockTree;
+    // A check still in flight when the author leaves the view (or edits again) must not write over what they type next.
+    let left = false;
     const timer = setTimeout(() => {
       const isLatest = beginCheck();
       api.validate(tree).then(
         async (result) => {
-          if (!isLatest()) return;
+          if (!isLatest() || left) return;
           setTreeChecked({ tree, result });
           if (result.ok) {
             const written = await api.formatTree(tree);
-            if (isLatest()) {
+            if (isLatest() && !left) {
               setDraft(written);
               setTextFor(tree);
             }
           }
         },
-        () => { if (isLatest()) setTreeChecked({ tree, result: null }); },
+        () => { if (isLatest() && !left) setTreeChecked({ tree, result: null }); },
       );
     }, TEXT_CHECK_DELAY_MS);
-    return () => clearTimeout(timer);
+    return () => { left = true; clearTimeout(timer); };
   }, [blockTree, view, loaded, api, beginCheck]);
+
+  // In the JSON view: read the text as it stands, and check the tree it holds once editing pauses.
+  const jsonParsed = useMemo(() => parseTreeJson(jsonText), [jsonText]);
+  useEffect(() => {
+    const tree = jsonParsed.tree;
+    if (!loaded || view !== "json" || tree === null) return;
+    let left = false;
+    const timer = setTimeout(() => {
+      const isLatest = beginCheck();
+      api.validate(tree).then(
+        (result) => { if (isLatest() && !left) setJsonChecked({ tree, result }); },
+        () => { if (isLatest() && !left) setJsonChecked({ tree, result: null }); },
+      );
+    }, TEXT_CHECK_DELAY_MS);
+    return () => { left = true; clearTimeout(timer); };
+  }, [jsonParsed, view, loaded, api, beginCheck]);
 
   // Put the caret where an insertion left it, once the new text is in the box.
   useLayoutEffect(() => {
@@ -268,7 +308,8 @@ export function ReportLayoutDesigner({
   }, [draft]);
 
   const blocksChanged = isTreeView(view) && blockTree !== null && detail !== null && stableJson(blockTree) !== stableJson(detail.current.tree);
-  const dirty = loaded && (isTreeView(view) ? blocksChanged : draft !== saved);
+  const jsonChanged = view === "json" && detail !== null && (jsonParsed.tree === null || stableJson(jsonParsed.tree) !== stableJson(detail.current.tree));
+  const dirty = loaded && (view === "json" ? jsonChanged : isTreeView(view) ? blocksChanged : draft !== saved);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -289,9 +330,21 @@ export function ReportLayoutDesigner({
   ];
   const blockCurrent = treeChecked !== null && treeChecked.tree === blockTree ? treeChecked : null;
   const blockProblems = blockCurrent?.result?.errors ?? [];
-  const valid = isTreeView(view)
-    ? blockCurrent?.result?.ok === true
-    : current?.result?.ok === true && current.result.tree !== null && !wrongKind;
+  const jsonCurrent = jsonChecked !== null && jsonChecked.tree === jsonParsed.tree ? jsonChecked : null;
+  const jsonWrongKind = jsonParsed.tree !== null && jsonParsed.tree.family !== detail.family;
+  /** What is wrong with the JSON, as lines: the parser's own message, the wrong kind, or the server's problems by path. */
+  const jsonProblems = jsonParsed.tree === null
+    ? [jsonParsed.notObject ? outline.jsonNotObject : jsonParsed.error]
+    : [
+      ...(jsonWrongKind ? [outline.jsonWrongKind(LAYOUT_FAMILY_LABEL[detail.family].toLowerCase())] : []),
+      ...(jsonCurrent?.result && !jsonCurrent.result.ok ? jsonCurrent.result.errors.map((p) => text.treeProblem(p.path, p.message)) : []),
+    ];
+  const jsonValid = jsonCurrent?.result?.ok === true && !jsonWrongKind;
+  const valid = view === "json"
+    ? jsonValid
+    : isTreeView(view)
+      ? blockCurrent?.result?.ok === true
+      : current?.result?.ok === true && current.result.tree !== null && !wrongKind;
   const aliases = aliasesInScope(draft, caretLine);
   const originLabel = LAYOUT_ORIGIN_LABEL[detail.origin];
 
@@ -396,28 +449,46 @@ export function ReportLayoutDesigner({
   }
 
   /**
-   * Changes the editing view. A switch from the text needs text that reads cleanly; back to the text needs a valid
-   * tree; the document needs a tree it can show without changing it. A refusal says why and stays where it is.
+   * Reads the tree the JSON view holds for a switch away from it: it must be JSON, the right kind of layout and pass the
+   * server's check. A refusal puts its reason in the view note and resolves to `null`.
+   */
+  async function treeFromJson(): Promise<Tree | null> {
+    const tree = jsonParsed.tree;
+    if (tree === null || tree.family !== detail?.family) {
+      setViewNote(tree === null ? (jsonParsed.notObject ? outline.jsonNotObject : jsonParsed.error) : outline.jsonNeedsFixes);
+      return null;
+    }
+    let result: TreeCheck | null = jsonCurrent?.result ?? null;
+    if (result === null) {
+      try {
+        result = await api.validate(tree);
+      } catch {
+        result = null;
+      }
+    }
+    if (result?.ok !== true) {
+      setViewNote(outline.jsonNeedsFixes);
+      return null;
+    }
+    return tree;
+  }
+
+  /**
+   * Changes the editing view. A switch from the text needs text that reads cleanly; a switch from the JSON needs a tree that
+   * checks cleanly; the blocks may be shown as text or JSON whatever their problems. A refusal says why and stays where it is.
+   * The text keeps the author's own wording when the tree has not changed since it was read from it.
    */
   async function switchView(next: EditView) {
     if (next === view) return;
     setViewNote(null);
     snippetToast.clear();
-    if (next === "text") {
-      if (blockTree !== null && enteredTree !== null && stableJson(blockTree) !== stableJson(enteredTree)) {
-        try {
-          setDraft(await api.formatTree(blockTree));
-        } catch {
-          setViewNote(strings.reportOutline.outlineFormatFailed);
-          return;
-        }
-      }
-      setChecked(null);
-      setView("text");
-      return;
-    }
-    let tree = blockTree;
-    if (view === "text") {
+    let tree: Tree | null;
+    if (view === "blocks") {
+      tree = blockTree;
+    } else if (view === "json") {
+      tree = await treeFromJson();
+      if (tree === null) return;
+    } else {
       // Read the text as it stands now rather than waiting for the pause-and-check, so the switch never refuses a clean text.
       let parsed: TextParseResult | null = current?.result ?? null;
       if (parsed === null) {
@@ -429,22 +500,45 @@ export function ReportLayoutDesigner({
       }
       tree = parsed?.ok === true ? parsed.tree : null;
       if (!tree || tree.family !== detail?.family) {
-        setViewNote(strings.reportOutline.outlineNeedsFixes);
+        setViewNote(next === "json" ? outline.jsonNeedsTextFixes : outline.outlineNeedsFixes);
         return;
       }
-    }
-    if (view === "text") {
-      setBlockTree(tree);
       setEnteredTree(tree);
+    }
+    if (tree === null) return;
+    if (next === "text") {
+      if (view !== "text" && (enteredTree === null || stableJson(tree) !== stableJson(enteredTree))) {
+        try {
+          setDraft(await api.formatTree(tree));
+        } catch {
+          setViewNote(outline.outlineFormatFailed);
+          return;
+        }
+      }
+      setChecked(null);
+    } else if (next === "blocks") {
+      if (view === "json") {
+        try {
+          setDraft(await api.formatTree(tree));
+        } catch {
+          setViewNote(outline.outlineFormatFailed);
+          return;
+        }
+        setEnteredTree(tree);
+      }
+      setBlockTree(tree);
       setTextFor(tree);
       setTreeChecked(null);
+    } else {
+      setJsonText(treeToJson(tree));
+      setJsonChecked(null);
     }
     setView(next);
   }
 
   /** Saves the tree on screen as a new version with `note`; resolves to whether a version was stored. */
   async function save(note: string): Promise<boolean> {
-    const tree = isTreeView(view) ? blockCurrent?.tree : current?.result?.tree;
+    const tree = view === "json" ? jsonCurrent?.tree : isTreeView(view) ? blockCurrent?.tree : current?.result?.tree;
     if (!tree || !detail) return false;
     setSaving(true);
     setSaveProblems([]);
@@ -452,12 +546,13 @@ export function ReportLayoutDesigner({
       const result = await api.save(layoutId, { tree, base_version: detail.current_version, comment: note });
       showToast(result.current_version === detail.current_version ? text.noChanges : text.saved(result.current_version));
       setDetail(result);
-      const written = isTreeView(view) ? await api.formatTree(tree) : draft;
+      const written = view !== "text" ? await api.formatTree(tree) : draft;
       setSaved(written);
-      if (isTreeView(view)) {
+      if (view !== "text") {
         setDraft(written);
         setEnteredTree(tree);
         setTextFor(tree);
+        setBlockTree(tree);
       }
       return true;
     } catch (err) {
@@ -485,6 +580,8 @@ export function ReportLayoutDesigner({
     navigate(reportLayoutPath(landed, done.new_id));
   }
 
+  const blockingCount = view === "json" ? jsonProblems.length : isTreeView(view) ? blockProblems.length : problems.length;
+  const saveButton = <SaveVersionButton disabled={!valid || !dirty} saving={saving} onSave={save} />;
   const textTools = editable && view === "text";
   const treeEditing = isTreeView(view);
   const asideTabs: TabDef<AsideTab>[] = treeEditing
@@ -558,7 +655,7 @@ export function ReportLayoutDesigner({
       {tab === "design" && (
         <div
           {...tabPanelProps("layout-designer", "design")}
-          className={`layout-designer${treeEditing ? " layout-designer--blocks" : ""}${panelFolded ? " layout-designer--panel-folded" : ""}`}
+          className={`layout-designer${treeEditing ? " layout-designer--blocks" : ""}${view === "json" ? " layout-designer--single" : ""}${panelFolded ? " layout-designer--panel-folded" : ""}`}
         >
           <div className="stack">
             {!editable && (
@@ -572,11 +669,29 @@ export function ReportLayoutDesigner({
                 <div><button type="button" className="btn" onClick={() => setDialog("reload")}>{text.reload}</button></div>
               </div>
             )}
-            <Tabs<EditView>
-              idPrefix="layout-view"
-              tabs={[{ key: "text", label: outline.textView }, { key: "blocks", label: outline.outlineView }]}
-              active={view} onChange={(next) => void switchView(next)}
-            />
+            <div className="designer-bar">
+              <div className="designer-bar__row">
+                <div className="designer-bar__tabs">
+                  <Tabs<EditView>
+                    idPrefix="layout-view"
+                    tabs={[{ key: "blocks", label: outline.outlineView }, { key: "text", label: outline.textView }, { key: "json", label: outline.jsonView }]}
+                    active={view} onChange={(next) => void switchView(next)}
+                  />
+                </div>
+                {editable && (
+                  <div className="designer-bar__save">
+                    {!valid && blockingCount > 0 && <span role="status" style={{ color: "var(--color-danger)" }}>{text.saveBlocked(blockingCount)}</span>}
+                    {saveButton}
+                  </div>
+                )}
+              </div>
+              {saveProblems.length > 0 && (
+                <ul className="layout-problems" role="alert">
+                  {saveProblems.map((problem, index) => <li key={index} style={{ color: "var(--color-danger)" }}>{problem}</li>)}
+                </ul>
+              )}
+            </div>
+            <div ref={setContent} className="stack">
             {viewNote && <p role="alert" style={{ color: "var(--color-danger)", margin: 0 }}>{viewNote}</p>}
             {view === "text" && (
               <div {...tabPanelProps("layout-view", "text")} className="stack">
@@ -623,12 +738,35 @@ export function ReportLayoutDesigner({
                     </ul>
                   </div>
                 )}
-                {saveProblems.length > 0 && (
-                  <ul className="layout-problems" role="alert">
-                    {saveProblems.map((problem, index) => <li key={index} style={{ color: "var(--color-danger)" }}>{problem}</li>)}
-                  </ul>
-                )}
               </div>
+              </div>
+            )}
+            {view === "json" && (
+              <div {...tabPanelProps("layout-view", "json")} className="stack">
+                <p className="text-muted" role="note" style={{ margin: 0 }}>{outline.jsonNote}</p>
+                <AutoGrowTextarea
+                  className="input layout-editor"
+                  value={jsonText}
+                  onChange={setJsonText}
+                  rows={16}
+                  maxVisibleLines={EDITOR_MAX_LINES}
+                  aria-label={outline.jsonLabel}
+                  spellCheck={false}
+                  readOnly={!editable}
+                />
+                <div aria-live="polite">
+                  {jsonParsed.tree !== null && jsonCurrent === null && <span className="text-muted">{outline.outlineChecking}</span>}
+                  {jsonCurrent && jsonCurrent.result === null && <span role="alert" style={{ color: "var(--color-danger)" }}>{strings.common.error}</span>}
+                  {jsonValid && <span className="text-muted">{outline.outlineNoProblems}</span>}
+                  {jsonProblems.length > 0 && (
+                    <div className="stack" style={{ gap: "var(--space-2)" }}>
+                      <strong>{outline.jsonProblemsTitle(jsonProblems.length)}</strong>
+                      <ul className="layout-problems" aria-label={outline.jsonProblemsTitle(jsonProblems.length)}>
+                        {jsonProblems.map((problem, index) => <li key={index}>{problem}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             {isTreeView(view) && (
@@ -657,23 +795,15 @@ export function ReportLayoutDesigner({
                       {blockCurrent?.result?.ok === true && <span className="text-muted">{outline.outlineNoProblems}</span>}
                       {blockProblems.length > 0 && <strong>{outline.outlineProblemsTitle(blockProblems.length)}</strong>}
                     </div>
-                    {saveProblems.length > 0 && (
-                      <ul className="layout-problems" role="alert">
-                        {saveProblems.map((problem, index) => <li key={index} style={{ color: "var(--color-danger)" }}>{problem}</li>)}
-                      </ul>
-                    )}
                   </>
                 ) : toolsFailed ? <p className="text-muted" role="alert">{outline.outlineLoadFailed}</p> : <Spinner />}
               </div>
             )}
-            {editable && (
-              <div className="row">
-                <SaveVersionButton disabled={!valid || !dirty} saving={saving} onSave={save} />
-              </div>
-            )}
+            </div>
+            {editable && longContent && <div className="row">{saveButton}</div>}
           </div>
 
-          <DesignerSidePanel<AsideTab>
+          {view !== "json" && <DesignerSidePanel<AsideTab>
             label={text.asideLabel} idPrefix="layout-designer-tools" tabs={asideTabs} active={asideActive} onChange={chooseAside}
             collapsed={panelFolded} onCollapsedChange={setPanelFolded}
           >
@@ -705,7 +835,7 @@ export function ReportLayoutDesigner({
                 ) : !toolsFailed && <Spinner />}
               </div>
             )}
-          </DesignerSidePanel>
+          </DesignerSidePanel>}
         </div>
       )}
 

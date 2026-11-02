@@ -574,6 +574,7 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "d1", "decision-register", "Decision register",
         "Every Decision with its type, status, date, decision maker, owner and supersession.",
         collect_decision_register, params=(_STATUS, _DECISION_TYPE, _DATE_FROM, _DATE_TO, _INCLUDE_ARCHIVED),
+        usual_widths={"Code": "9%", "Status": "9%", "Decision date": "10%"},
         parts=(
             ReportPartDefinition("register", "Decisions"),
             ReportPartDefinition("by_status", "By status"),
@@ -585,6 +586,7 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "d2", "approval-ageing", "Approval ageing",
         "Proposed and Under review Decisions by days waiting, with overdue and decision-maker-less ones flagged.",
         collect_approval_ageing, params=(_OVERDUE_DAYS,),
+        usual_widths={"Code": "9%", "Status": "9%", "Days waiting": "8%", "Overdue": "8%"},
         parts=(
             ReportPartDefinition("awaiting", "Awaiting a verdict"),
             ReportPartDefinition("overdue", "Overdue"),

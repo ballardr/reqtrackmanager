@@ -116,7 +116,7 @@ export const AnOrganisationScopeHasNoLevelChoice: Story = {
 export const CancelClosesWithoutSaving: Story = {
   play: async ({ args }) => {
     const d = await dialog();
-    await userEvent.click(d.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(d.getByRole("button", { name: "Close" }));
     await expect(args.onClose).toHaveBeenCalled();
     await expect(args.api.save).not.toHaveBeenCalled();
   },

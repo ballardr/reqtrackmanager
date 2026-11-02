@@ -50,7 +50,7 @@ export function ReportLayoutPageSetup({
   if (setup === null) return null;
   const bandLook: BandLook = { ...look, palette: readPalette(text) };
   const set = (patch: Partial<PageSetup>) => onChange(writePageSetup(text, { ...setup, ...patch }));
-  const marked = setup.orientation !== "portrait" || setup.size !== "A4" || setup.mirror || setup.repeatHeader === false
+  const marked = setup.orientation !== "portrait" || setup.size !== "A4" || setup.mirror || setup.repeatHeader === false || setup.alignTables === false
     || Object.keys(setup.margins).length > 0 || setup.styles.length > 0 || setup.header !== undefined || setup.footer !== undefined;
   const label = strings.reportLayouts.pageSetupLabel(labels.orientationLabels[setup.orientation], setup.size);
   return (
@@ -85,6 +85,10 @@ export function ReportLayoutPageSetup({
               <CheckboxField
                 label={labels.repeatHeaderLabel} help={strings.help.layoutRepeatTableHeader} checked={setup.repeatHeader !== false}
                 onChange={(on) => set({ repeatHeader: on ? undefined : false })}
+              />
+              <CheckboxField
+                label={labels.alignTablesLabel} help={strings.help.layoutAlignTables} checked={setup.alignTables !== false}
+                onChange={(on) => set({ alignTables: on ? undefined : false })}
               />
             </div>
             <h3 style={{ margin: 0 }}>{labels.marginsTitle}</h3>

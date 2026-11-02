@@ -308,7 +308,8 @@ export const CreateProjectModalCancel: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
     await userEvent.type(within(dialog).getByLabelText("Name"), "Discarded Project");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Discard changes" }));
 
     await expect(within(document.body).queryByRole("dialog")).not.toBeInTheDocument();
     await expect(api.post).not.toHaveBeenCalled();

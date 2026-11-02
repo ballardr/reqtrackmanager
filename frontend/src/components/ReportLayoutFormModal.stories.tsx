@@ -48,7 +48,7 @@ export const EditingOffersNoKind: Story = {
     await expect(requiredCaptions(document.body)).toEqual(["Name"]);
     await expect(dialog.queryByRole("combobox", { name: "Kind of report" })).not.toBeInTheDocument();
     await expect(dialog.getByRole("textbox", { name: "Name" })).toHaveValue("Requirements by component");
-    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
     await expect(args.onClose).toHaveBeenCalled();
   },
 };
@@ -158,7 +158,7 @@ export const FolderShowsAsAValueAndOpensAPopoverToMove: Story = {
     const popover = await openFolderPopover(dialog, "Shared");
     await userEvent.click(popover.getByRole("radio", { name: "Handover" }));
     await expect(dialog.getByRole("button", { name: "Folder: Handover" })).toBeInTheDocument();
-    await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
     await expect(args.api.update).not.toHaveBeenCalled();
     await expect(args.onClose).toHaveBeenCalled();
   },

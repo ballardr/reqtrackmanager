@@ -51,13 +51,14 @@ export const TheSummaryCountsMergedCells: Story = {
   },
 };
 
-export const EditTableOpensTheGridInADialogWithSaveAndCancelInItsHeader: Story = {
+export const EditTableOpensTheGridInADialogWithSaveAndCloseInItsHeader: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole("button", { name: "Edit table" }));
     const body = dialog();
     await expect(within(body).getByRole("grid", { name: "Table cells" })).toBeVisible();
     await expect(within(body).getByRole("button", { name: "Save" })).toBeVisible();
-    await expect(within(body).getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(within(body).getByRole("button", { name: "Close" })).toBeVisible();
+    await expect(within(body).queryByRole("button", { name: "Cancel" })).toBeNull();
   },
 };
 
@@ -77,15 +78,46 @@ export const SaveHandsBackColumnsRowsAndTheHeaderCountTogether: Story = {
   },
 };
 
-export const CancelDiscardsEveryChange: Story = {
+export const ClosingWithChangesAsksAndDiscardDropsThem: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Edit table" }));
     const body = within(dialog());
     await userEvent.click(body.getByRole("button", { name: "Add column right" }));
-    await userEvent.click(body.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(body.getByRole("button", { name: "Close" }));
+    const prompt = within(await within(document.body).findByRole("dialog", { name: "Discard unsaved changes?" }));
+    await userEvent.click(prompt.getByRole("button", { name: "Discard changes" }));
     await expect(canvas.getByTestId("grid-summary")).toHaveTextContent("2 columns");
     await expect(node(canvas).columns).toHaveLength(2);
+  },
+};
+
+/** A click outside the dialog does nothing, and Keep editing returns to the unsaved change. */
+export const AnOutsideClickDoesNothingAndKeepEditingKeepsTheChange: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Edit table" }));
+    const body = within(dialog());
+    await userEvent.click(body.getByRole("button", { name: "Add column right" }));
+    await userEvent.click(document.querySelector('[role="presentation"]')!);
+    await expect(dialog()).toBeVisible();
+    await userEvent.click(body.getByRole("button", { name: "Close" }));
+    const prompt = within(await within(document.body).findByRole("dialog", { name: "Discard unsaved changes?" }));
+    await userEvent.click(prompt.getByRole("button", { name: "Keep editing" }));
+    await expect(body.getAllByRole("columnheader")).toHaveLength(3);
+  },
+};
+
+/** Nothing changed (or a change undone back to the opened table): Close leaves at once. */
+export const ClosingWithoutChangesLeavesAtOnce: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Edit table" }));
+    const body = within(dialog());
+    await userEvent.click(body.getByRole("button", { name: "Add column right" }));
+    await userEvent.click(body.getByRole("button", { name: "Undo" }));
+    await userEvent.click(body.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).toBeNull());
   },
 };
 
