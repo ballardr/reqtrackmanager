@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import type { ReportFieldCatalogue } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { placeholder, type AliasInScope } from "../utils/reportLayoutText";
+import { nameText } from "../utils/reportLayoutTree";
 import { TextField } from "./FormFields";
 
 /** What a group exposes, labelled; kinds come from the catalogue's `group_fields`. */
@@ -67,7 +68,7 @@ export function ReportLayoutFieldPicker({
     for (const alias of [...aliases].reverse()) {
       if (alias.kind === "group") {
         for (const [key, kind] of Object.entries(catalogue.group_fields)) {
-          out.push({ text: placeholder(alias.name, key), label: GROUP_FIELD_LABEL[key] ?? key, kind, math: false, source: alias.name, from: `${alias.name} (${text.fieldsGroup})` });
+          out.push({ text: placeholder(alias.name, key), label: GROUP_FIELD_LABEL[key] ?? key, kind, math: false, source: alias.name, from: `${nameText(alias)} (${text.fieldsGroup})` });
         }
         continue;
       }
@@ -75,7 +76,7 @@ export function ReportLayoutFieldPicker({
       for (const field of type?.fields ?? []) {
         out.push({
           text: placeholder(alias.name, field.key), label: field.label, kind: field.kind, math: field.math === true, source: alias.name,
-          from: `${alias.name} (${type?.label ?? alias.recordType ?? "?"})`,
+          from: `${nameText(alias)} (${type?.label ?? alias.recordType ?? "?"})`,
         });
       }
     }
@@ -101,7 +102,7 @@ export function ReportLayoutFieldPicker({
           <select className="input" value={sourceValue} onChange={(e) => setSource(e.target.value)}>
             <option value={SOURCE_ALL}>{text.fieldsSourceAll}</option>
             <option value={SOURCE_GLOBAL}>{text.fieldsFromGlobal}</option>
-            {aliases.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+            {aliases.map((a) => <option key={a.name} value={a.name}>{nameText(a)}</option>)}
           </select>
         </label>
       </div>

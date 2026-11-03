@@ -22,7 +22,7 @@ import { useState, type ReactNode } from "react";
 
 import type { BlockCatalogue, BlockField, ReportFieldCatalogue } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
-import type { NameInScope } from "../utils/reportLayoutTree";
+import { nameOption, type NameInScope } from "../utils/reportLayoutTree";
 import { TextField } from "./FormFields";
 import { ItemRowList } from "./ItemRowList";
 import { LabeledSelect } from "./LabeledSelect";
@@ -132,7 +132,7 @@ export function ReportLayoutColumnsEditor({
               {several && (
                 <LabeledSelect helpNotNeeded
                   label={text.columnFrom} value={column.from ?? names[0].name} placeholder={null} disabled={disabled}
-                  options={names.map((n) => ({ value: n.name, label: n.name }))} onChange={(from) => patch(i, isImages ? { from } : { from, field: "" })}
+                  options={names.map(nameOption)} onChange={(from) => patch(i, isImages ? { from } : { from, field: "" })}
                 />
               )}
               {!isImages && (

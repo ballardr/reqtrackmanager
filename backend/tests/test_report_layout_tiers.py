@@ -501,6 +501,26 @@ def test_a_colour_scheme_and_the_names_that_use_it_survive_a_project_bundle_roun
     assert current["current"]["tree"] == coloured
 
 
+def test_block_labels_and_hyphenated_names_survive_a_project_bundle_round_trip(world):
+    project = world.project("Source")
+    h = auth_headers(world.token)
+    labelled = {
+        **empty_tree("document"),
+        "nodes": [{
+            "type": "each", "source": {"record_type": "requirement"}, "as": "open-reqs", "label": "Open <requirements> & more",
+            "children": [{"type": "text", "text": "{{open-reqs.title}}", "label": "Title line é"}],
+        }],
+    }
+    new_layout(world, project_url(project), "Labelled", body=labelled)
+
+    result = import_project(world, export_project(world, project))
+
+    assert result["warnings"] == []
+    copy = names(world, result["project"])["Labelled"]
+    current = world.client.get(project_url(result["project"], f"/{copy['id']}"), headers=h).json()
+    assert current["current"]["tree"] == labelled
+
+
 def test_a_bundle_tree_is_validated_again_and_bad_versions_are_dropped(world):
     project = world.project("Source")
     h = auth_headers(world.token)

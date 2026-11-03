@@ -1,8 +1,8 @@
 /**
  * Module: components/ReportLayoutSourceEditor
  *
- * Edits where a block's records come from: all records of a type, the records linked to an enclosing record, or
- * the members of an enclosing group; with optional conditions (`where`), up to three sort keys and, for a type,
+ * Edits where a block's records come from: all records of a type, the records linked to a surrounding record, or
+ * the records of the surrounding group; with optional conditions (`where`), up to three sort keys and, for a type,
  * whether archived records are included.
  *
  * Responsibilities:
@@ -16,7 +16,7 @@
  */
 import type { BlockCatalogue, ReportFieldCatalogue } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
-import type { NameInScope } from "../utils/reportLayoutTree";
+import { nameOption, type NameInScope } from "../utils/reportLayoutTree";
 import { ConditionListEditor, type Condition, type ConditionEnv } from "./ReportLayoutConditionEditor";
 import { CommaListField } from "./CommaListField";
 import { CheckboxField } from "./FormFields";
@@ -52,7 +52,8 @@ export function ReportLayoutSourceEditor({
   joinMode?: boolean;
   disabled?: boolean;
 }) {
-  const text = useStrings().reportOutline;
+  const strings = useStrings();
+  const text = strings.reportOutline;
   const mode = joinMode ? "linked" : modeOf(value);
   const recordNames = names.filter((n) => n.kind === "record");
   const groupNames = names.filter((n) => n.kind === "group");
@@ -91,8 +92,8 @@ export function ReportLayoutSourceEditor({
   return (
     <div className="stack" style={{ gap: "var(--space-3)" }}>
       {!joinMode && (
-        <LabeledSelect helpNotNeeded
-          label={text.sourceMode} value={mode} placeholder={null} disabled={disabled}
+        <LabeledSelect
+          label={text.sourceMode} help={strings.help.reportSourceMode} value={mode} placeholder={null} disabled={disabled}
           options={modeOptions} onChange={(m) => setMode(m as Mode)}
         />
       )}
@@ -107,7 +108,7 @@ export function ReportLayoutSourceEditor({
         <>
           <LabeledSelect helpNotNeeded
             label={text.linkedFrom} value={String(value.linked_from ?? "")} placeholder={text.choose} disabled={disabled} required
-            options={recordNames.map((n) => ({ value: n.name, label: n.name }))} onChange={(name) => change({ linked_from: name })}
+            options={recordNames.map(nameOption)} onChange={(name) => change({ linked_from: name })}
             hint={recordNames.length === 0 ? text.noNamesInScope : undefined}
           />
           <CommaListField
@@ -124,7 +125,7 @@ export function ReportLayoutSourceEditor({
       {mode === "group" && (
         <LabeledSelect helpNotNeeded
           label={text.group} value={String(value.group ?? "")} placeholder={text.choose} disabled={disabled} required
-          options={groupNames.map((n) => ({ value: n.name, label: n.name }))}
+          options={groupNames.map(nameOption)}
           onChange={(name) => change({ group: name, where: undefined, sort: undefined })}
           hint={groupNames.length === 0 ? text.noNamesInScope : undefined}
         />

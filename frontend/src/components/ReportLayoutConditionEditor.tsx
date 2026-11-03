@@ -18,7 +18,7 @@
  */
 import type { BlockCatalogue, ReportFieldCatalogue, ReportFieldInfo } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
-import { newLeaf, type NameInScope } from "../utils/reportLayoutTree";
+import { nameOption, newLeaf, type NameInScope } from "../utils/reportLayoutTree";
 import { CommaListField } from "./CommaListField";
 import { TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
@@ -188,7 +188,7 @@ function Leaf({ env, node, onChange }: { env: ConditionEnv; node: Condition; onC
         <>
           <LabeledSelect helpNotNeeded
             label={text.conditionName} value={refName} placeholder={text.choose} disabled={env.disabled}
-            options={names.map((n) => ({ value: n.name, label: n.name }))}
+            options={names.map(nameOption)}
             onChange={(name) => onChange({ ref: `${name}.`, op: "eq", value: "" })}
           />
           <LabeledSelect helpNotNeeded

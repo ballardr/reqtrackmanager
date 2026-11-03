@@ -2240,8 +2240,8 @@ const en = {
     // Source
     sourceMode: "Records come from",
     sourceAll: "All records of a type",
-    sourceLinked: "Records linked to an enclosing record",
-    sourceGroup: "Members of an enclosing group",
+    sourceLinked: "Records linked to a surrounding record",
+    sourceGroup: "Records of the surrounding group",
     recordType: "Record type",
     linkedFrom: "Linked from",
     linkTypes: "Link types",
@@ -3459,6 +3459,7 @@ const en = {
     // Report layouts
     reportPackTier: "Which layout of this name the pack uses when a project has more than one: the organisation's, a project's, or simply the nearest one to the project it runs for.",
     reportPackFilename: "The name of this report's file inside the zip, without an extension. It may use placeholders such as {{report_title}}, {{generated_on}} and {{var.name}}. Left empty, the layout's own file name applies, then its title. The file is numbered by its position, so two reports can share a name.",
+    reportSourceMode: "Where this block gets its records. All records of a type searches the project for them. Records linked to a surrounding record follows the links of the record a block around this one is showing. Records of the surrounding group shows the records the group above has already found, one row each, instead of searching again: use it to show the same records as a table or a detail under a group.",
     reportColumnWidth: "Fixes how wide this column is, so it stays the same from one table to the next whatever it holds. Write a share of the table (30%) or a length (4 cm, 40 mm); leave it empty for automatic. Columns with no width share what is left. In a spreadsheet a percentage is of a 25 cm sheet and a column with no width is sized from its content.",
     reportColumnLink: "Makes each cell of this column open that record's row on the sheet you choose, in Excel and OpenDocument spreadsheets. Only sheets that list the same kind of record are offered. A record that is not on that sheet (filtered out, or not visible to you) stays plain text and the run says how many.",
     reportBodyFont: "The typeface for text, lists, tables and notes. PDF always prints in it. Word, OpenDocument and the web page name it, so a reader without it sees a similar font unless Embed fonts is on. Left alone, each format keeps its own look.",

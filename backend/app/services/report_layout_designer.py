@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -56,6 +56,7 @@ from app.services.report_layout_tree import (
     BLOCK_SPECS,
     GROUP_FIELDS,
     IMAGE_COLUMN_FIELDS,
+    LABEL_FIELD,
     LIST_OPERATORS,
     OPERATORS_BY_KIND,
     TREE_SCHEMA_VERSION,
@@ -229,7 +230,9 @@ def block_catalogue() -> BlockCatalogue:
     blocks = [
         BlockDescription(
             spec.key, spec.families,
-            spec.schema or BlockSchema(spec.key, "", template={"type": spec.key}), spec.schema is not None,
+            replace(spec.schema, fields=(*spec.schema.fields, LABEL_FIELD)) if spec.schema is not None
+            else BlockSchema(spec.key, "", template={"type": spec.key}),
+            spec.schema is not None,
         )
         for spec in BLOCK_SPECS.values()
     ]

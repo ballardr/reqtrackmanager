@@ -284,10 +284,75 @@ def test_siblings_may_share_a_name():
     assert errors(doc(each, copy.deepcopy(each))) == {}
 
 
-@pytest.mark.parametrize("alias", ["Req", "1req", "re q", "a" * 33, ""])
+@pytest.mark.parametrize("alias", [
+    "Req", "1req", "re q", "a" * 129, "", "-req", "req-", "re--q", "re-_q-", "_req", "re.q", "réq",
+])
 def test_an_alias_must_be_a_plain_name(alias):
     found = errors(doc({"type": "each", "source": {"record_type": REQ}, "as": alias, "children": []}))
     assert list(found) == ["nodes[0].as"]
+
+
+@pytest.mark.parametrize("alias", ["r", "a" * 128, "open-requirements", "open_requirements", "a-b-c", "req2-b3", "req_", "a-_b", "a_-b"])
+def test_an_alias_may_hold_single_hyphens_and_be_128_characters(alias):
+    each = {"type": "each", "source": {"record_type": REQ}, "as": alias, "children": [{"type": "text", "text": f"{{{{{alias}.title}}}}"}]}
+    assert errors(doc(each)) == {}
+
+
+def test_a_hyphenated_name_is_a_placeholder_and_a_reference_target():
+    each = {"type": "each", "source": {"record_type": REQ}, "as": "open-reqs", "children": [
+        {"type": "text", "text": "{{open-reqs.code}} {{open-reqs.nope}}"},
+        {"type": "text", "text": "{{closed-reqs.code}}"},
+        {"type": "if", "when": {"ref": "open-reqs.title", "op": "empty"}, "children": []},
+    ]}
+    found = errors(doc(each))
+    assert list(found) == ["nodes[0].children[0].text", "nodes[0].children[1].text"]
+    assert '"nope" is not a field of requirement' in found["nodes[0].children[0].text"]
+    assert "closed-reqs" in found["nodes[0].children[1].text"]
+
+
+def test_a_field_name_never_holds_a_hyphen():
+    each = {"type": "each", "source": {"record_type": REQ}, "as": "r", "children": [{"type": "text", "text": "{{r.ti-tle}}"}]}
+    assert errors(doc(each)) == {}  # not the placeholder shape, so plain text
+
+
+def test_a_hyphenated_group_name_can_be_a_source():
+    group = {"type": "group", "source": {"record_type": REQ}, "by": "component", "as": "by-component", "children": [
+        {"type": "each", "source": {"group": "by-component"}, "as": "one-req", "children": [{"type": "text", "text": "{{one-req.title}}"}]},
+    ]}
+    assert errors(doc(group)) == {}
+
+
+@pytest.mark.parametrize("label", ["Open requirements", "x", "A" * 128, "Q&A: \"quoted\" <b> é 日本", "  padded  "])
+def test_a_block_may_have_a_display_label(label):
+    assert errors(doc({"type": "text", "text": "hi", "label": label})) == {}
+
+
+@pytest.mark.parametrize("label", ["", "   ", "A" * 129, "two\nlines", "tab\there", "nul\x00", 5, None, ["a"]])
+def test_a_bad_display_label_is_refused(label):
+    assert list(errors(doc({"type": "text", "text": "hi", "label": label}))) == ["nodes[0].label"]
+
+
+def test_every_kind_of_block_takes_a_label():
+    nodes = [
+        {"type": "heading", "text": "h", "label": "L"},
+        {"type": "page_break", "label": "L"},
+        {"type": "spacer", "height": 1, "label": "L"},
+        {"type": "each", "source": {"record_type": REQ}, "label": "L", "children": [{"type": "text", "text": "t", "label": "L"}]},
+        {"type": "table", "source": {"record_type": REQ}, "label": "L", "columns": [{"field": "title"}]},
+        {"type": "if", "when": {"module": "risk_management"}, "label": "L", "children": [], "else_children": []},
+    ]
+    assert errors(doc(*nodes)) == {}
+
+
+def test_a_label_is_not_a_key_of_other_objects():
+    table = {"type": "table", "source": {"record_type": REQ}, "columns": [{"field": "title", "label": "Heading", "bogus": 1}]}
+    assert list(errors(doc(table))) == ["nodes[0].columns[0].bogus"]
+
+
+def test_a_label_does_not_change_the_tree_hash_of_other_trees():
+    plain = doc({"type": "text", "text": "hi"})
+    assert tree_hash(plain) == tree_hash(copy.deepcopy(plain))
+    assert tree_hash(plain) != tree_hash(doc({"type": "text", "text": "hi", "label": "L"}))
 
 
 def test_a_placeholder_outside_its_block_is_refused():

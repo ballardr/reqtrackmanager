@@ -6,6 +6,12 @@ sidebar_position: 3
 
 What a layout can contain beyond headings and text, written in the [designer](./designing-a-layout.md)'s text view (the block editor builds the same blocks).
 
+## Names and labels
+
+A block that finds records (*for each*, *group*, a sheet) gives them a **name** with `as`, and the blocks inside use it as `{{name.field}}`: `@each requirement as open-reqs` then `{{open-reqs.title}}`. A name is lower-case letters, digits, underscores and single hyphens (not at the end), starts with a letter and is up to 128 characters. The blocks inside, and the pickers in the designer (*Records come from*, *Linked from*, *Insert a field*), refer to a block by its name. A block's **Records come from** choice has three settings: all records of a type, records linked to a surrounding record, and the records of the surrounding group (the ones the group above already found, shown as a table or a detail). A new table, *for each* or sheet added inside a group starts on that group; change it in the block's form if you want something else.
+
+Any block can also have a **Label**, a plain-language name for the designer, such as *Open requirements*. It can hold capitals, spaces and any other text up to 128 characters, shows on the block in the **Blocks** view and in the pickers beside the name, and is never printed in the report or used in a `{{placeholder}}`. In the text view it is a line before the block, `@label "Open requirements"`.
+
 ## Equations
 
 write an equation on its own line with `@equation \frac{a}{b} = c`, or inside a text line between `\( ... \)` (inline) or `$$ ... $$` (display). Equations are drawn in the preview, the HTML page and the PDF, are native, editable equations in Word when the equation is one Word handles (otherwise a picture), and are pictures in OpenDocument text. A record field shows equations too when it is one people write them in (a requirement's description, reasoning and clarification), including in a table column; any other record text, such as a title, is never read as an equation. Equations work in headings, list items and table cells as well as paragraphs (a `$$ ... $$` there is drawn inline); Excel, OpenDocument spreadsheet and CSV tables keep the TeX as text. The same equations are typeset on a requirement's page once it is locked. Only a set of common commands is accepted (Greek letters, operators, fractions, roots, subscripts, matrices and the like); `\href`, `\input` and anything else is refused when you save. An equation that cannot be drawn is printed as you wrote it, with a warning on the run.

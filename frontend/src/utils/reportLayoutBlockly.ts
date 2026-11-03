@@ -72,12 +72,13 @@ export function layoutType(blockType: string): string | null {
 }
 
 /**
- * The read-only line a block shows for its key facts: the start of its text (or its record type), the alias a
- * "for each" names its records, and a heading's level. `undefined` when the block type has no fields to summarise.
+ * The read-only line a block shows for its key facts: its display label, else the start of its text (or its record
+ * type), then the alias a "for each" names its records, and a heading's level. `undefined` when the block type has no fields to summarise.
  */
 export function blockSummary(node: TreeNode, type: BlockType | undefined): string | undefined {
   if (!type || !type.described || type.fields.length === 0) return undefined;
-  const line = summarise(node, SUMMARY_LENGTH);
+  const label = typeof node.label === "string" ? node.label.replace(/\s+/g, " ").trim() : "";
+  const line = label === "" ? summarise(node, SUMMARY_LENGTH) : label.length > SUMMARY_LENGTH ? `${label.slice(0, SUMMARY_LENGTH - 1)}…` : label;
   const alias = typeof node.as === "string" && node.as !== "" ? `as ${node.as}` : "";
   const level = typeof node.level === "number" ? `level ${String(node.level)}` : "";
   return [level, line, alias].filter((part) => part !== "").join(" · ");

@@ -1346,7 +1346,7 @@ flowchart LR
   (a column reads one record); a join gives one row per linked record. Number, date and time-of-day fields are `DataCell`s
   (`typed_cell`), a time as naive UTC with a literal `Z` in its number format.
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
-  `{record_type, linked_from: alias, link_types?, direction?}` (records linked to an enclosing record; link types are
+  `{record_type, linked_from: alias, link_types?, direction?}` (records linked to a surrounding record; link types are
   named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
   `where`, `sort` and `include_archived`. `group` buckets records by a field; `{{group.value}}` and `{{group.count}}`
   are its values.
@@ -1356,6 +1356,12 @@ flowchart LR
 - **Placeholders.** `{{alias.field}}` and the global `{{project_name}}`, `{{report_title}}`, `{{generated_on}}`,
   `{{organisation}}`. They are validated at save time against the field registry and the aliases in scope, and
   substituted into already-parsed blocks at run time, so a record value can never become Markdown or a placeholder.
+- **Names and labels.** An alias is lower-case letters, digits, underscores and single hyphens (never trailing),
+  starting with a letter, up to 128 characters (`report_layout_tree.MAX_NAME_CHARS`); a field name never holds a hyphen.
+  Any block may carry a `label` (1 to 128 characters, no control characters): a designer-only name that no renderer,
+  placeholder or file name reads. The validator accepts the key on every block (`TreeValidator._labelled`), the block
+  catalogue appends the Label field to every described block, and the text view writes it as a `@label "…"` line
+  before the block.
 - **Tiers and visibility.** A layout is owned by an organisation or a project (`routers/report_layouts.py`:
   `/orgs/{id}/report-layouts`, `/projects/{id}/report-layouts`). A project sees its own, its ancestors' (nearest
   first) and the organisation's, de-duplicated by name with the nearest winning (`services/report_layout_scope.py`):

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, userEvent, waitFor, within } from "storybook/test";
 
 import type { NameInScope } from "../utils/reportLayoutTree";
 import { buildBlockCatalogue, buildFieldCatalogue } from "../testing/reportLayoutFixtures";
@@ -27,7 +27,7 @@ function Harness({ initial, names = NAMES, joinMode = false, variables = [] }: {
   );
 }
 
-/** Where a block's records come from: all of a type, records linked to an enclosing record, or a group's members. */
+/** Where a block's records come from: all of a type, records linked to a surrounding record, or the records of the surrounding group. */
 const meta: Meta<typeof Harness> = { title: "Components/ReportLayoutSourceEditor", component: Harness, args: { initial: {} } };
 export default meta;
 
@@ -140,5 +140,34 @@ export const AJoinOnlyFollowsALink: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.queryByRole("combobox", { name: "Records come from" })).not.toBeInTheDocument();
     await expect(canvas.getByRole("combobox", { name: "Linked from" })).toBeInTheDocument();
+  },
+};
+
+/** A labelled block is offered by its label with the name beside it; what is stored is the name. */
+export const ANameInScopeWithALabelShowsBothButStoresTheName: Story = {
+  args: {
+    initial: { record_type: "pain_point", linked_from: "open-reqs" },
+    names: [{ name: "open-reqs", kind: "record", recordType: "requirement", label: "Open requirements" }, { name: "plain", kind: "record", recordType: "requirement" }],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const from = canvas.getByRole("combobox", { name: "Linked from" }) as HTMLSelectElement;
+    await expect(Array.from(from.options).map((o) => [o.value, o.textContent])).toEqual([
+      ["", "Choose…"], ["open-reqs", "Open requirements (open-reqs)"], ["plain", "plain"],
+    ]);
+    await userEvent.selectOptions(from, "plain");
+    await waitFor(() => expect(valueOf(canvasElement)).toEqual({ record_type: "pain_point", linked_from: "plain" }));
+  },
+};
+
+export const TheThreeSourcesReadAsASetAndHaveHelp: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const picker = canvas.getByRole("combobox", { name: "Records come from" });
+    await expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "All records of a type", "Records linked to a surrounding record", "Records of the surrounding group",
+    ]);
+    await userEvent.click(canvas.getByRole("button", { name: /Records come from/ }));
+    await expect(await screen.findByText(/shows the records the group above has already found/)).toBeInTheDocument();
   },
 };

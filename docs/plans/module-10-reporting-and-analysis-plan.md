@@ -153,14 +153,16 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 90 | Header and footer cells: content-sized widths, optional set widths, vertical alignment (model, text view, designer) | **Done 2026-11-03** (built and tested; uncommitted). `report_band_cells.resolve_band_cells`, `<cell>_width`/`<cell>_valign`/`valign` keys, text clauses, designer fields; no renderer reads them until 91. Playwright step written, not run. Decisions log "Custom reports Phase 90". Next: 91. |
 | 91 | Header and footer cells in the preview, PDF, Word and ODT | **Done 2026-11-03** (built and tested; uncommitted). The four renderers read `resolve_band_cells`; the PDF now wraps a cell's text to its width; ODT column styles follow the band. A wrapped band raises the PDF page style's margins so it never overlaps the body (`grow_margins_for_bands`). Playwright measure step written, not run. Next: 92. |
 | 92 | Header and footer cells: starters, demo, cross-format check | **Done 2026-11-03** (built and tested; uncommitted). No starter writes a band, so each prints the default centred page number, pinned in all four formats by `test_report_starter_bands.py`; the demo layout gains a header with a 30 % cell and mixed alignment; website and modules.md updated. Word/ODT not opened in an application (User check pending). Next: 93. |
-| 93 | Block names allow hyphens and 128 characters; blocks get a display label (capitals, spaces) | **Planned 2026-11-03** (not started). |
-| 94 | "Records come from" renamed and explained; a block inside a group defaults to the group | **Planned 2026-11-03** (not started). |
+| 93 | Block names allow hyphens and 128 characters; blocks get a display label (capitals, spaces) | **Done 2026-11-03** (built and tested; uncommitted). Name rule 128 chars with single hyphens, `label` key on every block, Label field from the server schema, `@label "…"` line in the text view, label plus name in every picker; Playwright spec written, not run (stack down). Decisions log "Custom reports Phase 93". |
+| 94 | "Records come from" renamed and explained; a block inside a group defaults to the group | **Done 2026-11-03** (built and tested; uncommitted). Options read "Records of the surrounding group" etc.; `(?)` on the picker; `withSurroundingGroupSource` defaults table/each/sheet in the Add block menu only (`record_images` has no source). Playwright written, not run. Decisions log "Custom reports Phase 94". Next: 95. |
 | 95 | Block editor: dragging moves only the selected block (not the blocks after it) | **Planned 2026-11-03** (not started). |
 | 96 | Block editor: Shift-click selects several blocks, which then move together (spike first; may end as decided not to build) | **Planned 2026-11-03** (not started). |
 | 96a | A project report name: a short name a project can set, which reports can use in headers and titles | **Planned 2026-11-03** (not started; added by the User during Phase 91). Runs before 97. |
-| 97 | Thirteenth review: docs, seeds, full-suite check and close-out | **Planned 2026-11-03** (not started). |
-| R | Review checkpoint: the User reviews Phases 17 to 97 together (17 to 20 were built before the third review; 28 to 34 come from the fourth review, 35 to 42 from the fifth, 43 to 45 from the sixth, 46 and 47 from the seventh, 48 to 59 from the eighth, 60 to 71 from the ninth 72 to 78 from the tenth 79 to 83 from the eleventh 84 to 87 from the twelfth and 88 to 97 from the thirteenth) | After Phase 97 |
-| 15 | Docs website | After the review checkpoint (its screenshots must wait: Phases 23, 24, 27, 28, 29, 32 to 34 and 35 to 97 change the screens) |
+| 97 | Thirteenth review: docs, seeds, full-suite check and close-out | **Planned 2026-11-03** (not started). Closes Phases 88 to 96a; drafts (98, 99) follow it. |
+| 98 | Layout drafts: one shared autosaved draft per layout, publish as a numbered version (backend and API) | **Planned 2026-11-03** (not started; added by the User after Phase 93). |
+| 99 | Layout drafts in the designer: autosave switch, Save draft, Discard draft, History; docs, seeds and close-out | **Planned 2026-11-03** (not started). |
+| R | Review checkpoint: the User reviews Phases 17 to 99 together (17 to 20 were built before the third review; 28 to 34 come from the fourth review, 35 to 42 from the fifth, 43 to 45 from the sixth, 46 and 47 from the seventh, 48 to 59 from the eighth, 60 to 71 from the ninth 72 to 78 from the tenth 79 to 83 from the eleventh 84 to 87 from the twelfth and 88 to 97 from the thirteenth) | After Phase 97 |
+| 15 | Docs website | After the review checkpoint (its screenshots must wait: Phases 23, 24, 27, 28, 29, 32 to 34 and 35 to 99 change the screens) |
 
 The plan is not closed. The paragraph below is the history of Phases 0 to 15, kept as written.
 
@@ -275,13 +277,15 @@ The plan is not closed. The paragraph below is the history of Phases 0 to 15, ke
 | 90 | Header and footer cells: widths and vertical alignment (model, text, designer) | 15 | [x] |
 | 91 | Header and footer cells in preview, PDF, Word and ODT | 15 | [x] |
 | 92 | Header and footer cells: starters, demo, cross-format check | 15 | [x] |
-| 93 | Block names: hyphens, 128 characters; display label on blocks | 15 | [ ] |
-| 94 | "Records come from" rename, help and default to the enclosing group | 15 | [ ] |
+| 93 | Block names: hyphens, 128 characters; display label on blocks | 15 | [x] |
+| 94 | "Records come from" rename, help and default to the enclosing group | 15 | [x] |
 | 95 | Block editor: drag moves only the selected block | 15 | [ ] |
 | 96 | Block editor: Shift-click multi-select and move (spike; may be dropped) | 15 | [ ] |
 | 96a | Project report name (short name for headers and titles) | 15 | [ ] |
 | 97 | Thirteenth review close-out | 15 | [ ] |
-| R | **Review checkpoint (User):** the User reviews Phases 17 to 97 together, once all are built; Phases 16 to 16d were reviewed 2026-10-28. The plan is not closed before it, and Phase 15 (docs) waits for it | 6 | [ ] |
+| 98 | Layout drafts: backend and API | 15 | [ ] |
+| 99 | Layout drafts: designer UI, docs, close-out | 15 | [ ] |
+| R | **Review checkpoint (User):** the User reviews Phases 17 to 99 together, once all are built; Phases 16 to 16d were reviewed 2026-10-28. The plan is not closed before it, and Phase 15 (docs) waits for it | 6 | [ ] |
 | 15 | Docs website coverage (incremental; first slice 2026-10-28: nested Custom reports section with eight screenshots, decisions log "Custom reports Phase 15"; background-reports, starters and organisation-run screenshots still to add) | — | [ ] |
 
 ```mermaid
@@ -1153,9 +1157,9 @@ flowchart LR
 | F4 | The first table of the Review Package's Open Questions shows only not-yet-overdue questions (Q1; built in Phase 85e). | User (2026-11-03) |
 | F5 | Measured, not assumed: the PDF and the preview misalign, Word and ODT line up with equal columns, the PDF has no gap after a table; the nested merge adds no cause. | Agent (Phase 84) |
 
-### Thirteenth review (2026-11-03) — Phases 88 to 97
+### Thirteenth review (2026-11-03) — Phases 88 to 99
 
-The User's thirteenth review. Phases 88 to 97 are **planned, not started** (the User starts a new session). The review checkpoint (R) stays before Phase 15 and now follows Phase 97. Terms were casual; each phase says how it was read. **Decided by: User** is only what the User wrote; the rest is **Decided by: Agent** and can be revisited.
+The User's thirteenth review. Phases 88 to 99 are **planned, not started** (98 and 99, layout drafts, were added after Phase 93 was built) (the User starts a new session). The review checkpoint (R) stays before Phase 15 and now follows Phase 97. Terms were casual; each phase says how it was read. **Decided by: User** is only what the User wrote; the rest is **Decided by: Agent** and can be revisited.
 
 The User's requests, in their words:
 1. "The option in an org settings menu should be `Reports` as templates makes no sense."
@@ -1164,6 +1168,7 @@ The User's requests, in their words:
 4. "Block component names should be allowed to have capitals, spaces, dashes and underscores, and set a limit of 128 characters."
 5. "The 'Records come from' option of 'Members of an enclosing group' is a little confusing, I think it needs a better name and probably a (?) tooltip. I think also if there is a group above, and a table is created within, the table should default to using the group."
 6. "When dragging blocks around, it should only drag the selected block. If multiple blocks are wanting to be moved, the user either has to select multiple blocks (use the shift button) or move them individually."
+7. (Added after Phase 93.) "Can we add to the plan, that reports can be saved in a draft state, so we don't need to save full versions when still working on a version. This will also mean less versions... eg I know I will save frequently so not to lose changes, but it means early versions will be next to useless, yet our system keeps them as if we wanted to ever go back to them." (Phases 98 and 99.)
 
 ```mermaid
 flowchart LR
@@ -1174,7 +1179,7 @@ flowchart LR
     P94["94 Records-come-from"] --> P97
     P95["95 Drag one block"] --> P96["96 Shift multi-select"] --> P97["97 Close-out"]
     P96a["96a Project report name"] --> P97
-    P97 --> R["R Review checkpoint"]
+    P97 --> P98["98 Drafts: backend + API"] --> P99["99 Drafts: designer + close-out"] --> R["R Review checkpoint"]
 ```
 
 88, 89, 93 and 94 are independent of each other and of 90 to 92; 90 to 92 are a chain, 95 and 96 are a chain. 97 comes last.
@@ -1272,10 +1277,38 @@ flowchart LR
 - **(b) Seeds.** `seed_demo_data.py` and `seed_e2e_dataset.py` run clean against the current schema.
 - **(c) Security pass (identify → verify → remediate, decisions log).** Areas touched: a draft download (read access, no logging of draft text, no run record), a name now carrying free text into placeholders and the text view (no markup or file-name injection), the project report name as free text into every renderer and file name (escaped like the project name), width and alignment values as untrusted input to four renderers (bounded numbers, no unit strings reach XML unescaped).
 - **(d) Full pytest suite run once, alone**; the Storybook and the touched Playwright specs.
-- **(e) Close-out.** Mark 88 to 97 done in both tables, set R as next, update the memory index.
-- *Outcome:* the User reviews Phases 17 to 97 together at R.
+- **(e) Close-out.** Mark 88 to 97 done in both tables, set 98 as next, update the memory index. (R now follows Phase 99, so the drafts are reviewed with everything else.)
+- *Outcome:* Phases 88 to 96a are closed; drafts (98, 99) are next.
 
-*Review checkpoint (R) is after Phase 97 and before Phase 15 (docs website).*
+**98 — Layout drafts: a shared, autosaved working copy; a numbered version only when published (backend and API).** *User (2026-11-03):* reports can be saved as a draft, so a numbered version is not needed for every save; early versions the author saves only "so as not to lose changes" are useless yet kept for good. Answered interactively: **one shared draft per layout; autosave on by default, switchable off (then a Save draft button); placed after 97 and before R** (**Decided by: User**).
+- **(a) What it is.** A layout has its numbered, immutable versions (unchanged: a run pins one, history compares them) and at most one **draft**: the working copy the designer edits. Autosave writes the draft; **Save new version** (the existing action, with its note) **publishes** the draft as the next version and removes the draft in the same transaction. Nothing but the designer reads a draft: no run, no pack, no picker entry, no copy or duplicate, no MCP tool, no other tier's inheritance sees it. The Run preview and Download preview keep working from what the editor holds, as today.
+- **(b) Model.** `ReportLayoutDraft`: `layout_id` (unique, `ON DELETE CASCADE`, so deleting the layout, project or organisation removes it with no cleanup code), `tree` (JSONB), `tree_hash`, `base_version` (the version it was started from), `revision` (integer, +1 on every write, for the conflict check), `updated_by` (nullable once the user is deleted), `updated_at` (UTC, timezone-aware). Unlike a version row it **is mutable**; the ORM guard that protects `ReportLayoutVersion` stays and a test pins that versions are still never updated. The migration takes the next number across both migration directories and seeds nothing.
+- **(c) API (both tiers, same router pattern as versions).** `GET …/{id}/draft` (404 when none), `PUT …/{id}/draft` with `{tree, base_version, revision}`, `DELETE …/{id}/draft` (**Discard draft**) and the existing save-version endpoint taking `from_draft: true` (or the tree as today). Needs the layout-management permission for that scope, like saving a version; the project/organisation scoping and module gates are copied from the version routes. Request size and tree size caps are the version caps.
+- **(d) What a draft may hold (Decided by: Agent).** A draft may be **invalid** (a tree the checker rejects) because the point is not losing work in progress; it is checked on publish exactly as a version is today, and the draft endpoint returns the problems so the designer can show them. Text that does not parse cannot become a tree: the text view does not autosave until it parses, and says "Not saved: line N" rather than storing text (a draft stores the tree only, so there is one stored form and no text to escape or index). A draft equal to the saved version (same tree hash) is deleted instead of stored, so no identical draft lingers.
+- **(e) Concurrency (Decided by: Agent).** One shared draft means two editors can overwrite each other. `PUT` carries the `revision` the editor loaded and answers 409 with the current draft's `updated_by` and `updated_at` when it moved; the designer shows who changed it and offers to reload their draft or keep editing and overwrite. Publishing keeps today's `base_version` rule: if a version was published since the draft began, publish answers 409 (as `LayoutConflictError` does now) and the designer offers to see the differences, as it does today. Publishing from another person's draft is allowed (it is shared), and the new version's author is the publisher.
+- **(f) Audit, bundles, copies.**
+  - **Audit (flagged; Decided by: Agent).** Publishing is audited as a version save already is; **Discard draft** is audited (one event, no tree content). Individual autosaves are **not** audited event by event: they are high-frequency working state that affects no run or output, and one event per few seconds would bury the audit trail. This is a deliberate departure from "every mutating action is audited" in the SOC 2 change-management policy; record it in the decisions log and the policy's note on audit scope. The tree is customer content and is never logged.
+  - **Bundles.** The project and organisation bundles carry **versions, not drafts**: a draft is unfinished and may be invalid, so exporting it would import a layout in a state nobody agreed to publish. State this reason in the decisions log (the bundle rule asks for one). A copy or duplicate takes the latest published version.
+  - **Retention.** A draft stays until published or discarded; the designer shows its age. No automatic expiry (a long-running draft is legitimate) — revisit only if stale drafts become a problem (**Decided by: Agent**).
+- **(g) MCP and API clients.** Unchanged for writing: `create_report_layout` and `save_report_layout_version` publish a version directly. `get_report_layout` gains `draft: {updated_by, updated_at, base_version} | null` (no tree) so an agent knows a person has unpublished work and can warn before publishing over it. Update `mcp-server/skill/reqtrack-mcp/SKILL.md` and run `generate_skill_reference.py` in the same change, as the MCP rule requires.
+- **(h) Challenge to the request.** Drafts stop the *next* pile of useless versions; they do not remove the ones already saved, and **deleting or squashing old versions is deliberately not offered**: a run records the version it used and a version row is immutable, so removing one would break provenance. If the pile still annoys, a later "hide versions without a note" filter in History is cheaper and safe; not built here. This applies to **layouts only**: report packs and saved snippets have no version history, so there is nothing to draft.
+- **Tests.** Draft create, update, read, discard; `revision` conflict (409 with who/when); an identical draft is removed; an invalid tree is stored and its problems returned, but cannot be published; publish makes version N+1, removes the draft and records the author, in one transaction (a failed publish keeps the draft); a version published meanwhile gives 409 on publish; no run, picker, pack, copy, duplicate or bundle shows a draft (a bundle round trip carries versions only); permission and tier scoping (another project's layout, a read-only member, a layout shared from the organisation is not editable by a project); deleting the layout deletes the draft; a version row is still never updated; MCP `get_report_layout` shows the draft summary and no tree. Query counts stay flat as the number of layouts grows (the list endpoint must not read drafts).
+- *Why:* a version is a promise ("I might want this back"); autosave is not. Separating them keeps History short and meaningful and removes the reason to save a half-finished tree as a version. *Outcome:* work in progress is stored without making versions; a version exists only when its author published it.
+
+**99 — Layout drafts in the designer, and close-out.** *User (2026-11-03):* autosave on, "however autosave can be disabled and when it is, a save draft button is offered. This allows users to test layouts but still being able to revert if they don't like it."
+- **(a) Autosave.** On by default. A short pause after the last change (a few seconds; **Decided by: Agent**) writes the draft in the Text and Blocks views (and JSON when it is valid JSON), with a quiet status beside **Save new version**: *Draft saved 12:04*, *Saving…*, or *Not saved: line 7* / *Not saved: offline*. A failed save never loses the editor's content and retries on the next change. The switch **Autosave drafts** is a per-person preference (`useUiPreference`, so it follows them across layouts), placed where the designer's other preferences are, with a `(?)` explaining it.
+- **(b) Autosave off.** The status reads *Changes not saved to a draft*, and a **Save draft** button appears beside **Save new version**. Nothing is written until it is pressed, so a person can try a layout out and **leave it behind**: **Discard changes** (reverting the editor to the draft, else the saved version) is offered, and leaving with unsaved edits asks first through the existing guard (autosave on: the guard asks only while a save is pending or has failed). Turning autosave on saves the pending changes at once.
+- **(c) Opening a layout that has a draft.** The designer opens on the draft with a notice: *"Draft from {name}, {date}, based on version N."* and two actions: **Discard draft** (back to the latest saved version, with the two-tier confirmation the style guide asks for, because it destroys work) and **Show saved version** (read-only compare, no destruction). A draft whose base version is behind the layout's current version says so ("version N+2 was saved since") and publishing it follows Phase 98(e).
+- **(d) Publish.** **Save new version** keeps its note field and its disabled-while-invalid rule, and now says what it does in its tooltip ("Publishes the draft as version N+1"). After publishing the status shows *No draft*. History lists published versions only, with a **Draft** row on top while one exists (author, time, **Discard draft**), so the two are not confused.
+- **(e) Conflicts.** Phase 98(e)'s 409 is shown as a banner naming who changed the draft and when, with **Load their changes** and **Keep mine**; autosave pauses until the choice is made.
+- **(f) Shared components and rules.** The status line, Save draft/Discard controls and the draft notice are shared components used by all three views; no per-view copies. Every new string in `strings.ts`; every form field with `help` or `helpNotNeeded`; confirmations follow the style guide's tiers; every mutation gives feedback (the status line is the feedback for autosave, a toast for Save draft and Discard).
+- **(g) Docs.** Website designer page: what a draft is, autosave and the switch, publishing, discarding, the History row; `docs/modules.md` (model, endpoints); decisions log (the audit departure, bundles, concurrency, the "invalid drafts allowed" rule, **Decided by**); SOC 2 change-management policy note; `docs/user-guide.md`. Mermaid diagram of the draft/publish states on the designer page.
+- **(h) Seeds and perf.** `seed_demo_data.py` leaves one layout with a draft so the notice is visible; `seed_e2e_dataset.py` checked (no draft). Layouts are not an artefact type, so no scaling probe or dataset generator; the list-layouts scenario is re-run only if the list endpoint changed (it must not).
+- **(i) Close-out.** Full backend run once, alone; Storybook and the touched Playwright specs; mark 98 and 99 done in both tables, set R as next, update the memory index.
+- **Tests.** Storybook: status states (saving, saved, not saved with a line number, offline), the autosave switch, Save draft and Discard changes with autosave off, the draft notice and its two actions, the conflict banner, the History draft row, the leave guard in each mode. Playwright: edit, wait, reload and see the draft restored; switch autosave off, edit, leave and be asked, Save draft, reload; discard returns to the saved version; publish makes exactly one new version and History shows no extra versions however often the draft saved; two sessions editing the same draft see the conflict banner.
+- *Why:* the switch is what makes trying something out safe, the default is what makes losing work unlikely. *Outcome:* People save as often as they like, versions stay few and meaningful, and an experiment can be thrown away.
+
+*Review checkpoint (R) is after Phase 99 and before Phase 15 (docs website).*
 
 **Open questions for the User.**
 - **Q1 (Phase 93), answered 2026-11-03 (User).** Which names? **A separate display label, plus hyphens and 128 characters for the code name; lower-case only; the label shows in the designer only.**
@@ -1297,6 +1330,8 @@ flowchart LR
 | G8 | A plain drag moves only the grabbed block (with what is inside it); the blocks after it close up (Phase 95). | User |
 | G9 | Several blocks move only when Shift-selected, then together as one undoable step; the selection mechanism (plugin, own code, or none: Phase 96 may end as decided not to build) is chosen after Phase 96's spike (Phase 96). | User (Shift-select); Agent (the rules) |
 | G10 | A project can set a **Project report name**; reports opt in to it through a new `{{project_report_name}}` placeholder that falls back to the project name; `{{project_name}}` is unchanged (Phase 96a). | User (the setting and its purpose and tooltip); Agent (opt-in placeholder, length, fallback) |
+| G11 | A layout has at most one shared draft; autosave on by default and switchable off (then a Save draft button); only Save new version makes a numbered version; placed after 97 (Phases 98, 99). | User (2026-11-03) |
+| G12 | Drafts may be invalid and hold the tree only; they are not audited per autosave, not carried in bundles, not visible to runs, copies or MCP writes; no deletion of old versions. | Agent (flagged to the User; audit and bundle departures to be recorded in the decisions log) |
 
 ## Standing checklist per phase
 

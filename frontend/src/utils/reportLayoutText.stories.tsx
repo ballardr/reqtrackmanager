@@ -117,3 +117,20 @@ export const ATooLargeDiffIsShownAsReplacedNotComputed: Story = {
     await expect(result.filter((l) => l.kind === "add")).toHaveLength(2100);
   },
 };
+
+export const HyphenatedNamesAndLabelsAreReadFromTheText: Story = {
+  play: async () => {
+    const text = '@label "Per \\"item\\""\n@group requirement by status as by-status\n  @each in by-status as one-req\n    x\n  @end\n@end\n';
+    await expect(aliasesInScope(text, 3)).toEqual([
+      { name: "by-status", kind: "group", recordType: "requirement", label: 'Per "item"' },
+      { name: "one-req", kind: "record", recordType: "requirement" },
+    ]);
+    // A label belongs to the next block only; a malformed one is ignored.
+    await expect(aliasesInScope('@label "A"\n@var x text\n@each requirement as r\n  y\n@end\n', 4)).toEqual([
+      { name: "r", kind: "record", recordType: "requirement" },
+    ]);
+    await expect(aliasesInScope("@label oops\n@each requirement as r\n  y\n@end\n", 2)).toEqual([
+      { name: "r", kind: "record", recordType: "requirement" },
+    ]);
+  },
+};

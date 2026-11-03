@@ -111,7 +111,7 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     each = next(b for b in body["blocks"] if b["type"] == "each")
     assert each["provides"] == {"key": "as", "kind": "record", "default": "record"}
     assert [c["key"] for c in each["containers"]] == ["children"]
-    assert [f["key"] for f in each["fields"]] == ["source", "as", "empty_text"]
+    assert [f["key"] for f in each["fields"]] == ["source", "as", "empty_text", "label"]
     assert next(f for f in each["fields"] if f["key"] == "source")["required"] is True
     iff = next(b for b in body["blocks"] if b["type"] == "if")
     assert [c["key"] for c in iff["containers"]] == ["children", "else_children"]
@@ -140,11 +140,11 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     ]
     assert next(f for f in body["image_column_fields"] if f["key"] == "width_unit")["default"] == "percent"
     section = next(b for b in body["blocks"] if b["type"] == "section")
-    assert [f["key"] for f in section["fields"]] == ["page_style"] and [c["key"] for c in section["containers"]] == ["children"]
+    assert [f["key"] for f in section["fields"]] == ["page_style", "label"] and [c["key"] for c in section["containers"]] == ["children"]
     image = next(b for b in body["blocks"] if b["type"] == "image")
     assert [f["key"] for f in image["fields"]] == [
         "file", "alt", "decorative", "width", "width_unit", "height", "height_unit", "align", "placement", "anchor", "offset_x",
-        "offset_y", "caption", "caption_position", "numbering",
+        "offset_y", "caption", "caption_position", "numbering", "label",
     ]
     placement = next(f for f in image["fields"] if f["key"] == "placement")
     assert placement["choices"] == ["inline", "wrap", "behind", "front"] and placement["default"] == "inline"
@@ -159,6 +159,22 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     assert body["operators"]["enum"] == ["eq", "ne", "in", "not_in", "empty", "not_empty"]
     assert body["valueless_operators"] == ["empty", "not_empty"] and body["list_operators"] == ["in", "not_in"]
     assert body["schema_version"] == 1
+
+
+@pytest.mark.parametrize("tier", ["org", "project"])
+def test_every_described_block_offers_a_label_and_a_longer_name(world, tier):
+    project = world.project()
+    url = org_url(world, "/blocks") if tier == "org" else project_url(project, "/blocks")
+
+    body = world.client.get(url, headers=auth_headers(world.token)).json()
+
+    for block in body["blocks"]:
+        label = [f for f in block["fields"] if f["key"] == "label"]
+        assert len(label) == 1 and block["fields"][-1]["key"] == "label", block["type"]
+        assert (label[0]["kind"], label[0]["max_length"], label[0]["required"]) == ("text", 128, False)
+        assert "never printed" in label[0]["help"]
+    names = [f for b in body["blocks"] for f in b["fields"] if f["kind"] == "alias"]
+    assert names and all(f["max_length"] == 128 for f in names)
 
 
 def test_a_block_type_without_a_schema_is_offered_as_raw_json(monkeypatch):

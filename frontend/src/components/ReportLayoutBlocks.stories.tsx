@@ -128,6 +128,37 @@ export const EditingABlockFieldInTheEditorChangesTheTree: Story = {
   },
 };
 
+/** A block's label replaces the start of its text on the block, with the name beside it; the Label field in the editor sets it and a name can hold hyphens. */
+export const ALabelShowsOnTheBlockWithItsNameAndIsEditedInTheEditor: Story = {
+  args: {
+    initial: {
+      ...buildOutlineTree(),
+      nodes: [{
+        type: "each", source: { record_type: "requirement" }, as: "open-reqs", label: "Open requirements",
+        children: [{ type: "table", source: { record_type: "pain_point", linked_from: "open-reqs" }, columns: [{ field: "code" }] }],
+      }],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    const each = blocksOf(ws, "each")[0];
+    await expect(each.getFieldValue("_summary")).toBe("Open requirements · as open-reqs");
+    // The table inside names the labelled block by label and name in its "Linked from" picker.
+    Blockly.common.setSelected(blocksOf(ws, "table")[0]);
+    const inspector = await canvas.findByTestId("block-inspector");
+    const from = (await within(inspector).findByRole("combobox", { name: "Linked from" })) as HTMLSelectElement;
+    await expect(Array.from(from.options).map((o) => o.textContent)).toContain("Open requirements (open-reqs)");
+    // Setting a label on the table through the Label field reaches the tree and the block; emptying it removes the key.
+    const label = within(inspector).getByRole("textbox", { name: "Label" });
+    await userEvent.type(label, "Pain points");
+    await waitFor(() => expect(treeOf(canvasElement).nodes[0]).toMatchObject({ children: [{ label: "Pain points" }] }));
+    await waitFor(() => expect(blocksOf(ws, "table")[0].getFieldValue("_summary")).toBe("Pain points"));
+    await userEvent.clear(label);
+    await waitFor(() => expect(treeOf(canvasElement).nodes[0].children).toEqual([expect.not.objectContaining({ label: expect.anything() })]));
+  },
+};
+
 export const SelectingABlockShowsItsOtherSettingsInTheInspector: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -253,6 +284,42 @@ export const AddBlockWithAContainerSelectedAddsInsideByDefaultOrAfterIt: Story =
     await addFromMenu(canvas, "Page break");
     await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "each", "page_break"]));
     await expect((treeOf(canvasElement).nodes[1].children as unknown[]).length).toBe(3);
+  },
+};
+
+const GROUPED: Tree = {
+  nodes: [
+    { type: "group", source: { record_type: "requirement" }, by: "status", as: "by-status", children: [] },
+    { type: "group", source: {}, by: "", as: "unfinished", children: [] },
+  ],
+};
+
+/** A new record block inside a group reads the group's records; elsewhere, or under a group with no records, it starts empty. */
+export const ANewRecordBlockInAGroupStartsOnTheGroup: Story = {
+  args: { initial: GROUPED },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    Blockly.common.setSelected(blocksOf(ws, "group")[0]);
+    await expect(await canvas.findByRole("combobox", { name: "Where to add the block" })).toHaveDisplayValue(/^Adding inside: /);
+    await addFromMenu(canvas, "Table (records)");
+    await waitFor(() => expect((treeOf(canvasElement).nodes[0].children as Record<string, unknown>[])[0]).toMatchObject({ type: "table", source: { group: "by-status" } }));
+    // A group that has no record set yet gives nothing to read, so the block starts as today.
+    Blockly.common.setSelected(blocksOf(ws, "group")[1]);
+    await waitFor(() => expect(Blockly.common.getSelected()).toBe(blocksOf(ws, "group")[1]));
+    await expect(await canvas.findByRole("combobox", { name: "Where to add the block" })).toHaveDisplayValue(/^Adding inside: /);
+    await addFromMenu(canvas, "For each record");
+    await waitFor(() => expect((treeOf(canvasElement).nodes[1].children as Record<string, unknown>[])[0]).toMatchObject({ type: "each", source: {} }));
+  },
+};
+
+export const ANewRecordBlockOutsideAnyGroupIsUnchanged: Story = {
+  args: { initial: GROUPED },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await workspaceOf();
+    await addFromMenu(canvas, "Table (records)");
+    await waitFor(() => expect(treeOf(canvasElement).nodes[2]).toMatchObject({ type: "table", source: {} }));
   },
 };
 

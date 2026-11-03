@@ -90,9 +90,14 @@ const field = (key: string, label: string, kind: string, extra: Partial<BlockFie
 });
 
 const source = field("source", "Records", "source", { required: true });
-const block = (type: string, label: string, template: Record<string, unknown>, extra: Partial<BlockType> = {}): BlockType => ({
-  type, label, description: `${label}.`, families: ["document"], fields: [], containers: [], provides: null, template, described: true, ...extra,
-});
+/** The Label field the server adds to every described block type (designer only; never printed). */
+const LABEL_HELP = "A name for this block in the designer, for example Open requirements. It can hold capitals and spaces and is never printed; other blocks still refer to this one by its Name.";
+const block = (type: string, label: string, template: Record<string, unknown>, extra: Partial<BlockType> = {}): BlockType => {
+  const made: BlockType = {
+    type, label, description: `${label}.`, families: ["document"], fields: [], containers: [], provides: null, template, described: true, ...extra,
+  };
+  return { ...made, fields: [...made.fields, field("label", "Label", "text", { max_length: 128, help: LABEL_HELP })] };
+};
 
 /** The block catalogue the server publishes (the ten core blocks), for stories of the outline. */
 /** The branding colour and an organisation scheme of two colours, as the designer is told them. */

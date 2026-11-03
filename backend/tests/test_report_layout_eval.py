@@ -277,6 +277,24 @@ def test_a_title_that_looks_like_a_placeholder_is_not_substituted_again(world, d
     assert lines(run(db, world, project, tree).document) == ["P {{project_name}}"]
 
 
+def test_a_hyphenated_name_resolves_and_a_label_is_never_printed(world, db):
+    project = world.project("Hyphen P")
+    requirement(world, project, "Alpha")
+    plain = doc({"type": "each", "source": {"record_type": REQ}, "as": "open-reqs", "children": [
+        {"type": "text", "text": "{{open-reqs.title}}"},
+    ]})
+    labelled = doc({"type": "each", "source": {"record_type": REQ}, "as": "open-reqs", "label": "Open <b>Requirements</b> & more", "children": [
+        {"type": "text", "text": "{{open-reqs.title}}", "label": "Title line"},
+    ]})
+
+    out = run(db, world, project, plain).document
+    out_labelled = run(db, world, project, labelled).document
+
+    assert lines(out) == ["P Alpha"]
+    assert out_labelled.blocks == out.blocks
+    assert "Open" not in repr(out_labelled.blocks) and "Title line" not in repr(out_labelled.blocks)
+
+
 def test_global_placeholders_and_overrides(world, db):
     project = world.project("Global P")
     tree = doc({"type": "text", "text": "{{report_title}} | {{project_name}} | {{organisation}} | {{generated_on}}"})

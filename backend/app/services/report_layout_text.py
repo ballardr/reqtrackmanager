@@ -45,6 +45,7 @@ Grammar (one statement per line; indentation is cosmetic):
 - Page styles are declared before the first block, one per line, like variables: `@pagestyle "<name>"
   [portrait|landscape] [A3|…] [margins …]`. What a style leaves out is the layout's own. `@section "<name>"` … `@end`
   lays its contents out in that style, on pages of their own.
+- A block may be given a display label for the designer (never printed) by a `@label "<text>"` line directly before it.
 - A block opens with `@name ...`; `each`, `group`, `if` (with `@else`), `table`, `sheet` and an explicit
   `@text` end with `@end`. `heading`, `page_break`, `spacer` and the quoted `@text "..."` are one line.
 - A source is a record type, or `in <group name>`, followed by clauses in any order: `from <name>`,
@@ -665,6 +666,7 @@ class _Frame:
     joins_none: bool = False  # a sheet written with @joins none
     pending_row: dict[str, Any] | None = None  # a grid's @row waiting for its line of cells
     seen: set[int] = field(default_factory=set)  # the columns of a grid that already had an @col
+    label_line: int = 0  # the line of the @label before an explicit @text
 
     def child_prefix(self) -> str:
         """The tree path of this frame's current child list."""
@@ -801,6 +803,9 @@ class _Parser:
         self.run: list[str] = []
         self.run_line = 0
         self.header_line = 1
+        #: A `@label` waiting for the block that follows it, and the line it was written on.
+        self.pending_label: str | None = None
+        self.label_line = 0
         self.tree: dict[str, Any] = {"schema_version": TREE_SCHEMA_VERSION, "family": FAMILY_DOCUMENT}
 
     # --- driver
@@ -847,17 +852,39 @@ class _Parser:
             if _is_directive(stripped):
                 self._flush_run()
                 self._guarded(self._directive, raw, stripped, line_no)
+                self._label_must_be_used(line_no)
             elif _bracketed_form(stripped) is not None:
                 self._flush_run()
                 self._guarded(self._bracketed, raw, stripped, line_no)
+                self._label_must_be_used(line_no)
             else:
                 self._prose(raw, line_no)
         self._flush_run()
+        self._label_must_be_used(None)
         for frame in reversed(self.frames[1:]):
             what = "@text" if frame.kind == "text" else "block"
             self.error(frame.line, None, f"This {what} is never closed with @end.")
         if not seen_header:
             self.error(1, None, "A layout starts with @layout document or @layout table.")
+
+    def _label_must_be_used(self, line_no: int | None) -> None:
+        """Reports a `@label` written on an earlier line that no block took (the line just read is not a block)."""
+        if self.pending_label is not None and self.label_line != line_no:
+            self.pending_label = None
+            self.error(self.label_line, None, "This @label is not followed by a block. Write it on the line before the block it names.")
+
+    def _label(self, directive: _Directive, indent: int) -> None:
+        """Reads `@label "<text>"`: the display label of the block on the next line."""
+        top = self.frames[-1]
+        if top.kind not in ("root", "container"):
+            raise _Syntax(f"A @label names a block; it cannot be written inside @{top.node.get('type', 'a block')}.", indent + 1)
+        if self.pending_label is not None:
+            self.pending_label = None
+            raise _Syntax("A block has one label.", indent + 1)
+        cur = directive.cursor()
+        value = cur.text('the label in quotes, for example @label "Open requirements"')
+        cur.expect_end()
+        self.pending_label, self.label_line = value, directive.line_no
 
     def error(self, line: int, column: int | None, message: str) -> None:
         """Records a problem; stops parsing after `MAX_ERRORS`."""
@@ -913,6 +940,9 @@ class _Parser:
         top = self.frames[-1]
         if name == "layout":
             raise _Syntax("@layout can only be the first line.", indent + 1)
+        if name == "label":
+            self._label(directive, indent)
+            return
         if name == "var":
             self._variable(directive, indent, line_no)
             return
@@ -1322,14 +1352,21 @@ class _Parser:
             self.error(line_no, None, f"The layout has too many blocks (the limit is {MAX_NODES}).")
             raise _Halt
 
-    def add(self, node: dict[str, Any], line_no: int) -> str:
-        """Appends a finished block to the innermost open one and returns its tree path."""
+    def add(self, node: dict[str, Any], line_no: int, label_line: int = 0) -> str:
+        """Appends a finished block to the innermost open one and returns its tree path.
+
+        `label_line` is the line of a `@label` already attached to `node` (an explicit `@text` takes its label when it opens)."""
         self._count(line_no)
+        label_line = self.label_line if self.pending_label is not None else label_line
+        if self.pending_label is not None:
+            node["label"], self.pending_label = self.pending_label, None
         frame = self.frames[-1]
         siblings = frame.node.setdefault(frame.list_name if frame.kind != "root" else "nodes", [])
         path = f"{frame.child_prefix()}[{len(siblings)}]"
         siblings.append(node)
         self.line_of[path] = line_no
+        if label_line:  # a problem with the label points at its own line
+            self.line_of[f"{path}.label"] = label_line
         return path
 
     def open(self, node: dict[str, Any], line_no: int, kind: str = "container") -> None:
@@ -1345,7 +1382,10 @@ class _Parser:
 
     def start_text(self, line_no: int, attrs: dict[str, Any]) -> None:
         """Begins an explicit `@text` block, whose lines are read verbatim until `@end`; `attrs` are its font and size."""
-        self._push(_Frame("text", attrs, "", line_no))
+        label_line = 0
+        if self.pending_label is not None:
+            attrs, self.pending_label, label_line = {**attrs, "label": self.pending_label}, None, self.label_line
+        self._push(_Frame("text", attrs, "", line_no, label_line=label_line))
 
     # --- text
 
@@ -1383,7 +1423,7 @@ class _Parser:
         if _is_directive(stripped):
             if stripped.rstrip() == "@end":
                 self.frames.pop()
-                self.add({"type": "text", **frame.node, "text": "\n".join(frame.body)}, frame.line)
+                self.add({"type": "text", **frame.node, "text": "\n".join(frame.body)}, frame.line, frame.label_line)
             else:
                 self.error(
                     line_no, 1 + len(raw) - len(stripped),
@@ -1442,6 +1482,8 @@ class _Writer:
         for i, node in enumerate(nodes):
             if i:
                 self.blank()
+            if "label" in node:
+                self.line(depth, f"@label {_quote(node['label'])}")
             TEXT_FORMS[node["type"]].write(self, node, depth)
             if node["type"] != "text":
                 self.prev_implicit_text = False

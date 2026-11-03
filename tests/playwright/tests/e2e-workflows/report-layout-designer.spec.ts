@@ -300,6 +300,81 @@ test.describe("Report layout designer", () => {
     });
   });
 
+  test("a block with a hyphenated name and a label resolves in the preview, shows its label in the block editor and never prints it", async ({ page, request }) => {
+    const { project, requirements, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E labelled layout ${suffix}`);
+    await openDesignerTextView(page);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+    const label = `Open Requirements ${suffix}`;
+
+    await test.step("a hyphenated name and a label with capitals and spaces are typed and accepted", async () => {
+      await editor.fill(
+        `@layout document\n\n@label "${label}"\n@each requirement sort title as open-reqs\n  @heading level=2 {{open-reqs.title}}\n@end\n`,
+      );
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+    });
+
+    await test.step("the preview resolves the hyphenated name and does not print the label", async () => {
+      await page.getByRole("button", { name: "Run preview" }).click();
+      const frame = page.frameLocator('iframe[title="Report preview"]');
+      for (const requirement of requirements) await expect(frame.getByText(requirement)).toBeVisible();
+      await expect(frame.getByText(label)).toHaveCount(0);
+    });
+
+    await test.step("saving, the block shows the label and its name, and a new label is set in the block editor", async () => {
+      await saveNewVersion(page);
+      await expect(page.getByText("Saved as version 2.")).toBeVisible();
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      const summary = page.locator(".blocklyText.rl-summary", { hasText: `${label} · as open-reqs` });
+      await expect(summary).toBeVisible();
+      await summary.click();
+      const inspector = page.getByLabel("Block details");
+      await inspector.getByRole("textbox", { name: "Label" }).fill("Every requirement");
+      await expect(page.locator(".blocklyText.rl-summary", { hasText: "Every requirement · as open-reqs" })).toBeVisible();
+      await saveNewVersion(page);
+      await page.getByRole("tab", { name: "Text" }).click();
+      await expect(editor).toHaveValue(/@label "Every requirement"\n@each requirement sort title as open-reqs/);
+    });
+  });
+
+  test("a table added inside a group reads the group's records, and one added outside does not", async ({ page, request }) => {
+    const { project, requirements, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E group source layout ${suffix}`);
+    await openDesignerTextView(page);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+    await editor.fill("@layout document\n\n@group requirement by status as by-status\n@end\n");
+    await expect(page.getByText("The text is valid.")).toBeVisible();
+    await page.getByRole("tab", { name: "Blocks" }).click();
+
+    await test.step("a table added inside the group starts on the surrounding group, with help on the choice", async () => {
+      await page.locator(".blocklyText.rl-block-title", { hasText: "Group records" }).click();
+      await expect(page.getByLabel("Where to add the block").locator("option:checked")).toHaveText(/^Adding inside: /);
+      await page.getByRole("button", { name: "Add block" }).click();
+      await page.getByRole("menuitem", { name: "Table (records)" }).click();
+      const inspector = page.getByLabel("Block details");
+      await expect(inspector.getByRole("combobox", { name: "Records come from" })).toHaveValue("group");
+      await expect(inspector.getByRole("combobox", { name: "Records come from" }).locator("option:checked")).toHaveText("Records of the surrounding group");
+      await expect(inspector.getByRole("combobox", { name: "Group" })).toHaveValue("by-status");
+      await inspector.getByRole("button", { name: /Records come from/ }).click();
+      await expect(page.getByText(/already found/)).toBeVisible();
+      await page.keyboard.press("Escape");
+    });
+
+    await test.step("a table added at the end of the layout, outside any group, still starts on all records of a type", async () => {
+      await page.getByLabel("Where to add the block").selectOption({ label: "Adding at the end of the layout" });
+      await page.getByRole("button", { name: "Add block" }).click();
+      await page.getByRole("menuitem", { name: "Table (records)" }).click();
+      const inspector = page.getByLabel("Block details");
+      await expect(inspector.getByRole("combobox", { name: "Records come from" }).locator("option:checked")).toHaveText("All records of a type");
+    });
+
+    await test.step("the text view shows the group source the new table was given", async () => {
+      await page.getByRole("tab", { name: "Text" }).click();
+      await expect(editor).toHaveValue(/@group requirement by status as by-status\n\s+@table in by-status/);
+      expect(requirements.length).toBeGreaterThan(0);
+    });
+  });
+
   test("page orientation and size are set from the toolbar, written into the first line and used by the preview", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E page layout ${suffix}`);

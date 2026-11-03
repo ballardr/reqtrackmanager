@@ -25,6 +25,8 @@ export interface AliasInScope {
   kind: "record" | "group";
   /** The record type of the record, or of the group's members; `null` when it could not be told. */
   recordType: string | null;
+  /** The display label written on the `@label` line before the block, if any. */
+  label?: string;
 }
 
 interface Frame {
@@ -32,7 +34,7 @@ interface Frame {
 }
 
 const BLOCK_OPENERS = new Set(["each", "group", "table", "sheet", "if", "section"]);
-const ALIAS_NAME = /(?:^|\s)as\s+([a-z][a-z0-9_]*)(?=\s|$)/;
+const ALIAS_NAME = /(?:^|\s)as\s+([a-z][a-z0-9_-]*)(?=\s|$)/;
 const DEFAULT_RECORD_ALIAS = "record";
 const DEFAULT_GROUP_ALIAS = "group";
 
@@ -46,6 +48,16 @@ function sourceOf(rest: string, visible: AliasInScope[]): string | null {
   return words[0] && /^[a-z][a-z0-9_]*$/.test(words[0]) ? words[0] : null;
 }
 
+/** The text of a `@label "…"` line's quoted string, or `undefined` when it is not one. */
+function readLabel(rest: string): string | undefined {
+  try {
+    const value: unknown = JSON.parse(rest.trim());
+    return typeof value === "string" && value !== "" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The aliases visible at `lineIndex` (0-based), outermost first: every enclosing `@each` and `@group` that has
  * been opened and not yet closed by `@end` on the lines before it.
@@ -56,6 +68,7 @@ function sourceOf(rest: string, visible: AliasInScope[]): string | null {
 export function aliasesInScope(text: string, lineIndex: number): AliasInScope[] {
   const frames: Frame[] = [];
   let inTextBlock = false;
+  let pendingLabel: string | undefined;
   const lines = text.split("\n");
   for (let i = 0; i < Math.min(lineIndex, lines.length); i += 1) {
     const line = lines[i].trim();
@@ -66,6 +79,12 @@ export function aliasesInScope(text: string, lineIndex: number): AliasInScope[] 
     const match = /^@([a-z_]+)(.*)$/.exec(line);
     if (!match) continue;
     const [, name, rest] = match;
+    if (name === "label") {
+      pendingLabel = readLabel(rest);
+      continue;
+    }
+    const label = pendingLabel;
+    pendingLabel = undefined;
     if (name === "text" && rest.trim() === "") {
       inTextBlock = true;
     } else if (name === "end") {
@@ -78,6 +97,7 @@ export function aliasesInScope(text: string, lineIndex: number): AliasInScope[] 
           name: ALIAS_NAME.exec(rest)?.[1] ?? (name === "each" ? DEFAULT_RECORD_ALIAS : DEFAULT_GROUP_ALIAS),
           kind: name === "each" ? "record" : "group",
           recordType: sourceOf(rest, visible),
+          ...(label ? { label } : {}),
         };
       }
       frames.push({ alias });

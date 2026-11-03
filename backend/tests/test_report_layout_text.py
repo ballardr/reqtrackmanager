@@ -300,7 +300,7 @@ def _random_tree(rng: random.Random) -> dict[str, Any]:
             if rng.random() < 0.5:
                 node["else_children"] = [block(depth + 1, aliases) for _ in range(rng.randint(0, 2))]
             return node
-        alias = f"a{depth}{rng.randint(0, 99)}"
+        alias = f"a{depth}{rng.randint(0, 99)}" if rng.random() < 0.7 else f"a-{depth}-{rng.randint(0, 99)}_b"
         while alias in aliases:
             alias += "x"
         inner = {**aliases, alias: "group" if kind == "group" else "record"}
@@ -324,10 +324,25 @@ def _random_tree(rng: random.Random) -> dict[str, Any]:
     return tree
 
 
+LABELS = ["Open requirements", 'He said "hi"', "日本語 é", "back\\slash", "{{record.title}}", "@end", "@label \"x\"", "  edges  ", "a" * 128, "x"]
+
+
+def _add_random_labels(nodes: list[dict[str, Any]], rng: random.Random) -> None:
+    """Gives about a third of the blocks (at any depth) a display label."""
+    for node in nodes:
+        if rng.random() < 0.35:
+            node["label"] = rng.choice(LABELS)
+        for key in ("children", "else_children"):
+            _add_random_labels(node.get(key, []), rng)
+
+
 @pytest.mark.parametrize("seed", range(150))
 def test_random_valid_trees_read_back_exactly(seed):
     tree = _random_tree(random.Random(seed))
     roundtrip(tree)
+    labelled = copy.deepcopy(tree)
+    _add_random_labels(labelled["nodes"], random.Random(seed + 1000))
+    roundtrip(labelled)
 
 
 def test_the_random_generator_produces_enough_valid_trees_to_mean_something():
@@ -621,3 +636,107 @@ def test_a_document_table_column_cannot_have_a_link_in_text():
 def test_a_link_needs_a_sheet_name():
     result = parse_text('@layout table\n@sheet "S" requirement\n  @column title link\n@end\n')
     assert any(e.line == 3 for e in result.errors)
+
+
+# --- display labels and hyphenated names -----------------------------------------------------------
+
+
+def test_a_label_is_a_line_before_its_block_and_reads_back():
+    tree = doc(
+        {"type": "group", "source": {"record_type": REQ}, "by": "component", "as": "by-component", "label": "By component", "children": [
+            {"type": "each", "source": {"group": "by-component"}, "as": "one-req", "label": "Each \"one\"", "children": [
+                {"type": "heading", "text": "{{one-req.title}}", "label": "Title line"},
+                {"type": "text", "text": "{{one-req.code}} in {{by-component.value}}", "label": "Prose"},
+            ]},
+        ]},
+        {"type": "page_break", "label": "Break"},
+    )
+
+    text = roundtrip(tree)
+
+    assert text.splitlines() == [
+        "@layout document",
+        "",
+        '@label "By component"',
+        "@group requirement by component as by-component",
+        '  @label "Each \\"one\\""',
+        "  @each in by-component as one-req",
+        '    @label "Title line"',
+        "    @heading {{one-req.title}}",
+        "",
+        '    @label "Prose"',
+        "    {{one-req.code}} in {{by-component.value}}",
+        "  @end",
+        "@end",
+        "",
+        '@label "Break"',
+        "@page_break",
+    ]
+
+
+def test_a_label_on_a_text_block_of_every_form_reads_back():
+    roundtrip(doc(
+        {"type": "text", "text": "one\ntwo", "label": "A"},
+        {"type": "text", "text": "after", "label": "B"},
+        {"type": "text", "text": "plain"},
+        {"type": "text", "text": "carriage\rreturn", "label": "C"},
+        {"type": "text", "text": "sized", "font": "serif", "label": "D"},
+    ))
+
+
+def test_a_label_on_a_block_with_a_non_ascii_or_hostile_text_reads_back():
+    for label in LABELS:
+        roundtrip(doc({"type": "heading", "text": "Hi", "label": label}))
+
+
+def test_a_label_may_be_separated_from_its_block_by_a_blank_line():
+    result = parse_text('@layout document\n\n@label "Gap"\n\n@heading Hi\n')
+
+    assert result.errors == [] and result.tree["nodes"] == [{"type": "heading", "text": "Hi", "label": "Gap"}]
+
+
+def test_a_text_run_before_a_label_is_a_block_of_its_own():
+    result = parse_text('@layout document\n\nbefore\n@label "L"\nafter\n')
+
+    assert result.errors == []
+    assert result.tree["nodes"] == [{"type": "text", "text": "before"}, {"type": "text", "text": "after", "label": "L"}]
+
+
+@pytest.mark.parametrize("text, expected", [
+    ('@label "x"\n', (2, "This @label is not followed by a block. Write it on the line before the block it names.")),
+    ('@label "x"\n@var v text\n@heading Hi', (2, "This @label is not followed by a block. Write it on the line before the block it names.")),
+    ('@label "a"\n@label "b"\n@heading Hi', (3, "A block has one label.")),
+    ('@label\n@heading Hi', (2, "Expected the label in quotes, for example @label \"Open requirements\".")),
+    ('@label "a" "b"\n@heading Hi', (2, 'Unexpected "b".')),
+    ('@each requirement\n@label "x"\n@end', (3, "This @label is not followed by a block. Write it on the line before the block it names.")),
+    ('@table requirement\n@label "x"\n@column title\n@end', (3, "A @label names a block; it cannot be written inside @table.")),
+])
+def test_a_misplaced_label_is_reported_at_its_line(text, expected):
+    found = [(line, message) for line, _, message in errors_of(f"@layout document\n{text}\n")]
+
+    assert expected in found
+
+
+def test_a_bad_label_value_is_reported_by_the_validator_at_the_block():
+    result = parse_text('@layout document\n@label "two\\nlines"\n@heading Hi\n')
+
+    assert result.tree is not None
+    assert [(e.line, e.message) for e in result.errors] == [(2, "Must be on one line, without control characters.")]
+
+
+def test_hyphenated_names_are_words_in_every_clause():
+    text = (
+        "@layout document\n"
+        "@group requirement by component as by-comp\n"
+        "  @each in by-comp as req-1 sort title\n"
+        "    @table requirement from req-1 via \"related\"\n      @column title\n    @end\n"
+        "    {{req-1.title}}\n"
+        "  @end\n"
+        "@end\n"
+    )
+
+    result = parse_text(text)
+
+    assert result.errors == [], result.errors
+    assert result.tree["nodes"][0]["as"] == "by-comp"
+    assert result.tree["nodes"][0]["children"][0]["source"] == {"group": "by-comp", "sort": [{"field": "title"}]}

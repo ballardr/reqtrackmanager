@@ -132,3 +132,16 @@ export const AClosedBlockNoLongerContributesItsName: Story = {
     await expect(canvas.getByRole("button", { name: "Insert {{project_name}}" })).toBeInTheDocument();
   },
 };
+
+/** A labelled block is listed by its label with the name beside it, and a hyphenated name makes a hyphenated placeholder. */
+export const ALabelledHyphenatedNameShowsBothAndInsertsTheName: Story = {
+  args: { aliases: aliasesInScope('@label "Open requirements"\n@each requirement as open-reqs\n  \n@end\n', 3) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByText("Open requirements (open-reqs) (Requirement)").length).toBeGreaterThan(0);
+    const from = canvas.getByRole("combobox", { name: "From" }) as HTMLSelectElement;
+    await expect(Array.from(from.options).map((o) => o.textContent)).toContain("Open requirements (open-reqs)");
+    await userEvent.click(canvas.getByRole("button", { name: "Insert {{open-reqs.status}}" }));
+    await expect(args.onInsert).toHaveBeenCalledWith("{{open-reqs.status}}");
+  },
+};

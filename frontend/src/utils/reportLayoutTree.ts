@@ -34,6 +34,18 @@ export interface NameInScope {
   kind: "record" | "group";
   /** The record type of the record, or of the group's members; `null` when it could not be told. */
   recordType: string | null;
+  /** The block's display label, when it has one (designer only; the name is what a placeholder uses). */
+  label?: string;
+}
+
+/** How a picker shows a name in scope: its label with the name beside it, or the name alone. */
+export function nameText(n: { name: string; label?: string }): string {
+  return n.label ? `${n.label} (${n.name})` : n.name;
+}
+
+/** A picker option for a name in scope: the value is always the name. */
+export function nameOption(n: { name: string; label?: string }): { value: string; label: string } {
+  return { value: n.name, label: nameText(n) };
 }
 
 /**
@@ -143,9 +155,35 @@ export function namesInScope(tree: Tree, addr: NodeAddr, types: BlockType[]): Na
     if (!node || !provides) continue;
     const given = node[provides.key];
     const name = typeof given === "string" && given !== "" ? given : provides.default;
-    names.push({ name, kind: provides.kind, recordType: sourceRecordType(node.source, names) });
+    const label = typeof node.label === "string" && node.label !== "" ? node.label : undefined;
+    names.push({ name, kind: provides.kind, recordType: sourceRecordType(node.source, names), ...(label ? { label } : {}) });
   }
   return names;
+}
+
+/** Block types whose `source` a new block takes from the surrounding group (they share the one source picker). */
+const GROUP_SOURCE_TYPES = new Set(["table", "each", "sheet"]);
+
+/**
+ * A template for a block added at `index` of the list at `list`, with its source set to the nearest enclosing group
+ * when the block reads records and that group yields a record set.
+ *
+ * Only a block with no source yet is changed, so a pasted snippet, a loaded layout and a moved block keep theirs; with no
+ * group around, or one that has no record type yet, the template is returned as it is.
+ *
+ * @param template The block as the catalogue offers it.
+ * @param tree The layout tree.
+ * @param list The child list the block is added to.
+ * @param index The position in that list.
+ * @param types The block catalogue, for what each enclosing block provides.
+ */
+export function withSurroundingGroupSource(template: TreeNode, tree: Tree, list: Seg[], index: number, types: BlockType[]): TreeNode {
+  if (typeof template.type !== "string" || !GROUP_SOURCE_TYPES.has(template.type)) return template;
+  const source = template.source;
+  if (source !== null && typeof source === "object" && Object.keys(source).length > 0) return template;
+  const group = namesInScope(tree, [...list, index], types).filter((n) => n.kind === "group").pop();
+  if (!group || group.recordType === null) return template;
+  return { ...template, source: { group: group.name } };
 }
 
 /** The record type a source reads: its own `record_type`, or that of the group it takes the members of. */

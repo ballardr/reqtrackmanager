@@ -46,7 +46,7 @@ import {
 } from "../utils/reportLayoutBlockly";
 import { buildTheme, registerBlocks } from "../utils/reportLayoutBlocklyBlocks";
 import {
-  cloneNode, formatPath, listAt, namesInScope, nodeAt, owningNode, parsePath, problemsForNode, setAt, sourceRecordType, stableJson, summarise, type Seg, type Tree, type TreeNode,
+  cloneNode, formatPath, listAt, namesInScope, nodeAt, owningNode, parsePath, problemsForNode, setAt, sourceRecordType, stableJson, summarise, withSurroundingGroupSource, type Seg, type Tree, type TreeNode,
 } from "../utils/reportLayoutTree";
 import type { SnippetSelection } from "../api/reportSnippets";
 import { insertedBlocks, withBlocksOf } from "../utils/reportSnippets";
@@ -402,7 +402,7 @@ export function ReportLayoutBlocks({
         group: entry.common ? text.commonBlocks : text.otherBlocks,
         onSelect: () => {
           const at = place();
-          addAt(at.list, at.index, entry.template);
+          addAt(at.list, at.index, withSurroundingGroupSource(entry.template, tree, at.list, at.index, types));
         },
       }))}
     />

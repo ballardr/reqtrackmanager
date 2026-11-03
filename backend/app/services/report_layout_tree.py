@@ -54,6 +54,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 import uuid
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import ExitStack, contextmanager
@@ -195,7 +196,10 @@ BOOLEAN_KEYS = ("all", "any", "not")
 #: What a group exposes to `{{alias.value}}`, `{{alias.count}}` and conditions.
 GROUP_FIELDS: dict[str, str] = {"value": "text", "count": "number"}
 
-_ALIAS = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+#: The longest block name or display label.
+MAX_NAME_CHARS = 128
+#: A block name: lower-case letters, digits, underscores and single hyphens (never at the end), starting with a letter.
+_ALIAS = re.compile(r"^[a-z](?:[a-z0-9_]|-(?=[a-z0-9_]))*$")
 _SHEET_NAME_BAD = re.compile(r"[\[\]:*?/\\]")
 
 Ref = tuple[str, str]
@@ -382,6 +386,8 @@ class TreeValidator:
         self.family = FAMILY_DOCUMENT
         self.scope: dict[str, Binding] = {}
         self._collectors: list[set[Ref]] = []
+        #: The paths of the blocks being validated, which may carry a display `label` beside their own keys.
+        self._labelled: set[str] = set()
         self._catalogues: dict[str, dict[str, FieldInfo] | None] = {}
         self._sheet_names: set[str] = set()
         #: `{lower-case sheet name: (name, record type of its rows)}` and the sheet links found, checked once every sheet is known
@@ -595,7 +601,21 @@ class TreeValidator:
         if self.family not in spec.families:
             self.error(f"{path}.type", f"A {key} block cannot be used in a {self.family} layout.")
             return
+        self._labelled.add(path)
+        if "label" in node:
+            self.block_label(node["label"], f"{path}.label")
         spec.validate(self, node, path)
+
+    def block_label(self, value: Any, path: str) -> None:
+        """Checks a block's display label: 1 to `MAX_NAME_CHARS` characters of any kind but control characters."""
+        if not isinstance(value, str):
+            self.error(path, "Must be text.")
+        elif not value.strip():
+            self.error(path, "Must not be empty (leave the label out instead).")
+        elif len(value) > MAX_NAME_CHARS:
+            self.error(path, f"Too long ({len(value)} characters; the limit is {MAX_NAME_CHARS}).")
+        elif any(unicodedata.category(ch) == "Cc" for ch in value):
+            self.error(path, "Must be on one line, without control characters.")
 
     def children(self, node: dict[str, Any], path: str, key: str = "children") -> None:
         """Validates `node[key]` as the child blocks of a container (one level deeper)."""
@@ -616,7 +636,7 @@ class TreeValidator:
         for key in required:
             if key not in node:
                 self.error(f"{path}.{key}" if path else key, "Required.")
-        allowed = {*required, *optional}
+        allowed = {*required, *optional, *(("label",) if path in self._labelled else ())}
         for key in node:
             if key not in allowed:
                 self.error(f"{path}.{key}" if path else key, "Unknown key.")
@@ -644,10 +664,14 @@ class TreeValidator:
         """The alias a block binds: `value` if valid and unused, else `default` (with an error)."""
         if value is None:
             chosen = default
-        elif isinstance(value, str) and _ALIAS.match(value):
+        elif isinstance(value, str) and len(value) <= MAX_NAME_CHARS and _ALIAS.match(value):
             chosen = value
         else:
-            self.error(path, "Must be lower-case letters, digits and underscores, starting with a letter (max 32).")
+            self.error(
+                path,
+                "Must be lower-case letters, digits, underscores and single hyphens (not at the end), starting with a letter "
+                f"(max {MAX_NAME_CHARS}).",
+            )
             return default
         if chosen == PLACEHOLDER_FAMILY:
             self.error(path, f'The name "{PLACEHOLDER_FAMILY}" is reserved for variables ({{{{var.name}}}}); choose another.')
@@ -1825,9 +1849,15 @@ def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
 
 
 _PLACEHOLDER_HELP = "Use {{record.field}} for a value and {{project_name}} for the project."
+#: Offered on every described block type: a name for the designer only, never printed or used in a placeholder.
+LABEL_FIELD = BlockField(
+    "label", "Label", "text", max_length=MAX_NAME_CHARS,
+    help="A name for this block in the designer, for example Open requirements. It can hold capitals and spaces and is never printed; "
+         "other blocks still refer to this one by its Name.",
+)
 _SOURCE_FIELD = BlockField(
     "source", "Records", "source", required=True,
-    help="Where the records come from: all of a type, the records linked to an enclosing record, or a group's members; "
+    help="Where the records come from: all of a type, the records linked to a surrounding record, or the records of the surrounding group; "
     "optionally filtered and sorted.",
 )
 _EMPTY_TEXT = BlockField("empty_text", "Text when there is nothing", "text", max_length=500, features=("placeholders",),
@@ -2100,7 +2130,7 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         "For each record", "Repeats its contents once for every record found.",
         (
             _SOURCE_FIELD,
-            BlockField("as", "Name", "alias", max_length=32, default=DEFAULT_RECORD_ALIAS,
+            BlockField("as", "Name", "alias", max_length=MAX_NAME_CHARS, default=DEFAULT_RECORD_ALIAS,
                        help="What the contents call each record, for example req in {{req.title}}."),
             _EMPTY_TEXT,
         ),
@@ -2113,7 +2143,7 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
             _SOURCE_FIELD,
             BlockField("by", "Group by", "record_field", required=True, depends_on="source",
                        help="The field whose values form the groups."),
-            BlockField("as", "Name", "alias", max_length=32, default=DEFAULT_GROUP_ALIAS,
+            BlockField("as", "Name", "alias", max_length=MAX_NAME_CHARS, default=DEFAULT_GROUP_ALIAS,
                        help="What the contents call each group; {{grp.value}} and {{grp.count}} are its value and size."),
         ),
         (_CHILDREN,), BlockProvides("as", "group", DEFAULT_GROUP_ALIAS),
@@ -2145,7 +2175,7 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
             BlockField("name", "Sheet name", "text", required=True, max_length=31,
                        help="The tab's name. It cannot contain [ ] : * ? / \\ and must differ from the other sheets."),
             _SOURCE_FIELD,
-            BlockField("as", "Name", "alias", max_length=32, default=DEFAULT_RECORD_ALIAS,
+            BlockField("as", "Name", "alias", max_length=MAX_NAME_CHARS, default=DEFAULT_RECORD_ALIAS,
                        help="What the columns and joins call the sheet's own records."),
             BlockField(
                 "joins", "Joins", "joins",
@@ -2181,7 +2211,7 @@ for _spec in (
 
 __all__ = [
     "BLOCK_SPECS", "BOOLEAN_KEYS", "IMAGE_COLUMN_FIELDS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS",
-    "LIST_OPERATORS", "MAX_COLUMNS", "MAX_CONDITION_DEPTH", "MAX_DEPTH", "MAX_JOINS", "MAX_NODES", "MAX_TREE_BYTES",
+    "LABEL_FIELD", "LIST_OPERATORS", "MAX_COLUMNS", "MAX_CONDITION_DEPTH", "MAX_DEPTH", "MAX_JOINS", "MAX_NAME_CHARS", "MAX_NODES", "MAX_TREE_BYTES",
     "MAX_WIDGET_REPORTS", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
     "InvalidLayoutError", "Ref", "TreeAnalysis", "TreeError", "TreeValidator", "assert_valid", "empty_tree",
     "literal_problem", "record_types_of", "register_block_spec", "tree_hash", "validate_tree",

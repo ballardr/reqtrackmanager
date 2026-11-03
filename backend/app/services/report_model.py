@@ -192,8 +192,8 @@ PLACEHOLDER_NAMES: tuple[str, ...] = (
 )
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 #: `{{name}}` (a global placeholder) or `{{alias.field}}` / `{{var.name}}`: every reference a layout's text, a record-image
-#: name pattern and a file name template can hold.
-PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?\s*\}\}")
+#: name pattern and a file name template can hold. The name part may hold hyphens (a block's name does); a field never does.
+PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_-]*)(?:\.([a-z][a-z0-9_]*))?\s*\}\}")
 
 
 def fill_placeholders(text: str, placeholders: Mapping[str, str] | None) -> str:

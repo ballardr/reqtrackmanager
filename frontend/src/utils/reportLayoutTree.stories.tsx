@@ -3,7 +3,7 @@ import { expect } from "storybook/test";
 
 import { buildBlockCatalogue, buildOutlineTree } from "../testing/reportLayoutFixtures";
 import {
-  formatPath, getAt, insertNode, namesInScope, nodeAt, owningNode, parsePath, setAt, stableJson, summarise, parseTreeJson, treeToJson,
+  formatPath, getAt, insertNode, namesInScope, nodeAt, owningNode, parsePath, setAt, stableJson, summarise, parseTreeJson, treeToJson, withSurroundingGroupSource,
 } from "./reportLayoutTree";
 
 /** The pure helpers behind the block editor, exercised as plain functions (the stories render nothing). */
@@ -99,5 +99,32 @@ export const TheJsonViewReadsAnObjectAndExplainsAnythingElse: Story = {
     await expect(broken.error).not.toBe("");
     // JSON that is not an object is not a layout; the caller words the reason.
     for (const text of ["[]", "3", "null", '"x"']) await expect(parseTreeJson(text)).toEqual({ tree: null, error: "", notObject: true });
+  },
+};
+
+export const ARecordBlockInAGroupStartsOnTheNearestGroup: Story = {
+  play: async () => {
+    const grouped = {
+      nodes: [
+        { type: "group", source: { record_type: "requirement" }, by: "status", as: "outer", children: [
+          { type: "group", source: { group: "outer" }, by: "level", as: "inner", children: [] },
+        ] },
+        { type: "group", source: {}, by: "", children: [] },
+      ],
+    };
+    const table = { type: "table", source: {}, columns: [] };
+    // Inside the inner group (and so inside the outer): the nearest group wins.
+    await expect(withSurroundingGroupSource(table, grouped, ["nodes", 0, "children", 0, "children"], 0, types).source).toEqual({ group: "inner" });
+    await expect(withSurroundingGroupSource({ type: "each", source: {}, children: [] }, grouped, ["nodes", 0, "children"], 1, types).source).toEqual({ group: "outer" });
+    await expect(withSurroundingGroupSource({ type: "sheet", name: "S", source: {}, columns: [] }, grouped, ["nodes", 0, "children"], 0, types).source).toEqual({ group: "outer" });
+    // No group around, a group with no record set yet, or a block with its own source or no source: unchanged.
+    await expect(withSurroundingGroupSource(table, grouped, ["nodes"], 2, types)).toBe(table);
+    await expect(withSurroundingGroupSource(table, grouped, ["nodes", 1, "children"], 0, types)).toBe(table);
+    const own = { type: "table", source: { record_type: "risk" }, columns: [] };
+    await expect(withSurroundingGroupSource(own, grouped, ["nodes", 0, "children"], 0, types)).toBe(own);
+    const images = { type: "record_images" };
+    await expect(withSurroundingGroupSource(images, grouped, ["nodes", 0, "children"], 0, types)).toBe(images);
+    // The template itself is never mutated.
+    await expect(table.source).toEqual({});
   },
 };

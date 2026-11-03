@@ -389,7 +389,7 @@ def test_the_block_catalogue_describes_the_section_block_and_the_new_layout_fiel
     assert resp.status_code == 200, resp.text
     catalogue = resp.json()
     section = next(b for b in catalogue["blocks"] if b["type"] == "section")
-    assert [f["kind"] for f in section["fields"]] == ["page_style"] and [c["key"] for c in section["containers"]] == ["children"]
+    assert [f["kind"] for f in section["fields"]] == ["page_style", "text"] and [c["key"] for c in section["containers"]] == ["children"]
     kinds = {f["key"]: f["kind"] for f in catalogue["layout_fields"]}
     assert kinds["margins"] == "margins" and kinds["page_styles"] == "page_styles" and kinds["mirror_margins"] == "boolean"
     assert {"page_style", "margins", "page_styles"} <= set(catalogue["field_kinds"])
