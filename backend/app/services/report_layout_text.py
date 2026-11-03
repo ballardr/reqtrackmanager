@@ -148,6 +148,7 @@ from app.services.report_layout_tree import (
     assert_valid,
     validate_tree,
 )
+from app.services.report_model import VALIGN_CHOICES
 from app.services.report_page_styles import MARGIN_KEYS
 from app.services.report_variables import NAME_RE, VARIABLE_TYPES, is_reference
 
@@ -1005,9 +1006,10 @@ class _Parser:
             word = cur.accept(*_BAND_CLAUSES)
             if word is None:
                 raise _Syntax(f"Unexpected {token.shown()}. Clauses: {', '.join(_BAND_CLAUSES)}.", token.column)
-            if (word == "first" and "first_page" in band) or word in band or (word in ("height", "slot") and word in band.get("logo", {})):
+            key = _band_key(word)
+            if key in band or (word in ("height", "slot") and word in band.get("logo", {})):
                 raise _Syntax(f"{word} is written once.", token.column)
-            if word in ("left", "centre", "right"):
+            if word in _BAND_CELLS:
                 band[word] = cur.text(f"the {word} text in quotes")
             elif word == "first":
                 band["first_page"] = cur.word("same or none")
@@ -1015,6 +1017,15 @@ class _Parser:
                 band["size"] = _number_word(cur, "the text size in points")
             elif word in ("font", "colour"):
                 band[word] = cur.word(f"the {word}")
+            elif word.endswith("valign"):
+                choice = cur.word("top, middle or bottom")
+                if choice not in VALIGN_CHOICES:
+                    raise _Syntax(f"Expected top, middle or bottom, found {choice}.", token.column)
+                band[key] = choice
+            elif word.endswith("width"):
+                width = _width_clause(cur)
+                if width is not None:
+                    band[key] = width
             elif word == "logo":
                 band["logo"] = {"file": cur.text("the logo's file id in quotes")}
             else:  # height, slot: belong to the logo written before them
@@ -1453,7 +1464,21 @@ def _variable_text(declaration: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
-_BAND_CLAUSES = ("left", "centre", "right", "logo", "height", "slot", "first", "font", "size", "colour")
+_BAND_CELLS = ("left", "centre", "right")
+_BAND_CLAUSES = (
+    *_BAND_CELLS, "logo", "height", "slot", "first", "font", "size", "colour", "valign",
+    *(f"{cell}{option}" for cell in _BAND_CELLS for option in ("width", "valign")),
+)
+
+
+def _band_key(word: str) -> str:
+    """The key of a band clause in the tree (`first` is `first_page`, `leftwidth` is `left_width`)."""
+    if word == "first":
+        return "first_page"
+    for option in ("width", "valign"):
+        if word.endswith(option) and word != option:
+            return f"{word[:-len(option)]}_{option}"
+    return word
 
 
 def _write_bands(writer: _Writer, holder: dict[str, Any]) -> None:
@@ -1465,6 +1490,13 @@ def _write_bands(writer: _Writer, holder: dict[str, Any]) -> None:
         parts = [f"@{kind}"]
         parts += [f"{slot} {_quote(band[slot])}" for slot in ("left", "centre", "right") if slot in band]
         parts += [f"{key} {json.dumps(band[key]) if key == 'size' else band[key]}" for key in ("font", "size", "colour") if key in band]
+        if "valign" in band:
+            parts.append(f"valign {band['valign']}")
+        for cell in _BAND_CELLS:
+            if f"{cell}_width" in band:
+                parts.append(f"{cell}width {canonical_width(band[f'{cell}_width'])}")
+            if f"{cell}_valign" in band:
+                parts.append(f"{cell}valign {band[f'{cell}_valign']}")
         if "logo" in band:
             logo = band["logo"]
             parts.append(f"logo {_quote(logo['file'])}")

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { closeDesignerPreviewDialog, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -55,11 +55,11 @@ test.describe("Report layout page bottom", () => {
     });
 
     await test.step("the preview shows the contents (it has no pages, so in place)", async () => {
-      await openDesignerPreviewDialog(page);
-      const preview = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const preview = designerPreviewPanel(page);
       await preview.getByRole("button", { name: "Run preview" }).click();
       await expect(preview.frameLocator('iframe[title="Report preview"]').getByText("Signed off by the project lead")).toBeVisible();
-      await closeDesignerPreviewDialog(page);
+      await closeDesignerPreview(page);
     });
 
     await test.step("saving and reloading keep it, and the text view writes it with its contents", async () => {

@@ -1,9 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
+import { ApiError } from "../api/client";
 import { clearRememberedPreviewScopes } from "../utils/reportPreviewMemory";
 import { buildReportVariable } from "../testing/reportFixtures";
+import { withToast } from "../testing/storybook-helpers";
 import { buildDocumentPreview, buildLayoutApi, buildSheetPreview } from "../testing/reportLayoutFixtures";
 import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 
@@ -11,7 +13,8 @@ import { ReportLayoutPreviewPanel } from "./ReportLayoutPreviewPanel";
 const meta: Meta<typeof ReportLayoutPreviewPanel> = {
   title: "Components/ReportLayoutPreviewPanel",
   component: ReportLayoutPreviewPanel,
-  args: { api: buildLayoutApi(), layoutId: "layout-1", text: "@layout document\n", name: "Requirements", disabled: false },
+  args: { api: buildLayoutApi(), layoutId: "layout-1", family: "document", text: "@layout document\n", name: "Requirements", disabled: false },
+  decorators: [withToast()],
   // The remembered project choice lives in localStorage, which stories share: start each from nothing.
   beforeEach: () => {
     clearRememberedPreviewScopes();
@@ -251,3 +254,63 @@ function StaleHarness(args: React.ComponentProps<typeof ReportLayoutPreviewPanel
     </>
   );
 }
+
+/** Download preview offers the formats of the layout's family and sends the same draft as Run preview. */
+export const ADocumentDraftCanBeDownloadedInEveryDocumentFormat: Story = {
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    spyOn(URL, "createObjectURL").mockReturnValue("blob:preview");
+    spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
+    await userEvent.click(canvas.getByRole("button", { name: /Download preview/ }));
+    const menu = within(document.body);
+    for (const name of ["Download PDF report", "Download Word report", "Download ODT report", "Download HTML report"]) {
+      await expect(await menu.findByRole("button", { name })).toBeInTheDocument();
+    }
+    await expect(menu.queryByRole("button", { name: /CSV/ })).toBeNull();
+
+    await userEvent.click(menu.getByRole("button", { name: "Download Word report" }));
+    await waitFor(() => expect(args.api.downloadPreview).toHaveBeenCalledWith(
+      { text: "@layout document\n", name: "Requirements", include_children: false, project_ids: undefined }, "docx",
+    ));
+    await expect(await menu.findByText("Downloaded the Word preview.")).toBeInTheDocument();
+  },
+};
+
+export const ATableDraftCanBeDownloadedAsCsvExcelOrOds: Story = {
+  args: { family: "table", text: "@layout table\n" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /Download preview/ }));
+    const menu = within(document.body);
+    for (const name of ["Download CSV report", "Download Excel report", "Download ODS report"]) {
+      await expect(await menu.findByRole("button", { name })).toBeInTheDocument();
+    }
+    await expect(menu.queryByRole("button", { name: /PDF/ })).toBeNull();
+  },
+};
+
+export const ADraftWithProblemsCannotBeDownloaded: Story = {
+  args: { disabled: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: /Download preview/ })).toBeDisabled();
+    await expect(canvas.getByRole("button", { name: "Run preview" })).toBeDisabled();
+  },
+};
+
+/** A preview is never queued: a draft too big to produce while the author waits says so. */
+export const ADownloadThatIsTooBigSaysSoAndIsNotQueued: Story = {
+  args: {
+    api: buildLayoutApi([], {
+      downloadPreview: fn(async () => {
+        throw new ApiError(409, "Too big.", { code: "async_required", message: "Too big." });
+      }),
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /Download preview/ }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Download PDF report" }));
+    await expect(await within(document.body).findByText(/too big to produce while you wait/)).toBeInTheDocument();
+  },
+};

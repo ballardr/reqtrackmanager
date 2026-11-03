@@ -10,7 +10,7 @@
  *
  * Design decisions: this is a per-viewer convenience, so it never reaches the server (it is neither shared nor audited
  * state). Every storage call is wrapped: blocked or full storage means the choice lasts until the page is reloaded
- * (a module-level copy serves the reads), so the designer's side panel and its preview dialog still agree.
+ * (a module-level copy serves the reads), so the choice still holds when the panel is reopened.
  */
 import type { LayoutScope } from "../api/reportLayouts";
 

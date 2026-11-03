@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion, openDesignerTextView } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, closeDesignerPreview, PASSWORD, searchReportSetup, selectOrgAdminGroup, selectProjectAdminGroup, saveNewVersion, openDesignerTextView, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -177,23 +177,30 @@ test.describe("Report layout designer", () => {
       await expect(inspector.getByTestId("block-inspector")).toContainText("Heading block");
     });
 
-    await test.step("the Preview tab of the right-hand panel lists this project's requirements, in the panel or in a dialog", async () => {
-      const panel = page.getByRole("complementary", { name: "Designer tools" });
-      await panel.getByRole("tab", { name: "Preview", exact: true }).click();
+    await test.step("the Preview tab of the right-hand panel lists this project's requirements; there is one preview and no dialog", async () => {
+      await openDesignerPreview(page);
+      const panel = designerPreviewPanel(page);
       await panel.getByRole("button", { name: "Run preview" }).click();
-      const inline = panel.frameLocator('iframe[title="Report preview"]');
-      for (const requirement of requirements) await expect(inline.getByText(requirement)).toBeVisible();
-      await openDesignerPreviewDialog(page);
-      const dialog = page.getByRole("dialog", { name: "Report preview" });
-      await dialog.getByRole("button", { name: "Run preview" }).click();
-      const frame = dialog.frameLocator('iframe[title="Report preview"]');
+      const frame = panel.frameLocator('iframe[title="Report preview"]');
       for (const requirement of requirements) await expect(frame.getByText(requirement)).toBeVisible();
-      await dialog.getByRole("button", { name: "Close" }).click();
-      await expect(dialog).toBeHidden();
+      await expect(panel.getByRole("button", { name: "Open in dialog" })).toHaveCount(0);
       // Selecting a block takes the panel back to the block editor.
       await page.locator(".blocklyText.rl-block-title", { hasText: /^Heading$/ }).click();
       await expect(panel.getByRole("tab", { name: "Block", exact: true })).toHaveAttribute("aria-selected", "true");
       await expect(inspector.getByTestId("block-inspector")).toBeVisible();
+    });
+
+    await test.step("Download preview gives the unsaved draft as a file in the chosen format, named as a preview", async () => {
+      await openDesignerPreview(page);
+      const panel = designerPreviewPanel(page);
+      await panel.getByRole("button", { name: /Download preview/ }).click();
+      const menu = page.getByRole("dialog", { name: "Export" });
+      for (const format of ["PDF", "Word", "ODT", "HTML"]) await expect(menu.getByRole("button", { name: `Download ${format} report` })).toBeVisible();
+      const downloading = page.waitForEvent("download");
+      await menu.getByRole("button", { name: "Download Word report" }).click();
+      const download = await downloading;
+      expect(download.suggestedFilename()).toMatch(/^Preview - .+\.docx$/);
+      await closeDesignerPreview(page);
     });
 
     await test.step("a block with a problem says so and holds back saving", async () => {
@@ -409,6 +416,60 @@ test.describe("Report layout designer", () => {
     });
   });
 
+  test("a header cell takes a width and an alignment, written to the text and refused when the widths leave no room", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E band cells layout ${suffix}`);
+    await openDesignerTextView(page);
+    const editor = page.getByRole("textbox", { name: "Layout text" });
+
+    await test.step("a fixed left width and a bottom-aligned right cell are written as header clauses", async () => {
+      await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
+      const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await dialog.getByRole("combobox", { name: "Header: print" }).selectOption("custom");
+      await dialog.getByRole("textbox", { name: "Header, left cell" }).fill("Ballard");
+      await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");
+      await dialog.getByRole("textbox", { name: "Left width" }).fill("25%");
+      await dialog.getByRole("combobox", { name: "Right vertical alignment" }).selectOption("bottom");
+      await dialog.getByRole("combobox", { name: "Header: vertical alignment" }).selectOption("middle");
+      await expect(editor).toHaveValue(/@header left "Ballard" centre "\{\{report_title\}\}" valign middle leftwidth 25% rightvalign bottom/);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+    });
+
+    await test.step("widths that leave no room for the other cells are refused with a message", async () => {
+      await editor.fill((await editor.inputValue()).replace("leftwidth 25%", "leftwidth 60% centrewidth 40%"));
+      await expect(page.getByText(/fixed cell widths take/)).toBeVisible();
+      await editor.fill((await editor.inputValue()).replace("leftwidth 60% centrewidth 40%", "leftwidth 25%"));
+      await expect(page.getByText("The text is valid.")).toBeVisible();
+    });
+
+    await test.step("saved and reloaded, the block editor shows the width and alignment", async () => {
+      await saveNewVersion(page);
+      await expect(page.getByText("Saved as version 2.")).toBeVisible();
+      await page.reload();
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+      await expect(page.getByRole("textbox", { name: "Left width" })).toHaveValue("25%");
+      await expect(page.getByRole("combobox", { name: "Right vertical alignment" })).toHaveValue("bottom");
+    });
+
+    await test.step("the preview's header cells are measured: the left cell is a quarter of the band and the right sits at the bottom", async () => {
+      await openDesignerPreview(page);
+      const panel = designerPreviewPanel(page);
+      await panel.getByRole("button", { name: "Run preview" }).click();
+      const frame = panel.frameLocator('iframe[title="Report preview"]');
+      const band = frame.locator(".band.header");
+      await expect(band.locator(".cell.left")).toBeVisible();
+      const [row, left, right] = await Promise.all([band.boundingBox(), band.locator(".cell.left").boundingBox(), band.locator(".cell.right").boundingBox()]);
+      expect(left!.width / row!.width).toBeGreaterThan(0.2);
+      expect(left!.width / row!.width).toBeLessThan(0.3);
+      await expect(band.locator(".cell.right")).toHaveCSS("align-items", "flex-end");
+      await expect(band.locator(".cell.left")).toHaveCSS("align-items", "center");
+      expect(right!.x + right!.width).toBeLessThanOrEqual(row!.x + row!.width + 1);
+    });
+  });
+
   test("fields and project values are one searchable list", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E fields layout ${suffix}`);
@@ -556,8 +617,8 @@ test.describe("Report layout designer", () => {
     const name = `E2E org designed ${suffix}`;
 
     await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Reports");
+    await selectOrgAdminGroup(page, "Reports");
+    await ensureExpanded(page, "Report layouts");
     await page.getByRole("button", { name: "New", exact: true }).click();
     await page.getByRole("menuitem", { name: "New layout" }).click();
     const dialog = page.getByRole("dialog", { name: "New report layout" });

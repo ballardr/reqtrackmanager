@@ -94,7 +94,7 @@ from app.services.report_model import (
     text_runs,
 )
 from app.services.report_pdf_floating import FloatingPicture
-from app.services.report_pdf_running import PageNote, RunningCanvas
+from app.services.report_pdf_running import PageNote, RunningCanvas, grow_margins_for_bands
 from app.services.report_svg import svg_flowable
 from app.services.report_table_alignment import column_needs
 
@@ -604,7 +604,7 @@ def render_pdf_document(document: ReportDocument) -> bytes:
 
 def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
     """`render_pdf_document` with the font family already active."""
-    document = finalize_links(document)
+    document = grow_margins_for_bands(finalize_links(document))
     branding = document.branding
     accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
     styles = [document.style]

@@ -457,7 +457,7 @@ export const BlocksWithProblemsCannotBeSavedAndShowThemInTheInspector: Story = {
   },
 };
 
-/** The Blocks view's right-hand panel has Block and Preview tabs: the block editor first, the preview a tab away or in a dialog. */
+/** The Blocks view's right-hand panel has Block and Preview tabs: the block editor first, the preview a tab away. */
 export const TheBlocksViewHasBlockAndPreviewTabsInOnePanel: Story = {
   args: { api: blocksApi() },
   play: async ({ canvasElement }) => {
@@ -471,12 +471,9 @@ export const TheBlocksViewHasBlockAndPreviewTabsInOnePanel: Story = {
     await expect(within(panel).queryByRole("button", { name: "Run preview" })).not.toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("tab", { name: "Preview" }));
     await expect(await within(panel).findByRole("button", { name: "Run preview" })).toBeInTheDocument();
-    // The preview opens in a dialog from its tab.
-    await userEvent.click(within(panel).getByRole("button", { name: "Open in dialog" }));
-    const dialog = await body().findByRole("dialog", { name: "Report preview" });
-    await expect(within(dialog).getByRole("button", { name: "Run preview" })).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(body().queryByRole("dialog", { name: "Report preview" })).not.toBeInTheDocument());
+    // There is one preview, in the panel: no dialog version, and a download beside Run preview.
+    await expect(within(panel).queryByRole("button", { name: "Open in dialog" })).not.toBeInTheDocument();
+    await expect(within(panel).getByRole("button", { name: /Download preview/ })).toBeInTheDocument();
   },
 };
 

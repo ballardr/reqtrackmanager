@@ -3,7 +3,7 @@ import zlib from "node:zlib";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -116,13 +116,12 @@ test.describe("Report image columns", () => {
     });
 
     await test.step("the preview draws each row's matching pictures in its own cell", async () => {
-      await openDesignerPreviewDialog(page);
-      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const dialog = designerPreviewPanel(page);
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
       await expect(frame.getByRole("columnheader", { name: "Photos" })).toBeVisible();
       await expect(frame.locator("td .cell-images.side img")).toHaveCount(2);
-      await dialog.getByRole("button", { name: "Close" }).click();
     });
 
     await test.step("saved, the layout reads back as text and the PDF embeds the two pictures", async () => {

@@ -524,6 +524,7 @@ export function buildLayoutApi(
     snippets: fn(async () => buildSnippets()),
     applySnippet: fn(async (key, body) => fakeApplySnippet(buildSnippets(), key, body)),
     preview: fn(async () => buildDocumentPreview()),
+    downloadPreview: fn(async () => new File(["preview"], "Preview - Requirements.pdf", { type: "application/pdf" })),
     draftVariables: fn(async () => ({ ok: true, variables: [], errors: [] })),
     images: buildImageLibrary(),
   };

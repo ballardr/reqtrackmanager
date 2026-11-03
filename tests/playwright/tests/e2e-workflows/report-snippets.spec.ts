@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { closeDesignerPreviewDialog, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
+import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -85,13 +85,12 @@ test.describe("Report snippets", () => {
     });
 
     await test.step("the preview shows the cover's title lines", async () => {
-      await openDesignerPreviewDialog(page);
-      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const dialog = designerPreviewPanel(page);
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
       await expect(frame.getByText(project.name).first()).toBeVisible();
       await expect(frame.getByText("Body starts here")).toBeVisible();
-      await dialog.getByRole("button", { name: "Close" }).click();
     });
 
     await test.step("saved, the layout reads back with the cover section first", async () => {
@@ -194,8 +193,8 @@ test.describe("Report snippets", () => {
     }
 
     await test.step("the preview prints the filled details and the blank rows", async () => {
-      await openDesignerPreviewDialog(page);
-      const preview = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const preview = designerPreviewPanel(page);
       await preview.getByRole("button", { name: "Run preview" }).click();
       const grids = preview.frameLocator('iframe[title="Report preview"]').locator("table.grid");
       await expect(grids).toHaveCount(3);
@@ -207,7 +206,7 @@ test.describe("Report snippets", () => {
       await expect(review.locator("tr").nth(2).locator("td").first()).toHaveText("");
       const approvals = grids.filter({ hasText: "Signature" });
       await expect(approvals.locator("tr").nth(2).locator("td").first()).toHaveText("Prepared by");
-      await closeDesignerPreviewDialog(page);
+      await closeDesignerPreview(page);
     });
   });
 

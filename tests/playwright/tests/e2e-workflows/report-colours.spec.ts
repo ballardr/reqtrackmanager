@@ -2,10 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import {
-  closeDesignerPreviewDialog, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion,
-  selectOrgAdminGroup, selectProjectAdminGroup,
-} from "./helpers";
+import { closeDesignerPreview, openDesignerPreview, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectOrgAdminGroup, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -50,16 +47,11 @@ test.describe("Report colours", () => {
   }
 
   async function shapeFillInPreview(page: Page): Promise<string | null> {
-    // Selecting the Layout block or closing a popover can bring the Block tab back just after the click, so retry until Preview holds.
-    await expect(async () => {
-      await page.getByRole("tab", { name: "Preview", exact: true }).click();
-      await expect(page.getByRole("tab", { name: "Preview", exact: true })).toHaveAttribute("aria-selected", "true", { timeout: 1500 });
-    }).toPass();
-    await page.getByRole("button", { name: "Open in dialog" }).click();
-    const preview = page.getByRole("dialog", { name: "Report preview" });
+    await openDesignerPreview(page);
+    const preview = designerPreviewPanel(page);
     await preview.getByRole("button", { name: "Run preview" }).click();
     const fill = await preview.frameLocator('iframe[title="Report preview"]').locator("svg rect").first().getAttribute("fill");
-    await closeDesignerPreviewDialog(page);
+    await closeDesignerPreview(page);
     return fill;
   }
 

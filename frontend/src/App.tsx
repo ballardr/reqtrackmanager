@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { Layout } from "./components/Layout";
 import { Spinner } from "./components/Spinner";
@@ -39,6 +39,15 @@ import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
+
+/**
+ * Sends the old Org Admin "Templates & reports" address (`/orgs/:orgId/admin/templates-reports`) to its renamed
+ * group, so a bookmark or a link in older documentation still lands on the reports.
+ */
+function OldOrgReportsRedirect() {
+  const { orgId } = useParams<{ orgId: string }>();
+  return <Navigate to={`/orgs/${orgId}/admin/reports`} replace />;
+}
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
@@ -87,6 +96,7 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
+        <Route path="/orgs/:orgId/admin/templates-reports" element={<OldOrgReportsRedirect />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
         <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/orgs/:orgId/report-packs/:packId" element={<ReportPackPage />} />

@@ -186,7 +186,7 @@ test.describe("Report picker, folders and placements", () => {
 
     await test.step("the organisation moves one module report to a nested folder and hides another", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Templates & reports");
+      await selectOrgAdminGroup(page, "Reports");
       let table = await searchReportSetup(page, "Decision register");
       await table.getByRole("button", { name: "Actions for Decision register" }).click();
       await page.getByRole("menuitem", { name: "Move to folder…" }).click();

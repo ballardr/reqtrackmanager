@@ -212,3 +212,32 @@ export const ALargerSizeNeedsATallerMargin: Story = {
     await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("The footer needs a bottom margin of at least");
   },
 };
+
+/** A cell fits its text unless given a width; clearing the field removes the width again. */
+export const ACellWidthIsOptional: Story = {
+  render: () => <Host initial={{ left: "Ballard", centre: "Title" }} />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const width = view.getByRole("textbox", { name: "Left width" });
+    await expect(width).toHaveValue("");
+    await userEvent.type(width, "25%");
+    await expect(band(canvasElement).left_width).toBe("25%");
+    await userEvent.clear(width);
+    await expect(band(canvasElement).left_width).toBeUndefined();
+  },
+};
+
+/** The band sits cells at the top unless told otherwise, and a cell's own choice is written beside its text. */
+export const CellsAreTopAlignedUnlessChosen: Story = {
+  render: () => <Host initial={{ left: "Ballard", centre: "Title" }} />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    await expect(view.getByRole("combobox", { name: "Header: vertical alignment" })).toHaveValue("top");
+    await userEvent.selectOptions(view.getByRole("combobox", { name: "Left vertical alignment" }), "bottom");
+    await expect(band(canvasElement).left_valign).toBe("bottom");
+    await userEvent.selectOptions(view.getByRole("combobox", { name: "Header: vertical alignment" }), "middle");
+    await expect(band(canvasElement).valign).toBe("middle");
+    await userEvent.selectOptions(view.getByRole("combobox", { name: "Left vertical alignment" }), "");
+    await expect(band(canvasElement).left_valign).toBeUndefined();
+  },
+};

@@ -19,9 +19,9 @@ test.describe("org report look and project report setup", () => {
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
-    await test.step("Templates & reports has no Report templates section", async () => {
-      await selectOrgAdminGroup(page, "Templates & reports");
-      await expect(page.getByRole("button", { name: "Reports section" })).toBeVisible();
+    await test.step("Reports has no Report templates section", async () => {
+      await selectOrgAdminGroup(page, "Reports");
+      await expect(page.getByRole("button", { name: "Report layouts section" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Report templates section" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "New template" })).toHaveCount(0);
     });

@@ -6,6 +6,9 @@
  *
  * Responsibilities:
  * - Run on demand (a button), never on every keystroke: a run reads real data and has caps.
+ * - Offer "Download preview" beside the run button: the draft as a real file in any format of its family
+ *   (`ReportLayoutApi.downloadPreview`), named as a preview, with nothing stored. A draft too big to produce while the
+ *   author waits says so; a preview is never queued.
  * - Show a document as the server's standalone HTML page in a fully sandboxed frame (no scripts, no same-origin
  *   access, a restrictive CSP inside the page), and a table layout as capped sheets with the real row counts.
  * - Offer the scope's options with the Reports page's own form: "include child projects" for a project, the
@@ -26,9 +29,12 @@
  */
 import { useEffect, useMemo, useState } from "react";
 
-import type { PreviewResult, ReportLayoutApi } from "../api/reportLayouts";
+import type { LayoutFamily, PreviewResult, ReportLayoutApi } from "../api/reportLayouts";
+import { REPORT_FORMAT } from "../api/reportFormats";
 import {
+  isAsyncRequired,
   missingVariables,
+  type ReportFileKind,
   type ReportRunValues,
   type ReportVariable,
   type VariableValue,
@@ -36,9 +42,12 @@ import {
   variableDefaults,
 } from "../api/reports";
 import { useStrings } from "../context/TerminologyContext";
-import { toErrorMessage } from "../context/ToastContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
+import { downloadBlob } from "../utils/download";
+import { FAMILY_FORMATS } from "../utils/reportPackDraft";
 import { readPreviewScope, writePreviewScope } from "../utils/reportPreviewMemory";
 import { readRunScope } from "../utils/runScope";
+import { ReportExportButton } from "./ReportExportButton";
 import { ReportParamsForm } from "./ReportParamsForm";
 import { ReportVariablesForm } from "./ReportVariablesForm";
 import { ReportSectionTable } from "./ReportViewer";
@@ -47,16 +56,18 @@ import { Spinner } from "./Spinner";
 /**
  * @param api The calls, bound to the layout's scope.
  * @param layoutId The layout being previewed; the remembered project choice is kept per layout.
+ * @param family The layout's family, which decides the formats Download preview offers.
  * @param text The draft text view to preview.
  * @param name The title to print on the report.
  * @param disabled True while the text has problems; the button is then disabled with the reason.
  * @param projectOptions Organisation scope: the projects a run can be narrowed to.
  */
 export function ReportLayoutPreviewPanel({
-  api, layoutId, text: draft, name, disabled, projectOptions,
+  api, layoutId, family, text: draft, name, disabled, projectOptions,
 }: {
   api: ReportLayoutApi;
   layoutId: string;
+  family: LayoutFamily;
   text: string;
   name: string;
   disabled: boolean;
@@ -65,8 +76,8 @@ export function ReportLayoutPreviewPanel({
   const strings = useStrings();
   const text = strings.reportLayouts;
   const variableText = strings.reportVariables;
-  // The remembered choice is read on every render (it is cheap), so the side panel and the preview dialog, which show
-  // the same panel twice, agree; it is re-checked against the projects on offer, which may arrive after the panel opens.
+  const { showToast } = useToast();
+  // The remembered choice is re-checked against the projects on offer, which may arrive after the panel opens.
   const [, setTick] = useState(0);
   const organisationScope = api.scope.kind === "organization";
   // A draft that runs for one project previews for exactly one: a single-choice picker.
@@ -122,16 +133,34 @@ export function ReportLayoutPreviewPanel({
   const shown = declarations === "" ? [] : form;
   const missing = missingVariables(shown, variableValues);
 
+  /** The request both Run preview and Download preview send: the draft, the chosen projects and the variable values. */
+  function request() {
+    const ids = typeof values.project_ids === "string" && values.project_ids !== "" ? values.project_ids.split(",") : undefined;
+    const chosen = Object.fromEntries(shown.map((v) => [v.name, variableValues[v.name]]).filter(([, value]) => value !== null && value !== undefined));
+    return {
+      text: draft, name, include_children: values.include_children === true, project_ids: ids,
+      ...(shown.length > 0 ? { variables: chosen } : {}),
+    };
+  }
+
+  async function download(kind: ReportFileKind) {
+    const format = REPORT_FORMAT[kind].label;
+    try {
+      const blob = await api.downloadPreview(request(), kind);
+      // A table preview of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
+      const extension = blob.type === "application/zip" ? "zip" : kind;
+      downloadBlob(blob, blob instanceof File && blob.name !== "" ? blob.name : `${text.previewFileName(name)}.${extension}`);
+      showToast(text.previewDownloaded(format), "success");
+    } catch (err) {
+      showToast(isAsyncRequired(err) ? text.previewTooBig : toErrorMessage(err, text.previewDownloadFailed(format)), "error");
+    }
+  }
+
   async function run() {
     setRunning(true);
     setError(null);
     try {
-      const ids = typeof values.project_ids === "string" && values.project_ids !== "" ? values.project_ids.split(",") : undefined;
-      const chosen = Object.fromEntries(shown.map((v) => [v.name, variableValues[v.name]]).filter(([, value]) => value !== null && value !== undefined));
-      const result = await api.preview({
-        text: draft, name, include_children: values.include_children === true, project_ids: ids,
-        ...(shown.length > 0 ? { variables: chosen } : {}),
-      });
+      const result = await api.preview(request());
       setProduced({ draft, result });
     } catch (err) {
       setProduced(null);
@@ -163,6 +192,10 @@ export function ReportLayoutPreviewPanel({
         <button type="button" className="btn btn-primary" disabled={disabled || running || missing.length > 0 || needsProject} onClick={() => void run()}>
           {text.refreshPreview}
         </button>
+        <ReportExportButton<ReportFileKind>
+          kinds={FAMILY_FORMATS[family]} label={text.downloadPreview} onDownload={download}
+          disabled={disabled || missing.length > 0 || needsProject}
+        />
         {disabled && <span className="text-muted">{text.previewFixFirst}</span>}
         {!disabled && needsProject && <span className="text-muted">{strings.reportRuns.needProject}</span>}
         {!disabled && missing.length > 0 && (

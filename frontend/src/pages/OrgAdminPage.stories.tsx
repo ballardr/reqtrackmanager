@@ -783,15 +783,15 @@ export const UsersSectionMigratedFilterCheckboxesWorkIndependently: Story = {
   },
 };
 
-/** Templates & reports lists the organisation's report layouts, shared with every project. */
-export const TemplatesAndReportsListsTheReportLayouts: Story = {
+/** Reports lists the organisation's report layouts, shared with every project. */
+export const ReportsListsTheReportLayouts: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
     const grid = within(await canvas.findByRole("treegrid", { name: "Reports, packs and tables" }));
     await userEvent.click(grid.getByRole("button", { name: "Expand Custom reports" }));
     await expect(grid.getByRole("button", { name: /^Requirements by component/ })).toBeInTheDocument();
@@ -805,7 +805,7 @@ export const NoReportTemplatesSectionRemains: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
     await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
     await expect(canvas.queryByRole("button", { name: "Report templates section" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "New template" })).not.toBeInTheDocument();
@@ -1279,16 +1279,16 @@ export const AdvancedSettingsAllowRelaxedChildProjectCreation: Story = {
   },
 };
 
-/** Templates & reports opens on the Reports list with every other section closed (Reports itself is open). */
-export const TemplatesAndReportsOpensOnTheReportsList: Story = {
+/** Reports opens on the Report layouts list with every other section closed (Report layouts itself is open). */
+export const ReportsOpensOnTheReportLayouts: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
     await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
-    await expect(canvas.getByRole("button", { name: "Reports section" })).toHaveAttribute("aria-expanded", "true");
+    await expect(canvas.getByRole("button", { name: "Report layouts section" })).toHaveAttribute("aria-expanded", "true");
     for (const title of ["Report snippets", "Configuration"]) {
       await expect(canvas.getByRole("button", { name: `${title} section` })).toHaveAttribute("aria-expanded", "false");
     }
@@ -1305,7 +1305,7 @@ export const ReportConfigurationIsSavedWithOneButton: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Templates & reports" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
     await userEvent.click(await canvas.findByRole("button", { name: "Configuration section" }));
     const retention = await canvas.findByLabelText("Keep background report files for (days)");
     await expect(canvas.getByText(/platform default of 7 days/)).toBeInTheDocument();

@@ -7,13 +7,13 @@ import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWO
 const API = "http://localhost:8000/api/v1";
 
 /**
- * Job to be done: open an organisation's Templates & reports page on the list of reports, with the other sections
+ * Job to be done: open an organisation's Reports page on the list of reports, with the other sections
  * out of the way, and set the output settings (file names, background report retention) with one Save.
  *
  * Each test works in its own disposable organisation and admin (created and deleted through the API), so the sections
  * start in their default state and the test passes alone, in any order and repeated.
  */
-test.describe("Organisation Templates & reports page", () => {
+test.describe("Organisation Reports page", () => {
   installCleanupHook();
 
   async function login(request: APIRequestContext, email: string, password: string) {
@@ -40,8 +40,8 @@ test.describe("Organisation Templates & reports page", () => {
 
     await test.step("only Reports is open", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Templates & reports");
-      await expect(page.getByRole("button", { name: "Reports section" })).toHaveAttribute("aria-expanded", "true");
+      await selectOrgAdminGroup(page, "Reports");
+      await expect(page.getByRole("button", { name: "Report layouts section" })).toHaveAttribute("aria-expanded", "true");
       for (const title of ["Report snippets", "Configuration"]) {
         await expect(page.getByRole("button", { name: `${title} section` })).toHaveAttribute("aria-expanded", "false");
       }
@@ -61,7 +61,7 @@ test.describe("Organisation Templates & reports page", () => {
       await expect(page.getByText("Settings saved.")).toBeVisible();
 
       await page.reload();
-      await selectOrgAdminGroup(page, "Templates & reports");
+      await selectOrgAdminGroup(page, "Reports");
       await ensureExpanded(page, "Configuration");
       await expect(page.getByRole("textbox", { name: "Default report file name" })).toHaveValue("{{project_name}}-{{report_title}}");
       await expect(page.getByLabel("Keep background report files for (days)")).toHaveValue("4");
@@ -69,6 +69,13 @@ test.describe("Organisation Templates & reports page", () => {
       await expect(page.getByRole("checkbox", { name: "Include cover page" })).toBeChecked();
       await expect(page.getByRole("checkbox", { name: /^Chapter per/ })).not.toBeChecked();
     });
+  });
+
+  test("the old Templates & reports address lands on the Reports group", async ({ page, request }) => {
+    const { org } = await setup(page, request);
+    await page.goto(`/orgs/${org.id}/admin/templates-reports`);
+    await expect(page).toHaveURL(new RegExp(`/orgs/${org.id}/admin/reports$`));
+    await expect(page.getByRole("button", { name: "Report layouts section" })).toHaveAttribute("aria-expanded", "true");
   });
 
   test("Branding gives reports their own accent colour and decides whether they carry the logo", async ({ page, request }) => {

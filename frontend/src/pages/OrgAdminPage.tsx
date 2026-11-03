@@ -148,7 +148,7 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "groups",
   "projects-workflow",
   "branding-defaults",
-  "templates-reports",
+  "reports",
   "oauth-sso",
   "email",
   "security",
@@ -2185,7 +2185,7 @@ export function OrgAdminPage() {
     { key: "groups", label: strings.orgAdmin.groupGroups, href: `/orgs/${orgId}/admin/groups` },
     { key: "projects-workflow", label: strings.orgAdmin.groupProjectsWorkflow, href: `/orgs/${orgId}/admin/projects-workflow` },
     { key: "branding-defaults", label: strings.orgAdmin.groupBrandingDefaults, href: `/orgs/${orgId}/admin/branding-defaults` },
-    { key: "templates-reports", label: strings.orgAdmin.groupTemplatesReports, href: `/orgs/${orgId}/admin/templates-reports` },
+    { key: "reports", label: strings.orgAdmin.groupReports, href: `/orgs/${orgId}/admin/reports` },
     { key: "oauth-sso", label: strings.orgAdmin.groupOauthSso, href: `/orgs/${orgId}/admin/oauth-sso` },
     { key: "email", label: strings.orgAdmin.groupEmail, href: `/orgs/${orgId}/admin/email` },
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
@@ -3292,10 +3292,10 @@ export function OrgAdminPage() {
           </div>
         )}
 
-        {activeGroup === "templates-reports" && (
+        {activeGroup === "reports" && (
           <div className="stack">
             {layoutApi && packApi && placementApi && (
-              <CollapsibleSection sectionKey="orgAdmin.reportSetup" title={strings.admin.reportSetup} defaultCollapsed={false}>
+              <CollapsibleSection sectionKey="orgAdmin.reportSetup" title={strings.orgAdmin.reportLayoutsSection} defaultCollapsed={false}>
                 <ReportSetupPanel layoutApi={layoutApi} packApi={packApi} placementApi={placementApi} />
               </CollapsibleSection>
             )}

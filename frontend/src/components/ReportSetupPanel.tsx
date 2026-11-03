@@ -1,7 +1,7 @@
 /**
  * Module: components/ReportSetupPanel
  *
- * Report setup for an organisation or a project (Org Admin → Templates & reports, Project Admin → Report setup): one
+ * Report setup for an organisation or a project (Org Admin → Reports, Project Admin → Report setup): one
  * folder list of every report the scope can arrange, in the shape of the Reports chooser. Custom layouts, report packs
  * and the reports modules and the platform provide are rows of one tree (`FolderTreeList`), each with the actions that
  * apply to it.

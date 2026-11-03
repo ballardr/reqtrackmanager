@@ -9,7 +9,8 @@
  * Responsibilities:
  * - Choose between "inherit" (a page style takes the layout's; the layout takes a page number), "its own text"
  *   and "nothing" (an explicitly empty band), and write the band back (`undefined`, an object, `{}`).
- * - Edit the three cells (up to three lines each) and add a placeholder at the caret of the cell last edited; the page
+ * - Edit the three cells (up to three lines each), give a cell a fixed width (blank: it fits its text) and a vertical
+ *   alignment (blank: the band's, top by default), and add a placeholder at the caret of the cell last edited; the page
  *   number, total pages and "Page X of Y" are always offered, with a sample of what a cell prints.
  * - Choose the logo from the layout tier's image library, its height and its cell, through the shared `ReportImageField`.
  * - Set the band's font, size and colour through the shared font and colour fields (the three cells share one setting), and
@@ -27,7 +28,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "../utils/reportColours";
 import { STANDARD_FONT_CHOICES } from "../utils/reportFonts";
 import {
-  BAND_FIRST_PAGE, BAND_SIZE_PT, BAND_SLOTS, DEFAULT_LOGO_CM, MAX_BAND_SIZE_PT, MAX_LOGO_CM, MIN_BAND_SIZE_PT, MIN_LOGO_CM, bandNeedsCm,
+  BAND_FIRST_PAGE, BAND_SIZE_PT, BAND_SLOTS, BAND_VALIGN, DEFAULT_LOGO_CM, MAX_BAND_SIZE_PT, MAX_LOGO_CM, MIN_BAND_SIZE_PT, MIN_LOGO_CM, bandNeedsCm,
   insertAtCaret, pageSample, wrapMark, type BandSlot, type RunningBand,
 } from "../utils/reportPageSetup";
 import { ColourChoiceField } from "./ColourChoiceField";
@@ -170,6 +171,21 @@ export function RunningBandEditor({
                   disabled={disabled} help={strings.help.bandCell} onChange={(next) => set({ [slot]: next })}
                   inputProps={{ onSelect: remember(slot), onBlur: remember(slot) }}
                 />
+                <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                  <div style={{ width: "7rem" }}>
+                    <TextField
+                      label={`${text.cellLabels[slot]} ${text.widthLabel.toLowerCase()}`} value={band[`${slot}_width`] ?? ""} disabled={disabled}
+                      help={strings.help.bandCellWidth} placeholder={text.widthFits}
+                      onChange={(input) => set({ [`${slot}_width`]: input.trim() === "" ? undefined : input })}
+                    />
+                  </div>
+                  <LabeledSelect
+                    label={`${text.cellLabels[slot]} ${text.valignLabel.toLowerCase()}`} value={band[`${slot}_valign`] ?? ""} disabled={disabled}
+                    placeholder={text.valignInherit} help={strings.help.bandCellValign}
+                    options={BAND_VALIGN.map((choice) => ({ value: choice, label: text.valignChoices[choice] }))}
+                    onChange={(choice) => set({ [`${slot}_valign`]: choice || undefined })}
+                  />
+                </div>
                 {pageSample(band[slot] ?? "") !== null && (
                   <p style={sampleStyle}>
                     <span className="text-muted" style={{ fontFamily: "inherit" }}>{text.sample} </span>
@@ -250,6 +266,12 @@ export function RunningBandEditor({
           ) : (
             logo && <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{text.imagesUnavailable}</p>
           )}
+          <LabeledSelect
+            label={`${title}: ${text.valignLabel.toLowerCase()}`} value={band.valign ?? "top"} disabled={disabled} placeholder={null}
+            help={strings.help.bandValign}
+            options={BAND_VALIGN.map((choice) => ({ value: choice, label: text.valignChoices[choice] }))}
+            onChange={(choice) => set({ valign: choice === "top" ? undefined : (choice as (typeof BAND_VALIGN)[number]) })}
+          />
           <LabeledSelect
             label={`${title}: ${text.firstPageLabel.toLowerCase()}`} value={band.first_page ?? "same"} disabled={disabled} placeholder={null}
             help={strings.help.bandFirstPage}

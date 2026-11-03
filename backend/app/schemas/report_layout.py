@@ -382,6 +382,17 @@ class ReportLayoutPreviewRequest(BaseModel):
         return self
 
 
+class ReportLayoutPreviewDownloadRequest(ReportLayoutPreviewRequest):
+    """A draft to render as a file: a preview request plus the format.
+
+    Attributes:
+        format: A file format of the draft's family (`pdf`, `docx`, `odt`, `html` for a document; `csv`, `xlsx`, `ods`
+            for a table); the draft's family decides which are accepted.
+    """
+
+    format: Literal["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"]
+
+
 class ReportVariablesOut(BaseModel):
     """The run form of a layout: its variables (empty when it declares none)."""
 

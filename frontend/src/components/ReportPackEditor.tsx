@@ -67,7 +67,7 @@ function signature(definition: ReportPackDefinition): string {
 /**
  * @param api The calls bound to the scope the pack belongs to.
  * @param packId The pack.
- * @param backTo Where Back leads (Report setup of Project Admin, Templates & reports of Org Admin).
+ * @param backTo Where Back leads (Report setup of Project Admin, Reports of Org Admin).
  */
 export function ReportPackEditor({
   api, packId, backTo, duplicateApi: duplicateApiProp,

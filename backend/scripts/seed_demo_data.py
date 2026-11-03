@@ -614,12 +614,18 @@ def project_overview_with_logo_layout(logo_file_id: str) -> dict:
     title, measured from the title's paragraph, so the title stays readable.
 
     It also shows the fonts and colours settings: its own colour scheme (`plate`, `highlight`; the organisation's `alert` and
-    `success` stay available), a serif body, sans headings in the plate colour, and an italic footer with the page numbers.
+    `success` stay available), a serif body, sans headings in the plate colour, an italic footer with the page numbers, and
+    a header showing the cell settings: the organisation name in a fixed 30 % cell, the others fitting their content, all top
+    aligned but the date at the bottom.
     """
     return {
         "schema_version": 1, "family": "document", "orientation": "portrait",
         "palette": [{"name": "plate", "colour": "accent_dark"}, {"name": "highlight", "colour": "#b45309"}],
         "styles": {"body": {"font": "serif", "size": 11}, "headings": {"font": "sans", "colour": "plate"}},
+        "header": {
+            "left": "{{organisation}}", "centre": "{{report_title}}", "right": "{{generated_on}}",
+            "left_width": "30%", "valign": "top", "right_valign": "bottom", "colour": "plate",
+        },
         "footer": {"left": "*{{project_name}}*", "right": "*Page {{page}} of {{pages}}*", "colour": "plate"},
         "nodes": [
             {

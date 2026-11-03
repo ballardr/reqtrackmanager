@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, test } from "@playwright/test";
 
-import { closeDesignerPreviewDialog, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -75,15 +75,15 @@ test.describe("Report layout custom table", () => {
     });
 
     await test.step("the preview draws the merged, shaded and aligned cells", async () => {
-      await openDesignerPreviewDialog(page);
-      const preview = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const preview = designerPreviewPanel(page);
       await preview.getByRole("button", { name: "Run preview" }).click();
       const grid = preview.frameLocator('iframe[title="Report preview"]').locator("table.grid");
       await expect(grid.locator('td[colspan="4"]')).toContainText("Document details");
       await expect(grid.locator('td[rowspan="2"]')).toHaveText("Review");
       await expect(grid.locator("td.a-right")).toContainText("1.2");
       await expect(grid.locator("td").nth(1)).toHaveCSS("background-color", "rgb(0, 0, 0)");
-      await closeDesignerPreviewDialog(page);
+      await closeDesignerPreview(page);
     });
 
     await test.step("saving and reloading keep it", async () => {

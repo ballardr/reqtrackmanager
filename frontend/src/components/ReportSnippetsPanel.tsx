@@ -1,7 +1,7 @@
 /**
  * Module: components/ReportSnippetsPanel
  *
- * The Report snippets section of Report setup (Org Admin → Templates & reports, Project Admin → Report setup): the snippets
+ * The Report snippets section of Report setup (Org Admin → Reports, Project Admin → Report setup): the snippets
  * authors saved from the designer, as a list the scope can manage.
  *
  * Responsibilities:

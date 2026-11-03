@@ -86,7 +86,7 @@ flowchart TD
   Root2 --> G2["People"]
   Root2 --> G3["Projects & workflow"]
   Root2 --> G4["Branding & defaults"]
-  Root2 --> G5["Templates & reports"]
+  Root2 --> G5["Reports"]
   Root2 --> G6["Integrations & security"]
   G1 --> G1a["Org name, export, danger zone"]
   G1 --> G1b["Import / merge bundle"]

@@ -73,8 +73,8 @@ test.describe("Report starter layouts", () => {
 
   async function openOrgLayouts(page: Page, orgId: string) {
     await page.goto(`/orgs/${orgId}/admin`);
-    await selectOrgAdminGroup(page, "Templates & reports");
-    await ensureExpanded(page, "Reports");
+    await selectOrgAdminGroup(page, "Reports");
+    await ensureExpanded(page, "Report layouts");
   }
 
   test("a new organisation has the starters, a project runs one, and a deleted one is brought back", async ({ page, request }) => {

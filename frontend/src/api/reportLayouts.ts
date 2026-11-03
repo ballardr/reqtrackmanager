@@ -14,7 +14,7 @@
  */
 import { api, ApiError } from "./client";
 import { fetchFileDetails, type FileDetails } from "./fileDetails";
-import type { ReportParam, ReportVariable } from "./reports";
+import type { ReportFileKind, ReportParam, ReportVariable } from "./reports";
 import type { ColourContext } from "../utils/reportColours";
 
 export type LayoutFamily = "document" | "table";
@@ -412,6 +412,11 @@ export interface ReportLayoutApi {
   /** The picture library an image block draws from: this scope's own pictures and, for a project, the organisation's. */
   images: ReportImageLibrary;
   preview(body: PreviewRequest): Promise<PreviewResult>;
+  /**
+   * Renders the draft as a file in `format` (a format of its family) without saving: nothing is stored and no run is
+   * recorded. A draft too big to produce while the author waits answers `async_required` (`isAsyncRequired`); a preview is never queued.
+   */
+  downloadPreview(body: PreviewRequest, format: ReportFileKind): Promise<Blob>;
   /** The draft's run-time variables with their defaults and current options (nothing is stored). */
   draftVariables(text: string): Promise<DraftVariables>;
   /** Organisation scope only: the names of the starter layouts the organisation lacks (empty when every starter is present). */
@@ -463,6 +468,7 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     snippets: () => api.get<ReportSnippet[]>(`${base}/snippets`),
     applySnippet: (key, body) => api.post<SnippetApplyResult>(`${base}/snippets/${encodeURIComponent(key)}/apply`, body),
     preview: (body) => api.post<PreviewResult>(`${base}/preview`, body),
+    downloadPreview: (body, format) => api.postForFile(`${base}/preview/download`, { ...body, format }),
     draftVariables: (text) => api.post<DraftVariables>(`${base}/variables`, { text }),
     images: {
       list: () => api.get<ReportImageList>(reportImagesBase(scope)),

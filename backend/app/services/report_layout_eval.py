@@ -106,6 +106,7 @@ from app.services.report_math import MathSegment, source_of, split_math, tex_pro
 from app.services.report_model import (
     MAX_SHEET_ROWS,
     SLOT_NAMES,
+    VALIGN_CHOICES,
     Block,
     BottomEnd,
     BottomStart,
@@ -762,6 +763,9 @@ class _Run:
             **cells, logo=logo, logo_slot=slot, logo_height_cm=height, first_page=source.get("first_page", "same") != "none",
             font=font, size=size,
             colour=resolve_colour(colour, self.org_values["report_accent"], self.scheme) if colour else None,
+            widths=tuple(source.get(f"{name}_width") for name in SLOT_NAMES),  # type: ignore[arg-type]
+            valigns=tuple(source.get(f"{name}_valign") for name in SLOT_NAMES),  # type: ignore[arg-type]
+            valign=source.get("valign", VALIGN_CHOICES[0]),
         )
 
     def _running_cell(self, text: str) -> tuple[SlotPart, ...]:

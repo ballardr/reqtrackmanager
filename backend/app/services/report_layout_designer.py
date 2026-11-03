@@ -49,6 +49,7 @@ from app.modules.registry import (
     is_org_module_subcomponent_enabled,
 )
 from app.services import custom_report_run, report_render
+from app.services.downloads import filename_safe
 from app.services.report_fields import FieldInfo, field_catalogue
 from app.services.report_layout_block_schema import FIELD_KINDS, LAYOUT_FIELDS, BlockField, BlockSchema
 from app.services.report_layout_tree import (
@@ -69,6 +70,9 @@ from app.services.report_model import PLACEHOLDER_NAMES
 #: Most rows of one sheet a preview returns.
 PREVIEW_MAX_ROWS = 200
 PREVIEW_NAME = "Preview"
+
+# A preview download is named so it cannot be mistaken for a saved run's file.
+PREVIEW_FILE_PREFIX = "Preview - "
 
 
 @dataclass(frozen=True)
@@ -246,6 +250,30 @@ def validation_errors(tree: dict[str, Any]) -> list[TreeError]:
     return validate_tree(tree).errors
 
 
+def _draft_project_run(
+    db: Session, user: User, project: Project, *, tree: dict[str, Any], name: str, include_children: bool,
+    variables: Mapping[str, Any] | None,
+) -> custom_report_run.LayoutRun:
+    """Runs a draft for one project: validates it, then evaluates it as a saved layout would be (nothing is stored)."""
+    assert_valid(tree)
+    layout, version = _transient(str(tree["family"]), tree, project.organization_id, project.id, name)
+    return custom_report_run.run_project_layout(
+        db, user, project, layout, version, include_children=include_children, variables=variables,
+    )
+
+
+def _draft_organization_run(
+    db: Session, user: User, organization: Organization, *, tree: dict[str, Any], name: str,
+    project_ids: Sequence[uuid.UUID] | None, variables: Mapping[str, Any] | None, include_children: bool,
+) -> custom_report_run.LayoutRun:
+    """Runs a draft once per project the caller can read (or the selected ones), merged (nothing is stored)."""
+    assert_valid(tree)
+    layout, version = _transient(str(tree["family"]), tree, organization.id, None, name)
+    return custom_report_run.run_organization_layout(
+        db, user, organization, layout, version, project_ids=project_ids, variables=variables, include_children=include_children,
+    )
+
+
 def preview_for_project(
     db: Session, user: User, project: Project, *, tree: dict[str, Any], name: str = "", include_children: bool = False,
     variables: Mapping[str, Any] | None = None,
@@ -269,12 +297,9 @@ def preview_for_project(
         LayoutLimitError: A work, output or time limit was exceeded.
         VariableValueError: A variable's value is missing, undeclared or unacceptable.
     """
-    assert_valid(tree)
-    layout, version = _transient(str(tree["family"]), tree, project.organization_id, project.id, name)
-    run = custom_report_run.run_project_layout(
-        db, user, project, layout, version, include_children=include_children, variables=variables,
-    )
-    return _preview_of(run)
+    return _preview_of(_draft_project_run(
+        db, user, project, tree=tree, name=name, include_children=include_children, variables=variables,
+    ))
 
 
 def preview_for_organization(
@@ -288,9 +313,82 @@ def preview_for_organization(
         LayoutLimitError: A work, output or time limit was exceeded.
         custom_report_run.ProjectsNotInScopeError / NoProjectsToRunError / FanOutTooLargeError / RunScopeError: As for a run.
     """
-    assert_valid(tree)
-    layout, version = _transient(str(tree["family"]), tree, organization.id, None, name)
-    run = custom_report_run.run_organization_layout(
-        db, user, organization, layout, version, project_ids=project_ids, variables=variables, include_children=include_children,
+    return _preview_of(_draft_organization_run(
+        db, user, organization, tree=tree, name=name, project_ids=project_ids, variables=variables,
+        include_children=include_children,
+    ))
+
+
+@dataclass(frozen=True)
+class PreviewDownload:
+    """A draft rendered as a file in one format.
+
+    Attributes:
+        file: The rendered file.
+        stem: The download name without its extension; always begins with `PREVIEW_FILE_PREFIX`.
+    """
+
+    file: report_render.RenderedFile
+    stem: str
+
+
+def _preview_download_of(db: Session, run: custom_report_run.LayoutRun, fmt: str) -> PreviewDownload:
+    """Renders a draft run in `fmt`; its name says it is a preview (never the layout's file name template).
+
+    Raises:
+        ValueError: `fmt` is not a format of the draft's family.
+    """
+    if fmt not in report_render.formats_for(run.family):
+        raise ValueError(f"A {run.family} layout can be produced as: {', '.join(report_render.formats_for(run.family))}.")
+    rendered = custom_report_run.render_file(db, run, fmt)
+    return PreviewDownload(rendered, f"{PREVIEW_FILE_PREFIX}{filename_safe(run.layout.name, fallback='report')}")
+
+
+def download_preview_for_project(
+    db: Session, user: User, project: Project, *, tree: dict[str, Any], fmt: str, name: str = "",
+    include_children: bool = False, variables: Mapping[str, Any] | None = None,
+) -> PreviewDownload:
+    """Renders a draft for one project as a file, so an author sees the real format without saving.
+
+    Stores nothing: no run record, no provenance, no audit event (the same as `preview_for_project`).
+
+    Args:
+        db: Active session (read only).
+        user: The caller; the file holds only what they may read.
+        project: The project (the route has authorised the caller as a layout manager).
+        tree: The draft; validated here.
+        fmt: A renderer format of the draft's family (not `json`).
+        name: The report title to print.
+        include_children: Also read the project's readable child projects.
+        variables: Values for the draft's run-time variables.
+
+    Returns:
+        The file and its download name.
+
+    Raises:
+        InvalidLayoutError: The tree is not valid.
+        LayoutLimitError: A work, output or time limit was exceeded.
+        VariableValueError: A variable's value is missing, undeclared or unacceptable.
+        ValueError: `fmt` is not a format of the draft's family.
+    """
+    run = _draft_project_run(
+        db, user, project, tree=tree, name=name, include_children=include_children, variables=variables,
     )
-    return _preview_of(run)
+    return _preview_download_of(db, run, fmt)
+
+
+def download_preview_for_organization(
+    db: Session, user: User, organization: Organization, *, tree: dict[str, Any], fmt: str, name: str = "",
+    project_ids: Sequence[uuid.UUID] | None = None, variables: Mapping[str, Any] | None = None, include_children: bool = False,
+) -> PreviewDownload:
+    """As `download_preview_for_project`, for an organisation layout run once per project the caller can read.
+
+    Raises:
+        InvalidLayoutError / LayoutLimitError / VariableValueError / ValueError: As for the project form.
+        custom_report_run.ProjectsNotInScopeError / NoProjectsToRunError / FanOutTooLargeError / RunScopeError: As for a run.
+    """
+    run = _draft_organization_run(
+        db, user, organization, tree=tree, name=name, project_ids=project_ids, variables=variables,
+        include_children=include_children,
+    )
+    return _preview_download_of(db, run, fmt)

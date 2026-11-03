@@ -57,6 +57,7 @@ from docx.shared import Cm, Emu, Pt, RGBColor
 from docx.text.run import Run
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
+from app.services.report_band_cells import resolve_band_cells
 from app.services.report_font_parts import embed_in_docx
 from app.services.report_grid_render import docx_grid
 from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
@@ -274,6 +275,9 @@ def _footer(doc: DocxDocument, document: ReportDocument) -> None:
 
 
 _FIELD_CODES = {PageField.PAGE: "PAGE", PageField.PAGES: "NUMPAGES"}
+_CELL_VALIGN = {
+    "top": WD_CELL_VERTICAL_ALIGNMENT.TOP, "middle": WD_CELL_VERTICAL_ALIGNMENT.CENTER, "bottom": WD_CELL_VERTICAL_ALIGNMENT.BOTTOM,
+}
 _CELL_ALIGNMENT = {"left": WD_ALIGN_PARAGRAPH.LEFT, "centre": WD_ALIGN_PARAGRAPH.CENTER, "right": WD_ALIGN_PARAGRAPH.RIGHT}
 
 
@@ -317,7 +321,7 @@ def _band_table(container, band: RunningBand, width_cm: float) -> None:
 
     The container's own first paragraph is kept after the table (Word requires one) and made one point high.
     """
-    cell_cm = width_cm / 3
+    resolved = resolve_band_cells(band, width_cm)
     table = container.add_table(rows=1, cols=3, width=Cm(width_cm))
     table.autofit = False
     anchor = container.paragraphs[0]
@@ -327,9 +331,10 @@ def _band_table(container, band: RunningBand, width_cm: float) -> None:
     anchor.paragraph_format.space_after = anchor.paragraph_format.space_before = Pt(0)
     anchor.paragraph_format.line_spacing = Pt(1)
     anchor.add_run().font.size = Pt(1)
-    for index, slot in enumerate(SLOT_NAMES):
+    for index, (slot, resolved_cell) in enumerate(zip(SLOT_NAMES, resolved, strict=True)):
         cell = table.rows[0].cells[index]
-        cell.width = Cm(cell_cm)
+        table.columns[index].width = cell.width = Cm(resolved_cell.width_cm)
+        cell_cm = resolved_cell.width_cm
         lines = cell_lines(band.slot(slot)) or [[]]
         for number, line in enumerate(lines):
             paragraph = cell.paragraphs[0] if number == 0 else cell.add_paragraph()
@@ -346,7 +351,7 @@ def _band_table(container, band: RunningBand, width_cm: float) -> None:
                     _page_number_field(paragraph, _FIELD_CODES[words], style=look)
                 else:
                     look(paragraph.add_run(clean_text(words)))
-        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        cell.vertical_alignment = _CELL_VALIGN[resolved_cell.valign]
 
 
 def _fill_part(container, band: RunningBand | None, width_cm: float, *, first_page: bool, mirror: bool = False, verso: bool = False) -> None:

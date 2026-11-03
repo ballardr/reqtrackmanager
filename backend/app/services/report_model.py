@@ -795,6 +795,8 @@ class Marked:
 #: A running slot is text, page fields and marked stretches in order; the text may hold line breaks (`\n`).
 SlotPart = str | PageField | Marked
 SLOT_NAMES = ("left", "centre", "right")
+#: The vertical places a band cell's content can sit in the band's row; a band that says nothing uses the first.
+VALIGN_CHOICES = ("top", "middle", "bottom")
 
 
 @dataclass(frozen=True)
@@ -813,6 +815,10 @@ class RunningBand:
         font: The band's font family, `None` to follow the document's body font.
         size: The band's text size in points, `None` for the default (8 pt).
         colour: The band's text colour as `#rrggbb`, `None` for the default (black).
+        widths: Each cell's fixed width (`25%` of the band, or `4 cm`) in `SLOT_NAMES` order, `None` for a cell that sizes to
+            its content.
+        valigns: Each cell's own vertical alignment in `SLOT_NAMES` order, `None` to follow `valign`.
+        valign: The vertical alignment of the cells that set none (one of `VALIGN_CHOICES`).
     """
 
     left: tuple[SlotPart, ...] = ()
@@ -825,6 +831,9 @@ class RunningBand:
     font: FontFamily | None = None
     size: float | None = None
     colour: str | None = None
+    widths: tuple[str | None, str | None, str | None] = (None, None, None)
+    valigns: tuple[str | None, str | None, str | None] = (None, None, None)
+    valign: str = VALIGN_CHOICES[0]
 
     def slot(self, name: str) -> tuple[SlotPart, ...]:
         """The parts of cell `name` (`left`, `centre` or `right`)."""
@@ -837,9 +846,13 @@ class RunningBand:
 
     def mirrored(self) -> RunningBand:
         """The band for a left-hand page of a double-sided document: the left and right cells (and a logo in one of
-        them) swap, so what sits at the outer edge of a right-hand page sits at the outer edge of the left-hand one."""
+        them, and their widths and alignments) swap, so what sits at the outer edge of a right-hand page sits at the outer
+        edge of the left-hand one."""
         swap = {"left": "right", "right": "left", "centre": "centre"}
-        return replace(self, left=self.right, right=self.left, logo_slot=swap[self.logo_slot])
+        return replace(
+            self, left=self.right, right=self.left, logo_slot=swap[self.logo_slot],
+            widths=(self.widths[2], self.widths[1], self.widths[0]), valigns=(self.valigns[2], self.valigns[1], self.valigns[0]),
+        )
 
 
 @dataclass(frozen=True)

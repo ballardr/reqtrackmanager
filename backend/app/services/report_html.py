@@ -39,6 +39,7 @@ import re
 from PIL import Image as PilImage
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.report_band_cells import resolve_band_cells
 from app.services.report_column_width import parse_width
 from app.services.report_fonts import FontFamily
 from app.services.report_grid_render import GRID_CSS, html_grid
@@ -109,8 +110,8 @@ hr.page-break { border: 0; border-top: 1px dashed #bbb; margin: 2rem 0; }
 @media print { hr.page-break { break-after: page; border: 0; } }
 section.page-style { position: relative; left: 50%%; transform: translateX(-50%%); box-sizing: border-box; max-width: calc(100vw - 2rem); }
 .page-frame { color: #666; font-size: .75rem; border: 1px dashed #bbb; border-radius: 4px; padding: .1rem .5rem; margin: 1.5rem 0 .5rem; }
-.band { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; align-items: center; color: #555; font-size: .75rem; margin: .5rem 0; }
-.band .cell { display: flex; align-items: center; gap: .4rem; white-space: pre-line; } .band .centre { justify-content: center; text-align: center; }
+.band { display: grid; gap: .5rem; color: #555; font-size: .75rem; margin: .5rem 0; }
+.band .cell { display: flex; min-width: 0; gap: .4rem; white-space: pre-line; } .band .centre { justify-content: center; text-align: center; }
 .band .right { justify-content: flex-end; text-align: right; } .band img { width: auto; } .band .pf { font-style: italic; }
 .band.header { border-bottom: 1px solid #ddd; padding-bottom: .3rem; }
 .band.footer { border-top: 1px solid #ddd; padding-top: .3rem; margin-top: 2rem; }
@@ -158,19 +159,27 @@ def _page_rules(selector: str, style: PageStyle) -> str:
     return rules
 
 
+_FLEX_ALIGN = {"top": "flex-start", "middle": "center", "bottom": "flex-end"}
 _BOXES = {("header", "left"): "top-left", ("header", "centre"): "top-center", ("header", "right"): "top-right",
           ("footer", "left"): "bottom-left", ("footer", "centre"): "bottom-center", ("footer", "right"): "bottom-right"}
 
 
-def _band_html(band: RunningBand | None, kind: str) -> str:
+def _band_html(band: RunningBand | None, kind: str, usable_cm: float) -> str:
     """A header or footer as it shows on screen: three cells in a row, with the page numbers as placeholders.
 
     The page numbers are filled in only when the page is printed (HTML has no pages), so the screen shows `n` and `N`.
+    The columns are the band's resolved cell widths (as shares of the row) and each cell sits at its vertical alignment.
+
+    Args:
+        band: The band, or `None`.
+        kind: `header` or `footer`.
+        usable_cm: The text width of the page style the band is on.
     """
     if band is None or band.empty:
         return ""
     cells = []
-    for slot in SLOT_NAMES:
+    resolved = resolve_band_cells(band, usable_cm)
+    for slot, cell_info in zip(SLOT_NAMES, resolved, strict=True):
         text = "<br>".join("".join(_band_part_html(part) for part in line) for line in cell_lines(band.slot(slot)))
         logo = ""
         if band.logo is not None and band.logo_slot == slot:
@@ -181,8 +190,10 @@ def _band_html(band: RunningBand | None, kind: str) -> str:
                 except UnsafeSvgError:
                     uri = None
             logo = f'<img src="{uri}" alt="" style="height:{band.logo_height_cm:g}cm">' if uri else ""
-        cells.append(f'<div class="cell {slot}">{logo}<span>{text}</span></div>')
-    look = _own_style(band.font, band.size, band.colour)
+        align = _FLEX_ALIGN[cell_info.valign]
+        cells.append(f'<div class="cell {slot}" style="align-items: {align}">{logo}<span>{text}</span></div>')
+    columns = " ".join(f"minmax(0, {c.width_cm:.3f}fr)" for c in resolved)
+    look = _own_style(band.font, band.size, band.colour, extra=f"grid-template-columns: {columns}")
     return f'<div class="band {kind}"{look}>{"".join(cells)}</div>'
 
 
@@ -298,10 +309,11 @@ def _style_rules(styles: DocumentStyles) -> str:
     return rules
 
 
-def _own_style(font: FontFamily | None, size: float | None, tint: str | None = None) -> str:
+def _own_style(font: FontFamily | None, size: float | None, tint: str | None = None, *, extra: str = "") -> str:
     """The `style` attribute (with its leading space) for a block that sets its own font, size or colour; `""` when none.
 
-    Built from a validated family, a number and a `#rrggbb` colour only, never from author text.
+    Built from a validated family, a number and a `#rrggbb` colour only, never from author text; `extra` is a declaration the
+    caller built from numbers.
     """
     rules = []
     if font is not None:
@@ -310,6 +322,8 @@ def _own_style(font: FontFamily | None, size: float | None, tint: str | None = N
         rules.append(f"font-size: {size:g}pt")
     if tint is not None:
         rules.append(f"color: {tint}")
+    if extra:
+        rules.append(extra)
     return f' style="{html.escape("; ".join(rules), quote=True)}"' if rules else ""
 
 
@@ -496,7 +510,7 @@ def render_html_document(document: ReportDocument) -> bytes:
     sections: dict[PageStyle, int] = {}
     in_section = False
     current = document.style
-    parts.append(_band_html(current.header, "header"))
+    parts.append(_band_html(current.header, "header", current.usable_width_cm))
     for block in document.blocks:
         if isinstance(block, Heading):
             tag = f"h{min(max(block.level, 1), 4) + 1}"
@@ -525,7 +539,7 @@ def render_html_document(document: ReportDocument) -> bytes:
         elif isinstance(block, PageBreak):
             parts.append('<hr class="page-break">')
         elif isinstance(block, PageStyleChange):
-            parts.append(_band_html(current.footer, "footer"))
+            parts.append(_band_html(current.footer, "footer", current.usable_width_cm))
             if in_section:
                 parts.append("</section>")
             in_section = block.style != document.style
@@ -534,10 +548,10 @@ def render_html_document(document: ReportDocument) -> bytes:
             if in_section:
                 index = sections.setdefault(block.style, len(sections) + 1)
                 parts.append(f'<section class="page-style ps{index}" style="width: {_width_rem(block.style):g}rem">')
-            parts.append(_band_html(block.style.header, "header"))
+            parts.append(_band_html(block.style.header, "header", block.style.usable_width_cm))
         elif isinstance(block, Gap):
             continue  # a PDF layout hint
-    parts.append(_band_html(current.footer, "footer"))
+    parts.append(_band_html(current.footer, "footer", current.usable_width_cm))
     if in_section:
         parts.append("</section>")
     if branding and branding.footer_text and document.footer is None:

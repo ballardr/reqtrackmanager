@@ -35,7 +35,7 @@ You can rename or delete only folders your organisation or project owns; a folde
 
 ## Reports: one list for every report
 
-An organisation's **Templates & reports** and a project's **Reports** show every report people there can run in one folder list, laid out like the Reports chooser: your layouts, your report packs, and the reports modules and the platform provide. Each row has an icon for its type (a document, a table of rows, or a pack of files), and the folders open and close like a file manager's. **Search** and the **Type**, **Show** (moved from the default, hidden) and, in a project, **Shared from** filters narrow it; a search opens every folder that holds a match.
+An organisation's **Reports** and a project's **Reports** show every report people there can run in one folder list, laid out like the Reports chooser: your layouts, your report packs, and the reports modules and the platform provide. Each row has an icon for its type (a document, a table of rows, or a pack of files), and the folders open and close like a file manager's. **Search** and the **Type**, **Show** (moved from the default, hidden) and, in a project, **Shared from** filters narrow it; a search opens every folder that holds a match.
 
 The **New** menu creates a layout, a pack or a folder, starts a layout from a built-in starter, and (in an organisation) offers **Add missing starters** when a starter layout was deleted. Each row's **Actions** menu offers what applies to it:
 

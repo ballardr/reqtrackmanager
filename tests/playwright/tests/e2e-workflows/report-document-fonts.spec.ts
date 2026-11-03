@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { closeDesignerPreviewDialog, createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion } from "./helpers";
+import { closeDesignerPreview, openDesignerPreview, createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -31,18 +31,14 @@ test.describe("Report document fonts", () => {
     });
 
     await test.step("the preview prints them", async () => {
-      await expect(async () => {
-        await page.getByRole("tab", { name: "Preview", exact: true }).click();
-        await expect(page.getByRole("tab", { name: "Preview", exact: true })).toHaveAttribute("aria-selected", "true", { timeout: 1500 });
-      }).toPass();
-      await page.getByRole("button", { name: "Open in dialog" }).click();
-      const preview = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const preview = designerPreviewPanel(page);
       await preview.getByRole("button", { name: "Run preview" }).click();
       const frame = preview.frameLocator('iframe[title="Report preview"]');
       await expect(frame.locator("body")).toHaveCSS("font-family", /Times New Roman/);
       await expect(frame.locator("h2").first()).toHaveCSS("font-family", /Courier New/);
       await expect(frame.locator("h2").first()).toHaveCSS("font-style", "italic");
-      await closeDesignerPreviewDialog(page);
+      await closeDesignerPreview(page);
     });
 
     await test.step("saving writes the styles, and the text view shows them", async () => {

@@ -748,21 +748,28 @@ export async function openDesignerTextView(page: Page): Promise<void> {
 }
 
 /**
- * Opens the report designer's preview in its dialog: the Preview tab of the right-hand panel, then Open in dialog.
- * Works from either view (the panel is the same).
+ * The designer's right-hand panel, which holds the preview: run it with `Run preview`, read the result in the frame
+ * titled "Report preview". Use after {@link openDesignerPreview}.
  */
-export async function openDesignerPreviewDialog(page: Page): Promise<void> {
-  await page.getByRole("tab", { name: "Preview", exact: true }).click();
-  await page.getByRole("button", { name: "Open in dialog" }).click();
+export function designerPreviewPanel(page: Page): Locator {
+  return page.getByRole("complementary", { name: "Designer tools" });
 }
 
 /**
- * Closes the designer's preview dialog and, in the Blocks view, brings the Block tab of the right-hand panel back (opening
- * the Preview tab to reach the dialog left it showing).
+ * Brings the Preview tab of the designer's right-hand panel forward (works from either view). Selecting a block or closing
+ * a popover can bring the Block tab back just after the click, so the click is retried until Preview holds.
  */
-export async function closeDesignerPreviewDialog(page: Page): Promise<void> {
-  await page.getByRole("dialog", { name: "Report preview" }).getByRole("button", { name: "Close" }).click();
-  const block = page.getByRole("complementary", { name: "Designer tools" }).getByRole("tab", { name: "Block", exact: true });
+export async function openDesignerPreview(page: Page): Promise<void> {
+  const tab = designerPreviewPanel(page).getByRole("tab", { name: "Preview", exact: true });
+  await expect(async () => {
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 1500 });
+  }).toPass();
+}
+
+/** Brings the Block tab of the panel back in the Blocks view (the Text view has no such tab), leaving the editor as it was before the preview. */
+export async function closeDesignerPreview(page: Page): Promise<void> {
+  const block = designerPreviewPanel(page).getByRole("tab", { name: "Block", exact: true });
   if (await block.count() > 0) await block.click();
 }
 

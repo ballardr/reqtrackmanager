@@ -241,3 +241,141 @@ def test_a_preview_stores_nothing_audits_nothing_and_logs_no_text(world, caplog)
     assert resp.status_code == 200 and org_resp.status_code == 200
     assert counts() == before
     assert SECRET not in caplog.text
+
+
+# ---- the draft download ------------------------------------------------------------------------------------------
+
+DOCUMENT_FORMATS = {
+    "pdf": (b"%PDF", "application/pdf"),
+    "docx": (b"PK", "wordprocessingml"),
+    "odt": (b"PK", "opendocument.text"),
+    "html": (b"<!DOCTYPE html>", "text/html"),
+}
+
+
+@pytest.mark.parametrize("tier", ["org", "project"])
+@pytest.mark.parametrize("fmt", sorted(DOCUMENT_FORMATS))
+def test_a_document_draft_downloads_in_every_document_format_named_as_a_preview(world, tier, fmt):
+    project = world.project()
+    world.requirement(project, "Brake pads")
+    url = org_url(world, "/preview/download") if tier == "org" else project_url(project, "/preview/download")
+
+    resp = world.client.post(url, json={"text": DOCUMENT_TEXT, "name": "My draft", "format": fmt}, headers=auth_headers(world.token))
+
+    assert resp.status_code == 200, resp.text
+    magic, media = DOCUMENT_FORMATS[fmt]
+    assert resp.content.lower().startswith(magic.lower())
+    assert media in resp.headers["content-type"]
+    assert f'filename="Preview - My draft.{fmt}"' in resp.headers["content-disposition"]
+    if fmt == "html":
+        assert b"Brake pads" in resp.content
+
+
+@pytest.mark.parametrize("fmt", ["csv", "xlsx", "ods"])
+def test_a_table_draft_downloads_in_every_table_format(world, fmt):
+    project = world.project()
+    world.requirement(project, "Alpha")
+
+    resp = world.client.post(
+        project_url(project, "/preview/download"), json={"tree": sheet_tree(), "name": "Sheets", "format": fmt}, headers=auth_headers(world.token),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert f'filename="Preview - Sheets.{fmt}"' in resp.headers["content-disposition"]
+    if fmt == "csv":
+        assert b"Alpha" in resp.content
+
+
+def test_a_format_the_drafts_family_cannot_produce_is_refused(world):
+    project = world.project()
+    h = auth_headers(world.token)
+
+    table_as_pdf = world.client.post(project_url(project, "/preview/download"), json={"tree": sheet_tree(), "format": "pdf"}, headers=h)
+    document_as_csv = world.client.post(
+        org_url(world, "/preview/download"), json={"text": DOCUMENT_TEXT, "format": "csv"}, headers=h,
+    )
+    json_format = world.client.post(project_url(project, "/preview/download"), json={"text": DOCUMENT_TEXT, "format": "json"}, headers=h)
+
+    assert table_as_pdf.status_code == 400 and "csv" in table_as_pdf.json()["detail"]
+    assert document_as_csv.status_code == 400
+    assert json_format.status_code == 422
+
+
+def test_a_draft_with_text_problems_is_not_downloaded(world):
+    project = world.project()
+
+    resp = world.client.post(
+        project_url(project, "/preview/download"), json={"text": "@layout document\n@each\n@end\n", "format": "pdf"},
+        headers=auth_headers(world.token),
+    )
+
+    assert resp.status_code == 422 and resp.json()["detail"]["errors"]
+
+
+def test_a_download_ignores_the_layouts_file_name_template(world):
+    project = world.project()
+    tree = {**sheet_tree(), "file_name": "Saved-{{report_title}}"}
+
+    resp = world.client.post(
+        project_url(project, "/preview/download"), json={"tree": tree, "name": "Named", "format": "csv"}, headers=auth_headers(world.token),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert 'filename="Preview - Named.csv"' in resp.headers["content-disposition"]
+
+
+def test_a_download_writes_no_run_no_audit_event_and_logs_no_text(world, caplog):
+    project = world.project()
+    world.requirement(project, SECRET)
+    before = counts()
+    caplog.set_level(logging.DEBUG)
+    h = auth_headers(world.token)
+
+    resp = world.client.post(
+        project_url(project, "/preview/download"), json={"text": f"@layout document\n\n{SECRET}\n", "format": "html"}, headers=h,
+    )
+    org_resp = world.client.post(org_url(world, "/preview/download"), json={"tree": sheet_tree(), "format": "xlsx"}, headers=h)
+
+    assert resp.status_code == 200 and org_resp.status_code == 200
+    assert counts() == before
+    assert SECRET not in caplog.text
+
+
+def test_the_manage_permission_is_required_to_download_a_preview(world):
+    project = world.project()
+    member = member_token(world)
+    body = {"text": DOCUMENT_TEXT, "format": "pdf"}
+
+    for url in (org_url(world, "/preview/download"), project_url(project, "/preview/download")):
+        assert world.client.post(url, json=body, headers=auth_headers(member)).status_code in (403, 404), url
+        assert world.client.post(url, json=body).status_code in (401, 403), url
+
+
+def test_an_organisation_download_refuses_a_project_it_cannot_cover(world):
+    world.project("Only")
+
+    resp = world.client.post(
+        org_url(world, "/preview/download"), json={"tree": sheet_tree(), "project_ids": [str(uuid.uuid4())], "format": "csv"},
+        headers=auth_headers(world.token),
+    )
+
+    assert resp.status_code == 404
+
+
+def test_a_download_over_the_limits_answers_async_required_and_is_never_queued(world, monkeypatch):
+    from app.services.report_layout_eval import LayoutLimitError
+
+    project = world.project()
+
+    def too_big(*args, **kwargs):
+        raise LayoutLimitError("too big")
+
+    monkeypatch.setattr(report_layout_designer.custom_report_run, "run_project_layout", too_big)
+    before = counts()
+
+    resp = world.client.post(
+        project_url(project, "/preview/download"), json={"text": DOCUMENT_TEXT, "format": "pdf"}, headers=auth_headers(world.token),
+    )
+
+    assert resp.status_code == 409 and resp.json()["detail"]["code"] == "async_required"
+    assert counts() == before

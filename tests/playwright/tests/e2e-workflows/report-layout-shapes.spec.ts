@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -71,13 +71,12 @@ test.describe("Report shapes", () => {
     });
 
     await test.step("the preview draws the shape under the text", async () => {
-      await openDesignerPreviewDialog(page);
-      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const dialog = designerPreviewPanel(page);
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
       await expect(frame.locator("div.layer-anchor.behind svg ellipse")).toHaveCount(1);
       await expect(frame.getByText("Over the plate.")).toBeVisible();
-      await dialog.getByRole("button", { name: "Close" }).click();
     });
 
     await test.step("saved, the text view writes the shape as one line and reports a bad one at its line", async () => {
@@ -109,8 +108,8 @@ test.describe("Report shapes", () => {
       const good = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#cc3333"/></svg>';
       await editor.fill(`@layout document\n\n@shape custom svg ${JSON.stringify(good)} width 3 alt "A red dot"\n`);
       await expect(page.getByText("The text is valid.")).toBeVisible();
-      await openDesignerPreviewDialog(page);
-      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const dialog = designerPreviewPanel(page);
       await dialog.getByRole("button", { name: "Run preview" }).click();
       await expect(dialog.frameLocator('iframe[title="Report preview"]').locator("svg circle")).toHaveCount(1);
     });
@@ -144,8 +143,8 @@ test.describe("Report shapes", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
-    await openDesignerPreviewDialog(page);
-    const dialog = page.getByRole("dialog", { name: "Report preview" });
+    await openDesignerPreview(page);
+    const dialog = designerPreviewPanel(page);
     await dialog.getByRole("button", { name: "Run preview" }).click();
     const frame = dialog.frameLocator('iframe[title="Report preview"]');
     await expect(frame.locator("div.layer-anchor.behind svg")).toHaveCount(1);

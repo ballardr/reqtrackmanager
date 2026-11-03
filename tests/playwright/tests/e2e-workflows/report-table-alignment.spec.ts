@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { expect, type APIRequestContext, type Locator, type Page, test } from "@playwright/test";
 
 import { chooseReport } from "./reportPicker";
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -76,8 +76,8 @@ test.describe("Report table alignment", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
-    await openDesignerPreviewDialog(page);
-    const dialog = page.getByRole("dialog", { name: "Report preview" });
+    await openDesignerPreview(page);
+    const dialog = designerPreviewPanel(page);
     await dialog.getByRole("button", { name: "Run preview" }).click();
     const frame = dialog.frameLocator('iframe[title="Report preview"]');
 
@@ -104,8 +104,8 @@ test.describe("Report table alignment", () => {
     await page.goto(`/projects/${project.id}/admin`);
     await selectProjectAdminGroup(page, "Reports");
     await openSetupReport(page, layoutName);
-    await openDesignerPreviewDialog(page);
-    const dialog = page.getByRole("dialog", { name: "Report preview" });
+    await openDesignerPreview(page);
+    const dialog = designerPreviewPanel(page);
     await dialog.getByRole("button", { name: "Run preview" }).click();
     const frame = dialog.frameLocator('iframe[title="Report preview"]');
 

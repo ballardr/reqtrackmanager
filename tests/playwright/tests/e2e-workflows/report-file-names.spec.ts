@@ -103,7 +103,7 @@ test.describe("Report file names", () => {
     expect((await requirementsReport()).headers()["content-disposition"]).toContain(`${project.name}-requirements.csv`);
 
     await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Templates & reports");
+    await selectOrgAdminGroup(page, "Reports");
     await ensureExpanded(page, "Configuration");
 
     await test.step("an invalid default is explained and a valid one is saved", async () => {
@@ -118,7 +118,7 @@ test.describe("Report file names", () => {
 
     await test.step("the setting is kept and the report downloads under it", async () => {
       await page.reload();
-      await selectOrgAdminGroup(page, "Templates & reports");
+      await selectOrgAdminGroup(page, "Reports");
       await ensureExpanded(page, "Configuration");
       await expect(page.getByRole("textbox", { name: "Default report file name" })).toHaveValue("{{project_name}}-{{report_title}}");
       const disposition = (await requirementsReport()).headers()["content-disposition"];

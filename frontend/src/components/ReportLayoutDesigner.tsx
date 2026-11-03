@@ -15,8 +15,8 @@
  * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
  *   line; Save is available only for text that parsed cleanly, and sends the parsed tree with the version the
  *   author started from, so a concurrent save is reported (409) instead of overwritten.
- * - Offer, in one right-hand panel (`DesignerSidePanel`) shared by both views, tabs for the live preview (also openable in
- *   a dialog), and, in the Text view, the field picker and the widget picker, which insert at the caret, or, in the Blocks
+ * - Offer, in one right-hand panel (`DesignerSidePanel`) shared by both views, tabs for the live preview (run on screen, or
+ *   downloaded as a file in any format of the layout's family), and, in the Text view, the field picker and the widget picker, which insert at the caret, or, in the Blocks
  *   view, the selected block's form (the block editor draws it into the panel). The panel collapses to a rail; the
  *   collapsed state and the last tab of each view are remembered per person. The version history and comparison are a
  *   second main tab.
@@ -62,7 +62,6 @@ import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DesignerSidePanel } from "./DesignerSidePanel";
-import { Modal } from "./Modal";
 import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
 import { ReportLayoutBlockToolbar } from "./ReportLayoutBlockToolbar";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
@@ -92,7 +91,7 @@ type EditView = "blocks" | "text" | "json";
 /** The view that edits the tree through the block editor. */
 const isTreeView = (view: EditView) => view === "blocks";
 type AsideTab = "block" | "preview" | "fields" | "widgets";
-type Dialog = "details" | "delete" | "reload" | "leave" | "preview" | "duplicate" | "snippet" | "save-snippet";
+type Dialog = "details" | "delete" | "reload" | "leave" | "duplicate" | "snippet" | "save-snippet";
 
 /** What Save as snippet was asked to save: the draft tree, the blocks chosen and the words naming them. */
 interface SnippetToSave {
@@ -603,7 +602,7 @@ export function ReportLayoutDesigner({
   }
   const preview = (
     <ReportLayoutPreviewPanel
-      api={api} layoutId={layoutId} text={draft} name={detail.name} disabled={!valid || (treeEditing && textFor !== blockTree)} projectOptions={projectOptions}
+      api={api} layoutId={layoutId} family={detail.family} text={draft} name={detail.name} disabled={!valid || (treeEditing && textFor !== blockTree)} projectOptions={projectOptions}
     />
   );
 
@@ -813,12 +812,7 @@ export function ReportLayoutDesigner({
               </div>
             )}
             <div {...tabPanelProps("layout-designer-tools", "preview")} hidden={asideActive !== "preview"}>
-              <div className="stack">
-                <div className="row">
-                  <button type="button" className="btn" onClick={() => setDialog("preview")}>{text.previewInDialog}</button>
-                </div>
-                {preview}
-              </div>
+              {preview}
             </div>
             {textTools && toolsFailed && asideActive !== "preview" && <p className="text-muted" role="alert">{text.loadToolsFailed}</p>}
             {textTools && (
@@ -855,9 +849,6 @@ export function ReportLayoutDesigner({
           api={snippetStore} tree={toSave.tree} selection={toSave.selection} selectionLabel={toSave.label}
           onClose={() => setDialog(null)} onSaved={() => setDialog(null)}
         />
-      )}
-      {dialog === "preview" && (
-        <Modal title={text.previewDialogTitle} size="lg" onClose={() => setDialog(null)}>{preview}</Modal>
       )}
       {dialog === "details" && (
         <ReportLayoutFormModal

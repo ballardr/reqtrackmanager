@@ -3,7 +3,7 @@ import zlib from "node:zlib";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { closeDesignerPreviewDialog, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, selectProjectAdminGroup } from "./helpers";
+import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -124,20 +124,20 @@ test.describe("Report layout record images", () => {
       await expect(page.getByText("No problems.")).toBeVisible();
 
       const preview = async () => {
-        await openDesignerPreviewDialog(page);
-        const dialog = page.getByRole("dialog", { name: "Report preview" });
+        await openDesignerPreview(page);
+        const dialog = designerPreviewPanel(page);
         await dialog.getByRole("button", { name: "Run preview" }).click();
         const frame = dialog.frameLocator('iframe[title="Report preview"]');
         return { dialog, frame };
       };
       let { dialog, frame } = await preview();
       await expect(frame.locator("img")).toHaveCount(1);
-      await closeDesignerPreviewDialog(page);
+      await closeDesignerPreview(page);
 
       await inspector.getByRole("textbox", { name: "File names" }).fill("*");
       ({ dialog, frame } = await preview());
       await expect(frame.locator("img")).toHaveCount(2);
-      await closeDesignerPreviewDialog(page);
+      await closeDesignerPreview(page);
     });
 
     await test.step("the downloaded PDF embeds only the pictures the rules chose", async () => {

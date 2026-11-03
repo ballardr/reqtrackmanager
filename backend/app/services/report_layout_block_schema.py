@@ -216,6 +216,8 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
         "header", "Header", "running_band",
         help="Text printed at the top of every page, in a left, centre and right cell: {{report_title}}, {{project_code}}, "
         "{{page}}, the organisation's {{org.footer_text}} and so on; a logo may be the organisation's own (org_logo). "
+        "Each cell fits its text unless given a width (left_width, centre_width, right_width: \"25%\" or \"4 cm\"); the cells sit at "
+        "the top unless valign (top, middle, bottom) or left_valign, centre_valign, right_valign says otherwise. "
         "A page style that sets none uses this one.", families=("document",),
     ),
     BlockField(

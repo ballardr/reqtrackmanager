@@ -41,7 +41,7 @@ import { Popover } from "./Popover";
  * download button ("More formats") rather than standing alone. `extras` adds
  * related downloads that are not a format of the report (a list's import
  * template) under the formats, and `note` is one muted line under them (columns
- * the personal-data policy left out).
+ * the personal-data policy left out). `disabled` holds the trigger back while the host cannot produce a file.
  */
 export function ReportExportButton<K extends ReportFileKind = "pdf" | "csv">({
   onDownload,
@@ -49,12 +49,15 @@ export function ReportExportButton<K extends ReportFileKind = "pdf" | "csv">({
   label = "Export",
   extras = [],
   note,
+  disabled = false,
 }: {
   onDownload: (kind: K) => Promise<void>;
   kinds?: readonly K[];
   label?: string;
   extras?: readonly { key: string; label: string; onSelect: () => void | Promise<void> }[];
   note?: ReactNode;
+  /** True to disable the trigger (the host is not ready to produce a file). */
+  disabled?: boolean;
 }) {
   const [downloading, setDownloading] = useState<K | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -72,7 +75,7 @@ export function ReportExportButton<K extends ReportFileKind = "pdf" | "csv">({
 
   return (
     <>
-      <button ref={triggerRef} type="button" className="btn" onClick={() => setMenuOpen((v) => !v)}>
+      <button ref={triggerRef} type="button" className="btn" disabled={disabled} onClick={() => setMenuOpen((v) => !v)}>
         <Download /> {downloading ? "Exporting…" : label}
       </button>
       {menuOpen && (

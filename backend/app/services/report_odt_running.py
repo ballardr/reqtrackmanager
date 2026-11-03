@@ -20,13 +20,14 @@ Design decisions:
   differ; the return to the document's style uses a separate master page without one (a continuation).
 - The page layout of the cover page has no header or footer, as before.
 
-Dependencies: `services.report_odf`, `services.report_image_layout`, `services.report_running`, `services.report_svg`.
+Dependencies: `services.report_band_cells`, `services.report_odf`, `services.report_image_layout`, `services.report_running`, `services.report_svg`.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
 
+from app.services.report_band_cells import resolve_band_cells
 from app.services.report_fonts import FontFamily
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_model import SLOT_NAMES, PageField, PageStyle, RunningBand
@@ -77,15 +78,10 @@ def page_layout(name: str, style: PageStyle, *, bands: bool) -> str:
 
 
 def running_styles(index: int, style: PageStyle) -> str:
-    """The automatic styles of the band tables of page style number `index`: the table, its columns and its cells."""
-    width = style.usable_width_cm
+    """The automatic style of the band tables of page style number `index`: the table (its columns and cells follow the band)."""
     return (
-        f'<style:style style:name="T_band{index}" style:family="table"><style:table-properties style:width="{length_cm(width)}" '
-        'table:align="left"/></style:style>'
-        f'<style:style style:name="C_bandcol{index}" style:family="table-column"><style:table-column-properties '
-        f'style:column-width="{length_cm(width / 3)}"/></style:style>'
-        '<style:style style:name="C_band" style:family="table-cell"><style:table-cell-properties fo:border="none" fo:padding="0cm" '
-        'style:vertical-align="middle"/></style:style>'
+        f'<style:style style:name="T_band{index}" style:family="table"><style:table-properties '
+        f'style:width="{length_cm(style.usable_width_cm)}" table:align="left"/></style:style>'
     )
 
 
@@ -100,6 +96,7 @@ class RunningWriter:
         self.styles: list[str] = []
         self.families: list[FontFamily] = []
         self._looks: dict[tuple, str] = {}
+        self._cell_styles: dict[tuple, str] = {}
         self._marks_written = False
 
     def paragraph_style(self, band: RunningBand, slot: str) -> str:
@@ -158,12 +155,27 @@ class RunningWriter:
             f'<draw:image xlink:href="{path}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/></draw:frame>'
         )
 
+    def cell_style(self, width_cm: float | None, valign: str) -> str:
+        """The automatic table-column style (`width_cm`) or table-cell style (`None`) for a band cell, written once."""
+        key = (width_cm, valign)
+        if key not in self._cell_styles:
+            name = f"C_bandcol{len(self._cell_styles) + 1}" if width_cm is not None else f"C_band_{valign}"
+            self._cell_styles[key] = name
+            self.styles.append(
+                f'<style:style style:name="{name}" style:family="table-column"><style:table-column-properties '
+                f'style:column-width="{length_cm(width_cm)}"/></style:style>' if width_cm is not None
+                else f'<style:style style:name="{name}" style:family="table-cell"><style:table-cell-properties fo:border="none" '
+                f'fo:padding="0cm" style:vertical-align="{valign}"/></style:style>'
+            )
+        return self._cell_styles[key]
+
     def table(self, band: RunningBand, index: int, style: PageStyle) -> str:
-        """The band as a three-column table."""
+        """The band as a three-column table: column widths and vertical alignment from `resolve_band_cells`."""
         self.tables += 1
-        cell_cm = style.usable_width_cm / 3
+        resolved = resolve_band_cells(band, style.usable_width_cm)
         cells = []
-        for slot in SLOT_NAMES:
+        for slot, cell_info in zip(SLOT_NAMES, resolved, strict=True):
+            cell_cm = cell_info.width_cm
             lines = cell_lines(band.slot(slot)) or [[]]
             paragraphs = []
             for number, line in enumerate(lines):
@@ -179,11 +191,14 @@ class RunningWriter:
                         bold, italic,
                     )
                 paragraphs.append(f'<text:p text:style-name="{self.paragraph_style(band, slot)}">{content}</text:p>')
-            cells.append(f'<table:table-cell table:style-name="C_band" office:value-type="string">{"".join(paragraphs)}</table:table-cell>')
+            cells.append(
+                f'<table:table-cell table:style-name="{self.cell_style(None, cell_info.valign)}" office:value-type="string">'
+                f'{"".join(paragraphs)}</table:table-cell>'
+            )
+        columns = "".join(f'<table:table-column table:style-name="{self.cell_style(c.width_cm, "top")}"/>' for c in resolved)
         return (
             f'<table:table table:name="Band{self.tables}" table:style-name="T_band{index}">'
-            f'<table:table-column table:style-name="C_bandcol{index}" table:number-columns-repeated="3"/>'
-            f'<table:table-row>{"".join(cells)}</table:table-row></table:table>'
+            f'{columns}<table:table-row>{"".join(cells)}</table:table-row></table:table>'
         )
 
     def element(self, tag: str, band: RunningBand | None, index: int, style: PageStyle, *, left_hand: bool = False, hidden: bool = False) -> str:

@@ -35,7 +35,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -60,6 +60,7 @@ from app.schemas.report_layout import (
     ReportLayoutDetailOut,
     ReportLayoutDraftVariablesOut,
     ReportLayoutOut,
+    ReportLayoutPreviewDownloadRequest,
     ReportLayoutPreviewOut,
     ReportLayoutPreviewRequest,
     ReportLayoutPreviewSheetOut,
@@ -103,6 +104,7 @@ from app.services import (
     report_starters,
 )
 from app.services.client_date import effective_today
+from app.services.downloads import file_response
 from app.services.rbac import (
     MANAGE_ORG_REPORT_LAYOUTS,
     MANAGE_PROJECT_REPORT_LAYOUTS,
@@ -340,6 +342,27 @@ def _preview_out(preview: report_layout_designer.Preview) -> ReportLayoutPreview
     )
 
 
+def _draft_for_download(body: ReportLayoutPreviewDownloadRequest) -> dict[str, Any]:
+    """The tree to render as a file: a draft with text problems cannot be (the designer holds the button back).
+
+    Raises:
+        HTTPException: 422 the text's positioned problems, or a given tree that is not valid.
+    """
+    tree, failed = _draft(body)
+    if failed is not None or tree is None:
+        assert failed is not None
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {"message": "The layout is not valid.", "errors": [{"line": e.line, "column": e.column, "message": e.message} for e in failed.errors]},
+        )
+    return tree
+
+
+def _download_response(download: report_layout_designer.PreviewDownload) -> Response:
+    """The preview file as an attachment named `Preview - <layout name>`."""
+    return file_response(download.file.content, download.stem, download.file.extension)
+
+
 def _draft_variables(
     db: Session, body: ReportLayoutVariablesRequest, project_ids: list[UUID],
 ) -> ReportLayoutDraftVariablesOut:
@@ -560,6 +583,37 @@ def preview_org_layout(
     except InvalidLayoutError as exc:
         raise _bad_request(exc) from exc
     return _preview_out(preview)
+
+
+@org_router.post("/preview/download", responses={200: {"content": {"application/octet-stream": {}}}})
+def download_org_layout_preview(
+    organization_id: UUID, body: ReportLayoutPreviewDownloadRequest,
+    current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> Response:
+    """Renders an unsaved draft as an organisation-wide run would, as a file in the chosen format.
+
+    Stores, audits and logs nothing (no run record, no provenance); the file is named `Preview - <name>`, never by
+    the layout's file name template.
+
+    Raises:
+        HTTPException: 404 the organisation, or no project to run for; 400 a format the draft's family cannot produce;
+            422 text problems, an invalid tree or oversized selection; 413/408 a run over its limits; 409
+            `async_required` a draft too big to produce while the author waits (a preview is never queued).
+    """
+    organization = db.get(Organization, organization_id)
+    if organization is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
+    tree = _draft_for_download(body)
+    try:
+        download = guard_run(lambda: report_layout_designer.download_preview_for_organization(
+            db, current_user, organization, tree=tree, fmt=body.format, name=body.name, project_ids=body.project_ids,
+            include_children=body.include_children, variables=body.variables,
+        ), file_format=True)
+    except InvalidLayoutError as exc:
+        raise _bad_request(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return _download_response(download)
 
 
 @org_router.post("/variables", response_model=ReportLayoutDraftVariablesOut)
@@ -815,6 +869,35 @@ def preview_project_layout(
     except InvalidLayoutError as exc:
         raise _bad_request(exc) from exc
     return _preview_out(preview)
+
+
+@project_router.post("/preview/download", responses={200: {"content": {"application/octet-stream": {}}}})
+def download_project_layout_preview(
+    project_id: UUID, body: ReportLayoutPreviewDownloadRequest,
+    current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> Response:
+    """Renders an unsaved draft for this project as a file in the chosen format, with the caller's own read access.
+
+    Stores, audits and logs nothing (no run record, no provenance); the file is named `Preview - <name>`, never by
+    the layout's file name template.
+
+    Raises:
+        HTTPException: 404 the project; 400 a format the draft's family cannot produce; 422 text problems or an
+            invalid tree; 413/408 a run over its limits; 409 `async_required` a draft too big to produce while the
+            author waits (a preview is never queued).
+    """
+    project = _project_or_404(db, project_id)
+    tree = _draft_for_download(body)
+    try:
+        download = guard_run(lambda: report_layout_designer.download_preview_for_project(
+            db, current_user, project, tree=tree, fmt=body.format, name=body.name,
+            include_children=body.include_children, variables=body.variables,
+        ), file_format=True)
+    except InvalidLayoutError as exc:
+        raise _bad_request(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return _download_response(download)
 
 
 @project_router.post("/variables", response_model=ReportLayoutDraftVariablesOut)

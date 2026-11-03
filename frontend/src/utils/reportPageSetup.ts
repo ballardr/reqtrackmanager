@@ -40,6 +40,8 @@ export const MAX_PAGE_STYLES = 10;
 
 export const BAND_SLOTS = ["left", "centre", "right"] as const;
 export type BandSlot = (typeof BAND_SLOTS)[number];
+export const BAND_VALIGN = ["top", "middle", "bottom"] as const;
+export type BandValign = (typeof BAND_VALIGN)[number];
 export const BAND_FIRST_PAGE = ["same", "none"] as const;
 export type BandFirstPage = (typeof BAND_FIRST_PAGE)[number];
 /** Space between the page edge and a header or footer, and the height of one line of its text, in cm (as the server checks). */
@@ -60,6 +62,15 @@ export interface RunningBand {
   right?: string;
   logo?: { file: string; height: number; slot?: BandSlot };
   first_page?: BandFirstPage;
+  /** A cell's fixed width, `"25%"` of the band or a length like `"4 cm"`; absent, the cell fits its text. */
+  left_width?: string;
+  centre_width?: string;
+  right_width?: string;
+  /** Where the content sits in the row: the band's setting (top when absent) and a cell's own, which wins. */
+  valign?: BandValign;
+  left_valign?: BandValign;
+  centre_valign?: BandValign;
+  right_valign?: BandValign;
   /** The band's font key, size in points and colour word; absent follows the document's body font, 8 pt and black. */
   font?: string;
   size?: number;
@@ -190,7 +201,20 @@ function readBand(rest: string): RunningBand {
     const word = tokens[i];
     const value = tokens[i + 1];
     if (word === "left" || word === "centre" || word === "right") band[word] = unquote(value);
-    else if (word === "first" && (BAND_FIRST_PAGE as readonly string[]).includes(value ?? "")) band.first_page = value as BandFirstPage;
+    else if (word === "valign" || BAND_SLOTS.some((slot) => word === `${slot}valign`)) {
+      if (!(BAND_VALIGN as readonly string[]).includes(value ?? "")) continue;
+      band[(word === "valign" ? "valign" : `${word.slice(0, -6)}_valign`) as "valign"] = value as BandValign;
+    } else if (BAND_SLOTS.some((slot) => word === `${slot}width`)) {
+      if (!value || value === "auto") {
+        i += value === "auto" ? 1 : 0;
+        continue;
+      }
+      const unit = tokens[i + 2];
+      const spec = !value.endsWith("%") && (unit === "cm" || unit === "mm") ? `${value} ${unit}` : value;
+      band[`${word.slice(0, -5)}_width` as "left_width"] = spec;
+      i += spec === value ? 1 : 2;
+      continue;
+    } else if (word === "first" && (BAND_FIRST_PAGE as readonly string[]).includes(value ?? "")) band.first_page = value as BandFirstPage;
     else if ((word === "font" || word === "colour") && value) band[word] = value;
     else if (word === "size" && Number.isFinite(Number(value))) band.size = Number(value);
     else if (word === "logo") band.logo = { file: unquote(value), height: DEFAULT_LOGO_CM };
@@ -200,6 +224,14 @@ function readBand(rest: string): RunningBand {
     i += 1;
   }
   return band;
+}
+
+/** A width as the server writes it: `20%`, or a number and unit apart (`4 cm`). */
+function canonicalBandWidth(width: string): string {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(%|cm|mm)\s*$/i.exec(width);
+  if (!match) return width;
+  const number = String(Number(match[1]));
+  return match[2] === "%" ? `${number}%` : `${number} ${match[2].toLowerCase()}`;
 }
 
 /** The `@header` / `@footer` lines that state `band`, in the order the server reads them. */
@@ -214,6 +246,13 @@ function bandLine(kind: "header" | "footer", band: RunningBand): string {
   if (band.font) parts.push(`font ${band.font}`);
   if (band.size !== undefined) parts.push(`size ${band.size}`);
   if (band.colour) parts.push(`colour ${band.colour}`);
+  if (band.valign) parts.push(`valign ${band.valign}`);
+  for (const slot of BAND_SLOTS) {
+    const width = band[`${slot}_width`];
+    if (width) parts.push(`${slot}width ${canonicalBandWidth(width)}`);
+    const valign = band[`${slot}_valign`];
+    if (valign) parts.push(`${slot}valign ${valign}`);
+  }
   return parts.join(" ");
 }
 

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreviewDialog, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -87,13 +87,12 @@ test.describe("Report column widths", () => {
     });
 
     await test.step("the preview fixes the columns", async () => {
-      await openDesignerPreviewDialog(page);
-      const dialog = page.getByRole("dialog", { name: "Report preview" });
+      await openDesignerPreview(page);
+      const dialog = designerPreviewPanel(page);
       await dialog.getByRole("button", { name: "Run preview" }).click();
       const frame = dialog.frameLocator('iframe[title="Report preview"]');
       await expect(frame.locator("table.fixed")).toHaveCount(1);
       await expect(frame.locator("table.fixed col")).toHaveCount(3);
-      await dialog.getByRole("button", { name: "Close" }).click();
     });
 
     await test.step("saved, the text view writes the widths and reports a bad one at its line", async () => {

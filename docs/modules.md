@@ -1610,7 +1610,7 @@ flowchart LR
   fan-out rules apply unchanged; it writes no `generated_reports` row and no audit event (nothing was produced to keep)
   and never logs the text. Refusals (413, 408, 404, 422) are the run route's (`routers.custom_reports.guard_run`).
 - **Frontend.** `api/reportLayouts.ts` (`ReportLayoutApi`, one injectable interface per scope), `ReportSetupPanel` (the
-  one folder list of layouts, packs and module reports in Project Admin's Reports and Org Admin's Templates & reports), `ReportLayoutFormModal` (create and edit share
+  one folder list of layouts, packs and module reports in Project Admin's Reports and Org Admin's Reports), `ReportLayoutFormModal` (create and edit share
   `ReportLayoutFields`), `ReportLayoutDesigner` (page `/projects/:id/report-layouts/:layoutId`, `/orgs/:id/report-layouts/:layoutId`),
   `ReportLayoutFieldPicker`, `ReportLayoutWidgetPicker` (reuses `ReportParamsForm`), `ReportLayoutPreviewPanel` (a
   sandboxed frame with an empty `sandbox` attribute for the HTML) and `ReportLayoutHistory` (a line diff of two
@@ -1661,7 +1661,9 @@ flowchart LR
   (`style:page-usage="mirrored"`; the gutter joins the inner margin), HTML a labelled `<section>` as wide as the page and CSS named pages
   (`@page psN`) for printing. A table-family layout has no pages and refuses the keys.
 - **Headers and footers.** The root and each page style may carry `header` and `footer`: `{left?, centre?, right?, logo?: {file, height, slot?},
-  first_page?: "same"|"none"}` (a cell is text of up to 300 characters on three lines; `{}` prints nothing; a style that writes none prints the
+  first_page?: "same"|"none", left_width?/centre_width?/right_width?: "25%"|"4 cm", valign?/left_valign?/centre_valign?/right_valign?: "top"|"middle"|"bottom"}`
+  (`services.report_band_cells.resolve_band_cells` decides the widths and alignments every renderer uses: unset cells fit their text, the centre takes the
+  spare room, default alignment top, so a document starter, which writes no band, prints the default centred page number in every format; a cell is text of up to 300 characters on three lines; `{}` prints nothing; a style that writes none prints the
   document's, and the document's, where it writes none, a page number; the organisation's footer text and logo are read as `{{org.footer_text}}` and the `org_logo` picture, §4ab).
   Cells take the report-wide placeholders, `{{layout_version}}`, `{{page}}`, `{{pages}}` and `{{var.name}}`, never a record field; the
   evaluator fills them (`generated_on` is the caller's own day) and leaves the two page fields to the renderer (`RunningBand`,
@@ -1790,7 +1792,7 @@ flowchart LR
 - **Where the person meets a run.** There is no list page. The `report_run_finished` notification links to
   `/report-runs/:id` (`ReportRunDialog`: Download, or the expired/failed explanation with Generate again) and a clock with
   a count in the top bar (`ReportRunsIndicator`, polling `?active=true`) shows runs still in progress.
-- **Retention.** `effective_retention_days`: `Organization.report_output_retention_days` (Org Admin > Templates & reports >
+- **Retention.** `effective_retention_days`: `Organization.report_output_retention_days` (Org Admin > Reports >
   Background reports), else `report_output_default_retention_days` (7), never above `report_output_max_retention_days` (30).
   The expiry pass (every 15 minutes) deletes the object of a `ready` row past `expires_at` and marks it `expired` (file
   columns cleared, provenance kept), and deletes provenance rows older than `report_run_record_retention_days` (400) that are
@@ -2120,7 +2122,7 @@ flowchart LR
 
 An organisation has **one report look**, not a list of templates: `Organization.report_accent_color_hex` (`NULL` follows the UI
 accent, then the platform's), `report_include_logo`, `report_footer_text`, `report_include_cover_page` and
-`report_chapters_per_component`. The accent and logo are set on the Branding page, the others under Templates & reports →
+`report_chapters_per_component`. The accent and logo are set on the Branding page, the others under Reports →
 Configuration (`PUT /orgs/{id}/branding`, `PUT /orgs/{id}/advanced-settings`; a client that does not send a field leaves it).
 
 ```mermaid

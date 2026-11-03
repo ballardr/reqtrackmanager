@@ -31,7 +31,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.report_model import DEFAULT_MARGIN_CM, DEFAULT_PAGE_SIZE, Margins, PageStyle
+from app.services.report_band_cells import fixed_widths_problem
+from app.services.report_column_width import parse_width, width_problem
+from app.services.report_model import DEFAULT_MARGIN_CM, DEFAULT_PAGE_SIZE, SLOT_NAMES, VALIGN_CHOICES, Margins, PageStyle
 from app.services.report_running import band_line_cm
 from app.services.report_styles import font_key_form_problem, size_problem
 
@@ -50,7 +52,10 @@ MAX_PAGE_STYLES = 10
 MAX_STYLE_NAME_CHARS = 40
 STYLE_KEYS = ("name", "page_size", "orientation", "margins", "header", "footer")
 #: A running header or footer: its three cells, a logo and whether the first page shows it.
-BAND_KEYS = ("left", "centre", "right", "logo", "first_page", "font", "size", "colour")
+BAND_KEYS = (
+    "left", "centre", "right", "logo", "first_page", "font", "size", "colour",
+    "left_width", "centre_width", "right_width", "left_valign", "centre_valign", "right_valign", "valign",
+)
 FIRST_PAGE_CHOICES = ("same", "none")
 MAX_SLOT_CHARS = 300
 MAX_SLOT_LINES = 3
@@ -84,6 +89,18 @@ def margins_problems(margins: Any) -> list[tuple[str, str]]:
     return found
 
 
+def _band_width_problem(spec: object) -> str | None:
+    """Why `spec` is not a cell width, or `None`; the table column rule, worded for a header or footer."""
+    if parse_width(spec) is None:
+        return 'Must be a percentage of the header or footer or a length, like "25%", "4 cm" or "40 mm" (leave it out to fit the content).'
+    return width_problem(spec)
+
+
+def _fixed_widths(band: dict[str, Any]) -> dict[str, str]:
+    """`{slot: width}` of the cells of a structurally valid band that carry a fixed width."""
+    return {slot: band[f"{slot}_width"] for slot in SLOT_NAMES if isinstance(band.get(f"{slot}_width"), str)}
+
+
 def band_height_cm(band: dict[str, Any]) -> float:
     """The height in cm a header or footer needs: its tallest cell (lines of text at its size, or the logo) and the gap to the page edge."""
     lines = max((str(band.get(slot, "")).count("\n") + 1 for slot in ("left", "centre", "right") if band.get(slot)), default=0)
@@ -115,6 +132,12 @@ def band_problems(band: Any) -> list[tuple[str, str]]:
             found.append((slot, "Must be text."))
         elif len(text) > MAX_SLOT_CHARS or text.count("\n") + 1 > MAX_SLOT_LINES:
             found.append((slot, f"Too long (at most {MAX_SLOT_CHARS} characters on {MAX_SLOT_LINES} lines)."))
+    for slot in SLOT_NAMES:
+        if f"{slot}_width" in band and (message := _band_width_problem(band[f"{slot}_width"])):
+            found.append((f"{slot}_width", message))
+    for key in ("valign", *(f"{slot}_valign" for slot in SLOT_NAMES)):
+        if key in band and band[key] not in VALIGN_CHOICES:
+            found.append((key, f"Must be one of: {', '.join(VALIGN_CHOICES)}."))
     if "font" in band and (message := font_key_form_problem(band["font"])):
         found.append(("font", message))
     if "size" in band and (message := size_problem(band["size"])):
@@ -197,6 +220,9 @@ def _fit_problems(holder: dict[str, Any], style: PageStyle, inherited: dict[str,
     for band, margin in (("header", style.margins.top), ("footer", style.margins.bottom)):
         own = isinstance(holder.get(band), dict)
         source = holder.get(band) if own else (inherited or {}).get(band)
+        if isinstance(source, dict) and (widths := _fixed_widths(source)):
+            if message := fixed_widths_problem(widths, style.usable_width_cm):
+                found.append((band if own else "margins", message if own else f"The {band} (the document's): {message}"))
         needed = band_height_cm(source) if isinstance(source, dict) else 0.0
         if needed > margin + 1e-9:
             side = "top" if band == "header" else "bottom"
