@@ -9,6 +9,7 @@
  *   facts, and a statement input per child list. A module's block type therefore needs no code here.
  * - Register the fixed root block and the stand-in for a block type the catalogue does not describe.
  * - Build a Blockly theme from the CSS colour tokens, so the editor follows the light and dark themes.
+ * - Make a pointer drag move only the grabbed block (`installSingleBlockDrag`).
  *
  * Design decisions: the whole of Blockly is imported here and nowhere else, and this module is only loaded by the
  * lazily loaded editor, so the library stays out of the main bundle. Block colours come from a small fixed set
@@ -97,6 +98,43 @@ export function buildTheme(): Blockly.Theme {
       insertionMarkerOpacity: 0.3,
       cursorColour: token("--color-accent", "#2f855a"),
     },
+  });
+}
+
+/**
+ * Blockly's drag strategy with the stack healing on for every pointer drag. By default a drag takes the grabbed block
+ * and every block below it, and healing is a Ctrl/Cmd modifier; here the grabbed block (with what is inside it) is the
+ * only thing that moves and the stack it left closes up. Keyboard moves keep Blockly's own rule.
+ */
+class SingleBlockDragStrategy extends Blockly.dragging.BlockDragStrategy {
+  protected override shouldHealStack(e: PointerEvent | KeyboardEvent | undefined): boolean {
+    return e instanceof PointerEvent ? true : super.shouldHealStack(e);
+  }
+}
+
+/**
+ * Makes a drag on every block now in `ws` move only that block. Call it again after a load made with events paused,
+ * which creates blocks without a create event.
+ *
+ * @param ws The workspace to change.
+ */
+export function applySingleBlockDrag(ws: Blockly.WorkspaceSvg): void {
+  for (const block of ws.getAllBlocks(false)) (block as Blockly.BlockSvg).setDragStrategy(new SingleBlockDragStrategy(block as Blockly.BlockSvg));
+}
+
+/**
+ * Applies the single-block drag to `ws` and to every block created in it later (added, pasted, undone).
+ *
+ * @param ws The workspace to change.
+ */
+export function installSingleBlockDrag(ws: Blockly.WorkspaceSvg): void {
+  applySingleBlockDrag(ws);
+  ws.addChangeListener((event: Blockly.Events.Abstract) => {
+    if (event.type !== Blockly.Events.BLOCK_CREATE) return;
+    for (const id of (event as Blockly.Events.BlockCreate).ids ?? []) {
+      const block = ws.getBlockById(id) as Blockly.BlockSvg | null;
+      if (block) block.setDragStrategy(new SingleBlockDragStrategy(block));
+    }
   });
 }
 

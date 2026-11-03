@@ -2202,7 +2202,7 @@ const en = {
     inspectorLabel: "Block details",
     blocksHelpLabel: "Using the block editor",
     blocksHint:
-      "Add a block with Add block: the line beside it says where it will go. Drag blocks on the canvas to reorder them or drop them inside another block, and select a block to edit its other settings. Ctrl+Z (Cmd+Z on a Mac) undoes the last change. With the keyboard, move around the blocks with the arrow keys.",
+      "Add a block with Add block: the line beside it says where it will go. Drag a block on the canvas to move it (only that block moves, with anything inside it) or drop it inside another block, and select a block to edit its other settings. Ctrl+Z (Cmd+Z on a Mac) undoes the last change. With the keyboard, move around the blocks with the arrow keys.",
     blocksReadOnlyHint: "This layout is shared from elsewhere, so its blocks can be looked at but not changed.",
     layoutBlock: "Layout",
     unknownBlockOnCanvas: "Unknown block",

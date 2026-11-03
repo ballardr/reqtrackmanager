@@ -155,7 +155,7 @@ Three orthogonal axes, kept separate: **layout** (what is reported), **branding 
 | 92 | Header and footer cells: starters, demo, cross-format check | **Done 2026-11-03** (built and tested; uncommitted). No starter writes a band, so each prints the default centred page number, pinned in all four formats by `test_report_starter_bands.py`; the demo layout gains a header with a 30 % cell and mixed alignment; website and modules.md updated. Word/ODT not opened in an application (User check pending). Next: 93. |
 | 93 | Block names allow hyphens and 128 characters; blocks get a display label (capitals, spaces) | **Done 2026-11-03** (built and tested; uncommitted). Name rule 128 chars with single hyphens, `label` key on every block, Label field from the server schema, `@label "…"` line in the text view, label plus name in every picker; Playwright spec written, not run (stack down). Decisions log "Custom reports Phase 93". |
 | 94 | "Records come from" renamed and explained; a block inside a group defaults to the group | **Done 2026-11-03** (built and tested; uncommitted). Options read "Records of the surrounding group" etc.; `(?)` on the picker; `withSurroundingGroupSource` defaults table/each/sheet in the Add block menu only (`record_images` has no source). Playwright written, not run. Decisions log "Custom reports Phase 94". Next: 95. |
-| 95 | Block editor: dragging moves only the selected block (not the blocks after it) | **Planned 2026-11-03** (not started). |
+| 95 | Block editor: dragging moves only the selected block (not the blocks after it) | **Done 2026-11-03** (built and tested; uncommitted). `SingleBlockDragStrategy` overrides Blockly's `shouldHealStack` for pointer drags; one undo step. Storybook plus a Playwright spec (not run; stack down). Decisions log "Custom reports Phase 95". Next: 96 (spike, asks the User first). |
 | 96 | Block editor: Shift-click selects several blocks, which then move together (spike first; may end as decided not to build) | **Planned 2026-11-03** (not started). |
 | 96a | A project report name: a short name a project can set, which reports can use in headers and titles | **Planned 2026-11-03** (not started; added by the User during Phase 91). Runs before 97. |
 | 97 | Thirteenth review: docs, seeds, full-suite check and close-out | **Planned 2026-11-03** (not started). Closes Phases 88 to 96a; drafts (98, 99) follow it. |
@@ -279,7 +279,7 @@ The plan is not closed. The paragraph below is the history of Phases 0 to 15, ke
 | 92 | Header and footer cells: starters, demo, cross-format check | 15 | [x] |
 | 93 | Block names: hyphens, 128 characters; display label on blocks | 15 | [x] |
 | 94 | "Records come from" rename, help and default to the enclosing group | 15 | [x] |
-| 95 | Block editor: drag moves only the selected block | 15 | [ ] |
+| 95 | Block editor: drag moves only the selected block | 15 | [x] |
 | 96 | Block editor: Shift-click multi-select and move (spike; may be dropped) | 15 | [ ] |
 | 96a | Project report name (short name for headers and titles) | 15 | [ ] |
 | 97 | Thirteenth review close-out | 15 | [ ] |

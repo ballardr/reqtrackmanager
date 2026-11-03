@@ -591,11 +591,119 @@ export const TheInstructionsAreBehindAHelpButton: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await workspaceOf();
-    await expect(canvas.queryByText(/Drag blocks on the canvas/)).not.toBeInTheDocument();
+    await expect(canvas.queryByText(/Drag a block on the canvas/)).not.toBeInTheDocument();
     const help = canvas.getByRole("button", { name: "Help: Using the block editor" });
     help.focus();
-    await expect(await screen.findByRole("tooltip", { hidden: true })).toHaveTextContent(/Drag blocks on the canvas/);
+    await expect(await screen.findByRole("tooltip", { hidden: true })).toHaveTextContent(/Drag a block on the canvas/);
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("tooltip", { hidden: true })).not.toBeInTheDocument());
+  },
+};
+
+const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+/**
+ * Drags `block` with a plain pointer (no modifier key) so its previous connection lands on `target`, as Blockly's own
+ * gesture does: start, move, end. The target is read after the drag starts, because the stack closes up behind the block.
+ */
+async function dragBlockTo(ws: Blockly.WorkspaceSvg, block: Blockly.BlockSvg, target: () => Blockly.RenderedConnection): Promise<void> {
+  const dragger = new Blockly.dragging.Dragger(block);
+  const from = { x: block.previousConnection!.x, y: block.previousConnection!.y };
+  dragger.onDragStart(new PointerEvent("pointerdown"));
+  await nextFrame();
+  const to = target();
+  const delta = new Blockly.utils.Coordinate((to.x - from.x) * ws.scale, (to.y - from.y) * ws.scale);
+  dragger.onDrag(new PointerEvent("pointermove"), delta);
+  await nextFrame();
+  dragger.onDragEnd(new PointerEvent("pointerup"));
+  await nextFrame();
+}
+
+const FOUR: Tree = {
+  nodes: [
+    { type: "heading", text: "A", level: 1 },
+    { type: "heading", text: "B", level: 1 },
+    { type: "heading", text: "C", level: 1 },
+    { type: "heading", text: "D", level: 1 },
+  ],
+};
+
+const headings = (canvasElement: HTMLElement) => treeOf(canvasElement).nodes.map((n) => n.text);
+
+/** A plain drag moves the block that was grabbed; the blocks below it stay and close up. */
+export const DraggingABlockMovesOnlyThatBlock: Story = {
+  args: { initial: FOUR },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    const [, b, , d] = blocksOf(ws, "heading");
+    await dragBlockTo(ws, b, () => d.nextConnection as Blockly.RenderedConnection);
+    await waitFor(() => expect(headings(canvasElement)).toEqual(["A", "C", "D", "B"]));
+  },
+};
+
+/** One Ctrl+Z puts the block back with the stack as it was. */
+export const ADragIsOneUndoStep: Story = {
+  args: { initial: FOUR },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    const [, b, , d] = blocksOf(ws, "heading");
+    await dragBlockTo(ws, b, () => d.nextConnection as Blockly.RenderedConnection);
+    await waitFor(() => expect(headings(canvasElement)).toEqual(["A", "C", "D", "B"]));
+    ws.undo(false);
+    await waitFor(() => expect(headings(canvasElement)).toEqual(["A", "B", "C", "D"]));
+  },
+};
+
+/** The last block has nothing below it; dragging it up still moves just it. */
+export const DraggingTheLastBlockMovesIt: Story = {
+  args: { initial: FOUR },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    const [a, , , d] = blocksOf(ws, "heading");
+    await dragBlockTo(ws, d, () => a.nextConnection as Blockly.RenderedConnection);
+    await waitFor(() => expect(headings(canvasElement)).toEqual(["A", "D", "B", "C"]));
+  },
+};
+
+/** A block that holds others takes its contents with it, and only its own followers stay behind. */
+export const DraggingAContainerTakesItsContents: Story = {
+  args: {
+    initial: {
+      nodes: [
+        { type: "group", source: {}, by: "", as: "g", children: [{ type: "heading", text: "Inside", level: 2 }] },
+        { type: "heading", text: "After", level: 1 },
+        { type: "heading", text: "Last", level: 1 },
+      ],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    const group = blocksOf(ws, "group")[0];
+    const last = blocksOf(ws, "heading").find((h) => h.getFieldValue("_summary")?.includes("Last"))!;
+    await dragBlockTo(ws, group, () => last.nextConnection as Blockly.RenderedConnection);
+    await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "heading", "group"]));
+    await expect((treeOf(canvasElement).nodes[2].children as { text: string }[]).map((n) => n.text)).toEqual(["Inside"]);
+  },
+};
+
+/** A block can be dropped inside a container, from the middle of a list. */
+export const DraggingABlockIntoAContainer: Story = {
+  args: {
+    initial: {
+      nodes: [
+        { type: "group", source: {}, by: "", as: "g", children: [] },
+        { type: "heading", text: "Moves", level: 1 },
+        { type: "heading", text: "Stays", level: 1 },
+      ],
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const ws = await workspaceOf();
+    const group = blocksOf(ws, "group")[0];
+    const moves = blocksOf(ws, "heading")[0];
+    await dragBlockTo(ws, moves, () => group.getInput("children")!.connection as Blockly.RenderedConnection);
+    await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["group", "heading"]));
+    await expect((treeOf(canvasElement).nodes[0].children as { text: string }[]).map((n) => n.text)).toEqual(["Moves"]);
+    await expect(treeOf(canvasElement).nodes[1].text).toBe("Stays");
   },
 };

@@ -44,7 +44,7 @@ import {
   ROOT_INPUT, ROOT_TYPE, SUMMARY_FIELD, blockSummary, chainToNodes, layoutType, looseBlockCount,
   nodeData, nodeToBlockState, paletteEntries, shapeOf, treeToWorkspaceState, workspaceStateToTree, type BlockState,
 } from "../utils/reportLayoutBlockly";
-import { buildTheme, registerBlocks } from "../utils/reportLayoutBlocklyBlocks";
+import { buildTheme, applySingleBlockDrag, installSingleBlockDrag, registerBlocks } from "../utils/reportLayoutBlocklyBlocks";
 import {
   cloneNode, formatPath, listAt, namesInScope, nodeAt, owningNode, parsePath, problemsForNode, setAt, sourceRecordType, stableJson, summarise, withSurroundingGroupSource, type Seg, type Tree, type TreeNode,
 } from "../utils/reportLayoutTree";
@@ -220,6 +220,7 @@ export function ReportLayoutBlocks({
     workspace.current = ws;
     Blockly.serialization.workspaces.load(treeToWorkspaceState(shown.current.tree, types), ws);
     ws.addChangeListener(Blockly.Events.disableOrphans);
+    installSingleBlockDrag(ws);
 
     const onEvent = (event: Blockly.Events.Abstract) => {
       if (event.type === Blockly.Events.SELECTED) {
@@ -276,6 +277,7 @@ export function ReportLayoutBlocks({
       } else {
         const { scrollX, scrollY } = ws;
         Blockly.serialization.workspaces.load(treeToWorkspaceState(tree, types), ws);
+        applySingleBlockDrag(ws);
         ws.scroll(scrollX, scrollY);
         setSelected(null);
       }
