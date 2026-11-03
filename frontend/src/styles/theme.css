@@ -3078,9 +3078,19 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 
 .designer-bar__save {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-3);
   padding-bottom: var(--space-1);
+}
+
+/* The draft status, its Save draft and Discard changes buttons and the Autosave switch, in one line before Save new version. */
+.designer-bar__draft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .designer-panel {

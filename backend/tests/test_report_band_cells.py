@@ -82,6 +82,13 @@ def test_widths_that_cannot_fit_are_squeezed_rather_than_overflowing():
     assert min(widths) >= MIN_COLUMN_CM - 1e-9
 
 
+@pytest.mark.parametrize("spec", ["0 cm", "0%", "0.01 mm", "9" * 400 + " cm"])
+def test_a_stored_width_the_check_would_refuse_never_reaches_a_renderer_as_zero_or_infinite(spec):
+    widths = widths_of(RunningBand(left=("a",), widths=(spec, None, None)))
+    assert all(w >= MIN_COLUMN_CM - 1e-9 and w < float("inf") for w in widths)
+    assert sum(widths) == pytest.approx(USABLE)
+
+
 def test_the_default_alignment_is_top_and_a_cell_can_override_it():
     band = RunningBand(left=("a",), valigns=(None, "bottom", None))
     assert valigns_of(band) == ["top", "bottom", "top"]
@@ -123,6 +130,9 @@ def test_a_band_may_fix_a_cell_width_and_set_an_alignment(band):
     ({"left_width": "0%"}, "header.left_width", "percentage"),
     ({"left_width": "101%"}, "header.left_width", "percentage"),
     ({"centre_width": "1 mm"}, "header.centre_width", "length"),
+    ({"centre_width": "0 cm"}, "header.centre_width", "length"),
+    ({"left_width": "0 mm"}, "header.left_width", "length"),
+    ({"right_width": "9" * 400 + " cm"}, "header.right_width", "length"),
     ({"right_width": 20}, "header.right_width", "percentage"),
     ({"valign": "centre"}, "header.valign", "top, middle, bottom"),
     ({"right_valign": "up"}, "header.right_valign", "top, middle, bottom"),

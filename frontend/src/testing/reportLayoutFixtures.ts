@@ -9,12 +9,15 @@
  */
 import { fn } from "storybook/test";
 
+import { ApiError } from "../api/client";
 import type { FileDetails } from "../api/fileDetails";
+import { draftSummary } from "../api/reportLayouts";
 import type {
-  BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, ReportImage, ReportSnippet, SnippetApplyResult, TreeCheck, TreeProblem,
+  ReportLayoutDraft, BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, ReportImage, ReportSnippet, SnippetApplyResult, TreeCheck, TreeProblem,
   ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree, ReportLayoutVersion, ReportWidget, TextParseResult,
 } from "../api/reportLayouts";
 import { DEFAULT_COLOUR_CONTEXT, type ColourContext } from "../utils/reportColours";
+import { stableJson } from "../utils/reportLayoutTree";
 
 /** Longest the designer takes to finish checking text after typing stops, for a story to wait on. */
 export const TEXT_CHECKED_MS = 3000;
@@ -34,6 +37,14 @@ export function buildLayoutSummary(overrides: Partial<ReportLayoutSummary> = {})
     id: "layout-1", organization_id: "org-1", project_id: "project-1", name: "Requirements by component",
     description: "Every requirement with its component.", folder: "", family: "document", current_version: 2, origin: "project",
     hidden: false, editable: true, updated_at: "2026-10-20T09:30:00Z", ...overrides,
+  };
+}
+
+/** A shared draft of a layout (written by a colleague, based on the layout's version 2 unless overridden). */
+export function buildLayoutDraft(overrides: Partial<ReportLayoutDraft> = {}, text = `${LAYOUT_TEXT}\n@heading From the draft\n`): ReportLayoutDraft {
+  return {
+    base_version: 2, revision: 3, updated_by: "user-2", updated_by_name: "Sam Rivera", updated_at: "2026-11-03T09:15:00Z",
+    tree: treeOf(text), tree_hash: "draft-hash", problems: [], ...overrides,
   };
 }
 
@@ -480,11 +491,20 @@ export function fakeParse(text: string): TextParseResult {
  */
 export function buildLayoutApi(
   layouts: ReportLayoutSummary[] = [buildLayoutSummary()],
-  overrides: Partial<ReportLayoutApi> & { kind?: "project" | "organization"; stateful?: boolean } = {},
+  overrides: Partial<ReportLayoutApi> & { kind?: "project" | "organization"; stateful?: boolean; seedDraft?: ReportLayoutDraft } = {},
 ): ReportLayoutApi {
   const stateful = overrides.stateful !== false;
   const store = layouts.map((layout) => ({ ...layout }));
   const kind = overrides.kind ?? "project";
+  // The shared draft of each layout: `seeded` is what a story starts with (the first layout's), `written` what this api has been sent.
+  // A stateless api answers writes without letting them change what the next read sees, but publishing uses the last write.
+  const seeded = new Map<string, ReportLayoutDraft>(overrides.seedDraft ? [[store[0].id, overrides.seedDraft]] : []);
+  const written = new Map<string, ReportLayoutDraft>();
+  const draftOf = (id: string): ReportLayoutDraft | undefined => (stateful ? written.get(id) ?? seeded.get(id) : seeded.get(id));
+  const publishedTreeOf = (id: string): ReportLayoutTree => {
+    const found = store.find((layout) => layout.id === id) ?? store[0];
+    return buildLayoutVersion(found.current_version, LAYOUT_TEXT).tree;
+  };
   const fake: ReportLayoutApi = {
     scope: { kind, id: kind === "project" ? "project-1" : "org-1" },
     list: fn(async () => store.map((layout) => ({ ...layout }))),
@@ -497,7 +517,50 @@ export function buildLayoutApi(
     }),
     get: fn(async (id: string) => {
       const found = store.find((layout) => layout.id === id) ?? store[0];
-      return { ...found, current: buildLayoutVersion(found.current_version, LAYOUT_TEXT) };
+      const draft = draftOf(found.id);
+      return {
+        ...found, current: buildLayoutVersion(found.current_version, LAYOUT_TEXT),
+        draft: found.editable && draft ? draftSummary(draft) : null,
+      };
+    }),
+    draft: fn(async (id: string) => {
+      const draft = draftOf(id);
+      if (!draft) throw new ApiError(404, "The layout has no draft.");
+      return draft;
+    }),
+    writeDraft: fn(async (id: string, body: { tree: ReportLayoutTree; base_version: number; revision: number }) => {
+      const before = draftOf(id);
+      if (stateful && (before?.revision ?? 0) !== body.revision) {
+        throw new ApiError(409, "The draft changed.", { message: "The draft changed.", code: "draft_conflict", draft: before ? draftSummary(before) : null });
+      }
+      if (stableJson(body.tree) === stableJson(publishedTreeOf(id))) {
+        written.delete(id);
+        return { draft: null };
+      }
+      const next = buildLayoutDraft({
+        revision: body.revision + 1, base_version: body.base_version, tree: body.tree, updated_by: "user-1", updated_by_name: "You",
+        updated_at: new Date().toISOString(),
+      });
+      written.set(id, next);
+      return { draft: next };
+    }),
+    discardDraft: fn(async (id: string) => {
+      if (stateful) {
+        written.delete(id);
+        seeded.delete(id);
+      }
+    }),
+    publishDraft: fn(async (id: string, body: { draft_revision: number; comment?: string }) => {
+      const found = store.find((layout) => layout.id === id) ?? store[0];
+      const draft = written.get(id) ?? seeded.get(id);
+      const next = found.current_version + 1;
+      if (stateful) {
+        found.current_version = next;
+        written.delete(id);
+        seeded.delete(id);
+      }
+      const tree = draft?.tree ?? publishedTreeOf(id);
+      return { ...found, current_version: next, current: { ...buildLayoutVersion(next), tree, comment: body.comment ?? "" }, draft: null };
     }),
     versions: fn(async () => [
       { version: 2, tree_hash: "h2", comment: "Added the heading", created_by: "user-1", created_at: "2026-10-12T09:00:00Z" },
@@ -547,8 +610,9 @@ export function buildLayoutApi(
       for (const layout of store) if (ids.includes(layout.id)) layout.hidden = false;
     });
   }
-  const { kind: _kind, stateful: _stateful, ...rest } = overrides;
+  const { kind: _kind, stateful: _stateful, seedDraft: _seedDraft, ...rest } = overrides;
   void _kind;
   void _stateful;
+  void _seedDraft;
   return { ...fake, ...rest };
 }

@@ -33,6 +33,7 @@ each worker additionally gets its own database, `reqtrack_pytest_test_gw0`,
 below creates its database on first use.
 """
 
+import asyncio
 import os
 
 # `dedicated_pytest_database_url`/`PYTEST_DB_NAME` live in the tiny sibling
@@ -241,10 +242,23 @@ def _app_client():
     # lifespan-managed background loop's timing, and no test mutates
     # persistent TestClient state (headers/cookies) that would leak across
     # tests. Per-test isolation still comes from `_clean_tables` below.
+    import app.main as app_main
     from app.main import app
 
-    with TestClient(app) as c:
-        yield c
+    # The leader's polling loops would otherwise run inside the test process, racing the tests for shared rows (a
+    # queued report run claimed before a test cancels it) and adding their own statements to a query count. Tests
+    # that exercise a loop's work call it directly (`report_run_jobs.run_next`, the disk and storage checks).
+    async def _idle() -> None:
+        await asyncio.Event().wait()
+
+    patch = pytest.MonkeyPatch()
+    for loop_name in ("run_disk_monitor_loop", "run_storage_health_loop", "run_digest_loop", "run_job_loop"):
+        patch.setattr(app_main, loop_name, _idle)
+    try:
+        with TestClient(app) as c:
+            yield c
+    finally:
+        patch.undo()
 
 
 @pytest.fixture

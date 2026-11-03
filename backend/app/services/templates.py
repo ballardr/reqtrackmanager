@@ -61,7 +61,7 @@ from app.services.requirements import get_current_version, get_keywords, set_key
 
 def clone_project(
     db: Session, source: Project, *, name: str, summary: str, creator: User, parent_project_id: UUID | None = None,
-    code: str | None = None,
+    code: str | None = None, report_name: str | None = None,
 ) -> Project:
     """Creates a new project by copying a template project's configuration.
 
@@ -82,12 +82,13 @@ def clone_project(
         code: The new project's code, already validated by the caller; when omitted one is
             generated from `name` under the organisation's policy. The template's own code
             is never copied.
+        report_name: The new project's Project report name; the template's is never copied (a name identifies one project).
 
     Returns:
         The newly created Project.
     """
     new_project = Project(
-        organization_id=source.organization_id, name=name, summary=summary,
+        organization_id=source.organization_id, name=name, summary=summary, report_name=report_name,
         code=code or generate_project_code(db, source.organization_id, name),
         allow_member_change_requests=source.allow_member_change_requests,
         require_change_request_for_approved_links=source.require_change_request_for_approved_links,

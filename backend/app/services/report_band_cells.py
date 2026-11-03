@@ -110,7 +110,7 @@ def resolve_band_cells(band: RunningBand, usable_cm: float) -> tuple[BandCell, B
     Returns:
         The left, centre and right cells in that order; their widths add up to `usable_cm`.
     """
-    fixed = [_fixed_cm(spec, usable_cm) for spec in band.widths]
+    fixed = [None if (cm := _fixed_cm(spec, usable_cm)) is None else max(MIN_COLUMN_CM, cm) for spec in band.widths]  # a stored width below the floor never reaches a renderer as 0
     free = [i for i, width in enumerate(fixed) if width is None]
     widths = [width or 0.0 for width in fixed]
     if free and sum(widths) + MIN_COLUMN_CM * len(free) > usable_cm + 1e-9:  # the layout check refuses this; here the fixed cells give way

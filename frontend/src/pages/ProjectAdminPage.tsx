@@ -34,7 +34,7 @@ import type {
   ProjectStage,
   ProjectStatusDefinition,
 } from "../api/types";
-import { CUSTOM_FIELD_TYPE_LABEL, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_TYPE_LABEL, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
@@ -252,6 +252,7 @@ export function ProjectAdminPage() {
   const [settingsCode, setSettingsCode] = useState("");
   const [codePolicy, setCodePolicy] = useState<ProjectCodePolicy | null>(null);
   const [settingsSummary, setSettingsSummary] = useState("");
+  const [settingsReportName, setSettingsReportName] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
   // See `Project.
   // require_change_request_for_approved_links`/`exempt_from_org_link_lock`
@@ -441,6 +442,7 @@ export function ProjectAdminPage() {
       setSettingsName(p.name);
       setSettingsCode(p.code);
       setSettingsSummary(p.summary);
+      setSettingsReportName(p.report_name ?? "");
       setAllowMemberCr(p.allow_member_change_requests);
       setRequireCrForLinks(p.require_change_request_for_approved_links);
       setExemptFromOrgLinkLock(p.exempt_from_org_link_lock);
@@ -658,7 +660,7 @@ export function ProjectAdminPage() {
     setSettingsError(null);
     try {
       await api.patch(`/api/v1/projects/${projectId}`, {
-        name: settingsName, summary: settingsSummary,
+        name: settingsName, summary: settingsSummary, report_name: settingsReportName.trim() || null,
         ...(codePolicy?.assignment === "manual" && settingsCode !== project?.code ? { code: normaliseProjectCode(settingsCode) } : {}),
         allow_member_change_requests: allowMemberCr,
         // `requireCrForLinks` always
@@ -1529,6 +1531,15 @@ export function ProjectAdminPage() {
               : strings.projects.codeFixedHint}
             </p>
           </FormGridFull>
+          <TextField help={strings.help.projectReportName}
+            label={strings.projects.reportName}
+            value={settingsReportName}
+            onChange={(next) => {
+              settingsDirtyRef.current = true;
+              setSettingsReportName(next);
+            }}
+            inputProps={{ maxLength: MAX_PROJECT_REPORT_NAME_LENGTH }}
+          />
           <FormGridFull>
           <TextAreaField helpNotNeeded
             label={strings.admin.summary}

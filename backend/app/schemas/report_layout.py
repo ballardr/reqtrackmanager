@@ -39,11 +39,41 @@ class ReportLayoutUpdate(BaseModel):
 
 
 class ReportLayoutSave(BaseModel):
-    """Saves a new version. `base_version` is the version the author started from."""
+    """Saves a new version: of the given `tree`, or of the layout's shared draft (`from_draft`), never both.
+
+    `base_version` is the version the author started from (required with a `tree`; a draft carries its own).
+    `draft_revision`, with `from_draft`, is the draft revision the publisher saw: a draft written since is refused.
+    """
+
+    tree: dict[str, Any] | None = None
+    base_version: int | None = Field(default=None, ge=1)
+    comment: str = ""
+    from_draft: bool = False
+    draft_revision: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _one_source(self) -> ReportLayoutSave:
+        """A save names a tree and its base version, or the draft."""
+        if self.from_draft:
+            if self.tree is not None or self.base_version is not None:
+                raise ValueError("Saving from the draft takes no tree or base version.")
+        elif self.tree is None or self.base_version is None:
+            raise ValueError("A tree and its base version are required unless saving from the draft.")
+        elif self.draft_revision is not None:
+            raise ValueError("draft_revision applies only when saving from the draft.")
+        return self
+
+
+class ReportLayoutDraftWrite(BaseModel):
+    """Autosaves the editor's tree into the shared draft.
+
+    `base_version` is the layout version the content is based on; `revision` is the draft revision the editor last saw
+    (`0` when it saw no draft).
+    """
 
     tree: dict[str, Any]
     base_version: int = Field(ge=1)
-    comment: str = ""
+    revision: int = Field(ge=0)
 
 
 class ReportLayoutTextParse(BaseModel):
@@ -153,6 +183,24 @@ class ReportLayoutVersionOut(BaseModel):
     created_at: datetime
 
 
+class ReportLayoutDraftSummaryOut(BaseModel):
+    """Who holds unpublished work on a layout, with no tree (what an agent or the designer's notice needs).
+
+    Attributes:
+        base_version: The version the draft was started from; behind the layout's `current_version` when one was published since.
+        revision: Changes with every write; names the draft in a write or publish.
+        updated_by: Who last wrote it, `None` once that user is deleted.
+        updated_by_name: Their display name.
+        updated_at: When (UTC).
+    """
+
+    base_version: int
+    revision: int
+    updated_by: UUID | None
+    updated_by_name: str | None
+    updated_at: datetime
+
+
 class ReportLayoutDetailOut(ReportLayoutOut):
     """A layout with its current version's tree.
 
@@ -163,6 +211,7 @@ class ReportLayoutDetailOut(ReportLayoutOut):
 
     current: ReportLayoutVersionOut
     warnings: list[str] = Field(default_factory=list)
+    draft: ReportLayoutDraftSummaryOut | None = None
 
 
 class ReportLayoutVersionSummaryOut(BaseModel):
@@ -180,6 +229,26 @@ class LayoutErrorOut(BaseModel):
 
     path: str
     message: str
+
+
+class ReportLayoutDraftOut(ReportLayoutDraftSummaryOut):
+    """The shared draft with its tree.
+
+    Attributes:
+        tree: The tree as last autosaved (it may be invalid).
+        tree_hash: SHA-256 of its canonical JSON.
+        problems: Why it could not be published now; empty when it can.
+    """
+
+    tree: dict[str, Any]
+    tree_hash: str
+    problems: list[LayoutErrorOut] = Field(default_factory=list)
+
+
+class ReportLayoutDraftSavedOut(BaseModel):
+    """The result of an autosave: the draft now stored, or `None` when the tree equals the saved version and none is kept."""
+
+    draft: ReportLayoutDraftOut | None
 
 
 class ReportLayoutRestoreOut(BaseModel):

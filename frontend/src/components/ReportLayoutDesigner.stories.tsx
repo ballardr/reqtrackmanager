@@ -3,8 +3,9 @@ import * as Blockly from "blockly/core";
 import { expect, fn, mocked, screen, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
+import type { ReportLayoutApi } from "../api/reportLayouts";
 import {
-  buildLayoutApi, buildLayoutDetail, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
+  buildLayoutApi, buildLayoutDetail, buildLayoutDraft, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
 } from "../testing/reportLayoutFixtures";
 import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
 import { chooseSnippetMenuItem, snippetMenuItem } from "../testing/reportSnippetMenuHelpers";
@@ -28,6 +29,19 @@ export default meta;
 type Story = StoryObj<typeof ReportLayoutDesigner>;
 
 const body = () => within(document.body);
+
+const STATUS = "Draft status";
+/** A pause short enough for a story and longer than a keystroke burst. */
+const FAST_AUTOSAVE_MS = 50;
+/** Signs in a person whose Autosave switch is off (the meta's router stays around it). */
+const autosaveOff = () => [withStatefulAuth(buildUser({ ui_preferences: { report_designer_autosave: false } }))];
+
+/** Types `words` at the end of the Text view's text. */
+async function typeAtEnd(editor: HTMLTextAreaElement, words: string) {
+  editor.focus();
+  editor.setSelectionRange(editor.value.length, editor.value.length);
+  await userEvent.keyboard(words);
+}
 
 /** The text editor, after opening the Text view (a layout opens on Blocks). */
 async function editorOf(canvasElement: HTMLElement): Promise<HTMLTextAreaElement> {
@@ -99,10 +113,10 @@ export const SavingSendsTheParsedTreeAndTheVersionItStartedFrom: Story = {
     const save = canvas.getByRole("button", { name: "Save new version" });
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
     await saveVersion(save, "Added closing words");
-    await waitFor(() => expect(args.api.save).toHaveBeenCalledWith(
-      "layout-1",
-      expect.objectContaining({ base_version: 2, comment: "Added closing words", tree: expect.objectContaining({ family: "document" }) }),
-    ));
+    await waitFor(() => expect(args.api.publishDraft).toHaveBeenCalledWith("layout-1", { draft_revision: 1, comment: "Added closing words" }));
+    await expect(args.api.writeDraft).toHaveBeenCalledWith(
+      "layout-1", expect.objectContaining({ base_version: 2, revision: 0, tree: expect.objectContaining({ family: "document" }) }),
+    );
     await expect(await body().findByText("Saved as version 3.")).toBeInTheDocument();
     await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
     await expect(canvas.getByText("Version 3")).toBeInTheDocument();
@@ -162,7 +176,7 @@ export const TheProblemCountSitsBesideSave: Story = {
 export const SavingATreeTheServerRefusesShowsItsProblems: Story = {
   args: {
     api: buildLayoutApi([buildLayoutSummary()], {
-      save: async () => {
+      publishDraft: async () => {
         throw new ApiError(422, "The layout is not valid.", { message: "The layout is not valid.", errors: [{ path: "nodes[0].text", message: "Unknown field." }] });
       },
     }),
@@ -183,7 +197,7 @@ export const SavingATreeTheServerRefusesShowsItsProblems: Story = {
 export const ASaveThatFindsTheLayoutMovedOnOffersAReload: Story = {
   args: {
     api: buildLayoutApi([buildLayoutSummary()], {
-      save: async () => { throw new ApiError(409, "The layout moved on.", { message: "The layout moved on.", current_version: 3 }); },
+      publishDraft: async () => { throw new ApiError(409, "The layout moved on.", { message: "The layout moved on.", current_version: 3 }); },
     }),
   },
   play: async ({ canvasElement, args }) => {
@@ -202,6 +216,23 @@ export const ASaveThatFindsTheLayoutMovedOnOffersAReload: Story = {
     await userEvent.click(await canvas.findByRole("tab", { name: "Text" }));
     await waitFor(() => expect((canvas.getByRole("textbox", { name: "Layout text" }) as HTMLTextAreaElement).value).toBe(LAYOUT_TEXT));
     await expect(mocked(args.api.get).mock.calls.length).toBe(loads + 1);
+  },
+};
+
+/** The other way past a version saved meanwhile: keep the text as a draft of the new version, so saving publishes it on top. */
+export const KeepMyTextRewritesTheDraftOnTheNewVersion: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    mocked(args.api.publishDraft).mockRejectedValueOnce(new ApiError(409, "The layout moved on.", { message: "The layout moved on.", current_version: 3 }));
+    await typeAtEnd(editor, "Mine.");
+    const save = canvas.getByRole("button", { name: "Save new version" });
+    await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
+    await saveVersion(save);
+    await userEvent.click(await canvas.findByRole("button", { name: "Keep my text on version 3" }));
+    await waitFor(() => expect(args.api.writeDraft).toHaveBeenLastCalledWith("layout-1", expect.objectContaining({ base_version: 3 })));
+    await waitFor(() => expect(canvas.queryByRole("button", { name: "Keep my text on version 3" })).not.toBeInTheDocument());
   },
 };
 
@@ -434,10 +465,11 @@ export const EditingABlockSavesTheEditedTree: Story = {
     const save = canvas.getByRole("button", { name: "Save new version" });
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
     await saveVersion(save);
-    await waitFor(() => expect(args.api.save).toHaveBeenCalledWith(
+    await waitFor(() => expect(args.api.publishDraft).toHaveBeenCalledWith("layout-1", { draft_revision: 1, comment: "" }));
+    await expect(args.api.writeDraft).toHaveBeenCalledWith(
       "layout-1",
       expect.objectContaining({ base_version: 2, tree: expect.objectContaining({ nodes: expect.arrayContaining([expect.objectContaining({ text: "Edited title" })]) }) }),
-    ));
+    );
     await expect(await body().findByText("Saved as version 3.")).toBeInTheDocument();
   },
 };
@@ -573,7 +605,8 @@ export const EditingTheJsonSavesThatTreeAndTheOtherViewsShowIt: Story = {
     const save = canvas.getAllByRole("button", { name: "Save new version" })[0];
     await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
     await saveVersion(save);
-    await waitFor(() => expect(args.api.save).toHaveBeenCalledWith("layout-1", expect.objectContaining({ base_version: 2, tree: outlineWithHeading("From the JSON") })));
+    await waitFor(() => expect(args.api.publishDraft).toHaveBeenCalledWith("layout-1", { draft_revision: 1, comment: "" }));
+    await expect(args.api.writeDraft).toHaveBeenCalledWith("layout-1", expect.objectContaining({ base_version: 2, tree: outlineWithHeading("From the JSON") }));
     await expect(await body().findByText("Saved as version 3.")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("tab", { name: "Text" }));
     await waitFor(async () => expect((await canvas.findByRole("textbox", { name: "Layout text" }) as HTMLTextAreaElement).value).toBe("@layout document\n@heading From the JSON\n"));
@@ -924,5 +957,294 @@ export const ASharedReadOnlyLayoutOffersNoSaveAsSnippet: Story = {
   play: async ({ canvasElement }) => {
     await editorOf(canvasElement);
     await expect(within(canvasElement).queryByRole("button", { name: "Snippets" })).not.toBeInTheDocument();
+  },
+};
+
+// ---- The shared draft: autosave, Save draft, the draft notice, conflicts and publishing.
+
+export const AutosaveWritesTheDraftAndSaysSo: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    await expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent("No draft");
+    await typeAtEnd(editor, "Closing words.");
+    await waitFor(() => expect(args.api.writeDraft).toHaveBeenCalledWith(
+      "layout-1", expect.objectContaining({ base_version: 2, revision: 0, tree: expect.objectContaining({ family: "document" }) }),
+    ), { timeout: TEXT_CHECKED_MS });
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/));
+    await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    await expect(args.api.publishDraft).not.toHaveBeenCalled();
+    await expect(canvas.queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
+  },
+};
+
+/** Looking at a layout is not editing it: opening the Text view writes no draft. */
+export const OpeningTheTextViewWritesNoDraft: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await editorOf(canvasElement);
+    await canvas.findByText("The text is valid.", undefined, { timeout: TEXT_CHECKED_MS });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await expect(args.api.writeDraft).not.toHaveBeenCalled();
+    await expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent("No draft");
+    await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  },
+};
+
+export const TextThatDoesNotReadIsNotSavedAndTheStatusSaysWhere: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    editor.focus();
+    editor.setSelectionRange(0, 0);
+    await userEvent.keyboard("BROKEN ");
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent("Not saved: line 1"), { timeout: TEXT_CHECKED_MS });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await expect(args.api.writeDraft).not.toHaveBeenCalled();
+    await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
+  },
+};
+
+export const AFailedWriteIsReportedAndRetriedOnTheNextChange: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    mocked(args.api.writeDraft).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const editor = await editorOf(canvasElement);
+    await typeAtEnd(editor, "One.");
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent("Not saved: offline"), { timeout: TEXT_CHECKED_MS });
+    // The content stays in the editor, still counted as unsaved, and the next change writes it.
+    await expect(editor.value).toContain("One.");
+    await expect(canvas.getByText("Unsaved changes")).toBeInTheDocument();
+    await userEvent.keyboard(" Two.");
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/), { timeout: TEXT_CHECKED_MS });
+    await expect(args.api.writeDraft).toHaveBeenCalledTimes(2);
+  },
+};
+
+export const WithAutosaveOffNothingIsWrittenUntilSaveDraftIsPressed: Story = {
+  decorators: autosaveOff(),
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    await expect(canvas.getByRole("switch", { name: "Autosave drafts" })).not.toBeChecked();
+    await expect(canvas.getByRole("button", { name: "Save draft" })).toBeDisabled();
+    await typeAtEnd(editor, "Trying this out.");
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent("Changes not saved to a draft"));
+    await canvas.findByText("The text is valid.", undefined, { timeout: TEXT_CHECKED_MS });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await expect(args.api.writeDraft).not.toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("button", { name: "Save draft" }));
+    await expect(await body().findByText("Draft saved.")).toBeInTheDocument();
+    await expect(args.api.writeDraft).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/));
+    await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  },
+};
+
+export const DiscardChangesPutsTheEditorBack: Story = {
+  decorators: autosaveOff(),
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    await typeAtEnd(editor, "Unwanted.");
+    await userEvent.click(await canvas.findByRole("button", { name: "Discard changes" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Discard your changes?" }));
+    await expect(dialog.getByText("The editor goes back to the latest saved version.")).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Discard changes" }));
+    await expect(await body().findByText("Changes discarded.")).toBeInTheDocument();
+    await expect((await editorOf(canvasElement)).value).toBe(LAYOUT_TEXT);
+    await expect(args.api.writeDraft).not.toHaveBeenCalled();
+    await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  },
+};
+
+export const TurningAutosaveOnWritesWhatIsPending: Story = {
+  decorators: autosaveOff(),
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    await typeAtEnd(editor, "Keep this.");
+    await canvas.findByText("The text is valid.", undefined, { timeout: TEXT_CHECKED_MS });
+    await expect(args.api.writeDraft).not.toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("switch", { name: "Autosave drafts" }));
+    await waitFor(() => expect(args.api.writeDraft).toHaveBeenCalledTimes(1));
+    await expect(canvas.queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
+  },
+};
+
+/** With autosave on, leaving is free once the draft holds the work; with it off, unsaved edits ask first. */
+export const LeavingAsksOnlyWhileChangesAreNotInTheDraft: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    await typeAtEnd(editor, "Saved by autosave.");
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/), { timeout: TEXT_CHECKED_MS });
+    await userEvent.click(canvas.getByRole("button", { name: "Report layouts" }));
+    await expect(screen.queryByRole("dialog", { name: "Leave without saving?" })).not.toBeInTheDocument();
+  },
+};
+
+export const LeavingWithAutosaveOffAsksWhileEditsAreNotInADraft: Story = {
+  decorators: autosaveOff(),
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const editor = await editorOf(canvasElement);
+    await typeAtEnd(editor, "Not kept.");
+    await userEvent.click(canvas.getByRole("button", { name: "Report layouts" }));
+    await expect(await screen.findByRole("dialog", { name: "Leave without saving?" })).toBeInTheDocument();
+  },
+};
+
+const draftedApi = () => buildLayoutApi([buildLayoutSummary()], { seedDraft: buildLayoutDraft() });
+
+export const ALayoutWithADraftOpensOnTheDraftWithANotice: Story = {
+  args: { api: draftedApi(), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const notice = await canvas.findByRole("note", { name: "Draft" });
+    await expect(notice).toHaveTextContent(/^Draft from Sam Rivera, .*, based on version 2\./);
+    await expect((await editorOf(canvasElement)).value).toContain("@heading From the draft");
+    await expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/);
+    // Opening the draft is not a change to it.
+    await expect(canvas.queryByText("Unsaved changes")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Save new version" })).toHaveAttribute("title", "Publishes the draft as version 3");
+  },
+};
+
+export const ADraftBehindTheLatestVersionSaysSo: Story = {
+  args: {
+    api: buildLayoutApi([buildLayoutSummary()], { stateful: false, seedDraft: buildLayoutDraft({ base_version: 1 }) }),
+    autosaveDelayMs: FAST_AUTOSAVE_MS,
+  },
+  play: async ({ canvasElement }) => {
+    const notice = await within(canvasElement).findByRole("note", { name: "Draft" });
+    await expect(notice).toHaveTextContent("Version 2 was saved since this draft began.");
+  },
+};
+
+export const ShowSavedVersionComparesWithoutChangingTheDraft: Story = {
+  args: { api: draftedApi(), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Show saved version" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Version 2 compared with your draft" }));
+    const diff = await dialog.findByLabelText("Changes from the saved version to your draft");
+    await expect(diff).toHaveTextContent("+ @heading From the draft");
+    await userEvent.click(dialog.getByRole("button", { name: "Close" }));
+    await expect(screen.queryByRole("dialog", { name: "Version 2 compared with your draft" })).not.toBeInTheDocument();
+    await expect(args.api.discardDraft).not.toHaveBeenCalled();
+    await expect(canvas.getByRole("note", { name: "Draft" })).toBeInTheDocument();
+  },
+};
+
+export const DiscardDraftAsksThenOpensTheLatestVersion: Story = {
+  args: { api: draftedApi(), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Discard draft" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Discard this draft?" }));
+    await expect(dialog.getByText(/goes back to version 2\. Published versions are not affected\./)).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Discard draft" }));
+    await expect(await body().findByText("Draft discarded.")).toBeInTheDocument();
+    await expect(args.api.discardDraft).toHaveBeenCalledWith("layout-1");
+    await waitFor(() => expect(canvas.queryByRole("note", { name: "Draft" })).not.toBeInTheDocument(), { timeout: TEXT_CHECKED_MS });
+    await expect((await editorOf(canvasElement)).value).toBe(LAYOUT_TEXT);
+  },
+};
+
+export const HistoryListsTheDraftAboveThePublishedVersions: Story = {
+  args: { api: draftedApi(), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("tab", { name: "History" }));
+    const row = await canvas.findByRole("note", { name: "Draft" });
+    await expect(row).toHaveTextContent("Sam Rivera");
+    await expect(within(row).getByRole("button", { name: "Discard draft" })).toBeInTheDocument();
+    await expect(await canvas.findByRole("table", { name: "Versions" })).toBeInTheDocument();
+  },
+};
+
+export const PublishingTheDraftMakesOneVersionAndClearsTheNotice: Story = {
+  args: { api: draftedApi(), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("note", { name: "Draft" });
+    const save = canvas.getByRole("button", { name: "Save new version" });
+    await waitFor(() => expect(save).toBeEnabled(), { timeout: TEXT_CHECKED_MS });
+    await saveVersion(save, "Ready");
+    await waitFor(() => expect(args.api.publishDraft).toHaveBeenCalledWith("layout-1", { draft_revision: 3, comment: "Ready" }));
+    await expect(await body().findByText("Saved as version 3.")).toBeInTheDocument();
+    await expect(canvas.getByText("Version 3")).toBeInTheDocument();
+    await waitFor(() => expect(canvas.queryByRole("note", { name: "Draft" })).not.toBeInTheDocument());
+    await expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent("No draft");
+    // The draft already held the work: publishing writes nothing first.
+    await expect(args.api.writeDraft).not.toHaveBeenCalled();
+    await expect(args.api.save).not.toHaveBeenCalled();
+  },
+};
+
+/** Makes the next draft write find that Sam Rivera changed the draft (set inside a play: Storybook resets mocks between stories). */
+const conflictOnce = (api: ReportLayoutApi) => {
+  mocked(api.writeDraft).mockRejectedValueOnce(new ApiError(409, "The draft changed.", {
+    message: "The draft changed.", code: "draft_conflict", draft: { base_version: 2, revision: 5, updated_by: "user-2", updated_by_name: "Sam Rivera", updated_at: "2026-11-03T09:15:00Z" },
+  }));
+};
+
+export const ADraftChangedByAnotherEditorPausesAutosaveUntilYouChoose: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    conflictOnce(args.api);
+    const editor = await editorOf(canvasElement);
+    await typeAtEnd(editor, "Mine.");
+    const banner = await canvas.findByRole("alert", { name: "Someone else changed this draft" }, { timeout: TEXT_CHECKED_MS });
+    await expect(banner).toHaveTextContent("Sam Rivera changed the draft at");
+    await userEvent.keyboard(" More.");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await expect(args.api.writeDraft).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(banner).getByRole("button", { name: "Keep mine" }));
+    await waitFor(() => expect(args.api.writeDraft).toHaveBeenLastCalledWith(
+      "layout-1", expect.objectContaining({ revision: 5, base_version: 2 }),
+    ));
+    await waitFor(() => expect(canvas.queryByRole("alert", { name: "Someone else changed this draft" })).not.toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/));
+  },
+};
+
+export const LoadTheirChangesReopensTheLayoutOnTheirDraft: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary()], { stateful: false }), autosaveDelayMs: FAST_AUTOSAVE_MS },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    conflictOnce(args.api);
+    const editor = await editorOf(canvasElement);
+    const loads = mocked(args.api.get).mock.calls.length;
+    await typeAtEnd(editor, "Mine.");
+    const banner = await canvas.findByRole("alert", { name: "Someone else changed this draft" }, { timeout: TEXT_CHECKED_MS });
+    await userEvent.click(within(banner).getByRole("button", { name: "Load their changes" }));
+    await waitFor(() => expect(mocked(args.api.get).mock.calls.length).toBe(loads + 1));
+    await waitFor(() => expect(canvas.queryByRole("alert", { name: "Someone else changed this draft" })).not.toBeInTheDocument());
+    await expect((await editorOf(canvasElement)).value).toBe(LAYOUT_TEXT);
+  },
+};
+
+export const ASharedReadOnlyLayoutShowsNoDraftControls: Story = {
+  args: { api: buildLayoutApi([buildLayoutSummary({ editable: false, origin: "organization" })], { stateful: false, seedDraft: buildLayoutDraft() }) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await editorOf(canvasElement);
+    await expect(canvas.queryByRole("status", { name: STATUS })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("switch", { name: "Autosave drafts" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("note", { name: "Draft" })).not.toBeInTheDocument();
+    // A layout shared from elsewhere has no draft this scope may read, so none is fetched.
+    await expect(args.api.draft).not.toHaveBeenCalled();
   },
 };

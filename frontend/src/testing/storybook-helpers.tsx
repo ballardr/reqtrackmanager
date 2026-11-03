@@ -80,6 +80,7 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     name: "Atlas Platform",
     code: "ATLAS",
     summary: "Core platform requirements for the Atlas programme.",
+    report_name: null,
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-03-01T14:30:00Z",
     is_archived: false,

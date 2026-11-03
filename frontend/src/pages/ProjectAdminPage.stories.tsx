@@ -216,6 +216,37 @@ export const OverviewTabSaveSettings: Story = {
   },
 };
 
+/** The Project report name is a short, optional name: it is sent trimmed on save, a blank one clears it, and its help explains it. */
+export const OverviewTabProjectReportName: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", report_name: "Atlas", status_id: "st1" }),
+    });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const field = await waitFor(() => {
+      const input = canvas.getByLabelText("Project report name");
+      expect(input).toHaveValue("Atlas");
+      return input;
+    });
+    await expect(field).toHaveAttribute("maxlength", "255");
+    await expect(canvas.getByRole("button", { name: "Help: Project report name" })).toBeInTheDocument();
+    await userEvent.clear(field);
+    await userEvent.type(field, "  Atlas 2  ");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ report_name: "Atlas 2" })),
+    );
+    await userEvent.clear(field);
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenLastCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ report_name: null })),
+    );
+  },
+};
+
 /** Under automatic assignment the code is shown but cannot be edited, and is not sent on save. */
 export const OverviewTabCodeIsReadOnlyUnderAutomaticAssignment: Story = {
   beforeEach: () => {

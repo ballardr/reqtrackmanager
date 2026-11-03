@@ -450,7 +450,7 @@ class _Run:
         self.colours_used: dict[str, str] = {}
         self._block_families: dict[str, FontFamily] = {}
         self.placeholders: dict[str, str] = {
-            "project_name": ctx.scope_label, "report_title": title,
+            "project_name": ctx.scope_label, "project_report_name": ctx.scope_report_label, "report_title": title,
             "project_code": getattr(project, "code", "") or "", "project_description": getattr(project, "summary", "") or "",
             "generated_on": ctx.today.isoformat(), "organisation": ctx.organization.name,
             **(placeholders or {}),

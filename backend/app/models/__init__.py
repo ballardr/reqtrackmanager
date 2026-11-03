@@ -58,7 +58,7 @@ from app.models.record_policy import OrganizationRecordSensitivityOverride, Serv
 from app.models.relationship import ArtefactLink
 from app.models.report_folder import ReportFolder
 from app.models.report_font import ServerReportFont
-from app.models.report_layout import ReportLayout, ReportLayoutVersion
+from app.models.report_layout import ReportLayout, ReportLayoutDraft, ReportLayoutVersion
 from app.models.report_pack import ReportPack, ReportPackSetOverride, ReportPackVariableSet, ReportPackVersion
 from app.models.report_placement import ReportPlacement
 from app.models.report_snippet import SavedReportSnippet
@@ -114,6 +114,7 @@ __all__ = [
     "OrgGroupMember",
     "PendingInvite",
     "ReportLayout",
+    "ReportLayoutDraft",
     "ReportLayoutVersion",
     "ReportPack",
     "SavedReportSnippet",

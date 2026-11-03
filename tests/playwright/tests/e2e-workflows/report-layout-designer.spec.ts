@@ -116,9 +116,9 @@ test.describe("Report layout designer", () => {
       await expect(inspector.getByText("Select a block to edit its settings.")).toBeVisible();
       await expect(page.getByText("Adding at the end of the layout")).toBeVisible();
       // The how-to paragraph is not on the canvas; the (?) beside Add block opens it, and Escape closes it.
-      await expect(page.getByText(/Drag blocks on the canvas/)).toHaveCount(0);
+      await expect(page.getByText(/Drag a block on the canvas/)).toHaveCount(0);
       await page.getByRole("button", { name: "Help: Using the block editor" }).focus();
-      await expect(page.getByRole("tooltip")).toContainText("Drag blocks on the canvas");
+      await expect(page.getByRole("tooltip")).toContainText("Drag a block on the canvas");
       await page.keyboard.press("Escape");
       await expect(page.getByRole("tooltip")).toHaveCount(0);
       await expect(page.locator(".blocklyToolboxFlyout, .blocklyFlyout").first()).toBeHidden();
@@ -305,7 +305,7 @@ test.describe("Report layout designer", () => {
     await createFromProjectAdmin(page, project.id, `E2E labelled layout ${suffix}`);
     await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
-    const label = `Open Requirements ${suffix}`;
+    const label = "Open Requirements"; // short: the block's summary line truncates a long label with an ellipsis
 
     await test.step("a hyphenated name and a label with capitals and spaces are typed and accepted", async () => {
       await editor.fill(
@@ -368,9 +368,11 @@ test.describe("Report layout designer", () => {
       await expect(inspector.getByRole("combobox", { name: "Records come from" }).locator("option:checked")).toHaveText("All records of a type");
     });
 
-    await test.step("the text view shows the group source the new table was given", async () => {
-      await page.getByRole("tab", { name: "Text" }).click();
-      await expect(editor).toHaveValue(/@group requirement by status as by-status\n\s+@table in by-status/);
+    await test.step("selecting the table inside the group again shows it kept the group source", async () => {
+      await page.locator(".blocklyText.rl-block-title", { hasText: "Table (records)" }).first().click();
+      const inspector = page.getByLabel("Block details");
+      await expect(inspector.getByRole("combobox", { name: "Records come from" })).toHaveValue("group");
+      await expect(inspector.getByRole("combobox", { name: "Group" })).toHaveValue("by-status");
       expect(requirements.length).toBeGreaterThan(0);
     });
   });

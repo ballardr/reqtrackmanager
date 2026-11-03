@@ -86,9 +86,9 @@ test.describe("Organisation Reports page", () => {
     await test.step("reports follow the UI accent until they are given their own", async () => {
       const own = page.getByRole("checkbox", { name: "Give reports their own accent colour" });
       await expect(own).not.toBeChecked();
-      await expect(page.getByLabel("Report accent colour")).toHaveCount(0);
+      await expect(page.getByLabel("Report accent colour", { exact: true })).toHaveCount(0);
       await own.check();
-      await expect(page.getByLabel("Report accent colour")).toBeVisible();
+      await expect(page.getByLabel("Report accent colour", { exact: true })).toBeVisible();
       await page.getByRole("checkbox", { name: /^Include .* logo$/ }).uncheck();
       await page.getByRole("button", { name: "Save branding" }).click();
       await expect(page.getByText("Branding saved")).toBeVisible();

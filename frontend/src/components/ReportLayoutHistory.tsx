@@ -7,21 +7,25 @@
  * - List versions newest first with their note and time.
  * - Compare two versions through their text views (`ReportLayoutApi.formatTree`, so the comparison reads the way
  *   the author writes), marking added and removed lines with a sign as well as a colour.
- * - For an editable layout, put an old version's text in the editor (`onUseVersion`); nothing is saved until the
- *   author saves, which creates a new version, so history is never rewritten.
+ * - For an editable layout, put an old version's text in the editor (`onUseVersion`); nothing is published until the
+ *   author saves a new version, so history is never rewritten.
+ * - While the layout has a shared draft, show it as a Draft row above the published versions (`LayoutDraftNotice`), so unpublished
+ *   work is never mistaken for a version.
  *
  * Design decisions: the diff is computed in the browser (`utils/reportLayoutText.diffLines`) from two ordinary
  * reads, so no comparison endpoint is needed; versions are immutable, so a loaded text is cached by number.
  */
 import { useCallback, useRef, useState } from "react";
 
-import type { ReportLayoutApi, ReportLayoutVersionSummary } from "../api/reportLayouts";
+import type { ReportLayoutApi, ReportLayoutDraftSummary, ReportLayoutVersionSummary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { diffLines, type DiffLine } from "../utils/reportLayoutText";
 import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { LabeledSelect } from "./LabeledSelect";
+import { LayoutDiff } from "./LayoutDiff";
+import { LayoutDraftNotice } from "./LayoutDraftNotice";
 import { Spinner } from "./Spinner";
 
 /**
@@ -29,14 +33,16 @@ import { Spinner } from "./Spinner";
  * @param layoutId The layout.
  * @param currentVersion The layout's latest version; a change reloads the list.
  * @param onUseVersion Puts a version's text in the editor; omit it for a read-only layout.
+ * @param draft The layout's shared draft, when it has one, and the action that discards it (omit `onDiscard` for a reader).
  */
 export function ReportLayoutHistory({
-  api, layoutId, currentVersion, onUseVersion,
+  api, layoutId, currentVersion, onUseVersion, draft,
 }: {
   api: ReportLayoutApi;
   layoutId: string;
   currentVersion: number;
   onUseVersion?: (version: number, text: string) => void;
+  draft?: { summary: ReportLayoutDraftSummary; onDiscard?: () => void } | null;
 }) {
   const text = useStrings().reportLayouts;
   const [versions, setVersions] = useState<ReportLayoutVersionSummary[] | null>(null);
@@ -120,6 +126,7 @@ export function ReportLayoutHistory({
   return (
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{text.historyHint}</p>
+      {draft && <LayoutDraftNotice summary={draft.summary} currentVersion={currentVersion} onDiscard={draft.onDiscard} />}
       <DirectoryTable ariaLabel={text.historyListLabel} columns={columns} rows={versions} rowKey={(v) => String(v.version)} emptyState={null} />
       {versions.length > 1 && from !== null && to !== null && (
         <div className="row" style={{ alignItems: "flex-end" }}>
@@ -132,15 +139,7 @@ export function ReportLayoutHistory({
       {failed && <div role="alert" style={{ color: "var(--color-danger)" }}>{failed}</div>}
       {diff && !changed && <p className="text-muted">{text.compareIdentical}</p>}
       {diff && changed && (
-        <pre className="layout-diff" aria-label={text.diffLabel}>
-          {diff.map((line, index) => (
-            <span key={index} className={`layout-diff-line${line.kind === "same" ? "" : ` layout-diff-line--${line.kind}`}`}>
-              <span className="sr-only">{line.kind === "add" ? text.compareAdded : line.kind === "remove" ? text.compareRemoved : ""}</span>
-              {line.kind === "add" ? "+ " : line.kind === "remove" ? "- " : "  "}
-              {line.text}
-            </span>
-          ))}
-        </pre>
+        <LayoutDiff diff={diff} label={text.diffLabel} />
       )}
     </div>
   );

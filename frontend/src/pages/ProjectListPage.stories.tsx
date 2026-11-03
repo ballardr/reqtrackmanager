@@ -296,6 +296,27 @@ export const CreateProjectShowsToast: Story = {
   },
 };
 
+/** The create form takes the Project report name too (with its help); it is sent only when filled in. */
+export const CreateProjectTakesAReportName: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await expect(within(dialog).getByRole("button", { name: "Help: Project report name" })).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText("Name"), "A Programme With A Long Name");
+    await userEvent.type(within(dialog).getByLabelText("Project report name"), "Programme");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ report_name: "Programme" })),
+    );
+  },
+};
+
 /** Cancelling the modal creates nothing and leaves the list untouched. */
 export const CreateProjectModalCancel: Story = {
   beforeEach: () => {

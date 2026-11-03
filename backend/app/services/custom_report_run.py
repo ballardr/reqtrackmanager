@@ -115,6 +115,7 @@ from app.services.report_model import (
     Table,
     contents_sheet,
     linked,
+    project_report_label,
 )
 from app.services.report_render import RenderedFile, RenderInput, formats_for, render
 from app.services.report_running import apply_default_bands
@@ -208,6 +209,11 @@ class LayoutRun:
     def scope_label(self) -> str:
         """The name printed as the report's scope."""
         return self.root_project.name if self.root_project is not None else self.organization.name
+
+    @property
+    def scope_report_label(self) -> str:
+        """The label `{{project_report_name}}` prints: the root project's report name when set, else `scope_label`."""
+        return project_report_label(self.root_project, self.scope_label)
 
     @property
     def family(self) -> str:
@@ -600,7 +606,8 @@ def file_values(run: LayoutRun, extension: str) -> tuple[dict[str, str], dict[st
         code is empty in an organisation-wide run (it has no single project).
     """
     plain = {
-        "report_title": run.layout.name, "project_name": run.scope_label, "organisation": run.organization.name,
+        "report_title": run.layout.name, "project_name": run.scope_label, "project_report_name": run.scope_report_label,
+        "organisation": run.organization.name,
         "project_code": (run.root_project.code if run.root_project is not None else "") or "",
         "generated_on": run.today.isoformat(), "layout_version": str(run.version.version), "format": extension,
     }

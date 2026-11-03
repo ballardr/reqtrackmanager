@@ -1281,6 +1281,18 @@ flowchart LR
   `table`; `current_version`) and `report_layout_versions` (immutable tree, SHA-256 `tree_hash`, comment). Saving appends a
   version through `services.report_layouts.save_version`, which refuses a save based on a stale version
   (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
+- **Drafts.** `report_layout_drafts` holds at most one mutable, shared working copy per layout (unique `layout_id`, removed with the
+  layout): the tree only, its hash, the `base_version` it started from, a `revision` that rises with every write, and who and when.
+  It may be invalid (it is checked when published, as a save is; `GET .../{id}/draft` returns the `problems`), a tree equal to the
+  saved version is not kept, and only its size is bounded (`MAX_TREE_BYTES`). `PUT .../{id}/draft` `{tree, base_version, revision}`
+  autosaves (409 `draft_conflict` naming who, when `revision` is stale; 409 when a new draft is based on an old version),
+  `DELETE .../{id}/draft` discards (audited), and `PUT .../{id}/tree` with `from_draft` (and optionally `draft_revision`) publishes the
+  draft as the next version and removes it in one transaction; a failed publish keeps the draft. The layout detail carries a
+  `draft` summary (who, when, `base_version`, `revision`, never the tree), also for MCP `get_report_layout`. A project reaches only its
+  own layouts' drafts. No run, list, pack, copy, duplicate or bundle reads a draft; autosaves are not audited event by event.
+  The designer (`useLayoutDraft`) opens on the draft, writes the active view's tree a few seconds after editing pauses (a per-person
+  `report_designer_autosave` preference; off: Save draft), numbers its writes by `revision`, and publishes with `from_draft` after
+  writing what is pending. The text view, untouched, is never written back, so opening a layout cannot create a draft.
 - **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, header?, footer?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
   `table`, `grid`, `each`, `group`, `if`, `page_break`, `spacer`, `bottom`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
@@ -1353,7 +1365,8 @@ flowchart LR
 - **Sheets (table family).** A `sheet` is a root source plus up to five left `joins` along links
   (`{as, source: {record_type, linked_from}}`); a column names the record it reads with `from`. One row per
   combination, blank cells where nothing is linked, so nothing drops out of an export.
-- **Placeholders.** `{{alias.field}}` and the global `{{project_name}}`, `{{report_title}}`, `{{generated_on}}`,
+- **Placeholders.** `{{alias.field}}` and the global `{{project_name}}`, `{{project_report_name}}`
+  (the project's optional short Project report name, else `{{project_name}}`'s value), `{{report_title}}`, `{{generated_on}}`,
   `{{organisation}}`. They are validated at save time against the field registry and the aliases in scope, and
   substituted into already-parsed blocks at run time, so a record value can never become Markdown or a placeholder.
 - **Names and labels.** An alias is lower-case letters, digits, underscores and single hyphens (never trailing),
@@ -1651,7 +1664,7 @@ flowchart LR
 - **Text view tools.** `ReportLayoutBlockToolbar` is an icon button per block (headings by level) with tooltips;
   `ReportLayoutPageSetup` opens the Page setup dialog (paper, orientation, margins, mirrored margins, page styles) and writes
   them into the `@layout document [landscape] [size] [mirror] [margins …]` line and one `@pagestyle` line per style (§4g, "Page styles"); `ReportLayoutFieldPicker` is one searchable list of the report and project
-  placeholders (`PLACEHOLDER_NAMES`: `project_name`, `project_code`, `project_description`, `report_title`, `generated_on`,
+  placeholders (`PLACEHOLDER_NAMES`: `project_name`, `project_report_name`, `project_code`, `project_description`, `report_title`, `generated_on`,
   `organisation`) and the fields of every name in scope; `SaveVersionButton` asks for the note in a popover. The page size
   reaches `ReportDocument.page_size` and every renderer through `report_model.page_dimensions_cm`.
 - **Page styles.** A document layout's own pages are `page_size` (A4 when absent), `orientation` and `margins`
@@ -2015,7 +2028,7 @@ flowchart TD
   reports and the record-list report; in the organisation bundle).
 - **Order.** Layout: its `file_name`, else the organisation's, else `<scope>-<layout>`. Pack zip: its `file_name`, else the
   organisation's, else `<scope>-<pack>`. Pack entry: its `filename`, else the layout's `file_name`, else the layout name.
-- **Placeholders.** `report_title`, `project_name`, `project_code`, `organisation`, `generated_on` (the caller's own day: the
+- **Placeholders.** `report_title`, `project_name`, `project_report_name`, `project_code`, `organisation`, `generated_on` (the caller's own day: the
   run records `LayoutRun.today` from `effective_today()`), `layout_version`, `format` and `var.<name>`. The organisation
   default has no `layout_version` and no variables. A record field is refused at save: a file has no current record (the
   record-image name rule, which has one, shares the syntax).

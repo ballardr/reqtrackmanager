@@ -214,7 +214,7 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
     ),
     BlockField(
         "header", "Header", "running_band",
-        help="Text printed at the top of every page, in a left, centre and right cell: {{report_title}}, {{project_code}}, "
+        help="Text printed at the top of every page, in a left, centre and right cell: {{report_title}}, {{project_report_name}}, "
         "{{page}}, the organisation's {{org.footer_text}} and so on; a logo may be the organisation's own (org_logo). "
         "Each cell fits its text unless given a width (left_width, centre_width, right_width: \"25%\" or \"4 cm\"); the cells sit at "
         "the top unless valign (top, middle, bottom) or left_valign, centre_valign, right_valign says otherwise. "
@@ -230,8 +230,9 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
     BlockField(
         "file_name", "File name", "file_name", max_length=200,
         help="What a downloaded or stored copy of this report is called, without the extension, for example "
-        "{{project_code}}-{{report_title}}-{{generated_on}}. It may use {{report_title}}, {{project_name}}, {{project_code}}, "
-        "{{organisation}}, {{generated_on}}, {{layout_version}}, {{format}} and {{var.name}} for a variable. "
+        "{{project_code}}-{{report_title}}-{{generated_on}}. It may use {{report_title}}, {{project_name}}, "
+        "{{project_report_name}}, {{project_code}}, {{organisation}}, {{generated_on}}, {{layout_version}}, {{format}} and "
+        "{{var.name}} for a variable. "
         "Left empty, the organisation's default name applies.",
     ),
     BlockField(

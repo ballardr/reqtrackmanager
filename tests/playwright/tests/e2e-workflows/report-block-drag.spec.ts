@@ -53,12 +53,13 @@ test.describe("Report layout block drag", () => {
 
     await test.step("dragging the Spacer below the Heading leaves the Heading where it was", async () => {
       const grab = (await title("Spacer").boundingBox())!;
-      const below = (await title("Heading 1").boundingBox())!;
+      const below = (await title("Heading").boundingBox())!;
       await page.mouse.move(grab.x + 4, grab.y + grab.height / 2);
       await page.mouse.down();
       // Blockly starts a drag after a few pixels of movement; step so it sees a drag, not a click.
       await page.mouse.move(grab.x + 20, grab.y + 20, { steps: 5 });
-      await page.mouse.move(below.x + 4, below.y + below.height + 20, { steps: 15 });
+      // Once the Spacer is lifted out the Heading closes up into the Spacer's place, so aim just below where it will be.
+      await page.mouse.move(below.x + 4, grab.y + below.height + 20, { steps: 15 });
       await page.mouse.up();
     });
 

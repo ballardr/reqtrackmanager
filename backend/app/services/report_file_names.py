@@ -37,7 +37,7 @@ from collections.abc import Collection, Mapping
 from typing import Any
 
 from app.services.client_date import effective_today
-from app.services.report_model import PLACEHOLDER_RE
+from app.services.report_model import PLACEHOLDER_RE, project_report_label
 from app.services.report_variables import PLACEHOLDER_FAMILY
 
 #: Longest template an author may save.
@@ -48,11 +48,12 @@ MAX_STEM_CHARS = 100
 MAX_VALUE_CHARS = 40
 #: Placeholders a layout, a pack or a pack entry may use: the run facts, plus `{{var.name}}`.
 FILE_NAME_PLACEHOLDERS: tuple[str, ...] = (
-    "report_title", "project_name", "project_code", "organisation", "generated_on", "layout_version", "format",
+    "report_title", "project_name", "project_report_name", "project_code", "organisation", "generated_on", "layout_version",
+    "format",
 )
 #: Placeholders the organisation's default may use: no layout version and no variables, since it names every report.
 ORG_FILE_NAME_PLACEHOLDERS: tuple[str, ...] = (
-    "report_title", "project_name", "project_code", "organisation", "generated_on", "format",
+    "report_title", "project_name", "project_report_name", "project_code", "organisation", "generated_on", "format",
 )
 _BAD = re.compile(r"[^A-Za-z0-9 ._-]")
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$", re.IGNORECASE)
@@ -164,6 +165,7 @@ def org_default_stem(
     """
     plain = {
         "report_title": title, "project_name": project.name if project is not None else organization.name,
+        "project_report_name": project_report_label(project, project.name if project is not None else organization.name),
         "organisation": organization.name, "project_code": (project.code if project is not None else "") or "",
         "generated_on": effective_today().isoformat(), "format": extension,
     }
@@ -223,7 +225,8 @@ def example(
 def sample_values(*, format_name: str = "pdf") -> dict[str, str]:
     """Example values for the designer's live example (nothing from a real project)."""
     return {
-        "report_title": "Quarterly review", "project_name": "Apollo", "project_code": "ACME", "organisation": "Acme Ltd",
+        "report_title": "Quarterly review", "project_name": "Apollo", "project_report_name": "APL",
+        "project_code": "ACME", "organisation": "Acme Ltd",
         "generated_on": "2026-10-29", "layout_version": "3", "format": format_name,
     }
 

@@ -8,6 +8,8 @@ Responsibilities:
 - `ReportLayout`: the named, owned definition (organisation- or project-level) and a pointer to its
   latest version.
 - `ReportLayoutVersion`: one immutable saved tree. Editing a layout appends a version; a run pins one.
+- `ReportLayoutDraft`: the one shared, mutable working copy of a layout's tree that the designer autosaves into;
+  publishing it appends a version and removes it.
 
 Design decisions:
 - A layout is configuration, not an artefact type: no `PREFIX-nnn` code, not linkable, not searched.
@@ -17,6 +19,9 @@ Design decisions:
   canonical JSON, so an unchanged save is detected and a run can record exactly what it used.
 - A version row is never updated; an ORM-level guard refuses it so a later change cannot rewrite
   history that a provenance row points at.
+- A draft is the opposite of a version: one row per layout (unique `layout_id`), rewritten on every autosave, with a
+  `revision` counter so two editors cannot overwrite each other silently. It holds the tree only, may be invalid, and is
+  never read by a run, pack, copy or bundle.
 - Name uniqueness is per owner (two partial unique indexes, as for link types).
 """
 
@@ -117,6 +122,34 @@ class ReportLayoutVersion(UUIDPKMixin, Base):
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReportLayoutDraft(UUIDPKMixin, Base):
+    """The shared working copy of a layout: what the designer autosaves until someone publishes a version.
+
+    Attributes:
+        layout_id: The layout (at most one draft each; deleting the layout deletes the draft).
+        tree: The tree as last autosaved; it may not pass validation.
+        tree_hash: SHA-256 hex of the canonical JSON of `tree`.
+        base_version: The layout version the draft was started from; publishing it is refused once the layout has moved on.
+        revision: 1 on creation, +1 on every write; an editor names the revision it loaded so a concurrent write is detected.
+        updated_by: Who last wrote it, `None` once that user is deleted.
+        updated_at: When last written (UTC).
+    """
+
+    __tablename__ = "report_layout_drafts"
+
+    layout_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("report_layouts.id", ondelete="CASCADE"), unique=True
+    )
+    tree: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    tree_hash: Mapped[str] = mapped_column(String(64))
+    base_version: Mapped[int] = mapped_column(Integer)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 @event.listens_for(ReportLayoutVersion, "before_update")

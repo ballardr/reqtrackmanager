@@ -22,10 +22,11 @@ import { Popover } from "./Popover";
  * @param disabled Whether the editor has nothing valid to save.
  * @param saving Whether a save is under way.
  * @param onSave Saves with the (trimmed) note; resolves to `true` when the version was stored.
+ * @param title A tooltip saying what saving does here (the designer: it publishes the draft).
  */
 export function SaveVersionButton({
-  disabled, saving, onSave,
-}: { disabled: boolean; saving: boolean; onSave: (note: string) => Promise<boolean> }) {
+  disabled, saving, onSave, title,
+}: { disabled: boolean; saving: boolean; onSave: (note: string) => Promise<boolean>; title?: string }) {
   const text = useStrings().saveVersion;
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -40,7 +41,7 @@ export function SaveVersionButton({
 
   return (
     <>
-      <button ref={anchor} type="button" className="btn btn-primary" disabled={disabled || saving} aria-haspopup="dialog" onClick={() => setOpen(true)}>
+      <button ref={anchor} type="button" className="btn btn-primary" disabled={disabled || saving} title={title} aria-haspopup="dialog" onClick={() => setOpen(true)}>
         {text.button}
       </button>
       {open && (

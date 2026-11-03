@@ -4,7 +4,7 @@ Module: routers.report_layouts
 Custom report layouts at the two tiers (`services.report_layouts`, `services.report_layout_scope`):
 
 - Organisation: `/api/v1/orgs/{organization_id}/report-layouts` (list, create, read, versions, save a
-  version, rename, delete).
+  version, the shared draft, rename, delete).
 - Project: `/api/v1/projects/{project_id}/report-layouts`, the same, plus `PUT .../{id}/visibility` to hide
   or show an inherited layout and `POST .../restore` to show every hidden one.
 
@@ -13,6 +13,10 @@ tree or writes needs the matching manage permission (`manage_org_report_layouts`
 `manage_project_report_layouts`; `services.rbac`). A project's list is its *effective* set (own, ancestors',
 organisation's, de-duplicated by name); an inherited layout can be read by a project manager but only
 changed where it is owned. Running a layout is a later endpoint and needs neither permission.
+
+`GET|PUT|DELETE .../{id}/draft` read, autosave and discard the layout's one shared draft (`services.report_layouts`); the save
+endpoint takes `from_draft` to publish it as the next version. They need the same manage permission, a project reaches only its
+own layouts' drafts, and the tree is never logged. No run, list, copy or bundle reads a draft.
 
 `POST .../text/parse` and `.../text/format` convert between a tree and its text view
 (`services.report_layout_text`) for the designer; they store nothing, need the manage permission and never
@@ -42,10 +46,11 @@ from app.database import get_db
 from app.models.enums import OrgRole
 from app.models.organization import Organization
 from app.models.project import Project
-from app.models.report_layout import ReportLayout, ReportLayoutVersion
+from app.models.report_layout import ReportLayout, ReportLayoutDraft, ReportLayoutVersion
 from app.models.user import User
 from app.routers.custom_reports import guard_run
 from app.schemas.report_layout import (
+    LayoutErrorOut,
     ReportBlockCatalogueOut,
     ReportBlockContainerOut,
     ReportBlockFieldOut,
@@ -58,7 +63,11 @@ from app.schemas.report_layout import (
     ReportLayoutColoursOut,
     ReportLayoutCreate,
     ReportLayoutDetailOut,
+    ReportLayoutDraftOut,
+    ReportLayoutDraftSavedOut,
+    ReportLayoutDraftSummaryOut,
     ReportLayoutDraftVariablesOut,
+    ReportLayoutDraftWrite,
     ReportLayoutOut,
     ReportLayoutPreviewDownloadRequest,
     ReportLayoutPreviewOut,
@@ -149,12 +158,31 @@ def _version_out(version: ReportLayoutVersion) -> ReportLayoutVersionOut:
     )
 
 
+def _draft_summary(db: Session, draft: ReportLayoutDraft) -> ReportLayoutDraftSummaryOut:
+    """Who holds the draft and since when (no tree)."""
+    author = db.get(User, draft.updated_by) if draft.updated_by is not None else None
+    return ReportLayoutDraftSummaryOut(
+        base_version=draft.base_version, revision=draft.revision, updated_by=draft.updated_by,
+        updated_by_name=author.display_name if author is not None else None, updated_at=draft.updated_at,
+    )
+
+
+def _draft_out(db: Session, layout: ReportLayout, draft: ReportLayoutDraft) -> ReportLayoutDraftOut:
+    """The draft with its tree and why it could not be published now."""
+    return ReportLayoutDraftOut(
+        **_draft_summary(db, draft).model_dump(), tree=draft.tree, tree_hash=draft.tree_hash,
+        problems=[LayoutErrorOut(path=e.path, message=e.message) for e in report_layouts.draft_problems(db, layout, draft)],
+    )
+
+
 def _detail(db: Session, layout: ReportLayout, origin: Origin, *, hidden: bool = False, editable: bool = True) -> ReportLayoutDetailOut:
+    """A layout with its current tree; the draft summary only for a scope that owns the layout (an inherited one's is not its business)."""
     current = report_layouts.get_version(db, layout.id, layout.current_version)
     assert current is not None  # a layout always has its current version
+    draft = report_layouts.get_draft(db, layout.id) if editable else None
     return ReportLayoutDetailOut(
         **_summary(layout, origin, hidden=hidden, editable=editable).model_dump(), current=_version_out(current),
-        warnings=font_warnings(db, current.tree),
+        warnings=font_warnings(db, current.tree), draft=_draft_summary(db, draft) if draft is not None else None,
     )
 
 
@@ -400,15 +428,68 @@ def _create(db: Session, user: User, body: ReportLayoutCreate, *, organization_i
     return saved.layout
 
 
+def _draft_conflict(db: Session, exc: report_layouts.DraftConflictError) -> HTTPException:
+    """409 naming who holds the draft now (`draft` is null when it was published or discarded)."""
+    return HTTPException(
+        status.HTTP_409_CONFLICT,
+        {"message": str(exc), "code": "draft_conflict", "draft": _draft_summary(db, exc.draft).model_dump(mode="json") if exc.draft else None},
+    )
+
+
 def _save(db: Session, user: User, layout: ReportLayout, body: ReportLayoutSave) -> ReportLayout:
+    """Saves a version of the body's tree, or publishes the shared draft."""
     try:
-        report_layouts.save_version(db, layout.id, body.tree, base_version=body.base_version, actor_id=user.id, comment=body.comment)
+        if body.from_draft:
+            report_layouts.publish_draft(db, layout.id, revision=body.draft_revision, actor_id=user.id, comment=body.comment)
+        else:
+            assert body.tree is not None and body.base_version is not None  # the schema guarantees both
+            report_layouts.save_version(db, layout.id, body.tree, base_version=body.base_version, actor_id=user.id, comment=body.comment)
+    except report_layouts.DraftConflictError as exc:
+        db.rollback()
+        raise _draft_conflict(db, exc) from exc
+    except LookupError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The layout has no draft.") from exc
     except (ValueError, InvalidLayoutError) as exc:
         db.rollback()
         raise _bad_request(exc) from exc
     db.commit()
     db.refresh(layout)
     return layout
+
+
+def _get_draft(db: Session, layout: ReportLayout) -> ReportLayoutDraftOut:
+    """The layout's draft, else 404."""
+    draft = report_layouts.get_draft(db, layout.id)
+    if draft is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The layout has no draft.")
+    return _draft_out(db, layout, draft)
+
+
+def _put_draft(db: Session, user: User, layout: ReportLayout, body: ReportLayoutDraftWrite) -> ReportLayoutDraftSavedOut:
+    """Autosaves the tree into the shared draft (not audited, the tree not logged)."""
+    try:
+        draft = report_layouts.write_draft(
+            db, layout.id, body.tree, base_version=body.base_version, revision=body.revision, actor_id=user.id,
+        )
+    except report_layouts.DraftConflictError as exc:
+        db.rollback()
+        raise _draft_conflict(db, exc) from exc
+    except (ValueError, InvalidLayoutError) as exc:
+        db.rollback()
+        raise _bad_request(exc) from exc
+    db.commit()
+    return ReportLayoutDraftSavedOut(draft=_draft_out(db, layout, draft) if draft is not None else None)
+
+
+def _discard_draft(db: Session, user: User, layout: ReportLayout) -> None:
+    """Discards the shared draft (audited), else 404."""
+    try:
+        report_layouts.discard_draft(db, layout.id, actor_id=user.id)
+    except LookupError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "The layout has no draft.") from exc
+    db.commit()
 
 
 def _update(db: Session, user: User, layout: ReportLayout, body: ReportLayoutUpdate) -> ReportLayout:
@@ -686,6 +767,38 @@ def get_org_layout_version(
     return _one_version(db, _get_owned(db, layout_id, organization_id=organization_id, project_id=None), version)
 
 
+@org_router.get("/{layout_id}/draft", response_model=ReportLayoutDraftOut)
+def get_org_layout_draft(
+    organization_id: UUID, layout_id: UUID,
+    current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutDraftOut:
+    """The layout's shared draft with its tree and why it could not be published now; 404 when there is none."""
+    return _get_draft(db, _get_owned(db, layout_id, organization_id=organization_id, project_id=None))
+
+
+@org_router.put("/{layout_id}/draft", response_model=ReportLayoutDraftSavedOut)
+def put_org_layout_draft(
+    organization_id: UUID, layout_id: UUID, body: ReportLayoutDraftWrite,
+    current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutDraftSavedOut:
+    """Autosaves the tree into the layout's shared draft; the draft may be invalid. `draft` is null when the tree equals the saved version.
+
+    Raises:
+        HTTPException: 409 the draft moved on from `revision` (`code` `draft_conflict`, naming who) or a new draft was based on
+            an old version; 422 a tree over the size limit or a bad base version.
+    """
+    return _put_draft(db, current_user, _get_owned(db, layout_id, organization_id=organization_id, project_id=None), body)
+
+
+@org_router.delete("/{layout_id}/draft", status_code=status.HTTP_204_NO_CONTENT)
+def discard_org_layout_draft(
+    organization_id: UUID, layout_id: UUID,
+    current_user: User = Depends(manage_org_layouts), db: Session = Depends(get_db),
+) -> None:
+    """Discards the layout's shared draft, back to the latest saved version; 404 when there is none."""
+    _discard_draft(db, current_user, _get_owned(db, layout_id, organization_id=organization_id, project_id=None))
+
+
 @org_router.put("/{layout_id}/tree", response_model=ReportLayoutDetailOut)
 def save_org_layout(
     organization_id: UUID, layout_id: UUID, body: ReportLayoutSave,
@@ -694,7 +807,8 @@ def save_org_layout(
     """Saves a new version of the layout (nothing is stored when the tree is unchanged).
 
     Raises:
-        HTTPException: 422 an invalid tree; 409 the layout moved on from `base_version`.
+        HTTPException: 422 an invalid tree; 409 the layout moved on from `base_version`; with `from_draft`, 404 no draft
+            and 409 `draft_conflict` when the draft was written since `draft_revision`.
     """
     layout = _get_owned(db, layout_id, organization_id=organization_id, project_id=None)
     return _detail(db, _save(db, current_user, layout, body), "organization")
@@ -965,6 +1079,38 @@ def get_project_layout_version(
     return _one_version(db, _reachable(db, _project_or_404(db, project_id), layout_id).layout, version)
 
 
+@project_router.get("/{layout_id}/draft", response_model=ReportLayoutDraftOut)
+def get_project_layout_draft(
+    project_id: UUID, layout_id: UUID,
+    current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutDraftOut:
+    """The project's own layout's shared draft; 403 for an inherited layout, 404 when there is none."""
+    return _get_draft(db, _own(db, _project_or_404(db, project_id), layout_id))
+
+
+@project_router.put("/{layout_id}/draft", response_model=ReportLayoutDraftSavedOut)
+def put_project_layout_draft(
+    project_id: UUID, layout_id: UUID, body: ReportLayoutDraftWrite,
+    current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> ReportLayoutDraftSavedOut:
+    """Autosaves the tree into the project's own layout's shared draft; the draft may be invalid.
+
+    Raises:
+        HTTPException: 403 an inherited layout; 409 the draft moved on from `revision` or a new draft was based on an old
+            version; 422 a tree over the size limit or a bad base version.
+    """
+    return _put_draft(db, current_user, _own(db, _project_or_404(db, project_id), layout_id), body)
+
+
+@project_router.delete("/{layout_id}/draft", status_code=status.HTTP_204_NO_CONTENT)
+def discard_project_layout_draft(
+    project_id: UUID, layout_id: UUID,
+    current_user: User = Depends(manage_project_layouts), db: Session = Depends(get_db),
+) -> None:
+    """Discards the project's own layout's shared draft; 403 for an inherited layout, 404 when there is none."""
+    _discard_draft(db, current_user, _own(db, _project_or_404(db, project_id), layout_id))
+
+
 @project_router.put("/{layout_id}/tree", response_model=ReportLayoutDetailOut)
 def save_project_layout(
     project_id: UUID, layout_id: UUID, body: ReportLayoutSave,
@@ -973,7 +1119,8 @@ def save_project_layout(
     """Saves a new version of the project's own layout.
 
     Raises:
-        HTTPException: 403 an inherited layout; 422 an invalid tree; 409 the layout moved on from `base_version`.
+        HTTPException: 403 an inherited layout; 422 an invalid tree; 409 the layout moved on from `base_version`; with
+            `from_draft`, 404 no draft and 409 `draft_conflict` when the draft was written since `draft_revision`.
     """
     layout = _own(db, _project_or_404(db, project_id), layout_id)
     return _detail(db, _save(db, current_user, layout, body), "project")

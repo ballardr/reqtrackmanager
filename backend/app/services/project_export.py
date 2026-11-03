@@ -504,7 +504,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         file_assets_by_id.update(module_file_assets)
 
     project_json = {
-        "source_name": project.name, "summary": project.summary,
+        "source_name": project.name, "summary": project.summary, "report_name": project.report_name,
         "allow_member_change_requests": project.allow_member_change_requests,
         "require_change_request_for_approved_links": project.require_change_request_for_approved_links,
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
@@ -631,6 +631,7 @@ def new_project_from_bundle_data(
     return Project(
         organization_id=organization_id, name=name, code=generate_project_code(db, organization_id, name),
         summary=summary if summary is not None else data.get("summary", ""),
+        report_name=data.get("report_name") or None,
         allow_member_change_requests=data.get("allow_member_change_requests", True),
         require_change_request_for_approved_links=data.get("require_change_request_for_approved_links", False),
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),

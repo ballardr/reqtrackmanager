@@ -107,9 +107,33 @@ export interface ReportLayoutVersion {
   created_at: string;
 }
 
-/** A layout with its current version (`ReportLayoutDetailOut`). */
+/** Who holds unpublished work on a layout, with no tree (`ReportLayoutDraftSummaryOut`). */
+export interface ReportLayoutDraftSummary {
+  /** The version the draft was started from; behind the layout's `current_version` when one was published since. */
+  base_version: number;
+  /** Changes with every write; a write or a publish names the one it saw. */
+  revision: number;
+  updated_by: string | null;
+  updated_by_name: string | null;
+  updated_at: string;
+}
+
+/** The shared draft with its tree (`ReportLayoutDraftOut`); the tree may be invalid, `problems` says why it cannot be published. */
+export interface ReportLayoutDraft extends ReportLayoutDraftSummary {
+  tree: ReportLayoutTree;
+  tree_hash: string;
+  problems: TreeProblem[];
+}
+
+/** The outcome of an autosave: the draft now stored, or `null` when the tree equals the saved version and none is kept. */
+export interface ReportLayoutDraftSaved {
+  draft: ReportLayoutDraft | null;
+}
+
+/** A layout with its current version (`ReportLayoutDetailOut`); `draft` is set only for a layout the asking scope owns. */
 export interface ReportLayoutDetail extends ReportLayoutSummary {
   current: ReportLayoutVersion;
+  draft?: ReportLayoutDraftSummary | null;
 }
 
 /** A version in the history list (`ReportLayoutVersionSummaryOut`). */
@@ -389,6 +413,14 @@ export interface ReportLayoutApi {
   versions(id: string): Promise<ReportLayoutVersionSummary[]>;
   version(id: string, version: number): Promise<ReportLayoutVersion>;
   save(id: string, body: { tree: ReportLayoutTree; base_version: number; comment?: string }): Promise<ReportLayoutDetail>;
+  /** The layout's shared draft with its tree (404 when there is none). */
+  draft(id: string): Promise<ReportLayoutDraft>;
+  /** Autosaves the editor's tree into the shared draft; `revision` is the one the editor last saw (`0`: none). A moved draft answers 409 (`draftConflict`). */
+  writeDraft(id: string, body: { tree: ReportLayoutTree; base_version: number; revision: number }): Promise<ReportLayoutDraftSaved>;
+  /** Discards the shared draft (the work in it is lost). */
+  discardDraft(id: string): Promise<void>;
+  /** Publishes the shared draft as the next version and removes it; `draft_revision` is the one the publisher saw. */
+  publishDraft(id: string, body: { draft_revision: number; comment?: string }): Promise<ReportLayoutDetail>;
   update(
     id: string, body: { name?: string; description?: string; folder?: string },
   ): Promise<ReportLayoutSummary>;
@@ -455,6 +487,10 @@ export function reportLayoutApi(scope: LayoutScope): ReportLayoutApi {
     versions: (id) => api.get<ReportLayoutVersionSummary[]>(`${base}/${id}/versions`),
     version: (id, version) => api.get<ReportLayoutVersion>(`${base}/${id}/versions/${version}`),
     save: (id, body) => api.put<ReportLayoutDetail>(`${base}/${id}/tree`, body),
+    draft: (id) => api.get<ReportLayoutDraft>(`${base}/${id}/draft`),
+    writeDraft: (id, body) => api.put<ReportLayoutDraftSaved>(`${base}/${id}/draft`, body),
+    discardDraft: (id) => api.delete<void>(`${base}/${id}/draft`),
+    publishDraft: (id, body) => api.put<ReportLayoutDetail>(`${base}/${id}/tree`, { from_draft: true, ...body }),
     update: (id, body) => api.patch<ReportLayoutSummary>(`${base}/${id}`, body),
     remove: (id) => api.delete<void>(`${base}/${id}`),
     parseText: (text) => api.post<TextParseResult>(`${base}/text/parse`, { text }),
@@ -497,6 +533,26 @@ export function conflictVersion(err: unknown): number | null {
     return typeof current === "number" ? current : null;
   }
   return null;
+}
+
+/** A draft without its tree and problems: what the designer keeps to word the notice and the status line. */
+export function draftSummary(draft: ReportLayoutDraftSummary): ReportLayoutDraftSummary {
+  return {
+    base_version: draft.base_version, revision: draft.revision, updated_by: draft.updated_by,
+    updated_by_name: draft.updated_by_name, updated_at: draft.updated_at,
+  };
+}
+
+/**
+ * What a rejected draft write or publish found: the draft as it stands now (`draft`, `null` when it was published or
+ * discarded meanwhile), or `undefined` when the error is not the draft-moved conflict.
+ */
+export function draftConflict(err: unknown): { draft: ReportLayoutDraftSummary | null } | undefined {
+  if (err instanceof ApiError && err.status === 409 && typeof err.detail === "object" && err.detail !== null) {
+    const detail = err.detail as { code?: unknown; draft?: unknown };
+    if (detail.code === "draft_conflict") return { draft: (detail.draft as ReportLayoutDraftSummary | null | undefined) ?? null };
+  }
+  return undefined;
 }
 
 /** The positioned validation problems of a rejected tree (the server's 422), empty when the error is not that. */

@@ -211,6 +211,7 @@ const en = {
     noTemplate: "None (blank {project})",
     name: "Name",
     code: "Code",
+    reportName: "{Project} report name",
     codeHint: (rule: string) => `Qualifies record codes, for example ${"ACME"}-REQ-001. ${rule}.`,
     codeEditHint: (rule: string) => `${rule}. Changing it breaks references that quote the old code.`,
     codeFixedHint: "Assigned automatically; your organisation administrator can change how codes are assigned.",
@@ -1766,6 +1767,55 @@ const en = {
     // consistency with the other admin-tier pages (docs/decisions.md).
     sectionsNav: "Server management sections",
   },
+  // The shared draft of a report layout (autosaved working copy; a version exists only once published).
+  layoutDraft: {
+    statusLabel: "Draft status",
+    none: "No draft",
+    saving: "Saving…",
+    savedAt: (time: string) => `Draft saved ${time}`,
+    notSaved: (reason: string) => `Not saved: ${reason}`,
+    reasonLine: (line: number) => `line ${line}`,
+    reasonJson: "the JSON is not valid",
+    reasonWrongKind: "the layout kind cannot change",
+    reasonOffline: "offline",
+    reasonError: "the server refused it",
+    notInDraft: "Changes not saved to a draft",
+    saveDraft: "Save draft",
+    draftSaveFailed: "The draft could not be saved.",
+    draftSavedToast: "Draft saved.",
+    discardChanges: "Discard changes",
+    discardChangesTitle: "Discard your changes?",
+    discardChangesMessage: (toDraft: boolean) =>
+      toDraft ? "The editor goes back to the last saved draft." : "The editor goes back to the latest saved version.",
+    changesDiscarded: "Changes discarded.",
+    autosaveLabel: "Autosave drafts",
+    // The notice on a layout that has a draft, and the draft row in History
+    noticeLabel: "Draft",
+    notice: (name: string, when: string, version: number) => `Draft from ${name}, ${when}, based on version ${version}.`,
+    noticeUnknownAuthor: "someone",
+    behind: (current: number) => `Version ${current} was saved since this draft began.`,
+    discardDraft: "Discard draft",
+    discardDraftTitle: "Discard this draft?",
+    discardDraftMessage: (version: number) => `The work in the draft is lost for everyone and the layout goes back to version ${version}. Published versions are not affected.`,
+    draftDiscarded: "Draft discarded.",
+    discardFailed: "The draft could not be discarded.",
+    showSaved: "Show saved version",
+    compareTitle: (version: number) => `Version ${version} compared with your draft`,
+    compareIdentical: "Your draft is identical to the saved version.",
+    compareFailed: "The comparison could not be loaded.",
+    compareDiffLabel: "Changes from the saved version to your draft",
+    // Someone else changed the draft
+    conflictTitle: "Someone else changed this draft",
+    conflict: (name: string, when: string) => `${name} changed the draft at ${when}. Autosave is paused until you choose.`,
+    conflictGone: "The draft was published or discarded by someone else. Autosave is paused until you choose.",
+    loadTheirs: "Load their changes",
+    keepMine: "Keep mine",
+    loadTheirsFailed: "Their changes could not be loaded.",
+    // Publishing
+    publishTooltip: (version: number) => `Publishes the draft as version ${version}`,
+    publishFailed: "The draft could not be published.",
+    rebase: (version: number) => `Keep my text on version ${version}`,
+  },
   saveVersion: {
     button: "Save new version",
     title: "Save new version",
@@ -2831,10 +2881,10 @@ const en = {
       `This is a ${family} layout, so the first line must declare it as ${family} (a layout's kind cannot be changed).`,
     checking: "Checking…",
     conflict: (version: number) =>
-      `Someone saved version ${version} while you were editing. Reload to see it; your text is replaced.`,
+      `Someone saved version ${version} while you were editing. Reload to see it, or keep your text on top of it; saving then publishes your text as the next version.`,
     reload: "Reload latest",
     reloadTitle: "Replace your text with the latest version?",
-    reloadMessage: "Your unsaved changes will be lost.",
+    reloadMessage: "Your unsaved changes and the layout's draft will be lost.",
     leaveTitle: "Leave without saving?",
     leaveMessage: "Your changes to this layout have not been saved.",
     leaveConfirm: "Leave",
@@ -2887,7 +2937,7 @@ const en = {
     widgetPreview: "Inserts:",
     loadToolsFailed: "The field and widget lists could not be loaded.",
     // History
-    historyHint: "Every save is kept. Pick two versions to see what changed between them.",
+    historyHint: "Every published version is kept. Pick two versions to see what changed between them.",
     historyListLabel: "Versions",
     historyVersion: (version: number) => `Version ${version}`,
     historyCurrent: "current",
@@ -3395,6 +3445,8 @@ const en = {
     fieldPickerSummaryLimit: 3,
   },
   help: {
+    // Report layout designer
+    layoutAutosave: "Writes your changes to the layout's shared draft a few seconds after you stop editing, so nothing is lost. Turn it off to try changes out freely: nothing is stored until you press Save draft, and Discard changes puts the editor back. This setting is yours and applies to every layout.",
     // Server Management → Force a credential reset
     forceResetWho: "Everyone covers every account on the platform, including your own. A single organisation covers its members. Server administrators covers only the administrators of the whole platform.",
     forceResetOrganisation: "The organisation whose members must choose a new password. A person who belongs to several is affected everywhere.",
@@ -3428,6 +3480,7 @@ const en = {
     searchDefaultFields: "Which fields the header search and a new search look in. ID and Title are always included. You can still change the fields for any one search from the search page.",
     // Project and organisation codes
     orgCode: "A short code for this organisation, used to qualify the codes of organisation-level records (for example ACME-PER-001). Letters and digits only, and different from every project code.",
+    projectReportName: "Some reports use this short name in headers, footers and titles when it is set, so a long {project} name does not have to fit. Leave it blank to use the {project} name.",
     projectCode: "The short code that qualifies this {project}'s record codes outside it (for example ACME-REQ-001). It must be unique in the organisation and follow the organisation's code rules.",
     codeCharacters: "Which characters a project code may use: letters only, digits only, or both.",
     codeShortest: "The shortest a project code may be. The limits apply to codes set from now on; existing codes are never rewritten.",

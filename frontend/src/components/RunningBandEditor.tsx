@@ -39,7 +39,7 @@ import { ReportImageField } from "./ReportImageField";
 
 /** The placeholders a header or footer can name besides the layout's own variables. */
 export const BAND_PLACEHOLDERS = [
-  "report_title", "project_name", "project_code", "organisation", "generated_on", "layout_version", "org.footer_text", "page", "pages",
+  "report_title", "project_name", "project_report_name", "project_code", "organisation", "generated_on", "layout_version", "org.footer_text", "page", "pages",
 ] as const;
 
 /** Insert choices that are page fields, which exist only in a header or footer: the value is the choice, `snippet` what is written. */

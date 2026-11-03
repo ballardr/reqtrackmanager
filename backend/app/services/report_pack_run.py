@@ -66,6 +66,7 @@ from app.services.report_file_names import clean_filename, render_stem
 from app.services.report_framework import readable_projects
 from app.services.report_layout_eval import LayoutLimitError
 from app.services.report_layout_tree import record_types_of
+from app.services.report_model import project_report_label
 from app.services.report_module_run import (
     ModuleReportUnavailableError,
     find_report,
@@ -185,6 +186,11 @@ class PackRun:
         """The name printed as the pack's scope."""
         return self.project.name if self.project is not None else self.organization.name
 
+    @property
+    def scope_report_label(self) -> str:
+        """The label `{{project_report_name}}` prints: the project's report name when set, else `scope_label`."""
+        return project_report_label(self.project, self.scope_label)
+
 
 # --- variables ---------------------------------------------------------------------------------------------------
 
@@ -248,7 +254,9 @@ def _report_stem(
 ) -> str:
     """A module report entry's stem: its `filename` template filled with the run facts, else `fallback`."""
     plain = {
-        "report_title": title, "project_name": project.name if project else organization.name, "organisation": organization.name,
+        "report_title": title, "project_name": project.name if project else organization.name,
+        "project_report_name": project_report_label(project, project.name if project else organization.name),
+        "organisation": organization.name,
         "project_code": (project.code if project else "") or "", "generated_on": effective_today().isoformat(),
         "format": entry["format"],
     }
@@ -604,7 +612,8 @@ def zip_stem(run: PackRun) -> str:
     """The download name (without extension): the pack's `file_name` template, else the organisation's default, else
     scope then pack name, made safe. A template that fills in to nothing usable falls through to the next."""
     plain = {
-        "report_title": run.pack.name, "project_name": run.scope_label, "organisation": run.organization.name,
+        "report_title": run.pack.name, "project_name": run.scope_label, "project_report_name": run.scope_report_label,
+        "organisation": run.organization.name,
         "project_code": (run.project.code if run.project is not None else "") or "", "generated_on": run.today.isoformat(),
         "layout_version": str(run.version.version), "format": "zip",
     }

@@ -26,6 +26,7 @@ A **pack** has its own *Zip file name*; each report inside it is `NN-<name>.<ext
 | --- | --- |
 | `{{report_title}}` | The layout, pack or report title |
 | `{{project_name}}`, `{{project_code}}` | The project (the code is empty in an organisation-wide run) |
+| `{{project_report_name}}` | The project's [report name](./designing-a-layout.md#the-project-report-name) when it has one, else its name |
 | `{{organisation}}` | The organisation's name |
 | `{{generated_on}}` | The day the report was run, as **your own** calendar day (`2026-10-29`) |
 | `{{layout_version}}` | The layout version that ran (layouts and packs only) |

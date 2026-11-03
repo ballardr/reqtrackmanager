@@ -68,3 +68,21 @@ export const AFailedLoadIsReported: Story = {
     await expect(await within(canvasElement).findByRole("alert")).toHaveTextContent("Not allowed.");
   },
 };
+
+/** While the layout has a shared draft it is the first thing listed, apart from the published versions, with a way to discard it. */
+export const ListsTheDraftAboveThePublishedVersions: Story = {
+  args: {
+    draft: {
+      summary: { base_version: 2, revision: 3, updated_by: "user-2", updated_by_name: "Sam Rivera", updated_at: "2026-11-03T09:15:00Z" },
+      onDiscard: fn(),
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const row = await canvas.findByRole("note", { name: "Draft" });
+    await expect(row).toHaveTextContent("Draft from Sam Rivera");
+    await userEvent.click(within(row).getByRole("button", { name: "Discard draft" }));
+    await expect(args.draft?.onDiscard).toHaveBeenCalled();
+    await expect(await canvas.findByRole("table", { name: "Versions" })).toBeInTheDocument();
+  },
+};

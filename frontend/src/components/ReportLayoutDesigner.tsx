@@ -1,8 +1,8 @@
 /**
  * Module: components/ReportLayoutDesigner
  *
- * The report layout designer: where a person writes a layout as text, sees its problems and a live preview, and
- * saves it as a new version. One component for an organisation's and a project's layouts over `ReportLayoutApi`.
+ * The report layout designer: where a person writes a layout as text, sees its problems and a live preview, keeps
+ * the work in the layout's shared draft and publishes it as a new version. One component for an organisation's and a project's layouts over `ReportLayoutApi`.
  *
  * Responsibilities:
  * - Load a layout and show its current tree as the text view (`ReportLayoutApi.formatTree`), editable in a
@@ -13,8 +13,12 @@
  *   moment after each change and uses to keep the text view's text up to date, so the preview, Save and the switch
  *   back to text all read one layout. A switch from text that has problems is refused, with the reason.
  * - Check the text a moment after typing stops (`parseText`) and list every problem by line, each jumping to its
- *   line; Save is available only for text that parsed cleanly, and sends the parsed tree with the version the
- *   author started from, so a concurrent save is reported (409) instead of overwritten.
+ *   line; Save new version is available only for text that parsed cleanly and publishes the shared draft, so a
+ *   concurrent save is reported (409) instead of overwritten.
+ * - Keep the work in the shared draft (`useLayoutDraft`): with Autosave on (a per-person switch) the tree is written a few seconds
+ *   after editing pauses, with it off Save draft writes it and Discard changes puts the editor back. The status line, the draft
+ *   notice, the conflict banner and the History draft row are shared components over that one session, the same in every view.
+ *   A layout with a draft opens on the draft. A version exists only once published.
  * - Offer, in one right-hand panel (`DesignerSidePanel`) shared by both views, tabs for the live preview (run on screen, or
  *   downloaded as a file in any format of the layout's family), and, in the Text view, the field picker and the widget picker, which insert at the caret, or, in the Blocks
  *   view, the selected block's form (the block editor draws it into the panel). The panel collapses to a rail; the
@@ -29,24 +33,30 @@
  * - Keep Save at the top: the view tabs, Save, the count of problems that block it and any problems the server returned
  *   on save sit in one pinned bar (`.designer-bar`); a second Save appears at the foot only when the view's content is
  *   taller than the window (`useTallerThanViewport`). Both are the same button over the same `saving` state.
- * - Warn before leaving with unsaved changes (the Back link and the browser's own unload prompt).
+ * - Warn before leaving with changes the draft does not hold (the Back link and the browser's own unload prompt): with autosave on
+ *   that is only while a write is pending or has failed.
  *
  * Design decisions: the text view is the only editing surface here and the server the only parser, so the client
  * holds no block model that could drift from the tree (the WYSIWYG editor later edits the same tree). The saved
  * text is the author's own, not re-formatted, so Save never reflows what they typed. Pickers only insert text.
+ * What the server holds (the draft's tree, else the saved version's) is the baseline for "unsaved"; the text view,
+ * opened and not typed in, is never written back, so merely looking at a layout cannot create a draft.
  */
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { ApiError } from "../api/client";
 import {
-  conflictVersion, LAYOUT_FAMILY_LABEL, LAYOUT_ORIGIN_LABEL, reportLayoutPath, treeProblems,
-  type BlockCatalogue, type ReportFieldCatalogue, type ReportFontChoice, type ReportLayoutApi, type ReportLayoutDetail, type ReportSnippet, type ReportWidget,
+  conflictVersion, draftSummary, LAYOUT_FAMILY_LABEL, LAYOUT_ORIGIN_LABEL, reportLayoutPath, treeProblems,
+  type BlockCatalogue, type ReportFieldCatalogue, type ReportFontChoice, type ReportLayoutApi, type ReportLayoutDetail,
+  type ReportSnippet, type ReportWidget,
   type SnippetApplyResult, type TextParseResult, type TreeCheck,
 } from "../api/reportLayouts";
 import { reportDuplicateApi, type DuplicateResult, type ReportDuplicateApi } from "../api/reportDuplicate";
 import { reportSnippetStoreApi, type ReportSnippetStoreApi, type SnippetSelection } from "../api/reportSnippets";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { DRAFT_AUTOSAVE_DELAY_MS, useLayoutDraft } from "../hooks/useLayoutDraft";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { useSnippetToast } from "../hooks/useSnippetToast";
@@ -62,6 +72,10 @@ import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { DesignerSidePanel } from "./DesignerSidePanel";
+import { LayoutDraftCompare } from "./LayoutDraftCompare";
+import { LayoutDraftConflict } from "./LayoutDraftConflict";
+import { LayoutDraftNotice } from "./LayoutDraftNotice";
+import { LayoutDraftStatus } from "./LayoutDraftStatus";
 import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
 import { ReportLayoutBlockToolbar } from "./ReportLayoutBlockToolbar";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
@@ -91,7 +105,8 @@ type EditView = "blocks" | "text" | "json";
 /** The view that edits the tree through the block editor. */
 const isTreeView = (view: EditView) => view === "blocks";
 type AsideTab = "block" | "preview" | "fields" | "widgets";
-type Dialog = "details" | "delete" | "reload" | "leave" | "duplicate" | "snippet" | "save-snippet";
+type Dialog =
+  | "details" | "delete" | "reload" | "leave" | "duplicate" | "snippet" | "save-snippet" | "discard-draft" | "discard-changes" | "compare";
 
 /** What Save as snippet was asked to save: the draft tree, the blocks chosen and the words naming them. */
 interface SnippetToSave {
@@ -126,9 +141,11 @@ interface Checked {
  * @param layoutId The layout to open.
  * @param backTo Where the Back link and a delete lead (the list the layout came from).
  * @param projectOptions Organisation scope: the projects a preview can be narrowed to.
+ * @param autosaveDelayMs How long editing must pause before the draft is written (stories shorten it).
  */
 export function ReportLayoutDesigner({
   api, layoutId, backTo, projectOptions, duplicateApi: duplicateApiProp, snippetApi: snippetApiProp,
+  autosaveDelayMs = DRAFT_AUTOSAVE_DELAY_MS,
 }: {
   api: ReportLayoutApi;
   layoutId: string;
@@ -138,9 +155,11 @@ export function ReportLayoutDesigner({
   duplicateApi?: ReportDuplicateApi;
   /** The calls that save a snippet; the live ones for the layout's scope when omitted. */
   snippetApi?: ReportSnippetStoreApi;
+  autosaveDelayMs?: number;
 }) {
   const strings = useStrings();
   const text = strings.reportLayouts;
+  const draftText = strings.layoutDraft;
   const outline = strings.reportOutline;
   const { showToast } = useToast();
   const navigate = useNavigate();
@@ -150,8 +169,13 @@ export function ReportLayoutDesigner({
 
   const [detail, setDetail] = useState<ReportLayoutDetail | null>(null);
   const [loadFailed, setLoadFailed] = useState<string | null>(null);
+  /** The text the editor opened on, with the tree (as stable JSON) it stands for: the text view is untouched while `draft` equals it. */
   const [saved, setSaved] = useState("");
+  const [savedJson, setSavedJson] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [autosave, setAutosave] = useUiPreference<boolean>("report_designer_autosave", true);
+  /** The layout opened with a draft: the notice stays until the draft is published or discarded. */
+  const [noticeShown, setNoticeShown] = useState(false);
   const [checked, setChecked] = useState<Checked | null>(null);
   const [catalogue, setCatalogue] = useState<ReportFieldCatalogue | null>(null);
   const [widgets, setWidgets] = useState<ReportWidget[] | null>(null);
@@ -197,27 +221,66 @@ export function ReportLayoutDesigner({
   /** Whether the author has put the caret in the text; until then insertions go to the end, not the untouched start. */
   const caretPlaced = useRef(false);
 
+  // In the JSON view: read the text as it stands.
+  const jsonParsed = useMemo(() => parseTreeJson(jsonText), [jsonText]);
+  const current = checked?.text === draft ? checked : null;
+
+  // What the draft would be written from: the tree the active view holds, and why it cannot be stored when it holds none.
+  const family = detail?.family;
+  let editorTree: Tree | null = null;
+  let unreadable: string | null = null;
+  let checking = false;
+  if (view === "json") {
+    if (jsonParsed.tree === null) unreadable = draftText.reasonJson;
+    else if (jsonParsed.tree.family !== family) unreadable = draftText.reasonWrongKind;
+    else editorTree = jsonParsed.tree;
+  } else if (isTreeView(view)) {
+    editorTree = blockTree;
+  } else if (current === null) {
+    checking = draft !== saved;
+  } else if (current.result === null) {
+    unreadable = draftText.reasonError;
+  } else if (!current.result.ok || current.result.tree === null) {
+    const first = current.result.errors[0];
+    unreadable = first ? draftText.reasonLine(first.line) : draftText.reasonError;
+  } else if (current.result.tree.family !== family) {
+    unreadable = draftText.reasonWrongKind;
+  } else {
+    editorTree = current.result.tree;
+  }
+  const session = useLayoutDraft({
+    api, layoutId, enabled: detail !== null && detail.editable && conflict === null, tree: editorTree, unreadable, checking,
+    unchangedFrom: view === "text" && draft === saved ? savedJson : null, autosave, delayMs: autosaveDelayMs, onVersionConflict: setConflict,
+  });
+
+  const startDraft = session.start;
   const load = useCallback(async () => {
     try {
       const loaded = await api.get(layoutId);
-      const written = await api.formatTree(loaded.current.tree);
+      // A layout with a draft opens on the draft (only a scope that owns the layout sees one).
+      const mine = loaded.editable && loaded.draft ? await api.draft(layoutId) : null;
+      const tree = mine ? mine.tree : loaded.current.tree;
+      const written = await api.formatTree(tree);
       setDetail(loaded);
       setSaved(written);
+      setSavedJson(stableJson(tree));
       setDraft(written);
       setView("blocks");
-      setBlockTree(loaded.current.tree);
-      setEnteredTree(loaded.current.tree);
-      setTextFor(loaded.current.tree);
+      setBlockTree(tree);
+      setEnteredTree(tree);
+      setTextFor(tree);
       setTreeChecked(null);
       setViewNote(null);
       setChecked(null);
       setConflict(null);
       setSaveProblems([]);
       setLoadFailed(null);
+      setNoticeShown(mine !== null);
+      startDraft({ tree, currentVersion: loaded.current_version, summary: mine ? draftSummary(mine) : null });
     } catch (err) {
       setLoadFailed(toErrorMessage(err, strings.common.error));
     }
-  }, [api, layoutId, strings.common.error]);
+  }, [api, layoutId, strings.common.error, startDraft]);
 
   const loadTools = useCallback(async () => {
     try {
@@ -280,8 +343,7 @@ export function ReportLayoutDesigner({
     return () => { left = true; clearTimeout(timer); };
   }, [blockTree, view, loaded, api, beginCheck]);
 
-  // In the JSON view: read the text as it stands, and check the tree it holds once editing pauses.
-  const jsonParsed = useMemo(() => parseTreeJson(jsonText), [jsonText]);
+  // In the JSON view: check the tree the text holds once editing pauses.
   useEffect(() => {
     const tree = jsonParsed.tree;
     if (!loaded || view !== "json" || tree === null) return;
@@ -306,9 +368,8 @@ export function ReportLayoutDesigner({
     el.setSelectionRange(at, at);
   }, [draft]);
 
-  const blocksChanged = isTreeView(view) && blockTree !== null && detail !== null && stableJson(blockTree) !== stableJson(detail.current.tree);
-  const jsonChanged = view === "json" && detail !== null && (jsonParsed.tree === null || stableJson(jsonParsed.tree) !== stableJson(detail.current.tree));
-  const dirty = loaded && (view === "json" ? jsonChanged : isTreeView(view) ? blocksChanged : draft !== saved);
+  /** The editor holds changes the shared draft does not (with autosave on, only while a write is pending or has failed). */
+  const dirty = loaded && session.pending;
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
@@ -320,7 +381,6 @@ export function ReportLayoutDesigner({
   if (!detail) return <Spinner />;
 
   const editable = detail.editable;
-  const current = checked?.text === draft ? checked : null;
   const wrongKind = current?.result?.tree != null && current.result.tree.family !== detail.family;
   const problems = [
     ...(current?.result && !current.result.ok ? current.result.errors : []),
@@ -535,24 +595,32 @@ export function ReportLayoutDesigner({
     setView(next);
   }
 
-  /** Saves the tree on screen as a new version with `note`; resolves to whether a version was stored. */
+  /** Publishes the draft (writing what is pending first) as a new version with `note`; resolves to whether it was done. */
   async function save(note: string): Promise<boolean> {
-    const tree = view === "json" ? jsonCurrent?.tree : isTreeView(view) ? blockCurrent?.tree : current?.result?.tree;
-    if (!tree || !detail) return false;
+    if (!detail) return false;
     setSaving(true);
     setSaveProblems([]);
     try {
-      const result = await api.save(layoutId, { tree, base_version: detail.current_version, comment: note });
-      showToast(result.current_version === detail.current_version ? text.noChanges : text.saved(result.current_version));
+      const result = await session.publish(note);
+      if (result === null) return false;
+      setNoticeShown(false);
+      if (result === "unchanged") {
+        showToast(text.noChanges);
+        return true;
+      }
+      showToast(text.saved(result.current_version));
+      const tree = result.current.tree;
       setDetail(result);
       const written = view !== "text" ? await api.formatTree(tree) : draft;
       setSaved(written);
+      setSavedJson(stableJson(tree));
       if (view !== "text") {
         setDraft(written);
         setEnteredTree(tree);
         setTextFor(tree);
         setBlockTree(tree);
       }
+      session.start({ tree, summary: null, currentVersion: result.current_version });
       return true;
     } catch (err) {
       const newer = conflictVersion(err);
@@ -564,6 +632,45 @@ export function ReportLayoutDesigner({
     } finally {
       setSaving(false);
     }
+  }
+
+  /** Writes the draft now (autosave off) and says so. */
+  async function saveDraft() {
+    if (await session.saveNow()) showToast(draftText.draftSavedToast);
+    else showToast(draftText.draftSaveFailed, "error");
+  }
+
+  /** Turns autosave on or off for this person; turning it on writes what is pending at once. */
+  function chooseAutosave(next: boolean) {
+    setAutosave(next);
+    if (next) void session.saveNow();
+  }
+
+  /** Discards the shared draft for everyone (one already gone is what was asked for); resolves to whether it is gone. */
+  async function dropDraft(): Promise<boolean> {
+    try {
+      await api.discardDraft(layoutId);
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return true;
+      showToast(toErrorMessage(err, draftText.discardFailed), "error");
+      return false;
+    }
+  }
+
+  /** Discards the shared draft and opens the layout at its latest saved version. */
+  async function discardDraft() {
+    setDialog(null);
+    if (!(await dropDraft())) return;
+    showToast(draftText.draftDiscarded);
+    await load();
+  }
+
+  /** Replaces the editor with the latest saved version, which discards the draft (it was begun on an older version). */
+  async function reloadLatest() {
+    setDialog(null);
+    if (session.summary !== null && !(await dropDraft())) return;
+    await load();
   }
 
   function leave() {
@@ -580,7 +687,23 @@ export function ReportLayoutDesigner({
   }
 
   const blockingCount = view === "json" ? jsonProblems.length : isTreeView(view) ? blockProblems.length : problems.length;
-  const saveButton = <SaveVersionButton disabled={!valid || !dirty} saving={saving} onSave={save} />;
+  // The text view, opened and not typed in, stands for the tree it opened on; the other views compare their tree.
+  const publishedJson = stableJson(detail.current.tree);
+  const sameAsPublished = view === "text"
+    ? draft === saved && savedJson === publishedJson
+    : editorTree !== null && stableJson(editorTree) === publishedJson;
+  const saveButton = (
+    <SaveVersionButton
+      disabled={!valid || sameAsPublished} saving={saving} onSave={save} title={draftText.publishTooltip(detail.current_version + 1)}
+    />
+  );
+  const draftControls = editable && (
+    <LayoutDraftStatus
+      autosave={autosave} onAutosave={chooseAutosave} savedAt={session.summary?.updated_at ?? null} pending={session.pending}
+      saving={session.saving} failure={session.failure} unreadable={unreadable} onSaveDraft={() => void saveDraft()}
+      onDiscardChanges={() => setDialog("discard-changes")}
+    />
+  );
   const textTools = editable && view === "text";
   const treeEditing = isTreeView(view);
   const asideTabs: TabDef<AsideTab>[] = treeEditing
@@ -641,6 +764,7 @@ export function ReportLayoutDesigner({
             api={api}
             layoutId={layoutId}
             currentVersion={detail.current_version}
+            draft={session.summary ? { summary: session.summary, onDiscard: editable ? () => setDialog("discard-draft") : undefined } : null}
             onUseVersion={editable ? (version, versionText) => {
               setDraft(versionText);
               setView("text");
@@ -665,8 +789,18 @@ export function ReportLayoutDesigner({
             {conflict !== null && (
               <div className="card stack" role="alert">
                 <span style={{ color: "var(--color-danger)" }}>{text.conflict(conflict)}</span>
-                <div><button type="button" className="btn" onClick={() => setDialog("reload")}>{text.reload}</button></div>
+                <div className="row">
+                  <button type="button" className="btn" onClick={() => setDialog("reload")}>{text.reload}</button>
+                  <button type="button" className="btn" onClick={() => { session.rebase(conflict); setConflict(null); }}>{draftText.rebase(conflict)}</button>
+                </div>
               </div>
+            )}
+            {session.conflict && <LayoutDraftConflict draft={session.conflict.draft} onLoadTheirs={() => void load()} onKeepMine={session.keepMine} />}
+            {editable && noticeShown && session.summary && (
+              <LayoutDraftNotice
+                summary={session.summary} currentVersion={detail.current_version}
+                onShowSaved={() => setDialog("compare")} onDiscard={() => setDialog("discard-draft")}
+              />
             )}
             <div className="designer-bar">
               <div className="designer-bar__row">
@@ -680,6 +814,7 @@ export function ReportLayoutDesigner({
                 {editable && (
                   <div className="designer-bar__save">
                     {!valid && blockingCount > 0 && <span role="status" style={{ color: "var(--color-danger)" }}>{text.saveBlocked(blockingCount)}</span>}
+                    {draftControls}
                     {saveButton}
                   </div>
                 )}
@@ -883,7 +1018,28 @@ export function ReportLayoutDesigner({
       {dialog === "duplicate" && detail && (
         <ReportDuplicateDialog
           api={duplicateApi} source={{ kind: "layout", id: detail.id, name: detail.name }}
-          note={dirty ? strings.reportDuplicate.unsavedNote : undefined} onClose={() => setDialog(null)} onDuplicated={openDuplicate}
+          note={sameAsPublished ? undefined : strings.reportDuplicate.unsavedNote} onClose={() => setDialog(null)} onDuplicated={openDuplicate}
+        />
+      )}
+      {dialog === "compare" && (
+        <LayoutDraftCompare api={api} layoutId={layoutId} saved={{ version: detail.current_version, tree: detail.current.tree }} onClose={() => setDialog(null)} />
+      )}
+      {dialog === "discard-draft" && (
+        <ConfirmDialog
+          title={draftText.discardDraftTitle}
+          message={draftText.discardDraftMessage(detail.current_version)}
+          confirmLabel={draftText.discardDraft}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => void discardDraft()}
+        />
+      )}
+      {dialog === "discard-changes" && (
+        <ConfirmDialog
+          title={draftText.discardChangesTitle}
+          message={draftText.discardChangesMessage(session.summary !== null)}
+          confirmLabel={draftText.discardChanges}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => { setDialog(null); showToast(draftText.changesDiscarded); void load(); }}
         />
       )}
       {dialog === "reload" && (
@@ -892,7 +1048,7 @@ export function ReportLayoutDesigner({
           message={text.reloadMessage}
           confirmLabel={text.reload}
           onCancel={() => setDialog(null)}
-          onConfirm={() => { setDialog(null); void load(); }}
+          onConfirm={() => void reloadLatest()}
         />
       )}
       {dialog === "leave" && (

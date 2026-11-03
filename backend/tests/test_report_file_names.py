@@ -365,8 +365,8 @@ def test_the_example_endpoint_answers_with_the_name_or_the_problems(world):
     assert good.status_code == 200 and good.json() == {
         "example": "ACME-Team value.docx", "problems": [],
         "placeholders": [
-            "{{report_title}}", "{{project_name}}", "{{project_code}}", "{{organisation}}", "{{generated_on}}",
-            "{{layout_version}}", "{{format}}", "{{var.team}}",
+            "{{report_title}}", "{{project_name}}", "{{project_report_name}}", "{{project_code}}", "{{organisation}}",
+            "{{generated_on}}", "{{layout_version}}", "{{format}}", "{{var.team}}",
         ],
     }
     bad = world.client.post(url, json={"template": "{{record.code}}", "kind": "pack"}, headers=auth_headers(world.token))

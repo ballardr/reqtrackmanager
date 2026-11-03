@@ -288,14 +288,14 @@ def create_project(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "template_project_id must be a template project in this organisation.")
         project = clone_project(
             db, template, name=payload.name, summary=payload.summary, creator=current_user,
-            parent_project_id=payload.parent_project_id, code=project_code,
+            parent_project_id=payload.parent_project_id, code=project_code, report_name=payload.report_name,
         )
         db.flush()
         _ensure_project_has_a_manager(db, project, current_user.id)
     else:
         project = Project(
             organization_id=payload.organization_id, name=payload.name, summary=payload.summary, code=project_code,
-            status_id=get_default_project_status_id(db, payload.organization_id),
+            report_name=payload.report_name, status_id=get_default_project_status_id(db, payload.organization_id),
             parent_project_id=payload.parent_project_id,
         )
         db.add(project)
@@ -602,7 +602,7 @@ def list_projects(
             out.append(
                 ProjectListItemOut(
                     id=p.id, organization_id=p.organization_id, name=p.name, code=p.code, summary=p.summary,
-                    created_at=p.created_at, updated_at=p.updated_at,
+                    report_name=p.report_name, created_at=p.created_at, updated_at=p.updated_at,
                     is_archived=p.is_archived, is_template=p.is_template,
                     allow_member_change_requests=p.allow_member_change_requests,
                     require_change_request_for_approved_links=p.require_change_request_for_approved_links,
@@ -904,6 +904,13 @@ def update_project(
             project.code = new_code
     if payload.summary is not None:
         project.summary = payload.summary
+    if "report_name" in payload.model_fields_set and payload.report_name != project.report_name:
+        log_event(
+            db, entity_type="project", entity_id=project.id, action="report_name_changed", actor_id=current_user.id,
+            organization_id=project.organization_id, project_id=project.id,
+            detail={"from": project.report_name, "to": payload.report_name},
+        )
+        project.report_name = payload.report_name
     if payload.allow_member_change_requests is not None:
         project.allow_member_change_requests = payload.allow_member_change_requests
     if payload.require_change_request_for_approved_links is not None:

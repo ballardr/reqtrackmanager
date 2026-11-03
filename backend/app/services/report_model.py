@@ -188,12 +188,27 @@ def heading_anchor(text: str) -> str:
 # template engine: a name is replaced by plain string substitution and anything
 # else (unknown names, other braces) stays literal text.
 PLACEHOLDER_NAMES: tuple[str, ...] = (
-    "project_name", "project_code", "project_description", "report_title", "generated_on", "organisation", "layout_version",
+    "project_name", "project_report_name", "project_code", "project_description", "report_title", "generated_on", "organisation",
+    "layout_version",
 )
 _PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 #: `{{name}}` (a global placeholder) or `{{alias.field}}` / `{{var.name}}`: every reference a layout's text, a record-image
 #: name pattern and a file name template can hold. The name part may hold hyphens (a block's name does); a field never does.
 PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-z][a-z0-9_-]*)(?:\.([a-z][a-z0-9_]*))?\s*\}\}")
+
+
+def project_report_label(project: object | None, fallback: str) -> str:
+    """What `{{project_report_name}}` prints: the project's Project report name when set, else `fallback` (the label
+    `{{project_name}}` prints, so a run over several projects or an organisation reads the same for both).
+
+    Args:
+        project: The project the report is about, or None for an organisation-wide scope.
+        fallback: The scope label `{{project_name}}` prints.
+
+    Returns:
+        The short name, or `fallback`.
+    """
+    return (getattr(project, "report_name", None) or "") or fallback
 
 
 def fill_placeholders(text: str, placeholders: Mapping[str, str] | None) -> str:

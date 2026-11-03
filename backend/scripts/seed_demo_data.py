@@ -80,8 +80,11 @@ def create_org_user(headers: dict, org_id: str, email: str, display_name: str, r
 def create_project(
     headers: dict, org_id: str, name: str, summary: str,
     *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None, can_be_parent: bool = False,
+    report_name: str | None = None,
 ) -> dict:
     payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
+    if report_name is not None:
+        payload["report_name"] = report_name
     if parent_project_id is not None:
         payload["parent_project_id"] = parent_project_id
     if role_inheritance_mode is not None:
@@ -593,6 +596,16 @@ def create_report_layout(headers: dict, path: str, name: str, description: str, 
     return r.json()
 
 
+def save_report_layout_draft(headers: dict, path: str, layout: dict, tree: dict) -> None:
+    """Leaves unpublished work on a layout: writes `tree` into its shared draft (based on the layout's current version), so the
+    designer opens on the draft with its notice. `path` is `/orgs/{id}` or `/projects/{id}`."""
+    r = httpx.put(
+        f"{BASE}{path}/report-layouts/{layout['id']}/draft",
+        json={"tree": tree, "base_version": layout["current_version"], "revision": 0}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 #: The product mark: white on transparent, so a report places it on a coloured shape. Kept beside this script (not read from the
 #: repository root) so a container build, which copies only `backend/`, finds it.
 LOGO_PATH = Path(__file__).parent / "data" / "logo.svg"
@@ -626,7 +639,7 @@ def project_overview_with_logo_layout(logo_file_id: str) -> dict:
             "left": "{{organisation}}", "centre": "{{report_title}}", "right": "{{generated_on}}",
             "left_width": "30%", "valign": "top", "right_valign": "bottom", "colour": "plate",
         },
-        "footer": {"left": "*{{project_name}}*", "right": "*Page {{page}} of {{pages}}*", "colour": "plate"},
+        "footer": {"left": "*{{project_report_name}}*", "right": "*Page {{page}} of {{pages}}*", "colour": "plate"},
         "nodes": [
             {
                 "type": "shape", "shape": "rounded", "fill": "plate", "width": 5, "height": 2.5, "alt": "",
@@ -2035,6 +2048,8 @@ def main() -> None:
         # Subsystem' below is created as its child — a project must opt in
         # to this before another project can be attached under it.
         can_be_parent=True,
+        # The short name the 'Project overview with logo' report prints in its footer.
+        report_name="Falcon-3",
     )
     set_project_status(h_pm, drone["id"], project_statuses["Active"]["id"])
     # Demonstrates C-C-03's terminology overrides with aerospace-engineering
@@ -2277,8 +2292,13 @@ def main() -> None:
         h_pm, f"/orgs/{org['id']}", "Pain points with pictures", "A table of Pain Points with the pictures attached to each.",
         PAIN_POINTS_WITH_PICTURES_LAYOUT,
     )
-    create_report_layout(
+    design_formulae = create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
+    )
+    print("Leaving the Design formulae layout with a draft: unpublished work the designer opens on, with its notice...")
+    save_report_layout_draft(
+        h_pm, f"/orgs/{org['id']}", design_formulae,
+        {**DESIGN_FORMULAE_LAYOUT, "nodes": [*DESIGN_FORMULAE_LAYOUT["nodes"], {"type": "heading", "text": "Margins of safety"}]},
     )
     print("Seeding a report with the logo on a shape (the white mark over an accent plate), and making sure the Project Workbook starter is there...")
     httpx.post(f"{BASE}/orgs/{org['id']}/report-layouts/starters", headers=h_pm, timeout=30).raise_for_status()
@@ -2315,12 +2335,6 @@ def main() -> None:
         folder="Handover",
     )
     create_report_pack_set(h_pm, f"/orgs/{org['id']}", handover["id"], "Safety only", {"categories": ["Safety"]})
-    print("Arranging the Reports list: the organisation files the Decision register under Governance/Decisions...")
-    r = httpx.put(
-        f"{BASE}/orgs/{org['id']}/report-placements", json={"report_key": "report:decisions.d1", "folder": "Governance/Decisions"},
-        headers=h_pm, timeout=30,
-    )
-    r.raise_for_status()
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
     avionics_reqs = seed_project(
@@ -2704,6 +2718,13 @@ def main() -> None:
     # default_enabled=False — an org must opt in explicitly, same as a real admin would
     # from Org Admin's Modules tab.
     enable_module(h_pm, org["id"], "decisions")
+    # The Decision register is only a known report once the module is on for the organisation.
+    print("Arranging the Reports list: the organisation files the Decision register under Governance/Decisions...")
+    r = httpx.put(
+        f"{BASE}/orgs/{org['id']}/report-placements", json={"report_key": "report:decisions.d1", "folder": "Governance/Decisions"},
+        headers=h_pm, timeout=30,
+    )
+    r.raise_for_status()
     drone_decision_types = list_decision_types(h_pm, drone["id"])
     set_action_outcome(h_pm, drone["id"], {**wind_test, "assignee": {"type": "project_group", "id": verification_squad.json()["id"]}}, "failed")
     httpx.patch(

@@ -28,11 +28,16 @@ from app.models.enums import (
     StageStatus,
 )
 
+#: Longest Project report name: the same as `Project.name`, so the short name is never stricter than the name it stands for
+#: (how much fits in a header is the layout's concern, and wraps with the page size).
+MAX_REPORT_NAME_LENGTH = 255
+
 
 class Project(UUIDPKMixin, TimestampMixin, Base):
     """An engineering project that requirements and change requests belong to.
 
     Attributes:
+        report_name: Optional short name reports may print instead of `name` (`{{project_report_name}}`); display only.
         next_requirement_seq: Monotonically increasing counter used to
             generate unique requirement identifiers (C-G-06). Never reused,
             including for archived requirements.
@@ -116,6 +121,9 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     code: Mapped[str] = mapped_column(String(ABSOLUTE_MAX_CODE_LENGTH))
     summary: Mapped[str] = mapped_column(String(2000), default="")
+    #: A short display name for reports only (`{{project_report_name}}`, falling back to `name`); `None` when unset. Not an
+    #: identifier (the `code` is) and not inherited by a child project: a name identifies one project.
+    report_name: Mapped[str | None] = mapped_column(String(MAX_REPORT_NAME_LENGTH), nullable=True)
     parent_project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )

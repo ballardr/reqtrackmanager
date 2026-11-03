@@ -850,6 +850,9 @@ export interface UserAccess {
   projects: UserAccessProject[];
 }
 
+/** Longest Project report name (the same limit as the project name). */
+export const MAX_PROJECT_REPORT_NAME_LENGTH = 255;
+
 export interface Project {
   id: string;
   organization_id: string;
@@ -857,6 +860,8 @@ export interface Project {
   // Short upper-case code that qualifies this project's record codes (`ACME-REQ-001`).
   code: string;
   summary: string;
+  /** A short name some reports print in headers and titles instead of `name`; null when unset. */
+  report_name: string | null;
   created_at: string;
   updated_at: string;
   is_archived: boolean;

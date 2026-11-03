@@ -106,7 +106,17 @@ from app.services.report_column_width import parse_width
 from app.services.report_document import ReportBranding, resolve_branding
 from app.services.report_docx import render_docx_document
 from app.services.report_file_names import org_default_stem
-from app.services.report_model import TONE_FILL, Block, Gap, Heading, Note, ReportDocument, Sheet, Table
+from app.services.report_model import (
+    TONE_FILL,
+    Block,
+    Gap,
+    Heading,
+    Note,
+    ReportDocument,
+    Sheet,
+    Table,
+    project_report_label,
+)
 from app.services.report_pdf import render_pdf_document
 from app.services.report_render import RenderedFile, RenderInput, sheet_title, unique_names
 from app.services.report_render import render as render_registered
@@ -289,6 +299,11 @@ class ReportContext:
     def scope_label(self) -> str:
         """The name printed as the report's scope."""
         return self.root_project.name if self.root_project is not None else self.organization.name
+
+    @property
+    def scope_report_label(self) -> str:
+        """The label `{{project_report_name}}` prints: the root project's report name when set, else `scope_label`."""
+        return project_report_label(self.root_project, self.scope_label)
 
     @property
     def scope_note(self) -> str:
