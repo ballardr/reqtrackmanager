@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { chooseReport, offersReport, reportPickerButton } from "./reportPicker";
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -259,6 +259,7 @@ test.describe("Custom report run", () => {
     await expect(page.getByRole("heading", { name })).toBeVisible();
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+    await ensureExpanded(page, "Variables and running");
     await page.getByLabel("Block details").getByRole("combobox", { name: "Projects it runs for" }).selectOption({ label: "One project" });
     await saveNewVersion(page);
     await expect(page.getByText("Saved as version 2.")).toBeVisible();

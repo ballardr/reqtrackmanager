@@ -251,6 +251,19 @@ export const AddBlockWithNothingSelectedAppendsToTheLayoutAndSaysSo: Story = {
   },
 };
 
+/** The table of contents is among the blocks Add block offers, and adds a block with its own settings in the inspector. */
+export const AddBlockOffersATableOfContents: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const ws = await workspaceOf();
+    await addFromMenu(canvas, "Table of contents");
+    await waitFor(() => expect(treeOf(canvasElement).nodes.map((n) => n.type)).toEqual(["heading", "each", "contents"]));
+    await waitFor(() => expect(blocksOf(ws, "contents")).toHaveLength(1));
+    await expect(await canvas.findByTestId("block-inspector")).toHaveTextContent("Table of contents block");
+    await expect(await canvas.findByRole("spinbutton", { name: "Levels" })).toBeInTheDocument();
+  },
+};
+
 export const AddBlockWithALeafSelectedAddsAfterIt: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -301,13 +314,13 @@ export const ANewRecordBlockInAGroupStartsOnTheGroup: Story = {
     const canvas = within(canvasElement);
     const ws = await workspaceOf();
     Blockly.common.setSelected(blocksOf(ws, "group")[0]);
-    await expect(await canvas.findByRole("combobox", { name: "Where to add the block" })).toHaveDisplayValue(/^Adding inside: /);
+    await waitFor(() => expect(canvas.getByRole("combobox", { name: "Where to add the block" })).toHaveDisplayValue(/^Adding inside: /));
     await addFromMenu(canvas, "Table (records)");
     await waitFor(() => expect((treeOf(canvasElement).nodes[0].children as Record<string, unknown>[])[0]).toMatchObject({ type: "table", source: { group: "by-status" } }));
     // A group that has no record set yet gives nothing to read, so the block starts as today.
     Blockly.common.setSelected(blocksOf(ws, "group")[1]);
     await waitFor(() => expect(Blockly.common.getSelected()).toBe(blocksOf(ws, "group")[1]));
-    await expect(await canvas.findByRole("combobox", { name: "Where to add the block" })).toHaveDisplayValue(/^Adding inside: /);
+    await waitFor(() => expect(canvas.getByRole("combobox", { name: "Where to add the block" })).toHaveDisplayValue(/^Adding inside: /));
     await addFromMenu(canvas, "For each record");
     await waitFor(() => expect((treeOf(canvasElement).nodes[1].children as Record<string, unknown>[])[0]).toMatchObject({ type: "each", source: {} }));
   },

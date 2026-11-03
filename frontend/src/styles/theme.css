@@ -2921,6 +2921,12 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
+/* A closed collapsible bar that holds non-default content: an accent edge beside the "N changed" pill (text plus edge, never colour alone). */
+.collapsible-bar--marked {
+  border-left: 3px solid var(--color-accent);
+  padding-left: var(--space-2);
+}
+
 /* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
 .badge-after {
   margin-inline-start: var(--space-3);

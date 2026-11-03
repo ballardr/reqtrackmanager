@@ -17,7 +17,8 @@ Design decisions:
 - When the cells need more than the band has, the widest cell gives way first (water-filling): a long centre text wraps
   in the centre and the short sides keep their width.
 - A fixed width is a percentage of the band or a length, as a table column's is; the same parser reads both.
-- The default vertical alignment is top, so a one-line cell and a two-line cell start on the same line.
+- The default vertical alignment is the band kind's (`DEFAULT_BAND_VALIGN`): a header's cells start on the same line at the
+  top, a footer's sit against the bottom edge of the page. A cell's own alignment, then the band's, win over it.
 
 Dependencies: `services.report_column_width`, `services.report_fonts`, `services.report_image_layout`,
 `services.report_model`, `services.report_running`.
@@ -31,7 +32,7 @@ from dataclasses import dataclass, replace
 from app.services.report_column_width import MIN_COLUMN_CM, parse_width
 from app.services.report_fonts import text_width, using_family
 from app.services.report_image_layout import placed_size_cm
-from app.services.report_model import SLOT_NAMES, VALIGN_CHOICES, PageField, RunningBand
+from app.services.report_model import DEFAULT_BAND_VALIGN, SLOT_NAMES, VALIGN_CHOICES, PageField, RunningBand
 from app.services.report_running import band_size_pt, cell_lines, unmark
 
 #: Room added to a cell's content for the gap between cells, in cm.
@@ -137,8 +138,9 @@ def resolve_band_cells(band: RunningBand, usable_cm: float) -> tuple[BandCell, B
     total = sum(widths)
     if total > 0 and abs(total - usable_cm) > 1e-9:
         widths = [w * usable_cm / total for w in widths]
+    fallback = band.valign if band.valign in VALIGN_CHOICES else DEFAULT_BAND_VALIGN[band.kind]
     cells = [
-        BandCell(slot, widths[i], own if (own := band.valigns[i]) in VALIGN_CHOICES else band.valign)
+        BandCell(slot, widths[i], own if (own := band.valigns[i]) in VALIGN_CHOICES else fallback)
         for i, slot in enumerate(SLOT_NAMES)
     ]
     return cells[0], cells[1], cells[2]

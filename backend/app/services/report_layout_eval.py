@@ -104,15 +104,16 @@ from app.services.report_layout_tree import (
 )
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
+    MAX_CONTENTS_LEVELS,
     MAX_SHEET_ROWS,
     SLOT_NAMES,
-    VALIGN_CHOICES,
     Block,
     BottomEnd,
     BottomStart,
     BulletList,
     Cell,
     CellLink,
+    Contents,
     DocumentStyles,
     Equation,
     Gap,
@@ -728,22 +729,22 @@ class _Run:
         own, by_name = effective_bands(tree)
         cache: dict[str, RunningBand | None] = {}
 
-        def band(source: dict[str, Any] | None) -> RunningBand | None:
+        def band(source: dict[str, Any] | None, kind: str) -> RunningBand | None:
             if source is None:
                 return None
-            key = json.dumps(source, sort_keys=True)
+            key = f"{kind}:{json.dumps(source, sort_keys=True)}"
             if key not in cache:
-                cache[key] = self.running_band(source)
+                cache[key] = self.running_band(source, kind)
             return cache[key]
 
         return (
-            replace(document, header=band(own.get("header")), footer=band(own.get("footer"))),
-            {name: replace(style, header=band(by_name[name].get("header")), footer=band(by_name[name].get("footer")))
+            replace(document, header=band(own.get("header"), "header"), footer=band(own.get("footer"), "footer")),
+            {name: replace(style, header=band(by_name[name].get("header"), "header"), footer=band(by_name[name].get("footer"), "footer"))
              for name, style in named.items()},
         )
 
-    def running_band(self, source: dict[str, Any]) -> RunningBand:
-        """A header or footer from its tree object: each cell's placeholders filled (a page field stays a field) and the logo loaded.
+    def running_band(self, source: dict[str, Any], kind: str = "header") -> RunningBand:
+        """A header or footer (`kind`) from its tree object: each cell's placeholders filled (a page field stays a field) and the logo loaded.
 
         A value is plain text in the cell and never markup, as for every placeholder. A logo that cannot be used is left
         out with the run's one warning.
@@ -765,7 +766,7 @@ class _Run:
             colour=resolve_colour(colour, self.org_values["report_accent"], self.scheme) if colour else None,
             widths=tuple(source.get(f"{name}_width") for name in SLOT_NAMES),  # type: ignore[arg-type]
             valigns=tuple(source.get(f"{name}_valign") for name in SLOT_NAMES),  # type: ignore[arg-type]
-            valign=source.get("valign", VALIGN_CHOICES[0]),
+            valign=source.get("valign"), kind=kind,
         )
 
     def _running_cell(self, text: str) -> tuple[SlotPart, ...]:
@@ -1364,6 +1365,14 @@ def _eval_page_break(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     run.emit(PageBreak())
 
 
+def _eval_contents(run: _Run, node: dict[str, Any], scope: Scope) -> None:
+    """A table of contents: the settings only; `finalize_links` lists the headings once the whole document is known."""
+    contents = Contents(levels=node.get("levels", MAX_CONTENTS_LEVELS), new_page=node.get("new_page", True))
+    if "title" in node:
+        contents = replace(contents, title=run.fill(node["title"], scope))
+    run.emit(contents)
+
+
 def _eval_spacer(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     height = _cm(node["height"], node.get("height_unit"))
     run.emit(VerticalSpace(height if height is not None else 1.0))  # a validated spacer always has a height; 1 cm is the form's default
@@ -1657,7 +1666,7 @@ def _eval_widget(run: _Run, node: dict[str, Any], scope: Scope) -> None:
 
 
 for _key, _fn in (
-    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("spacer", _eval_spacer),
+    ("heading", _eval_heading), ("text", _eval_text), ("page_break", _eval_page_break), ("contents", _eval_contents), ("spacer", _eval_spacer),
     ("bottom", _eval_bottom), ("section", _eval_section),
     ("image", _eval_image), ("shape", _eval_shape), ("record_images", _eval_record_images),
     ("equation", _eval_equation), ("grid", _eval_grid), ("table", _eval_table), ("each", _eval_each), ("group", _eval_group), ("if", _eval_if),

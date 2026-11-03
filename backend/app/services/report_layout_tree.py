@@ -7,7 +7,8 @@ decides whether a tree may be saved or run.
 Responsibilities:
 - Define the tree vocabulary (`TREE_SCHEMA_VERSION`): document blocks `heading`, `text`, `table`,
   `each`, `group`, `if`, `grid` (an author-written table with merged, aligned and coloured cells), `page_break`,
-  `spacer` (vertical space of an exact height), `bottom` (its contents at the foot of the page),
+  `spacer` (vertical space of an exact height), `contents` (a table of contents of the document's headings),
+  `bottom` (its contents at the foot of the page),
   `section` (its contents in another page style), `equation` (display TeX),
   `image` (a picture from the layout tier's image library, with size, alignment, caption and alt text),
   `widget` (one component of a module report, by key), and the table-family block `sheet` (a root source plus
@@ -86,7 +87,7 @@ from app.services.report_grid import (
 )
 from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
-from app.services.report_model import CELL_ARRANGEMENTS, CONTENTS_SHEET_NAME, PLACEHOLDER_NAMES, PLACEHOLDER_RE
+from app.services.report_model import CELL_ARRANGEMENTS, CONTENTS_SHEET_NAME, MAX_CONTENTS_LEVELS, PLACEHOLDER_NAMES, PLACEHOLDER_RE
 from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, ORG_VALUE_KEYS, org_value_kind
 from app.services.report_page_styles import (
     ORIENTATIONS,
@@ -404,6 +405,8 @@ class TreeValidator:
         self.in_section = False
         #: Whether the block being checked is inside a page-bottom block (which holds no page-structure block).
         self.in_bottom = False
+        #: The path of the layout's table-of-contents block once one is seen (a layout holds one).
+        self.contents_at: str | None = None
 
     # --- driver ----------------------------------------------------------------------------
 
@@ -1498,6 +1501,29 @@ def _validate_page_break(v: TreeValidator, node: dict[str, Any], path: str) -> N
         v.error(path, _NOT_IN_BOTTOM.format("A page break"))
 
 
+#: Bounds of a table of contents' title, in characters (a line above the list, not a paragraph).
+MAX_CONTENTS_TITLE_CHARS = 200
+
+
+def _validate_contents(v: TreeValidator, node: dict[str, Any], path: str) -> None:
+    v.check_keys(node, path, required=("type",), optional=("title", "levels", "new_page"))
+    if v.in_bottom:
+        v.error(path, _NOT_IN_BOTTOM.format("A table of contents"))
+    if v.scope:
+        v.error(path, "A table of contents cannot be inside an each or group block: it would print once for every record. Put it outside.")
+    if v.contents_at is not None:
+        v.error(path, f"A layout holds one table of contents; there is one already at {v.contents_at}.")
+    else:
+        v.contents_at = path
+    if "title" in node:
+        v.placeholders(v.text(node["title"], f"{path}.title", limit=MAX_CONTENTS_TITLE_CHARS, allow_empty=True), f"{path}.title")
+    levels = node.get("levels")
+    if "levels" in node and (not isinstance(levels, int) or isinstance(levels, bool) or not 1 <= levels <= MAX_CONTENTS_LEVELS):
+        v.error(f"{path}.levels", f"Must be a whole number from 1 to {MAX_CONTENTS_LEVELS}.")
+    if "new_page" in node and not isinstance(node["new_page"], bool):
+        v.error(f"{path}.new_page", "Must be true or false.")
+
+
 def _validate_spacer(v: TreeValidator, node: dict[str, Any], path: str) -> None:
     v.check_keys(node, path, required=("type", "height"), optional=("height_unit",))
     unit = node.get("height_unit", "cm")
@@ -1902,7 +1928,7 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
                        help=f"The heading's words. {_PLACEHOLDER_HELP} *Italic*, **bold** and `code` marks work as in text; a heading "
                        "is bold already unless the document's heading style turns that off."),
             BlockField("level", "Level", "integer", minimum=1, maximum=4, default=1,
-                       help="1 is the largest. Levels 1 to 4 appear in the contents list."),
+                       help="1 is the largest. A table of contents lists levels 1 to 3."),
             BlockField("font", "Font", "font", empty_label="Document heading font",
                        help="The font of this heading only. Typically left empty so it follows the document's heading font."),
             BlockField("size", "Size", "number", minimum=6, maximum=72, empty_label="Document size",
@@ -1924,6 +1950,18 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         template={"type": "text", "text": "Some text."},
     ),
     "page_break": BlockSchema("Page break", "Starts a new page in PDF and Word output.", template={"type": "page_break"}),
+    "contents": BlockSchema(
+        "Table of contents", "A list of the report's headings, each a link to its heading, with page numbers in PDF.",
+        (
+            BlockField("title", "Title", "text", max_length=MAX_CONTENTS_TITLE_CHARS, default="Contents", features=("placeholders",),
+                       help="The words printed above the list. Typically Contents. Placeholders such as the report title work here."),
+            BlockField("levels", "Levels", "integer", minimum=1, maximum=MAX_CONTENTS_LEVELS, default=MAX_CONTENTS_LEVELS,
+                       help="How many heading levels are listed: 1 lists chapters only, 3 lists down to level 3. Typically 2 or 3."),
+            BlockField("new_page", "New page after", "boolean", default=True,
+                       help="Start the next block on a new page, so the contents has a page of its own. Typically on."),
+        ),
+        template={"type": "contents"},
+    ),
     "spacer": BlockSchema(
         "Spacer", "Vertical space of an exact height, the same in PDF, Word, OpenDocument and the preview.",
         (
@@ -2192,6 +2230,7 @@ for _spec in (
     BlockSpec("heading", (FAMILY_DOCUMENT,), _validate_heading),
     BlockSpec("text", (FAMILY_DOCUMENT,), _validate_text),
     BlockSpec("page_break", (FAMILY_DOCUMENT,), _validate_page_break),
+    BlockSpec("contents", (FAMILY_DOCUMENT,), _validate_contents),
     BlockSpec("spacer", (FAMILY_DOCUMENT,), _validate_spacer),
     BlockSpec("bottom", (FAMILY_DOCUMENT,), _validate_bottom),
     BlockSpec("section", (FAMILY_DOCUMENT,), _validate_section),

@@ -47,8 +47,9 @@ from typing import Any, cast
 from docx import Document
 from docx.document import Document as DocxDocument
 from docx.enum.section import WD_ORIENT, WD_SECTION
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT, WD_TAB_LEADER
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
@@ -63,11 +64,13 @@ from app.services.report_grid_render import docx_grid
 from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import OMML_NS, omml, png_of, typeset
 from app.services.report_model import (
+    MAX_CONTENTS_LEVELS,
     SLOT_NAMES,
     TONE_FILL,
     BottomEnd,
     BottomStart,
     BulletList,
+    Contents,
     DocumentStyles,
     Equation,
     Gap,
@@ -577,6 +580,84 @@ def _bookmark(paragraph, anchor: str, number: int) -> None:
     paragraph._p.append(end)
 
 
+def _contents_styles(doc: DocxDocument, usable_cm: float) -> None:
+    """Adds Word's `TOC Heading` and `toc 1` to `toc 3` styles (the default template has none), once.
+
+    `toc n` carries the right tab with dot leaders that the page numbers sit at when a person updates the field, and keeps the
+    contents' look when Word rebuilds it. `TOC Heading` looks like a chapter heading but is out of the outline, so the field
+    never lists it.
+    """
+    names = {style.name for style in doc.styles}
+    if "toc 1" in names:
+        return
+    title = doc.styles["TOC Heading"] if "TOC Heading" in names else doc.styles.add_style("TOC Heading", WD_STYLE_TYPE.PARAGRAPH)
+    title.base_style = doc.styles["Heading 1"]
+    title.next_paragraph_style = doc.styles["Normal"]
+    properties = title.element.get_or_add_pPr()
+    for old in properties.findall(qn("w:outlineLvl")):
+        properties.remove(old)
+    outline = OxmlElement("w:outlineLvl")
+    outline.set(qn("w:val"), "9")  # body text: not an outline level, so the field's outline switch skips it
+    properties.append(outline)
+    for level in range(1, MAX_CONTENTS_LEVELS + 1):
+        entry = doc.styles.add_style(f"toc {level}", WD_STYLE_TYPE.PARAGRAPH)  # the name Word recognises
+        entry.base_style = doc.styles["Normal"]
+        format_ = entry.paragraph_format
+        format_.left_indent = Cm(0.6 * (level - 1))
+        format_.space_before = Pt(4 if level == 1 else 0)
+        format_.space_after = Pt(2)
+        format_.tab_stops.add_tab_stop(Cm(usable_cm), WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
+        if level == 1:
+            entry.font.bold = True
+
+
+def _contents(doc: DocxDocument, block: Contents, usable_cm: float) -> None:
+    """Writes a table of contents as a real `TOC` field with every entry already written in and linked to its heading.
+
+    No page number is cached (a number from this file's layout would be wrong in the word processor's own layout), so a
+    person adds them with Update field. The field's instruction is fixed text; an entry links through a bookmark name made
+    from the heading's anchor, never from its words. A contents with no entries writes nothing.
+    """
+    if not block.entries:
+        return
+    _contents_styles(doc, usable_cm)
+    if block.title.strip():
+        doc.add_paragraph(clean_text(block.title), style="TOC Heading")
+    last = None
+    for index, entry in enumerate(block.entries):
+        paragraph = doc.add_paragraph(style=f"toc {min(max(entry.level, 1), MAX_CONTENTS_LEVELS)}")
+        if index == 0:
+            for kind, instruction in (("begin", None), (None, f' TOC \\o "1-{block.levels}" \\h \\z \\u '), ("separate", None)):
+                run = paragraph.add_run()
+                if instruction is not None:
+                    text = OxmlElement("w:instrText")
+                    text.set(qn("xml:space"), "preserve")
+                    text.text = instruction
+                    run._r.append(text)
+                else:
+                    mark = OxmlElement("w:fldChar")
+                    mark.set(qn("w:fldCharType"), cast(str, kind))
+                    run._r.append(mark)
+        link = OxmlElement("w:hyperlink")
+        link.set(qn("w:anchor"), _bookmark_name(entry.anchor))
+        link.set(qn("w:history"), "1")
+        entry_run = OxmlElement("w:r")
+        entry_text = OxmlElement("w:t")
+        entry_text.text = clean_text(entry.text)
+        entry_run.append(entry_text)
+        link.append(entry_run)
+        paragraph._p.append(link)
+        last = paragraph
+    if last is not None:
+        end = OxmlElement("w:fldChar")
+        end.set(qn("w:fldCharType"), "end")
+        finish = OxmlElement("w:r")
+        finish.append(end)
+        last._p.append(finish)
+    if block.new_page:
+        doc.add_page_break()
+
+
 def _link(paragraph, run: Run, href: str) -> None:
     """Makes `run` a hyperlink: an external address is a relationship target, `#anchor` a bookmark name."""
     link = OxmlElement("w:hyperlink")
@@ -916,6 +997,8 @@ def render_docx_document(document: ReportDocument) -> bytes:
             docx_grid(doc, block, usable_cm, _add_text, _block_look)
         elif isinstance(block, PageBreak):
             doc.add_page_break()
+        elif isinstance(block, Contents):
+            _contents(doc, block, usable_cm)
         elif isinstance(block, PageStyleChange):
             section = doc.add_section(WD_SECTION.NEW_PAGE)
             section.different_first_page_header_footer = False  # the cover page's footer rule is for the first section only

@@ -184,6 +184,7 @@ export const BLOCK_SNIPPETS: BlockSnippet[] = [
   { key: "if", families: ["document"], text: "@if req.status eq Approved\n  Approved.\n@else\n  Not approved yet.\n@end" },
   { key: "equation", families: ["document"], text: "@equation \\frac{a}{b} = c" },
   { key: "page_break", families: ["document"], text: "@page_break" },
+  { key: "contents", families: ["document"], text: "@contents" },
   { key: "spacer", families: ["document"], text: "@spacer 1 cm" },
   { key: "bottom", families: ["document"], text: "@bottom\n  Some text.\n@end" },
   { key: "section", families: ["document"], text: "@section \"Page style name\"\n  Some text.\n@end" },

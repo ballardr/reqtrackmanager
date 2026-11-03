@@ -517,6 +517,31 @@ REQUIREMENTS_BY_COMPONENT_LAYOUT = {
 """A small custom report layout: the project's requirements grouped by component."""
 
 
+REQUIREMENTS_HANDBOOK_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "header": {"left": "{{organisation}}", "right": "{{generated_on}}"},
+    "footer": {"left": "{{report_title}}", "right": "Page {{page}} of {{pages}}"},
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** by component, generated {{generated_on}}."},
+        {"type": "contents", "title": "Contents", "levels": 2, "new_page": True},
+        {
+            "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+            "children": [
+                {"type": "heading", "level": 2, "text": "{{comp.value}} ({{comp.count}})"},
+                {
+                    "type": "table", "source": {"group": "comp", "sort": [{"field": "title"}]},
+                    "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}],
+                    "empty_text": "No requirements.",
+                },
+            ],
+        },
+    ],
+}
+"""A custom report layout with a table of contents (headings to level 2, on a page of its own) and a footer, which sits at the
+foot of the page by default."""
+
+
 REQUIREMENTS_BY_CATEGORY_LAYOUT = {
     "schema_version": 1, "family": "document", "orientation": "portrait",
     "variables": [
@@ -2291,6 +2316,11 @@ def main() -> None:
     create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Pain points with pictures", "A table of Pain Points with the pictures attached to each.",
         PAIN_POINTS_WITH_PICTURES_LAYOUT,
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Requirements handbook (with contents)",
+        "Requirements by component, with a table of contents that links to each component.", REQUIREMENTS_HANDBOOK_LAYOUT,
+        folder="Handover/Requirements",
     )
     design_formulae = create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,

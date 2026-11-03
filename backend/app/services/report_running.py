@@ -124,7 +124,7 @@ def unmark(part: SlotPart) -> tuple[str | PageField, bool, bool]:
 
 def default_footer() -> RunningBand:
     """The footer a layout gets when its page style writes none: the page number, centred."""
-    return RunningBand(centre=("Page ", PageField.PAGE))
+    return RunningBand(centre=("Page ", PageField.PAGE), kind="footer")
 
 
 def apply_default_bands(document: ReportDocument) -> ReportDocument:

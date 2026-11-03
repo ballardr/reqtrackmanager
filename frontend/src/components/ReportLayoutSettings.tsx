@@ -5,13 +5,16 @@
  * orientation, variables), shown in the block editor beside the canvas when the layout block is selected.
  *
  * Responsibilities: draw the layout fields the block catalogue lists for the layout's family with the shared field
- * forms, and list the server's problems that are not about any block (and not already shown on a settings field).
+ * forms, arranged in the shared setting groups (`LayoutSettingGroup`: the basic page set open, the rest collapsible
+ * and marked when they hold a non-default value), and list the server's problems that are not about any block (and not already shown on a settings field).
  * An organisation layout that prints a project's name or code without being limited to one project gets a hint to
  * set "Projects it runs for" (a hint only, never an automatic change).
  */
 import type { BlockCatalogue, LayoutFamily, TreeProblem } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
+import { groupLayoutFields, treeSettingChanges } from "../utils/reportLayoutSettingGroups";
 import { owningNode, setAt, type Tree } from "../utils/reportLayoutTree";
+import { LayoutSettingGroup } from "./LayoutSettingGroup";
 import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
 
 /** A placeholder that prints the project a report ran for, which has no single answer in an organisation-wide run. */
@@ -42,6 +45,7 @@ export function ReportLayoutSettings({
   const fields = blocks.layout_fields.filter((f) => f.families.length === 0 || f.families.includes(family));
   const aboutField = (p: TreeProblem, key: string) => p.path === key || p.path.startsWith(`${key}[`) || p.path.startsWith(`${key}.`);
   const loose = layoutProblems.filter((p) => !fields.some((f) => aboutField(p, f.key)));
+  const changes = treeSettingChanges(tree, fields);
   return (
     <>
       {loose.length > 0 && (
@@ -50,12 +54,19 @@ export function ReportLayoutSettings({
         </ul>
       )}
       {suggestSingleProject && <p role="note" className="text-muted">{strings.reportLayouts.singleProjectHint}</p>}
-      {fields.map((field) => (
-        <ReportLayoutBlockField
-          key={field.key} field={field} node={tree} names={[]} env={env}
-          problems={layoutProblems.filter((p) => aboutField(p, field.key)).map((p) => p.message)}
-          onChange={(key, value) => onChange(setAt(tree, [key], value))}
-        />
+      {groupLayoutFields(fields).map((group) => (
+        <LayoutSettingGroup
+          key={group.key} group={group.key} changed={changes[group.key]}
+          problems={group.fields.reduce((n, f) => n + layoutProblems.filter((p) => aboutField(p, f.key)).length, 0)}
+        >
+          {group.fields.map((field) => (
+            <ReportLayoutBlockField
+              key={field.key} field={field} node={tree} names={[]} env={env}
+              problems={layoutProblems.filter((p) => aboutField(p, field.key)).map((p) => p.message)}
+              onChange={(key, value) => onChange(setAt(tree, [key], value))}
+            />
+          ))}
+        </LayoutSettingGroup>
       ))}
     </>
   );

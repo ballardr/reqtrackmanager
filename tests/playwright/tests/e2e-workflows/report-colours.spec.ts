@@ -90,6 +90,7 @@ test.describe("Report colours", () => {
     await test.step("the layout's own colour of the same name wins, and the block follows it", async () => {
       await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
       const inspector = page.getByLabel("Block details");
+      await ensureExpanded(page, "Look");
       await inspector.getByRole("button", { name: "Add colour" }).click();
       const popover = page.getByRole("dialog", { name: "Colour settings: colour1" });
       await popover.getByRole("textbox", { name: "Colour colour1 (Custom colour) (hex code)" }).fill("#445566");
@@ -143,6 +144,7 @@ test.describe("Report colours", () => {
     await newLayout(page, project.id, `E2E colours start ${suffix}`);
     await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
     const inspector = page.getByLabel("Block details");
+    await ensureExpanded(page, "Look");
     await inspector.getByRole("combobox", { name: "Start from" }).selectOption({ label: "Cool" });
     await expect(inspector.getByRole("list", { name: "Colours in the scheme" })).toContainText("primary #1d4ed8");
     await page.getByRole("button", { name: "Add block" }).click();

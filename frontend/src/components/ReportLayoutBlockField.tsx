@@ -9,7 +9,7 @@
  *   components, and composite kinds (source, columns, joins, condition, widget parts, variables) with their own
  *   editors.
  * - Fall back to a JSON box for a kind it does not know, so a module's block type is always editable.
- * - Offer "Insert a field" under text that allows `{{placeholders}}`, listing what the enclosing blocks name.
+ * - Offer a [+] beside the title of text that allows `{{placeholders}}`, opening a searchable list of what the enclosing blocks name.
  *
  * Design decisions: the field only edits its own key; it never judges the value. An optional key that is
  * emptied is removed from the node, a required one keeps an empty value so the server says it is missing.
@@ -35,6 +35,7 @@ import { ReportColourSchemeEditor } from "./ReportColourSchemeEditor";
 import { ReportDocumentStylesField } from "./ReportDocumentStylesField";
 import { ReportGridField } from "./ReportGridField";
 import { ReportLayoutColumnsEditor, ReportLayoutJoinsEditor } from "./ReportLayoutColumnsEditor";
+import { AddPopoverButton } from "./AddPopoverButton";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
 import { ReportLayoutSourceEditor } from "./ReportLayoutSourceEditor";
@@ -102,6 +103,16 @@ export function ReportLayoutBlockField({
   const setText = (next: string) => set(next === "" && !field.required ? undefined : next);
   const asText = typeof value === "string" ? value : "";
   const hasPlaceholders = field.features.includes("placeholders");
+  /** A [+] beside the title of a text field that takes `{{placeholders}}`: it opens the searchable field list and a choice closes it. */
+  const insertPlus = hasPlaceholders && !disabled ? (
+    <AddPopoverButton label={text.insertFieldInto(field.label)}>
+      {(close) => (
+        <ReportLayoutFieldPicker
+          catalogue={env.catalogue} aliases={names} onInsert={(snippet) => { setText(`${asText}${snippet}`); close(); }}
+        />
+      )}
+    </AddPopoverButton>
+  ) : undefined;
   /** The layout's own colour scheme: the root's `palette`, which a block's colour field may name. */
   const layoutPalette = (field.kind === "palette" ? (Array.isArray(value) ? value : []) : env.palette ?? []) as ColourEntry[];
 
@@ -113,6 +124,7 @@ export function ReportLayoutBlockField({
       control = (
         <TextField
           label={field.label} value={asText} onChange={setText} disabled={disabled} help={help} required={field.required}
+          labelExtra={field.kind === "text" ? insertPlus : undefined}
           placeholder={field.kind === "alias" && typeof field.default === "string" ? field.default : undefined}
           inputProps={{ maxLength: field.max_length ?? undefined, spellCheck: field.kind === "tex" ? false : undefined }}
         />
@@ -130,7 +142,7 @@ export function ReportLayoutBlockField({
       control = (
         <TextAreaField
           label={field.label} value={asText} onChange={setText} disabled={disabled} help={help} required={field.required} rows={4}
-          inputProps={{ maxLength: field.max_length ?? undefined }}
+          labelExtra={insertPlus} inputProps={{ maxLength: field.max_length ?? undefined }}
         />
       );
       break;
@@ -432,12 +444,6 @@ export function ReportLayoutBlockField({
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }} data-field={field.key}>
       {control}
-      {hasPlaceholders && !disabled && (field.kind === "text" || field.kind === "longtext") && (
-        <details>
-          <summary>{text.insertField}</summary>
-          <ReportLayoutFieldPicker catalogue={env.catalogue} aliases={names} onInsert={(snippet) => setText(`${asText}${snippet}`)} />
-        </details>
-      )}
       {problems.length > 0 && (
         <ul className="outline-field-problems" role="alert">
           {problems.map((message, i) => <li key={i}>{message}</li>)}

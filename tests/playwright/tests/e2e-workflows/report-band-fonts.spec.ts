@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion, openDesignerTextView } from "./helpers";
+import { createDocumentLayoutWorld, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -27,9 +27,10 @@ test.describe("Report header and footer fonts", () => {
       const right = dialog.getByRole("textbox", { name: "Footer, right cell" });
       await right.fill("Page {{page}} of {{pages}}");
       await right.selectText();
-      await dialog.getByRole("button", { name: "Footer: Italic" }).click();
+      await dialog.getByRole("button", { name: "Footer, right cell: Italic" }).click();
       await expect(right).toHaveValue("*Page {{page}} of {{pages}}*");
       await expect(dialog.getByText("Page 3 of 12")).toBeVisible();
+      await ensureExpanded(page, "More footer options");
       await dialog.getByRole("combobox", { name: "Footer: font" }).selectOption("serif");
       await dialog.getByRole("spinbutton", { name: "Footer: size (pt)" }).fill("10");
       await dialog.getByRole("button", { name: "Close" }).click();

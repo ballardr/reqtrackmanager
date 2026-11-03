@@ -78,9 +78,12 @@ export const TextThatAllowsPlaceholdersOffersTheNamesInScope: Story = {
   args: { names: [{ name: "req", kind: "record", recordType: "requirement" }] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByText("Insert a field"));
-    await userEvent.click(await canvas.findByRole("button", { name: "Insert {{req.status}}" }));
+    await expect(canvas.queryByText("Insert a field")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Insert a field into Heading" }));
+    await userEvent.click(await within(document.body).findByRole("button", { name: "Insert {{req.status}}" }));
     await waitFor(() => expect(nodeOf(canvasElement).text).toBe("Hello{{req.status}}"));
+    // A choice closes the list.
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).toBeNull());
   },
 };
 
@@ -181,7 +184,7 @@ export const ReadOnlyDisablesTheControl: Story = {
   args: { environment: { ...env, readOnly: true } },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByRole("textbox", { name: "Heading" })).toBeDisabled();
-    await expect(within(canvasElement).queryByText("Insert a field")).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: /^Insert a field into/ })).not.toBeInTheDocument();
   },
 };
 
@@ -485,6 +488,29 @@ export const ASpacerBlockTakesAHeightInCentimetresOrMillimetres: Story = {
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Height unit" }), "Millimetres (mm)");
     await waitFor(() => expect(node(1).height_unit).toBe("mm"));
     expect(node(1).height).toBe(1);
+  },
+};
+
+/** A table of contents takes a title (with placeholders), how many heading levels it lists and whether a new page follows it. */
+export const AContentsBlockTakesATitleLevelsAndANewPageSwitch: Story = {
+  render: () => (
+    <div>
+      <Harness field={fieldOf("contents", "title")} initial={{ type: "contents" }} />
+      <Harness field={fieldOf("contents", "levels")} initial={{ type: "contents" }} />
+      <Harness field={fieldOf("contents", "new_page")} initial={{ type: "contents" }} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const node = (index: number) => JSON.parse(canvas.getAllByTestId("node")[index].textContent ?? "{}");
+    await userEvent.type(canvas.getByRole("textbox", { name: "Title" }), "Index");
+    await waitFor(() => expect(node(0).title).toBe("Index"));
+    const levels = canvas.getByRole("spinbutton", { name: "Levels" });
+    await userEvent.clear(levels);
+    await userEvent.type(levels, "2");
+    await waitFor(() => expect(node(1).levels).toBe(2));
+    await userEvent.click(canvas.getByRole("checkbox", { name: "New page after" }));
+    await waitFor(() => expect(node(2).new_page).toBeDefined());
   },
 };
 

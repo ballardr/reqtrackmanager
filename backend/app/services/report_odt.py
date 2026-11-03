@@ -38,11 +38,13 @@ from app.services.report_grid_render import odt_grid
 from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
 from app.services.report_math import png_of, typeset
 from app.services.report_model import (
+    MAX_CONTENTS_LEVELS,
     TONE_FILL,
     BottomEnd,
     BottomStart,
     BulletList,
     Cell,
+    Contents,
     DocumentStyles,
     Equation,
     Gap,
@@ -222,6 +224,18 @@ def _named_styles(styles: DocumentStyles) -> str:
             para='fo:margin-top="0.4cm" fo:margin-bottom="0.2cm" fo:keep-with-next="always"', text=_heading_text(styles),
         )
         + headings
+        + _paragraph_style(
+            "Contents_20_Heading", parent="Heading", extra=' style:display-name="Contents Heading" style:next-style-name="Standard"',
+            text=f'fo:font-size="{16 * scale:g}pt"',
+        )
+        + "".join(
+            _paragraph_style(
+                f"Contents_20_{level}", extra=f' style:display-name="Contents {level}"',
+                para=f'fo:margin-left="{0.6 * (level - 1):g}cm" fo:margin-top="{0.1 if level == 1 else 0}cm" fo:margin-bottom="0.05cm"',
+                text='fo:font-weight="bold"' if level == 1 else "",
+            )
+            for level in range(1, MAX_CONTENTS_LEVELS + 1)
+        )
         + _paragraph_style("Note", text=f'fo:font-size="8.5pt" fo:font-style="italic" fo:color="{_NOTE_GREY}"')
         + _paragraph_style("Footer", para='fo:text-align="center" fo:margin-bottom="0cm"', text='fo:font-size="8pt"')
         + "".join(
@@ -671,6 +685,8 @@ class _Body:
             self.chunks.append(f'<text:p text:style-name="{name}"/>')
         elif isinstance(block, PageBreak):
             self.chunks.append('<text:p text:style-name="P_Break"/>')
+        elif isinstance(block, Contents):
+            self._contents(block)
         elif isinstance(block, PageStyleChange):
             # An empty paragraph that names a master page starts a new page in that page's layout.
             index = self.page_styles.index(block.style)
@@ -680,6 +696,44 @@ class _Body:
             self.usable_height_cm = block.style.usable_height_cm
         elif isinstance(block, Gap):
             return  # a PDF layout hint; paragraph styles carry the spacing
+
+    def _contents(self, block: Contents) -> None:
+        """A table of contents: an index whose entries are written in and linked to the headings' bookmarks.
+
+        No page number is written (one worked out here would not match the word processor's own layout); the entry template
+        has the right tab and page number, so Tools, Update adds them. A contents with no entries writes nothing.
+        """
+        if not block.entries:
+            return
+        title = block.title if block.title.strip() else ""
+        entry_templates = "".join(
+            f'<text:table-of-content-entry-template text:outline-level="{level}" text:style-name="Contents_20_{level}">'
+            '<text:index-entry-link-start text:style-name="Internet_20_link"/><text:index-entry-text/>'
+            '<text:index-entry-tab-stop style:type="right" style:leader-char="."/><text:index-entry-page-number/>'
+            "<text:index-entry-link-end/></text:table-of-content-entry-template>"
+            for level in range(1, block.levels + 1)
+        )
+        source_title = (
+            f'<text:index-title-template text:style-name="Contents_20_Heading">{xml_text(title)}</text:index-title-template>' if title else ""
+        )
+        body_title = (
+            f'<text:index-title text:name="Contents1_Head"><text:p text:style-name="Contents_20_Heading">{xml_text(title)}</text:p>'
+            "</text:index-title>" if title else ""
+        )
+        entries = "".join(
+            f'<text:p text:style-name="Contents_20_{min(max(entry.level, 1), MAX_CONTENTS_LEVELS)}">'
+            f'<text:a xlink:type="simple" xlink:href={xml_attr("#" + entry.anchor)} text:style-name="Internet_20_link">'
+            f"{xml_text(entry.text)}</text:a></text:p>"
+            for entry in block.entries
+        )
+        self.chunks.append(
+            '<text:table-of-content text:protected="false" text:name="Contents1">'
+            f'<text:table-of-content-source text:outline-level="{block.levels}" text:use-index-marks="false">'
+            f"{source_title}{entry_templates}</text:table-of-content-source>"
+            f"<text:index-body>{body_title}{entries}</text:index-body></text:table-of-content>"
+        )
+        if block.new_page:
+            self.chunks.append('<text:p text:style-name="P_Break"/>')
 
     def content(self):
         """`content.xml` as text chunks: the prolog and automatic styles (known only now), then the body."""

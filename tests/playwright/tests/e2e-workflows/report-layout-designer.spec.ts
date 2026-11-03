@@ -399,6 +399,35 @@ test.describe("Report layout designer", () => {
     await expect(page.getByRole("button", { name: "Page setup: Letter, landscape" })).toBeVisible();
   });
 
+  test("a closed settings group holding a changed setting says so on its bar", async ({ page, request }) => {
+    const { project, suffix } = await setup(page, request);
+    await createFromProjectAdmin(page, project.id, `E2E setting groups ${suffix}`);
+    await page.getByRole("tab", { name: "Blocks" }).click();
+    await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+    const inspector = page.getByLabel("Block details");
+
+    await test.step("the basic set and the header and footer are open; the others start closed unless left open before", async () => {
+      await expect(inspector.getByRole("combobox", { name: "Page orientation" })).toBeVisible();
+      await expect(inspector.getByRole("button", { name: "Header and footer section" })).toHaveAttribute("aria-expanded", "true");
+    });
+
+    await test.step("a changed setting inside a group is marked on the bar once the group is closed", async () => {
+      await ensureExpanded(page, "Tables");
+      await inspector.getByRole("checkbox", { name: "Repeat table header rows" }).uncheck();
+      await inspector.getByRole("button", { name: "Tables section" }).click();
+      const bar = inspector.getByRole("button", { name: "Tables section" });
+      await expect(bar).toHaveAttribute("aria-expanded", "false");
+      await expect(bar).toContainText("1 changed");
+    });
+
+    await test.step("switching it back removes the mark", async () => {
+      await inspector.getByRole("button", { name: "Tables section" }).click();
+      await inspector.getByRole("checkbox", { name: "Repeat table header rows" }).check();
+      await inspector.getByRole("button", { name: "Tables section" }).click();
+      await expect(inspector.getByRole("button", { name: "Tables section" })).not.toContainText("changed");
+    });
+  });
+
   test("margins and a page style are set in the Page setup dialog, used by a section, saved and read back in the block editor", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
     await createFromProjectAdmin(page, project.id, `E2E page styles ${suffix}`);
@@ -411,6 +440,7 @@ test.describe("Report layout designer", () => {
       await dialog.getByRole("spinbutton", { name: "Top" }).first().fill("2");
       await dialog.getByRole("spinbutton", { name: "Gutter" }).first().fill("1");
       await dialog.getByRole("checkbox", { name: "Mirror margins" }).check();
+      await ensureExpanded(page, "Page styles");
       await dialog.getByRole("button", { name: "Add page style" }).click();
       await dialog.getByRole("textbox", { name: "Name" }).fill("Wide tables");
       const style = dialog.getByRole("group", { name: "Wide tables" });
@@ -440,6 +470,7 @@ test.describe("Report layout designer", () => {
       await page.reload();
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+      await ensureExpanded(page, "Page styles");
       await expect(page.getByRole("group", { name: "Wide tables" })).toBeVisible();
       await expect(page.getByRole("checkbox", { name: "Mirror margins" })).toBeChecked();
     });
@@ -457,9 +488,9 @@ test.describe("Report layout designer", () => {
       await dialog.getByRole("combobox", { name: "Header: print" }).selectOption("custom");
       await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");
       await dialog.getByRole("combobox", { name: "Footer: print" }).selectOption("custom");
-      // The page fields come from the Insert list (the server's catalogue names none), in plain words, written into the cell last edited.
-      await dialog.getByRole("textbox", { name: "Footer, right cell" }).click();
-      await dialog.getByRole("combobox", { name: "Insert placeholder" }).last().selectOption({ label: "Page X of Y" });
+      // The page fields come from the cell's [+] menu (the server's catalogue names none), in plain words, written into that cell.
+      await dialog.getByRole("button", { name: "Insert placeholder into footer, right cell" }).click();
+      await page.getByRole("menuitem", { name: /^Page X of Y/ }).click();
       await expect(dialog.getByRole("textbox", { name: "Footer, right cell" })).toHaveValue("Page {{page}} of {{pages}}");
       await expect(dialog.getByText("Prints as: Page 3 of 12")).toBeVisible();
       await expect(editor).toHaveValue(/^@layout document\n@header left "" centre "\{\{report_title\}\}"\n@footer left "" right "Page \{\{page\}\} of \{\{pages\}\}"\n/);
@@ -505,10 +536,20 @@ test.describe("Report layout designer", () => {
       await dialog.getByRole("combobox", { name: "Header: print" }).selectOption("custom");
       await dialog.getByRole("textbox", { name: "Header, left cell" }).fill("Ballard");
       await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");
-      await dialog.getByRole("textbox", { name: "Left width" }).fill("25%");
-      await dialog.getByRole("combobox", { name: "Right vertical alignment" }).selectOption("bottom");
+      // A cell's width and alignment are in its settings popover; the band's own alignment is under More.
+      const header = dialog.getByRole("group", { name: "Header" });
+      await header.getByRole("button", { name: /^Left cell settings/ }).click();
+      await page.getByRole("dialog", { name: "Left cell settings" }).getByRole("textbox", { name: "Left width" }).fill("25%");
+      await header.getByRole("button", { name: /^Right cell settings/ }).click();
+      await page.getByRole("dialog", { name: "Right cell settings" }).getByRole("combobox", { name: "Right vertical alignment" }).selectOption("bottom");
+      // The gear toggles the popover shut; Escape would first close a focused field-help tooltip.
+      await header.getByRole("button", { name: /^Right cell settings/ }).click();
+      await expect(page.getByRole("dialog", { name: "Right cell settings" })).toBeHidden();
+      await ensureExpanded(page, "More header options");
       await dialog.getByRole("combobox", { name: "Header: vertical alignment" }).selectOption("middle");
       await expect(editor).toHaveValue(/@header left "Ballard" centre "\{\{report_title\}\}" valign middle leftwidth 25% rightvalign bottom/);
+      // selectOption does not move focus, and Escape closes only the dialog that holds it.
+      await dialog.getByRole("heading", { name: "Page setup" }).click();
       await page.keyboard.press("Escape");
       await expect(dialog).toBeHidden();
       await expect(page.getByText("The text is valid.")).toBeVisible();
@@ -527,7 +568,11 @@ test.describe("Report layout designer", () => {
       await page.reload();
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+      const leftGear = page.getByRole("button", { name: /^Left cell settings/ }).first();
+      await leftGear.click();
       await expect(page.getByRole("textbox", { name: "Left width" })).toHaveValue("25%");
+      await leftGear.click();
+      await page.getByRole("button", { name: /^Right cell settings/ }).first().click();
       await expect(page.getByRole("combobox", { name: "Right vertical alignment" })).toHaveValue("bottom");
     });
 

@@ -47,7 +47,8 @@ Grammar (one statement per line; indentation is cosmetic):
   lays its contents out in that style, on pages of their own.
 - A block may be given a display label for the designer (never printed) by a `@label "<text>"` line directly before it.
 - A block opens with `@name ...`; `each`, `group`, `if` (with `@else`), `table`, `sheet` and an explicit
-  `@text` end with `@end`. `heading`, `page_break`, `spacer` and the quoted `@text "..."` are one line.
+  `@text` end with `@end`. `heading`, `page_break`, `spacer`, `contents` (`@contents ["Title"] [levels N] [newpage|nonewpage]`) and the quoted
+  `@text "..."` are one line.
 - A source is a record type, or `in <group name>`, followed by clauses in any order: `from <name>`,
   `via "<link type>", ...`, `direction <d>`, `archived true|false`, `where <condition>`,
   `sort <field> [asc|desc]`; a block adds `as <name>`, `by <field>` or `empty "<text>"` where its
@@ -1714,6 +1715,34 @@ def _write_page_break(w: _Writer, node: dict[str, Any], depth: int) -> None:
     w.line(depth, "@page_break")
 
 
+def _parse_contents(p: _Parser, d: _Directive) -> None:
+    """`@contents ["Title"] [levels N] [nonewpage]`: the title in quotes, then the clauses in either order."""
+    cur = d.cursor()
+    node: dict[str, Any] = {"type": "contents"}
+    if (token := cur.peek()) is not None and token.kind == "str":
+        node["title"] = cur.text("the title in quotes")
+    while (token := cur.peek()) is not None:
+        word = cur.accept("levels", "nonewpage", "newpage")
+        if word is None:
+            raise _Syntax(f'Unexpected {token.shown()}. Write @contents "Contents" levels 2 nonewpage.', token.column)
+        key = "levels" if word == "levels" else "new_page"
+        if key in node:
+            raise _Syntax(f'"{word}" is given twice.', token.column)
+        node[key] = _number_word(cur, "the number of levels") if word == "levels" else word == "newpage"
+    p.add(node, d.line_no)
+
+
+def _write_contents(w: _Writer, node: dict[str, Any], depth: int) -> None:
+    line = "@contents"
+    if "title" in node:
+        line += f" {_quote(node['title'])}"
+    if "levels" in node:
+        line += f" levels {json.dumps(node['levels'])}"
+    if "new_page" in node:
+        line += " newpage" if node["new_page"] else " nonewpage"
+    w.line(depth, line)
+
+
 def _parse_bottom(p: _Parser, d: _Directive) -> None:
     d.cursor().expect_end()
     p.open({"type": "bottom", "children": []}, d.line_no)
@@ -2406,6 +2435,7 @@ for _form in (
     TextForm("text", _parse_text, _write_text),
     TextForm("page_break", _parse_page_break, _write_page_break),
     TextForm("spacer", _parse_spacer, _write_spacer),
+    TextForm("contents", _parse_contents, _write_contents),
     TextForm("section", _parse_section, _write_section),
     TextForm("bottom", _parse_bottom, _write_bottom),
     TextForm("image", _parse_image, _write_image),

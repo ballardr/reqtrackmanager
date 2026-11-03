@@ -46,12 +46,12 @@ def test_no_starter_writes_a_header_or_footer_of_its_own():
 
 
 @pytest.mark.parametrize("paper", ["A4", "Letter", "A3"])
-def test_the_default_footer_keeps_the_page_number_centred_and_top_aligned(paper: str):
+def test_the_default_footer_keeps_the_page_number_centred_and_bottom_aligned(paper: str):
     style = PageStyle(page_size=paper)
     left, centre, right = resolve_band_cells(default_footer(), style.usable_width_cm)
     assert left.width_cm == pytest.approx(right.width_cm)
     assert centre.width_cm == pytest.approx(style.usable_width_cm - 2 * left.width_cm)
-    assert (left.valign, centre.valign, right.valign) == ("top", "top", "top")
+    assert (left.valign, centre.valign, right.valign) == ("bottom", "bottom", "bottom")
 
 
 def run(world: World, project: dict, name: str, fmt: str) -> bytes:

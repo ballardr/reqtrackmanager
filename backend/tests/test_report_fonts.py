@@ -179,6 +179,7 @@ def test_pdf_face_registers_the_right_weight_and_slant():
     assert report_fonts.pdf_face("serif") == "Report-serif-regular"
     assert report_fonts.pdf_face("serif", bold=True, italic=True) == "Report-serif-bolditalic"
     assert report_fonts.pdf_face("mono", italic=True) == "Report-mono-italic"
+    assert report_fonts.pdf_face("sans", bold=True) == "Report-sans-bold"  # registers the face the next line reads
     assert pdfmetrics.getFont("Report-sans-bold").face.name == b"LiberationSans-Bold"
 
 

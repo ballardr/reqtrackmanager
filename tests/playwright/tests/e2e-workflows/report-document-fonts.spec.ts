@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { closeDesignerPreview, openDesignerPreview, createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion, designerPreviewPanel } from "./helpers";
+import { ensureExpanded, closeDesignerPreview, openDesignerPreview, createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -23,6 +23,7 @@ test.describe("Report document fonts", () => {
     await test.step("the Layout block's Fonts group sets the body and heading fonts", async () => {
       await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
       const inspector = page.getByLabel("Block details");
+      await ensureExpanded(page, "Look");
       await inspector.getByRole("combobox", { name: "Body font" }).selectOption("serif");
       await inspector.getByRole("spinbutton", { name: "Body size (pt)" }).fill("12");
       await inspector.getByRole("combobox", { name: "Heading font" }).selectOption("mono");

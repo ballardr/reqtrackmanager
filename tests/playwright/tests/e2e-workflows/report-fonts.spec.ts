@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { createDocumentLayoutWorld, loginAs, logout, onCleanup, installCleanupHook, PASSWORD, SERVER_ADMIN_LOGIN } from "./helpers";
+import { createDocumentLayoutWorld, ensureExpanded, loginAs, logout, onCleanup, installCleanupHook, PASSWORD, SERVER_ADMIN_LOGIN } from "./helpers";
 
 installCleanupHook();
 
@@ -31,6 +31,7 @@ test("a server admin hides a provided report font from authors, renames it for W
     await page.goto(`/projects/${world.project.id}/report-layouts/${world.layout.id}`);
     await page.getByRole("tab", { name: "Blocks" }).click();
     await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+    await ensureExpanded(page, "Look");
     const picker = page.getByLabel("Block details").getByRole("combobox", { name: "Body font" });
     await expect(picker.locator("option", { hasText: "Sans" }).first()).toBeAttached();
     return picker.locator("option").allTextContents();

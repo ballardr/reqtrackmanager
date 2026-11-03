@@ -139,6 +139,13 @@ export function buildBlockCatalogue(): BlockCatalogue {
         ],
       }),
       block("page_break", "Page break", { type: "page_break" }),
+      block("contents", "Table of contents", { type: "contents" }, {
+        fields: [
+          field("title", "Title", "text", { max_length: 200, default: "Contents", features: ["placeholders"] }),
+          field("levels", "Levels", "integer", { minimum: 1, maximum: 3, default: 3 }),
+          field("new_page", "New page after", "boolean", { default: true }),
+        ],
+      }),
       block("spacer", "Spacer", { type: "spacer", height: 1 }, {
         fields: [
           field("height", "Height", "number", { required: true, minimum: 0.1, maximum: 200, default: 1 }),

@@ -34,8 +34,9 @@ def usable(doc: ReportDocument) -> float:
     return doc.style.usable_width_cm
 
 
-def pdf_texts(pdf: bytes) -> list[tuple[float, float, str]]:
-    """`(x, y, text)` of every positioned text object on the first page that is a header (baseline over 700 pt on A4)."""
+def pdf_texts(pdf: bytes, low: bool = False) -> list[tuple[float, float, str]]:
+    """`(x, y, text)` of every positioned text object on the first page that is a header (baseline over 700 pt on A4), or,
+    with `low`, a footer (baseline under 100 pt)."""
     found: list[tuple[float, float, str]] = []
     for raw in re.findall(rb"stream\r?\n(.*?)endstream", pdf, re.S):
         try:
@@ -44,7 +45,7 @@ def pdf_texts(pdf: bytes) -> list[tuple[float, float, str]]:
             continue
         found += [(float(x), float(y), t) for x, y, t in re.findall(r"1 0 0 1 ([\d.]+) ([\d.]+) Tm \((.*?)\) Tj", content)]
         break
-    return [item for item in found if item[1] > 700]
+    return [item for item in found if (item[1] < 100 if low else item[1] > 700)]
 
 
 # ---- PDF ----------------------------------------------------------------------------------------------------------
@@ -138,6 +139,40 @@ def test_the_html_band_has_the_resolved_columns_and_alignments():
     fr = [float(v) for v in re.findall(r"minmax\(0, ([\d.]+)fr\)", html)]
     assert fr == pytest.approx([c.width_cm for c in cells], abs=0.001)
     assert re.findall(r'class="cell \w+" style="align-items: ([\w-]+)"', html) == ["flex-start", "flex-start", "flex-end"]
+
+
+# ---- a footer defaults to the bottom, in every format -----------------------------------------------------------
+
+
+def footer_document(band: RunningBand) -> ReportDocument:
+    return ReportDocument(title="T", blocks=[Paragraph("body")], header=None, footer=band)
+
+
+def test_an_unset_footer_sits_at_the_bottom_in_pdf_word_odt_and_html():
+    band = RunningBand(left=("ACME-1",), centre=(LONG,), right=("R",), kind="footer")
+    doc = footer_document(band)
+    pdf = [(y, t) for x, y, t in pdf_texts(render_pdf_document(doc), low=True)]
+    centre_ys = sorted(y for y, t in pdf if t not in ("ACME-1", "R"))
+    assert len(centre_ys) >= 2
+    assert next(y for y, t in pdf if t == "ACME-1") == pytest.approx(centre_ys[0], abs=0.5)  # the lowest line of the wrapped centre
+    word = DocxDocument(io.BytesIO(render_docx_document(doc)))
+    assert re.findall(r"<w:vAlign w:val=\"(\w+)\"", word.sections[0].footer._element.xml) == ["bottom"] * 3
+    with zipfile.ZipFile(io.BytesIO(render_odt_document(doc))) as archive:
+        styles = archive.read("styles.xml").decode()
+    names = re.findall(r'<table:table-cell table:style-name="(\w+)" office:value-type="string"><text:p text:style-name="Band_', styles)[:3]
+    assert [re.search(rf'style:name="{n}" style:family="table-cell">.*?style:vertical-align="(\w+)"', styles).group(1) for n in names] == ["bottom"] * 3
+    assert re.findall(r'class="cell \w+" style="align-items: ([\w-]+)"', render_html_document(doc).decode()) == ["flex-end"] * 3
+
+
+def test_a_footer_that_says_top_keeps_it_in_every_format():
+    band = RunningBand(left=("ACME-1",), centre=(LONG,), right=("R",), kind="footer", valign="top")
+    doc = footer_document(band)
+    pdf = [(y, t) for x, y, t in pdf_texts(render_pdf_document(doc), low=True)]
+    centre_ys = sorted((y for y, t in pdf if t not in ("ACME-1", "R")), reverse=True)
+    assert next(y for y, t in pdf if t == "ACME-1") == pytest.approx(centre_ys[0], abs=0.5)  # the first line of the wrapped centre
+    word = DocxDocument(io.BytesIO(render_docx_document(doc)))
+    assert re.findall(r"<w:vAlign w:val=\"(\w+)\"", word.sections[0].footer._element.xml) == ["top"] * 3
+    assert re.findall(r'class="cell \w+" style="align-items: ([\w-]+)"', render_html_document(doc).decode()) == ["flex-start"] * 3
 
 
 # ---- margins grow to hold a wrapped band --------------------------------------------------------------------------

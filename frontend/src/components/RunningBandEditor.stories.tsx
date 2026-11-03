@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 
 import { buildImageLibrary } from "../testing/reportLayoutFixtures";
 import type { RunningBand } from "../utils/reportPageSetup";
@@ -40,6 +40,18 @@ type Story = StoryObj<typeof RunningBandEditor>;
 
 const band = (canvasElement: HTMLElement) => JSON.parse(within(canvasElement).getByLabelText("Band").textContent ?? "null");
 
+/** Opens the band's "More" group (closed until opened), as a person would. */
+const openMore = async (view: ReturnType<typeof within>, kind: "Header" | "Footer") => {
+  const bar = view.getByRole("button", { name: `More ${kind.toLowerCase()} options section` });
+  if (bar.getAttribute("aria-expanded") !== "true") await userEvent.click(bar);
+};
+
+/** Opens a cell's settings popover. */
+const openCell = async (view: ReturnType<typeof within>, cell: "Left" | "Centre" | "Right") => {
+  await userEvent.click(view.getByRole("button", { name: new RegExp(`^${cell} cell settings`) }));
+  return within(await within(document.body).findByRole("dialog"));
+};
+
 /** Nothing is set, so it inherits; choosing its own text shows three cells and typing writes them. */
 export const OwnTextFillsTheThreeCells: Story = {
   render: () => <Host />,
@@ -54,14 +66,51 @@ export const OwnTextFillsTheThreeCells: Story = {
   },
 };
 
-/** A placeholder is added to the end of the cell edited last. */
-export const InsertingAPlaceholderGoesToTheLastCell: Story = {
-  render: () => <Host initial={{ left: "" }} kind="footer" />,
+/** Opens a cell's [+] placeholder menu and returns it. */
+const openPlaceholders = async (view: ReturnType<typeof within>, kind: "Header" | "Footer", cell: "left" | "centre" | "right") => {
+  await userEvent.click(view.getByRole("button", { name: `Insert placeholder into ${kind.toLowerCase()}, ${cell} cell` }));
+  return within(await within(document.body).findByRole("menu"));
+};
+
+/** A cell's [+] writes the placeholder into that cell only, at its end when it has not been clicked in. */
+export const InsertingAPlaceholderGoesToThatCell: Story = {
+  render: () => <Host initial={{ left: "Keep" }} kind="footer" />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
     await userEvent.type(view.getByRole("textbox", { name: "Footer, right cell" }), "Page ");
-    await userEvent.selectOptions(view.getByRole("combobox", { name: "Insert placeholder" }), "page");
+    await userEvent.click(await (await openPlaceholders(view, "Footer", "right")).findByRole("menuitem", { name: /^Page number/ }));
     await expect(band(canvasElement).right).toBe("Page {{page}}");
+    await expect(band(canvasElement).left).toBe("Keep");
+    // The menu closes and the caret is back in the cell, after the placeholder.
+    await waitFor(() => expect(view.getByRole("textbox", { name: "Footer, right cell" })).toHaveFocus());
+    await expect(within(document.body).queryByRole("menu")).toBeNull();
+  },
+};
+
+/** The menu is short and grouped: the page fields, then report, project and organisation values, each with a sample; no old drop-down remains. */
+export const ThePlaceholderMenuIsGroupedWithSamples: Story = {
+  render: () => <Host initial={{ left: "" }} kind="footer" placeholders={["project_name", "report_title", "organisation", "layout_version", "odd_name"]} />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    await expect(view.queryByRole("combobox", { name: "Insert placeholder" })).toBeNull();
+    const menu = await openPlaceholders(view, "Footer", "left");
+    await expect(menu.getAllByRole("menuitem").map((item) => item.textContent?.split(" ")[0])).toHaveLength(8);
+    for (const heading of ["Page", "Report", "Project", "Organisation", "Other"]) await expect(menu.getByText(heading)).toBeInTheDocument();
+    await expect(menu.getByRole("menuitem", { name: /^Project name\s*Apollo/ })).toBeInTheDocument();
+    await userEvent.click(menu.getByRole("menuitem", { name: /^\{\{odd_name\}\}/ }));
+    await expect(band(canvasElement).left).toBe("{{odd_name}}");
+  },
+};
+
+/** Escape closes the menu and puts focus back on the [+]. */
+export const EscapeClosesThePlaceholderMenuOnItsButton: Story = {
+  render: () => <Host initial={{ left: "" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    await openPlaceholders(view, "Footer", "left");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(within(document.body).queryByRole("menu")).toBeNull());
+    await expect(view.getByRole("button", { name: "Insert placeholder into footer, left cell" })).toHaveFocus();
   },
 };
 
@@ -70,10 +119,10 @@ export const PageFieldsAreOfferedWhateverTheCatalogueHolds: Story = {
   render: () => <Host initial={{ left: "" }} kind="footer" placeholders={["project_name", "report_title"]} />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
-    const insert = view.getByRole("combobox", { name: "Insert placeholder" });
-    await expect(within(insert).getByRole("option", { name: "Page number ({{page}})" })).toBeInTheDocument();
-    await expect(within(insert).getByRole("option", { name: "Total pages ({{pages}})" })).toBeInTheDocument();
-    await userEvent.selectOptions(insert, "page_of_pages");
+    const menu = await openPlaceholders(view, "Footer", "left");
+    await expect(menu.getByRole("menuitem", { name: /^Page number \(\{\{page\}\}\)/ })).toBeInTheDocument();
+    await expect(menu.getByRole("menuitem", { name: /^Total pages \(\{\{pages\}\}\)/ })).toBeInTheDocument();
+    await userEvent.click(menu.getByRole("menuitem", { name: /^Page X of Y/ }));
     await expect(band(canvasElement).left).toBe("Page {{page}} of {{pages}}");
     await expect(view.getByText("Page 3 of 12")).toBeInTheDocument();
     await expect(view.getByText("Page 3 of 12").parentElement).toHaveTextContent("Prints as: Page 3 of 12");
@@ -88,7 +137,7 @@ export const InsertingWritesAtTheCaret: Story = {
     const cell = view.getByRole("textbox", { name: "Footer, left cell" }) as HTMLTextAreaElement;
     await userEvent.click(cell);
     cell.setSelectionRange(7, 7);
-    await userEvent.selectOptions(view.getByRole("combobox", { name: "Insert placeholder" }), "page");
+    await userEvent.click(await (await openPlaceholders(view, "Footer", "left")).findByRole("menuitem", { name: /^Page number/ }));
     await expect(band(canvasElement).left).toBe("Report {{page}} draft");
   },
 };
@@ -112,6 +161,7 @@ export const TheFirstPageCanBeSkipped: Story = {
   render: () => <Host initial={{ left: "Cover-less" }} />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
+    await openMore(view, "Header");
     await userEvent.selectOptions(view.getByRole("combobox", { name: "Header: first page" }), "none");
     await expect(band(canvasElement).first_page).toBe("none");
     await userEvent.selectOptions(view.getByRole("combobox", { name: "Header: first page" }), "same");
@@ -124,7 +174,9 @@ export const ALogoTooTallForTheMarginIsWarnedAbout: Story = {
   render: () => <Host initial={{ left: "A", logo: { file: "image-1", height: 2 } }} withImages />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
+    // The fit message is outside the closed "More" group, where the logo's height is.
     await expect(await view.findByRole("alert")).toHaveTextContent("The header needs a top margin of at least 2.5 cm; it is 1.5 cm.");
+    await openMore(view, "Header");
     const height = view.getByRole("spinbutton", { name: "Logo height (cm)" });
     await userEvent.clear(height);
     await userEvent.type(height, "0.8");
@@ -138,6 +190,7 @@ export const RemovingTheLogoKeepsTheBand: Story = {
   render: () => <Host initial={{ logo: { file: "image-1", height: 1 } }} withImages />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
+    await openMore(view, "Header");
     await userEvent.click(await view.findByRole("button", { name: "Remove logo (header)" }));
     await expect(band(canvasElement)).toEqual({ left: "" });
   },
@@ -156,6 +209,7 @@ export const FontSizeAndColourApplyToTheWholeBand: Story = {
   render: () => <Host initial={{ left: "A" }} kind="footer" />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
+    await openMore(view, "Footer");
     await userEvent.selectOptions(view.getByRole("combobox", { name: "Footer: font" }), "serif");
     const size = view.getByRole("spinbutton", { name: "Footer: size (pt)" });
     await userEvent.type(size, "10");
@@ -166,7 +220,7 @@ export const FontSizeAndColourApplyToTheWholeBand: Story = {
   },
 };
 
-/** The Bold and Italic buttons wrap the selected words of the cell last edited in the marks the server reads. */
+/** A cell's Bold and Italic buttons wrap that cell's selected words in the marks the server reads. */
 export const BoldAndItalicWrapTheSelection: Story = {
   render: () => <Host initial={{ centre: "Draft copy" }} kind="footer" />,
   play: async ({ canvasElement }) => {
@@ -174,11 +228,11 @@ export const BoldAndItalicWrapTheSelection: Story = {
     const cell = view.getByRole("textbox", { name: "Footer, centre cell" }) as HTMLTextAreaElement;
     cell.focus();
     cell.setSelectionRange(0, 5);
-    await userEvent.click(view.getByRole("button", { name: "Footer: Bold" }));
+    await userEvent.click(view.getByRole("button", { name: "Footer, centre cell: Bold" }));
     await expect(band(canvasElement).centre).toBe("**Draft** copy");
     cell.focus();
     cell.setSelectionRange(10, 14);
-    await userEvent.click(view.getByRole("button", { name: "Footer: Italic" }));
+    await userEvent.click(view.getByRole("button", { name: "Footer, centre cell: Italic" }));
     await expect(band(canvasElement).centre).toBe("**Draft** *copy*");
   },
 };
@@ -189,7 +243,7 @@ export const NothingSelectedWritesAMarkPair: Story = {
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
     await userEvent.click(view.getByRole("textbox", { name: "Footer, left cell" }));
-    await userEvent.click(view.getByRole("button", { name: "Footer: Bold" }));
+    await userEvent.click(view.getByRole("button", { name: "Footer, left cell: Bold" }));
     await expect(band(canvasElement).left).toBe("****");
   },
 };
@@ -213,12 +267,13 @@ export const ALargerSizeNeedsATallerMargin: Story = {
   },
 };
 
-/** A cell fits its text unless given a width; clearing the field removes the width again. */
+/** A cell fits its text unless given a width (set in the cell's settings popover); clearing the field removes the width again. */
 export const ACellWidthIsOptional: Story = {
   render: () => <Host initial={{ left: "Ballard", centre: "Title" }} />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
-    const width = view.getByRole("textbox", { name: "Left width" });
+    const popover = await openCell(view, "Left");
+    const width = popover.getByRole("textbox", { name: "Left width" });
     await expect(width).toHaveValue("");
     await userEvent.type(width, "25%");
     await expect(band(canvasElement).left_width).toBe("25%");
@@ -227,17 +282,85 @@ export const ACellWidthIsOptional: Story = {
   },
 };
 
-/** The band sits cells at the top unless told otherwise, and a cell's own choice is written beside its text. */
+/** A footer sits its cells at the bottom unless told otherwise: the default is marked, and choosing "Top" is stored because it is not the default. */
+export const FooterCellsAreBottomAlignedUnlessChosen: Story = {
+  render: () => <Host kind="footer" initial={{ left: "Ballard", centre: "Title" }} />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    await openMore(view, "Footer");
+    const select = view.getByRole("combobox", { name: "Footer: vertical alignment" });
+    await expect(select).toHaveValue("bottom");
+    await expect(within(select).getByRole("option", { name: "Bottom (default)" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "top");
+    await expect(band(canvasElement).valign).toBe("top");
+    await userEvent.selectOptions(select, "bottom");
+    await expect(band(canvasElement).valign).toBeUndefined();
+  },
+};
+
+/** The band sits cells at the top unless told otherwise, and a cell's own choice (set in its popover) is written beside its text. */
 export const CellsAreTopAlignedUnlessChosen: Story = {
   render: () => <Host initial={{ left: "Ballard", centre: "Title" }} />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);
+    await openMore(view, "Header");
     await expect(view.getByRole("combobox", { name: "Header: vertical alignment" })).toHaveValue("top");
-    await userEvent.selectOptions(view.getByRole("combobox", { name: "Left vertical alignment" }), "bottom");
+    const popover = await openCell(view, "Left");
+    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Left vertical alignment" }), "bottom");
     await expect(band(canvasElement).left_valign).toBe("bottom");
     await userEvent.selectOptions(view.getByRole("combobox", { name: "Header: vertical alignment" }), "middle");
     await expect(band(canvasElement).valign).toBe("middle");
-    await userEvent.selectOptions(view.getByRole("combobox", { name: "Left vertical alignment" }), "");
+    // Choosing in the band's own select (outside the popover) closes the popover; the cell's gear opens it again.
+    const reopened = await openCell(view, "Left");
+    await userEvent.selectOptions(reopened.getByRole("combobox", { name: "Left vertical alignment" }), "");
     await expect(band(canvasElement).left_valign).toBeUndefined();
+  },
+};
+
+/** The three cells sit one above the other, left then centre then right, each as wide as the editor. */
+export const TheCellsAreStackedLeftCentreRight: Story = {
+  render: () => <Host initial={{ left: "L", centre: "C", right: "R" }} />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const boxes = ["left", "centre", "right"].map((cell) => view.getByRole("textbox", { name: `Header, ${cell} cell` }));
+    const rects = boxes.map((box) => box.getBoundingClientRect());
+    await expect(rects[0].bottom).toBeLessThanOrEqual(rects[1].top);
+    await expect(rects[1].bottom).toBeLessThanOrEqual(rects[2].top);
+    await expect(Math.abs(rects[0].left - rects[2].left)).toBeLessThan(1);
+    await expect(Math.abs(rects[0].width - rects[2].width)).toBeLessThan(1);
+  },
+};
+
+/** A cell's gear opens a popover, Escape closes it with focus back on the gear; a width and alignment set there show beside the title and mark the gear. */
+export const ACellsSettingsPopoverClosesOnEscapeAndIsSummarised: Story = {
+  render: () => <Host initial={{ left: "A", right_width: "6 cm", right_valign: "bottom" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const gear = view.getByRole("button", { name: "Right cell settings: width 6 cm, bottom" });
+    await expect(gear).toHaveClass("btn-marked");
+    await expect(view.getByText("width 6 cm, bottom")).toBeInTheDocument();
+    await expect(view.getByRole("button", { name: "Left cell settings" })).not.toHaveClass("btn-marked");
+    await userEvent.click(gear);
+    await expect(await within(document.body).findByRole("dialog", { name: "Right cell settings" })).toBeInTheDocument();
+    await expect(gear).toHaveAttribute("aria-expanded", "true");
+    // Focus opens on the first field's help (?), whose tip takes the first Escape; the second closes the popover.
+    await userEvent.keyboard("{Escape}{Escape}");
+    await waitFor(() => expect(within(document.body).queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(gear).toHaveFocus());
+  },
+};
+
+/** "More" starts closed; its bar counts what is set, and the fit message stays outside it. */
+export const MoreStartsClosedAndCountsWhatIsSet: Story = {
+  render: () => <Host initial={{ left: "A", font: "serif", size: 10, first_page: "none" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const bar = view.getByRole("button", { name: "More footer options section" });
+    await expect(bar).toHaveAttribute("aria-expanded", "false");
+    await expect(view.getByText("3 changed")).toBeInTheDocument();
+    await expect(view.queryByRole("combobox", { name: "Footer: font" })).toBeNull();
+    await expect(view.getByText(/^The footer takes [\d.]+ cm of the margin\.$/)).toBeInTheDocument();
+    await userEvent.click(bar);
+    await expect(view.getByRole("combobox", { name: "Footer: font" })).toHaveValue("serif");
   },
 };

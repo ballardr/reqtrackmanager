@@ -615,9 +615,50 @@ class PageStyleChange:
     section_start: bool = True
 
 
+#: Most entries a table of contents lists; a longer document lists its first headings (a page of contents is a page, not a book).
+MAX_CONTENTS_ENTRIES = 500
+#: Heading levels a table of contents may list (a heading's level is 1 to 4; the fourth is too fine for a contents).
+MAX_CONTENTS_LEVELS = 3
+
+
+@dataclass(frozen=True)
+class ContentsEntry:
+    """One line of a table of contents: a heading the document holds.
+
+    Attributes:
+        text: The heading's words as plain text (styling and equations are not drawn in a contents).
+        level: The heading's level, 1 to 4.
+        anchor: The heading's anchor (`Heading.anchor`), which the entry links to.
+    """
+
+    text: str
+    level: int
+    anchor: str
+
+
+@dataclass(frozen=True)
+class Contents:
+    """A table of contents: the headings of the whole finished document, listed where the block sits.
+
+    The layout evaluator emits it empty; `finalize_links` fills `entries` from the document's headings, so a report that
+    joins several projects lists every project's headings once. A renderer that finds no entries prints nothing.
+
+    Attributes:
+        title: The words printed above the list.
+        levels: How many heading levels are listed (1 to `MAX_CONTENTS_LEVELS`).
+        new_page: Whether the page after the contents starts a new one.
+        entries: The headings listed, in reading order (at most `MAX_CONTENTS_ENTRIES`); empty before `finalize_links`.
+    """
+
+    title: str = "Contents"
+    levels: int = MAX_CONTENTS_LEVELS
+    new_page: bool = True
+    entries: tuple[ContentsEntry, ...] = ()
+
+
 Block = (
     Heading | Paragraph | Equation | Note | BulletList | NumberedList | Image | Table | Grid | Gap | VerticalSpace | BottomStart | BottomEnd
-    | PageBreak | PageStyleChange
+    | PageBreak | PageStyleChange | Contents
 )
 
 
@@ -810,8 +851,13 @@ class Marked:
 #: A running slot is text, page fields and marked stretches in order; the text may hold line breaks (`\n`).
 SlotPart = str | PageField | Marked
 SLOT_NAMES = ("left", "centre", "right")
-#: The vertical places a band cell's content can sit in the band's row; a band that says nothing uses the first.
+#: The vertical places a band cell's content can sit in the band's row.
 VALIGN_CHOICES = ("top", "middle", "bottom")
+#: The two kinds of running band.
+BAND_KINDS = ("header", "footer")
+#: Where a band's cells sit when neither the cell nor the band says: a header against the top of the page, a footer
+#: against the bottom.
+DEFAULT_BAND_VALIGN = {"header": "top", "footer": "bottom"}
 
 
 @dataclass(frozen=True)
@@ -833,7 +879,9 @@ class RunningBand:
         widths: Each cell's fixed width (`25%` of the band, or `4 cm`) in `SLOT_NAMES` order, `None` for a cell that sizes to
             its content.
         valigns: Each cell's own vertical alignment in `SLOT_NAMES` order, `None` to follow `valign`.
-        valign: The vertical alignment of the cells that set none (one of `VALIGN_CHOICES`).
+        valign: The vertical alignment of the cells that set none (one of `VALIGN_CHOICES`), `None` for the kind's default
+            (`DEFAULT_BAND_VALIGN`).
+        kind: `header` or `footer`; decides the default vertical alignment.
     """
 
     left: tuple[SlotPart, ...] = ()
@@ -848,7 +896,8 @@ class RunningBand:
     colour: str | None = None
     widths: tuple[str | None, str | None, str | None] = (None, None, None)
     valigns: tuple[str | None, str | None, str | None] = (None, None, None)
-    valign: str = VALIGN_CHOICES[0]
+    valign: str | None = None
+    kind: str = BAND_KINDS[0]
 
     def slot(self, name: str) -> tuple[SlotPart, ...]:
         """The parts of cell `name` (`left`, `centre` or `right`)."""
@@ -1266,5 +1315,11 @@ def finalize_links(document: ReportDocument) -> ReportDocument:
                 replace(row, cells=[replace(cell, paragraphs=tuple(_resolved_links(p, taken) for p in cell.paragraphs)) for cell in row.cells])
                 for row in block.rows
             ])
+        elif isinstance(block, Contents):
+            listed = tuple(
+                ContentsEntry(str(heading.text), heading.level, heading.anchor)
+                for heading in anchored if isinstance(heading, Heading) and heading.anchor and heading.level <= block.levels
+            )[:MAX_CONTENTS_ENTRIES]
+            block = replace(block, entries=listed)
         blocks.append(block)
     return replace(document, blocks=blocks)

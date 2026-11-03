@@ -223,6 +223,7 @@ LAYOUT_FIELDS: tuple[BlockField, ...] = (
     BlockField(
         "footer", "Footer", "running_band",
         help="Text printed at the bottom of every page, in a left, centre and right cell, for example \"Page {{page}} of {{pages}}\". "
+        "The cells sit at the bottom unless valign (top, middle, bottom) or left_valign, centre_valign, right_valign says otherwise. "
         "A page style that sets none uses this one. With none here, a page number prints. {{org.footer_text}} is the organisation's "
         "default footer text.",
         families=("document",),

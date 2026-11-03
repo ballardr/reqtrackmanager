@@ -42,6 +42,8 @@ export const BAND_SLOTS = ["left", "centre", "right"] as const;
 export type BandSlot = (typeof BAND_SLOTS)[number];
 export const BAND_VALIGN = ["top", "middle", "bottom"] as const;
 export type BandValign = (typeof BAND_VALIGN)[number];
+/** Where a band's cells sit when neither the cell nor the band says: a header at the top, a footer at the bottom. */
+export const BAND_DEFAULT_VALIGN: Record<"header" | "footer", BandValign> = { header: "top", footer: "bottom" };
 export const BAND_FIRST_PAGE = ["same", "none"] as const;
 export type BandFirstPage = (typeof BAND_FIRST_PAGE)[number];
 /** Space between the page edge and a header or footer, and the height of one line of its text, in cm (as the server checks). */
@@ -75,6 +77,18 @@ export interface RunningBand {
   font?: string;
   size?: number;
   colour?: string;
+}
+
+/**
+ * How many of a band's "More" options differ from their defaults (font, size, colour, logo, the band's vertical
+ * alignment and skipping the first page), for the closed group's pill.
+ *
+ * @param band The band, or `undefined` when it inherits.
+ * @returns The count; the cells' text, widths and per-cell alignments are not part of it.
+ */
+export function bandMoreChanges(band: RunningBand | undefined): number {
+  if (!band) return 0;
+  return [band.font, band.size, band.colour, band.logo, band.valign, band.first_page === "none" ? "none" : undefined].filter((v) => v !== undefined && v !== "").length;
 }
 
 /** A named page style a section can use; what it leaves out is the layout's own. */

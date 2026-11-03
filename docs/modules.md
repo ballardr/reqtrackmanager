@@ -1294,7 +1294,7 @@ flowchart LR
   `report_designer_autosave` preference; off: Save draft), numbers its writes by `revision`, and publishes with `from_draft` after
   writing what is pending. The text view, untouched, is never written back, so opening a layout cannot create a draft.
 - **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, header?, footer?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
-  `table`, `grid`, `each`, `group`, `if`, `page_break`, `spacer`, `bottom`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
+  `table`, `grid`, `each`, `group`, `if`, `page_break`, `contents` (a table of contents, one per layout), `spacer`, `bottom`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
   expression language and no raw HTML block.
 - **Images.** An `image` block names a library file by id (`services/report_images.py`): a project layout may use its
   own project's pictures (`file_assets.project_id`) and the organisation's shared resources, an organisation layout the

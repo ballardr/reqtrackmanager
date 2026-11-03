@@ -5,7 +5,8 @@
  * orientation, margins, mirrored margins and named page styles, and writes them into the text (`@layout document
  * landscape A3 mirror margins top=2` and one `@pagestyle` line per style).
  *
- * Responsibilities: read the setup from the text (`readPageSetup`), draw it with the shared page-setup fields and
+ * Responsibilities: arrange it in the shared setting groups (`LayoutSettingGroup`: the basic page set open, header and footer
+ * open, tables and page styles closed and marked when they hold a non-default value), read the setup from the text (`readPageSetup`), draw it with the shared page-setup fields and
  * rewrite exactly those lines on a change (`writePageSetup`). The server's parser stays the judge of the text. A table
  * layout has no pages, so it renders nothing.
  *
@@ -17,9 +18,11 @@ import { useState } from "react";
 
 import type { ReportImageLibrary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
+import { anySettingChanged, pageSetupChanges } from "../utils/reportLayoutSettingGroups";
 import { DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, readPageSetup, readPalette, writePageSetup, type PageSetup } from "../utils/reportPageSetup";
 import { CheckboxField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
+import { LayoutSettingGroup } from "./LayoutSettingGroup";
 import { Modal } from "./Modal";
 import { PageMarginsFields } from "./PageMarginsFields";
 import { PageOutline } from "./PageOutline";
@@ -50,8 +53,8 @@ export function ReportLayoutPageSetup({
   if (setup === null) return null;
   const bandLook: BandLook = { ...look, palette: readPalette(text) };
   const set = (patch: Partial<PageSetup>) => onChange(writePageSetup(text, { ...setup, ...patch }));
-  const marked = setup.orientation !== "portrait" || setup.size !== "A4" || setup.mirror || setup.repeatHeader === false || setup.alignTables === false
-    || Object.keys(setup.margins).length > 0 || setup.styles.length > 0 || setup.header !== undefined || setup.footer !== undefined;
+  const changes = pageSetupChanges(setup);
+  const marked = anySettingChanged(changes);
   const label = strings.reportLayouts.pageSetupLabel(labels.orientationLabels[setup.orientation], setup.size);
   return (
     <>
@@ -66,22 +69,38 @@ export function ReportLayoutPageSetup({
       {open && (
         <Modal title={labels.title} size="lg" onClose={() => setOpen(false)}>
           <div className="stack">
-            <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-3)" }}>
-              <PageOutline size={setup.size} orientation={setup.orientation} margins={setup.margins} mirror={setup.mirror} />
-              <LabeledSelect
-                label={labels.sizeLabel} help={strings.help.layoutPageSize} value={setup.size} placeholder={null}
-                onChange={(size) => set({ size: size as PageSetup["size"] })}
-                options={PAGE_SIZES.map((size) => ({ value: size, label: size }))}
-              />
-              <LabeledSelect
-                label={labels.orientationLabel} help={strings.help.layoutOrientation} value={setup.orientation} placeholder={null}
-                onChange={(orientation) => set({ orientation: orientation as PageSetup["orientation"] })}
-                options={PAGE_ORIENTATIONS.map((value) => ({ value, label: labels.orientationLabels[value] }))}
-              />
-              <CheckboxField
-                label={labels.mirrorLabel} help={strings.help.layoutMirrorMargins} checked={setup.mirror}
-                onChange={(mirror) => set({ mirror })}
-              />
+            <LayoutSettingGroup group="page" changed={changes.page}>
+              <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-3)" }}>
+                <PageOutline size={setup.size} orientation={setup.orientation} margins={setup.margins} mirror={setup.mirror} />
+                <LabeledSelect
+                  label={labels.sizeLabel} help={strings.help.layoutPageSize} value={setup.size} placeholder={null}
+                  onChange={(size) => set({ size: size as PageSetup["size"] })}
+                  options={PAGE_SIZES.map((size) => ({ value: size, label: size }))}
+                />
+                <LabeledSelect
+                  label={labels.orientationLabel} help={strings.help.layoutOrientation} value={setup.orientation} placeholder={null}
+                  onChange={(orientation) => set({ orientation: orientation as PageSetup["orientation"] })}
+                  options={PAGE_ORIENTATIONS.map((value) => ({ value, label: labels.orientationLabels[value] }))}
+                />
+                <CheckboxField
+                  label={labels.mirrorLabel} help={strings.help.layoutMirrorMargins} checked={setup.mirror}
+                  onChange={(mirror) => set({ mirror })}
+                />
+              </div>
+              <strong>{labels.marginsTitle}</strong>
+              <PageMarginsFields value={setup.margins} mirror={setup.mirror} onChange={(margins) => set({ margins })} />
+            </LayoutSettingGroup>
+            <LayoutSettingGroup group="band" changed={changes.band}>
+              <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{labels.band.intro}</p>
+              {(["header", "footer"] as const).map((kind) => (
+                <RunningBandEditor
+                  key={kind} kind={kind} value={setup[kind]} inheritFrom="template" images={images} placeholders={placeholders} look={bandLook}
+                  margin={(kind === "header" ? setup.margins.top : setup.margins.bottom) ?? DEFAULT_MARGIN_CM}
+                  onChange={(next) => set({ [kind]: next })}
+                />
+              ))}
+            </LayoutSettingGroup>
+            <LayoutSettingGroup group="tables" changed={changes.tables}>
               <CheckboxField
                 label={labels.repeatHeaderLabel} help={strings.help.layoutRepeatTableHeader} checked={setup.repeatHeader !== false}
                 onChange={(on) => set({ repeatHeader: on ? undefined : false })}
@@ -90,24 +109,14 @@ export function ReportLayoutPageSetup({
                 label={labels.alignTablesLabel} help={strings.help.layoutAlignTables} checked={setup.alignTables !== false}
                 onChange={(on) => set({ alignTables: on ? undefined : false })}
               />
-            </div>
-            <h3 style={{ margin: 0 }}>{labels.marginsTitle}</h3>
-            <PageMarginsFields value={setup.margins} mirror={setup.mirror} onChange={(margins) => set({ margins })} />
-            <h3 style={{ margin: 0 }}>{labels.band.sectionTitle}</h3>
-            <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{labels.band.intro}</p>
-            {(["header", "footer"] as const).map((kind) => (
-              <RunningBandEditor
-                key={kind} kind={kind} value={setup[kind]} inheritFrom="template" images={images} placeholders={placeholders} look={bandLook}
-                margin={(kind === "header" ? setup.margins.top : setup.margins.bottom) ?? DEFAULT_MARGIN_CM}
-                onChange={(next) => set({ [kind]: next })}
+            </LayoutSettingGroup>
+            <LayoutSettingGroup group="styles" changed={changes.styles}>
+              <PageStylesEditor
+                images={images} placeholders={placeholders} look={bandLook}
+                value={setup.styles} onChange={(styles) => set({ styles })}
+                base={{ size: setup.size, orientation: setup.orientation, margins: setup.margins, mirror: setup.mirror }}
               />
-            ))}
-            <h3 style={{ margin: 0 }}>{labels.stylesTitle}</h3>
-            <PageStylesEditor
-              images={images} placeholders={placeholders} look={bandLook}
-              value={setup.styles} onChange={(styles) => set({ styles })}
-              base={{ size: setup.size, orientation: setup.orientation, margins: setup.margins, mirror: setup.mirror }}
-            />
+            </LayoutSettingGroup>
           </div>
         </Modal>
       )}

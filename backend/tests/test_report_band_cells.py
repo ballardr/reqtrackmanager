@@ -95,6 +95,22 @@ def test_the_default_alignment_is_top_and_a_cell_can_override_it():
     assert valigns_of(RunningBand(valign="middle", valigns=("bottom", None, None))) == ["bottom", "middle", "middle"]
 
 
+def test_a_footer_defaults_to_the_bottom_and_a_header_to_the_top():
+    assert valigns_of(RunningBand(left=("a",))) == ["top"] * 3
+    assert valigns_of(RunningBand(left=("a",), kind="header")) == ["top"] * 3
+    assert valigns_of(RunningBand(left=("a",), kind="footer")) == ["bottom"] * 3
+
+
+def test_a_footers_own_choices_win_over_its_default_and_an_explicit_top_is_kept():
+    assert valigns_of(RunningBand(kind="footer", valign="top")) == ["top"] * 3
+    assert valigns_of(RunningBand(kind="footer", valigns=("middle", None, "top"))) == ["middle", "bottom", "top"]
+    assert valigns_of(RunningBand(kind="footer", valign="middle", valigns=(None, None, "top"))) == ["middle", "middle", "top"]
+
+
+def test_the_kind_survives_mirroring_so_a_left_hand_footer_still_sits_at_the_bottom():
+    assert valigns_of(RunningBand(kind="footer", valigns=("middle", None, None)).mirrored()) == ["bottom", "bottom", "middle"]
+
+
 def test_a_mirrored_page_swaps_the_left_and_right_widths_and_alignments():
     band = RunningBand(left=("a",), right=("b",), widths=("20%", None, "4 cm"), valigns=("bottom", None, "middle"))
     flipped = band.mirrored()

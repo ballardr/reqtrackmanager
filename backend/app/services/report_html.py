@@ -46,9 +46,11 @@ from app.services.report_grid_render import GRID_CSS, html_grid
 from app.services.report_image_layout import placed_size_cm
 from app.services.report_math import INLINE_SIZE_PT, scaled_svg, typeset
 from app.services.report_model import (
+    MAX_CONTENTS_LEVELS,
     SLOT_NAMES,
     TONE_FILL,
     BulletList,
+    Contents,
     DocumentStyles,
     Equation,
     Gap,
@@ -87,6 +89,9 @@ h1 { color: var(--accent); border-bottom: 3px solid var(--accent); padding-botto
 h2, h3, h4, h5 { color: #222; margin: 1.6rem 0 .5rem; }
 p { margin: .5rem 0; white-space: pre-line; }
 p.note { color: #555; font-size: .85rem; }
+nav.contents ul { list-style: none; margin: .3rem 0 1rem; padding: 0; } nav.contents li { margin: .15rem 0; }
+nav.contents li.level-2 { margin-left: 1.2rem; } nav.contents li.level-3 { margin-left: 2.4rem; } nav.contents li.level-1 { font-weight: 600; }
+p.contents-title { font-size: 1.3rem; font-weight: 600; margin: 1.6rem 0 .5rem; }
 table { border-collapse: collapse; width: 100%%; margin: .8rem 0; font-size: .85rem; }
 th { background: var(--accent); color: %(head_text)s; text-align: left; }
 th, td { border: 1px solid #ccc; padding: .3rem .5rem; vertical-align: top; overflow-wrap: anywhere; }
@@ -476,6 +481,20 @@ def _figure(block: Image, page: PageStyle) -> str | None:
     return f'<figure class="image align-{align}">{inner}</figure>'
 
 
+def _contents(block: Contents) -> str:
+    """A table of contents as a navigation list of links to the headings (a web page has no page numbers); nothing when empty."""
+    if not block.entries:
+        return ""
+    title = f'<p class="contents-title">{_esc(block.title)}</p>' if block.title.strip() else ""
+    items = "".join(
+        f'<li class="level-{min(max(entry.level, 1), MAX_CONTENTS_LEVELS)}"><a href="#{_esc(entry.anchor)}">{_esc(entry.text)}</a></li>'
+        for entry in block.entries
+    )
+    return f'<nav class="contents" aria-label="{_esc(block.title.strip() or "Contents")}">{title}<ul>{items}</ul></nav>' + (
+        '<hr class="page-break">' if block.new_page else ""
+    )
+
+
 def _equation(block: Equation) -> str:
     """One equation as HTML: the SVG (display: in a centred figure, inline: in a span on the text baseline), or its source."""
     drawn = typeset(block.tex, block.display)
@@ -538,6 +557,8 @@ def render_html_document(document: ReportDocument) -> bytes:
             parts.append(f'<div class="spacer" aria-hidden="true" style="height: {block.cm:g}cm"></div>')
         elif isinstance(block, PageBreak):
             parts.append('<hr class="page-break">')
+        elif isinstance(block, Contents):
+            parts.append(_contents(block))
         elif isinstance(block, PageStyleChange):
             parts.append(_band_html(current.footer, "footer", current.usable_width_cm))
             if in_section:

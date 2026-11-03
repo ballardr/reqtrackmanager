@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import html
 import io
+import math
 import tempfile
 from contextlib import nullcontext
 from pathlib import Path
@@ -36,6 +37,7 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import (
     ActionFlowable,
     BaseDocTemplate,
@@ -73,6 +75,7 @@ from app.services.report_model import (
     BottomEnd,
     BottomStart,
     BulletList,
+    Contents,
     DocumentStyles,
     Equation,
     Gap,
@@ -191,6 +194,17 @@ class _Look:
             if size is not None:
                 changes.update(fontSize=size, leading=size * 1.2)
             self._blocks[key] = _derive(f"body_{font.key if font else 'doc'}_{size}", self.body, **changes)
+        return self._blocks[key]
+
+    def contents_for(self, level: int) -> ParagraphStyle:
+        """The style of a contents entry of heading `level`: the body's, indented a level at a time, chapters in bold."""
+        key = ("contents", level)
+        if key not in self._blocks:
+            self._blocks[key] = _derive(
+                f"contents{level}", self.body, leftIndent=(level - 1) * 0.6 * cm, spaceBefore=4 if level == 1 else 0, spaceAfter=2,
+                fontName=pdf_face(self.body_key, bold=True) if level == 1 and self.body_key else
+                "Helvetica-Bold" if level == 1 else self.body.fontName,
+            )
         return self._blocks[key]
 
     def heading_for(self, block: Heading) -> ParagraphStyle:
@@ -491,11 +505,81 @@ def _table(block: Table, accent, usable_width: float, usable_height: float, imag
 
 
 class _Doc(BaseDocTemplate):
-    """A document that remembers which pages start a section (their header and footer may differ on the first page)."""
+    """A document that remembers which pages start a section (their header and footer may differ on the first page) and the
+    page each heading landed on (for a table of contents)."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.section_starts: set[int] = {1}
+        self.anchor_pages: dict[str, int] = {}
+
+    def afterFlowable(self, flowable) -> None:
+        """Notes the page of a heading (the page its last line is on) under its anchor."""
+        anchor = getattr(flowable, "heading_anchor", None)
+        if anchor:
+            self.anchor_pages[anchor] = self.page
+
+
+class _HeadingParagraph(RlParagraph):
+    """A heading paragraph that knows its anchor, so the document can record the page it falls on."""
+
+    def __init__(self, *args: Any, heading_anchor: str | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.heading_anchor = heading_anchor
+
+
+#: Width reserved for a table-of-contents entry's page number, as the width of this many digits, so the entry wraps the same
+#: whatever number it ends up with and the contents' own length never depends on the numbers (the second build is exact).
+_CONTENTS_NUMBER_DIGITS = "9999"
+#: Gap between an entry's words (or its dots) and its page number, in points.
+_CONTENTS_GAP = 6.0
+
+
+class _ContentsLine(Flowable):
+    """One table-of-contents entry: the heading's words as a link, dot leaders and the page number on the right of the last line.
+
+    Attributes:
+        paragraph: The entry's words, wrapped inside the width left of the number column.
+        number: The page number as text, or `""` when it is not known (the first build, or a heading not found).
+    """
+
+    def __init__(self, paragraph: RlParagraph, number: str) -> None:
+        super().__init__()
+        self.paragraph, self.number = paragraph, number
+        self._number_width = 0.0
+
+    def wrap(self, avail_width: float, avail_height: float) -> tuple[float, float]:
+        """Lays the words out left of the reserved number column."""
+        style = self.paragraph.style
+        self._number_width = stringWidth(_CONTENTS_NUMBER_DIGITS, style.fontName, style.fontSize) + _CONTENTS_GAP
+        self.width = avail_width
+        _, self.height = self.paragraph.wrap(avail_width - self._number_width, avail_height)
+        return avail_width, self.height
+
+    def draw(self) -> None:
+        """Draws the words, then the leader dots and the number on the last line's baseline."""
+        self.paragraph.drawOn(self.canv, 0, 0)
+        if not self.number:
+            return
+        style = self.paragraph.style
+        laid_out = cast(Any, self.paragraph).blPara  # set by `wrap`
+        lines = laid_out.lines
+        last = lines[-1]
+        unused = last.extraSpace if hasattr(last, "extraSpace") else last[0]
+        baseline = self.height - getattr(laid_out, "ascent", style.fontSize) - (len(lines) - 1) * style.leading
+        text_end = self.width - self._number_width - unused
+        canvas = self.canv
+        canvas.saveState()
+        canvas.setFillColor(style.textColor)
+        canvas.setFont(style.fontName, style.fontSize)
+        canvas.drawRightString(self.width, baseline, self.number)
+        number_start = self.width - stringWidth(self.number, style.fontName, style.fontSize) - _CONTENTS_GAP
+        dot = stringWidth(". ", style.fontName, style.fontSize)
+        start = math.ceil((text_end + _CONTENTS_GAP) / dot) * dot  # on a multiple of the dot pitch, so the dots line up down the page
+        count = int((number_start - start) // dot)
+        if count > 0:
+            canvas.drawString(start, baseline, ". " * count)
+        canvas.restoreState()
 
 
 class _UseStyle(ActionFlowable):
@@ -552,7 +636,7 @@ def _page_templates(styles: list[PageStyle], footer_text: str | None) -> list[Pa
     return templates
 
 
-def _build_pdf(story: list, styles: list[PageStyle], footer_text: str | None, title: str) -> bytes:
+def _build_pdf(story: list, styles: list[PageStyle], footer_text: str | None, title: str, found: dict[str, int] | None = None) -> bytes:
     """Builds the PDF: the first style's first page template starts the document.
 
     Args:
@@ -560,6 +644,7 @@ def _build_pdf(story: list, styles: list[PageStyle], footer_text: str | None, ti
         styles: Every page style the story uses; the document's own first.
         footer_text: Centred footer text, or `None`.
         title: The PDF's title.
+        found: When given, filled with the page each heading (by anchor) landed on.
 
     Returns:
         The PDF file content.
@@ -569,7 +654,29 @@ def _build_pdf(story: list, styles: list[PageStyle], footer_text: str | None, ti
     doc = _Doc(buffer, pagesize=first, title=title)
     doc.addPageTemplates(_page_templates(styles, footer_text))
     doc.build(story, canvasmaker=RunningCanvas)
+    if found is not None:
+        found.update(doc.anchor_pages)
     return buffer.getvalue()
+
+
+def _contents_flowables(block: Contents, pages: dict[str, int], look: _Look) -> list:
+    """The flowables of a table of contents: its title, one linked line per heading, then a page break if it asks for one.
+
+    A heading whose page is not known (not found by the first build) is listed without a number. A contents with no
+    entries prints nothing, not even the break.
+    """
+    if not block.entries:
+        return []
+    out: list = []
+    if block.title.strip():
+        out.append(RlParagraph(safe(block.title), look.headings[1]))
+    for entry in block.entries:
+        words = f'<a href="#{html.escape(entry.anchor, quote=True)}">{safe(entry.text)}</a>'
+        number = str(pages[entry.anchor]) if entry.anchor in pages else ""
+        out.append(_ContentsLine(RlParagraph(words, look.contents_for(min(max(entry.level, 1), 3))), number))
+    if block.new_page:
+        out.append(RlPageBreak())
+    return out
 
 
 _LOOKS: dict[tuple, _Look] = {}
@@ -603,8 +710,33 @@ def render_pdf_document(document: ReportDocument) -> bytes:
 
 
 def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
-    """`render_pdf_document` with the font family already active."""
+    """`render_pdf_document` with the font family already active.
+
+    A document with a table of contents is built twice: the first build only finds the page each heading lands on, the
+    second prints them. The number column is reserved, so the contents is the same length in both and the pages found
+    are the pages the second build produces.
+    """
     document = grow_margins_for_bands(finalize_links(document))
+    pages: dict[str, int] = {}
+    if any(isinstance(block, Contents) and block.entries for block in document.blocks):
+        found: dict[str, int] = {}
+        _pdf_bytes(document, look, {}, found)
+        pages = found
+    return _pdf_bytes(document, look, pages, None)
+
+
+def _pdf_bytes(document: ReportDocument, look: _Look, pages: dict[str, int], found: dict[str, int] | None) -> bytes:
+    """Builds the PDF of a finalized `document`.
+
+    Args:
+        document: The finalized document.
+        look: The paragraph styles.
+        pages: Page of each heading anchor, as printed in a table of contents (empty: no numbers).
+        found: When given, filled with the page each heading landed on in this build.
+
+    Returns:
+        The PDF bytes.
+    """
     branding = document.branding
     accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
     styles = [document.style]
@@ -631,7 +763,7 @@ def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
             target = f'<a name="{html.escape(block.anchor, quote=True)}"/>' if block.anchor else ""
             with using_family(block.font.key if block.font else look.heading_key or look.body_key):
                 heading = _markup(block.text, images, bold=look.heading_bold, italic=look.heading_italic)
-            out.append(RlParagraph(target + heading, look.heading_for(block)))
+            out.append(_HeadingParagraph(target + heading, look.heading_for(block), heading_anchor=block.anchor))
         elif isinstance(block, Paragraph):
             with using_family(block.font.key) if block.font else nullcontext():
                 paragraph = _markup(block.text, images)
@@ -669,6 +801,8 @@ def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
             story.append(Spacer(1, min(block.cm * cm, usable_height * 0.98)))
         elif isinstance(block, PageBreak):
             story.append(RlPageBreak())
+        elif isinstance(block, Contents):
+            story.extend(_contents_flowables(block, pages, look))
         elif isinstance(block, PageStyleChange):
             if block.style not in styles:
                 styles.append(block.style)
@@ -677,6 +811,6 @@ def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
             usable_height = block.style.usable_height_cm * cm
     flush_wrap()
     try:
-        return _build_pdf(story, styles, branding.footer_text if branding else None, document.title)
+        return _build_pdf(story, styles, branding.footer_text if branding else None, document.title, found)
     finally:
         images.close()

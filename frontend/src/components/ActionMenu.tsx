@@ -107,6 +107,7 @@ const itemKeyOf = (item: ActionMenuItem, index: number): string =>
  *   menu's own actions, such as an export, is already in flight).
  * @param footer - Muted text under the items.
  * @param icon - The trigger's picture in place of the kebab.
+ * @param size - `sm` for a trigger that sits beside a field's title (the placeholder menu); `md` (default) otherwise.
  */
 export function ActionMenu({
   triggerLabel,
@@ -114,6 +115,7 @@ export function ActionMenu({
   disabled,
   footer,
   icon,
+  size = "md",
 }: {
   triggerLabel: string;
   items: ActionMenuItem[];
@@ -122,6 +124,7 @@ export function ActionMenu({
   footer?: ReactNode;
   /** The trigger's picture when the menu is about one thing (Snippets) and not "more actions"; the kebab when omitted. */
   icon?: ReactNode;
+  size?: "sm" | "md";
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -131,7 +134,7 @@ export function ActionMenu({
       <button
         ref={triggerRef}
         type="button"
-        className="btn btn-icon"
+        className={size === "sm" ? "btn btn-sm btn-icon" : "btn btn-icon"}
         aria-label={triggerLabel}
         title={triggerLabel}
         aria-haspopup="menu"

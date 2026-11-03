@@ -3,7 +3,7 @@ import zlib from "node:zlib";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView, designerPreviewPanel } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -148,6 +148,7 @@ test.describe("Report image columns", () => {
     await test.step("Page setup has Repeat table header rows, on by default, written as a word on the first line", async () => {
       await page.getByRole("button", { name: /Page setup:/ }).click();
       const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await ensureExpanded(page, "Tables");
       const box = dialog.getByRole("checkbox", { name: "Repeat table header rows" });
       await expect(box).toBeChecked();
       await box.uncheck();
