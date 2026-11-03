@@ -15687,3 +15687,12 @@ Time shape: not involved. Checks and one seed addition; no schema, endpoint or p
   - *Per-person group state:* kept in `ui_preferences` (`layoutSettings:<group>`), which holds booleans only and is bounded by `services/ui_preferences` (200 keys, 100-character keys, 32 KiB). No secret stored. No finding.
   - *Contents block:* verified in Phase 106 (escaping in all four formats, anchors from the model's ids, 500 entries). No finding.
 - **Test results.** Full backend `pytest -n 4`, run once and alone: 6,927 passed, 12 skipped, 14 failed. The 14 are the known host mail-server DNS failures (invites, OIDC provisioning, organisation-import invite), not a regression. Typecheck, lint, `check_doc_links.py` and the field-help, required-marker and list-layout checks pass.
+
+## Storage: SeaweedFS no longer preallocates volume space (2026-11-03)
+
+**Decided by: User** (asked to fix the development stack and to apply the same to the production compose file). Time shape: not involved.
+
+- **Finding.** The development stack's storage volume held 35 volume files that each reserved 1 GB on disk, 35 GB in all, for about 5 MB of stored data (`docker system df` showed 5.6 MB because it counts file length, not allocated blocks). The Docker VM disk reached 97% and the backend and storage failed with "No space left on device". The restore-test override already passed `-master.volumePreallocate=false` for the same reason; the main and development compose files did not.
+- **Change.** `docker-compose.yml` (production) and `tests/container/docker-compose.yml` now pass `-master.volumePreallocate=false` to the `storage` service. It only stops the reservation: stored objects, volume size limits and the S3 behaviour are unchanged, and an existing deployment keeps its files across the restart. An existing production volume keeps whatever it has already reserved; to release it, stop the storage service and `truncate -s <current size>` each `.dat` file in the volume (this frees blocks past the end of the file and leaves the data alone).
+- **Development stack.** Trimmed in place the same way: 36.7 GB to 6 MB, 462 objects still readable, a new write works.
+- **Security.** No endpoint, credential or exposure change. No finding.

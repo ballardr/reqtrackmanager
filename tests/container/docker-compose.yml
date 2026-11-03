@@ -74,9 +74,11 @@ services:
   storage:
     image: chrislusf/seaweedfs:3.97
     container_name: reqtrack-test-storage
+    # No disk preallocation: SeaweedFS otherwise reserves ~1 GB per volume (35 volumes held 35 GB for 5 MB of data).
     command: >-
       server -dir=/data -ip=127.0.0.1 -ip.bind=127.0.0.1
       -s3 -s3.port=9000 -s3.ip.bind=:: -s3.config=/etc/seaweedfs/s3.json
+      -master.volumePreallocate=false
     configs:
       - source: storage_identity
         target: /etc/seaweedfs/s3.json
