@@ -227,6 +227,13 @@ artefact. This reuses the same org-default table/endpoint the project-scoped
 resolution's own middle tier already uses, rather than inventing a second,
 parallel org-scoped mechanism.
 
+A module whose organisation tier needs a switch of its own, so an organisation
+can turn it off without touching its projects, declares a **separate**
+sub-component for that tier (Product Feedback's `organization_requests`, the
+organisation's request inbox, beside `enhancement_request` for the projects'
+lists). A shared key would not do: the organisation's `enabled` for it is also
+the default every project inherits.
+
 ```mermaid
 flowchart TD
     WM{"Whole module enabled?"}

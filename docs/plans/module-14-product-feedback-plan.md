@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Proposed, not started. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phase 1 (backend) built 2026-11-04; Phase 1b and Phase 2 next. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
@@ -15,13 +15,14 @@ artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-0 / 8 phases complete. Phase 0 is next, but don't start it until Module 2
-Phase 1.2 and Module 1 Phase 13 have shipped.
+2 / 9 phases complete. Phase 0 and Phase 1 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped). Phase 1b (triage an inbox request into a project) is next, then Phase 2.
 
 | # | Phase | Status |
 |---|-------|--------|
-| 0 | Exploratory: open questions below | [ ] Not started |
-| 1 | Data model: Enhancement Request, lifecycle, RBAC | [ ] Not started |
+| 0 | Exploratory: open questions below | [x] Complete (2026-11-04) — see "Phase 0 resolutions" |
+| 1 | Data model: Enhancement Request, lifecycle, RBAC | [x] Complete (2026-11-04) — see "Phase 1 notes" |
+| 1b | Triage an organisation inbox request into a project | [ ] Not started |
 | 2 | Demand aggregation + duplicate merge | [ ] Not started |
 | 3 | ICE/RICE scoring on the core scoring matrix | [ ] Not started |
 | 4 | Relationships + close-the-loop | [ ] Not started |
@@ -71,7 +72,21 @@ flowchart LR
   often declined and often from people without accounts; putting them in
   the requirements list would pollute it.
 
-## Phase 0 — open questions
+## Phase 0 resolutions (2026-11-04)
+
+Full table in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 0").
+
+1. **Lifecycle:** `New → Under review → Accepted → Delivered`, plus `Declined` (mandatory reason) and `Duplicate`. `Delivered` is set by hand with a prompt. **Decided by: User.**
+2. **Scope:** org or project (Strategy's discriminator), org inbox triaged into projects. **An organisation admin can disable the org-level scope.** **Decided by: User.**
+3. **Submit/triage:** default any member submits, module triage role decides; **a project admin can change this per project.** **Decided by: User.**
+4. **Reach:** manual level, derived demand alongside. **Decided by: User.**
+5. **Merge:** union of requesters, **reversible** (needs recorded merge history). **Decided by: User.**
+6. **Close-the-loop:** per-requester informed checkbox with date; no external emails. **Decided by: User.**
+7. **Delivery bridge:** external reference field (URL plus key). **Decided by: User.**
+8. **Types:** none at first. **Decided by: Agent.**
+9. **Personal data:** no free-text requester. **Decided by: User.**
+
+## Phase 0 — open questions (original wording, now resolved above)
 
 1. **Lifecycle.** Recommend `New → Under review → Accepted → Delivered`,
    plus terminal `Declined` (mandatory reason) and `Duplicate` (points to
@@ -105,6 +120,19 @@ flowchart LR
    is covered there. Any free-text "requested by" for people without a
    Stakeholder record would be new personal data. Recommend not allowing
    it: create an anonymous Engagement participant or a Stakeholder instead.
+
+## Phase 1 notes (2026-11-04)
+
+Backend built; account and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 1").
+
+- Both tiers: `EnhancementRequest` (`scope`, one of `organization_id` / `project_id`) + `EnhancementRequestVersion`, mirroring Strategy's shape. API at `/projects/{id}/modules/product_feedback/requests` and `/orgs/{id}/modules/product_feedback/requests`; settings at `.../settings`.
+- Sub-components `enhancement_request` and `organization_requests` (the org admin's inbox switch). Roles `feedback_triager` and `org_feedback_triager`; project submission policy.
+- Status model: `new → under_review → accepted → delivered`, `declined` (reason), `duplicate` (merge only, Phase 2).
+- Migration `0130` (next `0131`). Frontend: types, label maps and path registration only.
+
+**Phase 1b (new)** — moving an inbox request into a project changes its owner tier: renumber the code (the project's `ENH` counter), re-scope its tags, re-home its files, write one audit event, and leave the old code findable in the audit detail. Not folded into Phase 1 because doing it half-way leaves orphaned tags or files.
+
+**Phase 5 must add:** the module's `frontend_manifest` (nav entry), routes for the paths already registered in `frontend/src/modules/product_feedback/module.ts`, the org inbox page, the submission-policy setting on Project admin and the org inbox switch's explanation, plus stories, Playwright and the docs website.
 
 ## Phases 1–7 (outline, refined at Phase 0)
 

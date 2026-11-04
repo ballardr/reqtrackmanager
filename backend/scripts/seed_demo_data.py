@@ -2027,6 +2027,25 @@ def create_risk(
     return r.json()
 
 
+def create_enhancement_request(headers: dict, base: str, *, title: str, description: str = "", **fields) -> dict:
+    """Submits a Product Feedback enhancement request (it starts New). `base` is the project's or organisation's
+    `.../modules/product_feedback` URL, so the same helper fills a project list and the organisation inbox."""
+    r = httpx.post(
+        f"{base}/requests", json={"title": title, "description": description, **fields}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def transition_enhancement_request(headers: dict, base: str, request_id: str, status: str, comment: str = "") -> dict:
+    """Moves an enhancement request to `status` (declining needs a `comment`, the decline reason)."""
+    r = httpx.post(
+        f"{base}/requests/{request_id}/transition", json={"status": status, "comment": comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str) -> dict:
     """Moves a Risk through the given lifecycle statuses in order and returns the last response."""
     out: dict = {}
@@ -3491,6 +3510,42 @@ def main() -> None:
           f" (inherent {risk_single_controller['inherent_rating']['label']}, residual {risk_single_controller['residual_rating']['label']}),"
           f" {risk_regulator['unique_code']} {risk_regulator['title']!r} (inherent {risk_regulator['inherent_rating']['label']}"
           f" from its pinned cell), plus {risk_unscored['unique_code']} captured with no assessment yet and a modem supply-chain risk")
+
+    print("Seeding Product Feedback — enabling the module, then enhancement requests on Falcon-3 across the"
+          " lifecycle (one owned by the avionics engineer, one declined with a reason, one linked to its delivery"
+          " tool) and two in the organisation's inbox...")
+    enable_module(h_pm, org["id"], "product_feedback")
+    feedback_url = f"{BASE}/projects/{drone['id']}/modules/product_feedback"
+    inbox_url = f"{BASE}/orgs/{org['id']}/modules/product_feedback"
+    export_request = create_enhancement_request(
+        h_pm, feedback_url, title="Export the inspection log as a spreadsheet",
+        description="Inspectors want to pull a day's inspection log into a spreadsheet for the weekly review.",
+        owner={"type": "user", "id": demo_engineer["user_id"]},
+        external_ref_url="https://tracker.example.com/browse/FAL-214", external_ref_key="FAL-214",
+    )
+    transition_enhancement_request(h_pm, feedback_url, export_request["id"], "under_review")
+    transition_enhancement_request(h_pm, feedback_url, export_request["id"], "accepted")
+    create_enhancement_request(
+        h_pm, feedback_url, title="Offline map tiles for remote sites",
+        description="Field teams lose the map when they work outside coverage.",
+    )
+    declined_request = create_enhancement_request(
+        h_pm, feedback_url, title="Add a built-in video editor",
+        description="Let operators trim flight footage in the app.",
+    )
+    transition_enhancement_request(
+        h_pm, feedback_url, declined_request["id"], "declined",
+        "Out of scope: footage is edited in the customer's existing tools.",
+    )
+    create_enhancement_request(
+        h_pm, inbox_url, title="Single sign-on for the operator console",
+        description="Operations staff want to use the company login.",
+    )
+    create_enhancement_request(
+        h_pm, inbox_url, title="Dark mode for night operations",
+        description="The console is too bright for night flights.",
+    )
+    print("  Product Feedback: 3 Falcon-3 requests (accepted, new, declined) and 2 organisation inbox requests")
 
     print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
           " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"

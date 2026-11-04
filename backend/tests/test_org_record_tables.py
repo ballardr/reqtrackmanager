@@ -42,6 +42,9 @@ STRATEGY, FUTURE_STATE, GUIDING_PRINCIPLE, PERSONA, STAKEHOLDER, GROUP = (
 ORG_TYPES = (STRATEGY, FUTURE_STATE, GUIDING_PRINCIPLE, PERSONA, STAKEHOLDER, GROUP)
 #: Organisation-owned types whose organisation list only exports (they give a reason in `not_importable`).
 EXPORT_ONLY_ORG_TYPES = ("compliance_requirement",)
+#: Types with an organisation tier whose export/import is exercised by their own module's tests (the inbox of Product
+#: Feedback: `app/modules/product_feedback/tests/test_feedback_record_tables.py`).
+OWN_MODULE_ORG_TYPES = ("enhancement_request",)
 CS = "/api/v1/orgs/{oid}/modules/context_strategy"
 SH = "/api/v1/orgs/{oid}/modules/stakeholders"
 
@@ -346,7 +349,7 @@ def test_exactly_the_types_the_organisation_can_own_have_an_organisation_tier():
     owned = {key for key, p in providers.items() if p.organization_owned is not None}
     with_tier = {key for key, p in providers.items() if p.organization is not None}
     assert owned <= with_tier
-    assert with_tier == set(ORG_TYPES) | set(EXPORT_ONLY_ORG_TYPES)
+    assert with_tier == set(ORG_TYPES) | set(EXPORT_ONLY_ORG_TYPES) | set(OWN_MODULE_ORG_TYPES)
 
 
 def test_every_organisation_tier_declares_its_gate_and_columns_with_the_same_keys_as_the_project_tier():

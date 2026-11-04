@@ -1718,3 +1718,93 @@ Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query
 Review schedule: Overdue and upcoming Risk reviews, and assessed Risks with no review scheduled.
 
 Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `due_within_days` (integer, in query)
+
+## Product Feedback (`product_feedback`)
+
+Capture enhancement requests (proposed solutions) from stakeholders, staff and support in one place: versioned records with a triage lifecycle, an owner and an external reference to the delivery tool, held per project or in an optional organisation-level inbox.
+
+### How to use these tools
+
+Capture, triage and track enhancement requests: proposed solutions asked for by stakeholders, staff or support.
+
+Model: a **request** is a *solution* someone wants; a Pain Point is the *problem* it addresses. A request has a lifecycle (`new` -> `under_review` -> `accepted` -> `delivered`, or `declined`; `duplicate` is set only by merging). It lives in a project or, where the organisation allows it, in the organisation's **inbox**. It carries an owner (a user or a group) and an optional external reference to the same item in a delivery tool (URL plus key). Delivery tracking itself stays in that tool.
+
+Read workflow: `product_feedback_list_requests` (filter `status`, `open_only`, `search`), then `product_feedback_get_request` for detail and `allowed_next_statuses`; `product_feedback_list_request_versions` for history and `product_feedback_list_request_comments` for the discussion. `product_feedback_get_feedback_settings` says who may submit in the project.
+
+Write workflow: `create_request` (only a title is needed) -> `update_request` (owner, description, external reference) -> `transition_request`. Link a request to the Pain Point it addresses and the Requirement that realises it with the core link tools.
+
+Rules and gotchas:
+- Submitting is open to project members unless the project restricted it to triagers; every other write needs the Feedback Triager role. A 403 means the caller lacks it.
+- `transition_request` to `declined` needs a `comment`: it is stored as the decline reason. Moving to `delivered` is a person's judgement; do it only when asked.
+- A move to `duplicate` is refused; duplicates are merged, not transitioned.
+- A request's `owner` is `{"type": "user" | "org_group" | "project_group", "id": ...}`; `null` clears it.
+- The organisation inbox tools answer 404 when an organisation administrator has switched the inbox off.
+- There is no delete tool; archiving is a UI action.
+
+### Tool list
+
+#### `product_feedback_list_requests` (read)
+
+Lists a project's enhancement requests with status, owner and external reference.
+
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query)
+
+#### `product_feedback_get_request` (read)
+
+Fetches one enhancement request with its current content and legal next statuses.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
+
+#### `product_feedback_list_request_versions` (read)
+
+Lists a request's full version history, oldest first.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
+
+#### `product_feedback_list_request_comments` (read)
+
+Lists the comments on a request, oldest first.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
+
+#### `product_feedback_get_feedback_settings` (read)
+
+Reads who may submit requests in the project (any member, or triagers only).
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `product_feedback_create_request` (write)
+
+Submits an enhancement request in the New status. Any project member may unless the project restricted submission to triagers; only the title is required.
+
+Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body)
+
+#### `product_feedback_update_request` (write)
+
+Updates a request as a new version; only the fields supplied change. Needs the Feedback Triager role.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `title` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `change_note` (string, in body)
+
+#### `product_feedback_transition_request` (write)
+
+Moves a request along its lifecycle (get_request lists allowed_next_statuses). Declining needs a comment, stored as the decline reason. Needs the Feedback Triager role.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `status*` (string, in body), `comment` (string, in body)
+
+#### `product_feedback_add_request_comment` (write)
+
+Adds a comment to a request's discussion.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `body*` (string, in body)
+
+#### `product_feedback_list_inbox_requests` (read)
+
+Lists the organisation's inbox requests (answers 404 when the organisation switched the inbox off).
+
+Parameters: `organization_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query)
+
+#### `product_feedback_create_inbox_request` (write)
+
+Submits an enhancement request to the organisation's inbox. Any organisation member may.
+
+Parameters: `organization_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body)

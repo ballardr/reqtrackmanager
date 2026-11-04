@@ -42,6 +42,7 @@ SMALL = {
             "change_request": 0.3, "risk": 0.4, "decision": 0.3, "pain_point": 0.4, "strategy": 0.2, "future_state": 0.2,
             "guiding_principle": 0.2, "open_question": 0.2, "persona": 0.2, "stakeholder": 0.3, "stakeholder_need": 0.3,
             "stakeholder_group": 0.2, "engagement": 0.3, "research_finding": 0.4, "compliance_evidence": 0.2,
+            "enhancement_request": 0.3,
         },
     },
     "compliance": {"standards_per_org": 2, "requirements_per_standard": 6, "required_action_fraction": 0.5, "standards_per_project": 1},
