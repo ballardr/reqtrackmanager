@@ -67,6 +67,8 @@ this project already uses in its seed scripts).
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import html
 import json
 import logging
@@ -340,7 +342,8 @@ def _detail(response: httpx.Response) -> str:
 
 
 async def _call_backend(
-    method: str, path: str, *, params: dict | None = None, json: dict | None = None
+    method: str, path: str, *, params: dict | None = None, json: dict | None = None,
+    data: dict | None = None, files: dict | None = None,
 ) -> httpx.Response:
     """Makes one authenticated request to the ReqTrackManager backend,
     forwarding the caller's own token, and translates common failure modes
@@ -354,6 +357,8 @@ async def _call_backend(
             literal string "None".
         json: Optional JSON request body, for write tools (`POST`/`PUT`).
             Unused by every read tool.
+        data / files: Optional multipart form fields and file parts, for the one tool that uploads a file
+            (`import_report_file`).
 
     Returns:
         The successful `httpx.Response`.
@@ -385,7 +390,9 @@ async def _call_backend(
     url = f"{REQTRACK_API_URL}{path}"
     try:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
-            response = await client.request(method, url, headers=headers, params=clean_params, json=json)
+            response = await client.request(
+                method, url, headers=headers, params=clean_params, json=json, data=data, files=files
+            )
     except httpx.HTTPError as exc:
         # Never include `headers` (or anything derived from it) in an
         # exception message — this is the one place in the module that
@@ -1432,6 +1439,52 @@ async def get_report_layout_variables(
 
 
 @mcp.tool
+async def export_report_file(
+    layout_ids: list[str] | None = None, pack_ids: list[str] | None = None, project_id: str | None = None,
+    organization_id: str | None = None, include_history: bool = False, include_pack_layouts: bool = True,
+) -> dict:
+    """Exports report layouts and packs as one `.zip` report file (returned base64-encoded), to keep or to bring into
+    another project, organisation or installation with `import_report_file`. Needs the layout-management permission for
+    the scope (reading a layout's definition is a manage action).
+
+    The file holds the current published version of each layout and pack (every published version with
+    `include_history`; never a draft), the pictures the layouts use, and a pack's saved sets. A pack brings the layouts it
+    names unless `include_pack_layouts` is false. It carries no author emails, ids or placements.
+
+    Args:
+        layout_ids: Layouts the scope can reach (from `list_report_layouts`).
+        pack_ids: Packs the scope can reach (from `list_report_packs`).
+        project_id: Export what this project can reach. Give one of project_id / organization_id.
+        organization_id: Export the organisation's own reports.
+        include_history: Carry every published version, not just the current one.
+        include_pack_layouts: Also export the layouts the chosen packs name.
+
+    Returns:
+        `{filename, size_bytes, file_base64}`. Save `file_base64` decoded as a `.zip`; hand it back to
+        `import_report_file` unchanged.
+    """
+    if (project_id is None) == (organization_id is None):
+        raise ValueError("Give exactly one of project_id and organization_id.")
+    base = (
+        f"/api/v1/projects/{_require_uuid(project_id, 'project_id')}" if project_id
+        else f"/api/v1/orgs/{_require_uuid(organization_id, 'organization_id')}"
+    )
+    response = await _call_backend(
+        "POST", f"{base}/report-file/export",
+        json={
+            "layout_ids": [_require_uuid(i, "layout_ids") for i in layout_ids or []],
+            "pack_ids": [_require_uuid(i, "pack_ids") for i in pack_ids or []],
+            "include_history": include_history, "include_pack_layouts": include_pack_layouts,
+        },
+    )
+    match = re.search(r'filename="([^"]+)"', response.headers.get("content-disposition", ""))
+    return {
+        "filename": match.group(1) if match else "reports.zip", "size_bytes": len(response.content),
+        "file_base64": base64.b64encode(response.content).decode("ascii"),
+    }
+
+
+@mcp.tool
 async def list_report_widgets(project_id: str | None = None, organization_id: str | None = None) -> list[dict]:
     """Lists the report components a layout can embed as a widget line, `[[widget.<key> name=value]]`.
 
@@ -2360,6 +2413,48 @@ if MCP_WRITES_ENABLED:
                 "kind": kind, "source_id": _require_uuid(source_id, "source_id") if source_id else None,
                 "starter_key": starter_key, "target": target, "name": name, "dry_run": dry_run,
             },
+        )
+        return response.json()
+
+    @mcp.tool
+    async def import_report_file(
+        file_base64: str, project_id: str | None = None, organization_id: str | None = None, on_conflict: str = "rename",
+        folder: str = "", dry_run: bool = True,
+    ) -> dict:
+        """Imports a report file (from `export_report_file`, in any organisation or installation) as the project's or
+        the organisation's own layouts and packs. Needs the layout-management permission for that scope. Preview first
+        (the default), then apply.
+
+        Every layout is validated again here and created as version 1 of a new report authored by the caller (every
+        published version when the file carries its history). Nothing is ever replaced: a name the target owns is renamed
+        "<name> (copy)" or skipped. Pictures are re-checked and stored in the target's library. A layout or pack with no
+        valid version here is left out, with the reason. Packs bring their saved sets and follow a renamed layout.
+
+        Args:
+            file_base64: The report file, base64-encoded, exactly as `export_report_file` returned it.
+            project_id: Import into this project. Give one of project_id / organization_id.
+            organization_id: Import into the organisation (needs the organisation's layout-management right).
+            on_conflict: `rename` (default) or `skip` for a name the target already owns.
+            folder: File every created report under this folder (up to three levels); blank keeps each report's own.
+            dry_run: True (default) only previews. Show the user the items, their actions and warnings, then call again
+                with False to import.
+
+        Returns:
+            `{dry_run, items: [{kind, name, new_name, action, versions, warnings, new_id}], pictures, warnings}`.
+        """
+        if (project_id is None) == (organization_id is None):
+            raise ValueError("Give exactly one of project_id and organization_id.")
+        base = (
+            f"/api/v1/projects/{_require_uuid(project_id, 'project_id')}" if project_id
+            else f"/api/v1/orgs/{_require_uuid(organization_id, 'organization_id')}"
+        )
+        try:
+            raw = base64.b64decode(file_base64, validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("file_base64 is not valid base64.") from None
+        response = await _call_backend(
+            "POST", f"{base}/report-file/import", params={"dry_run": "true" if dry_run else "false"},
+            data={"on_conflict": on_conflict, "folder": folder}, files={"file": ("reports.zip", raw, "application/zip")},
         )
         return response.json()
 

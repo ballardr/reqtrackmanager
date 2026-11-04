@@ -8,6 +8,7 @@ import {
   buildLayoutApi, buildLayoutDetail, buildLayoutDraft, buildLayoutSummary, buildOutlineTree, fakeValidate, LAYOUT_TEXT, TEXT_CHECKED_MS,
 } from "../testing/reportLayoutFixtures";
 import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
+import { buildFileApi } from "../testing/reportFileFixtures";
 import { chooseSnippetMenuItem, snippetMenuItem } from "../testing/reportSnippetMenuHelpers";
 import { buildSnippetStoreApi } from "../testing/reportSnippetStoreFixtures";
 import { saveVersion } from "../testing/saveVersionHelpers";
@@ -314,7 +315,7 @@ export const ALayoutSharedFromElsewhereIsReadOnly: Story = {
     await expect(canvas.queryByRole("tab", { name: "Fields" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Report layout actions" }));
-    await expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim())).toEqual(["Duplicate…"]);
+    await expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim())).toEqual(["Duplicate…", "Export as file…"]);
   },
 };
 
@@ -1246,5 +1247,19 @@ export const ASharedReadOnlyLayoutShowsNoDraftControls: Story = {
     await expect(canvas.queryByRole("note", { name: "Draft" })).not.toBeInTheDocument();
     // A layout shared from elsewhere has no draft this scope may read, so none is fetched.
     await expect(args.api.draft).not.toHaveBeenCalled();
+  },
+};
+
+/** Export as file in the actions menu opens the export dialog for this layout. */
+export const ExportAsFileFromTheActionsMenu: Story = {
+  args: { fileApi: buildFileApi() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await editorOf(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Report layout actions" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Export as file…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Export 1 report as a file" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(args.fileApi!.exportFile).toHaveBeenCalledWith(expect.objectContaining({ pack_ids: [] })));
   },
 };

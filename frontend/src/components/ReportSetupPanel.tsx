@@ -14,6 +14,8 @@
  *   a folder or visibility override back to what the tiers above set.
  * - Folder rows: New folder inside, Rename and Delete (a folder the scope owns); a New menu creates a layout, a pack, a layout from a built-in starter or
  *   a folder; an organisation adds the starter layouts; a project restores hidden layouts and packs in one go.
+ * - Export layouts and packs as a `.zip` file (a row's menu, or "Export as file…" with tick boxes) and import one (New →
+ *   "Import from file…"), in a project and in the organisation (`ReportFileExportDialog`, `ReportFileImportDialog`).
  * - In a project, copy reports to another project: "Copy to another project…" turns on tick boxes (a folder's box covers
  *   what is in it) and a row's menu copies that one report; both open `ReportCopyDialog`.
  * - Follow the confirmation tiers: delete is Tier 2 (type the name); hiding and deleting a folder are Tier 1. Every
@@ -33,6 +35,7 @@ import { LAYOUT_ORIGIN_LABEL, reportLayoutPath, type ReportLayoutApi, type Repor
 import { reportPackPath, type ReportPackApi, type ReportPackSummary } from "../api/reportPacks";
 import { reportDuplicateApi, type DuplicateResult, type ReportDuplicateApi } from "../api/reportDuplicate";
 import { reportCopyApi, type CopyItems, type ReportCopyApi } from "../api/reportCopy";
+import { reportFileApi, type ReportFileApi } from "../api/reportFile";
 import type { ReportPlacement, ReportPlacementApi } from "../api/reportPlacements";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -57,6 +60,8 @@ import { FolderTreeList, type FolderTreeChecks, type FolderTreeColumn } from "./
 import { MenuButton } from "./MenuButton";
 import { ReportCopyDialog } from "./ReportCopyDialog";
 import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
+import { ReportFileExportDialog } from "./ReportFileExportDialog";
+import { ReportFileImportDialog } from "./ReportFileImportDialog";
 import { ReportFolderNameDialog } from "./ReportFolderNameDialog";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
 import { ReportMoveDialog } from "./ReportMoveDialog";
@@ -74,6 +79,8 @@ type Dialog =
   | { kind: "move"; row: ReportSetupRow }
   | { kind: "copy-to-project"; items: CopyItems }
   | { kind: "duplicate"; row: ReportSetupRow }
+  | { kind: "export-file"; layoutIds: string[]; packIds: string[] }
+  | { kind: "import-file" }
   | { kind: "from-starter" }
   | { kind: "folder-add"; parent: string }
   | { kind: "folder-rename"; path: string }
@@ -100,12 +107,14 @@ const DEFAULT_COLUMNS = ["status", "shared", "updated"];
  * @param folderApi The folder calls for the same scope; the live ones when omitted.
  * @param copyApi The calls that copy reports to another project (a project's panel only); the live ones when omitted.
  * @param duplicateApi The calls that duplicate one report or start from a built-in starter; the live ones for the scope when omitted.
+ * @param fileApi The calls that export and import a report file; the live ones for the scope when omitted.
  */
 export function ReportSetupPanel({
   layoutApi, packApi, placementApi, folderApi: folderApiProp, copyApi = reportCopyApi, duplicateApi: duplicateApiProp,
+  fileApi: fileApiProp,
 }: {
   layoutApi: ReportLayoutApi; packApi: ReportPackApi; placementApi: ReportPlacementApi; folderApi?: ReportFolderApi; copyApi?: ReportCopyApi;
-  duplicateApi?: ReportDuplicateApi;
+  duplicateApi?: ReportDuplicateApi; fileApi?: ReportFileApi;
 }) {
   const strings = useStrings();
   const text = strings.reportSetup;
@@ -116,13 +125,16 @@ export function ReportSetupPanel({
   const inProject = scope.kind === "project";
   const folderApi = useMemo(() => folderApiProp ?? reportFolderApi(scope), [folderApiProp, scope]);
   const duplicateApi = useMemo(() => duplicateApiProp ?? reportDuplicateApi(scope), [duplicateApiProp, scope]);
+  const fileApi = useMemo(() => fileApiProp ?? reportFileApi(scope), [fileApiProp, scope]);
+  const fileText = strings.reportFile;
   const [data, setData] = useState<Loaded | null>(null);
   const [missingStarters, setMissingStarters] = useState<string[]>([]);
   const [failed, setFailed] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [filter, setFilter] = useState<ReportSetupFilter>(EMPTY_SETUP_FILTER);
   const [openIds, setFolderOpen] = useOpenFolders(`setup-${scope.kind}`);
-  const [picking, setPicking] = useState(false);
+  /** What the ticked rows are for: copying them to another project or exporting them as a file; `null` when not ticking. */
+  const [picking, setPicking] = useState<"copy" | "export" | null>(null);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
   const reload = useCallback(async () => {
@@ -162,8 +174,10 @@ export function ReportSetupPanel({
   const pickedItems = useMemo(() => copyItems(rows, picked, pickedFolders), [rows, picked, pickedFolders]);
   const checks = useMemo<FolderTreeChecks<ReportSetupRow> | undefined>(() => {
     if (!picking) return undefined;
+    /** A module report has nothing to export, so only a copy can tick it. */
+    const pickable = (row: ReportSetupRow) => isCopyable(row) && (picking !== "export" || row.type !== "module");
     const below = (node: FolderNode<ReportSetupRow>): ReportSetupRow[] =>
-      node.kind === "item" && node.item ? (isCopyable(node.item) ? [node.item] : []) : node.children.flatMap(below);
+      node.kind === "item" && node.item ? (pickable(node.item) ? [node.item] : []) : node.children.flatMap(below);
     return {
       state: (node) => {
         if (node.kind === "item") return picked.has(node.item?.key ?? "");
@@ -182,7 +196,7 @@ export function ReportSetupPanel({
         return next;
       }),
       label: (node) => copyText.tickLabel(node.name),
-      disabled: (node) => node.kind === "item" && node.item !== undefined && !isCopyable(node.item),
+      disabled: (node) => node.kind === "item" && node.item !== undefined && !pickable(node.item),
     };
   }, [picking, picked, copyText]);
 
@@ -320,6 +334,12 @@ export function ReportSetupPanel({
     if (can.editDetails) items.push({ key: "edit", label: (noun ?? strings.reportLayouts).editDetails, onSelect: () => setDialog({ kind: "edit", row }) });
     items.push({ key: "move", label: strings.reportPlacements.move, onSelect: () => setDialog({ kind: "move", row }) });
     if (can.copy && noun) items.push({ key: "copy", label: noun.makeCopy, onSelect: () => setDialog({ kind: "duplicate", row }) });
+    if ((row.layout || row.pack) && !row.hidden) {
+      items.push({
+        key: "export-file", label: fileText.exportRow,
+        onSelect: () => setDialog({ kind: "export-file", layoutIds: row.layout ? [row.layout.id] : [], packIds: row.pack ? [row.pack.id] : [] }),
+      });
+    }
     if (inProject && isCopyable(row) && (row.layout || row.pack)) {
       items.push({
         key: "copy-to-project", label: copyText.startRow,
@@ -367,6 +387,7 @@ export function ReportSetupPanel({
     { key: "pack", label: text.newPack, onSelect: () => setDialog({ kind: "create-pack" }) },
     { key: "starter", label: strings.reportDuplicate.fromStarter, onSelect: () => setDialog({ kind: "from-starter" }) },
     { key: "folder", label: text.newFolder, onSelect: () => setDialog({ kind: "folder-add", parent: "" }) },
+    { key: "import-file", label: fileText.importAction, onSelect: () => setDialog({ kind: "import-file" }) },
     ...(layoutApi.addStarters && missingStarters.length > 0
       ? [{
         key: "add-missing-starters", label: text.addMissingStarters,
@@ -400,7 +421,10 @@ export function ReportSetupPanel({
           />
         )}
         {inProject && !picking && (
-          <button type="button" className="btn" onClick={() => setPicking(true)}>{copyText.start}</button>
+          <button type="button" className="btn" onClick={() => setPicking("copy")}>{copyText.start}</button>
+        )}
+        {!picking && (
+          <button type="button" className="btn" onClick={() => setPicking("export")}>{fileText.exportStart}</button>
         )}
         <span style={{ marginInlineStart: "auto" }}>
           <ColumnChooser
@@ -410,16 +434,19 @@ export function ReportSetupPanel({
         </span>
       </div>
       {picking && (
-        <div className="row" role="group" aria-label={copyText.start} style={{ alignItems: "center" }}>
-          <span className="text-muted">{copyText.pickIntro}</span>
-          <strong aria-live="polite">{copyText.selected(copyCount(pickedItems))}</strong>
+        <div className="row" role="group" aria-label={picking === "copy" ? copyText.start : fileText.exportStart} style={{ alignItems: "center" }}>
+          <span className="text-muted">{picking === "copy" ? copyText.pickIntro : fileText.pickIntro}</span>
+          <strong aria-live="polite">{copyText.selected(picking === "copy" ? copyCount(pickedItems) : pickedItems.layout_ids.length + pickedItems.pack_ids.length)}</strong>
           <button
-            type="button" className="btn btn-primary" disabled={copyCount(pickedItems) === 0}
-            onClick={() => setDialog({ kind: "copy-to-project", items: pickedItems })}
+            type="button" className="btn btn-primary"
+            disabled={(picking === "copy" ? copyCount(pickedItems) : pickedItems.layout_ids.length + pickedItems.pack_ids.length) === 0}
+            onClick={() => setDialog(picking === "copy"
+              ? { kind: "copy-to-project", items: pickedItems }
+              : { kind: "export-file", layoutIds: pickedItems.layout_ids, packIds: pickedItems.pack_ids })}
           >
-            {copyText.copy}
+            {picking === "copy" ? copyText.copy : fileText.exportSelected}
           </button>
-          <button type="button" className="btn" onClick={() => { setPicking(false); setPicked(new Set()); }}>{copyText.cancelPick}</button>
+          <button type="button" className="btn" onClick={() => { setPicking(null); setPicked(new Set()); }}>{copyText.cancelPick}</button>
         </div>
       )}
       <FilterPanel
@@ -474,8 +501,17 @@ export function ReportSetupPanel({
       {dialog?.kind === "copy-to-project" && (
         <ReportCopyDialog
           api={copyApi} sourceProjectId={scope.id} items={dialog.items} onClose={() => setDialog(null)}
-          onCopied={() => { setPicking(false); setPicked(new Set()); }}
+          onCopied={() => { setPicking(null); setPicked(new Set()); }}
         />
+      )}
+      {dialog?.kind === "export-file" && (
+        <ReportFileExportDialog
+          api={fileApi} layoutIds={dialog.layoutIds} packIds={dialog.packIds}
+          onClose={() => { setDialog(null); setPicking(null); setPicked(new Set()); }}
+        />
+      )}
+      {dialog?.kind === "import-file" && (
+        <ReportFileImportDialog api={fileApi} onClose={() => setDialog(null)} onImported={() => void reload()} />
       )}
       {dialog?.kind === "duplicate" && (dialog.row.layout || dialog.row.pack) && (
         <ReportDuplicateDialog

@@ -53,6 +53,7 @@ import {
   type SnippetApplyResult, type TextParseResult, type TreeCheck,
 } from "../api/reportLayouts";
 import { reportDuplicateApi, type DuplicateResult, type ReportDuplicateApi } from "../api/reportDuplicate";
+import { reportFileApi, type ReportFileApi } from "../api/reportFile";
 import { reportSnippetStoreApi, type ReportSnippetStoreApi, type SnippetSelection } from "../api/reportSnippets";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -77,6 +78,7 @@ import { LayoutDraftConflict } from "./LayoutDraftConflict";
 import { LayoutDraftNotice } from "./LayoutDraftNotice";
 import { LayoutDraftStatus } from "./LayoutDraftStatus";
 import { ReportDuplicateDialog } from "./ReportDuplicateDialog";
+import { ReportFileExportDialog } from "./ReportFileExportDialog";
 import { ReportLayoutBlockToolbar } from "./ReportLayoutBlockToolbar";
 import { ReportLayoutFieldPicker } from "./ReportLayoutFieldPicker";
 import { ReportLayoutFormModal } from "./ReportLayoutFormModal";
@@ -106,7 +108,7 @@ type EditView = "blocks" | "text" | "json";
 const isTreeView = (view: EditView) => view === "blocks";
 type AsideTab = "block" | "preview" | "fields" | "widgets";
 type Dialog =
-  | "details" | "delete" | "reload" | "leave" | "duplicate" | "snippet" | "save-snippet" | "discard-draft" | "discard-changes" | "compare";
+  | "details" | "delete" | "reload" | "leave" | "duplicate" | "export-file" | "snippet" | "save-snippet" | "discard-draft" | "discard-changes" | "compare";
 
 /** What Save as snippet was asked to save: the draft tree, the blocks chosen and the words naming them. */
 interface SnippetToSave {
@@ -144,7 +146,7 @@ interface Checked {
  * @param autosaveDelayMs How long editing must pause before the draft is written (stories shorten it).
  */
 export function ReportLayoutDesigner({
-  api, layoutId, backTo, projectOptions, duplicateApi: duplicateApiProp, snippetApi: snippetApiProp,
+  api, layoutId, backTo, projectOptions, duplicateApi: duplicateApiProp, fileApi: fileApiProp, snippetApi: snippetApiProp,
   autosaveDelayMs = DRAFT_AUTOSAVE_DELAY_MS,
 }: {
   api: ReportLayoutApi;
@@ -153,6 +155,8 @@ export function ReportLayoutDesigner({
   projectOptions?: { value: string; label: string }[];
   /** The calls that duplicate this layout; the live ones for the layout's scope when omitted. */
   duplicateApi?: ReportDuplicateApi;
+  /** The calls that export this layout as a file; the live ones for the layout's scope when omitted. */
+  fileApi?: ReportFileApi;
   /** The calls that save a snippet; the live ones for the layout's scope when omitted. */
   snippetApi?: ReportSnippetStoreApi;
   autosaveDelayMs?: number;
@@ -164,6 +168,7 @@ export function ReportLayoutDesigner({
   const { showToast } = useToast();
   const navigate = useNavigate();
   const duplicateApi = useMemo(() => duplicateApiProp ?? reportDuplicateApi(api.scope), [duplicateApiProp, api.scope]);
+  const fileApi = useMemo(() => fileApiProp ?? reportFileApi(api.scope), [fileApiProp, api.scope]);
   const snippetStore = useMemo(() => snippetApiProp ?? reportSnippetStoreApi(api.scope), [snippetApiProp, api.scope]);
   const beginCheck = useRequestSequence();
 
@@ -747,6 +752,7 @@ export function ReportLayoutDesigner({
         onEdit={editable ? () => setDialog("details") : undefined}
         actions={[
           { key: "copy", label: text.makeCopy, onSelect: () => setDialog("duplicate") },
+          { key: "export-file", label: strings.reportFile.exportRow, onSelect: () => setDialog("export-file") },
           editable && { key: "delete", label: text.delete, danger: true, onSelect: () => setDialog("delete") },
         ]}
       />
@@ -1021,6 +1027,9 @@ export function ReportLayoutDesigner({
           api={duplicateApi} source={{ kind: "layout", id: detail.id, name: detail.name }}
           note={sameAsPublished ? undefined : strings.reportDuplicate.unsavedNote} onClose={() => setDialog(null)} onDuplicated={openDuplicate}
         />
+      )}
+      {dialog === "export-file" && detail && (
+        <ReportFileExportDialog api={fileApi} layoutIds={[detail.id]} packIds={[]} onClose={() => setDialog(null)} />
       )}
       {dialog === "compare" && (
         <LayoutDraftCompare api={api} layoutId={layoutId} saved={{ version: detail.current_version, tree: detail.current.tree }} onClose={() => setDialog(null)} />

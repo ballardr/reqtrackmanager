@@ -63,13 +63,13 @@ READ_ONLY_TOOLS = {
     # Saved report snippets: listing and reading them, and checking a selection (nothing is stored).
     "list_saved_report_snippets", "get_saved_report_snippet", "check_report_snippet",
     # Report packs: listing, the run form, the counts preview (stores nothing) and a background run's status.
-    "list_report_packs", "get_report_pack_form", "preview_report_pack", "get_report_run",
+    "export_report_file", "list_report_packs", "get_report_pack_form", "preview_report_pack", "get_report_run",
 }
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
     "set_artefact_tags", "add_artefact_tag", "remove_artefact_tag",
     "create_report_layout", "save_report_layout_version", "update_report_layout", "delete_report_layout",
-    "run_report_pack", "copy_reports", "duplicate_report",
+    "run_report_pack", "copy_reports", "duplicate_report", "import_report_file",
     "save_report_snippet", "update_saved_report_snippet", "delete_saved_report_snippet",
     "set_saved_report_snippet_visibility", "copy_saved_report_snippet",
 }

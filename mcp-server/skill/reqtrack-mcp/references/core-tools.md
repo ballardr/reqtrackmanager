@@ -98,6 +98,12 @@ Duplicates one report layout or pack as an editable basis for a new one, or star
 
 Parameters: `kind*` (string), `project_id` (string), `organization_id` (string), `source_id` (string), `starter_key` (string), `target` (string), `name` (string), `dry_run` (boolean)
 
+## `export_report_file` (read)
+
+Exports report layouts and packs as one `.zip` report file (returned base64-encoded), to keep or to bring into another project, organisation or installation with `import_report_file`. Needs the layout-management permission for the scope (reading a layout's definition is a manage action).
+
+Parameters: `layout_ids` (list[string]), `pack_ids` (list[string]), `project_id` (string), `organization_id` (string), `include_history` (boolean), `include_pack_layouts` (boolean)
+
 ## `find_artefacts_by_tag` (read)
 
 Finds records of every type that carry some tags: "what is tagged `safety`?" without listing each type.
@@ -193,6 +199,12 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 Reads one saved report snippet with its blocks. Needs the layout-management permission.
 
 Parameters: `snippet_id*` (string), `project_id` (string), `organization_id` (string)
+
+## `import_report_file` (write)
+
+Imports a report file (from `export_report_file`, in any organisation or installation) as the project's or the organisation's own layouts and packs. Needs the layout-management permission for that scope. Preview first (the default), then apply.
+
+Parameters: `file_base64*` (string), `project_id` (string), `organization_id` (string), `on_conflict` (string), `folder` (string), `dry_run` (boolean)
 
 ## `list_artefact_link_browse` (read)
 

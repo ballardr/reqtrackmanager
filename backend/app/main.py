@@ -53,6 +53,7 @@ from app.routers import (
     report_catalogue,
     report_copy,
     report_duplicate,
+    report_exchange,
     report_file_names,
     report_folders,
     report_images,
@@ -355,6 +356,8 @@ app.include_router(report_file_names.router)
 app.include_router(report_copy.router)
 app.include_router(report_duplicate.project_router)
 app.include_router(report_duplicate.org_router)
+app.include_router(report_exchange.project_router)
+app.include_router(report_exchange.org_router)
 app.include_router(report_folders.org_router)
 app.include_router(report_folders.project_router)
 app.include_router(report_placements.org_router)

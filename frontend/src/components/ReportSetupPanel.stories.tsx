@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { buildCopyApi } from "../testing/reportCopyFixtures";
 import { buildDuplicateApi } from "../testing/reportDuplicateFixtures";
+import { buildFileApi } from "../testing/reportFileFixtures";
 import { buildFolderApi } from "../testing/reportFolderFixtures";
 import { buildLayoutApi, buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildPackApi, buildPackSummary } from "../testing/reportPackFixtures";
@@ -498,5 +499,55 @@ export const AnOrganisationListOffersNoCopyToAnotherProject: Story = {
     await expand(grid, "Custom reports");
     await userEvent.click(grid.getByRole("button", { name: "Actions for Handover document" }));
     await expect(screen.queryByRole("menuitem", { name: "Copy to another project…" })).not.toBeInTheDocument();
+  },
+};
+
+/** A report's own menu exports just that report as a file. */
+export const ARowMenuExportsThatOneReportAsAFile: Story = {
+  args: { ...fresh(), fileApi: buildFileApi() },
+  play: async ({ canvasElement, args }) => {
+    const grid = await list(canvasElement);
+    await expand(grid, "Custom reports");
+    await userEvent.click(grid.getByRole("button", { name: "Actions for Handover document" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Export as file…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Export 1 report as a file" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(args.fileApi!.exportFile).toHaveBeenCalledWith(expect.objectContaining({ layout_ids: ["1"], pack_ids: [] })));
+  },
+};
+
+/** Export mode ticks layouts and packs only: a module report has nothing to export. */
+export const ExportModeTicksReportsButNotModuleReports: Story = {
+  args: { ...fresh(), fileApi: buildFileApi() },
+  play: async ({ canvasElement, args }) => {
+    const grid = await list(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Export several as file…" }));
+    await expect(within(canvasElement).getByRole("button", { name: "Export file…" })).toBeDisabled();
+    await expand(grid, "Custom reports");
+    await expand(grid, "Decision Management");
+    await expect(grid.getByRole("checkbox", { name: "Select Approval ageing" })).toBeDisabled();
+    await userEvent.click(grid.getByRole("checkbox", { name: "Select Handover document" }));
+    await expect(within(canvasElement).getByText("1 selected")).toBeInTheDocument();
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Export file…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Export 1 report as a file" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Export" }));
+    await waitFor(() => expect(args.fileApi!.exportFile).toHaveBeenCalled());
+    await waitFor(() => expect(grid.queryByRole("checkbox")).not.toBeInTheDocument());
+  },
+};
+
+/** New → Import from file opens the import dialog and a finished import reloads the list. */
+export const NewImportFromFileOpensTheImportDialog: Story = {
+  args: { ...fresh(), fileApi: buildFileApi() },
+  play: async ({ canvasElement, args }) => {
+    await list(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "New" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Import from file…" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Import reports from a file" }));
+    await userEvent.upload(dialog.getByLabelText("Report file"), new File(["zip"], "reports.zip"));
+    await userEvent.click(dialog.getByRole("button", { name: "Preview" }));
+    await userEvent.click(await dialog.findByRole("button", { name: "Import 3 items" }));
+    await expect(await dialog.findByRole("status")).toHaveTextContent("3 items imported.");
+    await expect(args.fileApi!.importFile).toHaveBeenLastCalledWith(expect.any(File), { onConflict: "rename", dryRun: false });
   },
 };
