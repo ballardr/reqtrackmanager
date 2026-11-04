@@ -32,12 +32,14 @@ import {
 } from "../utils/reportGrid";
 import { DEFAULT_COLOUR_CONTEXT, resolveColourWord, type ColourContext, type ColourEntry } from "../utils/reportColours";
 import type { ReportFontChoice } from "../api/reportLayouts";
+import { tableHeadingColours } from "../utils/tableHeadingColours";
+import type { TableHeadings } from "../utils/reportPageSetup";
 import { ColourChoiceField } from "./ColourChoiceField";
 import { FontChoiceField } from "./FontChoiceField";
 import { TextField } from "./FormFields";
 import { FieldHelp } from "./FieldHelp";
 import { LabeledSelect } from "./LabeledSelect";
-import { Tooltip } from "./Tooltip";
+import { ToggleButton } from "./ToggleButton";
 
 /** What the editor changes: the table's columns, rows and header count (its borders and own style stay in the block panel). */
 export type GridDraft = GridShape;
@@ -61,44 +63,32 @@ function trackOf(width: unknown): string {
   return "minmax(5rem, 1fr)";
 }
 
-function IconToggle({ label, pressed, onClick, disabled, children }: {
-  label: string; pressed?: boolean; onClick: () => void; disabled?: boolean; children: ReactNode;
-}) {
-  return (
-    <Tooltip label={label}>
-      <button
-        type="button" className={`btn btn-sm btn-icon${pressed ? " btn-marked" : ""}`} aria-label={label} aria-pressed={pressed}
-        disabled={disabled} onClick={onClick}
-      >
-        {children}
-      </button>
-    </Tooltip>
-  );
-}
-
 /**
  * @param value The table being edited.
  * @param onChange Called with the whole new table after each action.
  * @param gridStyle The table's own style keys (`align`, `fill` ...), the last layer of the cascade.
  * @param colours The branding colour and the organisation's colour scheme, which the colour fields offer.
  * @param palette The layout's own colour scheme.
+ * @param tableHeadings The layout's default table heading colours, which a heading-row cell without a fill of its own takes.
  * @param fonts The fonts a column may choose; the four standard ones where absent.
  * @param renderCellText Draws the field that edits one cell's text (the block editor's text field with its placeholders).
  * @param readOnly Draws the table without any control that changes it.
  */
 export function ReportGridEditor({
-  value, onChange, gridStyle = {}, colours = DEFAULT_COLOUR_CONTEXT, palette = [], fonts, renderCellText, readOnly = false,
+  value, onChange, gridStyle = {}, colours = DEFAULT_COLOUR_CONTEXT, palette = [], tableHeadings, fonts, renderCellText, readOnly = false,
 }: {
   value: GridDraft;
   onChange: (next: GridDraft) => void;
   gridStyle?: Obj;
   colours?: ColourContext;
   palette?: ColourEntry[];
+  tableHeadings?: TableHeadings;
   fonts?: ReportFontChoice[];
   renderCellText: (cell: Obj, onText: (text: string) => void, label: string) => ReactNode;
   readOnly?: boolean;
 }) {
-  const text = useStrings().reportGrid;
+  const strings = useStrings();
+  const text = strings.reportGrid;
   const idBase = useId();
   const [anchor, setAnchor] = useState<GridPos>({ r: 0, c: 0 });
   const [focus, setFocus] = useState<GridPos>({ r: 0, c: 0 });
@@ -142,6 +132,10 @@ export function ReportGridEditor({
     else commit(styleCells(shape, rect, patch));
   };
 
+  // A heading row's colours default to the layout's, when it sets any; the colour fields then say so.
+  const layoutHeadings = tableHeadings && (tableHeadings.fill || tableHeadings.text) ? tableHeadingColours(tableHeadings, colours, palette) : null;
+  const onlyHeadingCells = origins.length > 0 && origins.every((p) => p.r < shape.header_rows);
+  const emptyColourLabel = layoutHeadings && onlyHeadingCells ? strings.tableHeadings.layoutDefault : text.inherit;
   const allEffective = <T,>(pick: (s: ReturnType<typeof styleOf>) => T, expected: T) => origins.length > 0 && origins.every((p) => pick(styleOf(p)) === expected);
   // Merge stays on for a range over the header so a click can say why it is refused; only a single cell has nothing to merge.
   const mergePossible = origins.length >= 2;
@@ -198,40 +192,40 @@ export function ReportGridEditor({
       {!readOnly && (
         <>
           <div className="row grid-editor__toolbar" role="toolbar" aria-label={text.formatting}>
-            <IconToggle label={text.merge} disabled={!mergePossible} onClick={() => run(mergeCells(shape, rect), text.changed.merged, () => setAnchor({ r: rect.r0, c: rect.c0 }))}>
+            <ToggleButton label={text.merge} disabled={!mergePossible} onClick={() => run(mergeCells(shape, rect), text.changed.merged, () => setAnchor({ r: rect.r0, c: rect.c0 }))}>
               <Merge size={14} aria-hidden="true" />
-            </IconToggle>
-            <IconToggle label={text.unmerge} disabled={!unmergePossible} onClick={() => commit(unmergeCells(shape, rect), text.changed.unmerged)}>
+            </ToggleButton>
+            <ToggleButton label={text.unmerge} disabled={!unmergePossible} onClick={() => commit(unmergeCells(shape, rect), text.changed.unmerged)}>
               <Split size={14} aria-hidden="true" />
-            </IconToggle>
+            </ToggleButton>
             <span className="grid-editor__divider" aria-hidden="true" />
             {ALIGNMENTS.map((word) => {
               const Icon = ALIGN_ICONS[word];
               return (
-                <IconToggle key={word} label={text.alignLabels[word]} pressed={allEffective((s) => s.align, word)} onClick={() => apply({ align: word })}>
+                <ToggleButton key={word} label={text.alignLabels[word]} pressed={allEffective((s) => s.align, word)} onClick={() => apply({ align: word })}>
                   <Icon size={14} aria-hidden="true" />
-                </IconToggle>
+                </ToggleButton>
               );
             })}
             <span className="grid-editor__divider" aria-hidden="true" />
             {VALIGNMENTS.map((word) => {
               const Icon = VALIGN_ICONS[word];
               return (
-                <IconToggle key={word} label={text.valignLabels[word]} pressed={allEffective((s) => s.valign, word)} onClick={() => apply({ valign: word })}>
+                <ToggleButton key={word} label={text.valignLabels[word]} pressed={allEffective((s) => s.valign, word)} onClick={() => apply({ valign: word })}>
                   <Icon size={14} aria-hidden="true" />
-                </IconToggle>
+                </ToggleButton>
               );
             })}
             <span className="grid-editor__divider" aria-hidden="true" />
-            <IconToggle label={text.bold} pressed={allEffective((s) => s.bold, true)} onClick={() => apply({ bold: !allEffective((s) => s.bold, true) })}>
+            <ToggleButton label={text.bold} pressed={allEffective((s) => s.bold, true)} onClick={() => apply({ bold: !allEffective((s) => s.bold, true) })}>
               <Bold size={14} aria-hidden="true" />
-            </IconToggle>
+            </ToggleButton>
             <ColourChoiceField
-              helpNotNeeded label={text.fill} value={activeStyle.fill ?? ""} context={colours} layoutPalette={palette} emptyLabel={text.inherit}
+              helpNotNeeded label={text.fill} value={activeStyle.fill ?? ""} context={colours} layoutPalette={palette} emptyLabel={emptyColourLabel}
               onChange={(word) => apply({ fill: word === "" ? undefined : word })}
             />
             <ColourChoiceField
-              helpNotNeeded label={text.textColour} value={activeStyle.color ?? ""} context={colours} layoutPalette={palette} emptyLabel={text.inherit}
+              helpNotNeeded label={text.textColour} value={activeStyle.color ?? ""} context={colours} layoutPalette={palette} emptyLabel={emptyColourLabel}
               onChange={(word) => apply({ color: word === "" ? undefined : word })}
             />
             <LabeledSelect
@@ -269,10 +263,13 @@ export function ReportGridEditor({
         >
           {placed.map(({ r, c, cell, rowspan, colspan }) => {
             const style = styleOf({ r, c });
-            const fill = style.fill ? resolveColourWord(style.fill, colours, palette) : null;
-            const colour = style.color ? resolveColourWord(style.color, colours, palette) : null;
-            const body = typeof cell.text === "string" ? cell.text : "";
             const header = r < lastHeader;
+            const ownFill = style.fill ? resolveColourWord(style.fill, colours, palette) : null;
+            // The layout's pair applies as a unit to a heading cell without a fill of its own.
+            const layoutPair = header && layoutHeadings && ownFill === null && style.fill !== "none" ? layoutHeadings : null;
+            const fill = layoutPair?.fill ?? ownFill;
+            const colour = style.color ? resolveColourWord(style.color, colours, palette) : layoutPair?.text ?? null;
+            const body = typeof cell.text === "string" ? cell.text : "";
             const css: CSSProperties = {
               gridRow: `${r + 1} / span ${rowspan}`, gridColumn: `${c + 1} / span ${colspan}`,
               textAlign: style.align === "justify" ? "justify" : (style.align as CSSProperties["textAlign"]),

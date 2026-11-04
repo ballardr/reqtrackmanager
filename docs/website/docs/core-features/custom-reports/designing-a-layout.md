@@ -131,14 +131,16 @@ The layout's own settings are arranged in the same groups in the **Layout** bloc
 
 | Group | Holds | Starts |
 |---|---|---|
-| **Page** | page size, orientation, margins, mirror margins | always open |
-| **Header and footer** | the header and footer | open |
-| **Look** | colour scheme, fonts, embed fonts (Blocks only) | closed |
+| **Page** | page size, orientation, mirror margins | closed; open on a layout not yet saved beyond its first version |
+| **Margins** | the margins and the gutter | closed; open on a new layout |
+| **Header** | the header | closed |
+| **Footer** | the footer | closed |
+| **Look** | table heading colours; colour scheme, fonts and embed fonts (Blocks only) | closed |
 | **Variables and running** | variables, projects it runs for, file name (Blocks only) | closed |
 | **Tables** | repeat table header rows, line up tables | closed |
 | **Page styles** | named page styles | closed |
 
-A closed group that holds a setting you have changed shows it on its bar, for example **2 changed** or **3 page styles**, with a coloured edge, so a plain-looking layout cannot hide a setting. A group with a problem inside it opens itself and shows how many problems it holds. Whether each group is open is remembered for you.
+A closed group that holds a setting you have changed shows it on its bar, for example **2 changed** or **3 page styles**, with a coloured edge, so a plain-looking layout cannot hide a setting. **Page** and **Margins** always have a value, so their bars say it instead (**A4 portrait**, **1.5 cm**) and take the coloured edge only when it is not the default. A group with a problem inside it opens itself and shows how many problems it holds. Whether each group is open is remembered for you.
 
 A document layout has its own pages (size, orientation and margins) and can name other **page styles** for parts of the report, for example an A3 landscape table inside an A4 portrait report.
 
@@ -164,14 +166,14 @@ flowchart LR
     L["Left cell<br/>logo and text"] --- C["Centre cell<br/>{{report_title}}"] --- R["Right cell<br/>Page {{page}} of {{pages}}"]
 ```
 
-- For each, choose **Print**: *The default* (for the layout) or *Same as the layout's* (for a page style), *Its own text*, or *Nothing*. With no footer set anywhere, every page gets a page number. The organisation's footer text and logo are never added for you: write `{{org.footer_text}}` in a cell, or use `org_logo` as the logo's file in the Text view.
+- For each, choose **Print**: *The default* (for the layout) or *Same as the layout's* (for a page style), *Custom*, or *Nothing*. With no footer set anywhere, every page gets a page number. The organisation's footer text and logo are never added for you: write `{{org.footer_text}}` in a cell, or use `org_logo` as the logo's file in the Text view.
 - The three cells are stacked one above the other, each as wide as the editor, with the left cell first. Each cell holds up to three lines of text. Beside each cell's title are a **[+]** (*Insert placeholder into footer, left cell*, and so on), **B** and **I** buttons for that cell, and its gear. The **[+]** opens a short menu grouped as **Page**, **Report**, **Project**, **Organisation** and **Other**, each entry with a sample of what it prints; choosing one writes it at the cursor in that cell (at the end if you have not clicked in it) and puts the cursor back after it. **Page number**, **Total pages** and **Page X of Y** are always offered, and a line under the cell shows what it prints ("Prints as: Page 3 of 12"). The others are `{{report_title}}`, `{{project_name}}`, `{{project_report_name}}`, `{{project_code}}`, `{{organisation}}`, `{{generated_on}}` (the date you ran the report, on your own calendar), `{{layout_version}}` and the organisation's `{{org.footer_text}}`, with the page fields `{{page}}` (this page) and `{{pages}}` (the total). Page numbers carry on across sections.
 - **Cell widths and alignment** are behind the gear beside each cell's title (*Left cell settings*, and so on); when either is set, a short summary ("width 25%, bottom") shows beside the title and the gear is marked. A cell is as wide as its content needs: a short left or right cell shrinks and the centre takes the room, so a long title wraps in the centre only. To fix a cell, enter a **Width** as a percentage of the row (`25%`, which survives a change of paper size) or a length (`4 cm`, `40 mm`); the cells you leave blank share the rest. Fixed widths that leave less than 8 mm for each other cell, or a length wider than the page, are refused when you save. **Vertical alignment** is *Top*, *Middle* or *Bottom*, for one cell (in its gear) or for the whole band (under *More*); a header defaults to *Top*, so a logo and the text beside it start on the same line, and a footer to *Bottom*, so its text sits against the lower edge of the page. A footer that was saved without an alignment now prints at the bottom; choose *Top* to put it back. The left and right settings swap with the cells when margins mirror.
 - **More header options** / **More footer options** (closed until opened; its bar says "N changed" when something inside is set) holds the logo, the font, size and text colour, the band's vertical alignment and the first-page choice described below. How much of the margin the band takes, and the warning when it does not fit, stay outside it.
 - A **logo** from the image library can sit in any cell, beside that cell's text, at a height you set. The logo follows the same library rule as an Image block.
 - **First page** can be *Skipped*, for a cover page. For a page style it applies to the first page of each section in that style.
 - **Font, size and text colour** apply to the whole header or footer (its three cells share them). Left empty, it follows the document's body font, prints at 8 points and in black; choose a scheme colour to keep it in step with the branding. A larger size takes a taller line, so it needs a taller margin. A page style's header or footer has its own, independent of the layout's.
-- A cell reads **bold** and *italic* marks: select words in a cell and press that cell's **B** or **I**, or write `**bold**`, `*italic*` and `***both***` yourself. A page number can be marked too (`**Page {{page}}**`). Only those marks are read (no code, links or equations), a lone `*` stays as written, and `\*` is a literal asterisk. A web page printed from the browser can show a mark only when it covers the whole cell.
+- A cell reads **bold** and *italic* marks: select words in a cell and press that cell's **B** or **I** (with nothing selected the whole cell is marked), or write `**bold**`, `*italic*` and `***both***` yourself. A page number can be marked too (`**Page {{page}}**`). Only those marks are read (no code, links or equations), a lone `*` stays as written, and `\*` is a literal asterisk. A web page printed from the browser can show a mark only when it covers the whole cell.
 - A header or footer must fit in its margin (the editor says how much it takes and the check refuses one that does not fit), so raise the top or bottom margin for a bigger logo or more lines.
 - When margins **mirror** for double-sided printing, the left and right cells swap on left-hand pages, so a page number stays at the outer edge.
 - In the text view they are `@header left "…" centre "…" right "…" leftwidth 25% valign top rightvalign bottom logo "<file id>" height 0.8 slot left first none font serif size 9 colour primary` and `@footer …`, written under the `@layout` line, or under the `@pagestyle` line they belong to. `@footer` on its own means no footer.
@@ -184,6 +186,8 @@ A project with a long name can be given a short **Project report name** in its s
 ## Images
 
 An **Image** block puts a picture from the image library into the report: on a line of its own, with text running beside it, or behind or in front of the text.
+
+The block's panel keeps the picture, its alternative text and its alignment (a row of buttons) in view; **Size**, **Position** and **Caption** are groups that start closed and say on their bar when they hold a setting you changed, as a custom table's do (see [Editing a table in the Blocks view](#editing-a-table-in-the-blocks-view)).
 
 - **Choose** the picture with *Choose image…*. The dialog lists the library (search by name) and lets you upload a PNG, JPEG, GIF, WebP or SVG file. If your administrator has turned on the optional converter, it also takes an EPS or a PDF: it is converted to an SVG when you upload it and listed as `logo.eps.svg` or `logo.pdf.svg`, so it stays sharp at any size (a PDF contributes its first page, a bitmap inside it is kept as a picture, and the file is refused if nothing at all can be drawn); the largest file allowed is shown in the dialog and set by your administrator (50 MB unless changed). A project layout can use its own project's pictures and the organisation's; an organisation layout can use the organisation's only, because every project runs it. An upload goes to the library of the layout you are editing, and the dialog says which.
 - Pictures are drawn on a **checkerboard**, so a white or transparent logo stays visible. Beside the large preview, *Background* switches between the checkerboard, a light page and a dark page, to judge a logo against the page it will print on; your choice is remembered for you. The report itself is unchanged.
@@ -220,6 +224,8 @@ An **Image** block puts a picture from the image library into the report: on a l
 ## Shapes
 
 A **Shape** block draws a coloured rectangle, rounded rectangle, ellipse, triangle, line or arrow, or your own SVG. Use one as a plate behind a logo that is white on a transparent background, a banner, a callout box or a divider. It sits in line with the text, beside it, or behind or in front of it, exactly as a picture does.
+
+The kind, fill and alternative text are always in view; **Outline**, **Size**, **Position** (alignment, placement and where it is measured from) and **SVG** are closed groups.
 
 - **Shape** names the preset, or **Custom SVG** to paste your own markup (scripts, links to other files and embedded data are refused, and the SVG needs a `viewBox`, or a width and height). A custom shape is painted by its own SVG, so it has no fill or outline.
 - **Fill** and **Outline** are chosen with the [colour control](#colours): the branding colour, a colour of your scheme such as `primary`, white, black, a custom hex colour such as `#475569`, or (fill only) no colour. A line or arrow has no fill and is drawn in the outline colour (black unless you set one); an arrow's **Height** is the size of its head. **Outline width** is in millimetres.
@@ -304,9 +310,18 @@ flowchart LR
 
 A font the server does not have saves with a warning and prints in a standard font of the same kind, as for the layout's fonts.
 
+### Table heading colours
+
+Set the colour of every table's heading row once, in the **Look** group of the layout's settings (the **Layout** block's panel, or **Page setup** in the Text view): **Table heading fill** and **Table heading text**. Both use the [colour control](#colours), so a heading can take a colour from the layout's scheme and follow it when the scheme changes. A small sample heading row shows the result. Choose the first line of either list (*Default*, *Automatic*) to go back to the default; *No colour* is not offered.
+
+- **Left alone**, a heading row is filled with your organisation's accent colour.
+- **The text colour is automatic** unless you set one: black on a light fill, white on a dark one, whichever reads best, including when you set only the fill. Setting only the text colour keeps the accent fill.
+- **A table's own colours win.** In a custom table, a heading-row cell with a fill of its own keeps it, with its own text colour; the cell's colour fields read *Layout default* until you set one. The layout default reaches the heading rows of every table in a document (PDF, Word, OpenDocument and the web page). Spreadsheet headings stay bold with no fill.
+- Text view: `@tableheadings fill=primary text=white` before the first block, written once. Either word may be left out.
+
 ### Fonts and colours in the starter layouts
 
-The four document starters (Business Requirements Document, Engineering Specification, Review Package, Requirements by Component) colour their headings with the standard colour `primary`. They carry no colour scheme and no font of their own, so each prints its headings in your branding colour and follows your organisation's colours the moment they set `primary`. Tables already use the branding colour for their heading row. Existing copies of a starter are not changed; to get the new look, rename or delete the old copy and use **Add missing starters**.
+The four document starters (Business Requirements Document, Engineering Specification, Review Package, Requirements by Component) colour their headings with the standard colour `primary`. They carry no colour scheme and no font of their own, so each prints its headings in your branding colour and follows your organisation's colours the moment they set `primary`. Tables already use the branding colour for their heading row; [table heading colours](#table-heading-colours) change that for a whole layout. Existing copies of a starter are not changed; to get the new look, rename or delete the old copy and use **Add missing starters**.
 
 The built-in snippets (document details, review and control, approvals, cover page and the rest) use only white, black and the standard colours, so they insert cleanly into a layout that has no scheme, and they leave the layout's colours and fonts alone.
 
@@ -326,6 +341,8 @@ A **Table (custom)** block is a table you write cell by cell: a document-details
 ### Editing a table in the Blocks view
 
 Select the **Table (custom)** block. The block's panel shows a summary (for example *3 columns · 4 rows · 1 merged*) and **Edit table**, which opens the table in a window of its own.
+
+The panel keeps what you set on nearly every table in view (the columns, the rows, **Header rows** and the block's **Label**) and puts the rest in three groups that start closed: **Borders** (the borders and their colour), **Cell style** (alignment, vertical alignment, fill, text colour and bold for the whole table) and **Look** (font and size). Alignment and vertical alignment are rows of buttons and **Bold** is a button that stays pressed. A closed group that holds a setting you have changed says so on its bar (**2 changed**) with a coloured edge, so a plain-looking block cannot hide one. Which groups are open is remembered for you, per kind of block. A heading's **Level** is also a row of buttons (1 to 4). The words of a heading, a text block and a table cell have **B** and **I** buttons beside their title: select words and press one to wrap them in `**` or `*`; with nothing selected it marks the whole box (each line of a text block, leaving a bullet or number outside the mark).
 
 - **Select cells** by clicking, dragging or Shift+clicking a range; with the keyboard, the arrow keys move and Shift+arrow keys extend the selection. A merged cell is always selected whole.
 - **Merge cells** and **Unmerge cells** work on the selection. The text of the merged cells is joined into the top-left one. A merge may not run from the header rows into the rows below; the editor says so.
@@ -429,6 +446,8 @@ flowchart LR
 ## Pictures attached to records
 
 A **Record images** block, placed inside a *For each record* block, prints the pictures attached to each record (for example the photos on a Pain Point). It is for records that can hold attachments; a type whose attachments may show or concern identifiable people (stakeholders and engagements) is not offered, and the designer says why.
+
+Its rules (**File names**, **File types**, **Most per record**, **Order**, **Largest file** and the text for no pictures) are in a **Which pictures** group that starts open; **Caption**, **Size** and **Position** are closed groups.
 
 - **File names** chooses by name: one pattern per line, using `*` for any run of characters and `?` for one letter, ignoring case (`site-photo-*`). A pattern can use the record's own values, for example `{{rec.code}}-*` picks the photo named after each record; a value is matched as plain text, so a title of `*` matches only a file called `*`. Leave it empty to allow any name.
 - **File types** allows only some extensions (png, jpg, jpeg, gif, webp, svg). Whatever the name says, only a real picture prints: a text file renamed `.png` is skipped, with a warning on the run.

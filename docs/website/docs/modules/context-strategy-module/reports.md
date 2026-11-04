@@ -103,8 +103,8 @@ Rows that name a record lead with its code and end with its tags; see [Reports a
 
 | Exporting a report |
 | --- |
-| **Export** offers PDF, Word and CSV of exactly what is on screen, with the options currently set |
-| ![Export menu open beside the branding template selector, offering Download PDF report and Download CSV report](../../../static/img/screenshots/cs-report-export-menu.png) |
+| **Format** and **Download** give PDF, Word or CSV of exactly what is on screen, with the options currently set |
+| ![Report options with the Export menu open, offering Download PDF report and Download CSV report (the screenshot is refreshed in the docs phase)](../../../static/img/screenshots/cs-report-export-menu.png) |
 
 | Format | Contains |
 | --- | --- |

@@ -234,6 +234,22 @@ export interface BlockField {
   families: string[];
   /** What an empty value means ("Auto"), shown in the empty box; `""` for none. */
   empty_label: string;
+  /** The key of the `BlockGroup` it sits in; `""` for the form's basic part. */
+  group: string;
+  /** Stays visible although the form is arranged in groups. */
+  basic: boolean;
+  /** `choice-buttons` or `toggle`: how it is drawn instead of its kind's usual control; `""` for the usual one. */
+  control: string;
+  /** Drawn on the same row as the field before it (a value and its unit). */
+  inline: boolean;
+}
+
+/** A collapsible group of a block's fields. */
+export interface BlockGroup {
+  key: string;
+  label: string;
+  /** Starts open (a block with no basic part); a person's own choice wins. */
+  open: boolean;
 }
 
 /** A list of child blocks a block holds. */
@@ -262,6 +278,8 @@ export interface BlockType {
   template: Record<string, unknown>;
   /** False for a type that declared no form; the outline shows its node as JSON. */
   described: boolean;
+  /** The groups its fields are arranged in, in order; empty for a flat form. */
+  groups: BlockGroup[];
 }
 
 /** Every block type, the layout-level fields and the control kinds the outline can draw (`ReportBlockCatalogueOut`). */

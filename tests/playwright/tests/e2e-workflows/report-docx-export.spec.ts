@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { expect, type APIRequestContext, type Download, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -79,14 +80,14 @@ test.describe("Word (DOCX) report export", () => {
     await expectWordFile(await downloadPromise, "-requirements.docx");
   });
 
-  test("a catalogue report downloads as Word from its Export menu and confirms with a toast", async ({ page, request }) => {
+  test("a catalogue report downloads as Word from its format list and confirms with a toast", async ({ page, request }) => {
     const { project } = await setup(page, request);
     await page.goto(`/projects/${project.id}?reports=choose&report=decision-register`);
     await expect(page.getByRole("region", { name: "Decisions", exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await pickReportFormat(page, "Word");
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download Word report" }).click();
+    await reportDownloadButton(page).click();
     await expectWordFile(await downloadPromise, "decision-register.docx");
     await expect(page.getByText("Downloaded Decision register (Word).")).toBeVisible();
   });
@@ -97,15 +98,15 @@ test.describe("Word (DOCX) report export", () => {
     await expect(page.getByRole("region", { name: "Decisions", exact: true })).toBeVisible();
 
     const files: [string, string, string][] = [
-      ["Download HTML report", "decision-register.html", "<"],
-      ["Download ODT report", "decision-register.odt", "PK"],
-      ["Download Excel report", "decision-register.xlsx", "PK"],
-      ["Download ODS report", "decision-register.ods", "PK"],
+      ["HTML", "decision-register.html", "<"],
+      ["ODT", "decision-register.odt", "PK"],
+      ["Excel", "decision-register.xlsx", "PK"],
+      ["ODS", "decision-register.ods", "PK"],
     ];
     for (const [label, filename, magic] of files) {
-      await page.getByRole("button", { name: "Export", exact: true }).click();
+      await pickReportFormat(page, label);
       const downloadPromise = page.waitForEvent("download");
-      await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: label }).click();
+      await reportDownloadButton(page).click();
       const download = await downloadPromise;
       expect(download.suggestedFilename()).toMatch(new RegExp(`${filename.replace(".", "\\.")}$`));
       const bytes = await readFile((await download.path()) as string);

@@ -6,11 +6,11 @@ import { buildUser, withStatefulAuth } from "../testing/storybook-helpers";
 import { ReportLayoutPageSetup } from "./ReportLayoutPageSetup";
 
 /** Hosts the control with the text it edits, and shows the text so a story can read the rewritten lines. */
-function Host({ initial }: { initial: string }) {
+function Host({ initial, newLayout }: { initial: string; newLayout?: boolean }) {
   const [text, setText] = useState(initial);
   return (
     <div className="stack">
-      <ReportLayoutPageSetup text={text} onChange={setText} />
+      <ReportLayoutPageSetup text={text} onChange={setText} newLayout={newLayout} />
       <pre aria-label="Text">{text}</pre>
     </div>
   );
@@ -28,9 +28,12 @@ export default meta;
 type Story = StoryObj<typeof ReportLayoutPageSetup>;
 
 const text = (canvasElement: HTMLElement) => within(canvasElement).getByLabelText("Text");
-const openDialog = async (canvasElement: HTMLElement, name: string) => {
+/** Opens the dialog, then each named setting group (every group starts closed on a saved layout). */
+const openDialog = async (canvasElement: HTMLElement, name: string, ...groups: string[]) => {
   await userEvent.click(within(canvasElement).getByRole("button", { name }));
-  return within(await screen.findByRole("dialog", { name: "Page setup" }));
+  const dialog = within(await screen.findByRole("dialog", { name: "Page setup" }));
+  for (const group of groups) await openGroup(dialog, group);
+  return dialog;
 };
 
 /** Opens a closed setting group by its bar (a group that is already open is left alone). */
@@ -42,7 +45,7 @@ const openGroup = async (dialog: ReturnType<typeof within>, name: string) => {
 /** The button says the current setup, and a change rewrites only the first line. */
 export const ChoosingASizeAndOrientationRewritesTheHeader: Story = {
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Page");
     await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
     await expect(text(canvasElement).textContent).toBe("@layout document A3\n\n@heading Hello\n");
     await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Orientation" }), "landscape");
@@ -57,7 +60,7 @@ export const ChoosingASizeAndOrientationRewritesTheHeader: Story = {
 /** Margins and mirroring are written on the header line, and an emptied side is dropped again. */
 export const MarginsAndMirroringAreWrittenOnTheHeader: Story = {
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Page", "Margins");
     await userEvent.type(dialog.getByRole("spinbutton", { name: "Top" }), "2");
     await userEvent.type(dialog.getByRole("spinbutton", { name: "Gutter" }), "1");
     await userEvent.click(dialog.getByRole("checkbox", { name: "Mirror margins" }));
@@ -95,7 +98,7 @@ export const AddingAPageStyleWritesAPagestyleLine: Story = {
 export const ReadsTheSetupFromTheHeaderLines: Story = {
   render: () => <Host initial={'@layout document Letter landscape mirror margins top=2\n@pagestyle "Plain"\n'} />,
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: Letter, landscape");
+    const dialog = await openDialog(canvasElement, "Page setup: Letter, landscape", "Page", "Margins");
     await openGroup(dialog, "Page styles");
     // The layout's own fields come first, then each page style's.
     await expect(dialog.getAllByRole("combobox", { name: "Page size" })[0]).toHaveValue("Letter");
@@ -119,7 +122,7 @@ export const DarkTheme: Story = { ...ReadsTheSetupFromTheHeaderLines, globals: {
 export const HeaderAndFooterAreWrittenUnderTheirOwnLines: Story = {
   render: () => <Host initial={'@layout document\n@pagestyle "Wide" A3\n\n@heading Hello\n'} />,
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Header");
     await openGroup(dialog, "Page styles");
     const header = within(dialog.getAllByRole("group", { name: "Header" })[0]); // the layout's own, above the page styles'
     await userEvent.selectOptions(header.getByRole("combobox", { name: "Header: print" }), "custom");
@@ -138,7 +141,7 @@ export const ReadsHeadersAndFootersFromTheText: Story = {
     <Host initial={'@layout document margins top=2\n@header left "A" logo "image-1" height 0.8 slot right first none\n@footer\n\n@heading Hello\n'} />
   ),
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Header", "Footer");
     const header = within(dialog.getByRole("group", { name: "Header" }));
     await expect(header.getByRole("textbox", { name: "Header, left cell" })).toHaveValue("A");
     await userEvent.click(header.getByRole("button", { name: "More header options section" }));
@@ -172,7 +175,7 @@ export const TheAlignTablesSwitchIsWrittenAsAWordAndKept: Story = {
 /** The heading-row switch is written on the header line as a word, kept when the rest of the setup is rewritten, and dropped when switched back on. */
 export const TheRepeatHeaderSwitchIsWrittenAsAWordAndKept: Story = {
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Page");
     await openGroup(dialog, "Tables");
     const box = dialog.getByRole("checkbox", { name: "Repeat table header rows" });
     await expect(box).toBeChecked();
@@ -193,7 +196,7 @@ export const TheRepeatHeaderSwitchIsWrittenAsAWordAndKept: Story = {
 export const AnExplicitRepeatHeaderWordIsPreserved: Story = {
   render: () => <Host initial={"@layout document repeatheader\n\n@heading Hello\n"} />,
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Page");
     await openGroup(dialog, "Tables");
     await expect(dialog.getByRole("checkbox", { name: "Repeat table header rows" })).toBeChecked();
     await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
@@ -205,7 +208,7 @@ export const AnExplicitRepeatHeaderWordIsPreserved: Story = {
 export const TheRunScopeWordIsKeptWhenThePageSetupIsRewritten: Story = {
   render: () => <Host initial={"@layout document projecttree\n\n@heading Hello\n"} />,
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Page");
     await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
     await expect(text(canvasElement).textContent).toBe("@layout document A3 projecttree\n\n@heading Hello\n");
   },
@@ -215,24 +218,104 @@ export const TheRunScopeWordIsKeptWhenThePageSetupIsRewritten: Story = {
 export const TheEmbedFontsWordIsKeptWhenThePageSetupIsRewritten: Story = {
   render: () => <Host initial={"@layout document embedfonts\n\n@heading Hello\n"} />,
   play: async ({ canvasElement }) => {
-    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Page");
     await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
     await expect(text(canvasElement).textContent).toBe("@layout document A3 embedfonts\n\n@heading Hello\n");
   },
 };
 
-/** Only the basic set and the header and footer start open; a closed group holding a change says so on its bar. */
+/** The table heading colours are written as one `@tableheadings` line, kept when the rest is rewritten, and dropped when reset. */
+export const TableHeadingColoursAreWrittenOnATableheadingsLineAndKept: Story = {
+  render: () => <Host initial={"@layout document\n@tableheadings fill=primary text=white\n\n@heading Hello\n"} />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    await expect(dialog.getByRole("button", { name: "Look section" })).toHaveAccessibleDescription("2 changed");
+    await openGroup(dialog, "Look");
+    await expect(dialog.getByRole("button", { name: /^Table heading fill: (?!Default)/ })).toBeInTheDocument();
+    await openGroup(dialog, "Page");
+    await userEvent.selectOptions(dialog.getByRole("combobox", { name: "Page size" }), "A3");
+    await expect(text(canvasElement).textContent).toBe("@layout document A3\n@tableheadings fill=primary text=white\n\n@heading Hello\n");
+    await userEvent.click(dialog.getByRole("button", { name: /^Table heading text: / }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Automatic (black or white)" }));
+    await expect(text(canvasElement).textContent).toBe("@layout document A3\n@tableheadings fill=primary\n\n@heading Hello\n");
+    await userEvent.click(dialog.getByRole("button", { name: /^Table heading fill: / }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Default (the organisation's accent)" }));
+    await expect(text(canvasElement).textContent).toBe("@layout document A3\n\n@heading Hello\n");
+  },
+};
+
+/** On a saved layout every group starts closed; a closed group holding a change says so on its bar, and Page and Margins say their value. */
 export const ClosedGroupsMarkWhatTheyHold: Story = {
   render: () => <Host initial={'@layout document norepeatheader\n@pagestyle "Wide" A3\n@pagestyle "Narrow"\n\n@heading Hello\n'} />,
   play: async ({ canvasElement }) => {
     const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
-    await expect(dialog.getByRole("combobox", { name: "Page size" })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Header and footer section" })).toHaveAttribute("aria-expanded", "true");
-    const tables = dialog.getByRole("button", { name: "Tables section" });
-    await expect(tables).toHaveAttribute("aria-expanded", "false");
-    await expect(tables).toHaveAccessibleDescription("1 changed");
+    for (const name of ["Page", "Margins", "Header", "Footer", "Tables", "Page styles"]) {
+      await expect(dialog.getByRole("button", { name: `${name} section` })).toHaveAttribute("aria-expanded", "false");
+    }
+    await expect(dialog.queryByRole("combobox", { name: "Page size" })).not.toBeInTheDocument();
+    await expect(dialog.getByRole("button", { name: "Page section" })).toHaveAccessibleDescription("A4 portrait");
+    await expect(dialog.getByRole("button", { name: "Margins section" })).toHaveAccessibleDescription("1.5 cm");
+    await expect(dialog.getByRole("button", { name: "Header section" })).not.toHaveAccessibleDescription(/changed/);
+    await expect(dialog.getByRole("button", { name: "Tables section" })).toHaveAccessibleDescription("1 changed");
     await expect(dialog.getByRole("button", { name: "Page styles section" })).toHaveAccessibleDescription("2 page styles");
     await expect(dialog.queryByRole("checkbox", { name: "Repeat table header rows" })).not.toBeInTheDocument();
+  },
+};
+
+/** The Page and Margins bars say the effective value, and mark it when it is not the default. */
+export const PageAndMarginsBarsSayTheirValue: Story = {
+  render: () => <Host initial={"@layout document landscape A3 mirror margins top=2 gutter=1\n\n@heading Hello\n"} />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A3, landscape");
+    const page = dialog.getByRole("button", { name: "Page section" });
+    await expect(page).toHaveAccessibleDescription("A3 landscape, mirrored");
+    await expect(page).toHaveClass("collapsible-bar--marked");
+    const margins = dialog.getByRole("button", { name: "Margins section" });
+    await expect(margins).toHaveAccessibleDescription("top 2, right 1.5, bottom 1.5, left 1.5, gutter 1 cm");
+    await expect(margins).toHaveClass("collapsible-bar--marked");
+    await expect(dialog.getByRole("button", { name: "Header section" })).not.toHaveClass("collapsible-bar--marked");
+  },
+};
+
+/** A layout not yet published beyond its first version opens with Page and Margins open and the rest closed. */
+export const ANewLayoutOpensPageAndMargins: Story = {
+  render: () => <Host initial={"@layout document\n\n@heading Hello\n"} newLayout />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait");
+    await expect(dialog.getByRole("combobox", { name: "Page size" })).toBeVisible();
+    await expect(dialog.getByRole("spinbutton", { name: "Top" })).toBeVisible();
+    for (const name of ["Header", "Footer", "Tables", "Page styles"]) {
+      await expect(dialog.getByRole("button", { name: `${name} section` })).toHaveAttribute("aria-expanded", "false");
+    }
+  },
+};
+
+/** Header and Footer are separate groups: opening, marking and remembering one leaves the other alone. */
+export const HeaderAndFooterOpenAndMarkIndependently: Story = {
+  render: () => <Host initial={'@layout document\n@footer left "Confidential"\n\n@heading Hello\n'} />,
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Footer");
+    const footer = dialog.getByRole("button", { name: "Footer section" });
+    await expect(footer).toHaveAttribute("aria-expanded", "true");
+    await expect(footer).toHaveAccessibleDescription("1 changed");
+    await expect(dialog.getByRole("textbox", { name: "Footer, left cell" })).toHaveValue("Confidential");
+    const header = dialog.getByRole("button", { name: "Header section" });
+    await expect(header).toHaveAttribute("aria-expanded", "false");
+    await expect(header).not.toHaveAccessibleDescription(/changed/);
+    await expect(dialog.queryByRole("combobox", { name: "Header: print" })).not.toBeInTheDocument();
+    await userEvent.click(footer);
+    await expect(dialog.getByRole("button", { name: "Footer section" })).toHaveAttribute("aria-expanded", "false");
+    await expect(dialog.getByRole("button", { name: "Header section" })).toHaveAttribute("aria-expanded", "false");
+  },
+};
+
+/** The band's mode reads "Custom" (and nothing says "its own text"). */
+export const TheBandModeReadsCustom: Story = {
+  play: async ({ canvasElement }) => {
+    const dialog = await openDialog(canvasElement, "Page setup: A4, portrait", "Header");
+    const mode = dialog.getByRole("combobox", { name: "Header: print" });
+    await expect(within(mode).getByRole("option", { name: "Custom" })).toBeInTheDocument();
+    await expect(dialog.queryByText(/its own text/i)).not.toBeInTheDocument();
   },
 };
 

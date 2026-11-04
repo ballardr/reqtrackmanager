@@ -654,12 +654,14 @@ def project_overview_with_logo_layout(logo_file_id: str) -> dict:
     It also shows the fonts and colours settings: its own colour scheme (`plate`, `highlight`; the organisation's `alert` and
     `success` stay available), a serif body, sans headings in the plate colour, an italic footer with the page numbers, and
     a header showing the cell settings: the organisation name in a fixed 30 % cell, the others fitting their content, all top
-    aligned but the date at the bottom.
+    aligned but the date at the bottom. Its table headings take the plate colour once, from the layout (`table_header_fill`), with the
+    text colour left automatic.
     """
     return {
         "schema_version": 1, "family": "document", "orientation": "portrait",
         "palette": [{"name": "plate", "colour": "accent_dark"}, {"name": "highlight", "colour": "#b45309"}],
         "styles": {"body": {"font": "serif", "size": 11}, "headings": {"font": "sans", "colour": "plate"}},
+        "table_header_fill": "plate",
         "header": {
             "left": "{{organisation}}", "centre": "{{report_title}}", "right": "{{generated_on}}",
             "left_width": "30%", "valign": "top", "right_valign": "bottom", "colour": "plate",
@@ -2178,6 +2180,8 @@ def main() -> None:
         h_pm, drone["id"], firmware_review["id"], "firmware-2.3.1-compliance-signoff.pdf",
         b"%PDF-fake Compliance sign-off for firmware rev 2.3.1.",
     )
+    # A picture in the project's own report image library, so the Files page shows a preview beside it.
+    upload_report_image(h_pm, f"/projects/{drone['id']}", LOGO_PATH, "image/svg+xml")
 
     wind_test = create_and_link_action(
         h_pm, drone["id"], drone_reqs["Withstand sustained wind gusts of up to 45 km/h without loss of stability"]["id"],

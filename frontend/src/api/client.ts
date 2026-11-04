@@ -168,8 +168,8 @@ export interface Page<T> {
   totalUnfiltered?: number;
 }
 
-async function requestPage<T>(path: string): Promise<Page<T>> {
-  const response = await rawRequest(path);
+async function requestPage<T>(path: string, options: RequestInit = {}): Promise<Page<T>> {
+  const response = await rawRequest(path, options);
   const items = (await response.json()) as T[];
   const totalHeader = response.headers.get("x-total-count");
   const totalUnfilteredHeader = response.headers.get("x-total-unfiltered-count");
@@ -183,6 +183,8 @@ async function requestPage<T>(path: string): Promise<Page<T>> {
 export const api = {
   get: <T>(path: string) => request<T>(path),
   getPage: <T>(path: string) => requestPage<T>(path),
+  /** A paginated read whose filters travel in a POST body, so text a person typed is in no URL a server logs. */
+  postPage: <T>(path: string, body: unknown) => requestPage<T>(path, { method: "POST", body: JSON.stringify(body) }),
   /** `signal` lets the caller cancel the request (a superseded search); `timeoutMs` takes precedence when both are given. */
   post: <T>(path: string, body?: unknown, timeoutMs?: number, signal?: AbortSignal) =>
     request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined, signal }, timeoutMs),

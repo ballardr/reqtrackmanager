@@ -5,6 +5,7 @@ import { expect, test } from "@playwright/test";
 
 import { chooseListAction } from "../listActions";
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -96,10 +97,26 @@ test.describe("Download report from a record list", () => {
     });
 
     await test.step("the chosen report downloads as a PDF", async () => {
-      await dialog.getByRole("button", { name: "Export", exact: true }).click();
+      await expect(dialog.getByRole("radio", { name: "PDF", exact: true })).toBeChecked();
       const pending = page.waitForEvent("download");
-      await page.getByRole("button", { name: "Download PDF report" }).click();
+      await reportDownloadButton(dialog).click();
       expect(fs.readFileSync((await (await pending).path())!).subarray(0, 5).toString()).toBe("%PDF-");
+    });
+
+    await test.step("another format downloads as that file type, and is the choice next time; a mere selection is not remembered", async () => {
+      await pickReportFormat(dialog, "Word");
+      const pending = page.waitForEvent("download");
+      await reportDownloadButton(dialog).click();
+      const download = await pending;
+      expect(download.suggestedFilename()).toMatch(/\.docx$/);
+      expect(fs.readFileSync((await download.path())!).subarray(0, 2).toString()).toBe("PK");
+      await dialog.getByRole("button", { name: "Back" }).click();
+      await dialog.getByRole("button", { name: new RegExp(`^${forRequirements}`) }).click();
+      await expect(dialog.getByRole("radio", { name: "Word", exact: true })).toBeChecked();
+      await pickReportFormat(dialog, "ODT");
+      await dialog.getByRole("button", { name: "Back" }).click();
+      await dialog.getByRole("button", { name: new RegExp(`^${forRequirements}`) }).click();
+      await expect(dialog.getByRole("radio", { name: "Word", exact: true })).toBeChecked();
     });
 
     await test.step("Back returns to step 1, with the folder still open", async () => {

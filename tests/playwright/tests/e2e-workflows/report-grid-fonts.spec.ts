@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { createDocumentLayoutWorld, installCleanupHook, loginAs, PASSWORD, saveNewVersion, openDesignerTextView } from "./helpers";
+import { createDocumentLayoutWorld, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, openDesignerTextView } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -42,6 +42,9 @@ test.describe("Report custom table fonts", () => {
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText", { hasText: "Table (custom)" }).first().click();
       const inspector = page.getByLabel("Block details");
+      // The table's size is set, so the closed Look group says so; the field is behind it.
+      await expect(inspector.getByRole("button", { name: "Look section" })).toHaveAccessibleDescription("1 changed");
+      await ensureExpanded(page, "Look");
       await expect(inspector.getByRole("spinbutton", { name: "Size" })).toHaveValue("8");
       await inspector.getByRole("button", { name: "Edit table" }).click();
       const dialog = page.getByRole("dialog", { name: "Edit custom table" });

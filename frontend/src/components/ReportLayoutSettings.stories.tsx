@@ -11,13 +11,13 @@ import type { Tree } from "../utils/reportLayoutTree";
 import { ReportLayoutSettings } from "./ReportLayoutSettings";
 
 function Harness({
-  problems = [], family = "document", initial = {}, organisation = false,
-}: { problems?: TreeProblem[]; family?: "document" | "table"; initial?: Tree; organisation?: boolean }) {
+  problems = [], family = "document", initial = {}, organisation = false, newLayout = false,
+}: { problems?: TreeProblem[]; family?: "document" | "table"; initial?: Tree; organisation?: boolean; newLayout?: boolean }) {
   const [tree, setTree] = useState<Tree>({ schema_version: 1, family, nodes: [], ...initial });
   return (
     <>
       <ReportLayoutSettings
-        tree={tree} onChange={setTree} family={family} blocks={buildBlockCatalogue()} problems={problems}
+        tree={tree} onChange={setTree} family={family} blocks={buildBlockCatalogue()} problems={problems} newLayout={newLayout}
         env={{
           blocks: buildBlockCatalogue(), catalogue: buildFieldCatalogue(), widgets: buildWidgets(), variables: [], pageStyles: [], readOnly: false,
           colours: buildColourContext(), palette: (tree.palette ?? []) as ColourEntry[],
@@ -46,6 +46,7 @@ const openGroup = async (canvas: ReturnType<typeof within>, name: string) => {
 export const OrientationIsSetOnTheTree: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openGroup(canvas, "Page");
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Page orientation" }), "landscape");
     await waitFor(() => expect(JSON.parse(canvas.getByTestId("tree").textContent ?? "{}").orientation).toBe("landscape"));
   },
@@ -166,6 +167,44 @@ export const EmbedFontsIsAnOrdinarySwitchStoredOnlyWhenOn: Story = {
   },
 };
 
+/** The heading fill and text colour are set once, in the Look group, with a sample row that shows the result. */
+export const TableHeadingColoursAreSetResetAndSampled: Story = {
+  args: { initial: { palette: [{ name: "plate", colour: "#102030" }] } }, // the scheme is one change of the Look group already
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const tree = () => JSON.parse(canvas.getByTestId("tree").textContent ?? "{}");
+    await openGroup(canvas, "Look");
+    const sample = canvas.getByRole("table", { name: "Sample table heading" });
+    // Unset: the accent with automatic contrast text.
+    await expect(within(sample).getByRole("columnheader", { name: "Code" })).toHaveStyle({ backgroundColor: "rgb(15, 98, 254)", color: "rgb(255, 255, 255)" });
+    await userEvent.click(canvas.getByRole("button", { name: "Table heading fill: Default (the organisation's accent)" }));
+    const popover = within(document.body);
+    await expect(popover.queryByRole("button", { name: /^No colour/ })).not.toBeInTheDocument();
+    await userEvent.click(popover.getByRole("button", { name: /^plate/ }));
+    await waitFor(() => expect(tree().table_header_fill).toBe("plate"));
+    await expect(within(sample).getByRole("columnheader", { name: "Code" })).toHaveStyle({ backgroundColor: "rgb(16, 32, 48)", color: "rgb(255, 255, 255)" });
+    await expect(canvas.getByRole("button", { name: "Look section" })).toHaveAccessibleDescription("2 changed");
+    await userEvent.click(canvas.getByRole("button", { name: "Table heading text: Automatic (black or white)" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: /^Black/ }));
+    await waitFor(() => expect(tree().table_header_text).toBe("black"));
+    await expect(canvas.getByRole("button", { name: "Look section" })).toHaveAccessibleDescription("3 changed");
+    // Back to default removes both keys.
+    await userEvent.click(canvas.getByRole("button", { name: /^Table heading fill: / }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Default (the organisation's accent)" }));
+    await userEvent.click(canvas.getByRole("button", { name: /^Table heading text: / }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Automatic (black or white)" }));
+    await waitFor(() => expect(tree()).not.toHaveProperty("table_header_fill"));
+    await expect(tree()).not.toHaveProperty("table_header_text");
+  },
+};
+
+export const ATableLayoutHasNoTableHeadingColours: Story = {
+  args: { family: "table" },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("table", { name: "Sample table heading" })).not.toBeInTheDocument();
+  },
+};
+
 export const ATableLayoutHasNoFonts: Story = {
   args: { family: "table" },
   play: async ({ canvasElement }) => {
@@ -174,22 +213,63 @@ export const ATableLayoutHasNoFonts: Story = {
   },
 };
 
-/** The basic set and the header and footer are open; every other group is closed, and a closed group holding a setting says so. */
-export const OnlyTheBasicSetStartsOpenAndClosedGroupsMarkWhatTheyHold: Story = {
+/** Every group starts closed on a saved layout; a closed group holding a setting says so, and Page and Margins say their value. */
+export const EveryGroupStartsClosedAndClosedGroupsMarkWhatTheyHold: Story = {
   args: { initial: { embed_fonts: true, variables: [{ name: "kind", label: "Kind", type: "text" }], page_styles: [{ name: "Wide" }], margins: { top: 2 } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("combobox", { name: "Page orientation" })).toBeVisible();
-    await expect(canvas.getByRole("button", { name: "Header and footer section" })).toHaveAttribute("aria-expanded", "true");
-    for (const [name, pill] of [["Look", "1 changed"], ["Variables and running", "1 changed"], ["Page styles", "1 page style"]]) {
+    await expect(canvas.queryByRole("combobox", { name: "Page orientation" })).not.toBeInTheDocument();
+    for (const [name, pill] of [
+      ["Page", "A4 portrait"], ["Margins", "top 2, right 1.5, bottom 1.5, left 1.5 cm"], ["Look", "1 changed"],
+      ["Variables and running", "1 changed"], ["Page styles", "1 page style"],
+    ]) {
       const bar = canvas.getByRole("button", { name: `${name} section` });
       await expect(bar).toHaveAttribute("aria-expanded", "false");
       await expect(bar).toHaveAccessibleDescription(pill);
     }
+    await expect(canvas.getByRole("button", { name: "Margins section" })).toHaveClass("collapsible-bar--marked");
+    await expect(canvas.getByRole("button", { name: "Page section" })).not.toHaveClass("collapsible-bar--marked");
     await expect(canvas.getByRole("button", { name: "Tables section" })).not.toHaveAccessibleDescription(/changed/);
     await expect(canvas.queryByRole("checkbox", { name: "Embed fonts" })).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Look section" }));
     await expect(canvas.getByRole("checkbox", { name: "Embed fonts" })).toBeChecked();
+  },
+};
+
+/** Header and Footer are two groups: each has its own bar and mark, and opening one leaves the other closed. */
+export const HeaderAndFooterAreSeparateGroups: Story = {
+  args: { initial: { footer: { left: "Confidential" } } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const footer = canvas.getByRole("button", { name: "Footer section" });
+    const header = canvas.getByRole("button", { name: "Header section" });
+    await expect(footer).toHaveAccessibleDescription("1 changed");
+    await expect(header).not.toHaveAccessibleDescription(/changed/);
+    await userEvent.click(footer);
+    await expect(canvas.getByRole("textbox", { name: "Footer, left cell" })).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Header section" })).toHaveAttribute("aria-expanded", "false");
+    await expect(canvas.queryByRole("combobox", { name: "Header: print" })).not.toBeInTheDocument();
+  },
+};
+
+/** A new layout opens Page and Margins so its first setup is not hidden; everything else stays closed. */
+export const ANewLayoutOpensPageAndMargins: Story = {
+  args: { newLayout: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("combobox", { name: "Page orientation" })).toBeVisible();
+    await expect(canvas.getByRole("spinbutton", { name: "Top" })).toBeVisible();
+    await expect(canvas.getByRole("button", { name: "Header section" })).toHaveAttribute("aria-expanded", "false");
+  },
+};
+
+/** A group opens from the keyboard. */
+export const AGroupOpensFromTheKeyboard: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    canvas.getByRole("button", { name: "Margins section" }).focus();
+    await userEvent.keyboard("{Enter}");
+    await expect(canvas.getByRole("spinbutton", { name: "Top" })).toBeVisible();
   },
 };
 

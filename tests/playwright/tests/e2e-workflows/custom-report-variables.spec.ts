@@ -5,6 +5,7 @@ import { expect, type APIRequestContext, type Page, test } from "@playwright/tes
 
 import { chooseReport } from "./reportPicker";
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, openSetupReport, PASSWORD, selectProjectAdminGroup, openDesignerTextView } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -84,7 +85,7 @@ test.describe("Custom report variables", () => {
       await chooseReport(page, name);
       await expect(page.getByText("Choose a value for Categories to run this report.")).toBeVisible();
       await expect(page.getByRole("cell", { name: requirements.Security })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
+      await expect(reportDownloadButton(page)).toBeDisabled();
     });
 
     await test.step("the options are the project's own categories", async () => {
@@ -102,9 +103,9 @@ test.describe("Custom report variables", () => {
     });
 
     await test.step("the HTML file carries the same choice", async () => {
-      await page.getByRole("button", { name: "Export", exact: true }).click();
+      await pickReportFormat(page, "HTML");
       const pending = page.waitForEvent("download");
-      await page.getByRole("button", { name: "Download HTML report" }).click();
+      await reportDownloadButton(page).click();
       const html = fs.readFileSync((await (await pending).path())!, "utf8");
       expect(html).toContain(requirements.Security);
       expect(html).toContain(requirements.Billing);

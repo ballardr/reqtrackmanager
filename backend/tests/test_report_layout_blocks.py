@@ -18,7 +18,14 @@ from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from app.models.report_layout import ReportLayout
 from app.services import report_layout_designer
-from app.services.report_layout_block_schema import FIELD_KINDS, LAYOUT_FIELDS
+from app.services.report_layout_block_schema import (
+    FIELD_KINDS,
+    LAYOUT_FIELDS,
+    BlockField,
+    BlockGroup,
+    BlockSchema,
+    arrangement_problems,
+)
 from app.services.report_layout_tree import BLOCK_SPECS, empty_tree, validate_tree
 from tests.conftest import auth_headers, create_org_user, login
 from tests.link_world import REQ, World
@@ -74,6 +81,124 @@ def test_every_field_of_a_core_block_explains_itself():
     assert all(f.help for f in LAYOUT_FIELDS)
 
 
+def test_every_core_block_arranges_its_form_soundly():
+    for key, spec in BLOCK_SPECS.items():
+        assert spec.schema is not None
+        assert arrangement_problems(spec.schema) == [], key
+
+
+#: The most fields a block's form may have and stay flat; a longer form must be arranged in groups.
+MOST_FIELDS_IN_A_FLAT_FORM = 5
+
+
+def test_a_long_block_form_is_arranged_in_groups():
+    """A block type with more than a few fields declares groups, so the next block ships arranged."""
+    flat_and_long = {
+        key: len(spec.schema.fields) for key, spec in BLOCK_SPECS.items()
+        if len(spec.schema.fields) > MOST_FIELDS_IN_A_FLAT_FORM and not spec.schema.groups
+    }
+    assert flat_and_long == {}
+
+
+def test_a_block_form_with_no_basic_part_opens_its_first_group():
+    """With nothing always visible a form of closed bars would show nothing, so one group starts open."""
+    for key, spec in BLOCK_SPECS.items():
+        if spec.schema.groups and not any(f.basic or not f.group for f in spec.schema.fields):
+            assert any(g.open for g in spec.schema.groups), key
+
+
+def test_the_picture_blocks_arrange_their_size_position_and_caption():
+    groups = {key: {g.key for g in BLOCK_SPECS[key].schema.groups} for key in ("image", "shape", "record_images")}
+    assert groups == {
+        "image": {"size", "position", "caption"},
+        "shape": {"outline", "size", "position", "svg"},
+        "record_images": {"which", "caption", "size", "position"},
+    }
+    for key in ("image", "shape", "record_images"):
+        by_key = {f.key: f for f in BLOCK_SPECS[key].schema.fields}
+        for unit in ("width_unit", "height_unit"):
+            assert by_key[unit].group == "size", (key, unit)
+            assert by_key[unit].inline, (key, unit)
+        assert by_key["align"].control == "choice-buttons", key
+
+
+def test_the_heading_and_text_words_declare_the_marks_the_form_offers_buttons_for():
+    """The Bold and Italic buttons appear on exactly the texts that read ** and * marks."""
+    heading = {f.key: f for f in BLOCK_SPECS["heading"].schema.fields}
+    text = {f.key: f for f in BLOCK_SPECS["text"].schema.fields}
+    assert "marks" in heading["text"].features
+    assert "markdown" in text["text"].features
+    for key in ("level", "font", "size", "colour"):
+        assert "marks" not in heading[key].features
+
+
+def _schema(*fields: BlockField, groups: tuple[BlockGroup, ...] = ()) -> BlockSchema:
+    return BlockSchema("X", "x", fields, groups=groups)
+
+
+def test_a_field_naming_an_undeclared_group_is_a_problem():
+    problems = arrangement_problems(_schema(BlockField("a", "A", "text", help="h", group="ghost")))
+    assert problems == ["field 'a' names group 'ghost', which the schema does not declare"]
+
+
+def test_a_basic_field_inside_a_group_and_an_empty_group_are_problems():
+    schema = _schema(
+        BlockField("a", "A", "text", group="g", basic=True), groups=(BlockGroup("g", "G"), BlockGroup("unused", "U")),
+    )
+    assert arrangement_problems(schema) == ["field 'a' is basic but sits in group 'g'", "group 'unused' holds no field"]
+
+
+def test_in_an_arranged_form_every_field_is_in_a_group_or_basic():
+    schema = _schema(BlockField("a", "A", "text"), BlockField("b", "B", "text", group="g"), groups=(BlockGroup("g", "G"),))
+    assert arrangement_problems(schema) == ["field 'a' is neither in a group nor marked basic"]
+    assert arrangement_problems(_schema(BlockField("a", "A", "text"))) == []
+
+
+def test_a_required_field_cannot_hide_in_a_group_that_starts_closed():
+    schema = _schema(
+        BlockField("a", "A", "text", group="shut", required=True), BlockField("b", "B", "text", group="ajar", required=True),
+        BlockField("c", "C", "text", group="shut"), groups=(BlockGroup("shut", "S"), BlockGroup("ajar", "A", open=True)),
+    )
+    assert arrangement_problems(schema) == ["field 'a' is required but sits in group 'shut', which starts closed"]
+
+
+def test_an_inline_field_must_follow_a_field_of_its_own_group():
+    schema = _schema(
+        BlockField("a", "A", "text", group="g"), BlockField("b", "B", "text", group="g", inline=True),
+        BlockField("c", "C", "text", group="h", inline=True), BlockField("d", "D", "text", group="h", inline=True),
+        groups=(BlockGroup("g", "G"), BlockGroup("h", "H")),
+    )
+    assert arrangement_problems(schema) == [
+        "field 'c' is inline but does not follow a field of its own group",
+        "field 'd' is inline but does not follow a field of its own group",
+    ]
+    assert arrangement_problems(_schema(BlockField("a", "A", "text", inline=True))) == [
+        "field 'a' is inline but does not follow a field of its own group",
+    ]
+
+
+def test_a_duplicate_group_key_is_a_problem():
+    schema = _schema(BlockField("a", "A", "text", group="g"), groups=(BlockGroup("g", "G"), BlockGroup("g", "Again")))
+    assert arrangement_problems(schema) == ["group 'g' is declared twice"]
+
+
+def test_a_control_must_suit_the_kind_and_the_number_of_values():
+    five = tuple("abcde")
+    schema = _schema(
+        BlockField("t", "T", "text", control="toggle"),
+        BlockField("c", "C", "choice", choices=five, control="choice-buttons"),
+        BlockField("i", "I", "integer", minimum=1, maximum=4, control="choice-buttons"),
+        BlockField("n", "N", "integer", control="choice-buttons"),
+        BlockField("z", "Z", "boolean", control="slider"),
+    )
+    assert arrangement_problems(schema) == [
+        "field 't' is a toggle but its kind is 'text', not boolean",
+        "field 'c' has choice-buttons for 5 values (2 to 4 fit)",
+        "field 'n' has choice-buttons but its kind is 'integer'",
+        "field 'z' has unknown control 'slider'",
+    ]
+
+
 def test_a_template_is_a_node_of_its_own_type_and_every_required_key_is_in_the_form():
     for key, spec in BLOCK_SPECS.items():
         schema = spec.schema
@@ -120,6 +245,18 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     heading = next(b for b in body["blocks"] if b["type"] == "heading")
     level = next(f for f in heading["fields"] if f["key"] == "level")
     assert (level["minimum"], level["maximum"], level["default"]) == (1, 4, 1)
+    assert level["control"] == "choice-buttons" and heading["groups"] == []
+    grid = next(b for b in body["blocks"] if b["type"] == "grid")
+    assert [(g["key"], g["label"], g["open"]) for g in grid["groups"]] == [
+        ("borders", "Borders", False), ("cell_style", "Cell style", False), ("look", "Look", False),
+    ]
+    assert {f["key"]: f["group"] for f in grid["fields"]} == {
+        "columns": "", "rows": "", "header_rows": "", "label": "", "borders": "borders", "border_color": "borders", "align": "cell_style",
+        "valign": "cell_style", "fill": "cell_style", "color": "cell_style", "bold": "cell_style", "font": "look", "size": "look",
+    }
+    assert {f["key"]: f["control"] for f in grid["fields"] if f["control"]} == {
+        "align": "choice-buttons", "valign": "choice-buttons", "bold": "toggle",
+    }
     sheet = next(b for b in body["blocks"] if b["type"] == "sheet")
     assert sheet["families"] == ["table"]
     image = next(b for b in body["blocks"] if b["type"] == "image")
@@ -129,7 +266,8 @@ def test_the_block_catalogue_lists_every_type_with_its_form(world, tier):
     assert body["field_kinds"] == list(FIELD_KINDS)
     assert {f["key"] for f in body["layout_fields"]} == {
         "orientation", "page_size", "margins", "mirror_margins", "repeat_table_header", "align_tables", "page_styles", "header",
-        "footer", "variables", "file_name", "contents_sheet", "run_scope", "palette", "styles", "embed_fonts",
+        "footer", "variables", "file_name", "contents_sheet", "run_scope", "palette", "styles", "embed_fonts", "table_header_fill",
+            "table_header_text",
     }
     contents = next(f for f in body["layout_fields"] if f["key"] == "contents_sheet")
     assert (contents["kind"], contents["families"]) == ("boolean", ["table"])

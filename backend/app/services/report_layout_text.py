@@ -42,6 +42,8 @@ Grammar (one statement per line; indentation is cosmetic):
 - A table or sheet column may add `width 12%` (a share of the table), `width 4 cm` or `width 40 mm`, or `width auto` (the
   same as no width); `@images` writes it `colwidth` because its `width` is the picture's. Columns with a width keep it in
   every output format; the others share what is left.
+- `@tableheadings [fill=<colour>] [text=<colour>]` (before the first block, at most once) sets the colours of every table's
+  heading row; each colour is a hex colour or a scheme name, and a text colour left out is chosen to contrast with the fill.
 - Page styles are declared before the first block, one per line, like variables: `@pagestyle "<name>"
   [portrait|landscape] [A3|…] [margins …]`. What a style leaves out is the layout's own. `@section "<name>"` … `@end`
   lays its contents out in that style, on pages of their own.
@@ -186,6 +188,8 @@ CONTENTS_WORDS = ("contents", "nocontents")
 EMBED_WORDS = ("embedfonts", "noembedfonts")
 #: The settings of an `@style` line by part, and the flag words of the heading part (`word` then its negation).
 STYLE_PARTS = ("body", "headings")
+#: The `@tableheadings` words and the tree keys they set.
+TABLE_HEADING_KEYS = {"fill": "table_header_fill", "text": "table_header_text"}
 _STYLE_FLAGS = {"bold": "bold", "nobold": "bold", "italic": "italic", "noitalic": "italic"}
 #: Layout line words for which projects the report runs for, by the tree's `run_scope`.
 RUN_SCOPE_WORDS = {"anyprojects": RUN_SCOPE_ANY, "oneproject": RUN_SCOPE_ONE, "projecttree": RUN_SCOPE_ONE_AND_CHILDREN}
@@ -956,6 +960,9 @@ class _Parser:
         if name == "style":
             self._style(directive, indent, line_no)
             return
+        if name == "tableheadings":
+            self._table_headings(directive, indent, line_no)
+            return
         if name == "pagestyle":
             self._page_style(directive, indent, line_no)
             return
@@ -1143,6 +1150,28 @@ class _Parser:
         self.tree.setdefault("styles", {})[part] = settings
         self.line_of["styles"] = self.line_of.get("styles", line_no)
         self.line_of[f"styles.{part}"] = line_no
+
+    def _table_headings(self, directive: _Directive, indent: int, line_no: int) -> None:
+        """Reads a `@tableheadings fill=… text=…` line into the root's `table_header_fill` and `table_header_text`."""
+        if len(self.frames) > 1 or self.root["nodes"]:
+            raise _Syntax("@tableheadings sets the table headings of the whole layout: put it before the first block.", indent + 1)
+        if "table_header_fill" in self.tree or "table_header_text" in self.tree:
+            raise _Syntax("@tableheadings is written once.", indent + 1)
+        cur = directive.cursor()
+        found: dict[str, str] = {}
+        while (token := cur.peek()) is not None:
+            word = cur.word("a setting").strip()
+            key, equals, value = word.partition("=")
+            if not equals or key not in TABLE_HEADING_KEYS or not value:
+                raise _Syntax(f"Expected {' or '.join(f'{k}=<colour>' for k in TABLE_HEADING_KEYS)}, found {token.shown()}.", token.column)
+            if key in found:
+                raise _Syntax(f'"{key}" is given twice.', token.column)
+            found[key] = value
+        if not found:
+            raise _Syntax("Write at least one setting after @tableheadings: fill=<colour> or text=<colour>.", directive.offset + 1)
+        for key, value in found.items():
+            self.tree[TABLE_HEADING_KEYS[key]] = value
+            self.line_of[TABLE_HEADING_KEYS[key]] = line_no
 
     def _variable(self, directive: _Directive, indent: int, line_no: int) -> None:
         """Reads an `@var` line into the root's `variables` (it belongs before the first block)."""
@@ -1590,6 +1619,8 @@ def format_tree(tree: dict[str, Any]) -> str:
         settings = tree.get("styles", {}).get(part)
         if settings:
             writer.line(0, f"@style {part}" + "".join(_style_words(part, settings)))
+    if "table_header_fill" in tree or "table_header_text" in tree:
+        writer.line(0, "@tableheadings" + "".join(f" {word}={tree[key]}" for word, key in TABLE_HEADING_KEYS.items() if key in tree))
     if tree.get("palette"):
         writer.line(0, "@palette " + " ".join(f"{e['name']}={e['colour']}" for e in tree["palette"]))
     if "file_name" in tree:

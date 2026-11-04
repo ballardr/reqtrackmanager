@@ -327,6 +327,18 @@ class ReportBlockFieldOut(BaseModel):
     depends_on: str | None
     families: list[str]
     empty_label: str
+    group: str
+    basic: bool
+    control: str
+    inline: bool
+
+
+class ReportBlockGroupOut(BaseModel):
+    """A collapsible group of a block's fields (`services.report_layout_block_schema.BlockGroup`)."""
+
+    key: str
+    label: str
+    open: bool
 
 
 class ReportBlockContainerOut(BaseModel):
@@ -356,6 +368,7 @@ class ReportBlockOut(BaseModel):
         provides: The name it brings into scope, if any.
         template: The node a new block starts as (may fail validation until filled in).
         described: False for a type that declared no schema; the designer shows its node as JSON.
+        groups: The collapsible groups its fields are arranged in (empty: a flat form).
     """
 
     type: str
@@ -367,6 +380,7 @@ class ReportBlockOut(BaseModel):
     provides: ReportBlockProvidesOut | None
     template: dict[str, Any]
     described: bool
+    groups: list[ReportBlockGroupOut]
 
 
 class ReportColourEntryOut(BaseModel):

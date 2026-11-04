@@ -145,6 +145,7 @@ from app.services.report_model import (
     link_problem,
     linked,
     markdown_to_blocks,
+    text_on,
     text_runs,
     typed_cell,
 )
@@ -1453,6 +1454,7 @@ def _eval_grid(run: _Run, node: dict[str, Any], scope: Scope) -> None:
         run.block_look({key: column[key] if key in column else node[key] for key in ("font", "size") if key in column or key in node})
         for column in columns
     ]
+    default_fill, default_text = run.document_styles.table_header_fill, run.document_styles.table_header_text
     rows: list[GridRow] = []
     for r, row in enumerate(node["rows"]):
         cells: list[GridCell] = []
@@ -1461,6 +1463,13 @@ def _eval_grid(run: _Run, node: dict[str, Any], scope: Scope) -> None:
             font, size = looks[starts[r][i]]
             style = {key: next((layer[key] for layer in layers if key in layer), None) for key in _GRID_STYLE_KEYS}
             fill, text_colour = colour(style["fill"]), colour(style["color"])
+            if r < node.get("header_rows", 0) and style["fill"] is None:
+                # A heading row takes the layout's table heading colours unless the cell, row, column or grid sets its own fill.
+                if default_fill:
+                    fill = default_fill
+                    text_colour = text_colour or default_text or "#" + text_on(default_fill.lstrip("#")).lower()
+                elif default_text:
+                    text_colour = text_colour or default_text
             unreadable += low_contrast(fill, text_colour or "#000000")
             cells.append(GridCell(
                 cell_paragraphs(run.text_blocks(cell["text"], scope)) if cell["text"].strip() else ("",),

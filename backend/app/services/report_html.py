@@ -93,7 +93,7 @@ nav.contents ul { list-style: none; margin: .3rem 0 1rem; padding: 0; } nav.cont
 nav.contents li.level-2 { margin-left: 1.2rem; } nav.contents li.level-3 { margin-left: 2.4rem; } nav.contents li.level-1 { font-weight: 600; }
 p.contents-title { font-size: 1.3rem; font-weight: 600; margin: 1.6rem 0 .5rem; }
 table { border-collapse: collapse; width: 100%%; margin: .8rem 0; font-size: .85rem; }
-th { background: var(--accent); color: %(head_text)s; text-align: left; }
+th { background: %(head_fill)s; color: %(head_text)s; text-align: left; }
 th, td { border: 1px solid #ccc; padding: .3rem .5rem; vertical-align: top; overflow-wrap: anywhere; }
 table.compact td { border-color: #ddd; } table.fixed { table-layout: fixed; }
 tbody tr:nth-child(even) td { background-color: #f5f5f5; }
@@ -577,8 +577,10 @@ def render_html_document(document: ReportDocument) -> bytes:
         parts.append("</section>")
     if branding and branding.footer_text and document.footer is None:
         parts.append(f"<footer>{_esc(branding.footer_text)}</footer>")
+    head_fill, head_text = document.styles.table_head_colours(accent)
     css = _CSS % {
-        "accent": accent, "width": f"{_width_rem(document.style):g}rem", "head_text": "#" + text_on(accent.lstrip("#")), "grid_css": GRID_CSS,
+        "accent": accent, "width": f"{_width_rem(document.style):g}rem", "head_fill": f"#{head_fill}", "head_text": f"#{head_text}",
+        "grid_css": GRID_CSS,
     }
     css += _style_rules(document.styles)
     # `@page` rules sit outside `@media`: browsers ignore them on screen and do not accept them inside a media query.

@@ -54,6 +54,7 @@ from app.schemas.report_layout import (
     ReportBlockCatalogueOut,
     ReportBlockContainerOut,
     ReportBlockFieldOut,
+    ReportBlockGroupOut,
     ReportBlockOut,
     ReportBlockProvidesOut,
     ReportColourEntryOut,
@@ -255,6 +256,7 @@ def _block_field_out(f: BlockField) -> ReportBlockFieldOut:
         key=f.key, label=f.label, kind=f.kind, required=f.required, help=f.help, max_length=f.max_length,
         minimum=f.minimum, maximum=f.maximum, default=f.default, choices=list(f.choices), features=list(f.features),
         depends_on=f.depends_on, families=list(f.families), empty_label=f.empty_label,
+        group=f.group, basic=f.basic, control=f.control, inline=f.inline,
     )
 
 
@@ -269,6 +271,7 @@ def _blocks_out(catalogue: report_layout_designer.BlockCatalogue) -> ReportBlock
                 provides=ReportBlockProvidesOut(key=b.schema.provides.key, kind=b.schema.provides.kind, default=b.schema.provides.default)
                 if b.schema.provides else None,
                 template=b.schema.template, described=b.described,
+                groups=[ReportBlockGroupOut(key=g.key, label=g.label, open=g.open) for g in b.schema.groups],
             )
             for b in catalogue.blocks
         ],

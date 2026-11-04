@@ -103,7 +103,7 @@ test.describe("Report layout custom table editor", () => {
         await page.getByRole("button", { name: /^Black/ }).click();
         await editor.getByRole("button", { name: /^Text colour:/ }).click();
         await page.getByRole("button", { name: /^White/ }).click();
-        await editor.getByRole("button", { name: "Bold" }).click();
+        await editor.getByRole("button", { name: "Bold", exact: true }).click();
       }
       await expect(cell(2, 1)).toHaveCSS("background-color", "rgb(0, 0, 0)");
       await expect(cell(4, 3)).toHaveCSS("background-color", "rgb(0, 0, 0)");

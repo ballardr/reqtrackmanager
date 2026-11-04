@@ -178,13 +178,25 @@ def resolve_styles(
         scheme: The run's colour scheme (`report_colours.effective_scheme`).
 
     Returns:
-        The styles, the run notes for fonts the server lacks, and `{colour name: #rrggbb}` for the scheme name the heading
-        colour used (for the run's provenance).
+        The styles, the run notes for fonts the server lacks, and `{colour name: #rrggbb}` for the scheme names the heading
+        and table heading colours used (for the run's provenance).
     """
     embed = bool(tree.get("embed_fonts", False))
     styles = tree.get("styles")
+    used: dict[str, str] = {}
+
+    def head_colour(key: str) -> str | None:
+        word = tree.get(key)
+        if not isinstance(word, str):
+            return None
+        resolved = resolve_colour(word, accent, scheme)
+        if resolved and is_name(word):
+            used[word] = resolved
+        return resolved
+
+    head_fill, head_text = head_colour("table_header_fill"), head_colour("table_header_text")
     if not isinstance(styles, dict):
-        return DocumentStyles(embed_fonts=embed), [], {}
+        return DocumentStyles(embed_fonts=embed, table_header_fill=head_fill, table_header_text=head_text), [], used
     body = styles.get("body") or {}
     headings = styles.get("headings") or {}
     notes: list[str] = []
@@ -200,11 +212,13 @@ def resolve_styles(
     colour_word = headings.get("colour")
     colour = resolve_colour(colour_word, accent, scheme) if colour_word else None
     # Only a name in the scheme is recorded, not a hex colour or a reserved word.
-    used: dict[str, str] = {colour_word: colour} if colour and colour_word and is_name(colour_word) else {}
+    if colour and colour_word and is_name(colour_word):
+        used[colour_word] = colour
     resolved = DocumentStyles(
         body_font=family(body.get("font")), body_size=float(body["size"]) if "size" in body else None,
         heading_font=family(headings.get("font")), heading_bold=headings.get("bold"),
         heading_italic=bool(headings.get("italic", False)), heading_colour=colour, embed_fonts=embed,
+        table_header_fill=head_fill, table_header_text=head_text,
     )
     return resolved, notes, used
 

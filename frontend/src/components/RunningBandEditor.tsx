@@ -26,15 +26,15 @@
  * but not editable.
  */
 import { Plus } from "lucide-react";
-import { useRef, type SyntheticEvent } from "react";
 
 import type { ReportFontChoice, ReportImageLibrary } from "../api/reportLayouts";
 import { useStrings } from "../context/TerminologyContext";
+import { useTextSelections } from "../hooks/useTextSelections";
 import { DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "../utils/reportColours";
 import { STANDARD_FONT_CHOICES } from "../utils/reportFonts";
 import {
   BAND_DEFAULT_VALIGN, BAND_FIRST_PAGE, BAND_SIZE_PT, BAND_SLOTS, BAND_VALIGN, DEFAULT_LOGO_CM, MAX_BAND_SIZE_PT, MAX_LOGO_CM, MIN_BAND_SIZE_PT, MIN_LOGO_CM, bandMoreChanges,
-  bandNeedsCm, insertAtCaret, pageSample, wrapMark, type BandSlot, type RunningBand,
+  bandNeedsCm, pageSample, type BandSlot, type RunningBand,
 } from "../utils/reportPageSetup";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { CollapsibleSection } from "./CollapsibleSection";
@@ -42,6 +42,7 @@ import { ColourChoiceField } from "./ColourChoiceField";
 import { FontChoiceField } from "./FontChoiceField";
 import { TextAreaField, TextField } from "./FormFields";
 import { LabeledSelect } from "./LabeledSelect";
+import { MarkButtons } from "./MarkButtons";
 import { ReportImageField } from "./ReportImageField";
 import { SettingsPopoverButton } from "./SettingsPopoverButton";
 
@@ -127,38 +128,11 @@ export function RunningBandEditor({
     // A band with nothing left in it would read as "nothing", so keep it as an empty left cell.
     onChange(Object.keys(next).length === 0 ? { left: "" } : next);
   };
-  const caret = useRef<Partial<Record<BandSlot, { start: number; end: number }>>>({});
-  const cells = useRef<Partial<Record<BandSlot, HTMLTextAreaElement>>>({});
+  const { remember, mark, insert: insertText } = useTextSelections<BandSlot>();
   /** Writes a placeholder over the selection of one cell, and puts the caret after it once the new text is in the cell. */
   const insert = (slot: BandSlot, choice: string) => {
     const page = PAGE_CHOICES.find((entry) => entry.value === choice);
-    const current = band[slot] ?? "";
-    const at = caret.current[slot] ?? { start: current.length, end: current.length };
-    const next = insertAtCaret(current, page ? page.snippet : `{{${choice}}}`, at.start, at.end);
-    caret.current[slot] = { start: next.caret, end: next.caret };
-    set({ [slot]: next.text });
-    requestAnimationFrame(() => {
-      cells.current[slot]?.focus();
-      cells.current[slot]?.setSelectionRange(next.caret, next.caret);
-    });
-  };
-  /** Wraps the selection of one cell in `marker`, and puts the selection back on the wrapped words. */
-  const mark = (slot: BandSlot, marker: string) => {
-    const current = band[slot] ?? "";
-    const at = caret.current[slot] ?? { start: current.length, end: current.length };
-    const next = wrapMark(current, marker, at.start, at.end);
-    caret.current[slot] = { start: next.start, end: next.end };
-    set({ [slot]: next.text });
-    // Put the selection back on the wrapped words once the new text is in the cell, so the next press acts on what the author sees.
-    requestAnimationFrame(() => {
-      cells.current[slot]?.focus();
-      cells.current[slot]?.setSelectionRange(next.start, next.end);
-    });
-  };
-  // The caret is read on every selection change and on leaving the cell (the placeholder menu takes the focus), so it survives the move.
-  const remember = (slot: BandSlot) => (e: SyntheticEvent<HTMLTextAreaElement>) => {
-    cells.current[slot] = e.currentTarget;
-    caret.current[slot] = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd };
+    insertText(slot, band[slot] ?? "", page ? page.snippet : `{{${choice}}}`, (next) => set({ [slot]: next }));
   };
   /** The names after the page fields, kept in group order so each group's heading shows once. */
   const named = placeholders
@@ -216,12 +190,10 @@ export function RunningBandEditor({
                               triggerLabel={text.insertInto(title, cell)} items={menuItems(slot)} icon={<Plus size={14} aria-hidden="true" />}
                               size="sm" footer={text.insertFooter}
                             />
-                            <button type="button" className="btn btn-sm" aria-label={text.markCellAria(title, cell, text.boldButton)} onClick={() => mark(slot, "**")}>
-                              <strong>B</strong>
-                            </button>
-                            <button type="button" className="btn btn-sm" aria-label={text.markCellAria(title, cell, text.italicButton)} onClick={() => mark(slot, "*")}>
-                              <em>I</em>
-                            </button>
+                            <MarkButtons
+                              nameOf={(name) => text.markCellAria(title, cell, name)}
+                              onMark={(marker) => mark(slot, band[slot] ?? "", marker, (next) => set({ [slot]: next }))}
+                            />
                           </>
                         )}
                         <SettingsPopoverButton

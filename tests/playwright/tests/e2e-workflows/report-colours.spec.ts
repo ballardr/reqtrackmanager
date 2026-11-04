@@ -79,7 +79,7 @@ test.describe("Report colours", () => {
       await page.getByRole("button", { name: "Add block" }).click();
       await page.getByRole("menuitem", { name: "Shape", exact: true }).click();
       const inspector = page.getByLabel("Block details");
-      await inspector.getByRole("combobox", { name: "Width unit" }).waitFor();
+      await inspector.getByRole("button", { name: /^Fill:/ }).waitFor();
       await inspector.getByRole("button", { name: /^Fill:/ }).click();
       await page.getByRole("dialog", { name: "Choose a colour for Fill" }).getByRole("button", { name: /^alert/ }).click();
       await expect(inspector.getByRole("button", { name: "Fill: alert" })).toContainText("#112233");

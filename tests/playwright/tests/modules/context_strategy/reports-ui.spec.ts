@@ -5,6 +5,7 @@ import { expect, type APIRequestContext, type Page, test } from "@playwright/tes
 
 import { deleteOrgOnCleanup, expectTidyStatBlocks, installCleanupHook, loginAs, logout, PASSWORD } from "../../e2e-workflows/helpers";
 import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
+import { pickReportFormat, reportDownloadButton } from "../../reportDownload";
 
 const API_BASE_URL = "http://localhost:8000";
 const CS = "context_strategy";
@@ -270,12 +271,12 @@ test.describe("Context & Strategy: Reports UI", () => {
     for (const report of reports) {
       await test.step(`${report.title}: PDF and CSV`, async () => {
         await chooseReport(page, report.title);
-        await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+        await expect(reportDownloadButton(page)).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
-          await page.getByRole("button", { name: "Export" }).click();
+          await pickReportFormat(page, kind);
           const [download] = await Promise.all([
             page.waitForEvent("download"),
-            page.getByRole("button", { name: `Download ${kind} report` }).click(),
+            reportDownloadButton(page).click(),
           ]);
           expect(download.suggestedFilename()).toBe(`${report.slug}.${kind.toLowerCase()}`);
           await expect(page.getByText(`Downloaded ${report.title} (${kind}).`)).toBeVisible();
@@ -285,10 +286,10 @@ test.describe("Context & Strategy: Reports UI", () => {
 
     await test.step("the CSV is the report's first section, scoped to the screen's values", async () => {
       await chooseReport(page, "Pain Point prioritisation");
-      await page.getByRole("button", { name: "Export" }).click();
+      await pickReportFormat(page, "CSV");
       const [download] = await Promise.all([
         page.waitForEvent("download"),
-        page.getByRole("button", { name: "Download CSV report" }).click(),
+        reportDownloadButton(page).click(),
       ]);
       const csv = await readFile((await download.path())!, "utf8");
       expect(csv).toContain(titles.major);
@@ -301,9 +302,9 @@ test.describe("Context & Strategy: Reports UI", () => {
     await test.step("there is no branding choice: the PDF download names no template", async () => {
       await chooseReport(page, "Pain Point prioritisation");
       await expect(page.getByRole("combobox", { name: "Branding template" })).toHaveCount(0);
-      await page.getByRole("button", { name: "Export" }).click();
+      await pickReportFormat(page, "PDF");
       const pdf = page.waitForResponse((r) => r.url().includes("format=pdf"));
-      await page.getByRole("button", { name: "Download PDF report" }).click();
+      await reportDownloadButton(page).click();
       const response = await pdf;
       expect(response.url()).not.toContain("report_template_id");
       expect(response.status()).toBe(200);

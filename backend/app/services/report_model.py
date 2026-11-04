@@ -984,6 +984,8 @@ class DocumentStyles:
         heading_italic: Whether headings are italic.
         heading_colour: The heading colour as `#rrggbb`.
         embed_fonts: Whether Word and OpenDocument files carry the files of the administrator-provided families used.
+        table_header_fill: The heading-row fill of every document table as `#rrggbb`; the organisation accent when unset.
+        table_header_text: The heading-row text colour as `#rrggbb`; chosen by contrast with the fill when unset.
     """
 
     body_font: FontFamily | None = None
@@ -993,6 +995,8 @@ class DocumentStyles:
     heading_italic: bool = False
     heading_colour: str | None = None
     embed_fonts: bool = False
+    table_header_fill: str | None = None
+    table_header_text: str | None = None
 
     @property
     def text_font(self) -> FontFamily | None:
@@ -1007,8 +1011,22 @@ class DocumentStyles:
 
     @property
     def is_default(self) -> bool:
-        """Whether nothing is set, so every renderer keeps its own look."""
-        return self == DocumentStyles()
+        """Whether no font or heading style is set, so every renderer keeps its own text look (table heading colours are
+        read separately, by `table_head_colours`)."""
+        return replace(self, table_header_fill=None, table_header_text=None) == DocumentStyles()
+
+    def table_head_colours(self, accent_hex: str) -> tuple[str, str]:
+        """The fill and text colour of a document table's heading row.
+
+        Args:
+            accent_hex: The organisation's report accent (`#rrggbb` or `rrggbb`), the fill when the layout sets none.
+
+        Returns:
+            `(fill, text)` as six upper-case hex digits each, without `#`. The text is the layout's, else white or black by
+            contrast with the fill (`text_on`).
+        """
+        fill = (self.table_header_fill or accent_hex).lstrip("#").upper()
+        return fill, (self.table_header_text.lstrip("#").upper() if self.table_header_text else text_on(fill))
 
 
 @dataclass

@@ -4,10 +4,17 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../api/client";
 import { installedModules } from "../modules/registry";
 import { buildReportCatalogueEntry, buildReportResult, buildReportVariable } from "../testing/reportFixtures";
-import { withRouter, withToast } from "../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportRunner } from "./ReportRunner";
 
 const entry = buildReportCatalogueEntry();
+
+/** Chooses a format in the download list (a report with one format has no list) and presses Download. */
+async function downloadAs(canvas: ReturnType<typeof within>, format: string) {
+  const option = canvas.queryByRole("radio", { name: format });
+  if (option) await userEvent.click(option);
+  await userEvent.click(canvas.getByRole("button", { name: "Download" }));
+}
 const scope = { kind: "project" as const, id: "project-1" };
 const orgEntry = buildReportCatalogueEntry({
   scope: "organization", supports_include_children: false, supports_project_filter: true, params: [],
@@ -48,7 +55,7 @@ const meta: Meta<typeof ReportRunner> = {
   title: "Components/Reports/ReportRunner",
   component: ReportRunner,
   args: { entry, scope },
-  decorators: [withToast()],
+  decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
 };
 export default meta;
 
@@ -61,7 +68,9 @@ export const ACustomReportWaitsForItsRequiredVariables: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("status")).toHaveTextContent("Choose a value for Categories to run this report.");
-    await expect(canvas.queryByRole("button", { name: "Export" })).toBeNull();
+    const held = canvas.getByRole("button", { name: "Download" });
+    await expect(held).toBeDisabled();
+    await expect(held).toHaveAccessibleDescription("Choose a value for Categories to run this report.");
     await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/reports/fixture-report"));
 
     await userEvent.click(canvas.getByRole("button", { name: /Categories/ }));
@@ -86,8 +95,7 @@ export const ACustomReportRunsWithItsDefaultsAndDownloadsTheSameValues: Story = 
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await downloadAs(canvas, "PDF");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalled());
     const url = (api.getForBlob as unknown as { mock: { calls: string[][] } }).mock.calls[0][0];
     await expect(JSON.parse(new URLSearchParams(url.split("?")[1]).get("variables") ?? "{}")).toEqual({ categories: ["Security"] });
@@ -139,8 +147,7 @@ export const OrganisationReportCanBeNarrowedToOneProject: Story = {
     await expect(within(canvas.getByLabelText("Project")).getByRole("option", { name: "Borealis" })).toBeInTheDocument();
     await userEvent.selectOptions(canvas.getByLabelText("Project"), "project-2");
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_id=project-2")));
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
+    await downloadAs(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_id=project-2")));
   },
 };
@@ -163,13 +170,11 @@ export const CustomTableReportOffersExcelAndCsv: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await expect(within(document.body).queryByRole("button", { name: "Download PDF report" })).not.toBeInTheDocument();
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download Excel report" }));
+    await expect(canvas.queryByRole("radio", { name: "PDF" })).not.toBeInTheDocument();
+    await downloadAs(canvas, "Excel");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=xlsx")));
     await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Excel).")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download ODS report" }));
+    await downloadAs(canvas, "ODS");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=ods")));
   },
 };
@@ -201,8 +206,7 @@ export const OrganisationCustomReportChoosesProjects: Story = {
     await userEvent.click(within(document.body).getByRole("checkbox", { name: "Borealis" }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
     await userEvent.keyboard("{Escape}");
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await downloadAs(canvas, "PDF");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
   },
 };
@@ -231,14 +235,13 @@ export const SingleProjectCustomReportNeedsOneProject: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("This report runs for a single project. Choose the project to run it for.")).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Projects" })).not.toBeInTheDocument();
-    await expect(canvas.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Download" })).toBeDisabled();
     await expect(api.get).not.toHaveBeenCalled();
     await expect(canvas.queryByRole("option", { name: "All projects" })).not.toBeInTheDocument();
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Project/ }), "project-2");
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await downloadAs(canvas, "PDF");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
   },
 };
@@ -267,8 +270,7 @@ export const OneProjectAndItsChildrenOffersTheChildProjectsSwitch: Story = {
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("switch", { name: "Include child projects" }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/include_children=true.*project_ids=project-1|project_ids=project-1.*include_children=true/)));
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await downloadAs(canvas, "PDF");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("include_children=true")));
   },
 };
@@ -311,8 +313,7 @@ export const DocumentDownloadHasNoBrandingChoice: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
     await expect(canvas.queryByLabelText("Branding template")).not.toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await downloadAs(canvas, "PDF");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=pdf")));
     await expect(api.getForBlob).not.toHaveBeenCalledWith(expect.stringContaining("report_template_id"));
     await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (PDF).")).toBeInTheDocument());
@@ -325,8 +326,7 @@ export const CsvDownloadOmitsTemplate: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
+    await downloadAs(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=csv")));
     await expect(api.getForBlob).not.toHaveBeenCalledWith(expect.stringContaining("report_template_id"));
   },
@@ -339,20 +339,14 @@ export const EveryDeclaredFormatIsInTheMenu: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    const menu = within(document.body);
-    for (const label of [
-      "Download PDF report", "Download Word report", "Download HTML report", "Download ODT report",
-      "Download CSV report", "Download Excel report", "Download ODS report",
-    ]) {
-      await expect(menu.getByRole("button", { name: label })).toBeInTheDocument();
+    for (const label of ["PDF", "Word", "HTML", "ODT", "CSV", "Excel", "ODS"]) {
+      await expect(canvas.getByRole("radio", { name: label })).toBeInTheDocument();
     }
-    await userEvent.click(menu.getByRole("button", { name: "Download ODT report" }));
+    await downloadAs(canvas, "ODT");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=odt")));
     await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
     await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (ODT).")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download ODS report" }));
+    await downloadAs(canvas, "ODS");
     await waitFor(() => expect(api.getForBlob).toHaveBeenLastCalledWith(expect.stringContaining("format=ods")));
     await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
   },
@@ -366,8 +360,7 @@ export const DownloadFailureShowsToast: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
+    await downloadAs(canvas, "CSV");
     await waitFor(() => expect(within(document.body).getByText("Internal Server Error")).toBeInTheDocument());
   },
 };
@@ -385,8 +378,7 @@ export const TooBigDownloadIsQueuedInTheBackground: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
+    await downloadAs(canvas, "PDF");
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringMatching(/\/runs$/), expect.objectContaining({ format: "pdf" })));
     await waitFor(() => expect(within(document.body).getByText(/being prepared in the background/)).toBeInTheDocument());
   },
@@ -498,7 +490,7 @@ export const WithoutResultItIsNotRunOnScreen: Story = {
   beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole("button", { name: "Export" })).toBeInTheDocument();
+    await expect(await canvas.findByRole("button", { name: "Download" })).toBeInTheDocument();
     await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/reports/fixture-report"));
     await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
   },

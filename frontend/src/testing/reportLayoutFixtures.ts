@@ -97,7 +97,7 @@ export function buildFieldCatalogue(): ReportFieldCatalogue {
 
 const field = (key: string, label: string, kind: string, extra: Partial<BlockField> = {}): BlockField => ({
   key, label, kind, required: false, help: `About ${label.toLowerCase()}.`, max_length: null, minimum: null, maximum: null, default: null,
-  choices: [], features: [], depends_on: null, families: [], empty_label: "", ...extra,
+  choices: [], features: [], depends_on: null, families: [], empty_label: "", group: "", basic: false, control: "", inline: false, ...extra,
 });
 
 const source = field("source", "Records", "source", { required: true });
@@ -105,9 +105,9 @@ const source = field("source", "Records", "source", { required: true });
 const LABEL_HELP = "A name for this block in the designer, for example Open requirements. It can hold capitals and spaces and is never printed; other blocks still refer to this one by its Name.";
 const block = (type: string, label: string, template: Record<string, unknown>, extra: Partial<BlockType> = {}): BlockType => {
   const made: BlockType = {
-    type, label, description: `${label}.`, families: ["document"], fields: [], containers: [], provides: null, template, described: true, ...extra,
+    type, label, description: `${label}.`, families: ["document"], fields: [], containers: [], provides: null, template, described: true, groups: [], ...extra,
   };
-  return { ...made, fields: [...made.fields, field("label", "Label", "text", { max_length: 128, help: LABEL_HELP })] };
+  return { ...made, fields: [...made.fields, field("label", "Label", "text", { max_length: 128, help: LABEL_HELP, basic: true })] };
 };
 
 /** The block catalogue the server publishes (the ten core blocks), for stories of the outline. */
@@ -124,8 +124,8 @@ export function buildBlockCatalogue(): BlockCatalogue {
     blocks: [
       block("heading", "Heading", { type: "heading", text: "Heading", level: 2 }, {
         fields: [
-          field("text", "Heading", "text", { required: true, max_length: 500, features: ["placeholders"] }),
-          field("level", "Level", "integer", { minimum: 1, maximum: 4, default: 1 }),
+          field("text", "Heading", "text", { required: true, max_length: 500, features: ["placeholders", "marks"] }),
+          field("level", "Level", "integer", { minimum: 1, maximum: 4, default: 1, control: "choice-buttons" }),
           field("font", "Font", "font", { empty_label: "Document heading font" }),
           field("size", "Size", "number", { minimum: 6, maximum: 72, empty_label: "Document size" }),
           field("colour", "Colour", "colour", { empty_label: "Document heading colour" }),
@@ -159,59 +159,82 @@ export function buildBlockCatalogue(): BlockCatalogue {
       }),
       block("image", "Image", { type: "image", file: "" }, {
         fields: [
-          field("file", "Image", "image", { required: true }), field("alt", "Alternative text", "text", { max_length: 300 }),
-          field("decorative", "Decorative", "boolean", { default: false }),
-          field("width", "Width", "number", { minimum: 1, maximum: 1000, empty_label: "Auto" }),
-          field("width_unit", "Width unit", "choice", { choices: ["cm", "mm", "percent"], default: "cm", depends_on: "width" }),
-          field("height", "Height", "number", { minimum: 0.5, maximum: 1000, empty_label: "Auto" }),
-          field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
-          field("align", "Alignment", "choice", { choices: ["left", "center", "right"], default: "center" }),
-          field("placement", "Placement", "choice", { choices: ["inline", "wrap", "behind", "front"], default: "inline" }),
-          field("anchor", "Position from", "choice", { choices: ["paragraph", "margin", "page"], default: "paragraph", depends_on: "placement" }),
-          field("offset_x", "Across (cm)", "number", { minimum: -100, maximum: 100, depends_on: "placement" }),
-          field("offset_y", "Down (cm)", "number", { minimum: -100, maximum: 100, depends_on: "placement" }),
-          field("caption", "Caption", "text", { max_length: 500, features: ["placeholders"] }),
-          field("caption_position", "Caption position", "choice", { choices: ["above", "below"], default: "below", depends_on: "caption" }),
-          field("numbering", "Caption numbering", "choice", { choices: ["auto", "always", "never"], default: "auto", depends_on: "caption" }),
+          field("file", "Image", "image", { basic: true, required: true }), field("alt", "Alternative text", "text", { basic: true, max_length: 300 }),
+          field("decorative", "Decorative", "boolean", { basic: true, default: false }),
+          field("width", "Width", "number", { group: "size", minimum: 1, maximum: 1000, empty_label: "Auto" }),
+          field("width_unit", "Width unit", "choice", { inline: true, group: "size", choices: ["cm", "mm", "percent"], default: "cm", depends_on: "width" }),
+          field("height", "Height", "number", { group: "size", minimum: 0.5, maximum: 1000, empty_label: "Auto" }),
+          field("height_unit", "Height unit", "choice", { inline: true, group: "size", choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+          field("align", "Alignment", "choice", { basic: true, control: "choice-buttons", choices: ["left", "center", "right"], default: "center" }),
+          field("placement", "Placement", "choice", { group: "position", choices: ["inline", "wrap", "behind", "front"], default: "inline" }),
+          field("anchor", "Position from", "choice", { group: "position", choices: ["paragraph", "margin", "page"], default: "paragraph", depends_on: "placement" }),
+          field("offset_x", "Across (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("offset_y", "Down (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("caption", "Caption", "text", { group: "caption", max_length: 500, features: ["placeholders"] }),
+          field("caption_position", "Caption position", "choice", { group: "caption", control: "choice-buttons", choices: ["above", "below"], default: "below", depends_on: "caption" }),
+          field("numbering", "Caption numbering", "choice", { group: "caption", choices: ["auto", "always", "never"], default: "auto", depends_on: "caption" }),
         ],
+        groups: [{ key: "size", label: "Size", open: false }, { key: "position", label: "Position", open: false }, { key: "caption", label: "Caption", open: false }],
       }),
       block("shape", "Shape", { type: "shape", shape: "rectangle", fill: "accent", width: 5, height: 2 }, {
         fields: [
-          field("shape", "Shape", "choice", { required: true, choices: ["rectangle", "rounded", "ellipse", "triangle", "line", "arrow", "custom"], default: "rectangle" }),
-          field("fill", "Fill", "colour", { default: "accent" }), field("outline", "Outline", "colour", { empty_label: "No outline" }),
-          field("outline_width", "Outline width (mm)", "number", { minimum: 0.1, maximum: 20 }),
-          field("width", "Width", "number", { minimum: 0.1, maximum: 1000 }),
-          field("width_unit", "Width unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "width" }),
-          field("height", "Height", "number", { minimum: 0.1, maximum: 1000 }),
-          field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
-          field("svg", "SVG", "longtext", { max_length: 50000 }), field("alt", "Alternative text", "text", { max_length: 300 }),
-          field("align", "Alignment", "choice", { choices: ["left", "center", "right"], default: "center" }),
-          field("placement", "Placement", "choice", { choices: ["inline", "wrap", "behind", "front"], default: "inline" }),
-          field("anchor", "Position from", "choice", { choices: ["paragraph", "margin", "page"], default: "paragraph", depends_on: "placement" }),
-          field("offset_x", "Across (cm)", "number", { minimum: -100, maximum: 100, depends_on: "placement" }),
-          field("offset_y", "Down (cm)", "number", { minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("shape", "Shape", "choice", { basic: true, required: true, choices: ["rectangle", "rounded", "ellipse", "triangle", "line", "arrow", "custom"], default: "rectangle" }),
+          field("fill", "Fill", "colour", { basic: true, default: "accent" }), field("outline", "Outline", "colour", { group: "outline", empty_label: "No outline" }),
+          field("outline_width", "Outline width (mm)", "number", { group: "outline", minimum: 0.1, maximum: 20 }),
+          field("width", "Width", "number", { group: "size", minimum: 0.1, maximum: 1000 }),
+          field("width_unit", "Width unit", "choice", { inline: true, group: "size", choices: ["cm", "mm"], default: "cm", depends_on: "width" }),
+          field("height", "Height", "number", { group: "size", minimum: 0.1, maximum: 1000 }),
+          field("height_unit", "Height unit", "choice", { inline: true, group: "size", choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+          field("svg", "SVG", "longtext", { group: "svg", max_length: 50000 }), field("alt", "Alternative text", "text", { basic: true, max_length: 300 }),
+          field("align", "Alignment", "choice", { group: "position", control: "choice-buttons", choices: ["left", "center", "right"], default: "center" }),
+          field("placement", "Placement", "choice", { group: "position", choices: ["inline", "wrap", "behind", "front"], default: "inline" }),
+          field("anchor", "Position from", "choice", { group: "position", choices: ["paragraph", "margin", "page"], default: "paragraph", depends_on: "placement" }),
+          field("offset_x", "Across (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("offset_y", "Down (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
         ],
+        groups: [{ key: "outline", label: "Outline", open: false }, { key: "size", label: "Size", open: false }, { key: "position", label: "Position", open: false }, { key: "svg", label: "SVG", open: false }],
       }),
       block("record_images", "Record images", { type: "record_images" }, {
         fields: [
-          field("names", "File names", "text_list", { max_length: 200, features: ["placeholders"] }),
-          field("types", "File types", "text_list", { max_length: 10 }),
-          field("max_count", "Most per record", "integer", { minimum: 1, maximum: 20, default: 5 }),
-          field("order", "Order", "choice", { choices: ["name", "uploaded"], default: "name" }),
-          field("max_size_mb", "Largest file (MB)", "number", { minimum: 0.1, maximum: 50 }),
-          field("caption_source", "Caption", "choice", { choices: ["file_name", "text", "none"], default: "file_name" }),
-          field("caption", "Caption text", "text", { max_length: 500, features: ["placeholders"], depends_on: "caption_source" }),
-          field("placement", "Placement", "choice", { choices: ["inline", "wrap"], default: "inline" }),
-          field("empty_text", "Text when there is nothing", "text"),
+          field("names", "File names", "text_list", { max_length: 200, features: ["placeholders"], group: "which" }),
+          field("types", "File types", "text_list", { max_length: 10, group: "which" }),
+          field("max_count", "Most per record", "integer", { minimum: 1, maximum: 20, default: 5, group: "which" }),
+          field("order", "Order", "choice", { choices: ["name", "uploaded"], default: "name", group: "which" }),
+          field("max_size_mb", "Largest file (MB)", "number", { minimum: 0.1, maximum: 50, group: "which" }),
+          field("caption_source", "Caption", "choice", { choices: ["file_name", "text", "none"], default: "file_name", group: "caption" }),
+          field("caption", "Caption text", "text", { max_length: 500, features: ["placeholders"], depends_on: "caption_source", group: "caption" }),
+          field("caption_position", "Caption position", "choice", { choices: ["above", "below"], default: "below", depends_on: "caption_source", group: "caption", control: "choice-buttons" }),
+          field("numbering", "Caption numbering", "choice", { choices: ["auto", "always", "never"], default: "auto", depends_on: "caption_source", group: "caption" }),
+          field("width", "Width", "number", { minimum: 1, maximum: 1000, group: "size" }),
+          field("width_unit", "Width unit", "choice", { inline: true, choices: ["cm", "mm", "percent"], default: "cm", depends_on: "width", group: "size" }),
+          field("height", "Height", "number", { minimum: 0.5, maximum: 1000, group: "size" }),
+          field("height_unit", "Height unit", "choice", { inline: true, choices: ["cm", "mm"], default: "cm", depends_on: "height", group: "size" }),
+          field("align", "Alignment", "choice", { choices: ["left", "center", "right"], default: "center", group: "position", control: "choice-buttons" }),
+          field("placement", "Placement", "choice", { choices: ["inline", "wrap"], default: "inline", group: "position" }),
+          field("empty_text", "Text when there is nothing", "text", { group: "which" }),
+        ],
+        groups: [
+          { key: "which", label: "Which pictures", open: true }, { key: "caption", label: "Caption", open: false },
+          { key: "size", label: "Size", open: false }, { key: "position", label: "Position", open: false },
         ],
       }),
       block("equation", "Equation", { type: "equation", tex: "a = b" }, { fields: [field("tex", "TeX", "tex", { required: true })] }),
       block("grid", "Table (custom)", { type: "grid", columns: [{}, {}], rows: [{ cells: [{ text: "Label" }, { text: "Value" }] }] }, {
         fields: [
-          field("columns", "Columns", "grid_columns", { required: true }), field("rows", "Rows", "grid_rows", { required: true }),
-          field("header_rows", "Header rows", "integer", { minimum: 0, maximum: 200, default: 0 }),
-          field("borders", "Borders", "choice", { choices: ["all", "outer", "horizontal", "none"], default: "all" }),
-          field("border_color", "Border colour", "colour", { default: "#999999" }),
+          field("columns", "Columns", "grid_columns", { required: true, basic: true }), field("rows", "Rows", "grid_rows", { required: true, basic: true }),
+          field("header_rows", "Header rows", "integer", { minimum: 0, maximum: 200, default: 0, basic: true }),
+          field("borders", "Borders", "choice", { choices: ["all", "outer", "horizontal", "none"], default: "all", group: "borders" }),
+          field("border_color", "Border colour", "colour", { default: "#999999", group: "borders" }),
+          field("align", "Alignment", "choice", { choices: ["left", "center", "right", "justify"], default: "left", group: "cell_style", control: "choice-buttons" }),
+          field("valign", "Vertical alignment", "choice", { choices: ["top", "middle", "bottom"], default: "top", group: "cell_style", control: "choice-buttons" }),
+          field("fill", "Fill", "colour", { group: "cell_style" }), field("color", "Text colour", "colour", { group: "cell_style" }),
+          field("bold", "Bold", "boolean", { default: false, group: "cell_style", control: "toggle" }),
+          field("font", "Font", "font", { empty_label: "Document font", group: "look" }),
+          field("size", "Size", "number", { minimum: 6, maximum: 72, empty_label: "Table size (9)", group: "look" }),
+        ],
+        groups: [
+          { key: "borders", label: "Borders", open: false }, { key: "cell_style", label: "Cell style", open: false },
+          { key: "look", label: "Look", open: false },
         ],
       }),
       block("table", "Table (records)", { type: "table", source: {}, columns: [] }, {
@@ -254,6 +277,8 @@ export function buildBlockCatalogue(): BlockCatalogue {
       field("run_scope", "Projects it runs for", "choice", { choices: ["any", "one", "one_and_children"], default: "any", empty_label: "Not set (any number of projects)" }),
       field("palette", "Colour scheme", "palette", { families: ["document"] }),
       field("styles", "Fonts", "document_styles", { families: ["document"] }),
+      field("table_header_fill", "Table heading fill", "colour", { families: ["document"], empty_label: "Default (the organisation's accent)" }),
+      field("table_header_text", "Table heading text colour", "colour", { families: ["document"], empty_label: "Automatic (black or white, whichever reads best)" }),
       field("embed_fonts", "Embed fonts", "boolean", { families: ["document"], help: "Put the font files of the extra fonts inside Word and OpenDocument files." }),
       field("page_styles", "Page styles", "page_styles", { families: ["document"] }),
       field("header", "Header", "running_band", { families: ["document"] }),

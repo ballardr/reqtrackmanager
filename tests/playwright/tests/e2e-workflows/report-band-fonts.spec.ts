@@ -23,6 +23,7 @@ test.describe("Report header and footer fonts", () => {
     await test.step("the page setup dialog sets the footer's text, marks, font, size and colour", async () => {
       await page.getByRole("button", { name: /Page setup:/ }).click();
       const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await ensureExpanded(page, "Footer");
       await dialog.getByRole("combobox", { name: "Footer: print" }).selectOption("custom");
       const right = dialog.getByRole("textbox", { name: "Footer, right cell" });
       await right.fill("Page {{page}} of {{pages}}");

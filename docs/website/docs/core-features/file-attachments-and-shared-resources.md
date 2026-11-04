@@ -14,12 +14,23 @@ Discussion comments support file attachments too, via the paperclip icon — att
 
 ## Project files
 
-A project's **Files** page lists every file attached anywhere within it — requirements, change requests, and actions — in one place.
+A project's **Files** page lists every file the project holds in one place: files attached to requirements, change requests and actions, discussion attachments, and the pictures in the project's **report image library** (the pictures its report layouts use). Each row shows a small preview for a picture, the file name, its source, who uploaded it and when, and a link to where it belongs: the record, or **Report setup** for a library picture. The organisation's own picture library is not listed here.
 
 | Project files |
 | --- |
-| Every file attached within a project, in one list |
+| Every file the project holds, with previews and a filter panel |
 | ![Project files page listing attachments across the project](../../static/img/screenshots/project-files.png) |
+
+The filter panel on the right narrows the list; the filters are held in the address, so a filtered list can be bookmarked and keeps its place when you come back from a record.
+
+- **File name** matches part of a name, ignoring case. Only names are searched, never a file's contents.
+- **Source** limits the list to one kind of attachment, or to the report image library.
+- **File type** is *image*, *document* or *other*.
+- **Uploaded by** lists the people who uploaded files in this project.
+- **Uploaded from** and **to** are calendar days in your own time zone, both included.
+- On a project with parent or child projects, the usual project scope filter widens the list; a row from another project says so and opens there.
+
+A picture you cannot read shows an icon in place of its preview. A *confidential* library picture is still listed for the project's members; the mark only stops a report from printing it.
 
 ## Picture details
 

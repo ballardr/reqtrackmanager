@@ -87,15 +87,157 @@ export const TextThatAllowsPlaceholdersOffersTheNamesInScope: Story = {
   },
 };
 
-export const ANumberFieldShowsItsBoundsAndDefault: Story = {
-  args: { field: fieldOf("heading", "level"), initial: { type: "heading", text: "x" } },
+/** A heading's words offer Bold and Italic, which wrap the selected words in the marks the server reads and store nothing else. */
+export const AHeadingTextOffersBoldAndItalicOverTheSelection: Story = {
+  args: { initial: { type: "heading", text: "Draft copy" } },
   play: async ({ canvasElement }) => {
-    const level = within(canvasElement).getByRole("spinbutton", { name: "Level" });
-    await expect(level).toHaveAttribute("min", "1");
-    await expect(level).toHaveAttribute("max", "4");
-    await expect(level).toHaveAttribute("placeholder", "Default (1)");
-    await userEvent.type(level, "3");
+    const canvas = within(canvasElement);
+    const field = canvas.getByRole("textbox", { name: "Heading" }) as HTMLInputElement;
+    field.focus();
+    field.setSelectionRange(0, 5);
+    await userEvent.click(canvas.getByRole("button", { name: "Heading: Bold" }));
+    await waitFor(() => expect(nodeOf(canvasElement).text).toBe("**Draft** copy"));
+    // The field puts the selection back on the wrapped words on the next frame; wait it out before selecting again.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    await waitFor(() => expect(field.selectionStart).toBe(2));
+    field.focus();
+    field.setSelectionRange(10, 14);
+    await userEvent.click(canvas.getByRole("button", { name: "Heading: Italic" }));
+    await waitFor(() => expect(nodeOf(canvasElement).text).toBe("**Draft** *copy*"));
+    await expect(Object.keys(nodeOf(canvasElement)).sort()).toEqual(["text", "type"]);
+  },
+};
+
+/** A text block's paragraphs offer the same two buttons; with nothing selected every line of the box is marked, bullets left outside the mark. */
+export const ATextBlockMarksTheWholeBoxWhenNothingIsSelected: Story = {
+  args: { field: fieldOf("text", "text"), initial: { type: "text", text: "First line\n\n- a point  " } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const field = canvas.getByRole("textbox", { name: "Text" }) as HTMLTextAreaElement;
+    field.focus();
+    field.setSelectionRange(4, 4);
+    await userEvent.click(canvas.getByRole("button", { name: "Text: Italic" }));
+    await waitFor(() => expect(nodeOf(canvasElement).text).toBe("*First line*\n\n- *a point*  "));
+  },
+};
+
+/** In an empty box a mark pair is written so typing continues inside it. */
+export const AnEmptyTextBlockGetsAMarkPair: Story = {
+  args: { field: fieldOf("text", "text"), initial: { type: "text", text: "" } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("textbox", { name: "Text" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Text: Bold" }));
+    await waitFor(() => expect(nodeOf(canvasElement).text).toBe("****"));
+  },
+};
+
+/** Fields that do not read marks (a heading's font, a title) get no buttons, and a read-only form shows none. */
+export const OnlyATextThatReadsMarksOffersTheButtons: Story = {
+  render: () => (
+    <div>
+      <Harness field={fieldOf("contents", "title")} initial={{ type: "contents" }} />
+      <Harness field={fieldOf("heading", "text")} initial={{ type: "heading", text: "x" }} environment={{ ...env, readOnly: true }} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("button", { name: /Bold/ })).toBeNull();
+  },
+};
+
+export const ANumberFieldShowsItsBoundsAndDefault: Story = {
+  args: { field: fieldOf("contents", "levels"), initial: { type: "contents" } },
+  play: async ({ canvasElement }) => {
+    const levels = within(canvasElement).getByRole("spinbutton", { name: "Levels" });
+    await expect(levels).toHaveAttribute("min", "1");
+    await expect(levels).toHaveAttribute("max", "3");
+    await expect(levels).toHaveAttribute("placeholder", "Default (3)");
+    await userEvent.type(levels, "2");
+    await waitFor(() => expect(nodeOf(canvasElement).levels).toBe(2));
+  },
+};
+
+/** A heading's level is four buttons in one radio group; the default stores nothing and one tab stop reaches the group. */
+export const AHeadingLevelIsAButtonGroupThatStoresTheNumber: Story = {
+  args: { field: fieldOf("heading", "level"), initial: { type: "heading", text: "x", level: 2 } },
+  play: async ({ canvasElement }) => {
+    const group = within(canvasElement).getByRole("radiogroup", { name: "Level" });
+    const radios = within(group).getAllByRole("radio");
+    await expect(radios.map((r) => r.textContent)).toEqual(["1", "2", "3", "4"]);
+    await expect(within(group).getByRole("radio", { name: "2" })).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(within(group).getByRole("radio", { name: "3" }));
     await waitFor(() => expect(nodeOf(canvasElement).level).toBe(3));
+    await expect(within(group).getByRole("radio", { name: "3" })).toHaveAttribute("aria-checked", "true");
+    // Choosing the default removes the key: a heading that never set a level stays as it was.
+    await userEvent.click(within(group).getByRole("radio", { name: "1" }));
+    await waitFor(() => expect(nodeOf(canvasElement).level).toBeUndefined());
+    await expect(within(group).getByRole("radio", { name: "1" })).toHaveAttribute("aria-checked", "true");
+  },
+};
+
+export const AButtonGroupMovesWithTheArrowKeysFromOneTabStop: Story = {
+  args: { field: fieldOf("heading", "level"), initial: { type: "heading", text: "x", level: 2 } },
+  play: async ({ canvasElement }) => {
+    const group = within(canvasElement).getByRole("radiogroup", { name: "Level" });
+    const tabStops = within(group).getAllByRole("radio").filter((r) => r.getAttribute("tabindex") === "0");
+    await expect(tabStops).toHaveLength(1);
+    tabStops[0].focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(nodeOf(canvasElement).level).toBe(3));
+    await expect(within(group).getByRole("radio", { name: "3" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
+    await waitFor(() => expect(nodeOf(canvasElement).level).toBeUndefined());
+  },
+};
+
+/** A level the buttons do not offer (set through the text view or the API) leaves every button unchecked and is kept until one is pressed. */
+export const AValueTheButtonsDoNotOfferIsKeptUntilOneIsPressed: Story = {
+  args: { field: fieldOf("heading", "level"), initial: { type: "heading", text: "x", level: 9 } },
+  play: async ({ canvasElement }) => {
+    const group = within(canvasElement).getByRole("radiogroup", { name: "Level" });
+    for (const radio of within(group).getAllByRole("radio")) await expect(radio).toHaveAttribute("aria-checked", "false");
+    await expect(nodeOf(canvasElement).level).toBe(9);
+    await userEvent.click(within(group).getByRole("radio", { name: "4" }));
+    await waitFor(() => expect(nodeOf(canvasElement).level).toBe(4));
+  },
+};
+
+export const AChoiceDrawnAsButtonsUsesTheSameLabelsAsTheSelect: Story = {
+  args: { field: fieldOf("grid", "align"), initial: { type: "grid" } },
+  play: async ({ canvasElement }) => {
+    const group = within(canvasElement).getByRole("radiogroup", { name: "Alignment" });
+    await expect(within(group).getAllByRole("radio").map((r) => r.textContent)).toEqual(["Left", "Centre", "Right", "Justify"]);
+    await expect(within(group).getByRole("radio", { name: "Left" })).toHaveAttribute("aria-checked", "true");
+    await userEvent.click(within(group).getByRole("radio", { name: "Centre" }));
+    await waitFor(() => expect(nodeOf(canvasElement).align).toBe("center"));
+    await userEvent.click(within(group).getByRole("radio", { name: "Left" }));
+    await waitFor(() => expect(nodeOf(canvasElement).align).toBeUndefined());
+  },
+};
+
+export const AToggleIsAPressedButtonThatStoresTrueOrNothing: Story = {
+  args: { field: fieldOf("grid", "bold"), initial: { type: "grid" } },
+  play: async ({ canvasElement }) => {
+    const bold = within(canvasElement).getByRole("button", { name: "Bold" });
+    await expect(bold).toHaveAttribute("aria-pressed", "false");
+    await userEvent.click(bold);
+    await waitFor(() => expect(nodeOf(canvasElement).bold).toBe(true));
+    await expect(bold).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(bold);
+    await waitFor(() => expect(nodeOf(canvasElement).bold).toBeUndefined());
+  },
+};
+
+export const ButtonControlsAreDisabledWhenReadOnly: Story = {
+  render: () => (
+    <div>
+      <Harness field={fieldOf("grid", "align")} initial={{ type: "grid" }} environment={{ ...env, readOnly: true }} />
+      <Harness field={fieldOf("grid", "bold")} initial={{ type: "grid" }} environment={{ ...env, readOnly: true }} />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    for (const radio of within(canvasElement).getAllByRole("radio")) await expect(radio).toBeDisabled();
+    await expect(within(canvasElement).getByRole("button", { name: "Bold" })).toBeDisabled();
   },
 };
 
@@ -375,6 +517,7 @@ export const ARecordImagesBlockEditsItsRulesAsLists: Story = {
 const fileNameField: BlockField = {
   key: "file_name", label: "File name", kind: "file_name", required: false, help: "", max_length: 200, minimum: null,
   maximum: null, default: null, choices: [], features: [], depends_on: null, families: [], empty_label: "",
+  group: "", basic: false, control: "", inline: false,
 };
 
 /** The layout's File name is a template field: typing sets the key, emptying removes it, and the example is the server's. */

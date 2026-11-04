@@ -545,6 +545,23 @@ export interface FileAsset {
   created_at: string;
 }
 
+/** Where a project's file hangs from (`ProjectFile.source`); labelled by `strings.files.sources` (the labels carry the organisation's terminology). */
+export type ProjectFileSource = "requirement_attachment" | "action_attachment" | "comment_attachment" | "report_image";
+
+/** The sources in the order the Files page's filter offers them. */
+export const PROJECT_FILE_SOURCES: readonly ProjectFileSource[] = [
+  "requirement_attachment", "action_attachment", "comment_attachment", "report_image",
+];
+
+/** The coarse file types the Files page filters by (`ProjectFileFilter.kind`). */
+export type ProjectFileKind = "image" | "document" | "other";
+
+/** One person who uploaded a file in a project (`GET /projects/{id}/files/uploaders`). */
+export interface ProjectFileUploader extends ProjectScopedRow {
+  id: string;
+  display_name: string;
+}
+
 /** One row of `GET /projects/{id}/files` (ProjectFilesPage) — a file
  * reachable from a project's requirements, with the context needed to say
  * where it came from. `requirement_id`/`requirement_unique_code`/
@@ -556,7 +573,7 @@ export interface FileAsset {
 export interface ProjectFile extends ProjectScopedRow {
   file: FileAsset;
   uploaded_by_display_name: string;
-  source: "requirement_attachment" | "action_attachment" | "comment_attachment";
+  source: ProjectFileSource;
   requirement_id: string | null;
   requirement_unique_code: string | null;
   requirement_name: string | null;

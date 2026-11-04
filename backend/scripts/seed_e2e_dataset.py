@@ -31,6 +31,7 @@ Intended primary usage is against a freshly migrated database.
 
 from __future__ import annotations
 
+import base64
 import sys
 
 import httpx
@@ -484,6 +485,21 @@ def upload_comment_attachment(headers: dict, project_id: str, requirement_id: st
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments/{comment_id}/files",
         files={"file": (filename, content, "text/plain")}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# A 1x1 transparent PNG: the project's report image library picture on Alpha-1 (the Files page's preview and source filter).
+E2E_LIBRARY_PICTURE = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
+
+def upload_project_report_image(headers: dict, project_id: str, filename: str, content: bytes) -> dict:
+    """Adds a picture to a project's report image library (it appears on the project's Files page as a library picture)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/report-images", files={"file": (filename, content, "image/png")}, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -1234,6 +1250,7 @@ def main() -> None:
     upload_comment_attachment(
         h_ab, alpha1["id"], alpha1_reqs[5]["id"], files_comment["id"], "e2e-comment-attachment.txt", b"E2E comment attachment.",
     )
+    upload_project_report_image(h_ab, alpha1["id"], "e2e-library-picture.png", E2E_LIBRARY_PICTURE)
 
     print("\nDone. Personas (all password: E2ePass123!):")
     print("  e2e-serveradmin@example.com   - server admin, zero org memberships")
@@ -1257,7 +1274,8 @@ def main() -> None:
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")
     print(f"Files on Alpha-1 ({alpha1['id']}): direct attachment on {alpha1_reqs[4]['unique_code']}, action attachment on "
-          f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']} — one of each project-files origin.")
+          f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']}, and the report image library picture "
+          "'e2e-library-picture.png' — one of each project-files origin.")
     print(f"Compliance standard {FGAC_STANDARD_NAME!r} (id {fgac_standard['id']}) on Alpha — Role Management page's"
           " entity-scope picker fixture.")
     print(f"Personas on Gamma (Stakeholders & Personas enabled for Gamma only): org personas {PERSONA_ORG_WEIGHTED_NAME!r}"

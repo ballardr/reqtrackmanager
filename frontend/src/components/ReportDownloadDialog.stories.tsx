@@ -95,7 +95,9 @@ export const ChoosingAReportShowsStepTwoAndCanGoBack: Story = {
     await expect(within(steps).getByText("Configure and download").closest("li")).toHaveAttribute("aria-current", "step");
     await expect(await dialog.findByText("Apollo")).toBeInTheDocument();
     await expect(dialog.getByText("Requirement coverage")).toBeInTheDocument();
-    await expect(dialog.getByRole("button", { name: "Export" })).toBeInTheDocument();
+    // The formats are a list with one Download button, PDF chosen when nothing has been downloaded yet.
+    await expect(dialog.getByRole("radio", { name: "PDF" })).toBeChecked();
+    await expect(dialog.getByRole("button", { name: "Download" })).toBeInTheDocument();
     // The report is not previewed, so it is never fetched for the screen.
     await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/reports/requirement-coverage?format=json"));
     await userEvent.click(dialog.getByRole("button", { name: "Back" }));

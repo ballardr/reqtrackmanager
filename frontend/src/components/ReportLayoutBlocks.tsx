@@ -55,7 +55,8 @@ import { FieldHelp } from "./FieldHelp";
 import { MenuButton } from "./MenuButton";
 import { ReportLayoutJsonField } from "./ReportLayoutJsonField";
 import { ImageStretchWarning } from "./ImageStretchWarning";
-import { ReportLayoutBlockField, type BlockEnv } from "./ReportLayoutBlockField";
+import { type BlockEnv } from "./ReportLayoutBlockField";
+import { ReportLayoutBlockForm } from "./ReportLayoutBlockForm";
 import { ReportLayoutSettings } from "./ReportLayoutSettings";
 import { ReportSnippetMenu } from "./ReportSnippetMenu";
 import { ReportSnippetPicker, type SnippetPlace } from "./ReportSnippetPicker";
@@ -140,7 +141,7 @@ function describeBlock(node: TreeNode, type: BlockType | undefined): string {
  *   picture), else no Insert snippet button. `onSave`, when given, adds Save as snippet for the selected block.
  */
 export function ReportLayoutBlocks({
-  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, inspectorHost, onInspect, images, colours, fonts, snippets,
+  tree, onChange, family, blocks, catalogue, widgets, problems, readOnly = false, inspectorHost, onInspect, images, colours, fonts, snippets, newLayout = false,
 }: {
   tree: Tree;
   onChange: (next: Tree) => void;
@@ -156,6 +157,8 @@ export function ReportLayoutBlocks({
   /** The branding colour and the organisation's colour scheme, which colour fields offer. */
   colours?: ColourContext;
   fonts?: ReportFontChoice[];
+  /** Whether the layout has not been published beyond its first version; its Page and Margins settings then start open. */
+  newLayout?: boolean;
   snippets?: {
     api: Pick<ReportLayoutApi, "snippets" | "applySnippet">;
     onInserted: (notice: SnippetNoticeData) => void;
@@ -194,7 +197,9 @@ export function ReportLayoutBlocks({
     .filter((n) => n.type === "sheet" && typeof n.name === "string" && n.name !== "")
     .map((n) => ({ name: String(n.name), recordType: sourceRecordType(n.source, []) }));
   const palette = (Array.isArray(tree.palette) ? tree.palette : []) as ColourEntry[];
-  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, sheets, images, colours, fonts, palette, readOnly };
+  const word = (value: unknown) => (typeof value === "string" && value !== "" ? value : undefined);
+  const tableHeadings = { fill: word(tree.table_header_fill), text: word(tree.table_header_text) };
+  const env: BlockEnv = { blocks, catalogue, widgets, variables: declared, pageStyles, sheets, images, colours, fonts, palette, tableHeadings, readOnly };
 
   // The workspace lives as long as the catalogue, family and mode it was built for.
   useEffect(() => {
@@ -416,7 +421,7 @@ export function ReportLayoutBlocks({
       {layoutOpen ? (
         <div className="stack" data-testid="layout-inspector">
           <strong>{text.settingsTitle}</strong>
-          <ReportLayoutSettings tree={tree} onChange={onChange} family={family} blocks={blocks} env={env} problems={problems} />
+          <ReportLayoutSettings tree={tree} onChange={onChange} family={family} blocks={blocks} env={env} problems={problems} newLayout={newLayout} />
         </div>
       ) : node && addr && selected ? (
         <div className="stack" data-testid="block-inspector">
@@ -432,14 +437,12 @@ export function ReportLayoutBlocks({
             ) : null;
           })()}
           {type && type.described ? (
-            type.fields.map((field) => (
-              <ReportLayoutBlockField
-                key={field.key} field={field} node={node} names={namesInScope(tree, addr, types)} env={env}
-                problems={problemsForNode(problems, selected).byKey.get(field.key) ?? []}
-                onChange={(key, value) => onChange(setAt(tree, [...addr, key], value))}
-                onChangeMany={(patch) => onChange(Object.entries(patch).reduce((next, [key, value]) => setAt(next, [...addr, key], value), tree))}
-              />
-            ))
+            <ReportLayoutBlockForm
+              type={type} node={node} names={namesInScope(tree, addr, types)} env={env}
+              problemsByKey={problemsForNode(problems, selected).byKey}
+              onChange={(key, value) => onChange(setAt(tree, [...addr, key], value))}
+              onChangeMany={(patch) => onChange(Object.entries(patch).reduce((next, [key, value]) => setAt(next, [...addr, key], value), tree))}
+            />
           ) : (
             <ReportLayoutJsonField
               label={text.unknownBlock(String(node.type ?? "?"))} value={node} disabled={readOnly}

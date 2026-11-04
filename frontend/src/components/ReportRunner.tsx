@@ -25,7 +25,8 @@
  * - For a custom report with run-time variables, show their form (`ReportVariablesForm`) and send the chosen values
  *   as the `variables` run value; a variable with no default and no value holds the run back until it has one, so
  *   the report is never produced for a choice the person has not made.
- * - Download through the shared `ReportExportButton`, with a toast on success or failure. The organisation's
+ * - Download through the shared `ReportFormatDownload` (a radio list of the report's formats and a Download button;
+ *   a blocked report shows why beside the disabled button), with a toast on success or failure. The organisation's
  *   report look is the server's to apply, not chosen here. Downloads send
  *   the same values as the screen so a file never silently widens the view
  *   (style guide: "report export trigger").
@@ -55,7 +56,7 @@ import { getReportView } from "../modules/registry";
 import { downloadBlob } from "../utils/download";
 import { describeReportLink, reportLinkResolver } from "../utils/reportLinks";
 import { ReportFigureProjectsDialog } from "./ReportFigureProjectsDialog";
-import { ReportExportButton } from "./ReportExportButton";
+import { ReportFormatDownload } from "./ReportFormatDownload";
 import { ReportParamsForm } from "./ReportParamsForm";
 import { ReportVariablesForm } from "./ReportVariablesForm";
 import { ReportViewer, type ReportFigureActionResolver } from "./ReportViewer";
@@ -150,13 +151,15 @@ export function ReportRunner({
     setVariableValues((current) => ({ ...current, [name]: value }));
   }
 
-  async function download(kind: ReportFileKind) {
+  /** Produces the file; resolves `true` when it was delivered or queued, `false` after an error toast. */
+  async function download(kind: ReportFileKind): Promise<boolean> {
     const name = REPORT_FORMAT[kind].label;
     try {
       const blob = await reportsApi.download(entry, kind, runValues);
       // A table layout of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
       downloadBlob(blob, `${entry.slug}.${blob.type === "application/zip" ? "zip" : kind}`);
       showToast(`Downloaded ${entry.title} (${name}).`, "success");
+      return true;
     } catch (err) {
       if (isAsyncRequired(err)) {
         // Too big to produce while the person waits: the same request goes to the background queue and a
@@ -167,13 +170,20 @@ export function ReportRunner({
           window.dispatchEvent(new Event(REPORT_RUN_QUEUED_EVENT));
         } catch (queueErr) {
           showToast(toErrorMessage(queueErr, strings.reportRuns.queueFailed), "error");
+          return false;
         }
-        return;
+        return true;
       }
       showToast(toErrorMessage(err, `Could not generate the ${name} for ${entry.title}.`), "error");
+      return false;
     }
   }
 
+  const blockedReason = needsProject
+    ? strings.reportRuns.needProject
+    : missing.length > 0
+      ? strings.reportVariables.needValues(entry.variables.filter((v) => missing.includes(v.name)).map((v) => v.label))
+      : undefined;
   const busy = showResult && !blocked && settled?.signature !== signature;
   const error = busy ? null : (settled?.error ?? null);
   const view = getReportView(entry.module_key, entry.key);
@@ -209,23 +219,14 @@ export function ReportRunner({
           }
         />
         <ReportVariablesForm variables={entry.variables} values={variableValues} onChange={setVariable} />
-        <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-4)" }}>
-          {!blocked && <ReportExportButton onDownload={download} kinds={entry.formats.filter((f): f is ReportFileKind => f !== "json")} />}
-        </div>
       </div>
+      <ReportFormatDownload
+        onDownload={download} blockedReason={blockedReason}
+        kinds={entry.formats.filter((f): f is ReportFileKind => f !== "json")}
+      />
       {error && (
         <p role="alert" style={{ margin: 0, color: "var(--color-danger)" }}>
           {error}
-        </p>
-      )}
-      {needsProject && (
-        <p role="status" className="text-muted" style={{ margin: 0 }}>
-          {strings.reportRuns.needProject}
-        </p>
-      )}
-      {missing.length > 0 && (
-        <p role="status" className="text-muted" style={{ margin: 0 }}>
-          {strings.reportVariables.needValues(entry.variables.filter((v) => missing.includes(v.name)).map((v) => v.label))}
         </p>
       )}
       {!blocked && result === null && busy && !error && <Spinner label="Running report…" />}

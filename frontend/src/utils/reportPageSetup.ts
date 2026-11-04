@@ -8,7 +8,7 @@
  * - Name the vocabulary and limits the server accepts (`PAGE_SIZES`, `MARGIN_SIDES`, the margin range) so a form can
  *   offer them; the server stays the judge of what is valid.
  * - `readPageSetup` / `writePageSetup`: read the setup from a layout's text (its `@layout document …` line and its
- *   `@pagestyle` lines) and rewrite exactly those lines, leaving every block alone.
+ *   `@pagestyle` lines, and its `@tableheadings` line) and rewrite exactly those lines, leaving every block alone.
  * - `RunningBand`: a header or footer (left, centre and right text, a logo, whether the first page shows it) and the
  *   `@header` / `@footer` lines that state it under the layout or a `@pagestyle` line.
  * - `effectiveMargins`, `pageDimensionsCm`: the numbers a page sketch and a form's placeholders need, with the same
@@ -101,6 +101,12 @@ export interface PageStyleSetup {
   footer?: RunningBand;
 }
 
+/** The colour words of the `@tableheadings` line: the heading row's fill and its text colour. */
+export interface TableHeadings {
+  fill?: string;
+  text?: string;
+}
+
 /** A layout's page setup; the layout's own pages first, then its named styles. */
 export interface PageSetup {
   orientation: PageOrientation;
@@ -112,6 +118,8 @@ export interface PageSetup {
   alignTables?: boolean;
   /** Whether the extra fonts are embedded in Word and OpenDocument files: `true` for `embedfonts`, `false` for `noembedfonts`, `undefined` when the line says neither. Carried so the page setup dialog rewrites the line without losing it. */
   embedFonts?: boolean;
+  /** The layout's default table heading colours (`@tableheadings fill=… text=…`); a word left out is automatic. */
+  tableHeadings?: TableHeadings;
   /** Which projects the layout runs for, as the line states it (`undefined` when it states none, which means any). */
   runScope?: RunScope;
   margins: PageMargins;
@@ -139,6 +147,7 @@ export function effectiveMargins(margins: PageMargins | undefined, inherited: Pa
 
 const HEADER = /^@layout\s+document\b(.*)$/;
 const STYLE_LINE = /^\s*@pagestyle\b(.*)$/;
+const HEADINGS_LINE = /^\s*@tableheadings\b(.*)$/;
 const BAND_LINE = /^\s*@(header|footer)\b(.*)$/;
 const TOKEN = /"(?:[^"\\]|\\.)*"|\S+/g;
 
@@ -274,6 +283,22 @@ function bandLines(holder: { header?: RunningBand; footer?: RunningBand }): stri
   return (["header", "footer"] as const).flatMap((kind) => (holder[kind] ? [bandLine(kind, holder[kind])] : []));
 }
 
+/** The colours a `@tableheadings` line states; words it cannot read are skipped, and no readable word gives `undefined`. */
+function readTableHeadings(words: string): TableHeadings | undefined {
+  const found: TableHeadings = {};
+  for (const word of words.split(/\s+/).filter(Boolean)) {
+    const [key, value] = word.split("=");
+    if ((key === "fill" || key === "text") && value) found[key] = value;
+  }
+  return found.fill || found.text ? found : undefined;
+}
+
+/** The `@tableheadings` line for `headings`, or none when it sets neither colour. */
+function headingsLines(headings: TableHeadings | undefined): string[] {
+  const words = [headings?.fill && `fill=${headings.fill}`, headings?.text && `text=${headings.text}`].filter(Boolean);
+  return words.length > 0 ? [`@tableheadings ${words.join(" ")}`] : [];
+}
+
 /** The page setup a layout's text states, or `null` when the text is not a document layout's (a table has no pages). */
 export function readPageSetup(text: string): PageSetup | null {
   const lines = text.split("\n");
@@ -303,12 +328,14 @@ export function readPageSetup(text: string): PageSetup | null {
       holder = read;
     } else if (band) {
       holder[band[1] as "header" | "footer"] = readBand(band[2]);
+    } else if (HEADINGS_LINE.test(line)) {
+      setup.tableHeadings = readTableHeadings(HEADINGS_LINE.exec(line)![1]);
     }
   }
   return setup;
 }
 
-/** `text` with its `@layout document` line, its `@header` and `@footer` lines and its `@pagestyle` lines rewritten to state `setup`; defaults are left unwritten. */
+/** `text` with its `@layout document` line, its `@header` and `@footer` lines, its `@pagestyle` lines and its `@tableheadings` line rewritten to state `setup`; defaults are left unwritten. */
 export function writePageSetup(text: string, setup: PageSetup): string {
   const lines = text.split("\n");
   if (!HEADER.test(lines[0].trimEnd())) return text;
@@ -326,8 +353,8 @@ export function writePageSetup(text: string, setup: PageSetup): string {
     const words = [style.orientation, style.size].filter((word) => word !== undefined).join(" ");
     return [`@pagestyle ${JSON.stringify(style.name)}${words ? ` ${words}` : ""}${marginsText(style.margins)}`, ...bandLines(style)];
   });
-  const rest = lines.slice(1).filter((line) => !STYLE_LINE.test(line) && !BAND_LINE.test(line));
-  return [header, ...bandLines(setup), ...styles.flat(), ...rest].join("\n");
+  const rest = lines.slice(1).filter((line) => !STYLE_LINE.test(line) && !BAND_LINE.test(line) && !HEADINGS_LINE.test(line));
+  return [header, ...bandLines(setup), ...styles.flat(), ...headingsLines(setup.tableHeadings), ...rest].join("\n");
 }
 
 /** The layout family's pages exist only for a document layout. */
@@ -478,6 +505,31 @@ export function wrapMark(text: string, marker: string, start: number, end: numbe
     text: `${text.slice(0, from)}${marker}${text.slice(from, to)}${marker}${text.slice(to)}`,
     start: from + marker.length, end: to + marker.length,
   };
+}
+
+/** The start of a line that is not words: a list bullet, a number, a heading hash or a quote mark. */
+const LINE_LEAD = /^\s*(?:(?:[-+*]|\d+[.)])\s+|#{1,6}\s+|>\s*)?/;
+
+/**
+ * `text` with every non-blank line's words wrapped in `marker`, for a Bold or Italic press with nothing selected. A line keeps
+ * its list bullet, number, heading hash or quote mark outside the mark, and its leading and trailing spaces, so the mark
+ * stays one the server reads; a blank line is left alone. Text with no words at all gets an empty mark pair, as {@link wrapMark} does.
+ *
+ * @param text The whole text of the box.
+ * @param marker The mark to wrap in (`**` or `*`).
+ * @returns The new text and the selection over all of it.
+ */
+export function wrapWholeText(text: string, marker: string): { text: string; start: number; end: number } {
+  if (text.trim() === "") return wrapMark(text, marker, text.length, text.length);
+  const wrapped = text.split("\n").map((line) => {
+    const lead = LINE_LEAD.exec(line)?.[0] ?? "";
+    const words = line.slice(lead.length).trim();
+    if (words === "") return line;
+    const body = line.slice(lead.length);
+    const trailing = body.slice(body.trimEnd().length);
+    return `${lead}${marker}${words}${marker}${trailing}`;
+  }).join("\n");
+  return { text: wrapped, start: 0, end: wrapped.length };
 }
 
 /**

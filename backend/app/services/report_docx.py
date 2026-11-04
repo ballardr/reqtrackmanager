@@ -876,8 +876,9 @@ def _anchor_to_bottom(doc: DocxDocument, start: int, usable_cm: float, offset_cm
     doc.add_page_break()
 
 
-def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float, usable_height_cm: float) -> None:
-    """A real Word table: shaded, optionally repeating header row, optional zebra rows; image cells hold pictures."""
+def _table(doc: DocxDocument, block: Table, head_fill: str, head_text: str, usable_cm: float, usable_height_cm: float) -> None:
+    """A real Word table: heading row shaded `head_fill` with `head_text` text (six hex digits each), optionally repeating,
+    optional zebra rows; image cells hold pictures."""
     if not block.columns:
         return
     count = len(block.columns)
@@ -899,7 +900,7 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float, usabl
                 run.font.size = font_size
                 if header:
                     run.font.bold = True
-                    run.font.color.rgb = RGBColor.from_string(text_on(accent))  # white or black, whichever the accent needs
+                    run.font.color.rgb = RGBColor.from_string(head_text)
                 elif tone:
                     # A tone overrides the zebra stripe; the text colour is chosen by contrast with the tint.
                     run.font.color.rgb = RGBColor.from_string(text_on(TONE_FILL[tone]))
@@ -910,7 +911,7 @@ def _table(doc: DocxDocument, block: Table, accent: str, usable_cm: float, usabl
             if not _add_text(cell.paragraphs[0], value, style):
                 style(cell.paragraphs[0].add_run(""))  # an all-equation cell still gets its size
             if header:
-                _shade(cell, accent)
+                _shade(cell, head_fill)
             elif tone:
                 _shade(cell, TONE_FILL[tone])
             elif shade:
@@ -942,6 +943,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
     if document.mirror:
         _mirror_margins(doc)
     accent = _hex(document.branding.accent_color_hex if document.branding else None)
+    head_fill, head_text = document.styles.table_head_colours(accent)
 
     properties = doc.core_properties
     properties.title = clean_text(document.title)
@@ -992,7 +994,7 @@ def render_docx_document(document: ReportDocument) -> bytes:
         elif isinstance(block, Image):
             _image_block(doc, block, usable_cm)
         elif isinstance(block, Table):
-            _table(doc, block, accent, usable_cm, usable_height_cm)
+            _table(doc, block, head_fill, head_text, usable_cm, usable_height_cm)
         elif isinstance(block, Grid):
             docx_grid(doc, block, usable_cm, _add_text, _block_look)
         elif isinstance(block, PageBreak):

@@ -160,7 +160,8 @@ def test_an_unset_footer_sits_at_the_bottom_in_pdf_word_odt_and_html():
     with zipfile.ZipFile(io.BytesIO(render_odt_document(doc))) as archive:
         styles = archive.read("styles.xml").decode()
     names = re.findall(r'<table:table-cell table:style-name="(\w+)" office:value-type="string"><text:p text:style-name="Band_', styles)[:3]
-    assert [re.search(rf'style:name="{n}" style:family="table-cell">.*?style:vertical-align="(\w+)"', styles).group(1) for n in names] == ["bottom"] * 3
+    found = [re.search(rf'style:name="{n}" style:family="table-cell">.*?style:vertical-align="(\w+)"', styles).group(1) for n in names]
+    assert found == ["bottom"] * 3
     assert re.findall(r'class="cell \w+" style="align-items: ([\w-]+)"', render_html_document(doc).decode()) == ["flex-end"] * 3
 
 

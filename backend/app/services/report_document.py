@@ -264,7 +264,7 @@ def header_text_color(accent_color):
     return colors.HexColor(f"#{text_on(f'{r:02X}{g:02X}{b:02X}')}")
 
 
-def _unicode_cell(cell, header: bool, accent_color):
+def _unicode_cell(cell, header: bool, accent_color, header_text=None):
     """A plain string cell holding characters Helvetica cannot print, as a Paragraph that can.
 
     A table draws a string cell in Helvetica, which prints those characters as black boxes. Any other
@@ -276,6 +276,7 @@ def _unicode_cell(cell, header: bool, accent_color):
         header: Whether it is in the header row (in the header text colour; the table draws its other
             header strings in regular weight, so this stays regular too).
         accent_color: The header fill, for the header text colour.
+        header_text: The header text colour (a ReportLab colour), or `None` to choose it by contrast with the fill.
 
     Returns:
         The cell, or a Paragraph standing in for it.
@@ -284,13 +285,14 @@ def _unicode_cell(cell, header: bool, accent_color):
         return cell
     style = ParagraphStyle(
         "unicode_cell", parent=STYLES["BodyText"], fontSize=10, leading=12,
-        fontName=active_face(), textColor=header_text_color(accent_color) if header else colors.black,
+        fontName=active_face(), textColor=(header_text or header_text_color(accent_color)) if header else colors.black,
     )
     return Paragraph(safe(cell), style)
 
 
 def styled_table(
     data: list[list], *, col_widths: list[float], accent_color, compact: bool = False, repeat_header: bool = True,
+    header_text=None,
 ) -> Table:
     """An accent-headed table, its header row repeated on each page it runs onto unless `repeat_header` is off.
 
@@ -303,11 +305,13 @@ def styled_table(
             `header_text_color`); `False` for the requirement report's heavier
             grid, whose header text takes that colour here.
         repeat_header: Whether the header row is drawn again at the top of every page the table continues onto.
+        header_text: The header text colour (a ReportLab colour) for the non-compact table and string header cells;
+            `None` chooses it by contrast with `accent_color`.
 
     Returns:
         The table flowable.
     """
-    data = [[_unicode_cell(cell, r == 0, accent_color) for cell in row] for r, row in enumerate(data)]
+    data = [[_unicode_cell(cell, r == 0, accent_color, header_text) for cell in row] for r, row in enumerate(data)]
     table = Table(data, repeatRows=1 if repeat_header else 0, colWidths=col_widths)
     if active_face() != "Helvetica":  # a document font is active: a plain string cell is drawn in it too
         table.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), active_face())]))
@@ -321,7 +325,7 @@ def styled_table(
     else:
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), accent_color),
-            ("TEXTCOLOR", (0, 0), (-1, 0), header_text_color(accent_color)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), header_text or header_text_color(accent_color)),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))

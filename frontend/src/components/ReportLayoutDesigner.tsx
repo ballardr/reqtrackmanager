@@ -835,7 +835,7 @@ export function ReportLayoutDesigner({
                   {blockTypes && <ReportSnippetMenu onInsert={() => void openTextSnippets()} onSave={() => void openTextSave()} />}
                   <ReportLayoutPageSetup
                     text={draft} onChange={setDraft} images={{ library: api.images, scope: api.scope.kind }}
-                    placeholders={catalogue?.placeholders} look={{ fonts, colours }}
+                    placeholders={catalogue?.placeholders} look={{ fonts, colours }} newLayout={detail.current_version <= 1}
                   />
                 </div>
               )}
@@ -913,6 +913,7 @@ export function ReportLayoutDesigner({
                         widgets={widgets} problems={blockProblems} readOnly={!editable}
                         inspectorHost={inspectorHost} onInspect={() => setBlocksTab("block")}
                         images={{ library: api.images, scope: api.scope.kind }} colours={colours} fonts={fonts}
+                        newLayout={detail.current_version <= 1}
                         snippets={{
                           api,
                           onInserted: (notice) => snippetToast.announce(notice),

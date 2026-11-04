@@ -17,19 +17,24 @@
 import type { BlockCatalogue, BlockField, ReportFieldCatalogue, ReportFontChoice, ReportImageLibrary, ReportWidget } from "../api/reportLayouts";
 import type { PackVariableDeclaration } from "../api/reportPacks";
 import { useStrings } from "../context/TerminologyContext";
+import { useTextSelections } from "../hooks/useTextSelections";
 import { newLeaf, sourceRecordType, type NameInScope, type TreeNode } from "../utils/reportLayoutTree";
 import {
-  DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize, type RunningBand,
+  DEFAULT_MARGIN_CM, PAGE_ORIENTATIONS, PAGE_SIZES, styleFromTree, styleToTree, type PageMargins, type PageOrientation, type PageSize, type RunningBand, type TableHeadings,
 } from "../utils/reportPageSetup";
 import type { DocumentStyles } from "../utils/reportFonts";
 import { colourNamesUsed, DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "../utils/reportColours";
 import { ColourChoiceField } from "./ColourChoiceField";
 import { FileNameField } from "./FileNameField";
 import { FontChoiceField } from "./FontChoiceField";
+import { ChoiceButtons } from "./ChoiceButtons";
+import { FieldHelp } from "./FieldHelp";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
+import { ToggleButton } from "./ToggleButton";
 import { ReportImageField } from "./ReportImageField";
 import { TextListField } from "./TextListField";
 import { LabeledSelect } from "./LabeledSelect";
+import { MarkButtons } from "./MarkButtons";
 import { ConditionNodeEditor, type Condition, type ConditionEnv } from "./ReportLayoutConditionEditor";
 import { ReportColourSchemeEditor } from "./ReportColourSchemeEditor";
 import { ReportDocumentStylesField } from "./ReportDocumentStylesField";
@@ -64,6 +69,8 @@ export interface BlockEnv {
   fonts?: ReportFontChoice[];
   /** The layout's own colour scheme (the root's `palette`). */
   palette?: ColourEntry[];
+  /** The layout's default table heading colours (the root's `table_header_fill` and `table_header_text`). */
+  tableHeadings?: TableHeadings;
   readOnly: boolean;
 }
 
@@ -113,20 +120,69 @@ export function ReportLayoutBlockField({
       )}
     </AddPopoverButton>
   ) : undefined;
+  const hasMarks = field.features.includes("marks") || field.features.includes("markdown");
+  const selections = useTextSelections<string>();
+  /** Bold and Italic beside a text that reads `**` and `*` marks: they wrap the words selected in the field. */
+  const markButtons = hasMarks && !disabled ? (
+    <MarkButtons
+      nameOf={(mark) => text.markField(field.label, mark)}
+      onMark={(marker) => selections.mark(field.key, asText, marker, setText)}
+    />
+  ) : undefined;
+  const beside = insertPlus || markButtons ? <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>{insertPlus}{markButtons}</span> : undefined;
+  const selectionProps = { onSelect: selections.remember(field.key), onBlur: selections.remember(field.key) };
   /** The layout's own colour scheme: the root's `palette`, which a block's colour field may name. */
   const layoutPalette = (field.kind === "palette" ? (Array.isArray(value) ? value : []) : env.palette ?? []) as ColourEntry[];
 
   let control;
-  switch (field.kind) {
+  switch (field.control === "choice-buttons" && (field.kind === "choice" || field.kind === "integer") ? "choice-buttons"
+    : field.control === "toggle" && field.kind === "boolean" ? "toggle" : field.kind) {
+    case "choice-buttons": {
+      // Choosing the default stores nothing, like clearing the select did, so a block that never set the key stays as it was.
+      const isChoice = field.kind === "choice";
+      const options: { value: string | number; label: string }[] = isChoice
+        ? field.choices.map((c) => ({
+          value: c, label: (labelScope ? text.choiceLabels[`${labelScope}.${field.key}`]?.[c] : undefined) ?? text.choiceLabels[field.key]?.[c] ?? c,
+        }))
+        : Array.from({ length: (field.maximum ?? 0) - (field.minimum ?? 0) + 1 }, (_, i) => {
+          const n = (field.minimum ?? 0) + i;
+          return { value: n, label: String(n) };
+        });
+      const current = value === undefined ? field.default : value;
+      control = (
+        <ChoiceButtons
+          label={field.label} value={(typeof current === "string" || typeof current === "number" ? current : "") as string | number}
+          options={options} disabled={disabled} help={help} required={field.required}
+          onChange={(next) => set(next === field.default && !field.required ? undefined : next)}
+        />
+      );
+      break;
+    }
+    case "toggle":
+      control = (
+        <span className="row" style={{ gap: "var(--space-2)", flexWrap: "nowrap" }}>
+          <ToggleButton
+            label={field.label} iconOnly={false} disabled={disabled} pressed={value === undefined ? field.default === true : value === true}
+            onClick={() => {
+              const on = !(value === undefined ? field.default === true : value === true);
+              set(field.default === true ? (on ? undefined : false) : on ? true : undefined);
+            }}
+          >
+            {field.label}
+          </ToggleButton>
+          {help && <FieldHelp label={field.label} help={help} />}
+        </span>
+      );
+      break;
     case "text":
     case "tex":
     case "alias":
       control = (
         <TextField
           label={field.label} value={asText} onChange={setText} disabled={disabled} help={help} required={field.required}
-          labelExtra={field.kind === "text" ? insertPlus : undefined}
+          labelExtra={field.kind === "text" ? beside : undefined}
           placeholder={field.kind === "alias" && typeof field.default === "string" ? field.default : undefined}
-          inputProps={{ maxLength: field.max_length ?? undefined, spellCheck: field.kind === "tex" ? false : undefined }}
+          inputProps={{ maxLength: field.max_length ?? undefined, spellCheck: field.kind === "tex" ? false : undefined, ...selectionProps }}
         />
       );
       break;
@@ -142,7 +198,7 @@ export function ReportLayoutBlockField({
       control = (
         <TextAreaField
           label={field.label} value={asText} onChange={setText} disabled={disabled} help={help} required={field.required} rows={4}
-          labelExtra={insertPlus} inputProps={{ maxLength: field.max_length ?? undefined }}
+          labelExtra={beside} inputProps={{ maxLength: field.max_length ?? undefined, ...selectionProps }}
         />
       );
       break;
@@ -365,13 +421,14 @@ export function ReportLayoutBlockField({
       const gridText = strings.reportGrid;
       control = (
         <ReportGridField
-          label={gridText.fieldLabel} help={gridText.fieldHelp} node={node} disabled={disabled} colours={env.colours} palette={env.palette} fonts={env.fonts}
+          label={gridText.fieldLabel} help={gridText.fieldHelp} node={node} disabled={disabled} colours={env.colours} palette={env.palette} tableHeadings={env.tableHeadings} fonts={env.fonts}
           onSave={(patch) => (onChangeMany ? onChangeMany({ ...patch }) : Object.entries(patch).forEach(([key, v]) => onChange(key, v)))}
           renderCellText={(cell, onText, label) => (
             <ReportLayoutBlockField
               field={{
                 key: "text", label, kind: "longtext", required: false, help: gridText.cellTextHelp, max_length: 2000, minimum: null, maximum: null,
                 default: null, choices: [], features: ["placeholders", "math", "markdown"], depends_on: null, families: [], empty_label: "",
+                group: "", basic: false, control: "", inline: false,
               }}
               node={cell} names={names} env={env} problems={[]} onChange={(_, next) => onText(typeof next === "string" ? next : "")}
             />

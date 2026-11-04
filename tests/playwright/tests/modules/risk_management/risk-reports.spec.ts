@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { installCleanupHook } from "../../e2e-workflows/helpers";
 import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
 import { API_BASE_URL, createRisk, riskLevels, setUpOrg } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../../reportDownload";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -106,12 +107,12 @@ test.describe("Risk Management: reports", () => {
     for (const report of REPORTS) {
       await test.step(`${report.title}: PDF and CSV`, async () => {
         await chooseReport(page, report.title);
-        await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+        await expect(reportDownloadButton(page)).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
-          await page.getByRole("button", { name: "Export" }).click();
+          await pickReportFormat(page, kind);
           const [download] = await Promise.all([
             page.waitForEvent("download"),
-            page.getByRole("button", { name: `Download ${kind} report` }).click(),
+            reportDownloadButton(page).click(),
           ]);
           expect(download.suggestedFilename()).toBe(`${report.slug}.${kind.toLowerCase()}`);
           if (kind === "CSV" && report.slug === "risk-register") {

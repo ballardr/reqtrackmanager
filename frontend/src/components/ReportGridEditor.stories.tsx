@@ -4,15 +4,16 @@ import { expect, userEvent, within } from "storybook/test";
 
 import { buildColourContext } from "../testing/reportLayoutFixtures";
 import { blankShape, type Obj } from "../utils/reportGrid";
+import type { TableHeadings } from "../utils/reportPageSetup";
 import { ReportGridEditor, type GridDraft } from "./ReportGridEditor";
 import { TextAreaField } from "./FormFields";
 
-function Harness({ initial, readOnly = false, gridStyle }: { initial: GridDraft; readOnly?: boolean; gridStyle?: Obj }) {
+function Harness({ initial, readOnly = false, gridStyle, tableHeadings }: { initial: GridDraft; readOnly?: boolean; gridStyle?: Obj; tableHeadings?: TableHeadings }) {
   const [value, setValue] = useState(initial);
   return (
     <>
       <ReportGridEditor
-        value={value} onChange={setValue} readOnly={readOnly} gridStyle={gridStyle} colours={buildColourContext()}
+        value={value} onChange={setValue} readOnly={readOnly} gridStyle={gridStyle} colours={buildColourContext()} tableHeadings={tableHeadings}
         renderCellText={(cell, onText, label) => <TextAreaField helpNotNeeded label={label} value={String(cell.text ?? "")} onChange={onText} />}
       />
       <output data-testid="value">{JSON.stringify(value)}</output>
@@ -274,5 +275,34 @@ export const TheSelectionHintIsBehindAHelpButton: Story = {
     await expect(canvas.queryByText(/Shift\+click or Shift\+arrow keys/)).not.toBeInTheDocument();
     canvas.getByRole("button", { name: "Help: Selecting cells" }).focus();
     await expect(await within(document.body).findByRole("tooltip", { hidden: true })).toHaveTextContent(/Shift\+click/);
+  },
+};
+
+/** A heading row takes the layout's heading colours until a cell sets its own, and its colour fields say "Layout default". */
+export const HeadingRowsTakeTheLayoutsDefaultColours: Story = {
+  args: { initial: { ...grid3x3(), header_rows: 1 }, tableHeadings: { fill: "#102030" } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(cell(canvas, 1, 1)).toHaveStyle({ backgroundColor: "rgb(16, 32, 48)", color: "rgb(255, 255, 255)" });
+    await expect(cell(canvas, 2, 1)).not.toHaveStyle({ backgroundColor: "rgb(16, 32, 48)" });
+    await userEvent.click(cell(canvas, 1, 1));
+    await expect(canvas.getByRole("button", { name: "Fill: Layout default" })).toBeInTheDocument();
+    await userEvent.click(cell(canvas, 2, 1));
+    await expect(canvas.getByRole("button", { name: "Fill: Table default" })).toBeInTheDocument();
+    // A cell with a fill of its own keeps it, and does not borrow the layout's text colour.
+    await userEvent.click(cell(canvas, 1, 2));
+    await userEvent.click(canvas.getByRole("button", { name: "Fill: Layout default" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: /^White/ }));
+    await expect(cell(canvas, 1, 2)).toHaveStyle({ backgroundColor: "rgb(255, 255, 255)" });
+    await expect(cell(canvas, 1, 2)).not.toHaveStyle({ color: "rgb(255, 255, 255)" });
+  },
+};
+
+export const WithoutALayoutDefaultHeadingRowsStayPlain: Story = {
+  args: { initial: { ...grid3x3(), header_rows: 1 } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(cell(canvas, 1, 1));
+    await expect(canvas.getByRole("button", { name: "Fill: Table default" })).toBeInTheDocument();
   },
 };

@@ -60,7 +60,6 @@ from app.services.report_column_width import resolve_table_widths_cm
 from app.services.report_document import (
     STYLES,
     ReportBranding,
-    header_text_color,
     image_flowable,
     safe,
     styled_table,
@@ -478,8 +477,8 @@ def _image_cell(cell: ImageCell, column_width: float, usable_height: float) -> l
     return flowables or ""
 
 
-def _table(block: Table, accent, usable_width: float, usable_height: float, images: _InlineImages, look: _Look):
-    """A block table as a styled ReportLab table (compact or plain grid)."""
+def _table(block: Table, head_fill, head_text, usable_width: float, usable_height: float, images: _InlineImages, look: _Look):
+    """A block table as a styled ReportLab table (compact or plain grid), its heading row filled `head_fill` with `head_text`."""
     if block.widths:
         widths = [w * cm for w in resolve_table_widths_cm(block.widths, usable_width / cm, block.weights)]
     elif block.col_widths_cm:
@@ -491,7 +490,7 @@ def _table(block: Table, accent, usable_width: float, usable_height: float, imag
     else:
         widths = [usable_width / len(block.columns)] * len(block.columns)
     body_style = look.cell if block.compact else look.plain_cell
-    head_style = ParagraphStyle("report_head_text", parent=look.head, textColor=header_text_color(accent))
+    head_style = ParagraphStyle("report_head_text", parent=look.head, textColor=head_text)
     data: list[list[Any]] = [[RlParagraph(safe(c, bold=True), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
     data += [
         [
@@ -501,7 +500,9 @@ def _table(block: Table, accent, usable_width: float, usable_height: float, imag
         ]
         for r, row in enumerate(block.rows)
     ]
-    return styled_table(data, col_widths=widths, accent_color=accent, compact=block.compact, repeat_header=block.repeat_header)
+    return styled_table(
+        data, col_widths=widths, accent_color=head_fill, compact=block.compact, repeat_header=block.repeat_header, header_text=head_text,
+    )
 
 
 class _Doc(BaseDocTemplate):
@@ -738,7 +739,10 @@ def _pdf_bytes(document: ReportDocument, look: _Look, pages: dict[str, int], fou
         The PDF bytes.
     """
     branding = document.branding
-    accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
+    fill_hex, text_hex = document.styles.table_head_colours(
+        (branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex,
+    )
+    head_fill, head_text = colors.HexColor(f"#{fill_hex}"), colors.HexColor(f"#{text_hex}")
     styles = [document.style]
     usable_width = document.style.usable_width_cm * cm
     usable_height = document.style.usable_height_cm * cm
@@ -784,7 +788,7 @@ def _pdf_bytes(document: ReportDocument, look: _Look, pages: dict[str, int], fou
             else:
                 story.extend(_image_flowables(block, usable_width, look))
         elif isinstance(block, Table):
-            story.append(_table(block, accent, usable_width, usable_height, images, look))
+            story.append(_table(block, head_fill, head_text, usable_width, usable_height, images, look))
             if any(isinstance(following, Table) for following in document.blocks[position + 1:position + 2]):
                 story.append(Spacer(1, TABLE_GAP_CM * cm))  # tables that follow one another must not touch
         elif isinstance(block, Grid):

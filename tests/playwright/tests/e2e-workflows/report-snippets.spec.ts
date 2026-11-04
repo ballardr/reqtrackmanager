@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
-import { closeDesignerPreview, deleteOrgOnCleanup, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView, designerPreviewPanel } from "./helpers";
+import { closeDesignerPreview, deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, openDesignerPreview, PASSWORD, saveNewVersion, selectProjectAdminGroup, openDesignerTextView, designerPreviewPanel } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 /** A 1 x 1 pixel PNG. */
@@ -127,6 +127,7 @@ test.describe("Report snippets", () => {
     await expect(page.locator(".toast", { hasText: "Inserted Logo, top right of the first page" })).toBeVisible();
     // The picture is on an Image block, in front of the text, placed from the page.
     await expect(page.getByLabel("Block details").getByText(fileName)).toBeVisible();
+    await ensureExpanded(page, "Position");
     await expect(page.getByLabel("Block details").getByRole("combobox", { name: "Placement" })).toHaveValue("front");
   });
 

@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { installCleanupHook } from "../../e2e-workflows/helpers";
 import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
 import { API_BASE_URL, setUpOrg } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../../reportDownload";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -129,12 +130,12 @@ test.describe("Stakeholders & Personas: Reports", () => {
     for (const title of REPORTS) {
       await test.step(`${title}: PDF and CSV`, async () => {
         await chooseReport(page, title);
-        await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+        await expect(reportDownloadButton(page)).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
-          await page.getByRole("button", { name: "Export" }).click();
+          await pickReportFormat(page, kind);
           const [download] = await Promise.all([
             page.waitForEvent("download"),
-            page.getByRole("button", { name: `Download ${kind} report` }).click(),
+            reportDownloadButton(page).click(),
           ]);
           expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${kind.toLowerCase()}$`));
           await expect(page.getByText(`Downloaded ${title} (${kind}).`)).toBeVisible();

@@ -385,6 +385,7 @@ test.describe("Report layout designer", () => {
 
     await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
     const popover = page.getByRole("dialog", { name: "Page setup" });
+    await ensureExpanded(page, "Page");
     await popover.getByRole("combobox", { name: "Page size" }).selectOption("Letter");
     await popover.getByRole("combobox", { name: "Orientation" }).selectOption("landscape");
     await expect(editor).toHaveValue(/^@layout document landscape Letter\n/);
@@ -406,9 +407,23 @@ test.describe("Report layout designer", () => {
     await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
     const inspector = page.getByLabel("Block details");
 
-    await test.step("the basic set and the header and footer are open; the others start closed unless left open before", async () => {
+    await test.step("a new layout opens Page and Margins; the header, footer and others start closed unless left open before", async () => {
       await expect(inspector.getByRole("combobox", { name: "Page orientation" })).toBeVisible();
-      await expect(inspector.getByRole("button", { name: "Header and footer section" })).toHaveAttribute("aria-expanded", "true");
+      await expect(inspector.getByRole("button", { name: "Header section" })).toHaveAttribute("aria-expanded", "false");
+      await expect(inspector.getByRole("button", { name: "Footer section" })).toHaveAttribute("aria-expanded", "false");
+    });
+
+    await test.step("the footer opens and closes on its own, the header is not affected, and the state is kept after a reload", async () => {
+      await inspector.getByRole("button", { name: "Footer section" }).click();
+      await expect(inspector.getByRole("combobox", { name: "Footer: print" })).toBeVisible();
+      await expect(inspector.getByRole("combobox", { name: "Header: print" })).toHaveCount(0);
+      await expect(inspector.getByRole("button", { name: "Header section" })).toHaveAttribute("aria-expanded", "false");
+      await page.reload();
+      await page.getByRole("tab", { name: "Blocks" }).click();
+      await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+      await expect(page.getByLabel("Block details").getByRole("combobox", { name: "Footer: print" })).toBeVisible();
+      await page.getByLabel("Block details").getByRole("button", { name: "Footer section" }).click();
+      await expect(page.getByLabel("Block details").getByRole("button", { name: "Footer section" })).toHaveAttribute("aria-expanded", "false");
     });
 
     await test.step("a changed setting inside a group is marked on the bar once the group is closed", async () => {
@@ -437,6 +452,8 @@ test.describe("Report layout designer", () => {
     await test.step("margins, mirroring and a landscape A3 style are written as header lines", async () => {
       await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
       const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await ensureExpanded(page, "Page");
+      await ensureExpanded(page, "Margins");
       await dialog.getByRole("spinbutton", { name: "Top" }).first().fill("2");
       await dialog.getByRole("spinbutton", { name: "Gutter" }).first().fill("1");
       await dialog.getByRole("checkbox", { name: "Mirror margins" }).check();
@@ -471,6 +488,7 @@ test.describe("Report layout designer", () => {
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
       await ensureExpanded(page, "Page styles");
+      await ensureExpanded(page, "Page");
       await expect(page.getByRole("group", { name: "Wide tables" })).toBeVisible();
       await expect(page.getByRole("checkbox", { name: "Mirror margins" })).toBeChecked();
     });
@@ -482,9 +500,11 @@ test.describe("Report layout designer", () => {
     await openDesignerTextView(page);
     const editor = page.getByRole("textbox", { name: "Layout text" });
 
-    await test.step("own text in the header's centre cell and the footer's right cell is written as @header and @footer lines", async () => {
+    await test.step("custom text in the header's centre cell and the footer's right cell is written as @header and @footer lines", async () => {
       await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
       const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await ensureExpanded(page, "Header");
+      await ensureExpanded(page, "Footer");
       await dialog.getByRole("combobox", { name: "Header: print" }).selectOption("custom");
       await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");
       await dialog.getByRole("combobox", { name: "Footer: print" }).selectOption("custom");
@@ -513,12 +533,14 @@ test.describe("Report layout designer", () => {
       await expect(page.getByText("The text is valid.")).toBeVisible();
     });
 
-    await test.step("saved and reloaded, the block editor shows both as their own text", async () => {
+    await test.step("saved and reloaded, the block editor shows both as custom text", async () => {
       await saveNewVersion(page);
       await expect(page.getByText("Saved as version 2.")).toBeVisible();
       await page.reload();
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText", { hasText: /^Layout$/ }).click();
+      await ensureExpanded(page, "Header");
+      await ensureExpanded(page, "Footer");
       await expect(page.getByRole("combobox", { name: "Header: print" })).toHaveValue("custom");
       await expect(page.getByRole("textbox", { name: "Footer, right cell" })).toHaveValue("Page {{page}} of {{pages}}");
     });
@@ -533,6 +555,7 @@ test.describe("Report layout designer", () => {
     await test.step("a fixed left width and a bottom-aligned right cell are written as header clauses", async () => {
       await page.getByRole("button", { name: "Page setup: A4, portrait" }).click();
       const dialog = page.getByRole("dialog", { name: "Page setup" });
+      await ensureExpanded(page, "Header");
       await dialog.getByRole("combobox", { name: "Header: print" }).selectOption("custom");
       await dialog.getByRole("textbox", { name: "Header, left cell" }).fill("Ballard");
       await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");

@@ -359,14 +359,15 @@ class _Body:
             self.styles.append(
                 _paragraph_style(f"P_Style{index}", extra=f' style:master-page-name="{_master_name(index)}"', para='fo:margin-bottom="0cm"'),
             )
-        header_text = f"#{text_on(self.accent.lstrip('#'))}"
+        head_fill, head_text = self.document.styles.table_head_colours(self.accent)
+        header_text = f"#{head_text}"
         border = 'fo:border="0.5pt solid #999999" fo:padding="0.08cm"'
 
         def cell(name: str, fill: str | None) -> str:
             background = f' fo:background-color="{fill}"' if fill else ""
             return f'<style:style style:name="{name}" style:family="table-cell"><style:table-cell-properties {border}{background}/></style:style>'
 
-        self.styles.append(cell("C_hdr", self.accent))
+        self.styles.append(cell("C_hdr", f"#{head_fill}"))
         self.styles.append(cell("C_body", None))
         self.styles.append(cell("C_zebra", _ZEBRA))
         for tone, fill in TONE_FILL.items():

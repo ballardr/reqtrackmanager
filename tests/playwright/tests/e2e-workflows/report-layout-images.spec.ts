@@ -83,9 +83,11 @@ test.describe("Report layout images", () => {
     });
 
     await test.step("size, alignment and caption are set on the block", async () => {
+      await ensureExpanded(page, "Size");
+      await ensureExpanded(page, "Caption");
       await inspector.getByRole("spinbutton", { name: "Width", exact: true }).fill("85");
       await inspector.getByRole("combobox", { name: "Width unit" }).selectOption({ label: "Millimetres (mm)" });
-      await inspector.getByRole("combobox", { name: "Alignment" }).selectOption("right");
+      await inspector.getByRole("radio", { name: "Right", exact: true }).click();
       await inspector.getByRole("textbox", { name: "Caption" }).fill("The logo of {{project_name}}");
       await expect(page.getByText("No problems.")).toBeVisible();
     });
@@ -146,6 +148,7 @@ test.describe("Report layout images", () => {
     await selectProjectAdminGroup(page, "Reports");
     await newLayout(page, `E2E auto size ${suffix}`);
     const inspector = await addPicture(page, `square-${suffix}.png`);
+    await ensureExpanded(page, "Size");
     const width = inspector.getByRole("spinbutton", { name: "Width", exact: true });
     const height = inspector.getByRole("spinbutton", { name: "Height", exact: true });
     const stretched = inspector.getByRole("status").filter({ hasText: "will print stretched" });
@@ -296,6 +299,8 @@ test.describe("Report layout images", () => {
     await newLayout(page, `E2E placement ${suffix}`);
     const inspector = await addPicture(page, `placed-${suffix}.png`);
     await inspector.getByRole("textbox", { name: "Alternative text" }).fill("A mark");
+    await ensureExpanded(page, "Size");
+    await ensureExpanded(page, "Position");
     await inspector.getByRole("spinbutton", { name: "Width", exact: true }).fill("4");
 
     async function previewFrame() {
@@ -309,7 +314,7 @@ test.describe("Report layout images", () => {
       await inspector.getByRole("combobox", { name: "Placement" }).selectOption({ label: "Text wraps beside it" });
       await expect(inspector.getByText("Text wraps beside a picture aligned left or right: choose which side the picture is on.")).toBeVisible();
       await expect(page.getByRole("button", { name: "Save new version" }).first()).toBeDisabled();
-      await inspector.getByRole("combobox", { name: "Alignment" }).selectOption("right");
+      await inspector.getByRole("radio", { name: "Right", exact: true }).click();
       await expect(page.getByText("No problems.")).toBeVisible();
       const { dialog, frame } = await previewFrame();
       await expect(frame.locator("figure.image.wrap-right img[alt='A mark']")).toBeVisible();
@@ -317,7 +322,7 @@ test.describe("Report layout images", () => {
     });
 
     await test.step("a picture over the page has a position from a corner, in the text view and the preview", async () => {
-      await inspector.getByRole("combobox", { name: "Alignment" }).selectOption("center");
+      // The picture is still aligned right from the step above; an explicit alignment is refused on a layered picture.
       await inspector.getByRole("combobox", { name: "Placement" }).selectOption({ label: "Behind the text" });
       await expect(inspector.getByText(/A picture behind the text is placed by its anchor and offsets/)).toBeVisible();
     });
@@ -330,6 +335,7 @@ test.describe("Report layout images", () => {
     await newLayout(page, `E2E layered ${suffix}`);
     const inspector = await addPicture(page, `layered-${suffix}.png`);
     await inspector.getByRole("textbox", { name: "Alternative text" }).fill("A watermark");
+    await ensureExpanded(page, "Position");
     await inspector.getByRole("combobox", { name: "Placement" }).selectOption({ label: "Behind the text" });
     await inspector.getByRole("combobox", { name: "Position from" }).selectOption({ label: "The corner of the page" });
     await inspector.getByRole("spinbutton", { name: "Across (cm)" }).fill("2");
@@ -358,6 +364,7 @@ test.describe("Report layout images", () => {
     await test.step("a picture in line has no position, and the problem says so", async () => {
       await page.getByRole("tab", { name: "Blocks" }).click();
       await page.locator(".blocklyText.rl-block-title", { hasText: /Image/ }).first().click();
+      await ensureExpanded(page, "Position");
       await page.getByLabel("Block details").getByRole("combobox", { name: "Placement" }).selectOption({ label: "In line" });
       await expect(page.getByLabel("Block details").getByText(/Only a picture placed behind or in front of the text has a position/).first()).toBeVisible();
     });

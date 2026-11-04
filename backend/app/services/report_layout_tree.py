@@ -85,7 +85,7 @@ from app.services.report_grid import (
     MAX_GRID_ROWS,
     place_spans,
 )
-from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockProvides, BlockSchema
+from app.services.report_layout_block_schema import BlockContainer, BlockField, BlockGroup, BlockProvides, BlockSchema
 from app.services.report_math import MAX_TEX_CHARS, split_math, tex_problem
 from app.services.report_model import CELL_ARRANGEMENTS, CONTENTS_SHEET_NAME, MAX_CONTENTS_LEVELS, PLACEHOLDER_NAMES, PLACEHOLDER_RE
 from app.services.report_org_values import ORG_FAMILY, ORG_LOGO_FILE, ORG_VALUE_KEYS, org_value_kind
@@ -429,6 +429,7 @@ class TreeValidator:
             optional=(
                 "orientation", "page_size", "margins", "mirror_margins", "page_styles", "header", "footer", "variables", "file_name",
                 "repeat_table_header", "align_tables", "contents_sheet", "run_scope", "palette", "styles", "embed_fonts",
+                "table_header_fill", "table_header_text",
             ),
         )
         if tree.get("schema_version") != TREE_SCHEMA_VERSION:
@@ -475,6 +476,13 @@ class TreeValidator:
             else:
                 for path, message in document_styles_problems(tree["styles"], self.colour_names):
                     self.error(path, message)
+        for key in ("table_header_fill", "table_header_text"):
+            if key not in tree:
+                continue
+            if declared != FAMILY_DOCUMENT:
+                self.error(key, "Only a document layout has table headings to colour.")
+            elif problem := colour_word_problem(tree[key], self.colour_names, allow_none=False):
+                self.error(key, problem)
         if "embed_fonts" in tree:
             if declared != FAMILY_DOCUMENT:
                 self.error("embed_fonts", "Only a document layout has Word and OpenDocument files to embed fonts in.")
@@ -1877,7 +1885,7 @@ def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
 _PLACEHOLDER_HELP = "Use {{record.field}} for a value and {{project_name}} for the project."
 #: Offered on every described block type: a name for the designer only, never printed or used in a placeholder.
 LABEL_FIELD = BlockField(
-    "label", "Label", "text", max_length=MAX_NAME_CHARS,
+    "label", "Label", "text", max_length=MAX_NAME_CHARS, basic=True,
     help="A name for this block in the designer, for example Open requirements. It can hold capitals and spaces and is never printed; "
          "other blocks still refer to this one by its Name.",
 )
@@ -1924,10 +1932,10 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
     "heading": BlockSchema(
         "Heading", "A heading in the document.",
         (
-            BlockField("text", "Heading", "text", required=True, max_length=500, features=("placeholders", "math"),
+            BlockField("text", "Heading", "text", required=True, max_length=500, features=("placeholders", "math", "marks"),
                        help=f"The heading's words. {_PLACEHOLDER_HELP} *Italic*, **bold** and `code` marks work as in text; a heading "
                        "is bold already unless the document's heading style turns that off."),
-            BlockField("level", "Level", "integer", minimum=1, maximum=4, default=1,
+            BlockField("level", "Level", "integer", minimum=1, maximum=4, default=1, control="choice-buttons",
                        help="1 is the largest. A table of contents lists levels 1 to 3."),
             BlockField("font", "Font", "font", empty_label="Document heading font",
                        help="The font of this heading only. Typically left empty so it follows the document's heading font."),
@@ -1991,46 +1999,53 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
     "image": BlockSchema(
         "Image", "A picture from the image library: in line with the text, with text wrapped beside it, or behind or in front of it.",
         (
-            BlockField("file", "Image", "image", required=True,
+            BlockField("file", "Image", "image", basic=True, required=True,
                        help="A picture from the library: the project's own and the organisation's (an organisation layout "
                        "can use organisation images only). PNG, JPEG, GIF, WebP, plain SVG and EPS (converted to SVG on upload)."),
-            BlockField("alt", "Alternative text", "text", max_length=MAX_ALT_CHARS,
+            BlockField("alt", "Alternative text", "text", basic=True, max_length=MAX_ALT_CHARS,
                        help="What the picture shows, for readers who cannot see it. Required unless the image is decorative."),
-            BlockField("decorative", "Decorative", "boolean", default=False,
+            BlockField("decorative", "Decorative", "boolean", basic=True, default=False,
                        help="Tick for a picture that adds no information (a rule, a flourish): it needs no alternative text."),
-            BlockField("width", "Width", "number", minimum=1, maximum=1000, empty_label="Auto",
+            BlockField("width", "Width", "number", group="size", minimum=1, maximum=1000, empty_label="Auto",
                        help="How wide to print it. Auto (leave it empty) uses the picture's own size, never wider than the text; "
                        "with a height set, Auto keeps the picture's shape. Set only one of Width and Height to keep the ratio."),
-            BlockField("width_unit", "Width unit", "choice", choices=IMAGE_UNITS, default="cm", depends_on="width",
+            BlockField("width_unit", "Width unit", "choice", inline=True, group="size", choices=IMAGE_UNITS, default="cm", depends_on="width",
                        help="Centimetres, millimetres, or a percentage of the width of the text."),
-            BlockField("height", "Height", "number", minimum=0.5, maximum=1000, empty_label="Auto",
+            BlockField("height", "Height", "number", group="size", minimum=0.5, maximum=1000, empty_label="Auto",
                        help="Size by height instead. Auto (leave it empty) keeps the picture's shape. Set both Width and Height "
                        "to stretch the picture to an exact size."),
-            BlockField("height_unit", "Height unit", "choice", choices=IMAGE_HEIGHT_UNITS, default="cm", depends_on="height",
+            BlockField("height_unit", "Height unit", "choice", inline=True, group="size", choices=IMAGE_HEIGHT_UNITS, default="cm",
+                       depends_on="height",
                        help="Centimetres or millimetres."),
-            BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
+            BlockField("align", "Alignment", "choice", basic=True, control="choice-buttons", choices=IMAGE_ALIGNMENTS, default="center",
                        help="Where it sits across the text width."),
-            BlockField("placement", "Placement", "choice", choices=IMAGE_PLACEMENTS, default="inline",
+            BlockField("placement", "Placement", "choice", group="position", choices=IMAGE_PLACEMENTS, default="inline",
                        help="In line: the picture has a line of its own. Wrap: the text that follows runs beside it (set Alignment "
                        "to the side the picture is on). Behind or In front: laid over the page under or over the text, at the "
                        "position set below; no caption."),
-            BlockField("anchor", "Position from", "choice", choices=IMAGE_ANCHORS, default="paragraph", depends_on="placement",
+            BlockField("anchor", "Position from", "choice", group="position", choices=IMAGE_ANCHORS, default="paragraph", depends_on="placement",
                        help="Behind and In front only. Paragraph: measured from where this block sits in the text. Margin: from the "
                        "corner of the text area of the page. Page: from the corner of the sheet (a watermark). The browser preview "
                        "has no pages and measures Margin and Page from where the block sits."),
-            BlockField("offset_x", "Across (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+            BlockField("offset_x", "Across (cm)", "number", group="position", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
                        depends_on="placement",
                        help="Behind and In front only. Centimetres to the right of the corner it is measured from; negative goes left."),
-            BlockField("offset_y", "Down (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+            BlockField("offset_y", "Down (cm)", "number", group="position", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
                        depends_on="placement",
                        help="Behind and In front only. Centimetres below the corner it is measured from; negative goes up."),
-            BlockField("caption", "Caption", "text", max_length=MAX_CAPTION_CHARS, features=("placeholders",),
+            BlockField("caption", "Caption", "text", group="caption", max_length=MAX_CAPTION_CHARS, features=("placeholders",),
                        help=f"A line printed with an in-line picture. {_PLACEHOLDER_HELP}"),
-            BlockField("caption_position", "Caption position", "choice", choices=IMAGE_CAPTION_POSITIONS, default="below",
+            BlockField("caption_position", "Caption position", "choice", group="caption", control="choice-buttons",
+                       choices=IMAGE_CAPTION_POSITIONS, default="below",
                        depends_on="caption", help="Above or below the picture."),
-            BlockField("numbering", "Caption numbering", "choice", choices=IMAGE_NUMBERING, default="auto", depends_on="caption",
+            BlockField("numbering", "Caption numbering", "choice", group="caption", choices=IMAGE_NUMBERING, default="auto", depends_on="caption",
                        help="Prints \"Figure 1:\", \"Figure 2:\" ... in the order they appear. Automatic numbers a picture that has "
                        "a caption and leaves a bare one (a logo) alone; Always numbers it even with no caption; Never does not."),
+        ),
+        groups=(
+            BlockGroup("size", "Size"),
+            BlockGroup("position", "Position"),
+            BlockGroup("caption", "Caption"),
         ),
         template={"type": "image", "file": ""},
     ),
@@ -2038,85 +2053,99 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         "Shape", "A coloured rectangle, ellipse, triangle, line or arrow (or your own SVG): in line with the text, beside it, or "
         "behind or in front of it.",
         (
-            BlockField("shape", "Shape", "choice", required=True, choices=SHAPE_KINDS, default="rectangle",
+            BlockField("shape", "Shape", "choice", basic=True, required=True, choices=SHAPE_KINDS, default="rectangle",
                        help="A preset shape, or Custom to paste your own SVG."),
-            BlockField("fill", "Fill", "colour", default="accent",
+            BlockField("fill", "Fill", "colour", basic=True, default="accent",
                        help="The colour inside: the branding colour, a colour of this layout's scheme, white, black, none or a hex "
                        "colour such as #475569. A scheme colour is kept by name, so changing the scheme changes the shape. Not used "
                        "by a line, an arrow or a custom shape."),
-            BlockField("outline", "Outline", "colour", empty_label="No outline",
+            BlockField("outline", "Outline", "colour", group="outline", empty_label="No outline",
                        help="The outline colour, chosen as the fill is. Leave empty for no outline. A line or arrow is drawn in "
                        "this colour (black unless set)."),
-            BlockField("outline_width", "Outline width (mm)", "number", minimum=OUTLINE_WIDTH_MM[0], maximum=OUTLINE_WIDTH_MM[1],
+            BlockField("outline_width", "Outline width (mm)", "number", group="outline", minimum=OUTLINE_WIDTH_MM[0], maximum=OUTLINE_WIDTH_MM[1],
                        help="How thick the outline or line is. Typically 0.5."),
-            BlockField("width", "Width", "number", minimum=SHAPE_SIZE_CM[0], maximum=SHAPE_SIZE_CM[1] * 10,
+            BlockField("width", "Width", "number", group="size", minimum=SHAPE_SIZE_CM[0], maximum=SHAPE_SIZE_CM[1] * 10,
                        help="How wide it prints. Required for a preset; a custom shape keeps its own size when empty. Never wider "
                        "than the text: a wider shape is scaled down with its proportions."),
-            BlockField("width_unit", "Width unit", "choice", choices=SHAPE_UNITS, default="cm", depends_on="width",
+            BlockField("width_unit", "Width unit", "choice", inline=True, group="size", choices=SHAPE_UNITS, default="cm", depends_on="width",
                        help="Centimetres or millimetres."),
-            BlockField("height", "Height", "number", minimum=SHAPE_SIZE_CM[0], maximum=SHAPE_SIZE_CM[1] * 10,
+            BlockField("height", "Height", "number", group="size", minimum=SHAPE_SIZE_CM[0], maximum=SHAPE_SIZE_CM[1] * 10,
                        help="How tall it prints. Required for a preset. For an arrow it is the size of the arrowhead."),
-            BlockField("height_unit", "Height unit", "choice", choices=SHAPE_UNITS, default="cm", depends_on="height",
+            BlockField("height_unit", "Height unit", "choice", inline=True, group="size", choices=SHAPE_UNITS, default="cm", depends_on="height",
                        help="Centimetres or millimetres."),
-            BlockField("svg", "SVG", "longtext", max_length=MAX_SHAPE_SVG_CHARS,
+            BlockField("svg", "SVG", "longtext", group="svg", max_length=MAX_SHAPE_SVG_CHARS,
                        help="Custom only: the SVG markup. Scripts, links to other files and embedded data are refused. Give it a "
                        "viewBox so it scales."),
-            BlockField("alt", "Alternative text", "text", max_length=MAX_ALT_CHARS,
+            BlockField("alt", "Alternative text", "text", basic=True, max_length=MAX_ALT_CHARS,
                        help="Leave empty for a shape that is only decoration (the usual case); describe it when it carries meaning."),
-            BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
+            BlockField("align", "Alignment", "choice", group="position", control="choice-buttons", choices=IMAGE_ALIGNMENTS, default="center",
                        help="Where it sits across the text width. With Wrap, the side the shape is on."),
-            BlockField("placement", "Placement", "choice", choices=IMAGE_PLACEMENTS, default="inline",
+            BlockField("placement", "Placement", "choice", group="position", choices=IMAGE_PLACEMENTS, default="inline",
                        help="In line: its own line. Wrap: the text that follows runs beside it. Behind or In front: laid over the "
                        "page under or over the text, at the position below. A block later in the layout is drawn above an earlier "
                        "one, so a shape placed behind and then an image placed behind at the same spot show the image on the shape."),
-            BlockField("anchor", "Position from", "choice", choices=IMAGE_ANCHORS, default="paragraph", depends_on="placement",
+            BlockField("anchor", "Position from", "choice", group="position", choices=IMAGE_ANCHORS, default="paragraph", depends_on="placement",
                        help="Behind and In front only. Paragraph: from where this block sits in the text. Margin: from the corner of "
                        "the text area of the page. Page: from the corner of the sheet."),
-            BlockField("offset_x", "Across (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+            BlockField("offset_x", "Across (cm)", "number", group="position", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
                        depends_on="placement", help="Behind and In front only. Centimetres to the right; negative goes left."),
-            BlockField("offset_y", "Down (cm)", "number", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
+            BlockField("offset_y", "Down (cm)", "number", group="position", minimum=-IMAGE_OFFSET_LIMIT_CM, maximum=IMAGE_OFFSET_LIMIT_CM,
                        depends_on="placement", help="Behind and In front only. Centimetres down; negative goes up."),
+        ),
+        groups=(
+            BlockGroup("outline", "Outline"),
+            BlockGroup("size", "Size"),
+            BlockGroup("position", "Position"),
+            BlockGroup("svg", "SVG"),
         ),
         template={"type": "shape", "shape": "rectangle", "fill": "accent", "width": 5, "height": 2},
     ),
     "record_images": BlockSchema(
         "Record images", "The pictures attached to the record of the enclosing For each block, chosen by rules.",
         (
-            BlockField("names", "File names", "text_list", max_length=MAX_PATTERN_CHARS, features=("placeholders",),
+            BlockField("names", "File names", "text_list", group="which", max_length=MAX_PATTERN_CHARS, features=("placeholders",),
                        help="Print only files whose name matches one of these (case-insensitive). Use * for any run of "
                        "characters and ? for one, for example site-photo-*. A value like {{rec.code}} is matched as plain "
                        "text. Leave empty to allow any name."),
-            BlockField("types", "File types", "text_list", max_length=10,
+            BlockField("types", "File types", "text_list", group="which", max_length=10,
                        help=f"Allowed extensions: {', '.join(RECORD_IMAGE_EXTENSIONS)}. Leave empty to allow them all. Only "
                        "real pictures print, whatever the extension says."),
-            BlockField("max_count", "Most per record", "integer", minimum=1, maximum=MAX_PICTURES_PER_RECORD, default=5,
+            BlockField("max_count", "Most per record", "integer", group="which", minimum=1, maximum=MAX_PICTURES_PER_RECORD, default=5,
                        help="The most pictures printed for one record."),
-            BlockField("order", "Order", "choice", choices=RECORD_IMAGE_ORDERS, default="name",
+            BlockField("order", "Order", "choice", group="which", choices=RECORD_IMAGE_ORDERS, default="name",
                        help="By file name, or by when the file was attached (oldest first)."),
-            BlockField("max_size_mb", "Largest file (MB)", "number", minimum=0.1, maximum=MAX_PICTURE_MEGABYTES,
+            BlockField("max_size_mb", "Largest file (MB)", "number", group="which", minimum=0.1, maximum=MAX_PICTURE_MEGABYTES,
                        help="Skip files bigger than this. Leave empty for the report limit."),
-            BlockField("caption_source", "Caption", "choice", choices=RECORD_IMAGE_CAPTIONS, default="file_name",
+            BlockField("caption_source", "Caption", "choice", group="caption", choices=RECORD_IMAGE_CAPTIONS, default="file_name",
                        help="The file name, a fixed text you write below, or no caption."),
-            BlockField("caption", "Caption text", "text", max_length=MAX_CAPTION_CHARS, features=("placeholders",),
+            BlockField("caption", "Caption text", "text", group="caption", max_length=MAX_CAPTION_CHARS, features=("placeholders",),
                        depends_on="caption_source", help=f"Used when the caption is Text. {_PLACEHOLDER_HELP}"),
-            BlockField("caption_position", "Caption position", "choice", choices=IMAGE_CAPTION_POSITIONS, default="below",
+            BlockField("caption_position", "Caption position", "choice", group="caption", control="choice-buttons",
+                       choices=IMAGE_CAPTION_POSITIONS, default="below",
                        depends_on="caption_source", help="Above or below the picture."),
-            BlockField("numbering", "Caption numbering", "choice", choices=IMAGE_NUMBERING, default="auto",
+            BlockField("numbering", "Caption numbering", "choice", group="caption", choices=IMAGE_NUMBERING, default="auto",
                        depends_on="caption_source", help="Prints \"Figure 1:\", \"Figure 2:\" ... in the order the pictures appear."),
-            BlockField("width", "Width", "number", minimum=1, maximum=1000,
+            BlockField("width", "Width", "number", group="size", minimum=1, maximum=1000,
                        help="How wide to print each picture. Leave empty for its own size, never wider than the text."),
-            BlockField("width_unit", "Width unit", "choice", choices=IMAGE_UNITS, default="cm", depends_on="width",
+            BlockField("width_unit", "Width unit", "choice", inline=True, group="size", choices=IMAGE_UNITS, default="cm", depends_on="width",
                        help="Centimetres, millimetres, or a percentage of the width of the text."),
-            BlockField("height", "Height", "number", minimum=0.5, maximum=1000,
+            BlockField("height", "Height", "number", group="size", minimum=0.5, maximum=1000,
                        help="Size by height instead. Leave empty to keep each picture's shape."),
-            BlockField("height_unit", "Height unit", "choice", choices=IMAGE_HEIGHT_UNITS, default="cm", depends_on="height",
+            BlockField("height_unit", "Height unit", "choice", inline=True, group="size", choices=IMAGE_HEIGHT_UNITS, default="cm",
+                       depends_on="height",
                        help="Centimetres or millimetres."),
-            BlockField("align", "Alignment", "choice", choices=IMAGE_ALIGNMENTS, default="center",
+            BlockField("align", "Alignment", "choice", group="position", control="choice-buttons", choices=IMAGE_ALIGNMENTS, default="center",
                        help="Where each picture sits across the text width."),
-            BlockField("placement", "Placement", "choice", choices=RECORD_IMAGE_PLACEMENTS, default="inline",
+            BlockField("placement", "Placement", "choice", group="position", choices=RECORD_IMAGE_PLACEMENTS, default="inline",
                        help="In line: each picture has a line of its own. Wrap: the text that follows runs beside it (set "
                        "Alignment to left or right)."),
-            _EMPTY_TEXT,
+            replace(_EMPTY_TEXT, group="which"),
+        ),
+        groups=(
+            BlockGroup("which", "Which pictures", open=True),
+            BlockGroup("caption", "Caption"),
+            BlockGroup("size", "Size"),
+            BlockGroup("position", "Position"),
         ),
         template={"type": "record_images"},
     ),
@@ -2130,26 +2159,37 @@ _CORE_SCHEMAS: dict[str, BlockSchema] = {
         "Table (custom)", "A table you write cell by cell, as opposed to Table (records), which has one row per record. Cells can be "
         "merged, aligned and coloured, and hold text with placeholders.",
         (
-            BlockField("columns", "Columns", "grid_columns", required=True,
+            BlockField("columns", "Columns", "grid_columns", required=True, basic=True,
                        help=f"One entry per column (up to {MAX_GRID_COLUMNS}): its width and the style its cells start from."),
-            BlockField("rows", "Rows", "grid_rows", required=True,
+            BlockField("rows", "Rows", "grid_rows", required=True, basic=True,
                        help=f"The rows (up to {MAX_GRID_ROWS}) and their cells. A merged cell is written once, on its top-left position."),
-            BlockField("header_rows", "Header rows", "integer", minimum=0, maximum=MAX_GRID_ROWS, default=0,
+            BlockField("header_rows", "Header rows", "integer", minimum=0, maximum=MAX_GRID_ROWS, default=0, basic=True,
                        help="How many rows at the top repeat on each page the table runs onto. Typically 1 for a table with headings."),
-            BlockField("borders", "Borders", "choice", choices=GRID_BORDERS, default="all",
+            BlockField("borders", "Borders", "choice", choices=GRID_BORDERS, default="all", group="borders",
                        help="All: a line round every cell. Outer: only round the table. Horizontal: lines between rows. None: no lines."),
-            BlockField("border_color", "Border colour", "colour", default="#999999", help="The colour of the lines. Typically a light grey."),
-            BlockField("align", "Alignment", "choice", choices=GRID_ALIGNMENTS, default="left",
+            BlockField("border_color", "Border colour", "colour", default="#999999", group="borders",
+                       help="The colour of the lines. Typically a light grey."),
+            BlockField("align", "Alignment", "choice", choices=GRID_ALIGNMENTS, default="left", group="cell_style",
+                       control="choice-buttons",
                        help="Where text sits across a cell, unless a column, row or cell says otherwise."),
-            BlockField("valign", "Vertical alignment", "choice", choices=GRID_VALIGNMENTS, default="top",
+            BlockField("valign", "Vertical alignment", "choice", choices=GRID_VALIGNMENTS, default="top", group="cell_style",
+                       control="choice-buttons",
                        help="Where text sits down a cell, unless a column, row or cell says otherwise."),
-            BlockField("fill", "Fill", "colour", help="Background of every cell, unless a column, row or cell says otherwise."),
-            BlockField("color", "Text colour", "colour", help="Colour of the text, unless a column, row or cell says otherwise."),
-            BlockField("bold", "Bold", "boolean", default=False, help="Whether the text is bold, unless a column, row or cell says otherwise."),
-            BlockField("font", "Font", "font", empty_label="Document font",
+            BlockField("fill", "Fill", "colour", group="cell_style",
+                       help="Background of every cell, unless a column, row or cell says otherwise."),
+            BlockField("color", "Text colour", "colour", group="cell_style",
+                       help="Colour of the text, unless a column, row or cell says otherwise."),
+            BlockField("bold", "Bold", "boolean", default=False, group="cell_style", control="toggle",
+                       help="Whether the text is bold, unless a column, row or cell says otherwise."),
+            BlockField("font", "Font", "font", empty_label="Document font", group="look",
                        help="The font of every cell, unless a column says otherwise. Typically left empty so it follows the document's body font."),
-            BlockField("size", "Size", "number", minimum=6, maximum=72, empty_label="Table size (9)",
+            BlockField("size", "Size", "number", minimum=6, maximum=72, empty_label="Table size (9)", group="look",
                        help="The size of every cell in points, unless a column says otherwise. Typically 8 to 10."),
+        ),
+        groups=(
+            BlockGroup("borders", "Borders"),
+            BlockGroup("cell_style", "Cell style"),
+            BlockGroup("look", "Look"),
         ),
         template={
             "type": "grid", "columns": [{}, {}], "rows": [{"cells": [{"text": "Label"}, {"text": "Value"}]}],

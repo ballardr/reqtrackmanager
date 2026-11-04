@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
 import { chooseExport } from "../listActions";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 /**
  * Job to be done: get a plain table of a kind of record — as a screen, a PDF or a Word file — from the Reports page
@@ -45,9 +46,9 @@ test.describe("Record list report", () => {
     });
 
     await test.step("Word download is a real document", async () => {
-      await page.getByRole("button", { name: "Export", exact: true }).click();
+      await pickReportFormat(page, "Word");
       const download = page.waitForEvent("download");
-      await page.getByRole("button", { name: "Download Word report" }).click();
+      await reportDownloadButton(page).click();
       const file = await download;
       expect(file.suggestedFilename()).toBe("record-list.docx");
       const bytes = fs.readFileSync((await file.path())!);

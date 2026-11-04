@@ -501,6 +501,23 @@ def test_a_colour_scheme_and_the_names_that_use_it_survive_a_project_bundle_roun
     assert current["current"]["tree"] == coloured
 
 
+def test_table_heading_colours_survive_a_project_bundle_round_trip(world):
+    project = world.project("Source")
+    h = auth_headers(world.token)
+    headed = {
+        **empty_tree("document"), "palette": [{"name": "plate", "colour": "#102030"}], "table_header_fill": "plate",
+        "table_header_text": "#ffffff", "nodes": [{"type": "text", "text": "Body"}],
+    }
+    new_layout(world, project_url(project), "Headed", body=headed)
+
+    result = import_project(world, export_project(world, project))
+
+    assert result["warnings"] == []
+    copy = names(world, result["project"])["Headed"]
+    current = world.client.get(project_url(result["project"], f"/{copy['id']}"), headers=h).json()
+    assert current["current"]["tree"] == headed
+
+
 def test_block_labels_and_hyphenated_names_survive_a_project_bundle_round_trip(world):
     project = world.project("Source")
     h = auth_headers(world.token)

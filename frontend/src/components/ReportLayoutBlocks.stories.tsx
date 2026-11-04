@@ -121,9 +121,7 @@ export const EditingABlockFieldInTheEditorChangesTheTree: Story = {
     await userEvent.type(box, "New title");
     await waitFor(() => expect(treeOf(canvasElement).nodes[0].text).toBe("New title"));
     await waitFor(() => expect(heading.getFieldValue("_summary")).toBe("level 1 · New title"));
-    const level = within(inspector).getByRole("spinbutton", { name: "Level" });
-    await userEvent.clear(level);
-    await userEvent.type(level, "3");
+    await userEvent.click(within(inspector).getByRole("radio", { name: "3" }));
     await waitFor(() => expect(treeOf(canvasElement).nodes[0].level).toBe(3));
   },
 };
@@ -562,6 +560,7 @@ export const LayoutSettingsOpenFromTheLayoutBlock: Story = {
     await expect(canvas.queryByText("Layout settings")).not.toBeInTheDocument();
     Blockly.common.setSelected(ws.getTopBlocks(false).find((b) => b.type === "rl_root") as Blockly.BlockSvg);
     const inspector = await canvas.findByTestId("layout-inspector");
+    await userEvent.click(within(inspector).getByRole("button", { name: "Page section" }));
     await userEvent.selectOptions(within(inspector).getByRole("combobox", { name: "Page orientation" }), "landscape");
     await waitFor(() => expect(treeOf(canvasElement).orientation).toBe("landscape"));
     // Selecting a block takes the inspector back to that block.

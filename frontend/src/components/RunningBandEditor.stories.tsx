@@ -237,8 +237,21 @@ export const BoldAndItalicWrapTheSelection: Story = {
   },
 };
 
-/** With nothing selected a mark pair is written, so typing continues inside it. */
-export const NothingSelectedWritesAMarkPair: Story = {
+/** With nothing selected the whole cell is marked. */
+export const NothingSelectedMarksTheWholeCell: Story = {
+  render: () => <Host initial={{ left: "Draft copy" }} kind="footer" />,
+  play: async ({ canvasElement }) => {
+    const view = within(canvasElement);
+    const cell = view.getByRole("textbox", { name: "Footer, left cell" }) as HTMLTextAreaElement;
+    cell.focus();
+    cell.setSelectionRange(3, 3);
+    await userEvent.click(view.getByRole("button", { name: "Footer, left cell: Bold" }));
+    await expect(band(canvasElement).left).toBe("**Draft copy**");
+  },
+};
+
+/** In an empty cell there is nothing to mark, so a mark pair is written and typing continues inside it. */
+export const AnEmptyCellGetsAMarkPair: Story = {
   render: () => <Host initial={{ left: "" }} kind="footer" />,
   play: async ({ canvasElement }) => {
     const view = within(canvasElement);

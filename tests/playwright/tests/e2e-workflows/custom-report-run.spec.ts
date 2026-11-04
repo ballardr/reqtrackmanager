@@ -5,6 +5,7 @@ import { expect, type APIRequestContext, type Page, test } from "@playwright/tes
 
 import { chooseReport, offersReport, reportPickerButton } from "./reportPicker";
 import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, selectProjectAdminGroup } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -79,10 +80,10 @@ test.describe("Custom report run", () => {
     return resp.json();
   }
 
-  async function download(page: Page, button: string) {
-    await page.getByRole("button", { name: "Export", exact: true }).click();
+  async function download(page: Page, format: string) {
+    await pickReportFormat(page, format);
     const pending = page.waitForEvent("download");
-    await page.getByRole("button", { name: button }).click();
+    await reportDownloadButton(page).click();
     return pending;
   }
 
@@ -101,20 +102,20 @@ test.describe("Custom report run", () => {
     });
 
     await test.step("the PDF is a real document", async () => {
-      const file = await download(page, "Download PDF report");
+      const file = await download(page, "PDF");
       expect(fs.readFileSync((await file.path())!).subarray(0, 5).toString()).toBe("%PDF-");
       await expect(page.getByText(`Downloaded ${name} (PDF).`)).toBeVisible();
     });
 
     await test.step("the Word file is a real document carrying the requirement", async () => {
-      const file = await download(page, "Download Word report");
+      const file = await download(page, "Word");
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
       expect(bytes.includes("word/document.xml")).toBeTruthy();
     });
 
     await test.step("the HTML page is standalone, carries the requirement and runs no script", async () => {
-      const file = await download(page, "Download HTML report");
+      const file = await download(page, "HTML");
       expect(file.suggestedFilename()).toMatch(/\.html$/);
       const html = fs.readFileSync((await file.path())!, "utf8");
       expect(html.startsWith("<!doctype html>")).toBeTruthy();
@@ -123,7 +124,7 @@ test.describe("Custom report run", () => {
     });
 
     await test.step("the OpenDocument text file is a real document (its type is stored first, uncompressed)", async () => {
-      const file = await download(page, "Download ODT report");
+      const file = await download(page, "ODT");
       expect(file.suggestedFilename()).toMatch(/\.odt$/);
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
@@ -164,7 +165,7 @@ test.describe("Custom report run", () => {
       await expect(page.getByRole("cell", { name: alpha.requirement })).toHaveCount(0);
 
       const sent = page.waitForRequest((r) => r.url().includes("/custom-reports/") && r.url().includes("format=pdf"));
-      const file = await download(page, "Download PDF report");
+      const file = await download(page, "PDF");
       expect(new URL((await sent).url()).searchParams.get("project_ids")).toBe(
         (await (await request.get(`${API}/projects`, { headers })).json()).find((p: { name: string }) => p.name === beta.name).id,
       );
@@ -197,7 +198,7 @@ test.describe("Custom report run", () => {
       await chooseReport(page, name);
       await expect(page.getByText("This report runs for a single project. Choose the project to run it for.")).toBeVisible();
       await expect(page.getByRole("button", { name: "Projects", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0);
+      await expect(reportDownloadButton(page)).toBeDisabled();
       await expect(page.getByRole("cell", { name: alpha.requirement })).toHaveCount(0);
     });
 
@@ -206,7 +207,7 @@ test.describe("Custom report run", () => {
       await expect(page.getByRole("cell", { name: beta.requirement })).toBeVisible();
       await expect(page.getByRole("cell", { name: alpha.requirement })).toHaveCount(0);
       const sent = page.waitForRequest((r) => r.url().includes("/custom-reports/") && r.url().includes("format=pdf"));
-      const file = await download(page, "Download PDF report");
+      const file = await download(page, "PDF");
       expect(new URL((await sent).url()).searchParams.get("project_ids")).toBe(idOf(beta.name));
       expect(fs.readFileSync((await file.path())!).subarray(0, 5).toString()).toBe("%PDF-");
     });
@@ -302,7 +303,7 @@ test.describe("Custom report run", () => {
     });
 
     await test.step("the Word file is a real document", async () => {
-      const file = await download(page, "Download Word report");
+      const file = await download(page, "Word");
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
     });
@@ -325,7 +326,7 @@ test.describe("Custom report run", () => {
     await expect(page.getByRole("cell", { name: alpha.requirement }).first()).toBeVisible();
 
     await test.step("the Excel workbook is a real file", async () => {
-      const file = await download(page, "Download Excel report");
+      const file = await download(page, "Excel");
       expect(file.suggestedFilename()).toMatch(/\.xlsx$/);
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
@@ -334,7 +335,7 @@ test.describe("Custom report run", () => {
     });
 
     await test.step("the OpenDocument spreadsheet is a real file", async () => {
-      const file = await download(page, "Download ODS report");
+      const file = await download(page, "ODS");
       expect(file.suggestedFilename()).toMatch(/\.ods$/);
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");
@@ -343,7 +344,7 @@ test.describe("Custom report run", () => {
     });
 
     await test.step("two sheets come as a zip of CSV files, named as a zip", async () => {
-      const file = await download(page, "Download CSV report");
+      const file = await download(page, "CSV");
       expect(file.suggestedFilename()).toMatch(/\.zip$/);
       const bytes = fs.readFileSync((await file.path())!);
       expect(bytes.subarray(0, 2).toString()).toBe("PK");

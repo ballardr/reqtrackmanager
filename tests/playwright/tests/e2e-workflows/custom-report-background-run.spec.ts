@@ -5,6 +5,7 @@ import { expect, type APIRequestContext, type Page, test } from "@playwright/tes
 
 import { chooseReport } from "./reportPicker";
 import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -76,8 +77,8 @@ test.describe("Custom report background run", () => {
       );
       await page.goto(`/projects/${project.id}?reports=choose`);
       await chooseReport(page, layoutName);
-      await page.getByRole("button", { name: "Export", exact: true }).click();
-      await page.getByRole("button", { name: "Download PDF report" }).click();
+      await pickReportFormat(page, "PDF");
+      await reportDownloadButton(page).click();
       await expect(page.getByText(/being prepared in the background/)).toBeVisible();
     });
 

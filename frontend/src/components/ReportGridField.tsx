@@ -24,6 +24,7 @@ import { DEFAULT_COLOUR_CONTEXT, type ColourContext, type ColourEntry } from "..
 import { FieldCaption, FieldHelp } from "./FieldHelp";
 import { FormActions } from "./FormActions";
 import { Modal } from "./Modal";
+import type { TableHeadings } from "../utils/reportPageSetup";
 import { ReportGridEditor, type GridDraft } from "./ReportGridEditor";
 
 /** Past and future states of a draft; `present` is what the editor shows. */
@@ -48,11 +49,12 @@ export interface GridPatch {
  * @param renderCellText Draws the field that edits one cell's text.
  * @param colours The branding colour and organisation scheme, which the colour fields offer.
  * @param palette The layout's own colour scheme.
+ * @param tableHeadings The layout's default table heading colours, shown on the heading rows.
  * @param fonts The fonts a column may choose.
  * @param disabled Shows the summary only.
  */
 export function ReportGridField({
-  label, help, node, onSave, renderCellText, colours = DEFAULT_COLOUR_CONTEXT, palette = [], fonts, disabled = false,
+  label, help, node, onSave, renderCellText, colours = DEFAULT_COLOUR_CONTEXT, palette = [], tableHeadings, fonts, disabled = false,
 }: {
   label: string;
   help?: string;
@@ -61,6 +63,7 @@ export function ReportGridField({
   renderCellText: (cell: Obj, onText: (text: string) => void, label: string) => ReactNode;
   colours?: ColourContext;
   palette?: ColourEntry[];
+  tableHeadings?: TableHeadings;
   fonts?: ReportFontChoice[];
   disabled?: boolean;
 }) {
@@ -120,7 +123,7 @@ export function ReportGridField({
               />
             )}
             <ReportGridEditor
-              value={history.present} onChange={change} gridStyle={node} colours={colours} palette={palette} fonts={fonts}
+              value={history.present} onChange={change} gridStyle={node} colours={colours} palette={palette} tableHeadings={tableHeadings} fonts={fonts}
               renderCellText={renderCellText} readOnly={disabled}
             />
           </div>
