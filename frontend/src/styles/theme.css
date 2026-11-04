@@ -3315,7 +3315,7 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .report-image-facts dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .report-image-browser { grid-template-columns: minmax(0, 1fr); } }
 
-/* A flat list of editable items (ItemRowList): name left, actions right, banded by a hairline. */
+/* A flat list of editable items (ItemRowList): name left, actions right, banded by a hairline. Its own class names: `.item-row` belongs to the `ItemRow` component above. */
 .item-row-list {
   list-style: none;
   margin: 0;
@@ -3324,7 +3324,7 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   border-radius: var(--radius-md);
 }
 
-.item-row {
+.item-list-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3332,20 +3332,20 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   padding: var(--space-1) var(--space-2);
 }
 
-.item-row + .item-row {
+.item-list-row + .item-list-row {
   border-top: 1px solid var(--color-border);
 }
 
-.item-row__name {
+.item-list-row__name {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.item-row__detail {
+.item-list-row__detail {
   font-size: 0.85rem;
 }
 
-.item-row__actions {
+.item-list-row__actions {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);

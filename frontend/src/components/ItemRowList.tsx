@@ -32,12 +32,12 @@ export function ItemRowList({ items, label, emptyName }: { items: ItemRow[]; lab
   return (
     <ul className="item-row-list" aria-label={label}>
       {items.map((item) => (
-        <li key={item.id} className="item-row">
-          <span className="item-row__name">
+        <li key={item.id} className="item-list-row">
+          <span className="item-list-row__name">
             {item.name !== "" ? item.name : <span className="text-muted">{emptyName}</span>}
-            {item.detail && <span className="text-muted item-row__detail"> {item.detail}</span>}
+            {item.detail && <span className="text-muted item-list-row__detail"> {item.detail}</span>}
           </span>
-          {item.actions && <span className="item-row__actions">{item.actions}</span>}
+          {item.actions && <span className="item-list-row__actions">{item.actions}</span>}
         </li>
       ))}
     </ul>

@@ -23,7 +23,7 @@ flowchart LR
 1. In **Reports**, open a row's menu and choose **Export as file…** (the designer's menu has it too), or choose **Export several as file…**, tick layouts and packs (a folder's box covers what is in it) and choose **Export file…**.
 2. Choose whether to **include earlier versions**. Without it each report is exported as its current published version only; a draft is never exported.
 3. When a pack is chosen, **include the layouts the packs use** (on by default) puts the layouts a pack names into the file, so the pack works where it lands.
-4. Choose **Export**. The browser saves the file under the report's name (or "<scope> reports" for several).
+4. Choose **Export**. The browser saves the file under the report's name (or after the project or organisation, such as "Apollo reports", for several).
 
 The file holds the layouts and packs, the pictures the layouts use and a pack's saved sets. It holds **no author names or emails, ids, placements, favourites or who may run a report**: those belong to wherever the file is imported.
 
