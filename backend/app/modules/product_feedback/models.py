@@ -12,6 +12,8 @@ Product Feedback's data model:
 - `EnhancementRequestComment` / `EnhancementRequestCommentFile` / `EnhancementRequestFile` —
   module-local comment-thread and attachment tables (the shared `services.module_attachments`
   kit works over them).
+- `EnhancementRequestMerge` — the recorded history of merging a duplicate into a canonical request; what
+  makes a merge reversible and what demand is unioned over.
 - `ProjectFeedbackSettings` — one optional row per project holding who may submit. Absence
   means the default policy (`SubmissionPolicy.MEMBERS`).
 
@@ -176,6 +178,47 @@ class EnhancementRequestFile(UUIDPKMixin, Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class EnhancementRequestMerge(UUIDPKMixin, TimestampMixin, Base):
+    """One merge of a duplicate request into a canonical request; active until `unmerged_at` is set.
+
+    The canonical request's demand is the union of its own requesters and those of every request with an
+    active merge into it; unmerging ends the row, which removes the duplicate's requesters from that union
+    without any link having been copied or deleted.
+
+    Attributes:
+        canonical_id: The request that stays (not itself a duplicate).
+        duplicate_id: The request marked `DUPLICATE` by this merge (at most one active merge per duplicate).
+        prior_status: The duplicate's status before the merge, restored by unmerging.
+        merged_by / merged_at: Who merged, and when (UTC).
+        unmerged_by / unmerged_at: Who reversed it, and when; both null while the merge is active.
+    """
+
+    __tablename__ = "enhancement_request_merges"
+    __table_args__ = (
+        CheckConstraint("canonical_id <> duplicate_id", name="ck_enhancement_request_merges_distinct"),
+        Index(
+            "ux_enhancement_request_merges_active_duplicate", "duplicate_id", unique=True,
+            postgresql_where=sa_text("unmerged_at IS NULL"),
+        ),
+        Index(
+            "ix_enhancement_request_merges_canonical", "canonical_id",
+            postgresql_where=sa_text("unmerged_at IS NULL"),
+        ),
+    )
+
+    canonical_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enhancement_requests.id", ondelete="CASCADE")
+    )
+    duplicate_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enhancement_requests.id", ondelete="CASCADE")
+    )
+    prior_status: Mapped[EnhancementRequestStatus] = mapped_column(str_enum(EnhancementRequestStatus, 20))
+    merged_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    unmerged_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    unmerged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ProjectFeedbackSettings(UUIDPKMixin, TimestampMixin, Base):

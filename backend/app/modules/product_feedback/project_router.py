@@ -2,8 +2,8 @@
 Module: modules.product_feedback.project_router
 
 Project-scoped Product Feedback API, mounted at `/api/v1/projects/{project_id}/modules/product_feedback`:
-request CRUD, archive, versions, lifecycle transitions, comments, files and the project's submission
-policy.
+request CRUD, archive, versions, lifecycle transitions, merging duplicates, the demand breakdown, comments, files
+and the project's submission policy.
 
 RBAC: sub-component enablement and project membership to view; any project member may submit a request
 unless the project's administrator restricted submission to triagers; `_shared.require_request_manage`
@@ -26,12 +26,15 @@ from app.modules.product_feedback import _shared as sh
 from app.modules.product_feedback.enums import EnhancementRequestStatus
 from app.modules.product_feedback.models import EnhancementRequest
 from app.modules.product_feedback.schemas import (
+    DemandOut,
     FeedbackSettingsOut,
     FeedbackSettingsUpdate,
     RequestCommentCreate,
     RequestCommentOut,
     RequestCommentUpdate,
     RequestCreate,
+    RequestMergeOut,
+    RequestMergeRequest,
     RequestOut,
     RequestTransitionRequest,
     RequestUpdate,
@@ -197,6 +200,55 @@ def unarchive(project_id: UUID, request_id: UUID, current_user: User = Depends(_
     request = _get(db, holder, request_id)
     sh.require_request_manage(db, current_user, holder)
     return sh.set_archived(db, holder, request, current_user, archived=False)
+
+
+# --- Merging and demand --------------------------------------------------------
+
+
+@router.post("/requests/{request_id}/merge", response_model=RequestOut)
+def merge_request(
+    project_id: UUID, request_id: UUID, payload: RequestMergeRequest, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Marks the request a duplicate of `canonical_id` (another request of this project): its requesters then count
+    toward the canonical request's demand. Needs the triager role; 409 for an illegal merge. Reversible with
+    `unmerge`."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.merge_from_payload(db, holder, request, payload.canonical_id, payload.note, current_user)
+
+
+@router.post("/requests/{request_id}/unmerge", response_model=RequestOut)
+def unmerge_request(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Reverses the merge of a duplicate: it returns to the status it had and stops adding to the canonical
+    request's demand. Needs the triager role; 409 if it is not merged."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.unmerge_from_payload(db, holder, request, current_user)
+
+
+@router.get("/requests/{request_id}/merges", response_model=list[RequestMergeOut])
+def list_request_merges(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The merges a request took part in (as the canonical request or the duplicate), active and ended, newest first."""
+    return sh.merges_out(db, _get(db, _holder(db, project_id), request_id))
+
+
+@router.get("/requests/{request_id}/demand", response_model=DemandOut)
+def get_request_demand(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Who asked for the request: its distinct requesters (Stakeholders and Personas, including those reached through
+    linked Engagements and through requests merged into it), the engagements it was raised in, and the count and
+    weighted demand. Requesters are added with the generic "Requested by" link; names the caller may not view are
+    withheld but still counted."""
+    project = _project(db, project_id)
+    return sh.demand_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user)
 
 
 # --- Comments ----------------------------------------------------------------

@@ -5,9 +5,9 @@ This module's contribution to the core org/project bundle export/import (`servic
 `project_export`), registered through `ModuleOrgBundleHooks` / `ModuleProjectBundleHooks` on `MODULE_DEFINITION`
 rather than those core files importing this module.
 
-- Org level: the organisation's inbox requests.
-- Project level: the project's submission policy and its requests (current content and status, tags and
-  evidence attachments).
+- Org level: the organisation's inbox requests and the active merges between them.
+- Project level: the project's submission policy and its requests (current content and status, tags,
+  evidence attachments, their "Requested by" links and the active merge of a duplicate).
 
 Design decisions (all Decided by: Agent):
 - A request travels as its *current* content and status only. Version history, comments and comment
@@ -17,6 +17,11 @@ Design decisions (all Decided by: Agent):
   counter, so a restored project can never collide with a code it already uses.
 - An owner is `{type, email | name}` (`services.principals`); one the target cannot match is left unset with a
   warning. Org-level files cannot travel (the org hook receives no bytes).
+- Requesters and merges refer to other records by portable keys, never ids (`import_late_project_data`, run
+  after every module's own import so the Stakeholders, Personas and Engagements exist): a requester is its
+  type and title (`services.codes.label_title`; a code is renumbered on import), a merge names the canonical
+  request by its exported code. Only active merges travel; ended ones are history, like versions. A requester
+  that matches no record, or more than one, is skipped with a warning rather than guessed at.
 - The org-level merge skips an inbox request whose title and description the organisation already holds, so a
   re-import is idempotent.
 
@@ -30,16 +35,21 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.project import Project
+from app.models.relationship import ArtefactLink
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
+from app.modules.product_feedback.demand import REQUESTED_BY_FORWARD, REQUESTED_BY_REVERSE, REQUESTER_TYPES
 from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, SubmissionPolicy
 from app.modules.product_feedback.models import (
     EnhancementRequest,
     EnhancementRequestFile,
+    EnhancementRequestMerge,
     EnhancementRequestVersion,
     ProjectFeedbackSettings,
 )
@@ -49,10 +59,16 @@ from app.modules.product_feedback.service import (
     RecordOwner,
     set_submission_policy,
 )
+from app.modules.registry import get_artefact_summaries_in_project
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
+from app.services.codes import label_title
+from app.services.link_types import ensure_org_link_type
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
+from app.services.relationships import create_link
 from app.services.sequences import code_owner, generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+
+_PENDING_CODES = "product_feedback_imported_codes"
 
 
 def _j(value: datetime | None) -> str | None:
@@ -95,6 +111,14 @@ def _export_requests(
     return out
 
 
+def _imported_status(entry: dict[str, Any]) -> EnhancementRequestStatus:
+    """The status to create an imported request with. A duplicate is created with the status it had before the
+    merge and becomes a duplicate when `import_late_project_data` replays the merge, so a merge that cannot be
+    replayed leaves an ordinary request, never a duplicate of nothing."""
+    merged = entry.get("merged_into")
+    return EnhancementRequestStatus(merged["prior_status"] if merged else entry.get("status", "new"))
+
+
 def _import_request(
     db: Session, holder: RecordOwner, entry: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     current_user: User | None, file_bytes_by_ref: dict[str, bytes] | None,
@@ -118,7 +142,7 @@ def _import_request(
     now = datetime.now(UTC)
     db.add(EnhancementRequestVersion(
         request_id=request.id, version_number=1, valid_from=now, valid_to=None, title=entry["title"],
-        description=entry.get("description", ""), status=EnhancementRequestStatus(entry.get("status", "new")),
+        description=entry.get("description", ""), status=_imported_status(entry),
         external_ref_url=entry.get("external_ref_url"), external_ref_key=entry.get("external_ref_key"),
         decline_reason=entry.get("decline_reason", ""),
         **principal_columns_from_bundle(
@@ -164,7 +188,9 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             EnhancementRequestVersion.valid_to.is_(None),
         ).order_by(EnhancementRequest.unique_code)
     ).all()
-    return {"enhancement_requests": _export_requests(db, [tuple(p) for p in pairs], None)}
+    entries = _export_requests(db, [tuple(p) for p in pairs], None)
+    _add_merges(db, [r for r, _ in pairs], entries)
+    return {"enhancement_requests": entries}
 
 
 def import_org_data(
@@ -181,13 +207,18 @@ def import_org_data(
             )
         )
     }
-    for entry in data.get("enhancement_requests", []):
+    imported: dict[str, UUID] = {}
+    entries = data.get("enhancement_requests", [])
+    for entry in entries:
         key = (entry["title"], entry.get("description", ""))
         if key in existing:
             warnings.add(f"Inbox request {entry['title']!r} skipped — the organisation already has one like it.")
             continue
         existing.add(key)
-        _import_request(db, RecordOwner(org.id), entry, users, warnings, None, None)
+        request = _import_request(db, RecordOwner(org.id), entry, users, warnings, None, None)
+        if entry.get("unique_code"):
+            imported[entry["unique_code"]] = request.id
+    _replay_merges(db, entries, imported, users, warnings, None)
     db.flush()
 
 
@@ -204,10 +235,71 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         .order_by(EnhancementRequest.unique_code)
     ).all()
     settings = db.scalar(select(ProjectFeedbackSettings).where(ProjectFeedbackSettings.project_id == project.id))
+    entries = _export_requests(db, [tuple(p) for p in pairs], assets)
+    _add_requesters_and_merges(db, project, [r for r, _ in pairs], entries)
     return {
         "feedback_settings": {"submission_policy": settings.submission_policy.value} if settings else None,
-        "enhancement_requests": _export_requests(db, [tuple(p) for p in pairs], assets),
+        "enhancement_requests": entries,
     }, assets
+
+
+def _add_requesters_and_merges(
+    db: Session, project: Project, requests: list[EnhancementRequest], entries: list[dict[str, Any]],
+) -> None:
+    """Adds `requested_by` (type and title of each visible requester record) and `merged_into` (the canonical
+    request's exported code, for an active merge) to the exported `entries`, which are in `requests` order."""
+    ids = [r.id for r in requests]
+    wanted: dict[str, set[UUID]] = {}
+    by_request: dict[UUID, list[tuple[str, UUID]]] = {}
+    for source_id, target_type, target_id in db.execute(
+        select(ArtefactLink.source_id, ArtefactLink.target_type, ArtefactLink.target_id)
+        .join(RequirementLinkTypeDefinition, RequirementLinkTypeDefinition.id == ArtefactLink.link_type_id)
+        .where(
+            ArtefactLink.source_type == REQUEST_ARTEFACT_TYPE, ArtefactLink.source_id.in_(ids),
+            ArtefactLink.target_type.in_(REQUESTER_TYPES), ArtefactLink.source_project_id.is_(None),
+            RequirementLinkTypeDefinition.forward_name == REQUESTED_BY_FORWARD,
+            RequirementLinkTypeDefinition.organization_id == project.organization_id,
+        )
+    ).all() if ids else []:
+        by_request.setdefault(source_id, []).append((target_type, target_id))
+        wanted.setdefault(target_type, set()).add(target_id)
+    titles: dict[tuple[str, UUID], str] = {}
+    for target_type, target_ids in wanted.items():
+        found = get_artefact_summaries_in_project(db, project.id, target_type, sorted(target_ids, key=str)) or {}
+        titles.update({(target_type, i): label_title(summary.label) for i, summary in found.items()})
+    for request, entry in zip(requests, entries, strict=True):
+        entry["requested_by"] = sorted(
+            (
+                {"type": target_type, "title": titles[(target_type, target_id)]}
+                for target_type, target_id in by_request.get(request.id, ())
+                if (target_type, target_id) in titles
+            ),
+            key=lambda e: (e["type"], e["title"]),
+        )
+    _add_merges(db, requests, entries)
+
+
+def _add_merges(db: Session, requests: list[EnhancementRequest], entries: list[dict[str, Any]]) -> None:
+    """Adds `merged_into` to each exported entry: for a duplicate with an active merge, the canonical request's
+    exported code, its previous status and who merged it (else null). `entries` are in `requests` order."""
+    ids = [r.id for r in requests]
+    codes = {r.id: r.unique_code for r in requests}
+    merges = {
+        m.duplicate_id: m for m in db.scalars(select(EnhancementRequestMerge).where(
+            EnhancementRequestMerge.duplicate_id.in_(ids), EnhancementRequestMerge.unmerged_at.is_(None),
+        ))
+    } if ids else {}
+    emails = _emails(db, {m.merged_by for m in merges.values()})
+    for request, entry in zip(requests, entries, strict=True):
+        merge = merges.get(request.id)
+        canonical_code = codes.get(merge.canonical_id) if merge is not None else None
+        entry["merged_into"] = (
+            {
+                "canonical_code": canonical_code, "prior_status": merge.prior_status.value,
+                "merged_by_email": emails.get(merge.merged_by), "merged_at": _j(merge.merged_at),
+            }
+            if merge is not None and canonical_code is not None else None
+        )
 
 
 def import_project_data(
@@ -219,6 +311,95 @@ def import_project_data(
     if settings:
         set_submission_policy(db, project.id, SubmissionPolicy(settings["submission_policy"]))
     holder = RecordOwner.of_project(project)
+    imported: dict[str, UUID] = {}
     for entry in data.get("enhancement_requests", []):
-        _import_request(db, holder, entry, users, warnings, current_user, file_bytes_by_ref)
+        request = _import_request(db, holder, entry, users, warnings, current_user, file_bytes_by_ref)
+        if entry.get("unique_code"):
+            imported[entry["unique_code"]] = request.id
+    db.info[(_PENDING_CODES, project.id)] = imported
     db.flush()
+
+
+def import_late_project_data(
+    db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes], current_user: User,
+    users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """`ModuleProjectBundleHooks.import_late`: recreates each request's "Requested by" links and active merge once
+    the Stakeholders, Personas and Engagements of every module exist. A requester that matches no record, or more
+    than one, is skipped with a warning; a merge the rules refuse is skipped with the reason."""
+    imported: dict[str, UUID] = db.info.pop((_PENDING_CODES, project.id), {})
+    entries = data.get("enhancement_requests", [])
+    summaries: dict[str, dict[str, list[UUID]]] = {}
+    link_type = None
+    for entry in entries:
+        request_id = imported.get(entry.get("unique_code", ""))
+        if request_id is None:
+            continue
+        for requester in entry.get("requested_by", []):
+            target_type = requester["type"]
+            if target_type not in REQUESTER_TYPES:
+                continue
+            if target_type not in summaries:
+                by_title: dict[str, list[UUID]] = {}
+                for summary in (get_artefact_summaries_in_project(db, project.id, target_type, _all_ids(db, project, target_type)) or {}).values():
+                    by_title.setdefault(label_title(summary.label), []).append(summary.id)
+                summaries[target_type] = by_title
+            matches = summaries[target_type].get(requester["title"], [])
+            if len(matches) != 1:
+                warnings.add(
+                    f"Request {entry['unique_code']}: requester {requester['title']!r} ({target_type}) not found or "
+                    "ambiguous — skipped."
+                )
+                continue
+            if link_type is None:
+                link_type = ensure_org_link_type(db, project.organization_id, REQUESTED_BY_FORWARD, REQUESTED_BY_REVERSE)
+            try:
+                with db.begin_nested():
+                    create_link(
+                        db, source_type=REQUEST_ARTEFACT_TYPE, source_id=request_id, target_type=target_type,
+                        target_id=matches[0], link_type_id=link_type.id, created_by=current_user.id,
+                        project_id=project.id, enforce_rules=False,
+                    )
+            except IntegrityError:
+                continue
+    _replay_merges(db, entries, imported, users, warnings, current_user)
+    db.flush()
+
+
+def _replay_merges(
+    db: Session, entries: list[dict[str, Any]], imported: dict[str, UUID], users: UserResolver,
+    warnings: BundleImportWarnings, current_user: User | None,
+) -> None:
+    """Recreates each entry's active merge between the requests just imported (`imported` maps an exported code
+    to the new request id); a merge the rules refuse, or whose target did not travel, is skipped with a warning."""
+    from app.modules.product_feedback.merge import merge_requests
+
+    for entry in entries:
+        merged = entry.get("merged_into")
+        duplicate_id = imported.get(entry.get("unique_code", ""))
+        canonical_id = imported.get((merged or {}).get("canonical_code", ""))
+        if not merged or duplicate_id is None or canonical_id is None:
+            if merged:
+                warnings.add(f"Request {entry.get('unique_code')}: its merge target is not in the bundle — skipped.")
+            continue
+        duplicate, canonical = db.get(EnhancementRequest, duplicate_id), db.get(EnhancementRequest, canonical_id)
+        if duplicate is None or canonical is None:
+            continue
+        merger = users.resolve(merged.get("merged_by_email"), required=False, context="Request merge author")
+        actor = (db.get(User, merger) if merger else None) or current_user or db.get(User, duplicate.creator_id)
+        if actor is None:
+            continue
+        try:
+            with db.begin_nested():
+                merge_requests(db, canonical, duplicate, actor)
+        except ValueError as exc:
+            warnings.add(f"Request {entry.get('unique_code')}: merge skipped — {exc}")
+            continue
+    db.flush()
+
+
+def _all_ids(db: Session, project: Project, target_type: str) -> list[UUID]:
+    """Every record id of `target_type` the project could see, for resolving a title to a record."""
+    from app.modules.registry import list_artefact_summaries
+
+    return [s.id for s in list_artefact_summaries(db, project.id, target_type)]

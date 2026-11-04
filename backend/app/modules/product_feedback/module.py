@@ -14,10 +14,13 @@ reference to it.
 - Sub-components: `enhancement_request` gates the project list; `organization_requests` gates the
   organisation's inbox, so an organisation administrator switches the inbox off without touching its projects.
 - `default_enabled` stays `False`: an organisation opts in explicitly (**Decided by: Agent**).
+- Link type: "Requested by" (request -> Stakeholder, Persona or Engagement), authored with the generic link tools;
+  `demand.py` turns those links into demand through the registry's `demand_party_providers` hook.
+- Merging: a duplicate is merged into a canonical request, reversibly (`merge.py`); demand is the union.
 - MCP tools: write-enabled (`mcp_tools.py`).
 
 No `frontend_manifest` yet: the nav entry and pages arrive with the module's UI, so no nav item points at a page that
-does not exist. Reports, demand aggregation, scoring and relationships arrive in later changes through the same
+does not exist. Reports, scoring and the remaining relationships arrive in later changes through the same
 registration.
 """
 
@@ -32,6 +35,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.product_feedback import export as bundle_export
 from app.modules.product_feedback._shared import REQUEST_MANAGE_PERMISSION
+from app.modules.product_feedback.demand import REQUESTED_BY_SEED
 from app.modules.product_feedback.mcp_tools import build_mcp_tools
 from app.modules.product_feedback.models import EnhancementRequestVersion
 from app.modules.product_feedback.perf_dataset import generate_requests
@@ -125,6 +129,7 @@ MODULE_DEFINITION = ModuleDefinition(
     models_import_path="app.modules.product_feedback.models",
     migrations_dir="app/modules/product_feedback/migrations",
     artefact_types=(REQUEST_ARTEFACT_TYPE,),
+    link_type_seeds=(REQUESTED_BY_SEED,),
     artefact_type_labels={REQUEST_ARTEFACT_TYPE: "Enhancement request"},
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={REQUEST_ARTEFACT_TYPE: REQUEST_SUMMARY_PROVIDER},
@@ -134,7 +139,7 @@ MODULE_DEFINITION = ModuleDefinition(
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
-    perf_generators={REQUEST_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_requests, order=120)},
+    perf_generators={REQUEST_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_requests, order=166)},
     sub_components=(
         ModuleSubComponentDefinition(key=REQUEST_SUBCOMPONENT_KEY, name="Enhancement requests", default_enabled=True),
         ModuleSubComponentDefinition(
@@ -144,6 +149,7 @@ MODULE_DEFINITION = ModuleDefinition(
     org_bundle_hooks=ModuleOrgBundleHooks(export=bundle_export.export_org_data, import_=bundle_export.import_org_data),
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
+        import_late=bundle_export.import_late_project_data,
     ),
     principal_references=_principal_references(),
     mcp_tools=build_mcp_tools(),

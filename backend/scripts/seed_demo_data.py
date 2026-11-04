@@ -3545,7 +3545,30 @@ def main() -> None:
         h_pm, inbox_url, title="Dark mode for night operations",
         description="The console is too bright for night flights.",
     )
-    print("  Product Feedback: 3 Falcon-3 requests (accepted, new, declined) and 2 organisation inbox requests")
+    # Demand: who asked is a "Requested by" link to a Stakeholder, Persona or Engagement; a duplicate is merged into
+    # the request it repeats, so the accepted request's demand is the union of both requests' requesters.
+    requested_by = next(
+        lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()
+        if lt["forward_name"] == "Requested by"
+    )
+    duplicate_request = create_enhancement_request(
+        h_pm, feedback_url, title="Download inspection results as CSV",
+        description="Same ask as the spreadsheet export, from the certification side.",
+    )
+    for request, other_type, other in (
+        (export_request, "stakeholder", stakeholder_fleet), (export_request, "engagement", engagement_focus),
+        (duplicate_request, "stakeholder", stakeholder_authority), (duplicate_request, "persona", persona_auditor),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    httpx.post(
+        f"{feedback_url}/requests/{duplicate_request['id']}/merge",
+        json={"canonical_id": export_request["id"], "note": "Same ask, different wording."}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    print("  Product Feedback: 4 Falcon-3 requests (accepted with requesters from a stakeholder, an engagement and a"
+          " merged duplicate; new; declined) and 2 organisation inbox requests")
 
     print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
           " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"

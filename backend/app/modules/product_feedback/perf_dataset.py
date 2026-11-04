@@ -2,13 +2,17 @@
 Module: modules.product_feedback.perf_dataset
 
 The dataset generator for the `enhancement_request` artefact type: project requests with their version history
-(including declined ones with a reason), comments, tags and links to other records.
+(including declined ones with a reason), comments, tags, "Requested by" links to Stakeholders, Personas and
+Engagements, and a share of duplicates merged into an earlier request.
 
 Responsibilities:
-- Write `enhancement_requests`, `enhancement_request_versions`, `enhancement_request_comments`, tags, cross-type
-  `artefact_links` and audit events, and the project's `enhancement_request` sequence counter.
+- Write `enhancement_requests`, `enhancement_request_versions`, `enhancement_request_comments`,
+  `enhancement_request_merges`, tags, cross-type `artefact_links` and audit events, and the project's
+  `enhancement_request` sequence counter.
 
 Design decisions:
+- A duplicate is created with the `DUPLICATE` status its merge row implies and points at an earlier, non-duplicate
+  request of the batch, so no chain exists.
 - Only project-owned requests are generated; the organisation inbox is not covered (its rows belong to the
   organisation, not a project).
 
@@ -19,13 +23,27 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+from app.modules.product_feedback.demand import REQUESTED_BY_FORWARD
 from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus
-from app.modules.product_feedback.models import EnhancementRequest, EnhancementRequestComment, EnhancementRequestVersion
+from app.modules.product_feedback.models import (
+    EnhancementRequest,
+    EnhancementRequestComment,
+    EnhancementRequestMerge,
+    EnhancementRequestVersion,
+)
 from app.modules.product_feedback.service import REQUEST_ARTEFACT_TYPE, REQUEST_CODE_PREFIX
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import PerfProjectContext
 from app.services.perf_dataset.core import extra_versions
-from app.services.perf_dataset.records import RecordBatch, add_comments, add_tags, created_at, link_to_earlier, pick_weighted
+from app.services.perf_dataset.records import (
+    Partner,
+    RecordBatch,
+    add_comments,
+    add_tags,
+    created_at,
+    link_to_earlier,
+    pick_weighted,
+)
 
 _S = EnhancementRequestStatus
 _STATUS_MIX = (
@@ -48,11 +66,24 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
         return {}
     start = dict(ctx.counts)
     batch = RecordBatch.start(ctx, REQUEST_ARTEFACT_TYPE, REQUEST_CODE_PREFIX, EnhancementRequest)
+    canonicals: list = []
     for _ in range(count):
         creator, created = rng.choice(ctx.user_ids), created_at(rng)
         final = pick_weighted(rng, _STATUS_MIX)
+        prior = final
+        duplicate_of = None
+        if canonicals and final in (_S.NEW, _S.UNDER_REVIEW, _S.ACCEPTED) and rng.random() < 0.08:
+            duplicate_of, final = rng.choice(canonicals), _S.DUPLICATE
         archived = rng.random() < 0.03
         record_id = batch.new_id()
+        if duplicate_of is None:
+            canonicals.append(record_id)
+        else:
+            batch.satellite(EnhancementRequestMerge, {
+                "id": batch.new_id(), "canonical_id": duplicate_of, "duplicate_id": record_id, "prior_status": prior,
+                "merged_by": creator, "merged_at": created + timedelta(days=1), "unmerged_by": None, "unmerged_at": None,
+                "created_at": created + timedelta(days=1), "updated_at": created + timedelta(days=1),
+            })
         title = textgen.title(rng)
         batch.add(
             {"id": record_id, "scope": EnhancementRequestScope.PROJECT, "organization_id": None, "is_archived": archived,
@@ -83,5 +114,10 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
     batch.write()
     add_comments(ctx, batch, EnhancementRequestComment, "request_id")
     add_tags(ctx, batch)
-    link_to_earlier(ctx, batch, [("pain_point", 0.5), ("requirement_action", 0.1)])
+    link_to_earlier(ctx, batch, [
+        ("pain_point", 0.3), ("requirement_action", 0.1),
+        Partner("stakeholder", 0.3, forward_name=REQUESTED_BY_FORWARD),
+        Partner("persona", 0.15, forward_name=REQUESTED_BY_FORWARD),
+        Partner("engagement", 0.15, forward_name=REQUESTED_BY_FORWARD),
+    ])
     return {table: ctx.counts.get(table, 0) - start.get(table, 0) for table in ctx.counts}

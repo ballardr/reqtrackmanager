@@ -86,3 +86,85 @@ def transition(client, token, base: str, request_id, status: str, comment: str =
 def user_ref(user_id: str) -> dict:
     """A user as an `owner` principal reference."""
     return {"type": "user", "id": user_id}
+
+
+# --- Requesters (Module 2 records) and links ---------------------------------
+
+STAKEHOLDERS = "modules/stakeholders"
+
+
+def enable_stakeholders(client, token, org_id) -> None:
+    """Enables Stakeholders & Personas for the organisation (Product Feedback's requesters live there)."""
+    resp = client.put(f"/api/v1/orgs/{org_id}/{STAKEHOLDERS}", json={"enabled": True}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+
+def setup_with_people(client, admin_token, org_name: str):
+    """`setup`, plus the Stakeholders & Personas module enabled."""
+    org, project, token = setup(client, admin_token, org_name)
+    enable_stakeholders(client, token, org["id"])
+    return org, project, token
+
+
+def create_stakeholder(client, token, project_id, name, *, influence: str | None = None, org_id=None) -> dict:
+    """A project stakeholder, optionally rated on the Influence axis (`influence` is the level name)."""
+    payload = {"name": name}
+    if influence is not None:
+        scheme = client.get(f"/api/v1/orgs/{org_id}/scoring-schemes/stakeholder", headers=auth_headers(token)).json()
+        axis = next(a for a in scheme["axes"] if a["key"] == "influence")
+        payload["influence_level_id"] = next(lvl["id"] for lvl in axis["levels"] if lvl["name"] == influence)
+    resp = client.post(f"/api/v1/projects/{project_id}/{STAKEHOLDERS}/stakeholders", json=payload, headers=auth_headers(token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def create_persona(client, token, project_id, name, *, weight: float | None = None) -> dict:
+    """A project persona with an optional weight."""
+    payload = {"name": name, **({"weight": weight} if weight is not None else {})}
+    resp = client.post(f"/api/v1/projects/{project_id}/{STAKEHOLDERS}/personas", json=payload, headers=auth_headers(token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def create_engagement(client, token, project_id, title="Workshop", *, stakeholder_ids=(), persona_ids=()) -> dict:
+    """An engagement with the given participants and covered personas."""
+    resp = client.post(
+        f"/api/v1/projects/{project_id}/{STAKEHOLDERS}/engagements",
+        json={
+            "title": title, "channel": "workshop", "engagement_date": "2026-11-01",
+            "stakeholder_ids": list(stakeholder_ids), "persona_ids": list(persona_ids),
+        },
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def requested_by_type_id(client, token, org_id) -> str:
+    """The organisation's "Requested by" link type id (listing seeds module types)."""
+    rows = client.get(f"/api/v1/orgs/{org_id}/link-types", headers=auth_headers(token)).json()
+    return next(row["id"] for row in rows if row["forward_name"] == "Requested by")
+
+
+def add_requester(client, token, org_id, project_id, request_id, other_type, other_id):
+    """POSTs the generic link endpoint from the request's page: the request is "Requested by" the other record."""
+    return client.post(
+        f"/api/v1/projects/{project_id}/artefacts/enhancement_request/{request_id}/links",
+        json={
+            "link_type_id": requested_by_type_id(client, token, org_id), "direction": "outgoing",
+            "other_type": other_type, "other_id": other_id,
+        },
+        headers=auth_headers(token),
+    )
+
+
+def get_request(client, token, project_id, request_id) -> dict:
+    resp = client.get(f"{project_base(project_id)}/requests/{request_id}", headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def get_demand(client, token, project_id, request_id) -> dict:
+    resp = client.get(f"{project_base(project_id)}/requests/{request_id}/demand", headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    return resp.json()

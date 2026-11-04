@@ -372,6 +372,7 @@ class ModuleDefinition:
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
+    demand_party_providers: dict[str, Callable[[Session, UUID, Sequence[UUID]], dict[UUID, list[DemandParty]]]] = {}  # who a record stands for (§4e2)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
@@ -997,6 +998,31 @@ flowchart LR
   tolerate a target disappearing or the owner being disabled.
 - The provider does its own sub-component and tenancy checks; the caller has
   already authorised the project.
+### 4e2. Demand parties: who a record stands for (Product Feedback Phase 2)
+
+A module that counts *who asked* (Product Feedback's enhancement requests) can't import the module that owns the
+people. The owner declares
+`demand_party_providers[artefact_type] = (db, project_id, ids) -> {id: [DemandParty]}` and the counter calls
+`registry.resolve_demand_parties(db, project_id, type, ids)`.
+
+```mermaid
+flowchart LR
+    REQ["Request 'Requested by' links"] --> DP["resolve_demand_parties"]
+    DP -->|stakeholder| S["itself, weighted by Influence level"]
+    DP -->|persona| P["itself, weighted by effective persona weight"]
+    DP -->|engagement| E["its participants + covered personas"]
+    S --> U["de-duplicated by (type, id)"]
+    P --> U
+    E --> U
+    U --> D["count + weighted demand"]
+```
+
+- `DemandParty(artefact_type, id, label, weight)`: `weight` is `None` when unset; the counter treats that as 1.
+- The provider does its own sub-component and tenancy checks and omits an id the project cannot see, so a count
+  never discloses a hidden record. `resolve_demand_parties` returns `{}` when the owning module is off.
+- Reads in a fixed number of statements however many ids it is given (a list asks for a whole page at once).
+- The counter de-duplicates by `(artefact_type, id)`, so a party reached twice counts once.
+
 ### 4f. Link targets: records another module relates to (Module 2 Phase 3)
 
 A module that relates its records to another module's (a Stakeholder

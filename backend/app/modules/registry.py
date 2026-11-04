@@ -1260,6 +1260,29 @@ class ScoringTarget:
 
 
 @dataclass(frozen=True)
+class DemandParty:
+    """One party (a person or a persona) a record stands for when another module counts demand, returned by a
+    `ModuleDefinition.demand_party_providers` callable.
+
+    A record of the provider's own type expands to one or more parties: a Stakeholder or Persona is its own
+    party, an Engagement is the Stakeholders who took part and the Personas it covered. The counting module
+    de-duplicates parties by `(artefact_type, id)`, so a party reached twice counts once.
+
+    Attributes:
+        artefact_type: The party's own registered artefact type (e.g. `"stakeholder"`).
+        id: The party record's id.
+        label: Display name.
+        weight: The party's resolved importance in the requesting project, or `None` when none is set (the
+            counting module then weights it as 1).
+    """
+
+    artefact_type: str
+    id: uuid.UUID
+    label: str
+    weight: float | None
+
+
+@dataclass(frozen=True)
 class ArtefactSummary:
     """A minimal, module-neutral description of one artefact, returned by an
     `ArtefactSummaryProvider` so one module can link to, validate and label
@@ -2655,6 +2678,15 @@ class ModuleDefinition:
             `get_scoring_targets` (below), which returns `[]` when the
             owning module is disabled for the project. Empty for a module
             offering no scoring targets.
+        demand_party_providers: Maps one of this module's own
+            `artefact_types` to a callable `(db, project_id, ids) -> {id: [DemandParty]}`
+            saying which parties each record stands for (a Stakeholder or Persona
+            is itself, an Engagement is its participants and covered personas),
+            with weights. Lets Product Feedback count who asked for a request
+            without importing the module that owns the people. Read via
+            `resolve_demand_parties` (below), which returns `{}` when the owning
+            module is disabled for the project. Empty for a module whose records
+            stand for no one.
         artefact_summary_providers: Maps one of this
             module's own `artefact_types` to an `ArtefactSummaryProvider`
             (`get` + `list_for_project`), so another module can validate,
@@ -2796,6 +2828,9 @@ class ModuleDefinition:
     scoring_target_providers: dict[str, Callable[[Session, uuid.UUID], list[ScoringTarget]]] = field(
         default_factory=dict
     )
+    demand_party_providers: dict[
+        str, Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], dict[uuid.UUID, list[DemandParty]]]
+    ] = field(default_factory=dict)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = field(default_factory=dict)
     artefact_type_labels: dict[str, str] = field(default_factory=dict)
     reports: tuple[ReportDefinition, ...] = field(default=())
@@ -4384,6 +4419,44 @@ def get_scoring_targets(db: Session, project_id: uuid.UUID, target_type: str) ->
             return []
         return provider(db, project_id)
     return []
+
+
+def has_demand_party_provider(artefact_type: str) -> bool:
+    """Whether some registered module can expand records of `artefact_type` into demand parties (regardless of
+    whether that module is enabled anywhere)."""
+    return any(artefact_type in d.demand_party_providers for d in get_module_registry().values())
+
+
+def resolve_demand_parties(
+    db: Session, project_id: uuid.UUID, artefact_type: str, ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, list[DemandParty]]:
+    """Expands records of `artefact_type` into the parties they stand for, via the owning module's
+    `demand_party_providers` entry.
+
+    Returns `{}` — never raises — when no module provides `artefact_type` or the owning module is disabled for
+    the project, so a demand count degrades to "nothing known about these records" rather than breaking. An id
+    the provider cannot see in the project (another project's record, one hidden from it) is absent from the
+    result.
+
+    Args:
+        db: An active database session (read only).
+        project_id: The project the counting happens in.
+        artefact_type: A registered artefact type, e.g. `"engagement"`.
+        ids: The records to expand.
+
+    Returns:
+        `{record id: parties}`.
+    """
+    if not ids:
+        return {}
+    for definition in get_module_registry().values():
+        provider = definition.demand_party_providers.get(artefact_type)
+        if provider is None:
+            continue
+        if not is_module_enabled_for_project(db, project_id, definition.key):
+            return {}
+        return provider(db, project_id, list(ids))
+    return {}
 
 
 def _summary_provider_for(artefact_type: str) -> tuple[ModuleDefinition, ArtefactSummaryProvider] | None:

@@ -113,3 +113,68 @@ def test_an_organisation_round_trips_its_inbox_numbered_afresh_and_a_reimport_do
     assert version.status.value == "declined" and version.decline_reason == "Out of scope."
     assert request.scope.value == "organization" and request.project_id is None
     assert sorted(r.unique_code for r, _ in rows) == ["ENH-001", "ENH-002"]
+
+
+def test_requesters_and_an_active_merge_round_trip_and_an_ended_merge_does_not(client, admin_token):
+    from app.modules.product_feedback.tests._helpers import (
+        add_requester,
+        create_persona,
+        create_stakeholder,
+        get_demand,
+        get_request,
+        setup_with_people,
+    )
+
+    org, project, token = setup_with_people(client, admin_token, "Feedback Bundle Demand Co")
+    pid, base, h = project["id"], project_base(project["id"]), auth_headers(token)
+    canonical = create_request(client, token, pid, title="Canonical")
+    duplicate = create_request(client, token, pid, title="Duplicate")
+    ended = create_request(client, token, pid, title="Ended")
+    ann = create_stakeholder(client, token, pid, "Ann", influence="High", org_id=org["id"])
+    tech = create_persona(client, token, pid, "Technician", weight=2)
+    assert add_requester(client, token, org["id"], pid, canonical["id"], "stakeholder", ann["id"]).status_code == 201
+    assert add_requester(client, token, org["id"], pid, duplicate["id"], "persona", tech["id"]).status_code == 201
+    for dup in (duplicate, ended):
+        assert client.post(f"{base}/requests/{dup['id']}/merge", json={"canonical_id": canonical["id"]}, headers=h).status_code == 200
+    assert client.post(f"{base}/requests/{ended['id']}/unmerge", headers=h).status_code == 200
+
+    imported = _import_project(client, token, org["id"], _export(client, token, f"/api/v1/projects/{pid}/export"), "Restored Demand")
+    got = _requests(client, token, imported["id"])
+    assert got["Duplicate"]["status"] == "duplicate" and got["Duplicate"]["merged_into"]["id"] == got["Canonical"]["id"]
+    assert got["Ended"]["status"] == "new" and got["Ended"]["merged_into"] is None
+    demand = get_demand(client, token, imported["id"], got["Canonical"]["id"])
+    assert {r["label"]: r["from_merge"] for r in demand["requesters"]} == {"Ann": False, "Technician": True}
+    assert demand["weighted_demand"] == 3 + 2
+    assert get_request(client, token, imported["id"], got["Canonical"]["id"])["merged_count"] == 1
+    # The original project is untouched.
+    assert get_request(client, token, pid, canonical["id"])["requester_count"] == 2
+
+
+def test_an_inbox_merge_round_trips_through_the_organisation_bundle(client, admin_token):
+    org, _, token = setup(client, admin_token, "Feedback Org Merge Bundle Co")
+    keep = create_inbox_request(client, token, org["id"], title="Keep this", description="A")
+    dup = create_inbox_request(client, token, org["id"], title="Same again", description="B")
+    assert client.post(
+        f"{org_base(org['id'])}/requests/{dup['id']}/merge", json={"canonical_id": keep["id"]}, headers=auth_headers(token),
+    ).status_code == 200
+    export = _export(client, token, f"/api/v1/orgs/{org['id']}/export")
+    imported = client.post(
+        "/api/v1/orgs/import", data={"name": "Restored Merge Org"},
+        files={"file": ("bundle.zip", export, "application/zip")}, headers=auth_headers(admin_token),
+    )
+    assert imported.status_code == 201, imported.text
+    new_org_id = uuid.UUID(imported.json()["organization"]["id"])
+    from app.modules.product_feedback.models import EnhancementRequestMerge
+
+    with SessionLocal() as db:
+        merges = db.scalars(
+            select(EnhancementRequestMerge).join(EnhancementRequest, EnhancementRequest.id == EnhancementRequestMerge.duplicate_id)
+            .where(EnhancementRequest.organization_id == new_org_id, EnhancementRequestMerge.unmerged_at.is_(None))
+        ).all()
+        assert len(merges) == 1
+        titles = {r.id: v.title for r, v in db.execute(
+            select(EnhancementRequest, EnhancementRequestVersion)
+            .join(EnhancementRequestVersion, EnhancementRequestVersion.request_id == EnhancementRequest.id)
+            .where(EnhancementRequest.organization_id == new_org_id, EnhancementRequestVersion.valid_to.is_(None))
+        )}
+        assert titles[merges[0].canonical_id] == "Keep this" and titles[merges[0].duplicate_id] == "Same again"

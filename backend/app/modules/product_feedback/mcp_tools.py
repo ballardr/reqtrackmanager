@@ -6,8 +6,8 @@ router endpoint, so the endpoint's own authorisation, guards and audit logging a
 grants nothing.
 
 Responsibilities:
-- `build_mcp_tools`: read tools (requests, versions, comments, settings) and write tools (create, update,
-  lifecycle move, comment) for a project, plus list and create for the organisation's inbox.
+- `build_mcp_tools`: read tools (requests, versions, comments, demand, merges, settings) and write tools (create,
+  update, lifecycle move, comment, merge, unmerge) for a project, plus list, create and move-into-a-project for the organisation's inbox.
 
 Design decisions:
 - Write-enabled (**Decided by: User**, as for every module's MCP tools). Writes still need `MCP_WRITES_ENABLED`
@@ -76,6 +76,20 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="GET", path_template=f"{_REQUEST}/comments", params=[_PROJECT_ID, _REQUEST_ID],
         ),
         McpToolDefinition(
+            name="get_request_demand",
+            description=(
+                "Who asked for a request: distinct requesters (Stakeholders and Personas, including those reached "
+                "through linked Engagements and requests merged into it), the engagements it was raised in, the "
+                "requester count and weighted demand. Add requesters with the core link tools (link type 'Requested by')."
+            ),
+            method="GET", path_template=f"{_REQUEST}/demand", params=[_PROJECT_ID, _REQUEST_ID],
+        ),
+        McpToolDefinition(
+            name="list_request_merges",
+            description="Lists the merges a request took part in (as canonical or duplicate), active and ended.",
+            method="GET", path_template=f"{_REQUEST}/merges", params=[_PROJECT_ID, _REQUEST_ID],
+        ),
+        McpToolDefinition(
             name="get_feedback_settings",
             description="Reads who may submit requests in the project (any member, or triagers only).",
             method="GET", path_template=f"{_PREFIX}/settings", params=[_PROJECT_ID],
@@ -107,6 +121,22 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
                     _body("comment", "string", "Why; the decline reason when declining.")],
         ),
         McpToolDefinition(
+            name="merge_request",
+            description=(
+                "Marks a request as a duplicate of another request of the same project: its requesters then count "
+                "toward the canonical request's demand. Reversible with unmerge_request. Needs the Feedback Triager "
+                "role; refused (409) unless the duplicate is new, under review or accepted and neither is archived."
+            ),
+            method="POST", path_template=f"{_REQUEST}/merge",
+            params=[_PROJECT_ID, _REQUEST_ID, _body("canonical_id", "uuid", "The request that stays.", required=True),
+                    _body("note", "string", "Why they are the same.")],
+        ),
+        McpToolDefinition(
+            name="unmerge_request",
+            description="Reverses a merge: the duplicate returns to the status it had. Needs the Feedback Triager role.",
+            method="POST", path_template=f"{_REQUEST}/unmerge", params=[_PROJECT_ID, _REQUEST_ID],
+        ),
+        McpToolDefinition(
             name="add_request_comment", description="Adds a comment to a request's discussion.", method="POST",
             path_template=f"{_REQUEST}/comments",
             params=[_PROJECT_ID, _REQUEST_ID, _body("body", "string", "The comment text.", required=True)],
@@ -115,6 +145,16 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             name="list_inbox_requests",
             description="Lists the organisation's inbox requests (answers 404 when the organisation switched the inbox off).",
             method="GET", path_template=f"{_ORG_PREFIX}/requests", params=[_ORG_ID, *_LIST_FILTERS],
+        ),
+        McpToolDefinition(
+            name="move_inbox_request_to_project",
+            description=(
+                "Triages an inbox request into a project of the organisation: it keeps its id, status, comments and "
+                "history, takes the project's next ENH code and its tags and files become the project's. Needs the "
+                "Organisation Feedback Triager role; refused (409) if the request has links."
+            ),
+            method="POST", path_template=f"{_ORG_PREFIX}/requests/{{request_id}}/move-to-project",
+            params=[_ORG_ID, _REQUEST_ID, _body("project_id", "uuid", "The project to move it into.", required=True)],
         ),
         McpToolDefinition(
             name="create_inbox_request",

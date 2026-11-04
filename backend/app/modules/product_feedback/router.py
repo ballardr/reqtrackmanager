@@ -3,7 +3,8 @@ Module: modules.product_feedback.router
 
 Organisation-scoped Product Feedback API (the organisation's inbox), mounted at
 `/api/v1/orgs/{organization_id}/modules/product_feedback`: request CRUD, archive, versions, lifecycle
-transitions, comments and files for requests the organisation itself owns.
+transitions, comments and files for requests the organisation itself owns, and the triage of a request into a project
+(`move-to-project`), plus merging a duplicate into another inbox request (`merge`, `unmerge`, `merges`).
 
 RBAC: every endpoint needs the `organization_requests` sub-component enabled for the organisation (an
 organisation administrator can switch the inbox off; the endpoints then answer 404) and organisation
@@ -17,7 +18,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -31,6 +32,9 @@ from app.modules.product_feedback.schemas import (
     RequestCommentOut,
     RequestCommentUpdate,
     RequestCreate,
+    RequestMergeOut,
+    RequestMergeRequest,
+    RequestMoveRequest,
     RequestOut,
     RequestTransitionRequest,
     RequestUpdate,
@@ -151,6 +155,53 @@ def unarchive_org_request(
     request = _get(db, holder, request_id)
     sh.require_request_manage(db, current_user, holder)
     return sh.set_archived(db, holder, request, current_user, archived=False)
+
+
+@router.post("/requests/{request_id}/merge", response_model=RequestOut)
+def merge_org_request(
+    organization_id: UUID, request_id: UUID, payload: RequestMergeRequest, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Marks the inbox request a duplicate of `canonical_id` (another inbox request). Needs the organisation
+    triager role; 409 for an illegal merge. Reversible with `unmerge`."""
+    holder = _holder(db, organization_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.merge_from_payload(db, holder, request, payload.canonical_id, payload.note, current_user)
+
+
+@router.post("/requests/{request_id}/unmerge", response_model=RequestOut)
+def unmerge_org_request(
+    organization_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Reverses the merge of a duplicate inbox request: it returns to the status it had. Needs the organisation
+    triager role; 409 if it is not merged."""
+    holder = _holder(db, organization_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.unmerge_from_payload(db, holder, request, current_user)
+
+
+@router.get("/requests/{request_id}/merges", response_model=list[RequestMergeOut])
+def list_org_request_merges(
+    organization_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The merges an inbox request took part in, active and ended, newest first."""
+    return sh.merges_out(db, _get(db, _holder(db, organization_id), request_id))
+
+
+@router.post("/requests/{request_id}/move-to-project", response_model=RequestOut)
+def move_org_request_to_project(
+    organization_id: UUID, request_id: UUID, payload: RequestMoveRequest, http_request: Request,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Triages an inbox request into a project of the organisation: it keeps its id, status, comments and history,
+    takes the project's next `ENH` code, and its tags and files become the project's. Needs the organisation
+    triager role and the right to submit in the target project; 409 if the request has links."""
+    holder = _holder(db, organization_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.move_to_project_from_payload(db, http_request, holder, request, payload.project_id, current_user)
 
 
 @router.post("/requests/{request_id}/comments", response_model=RequestCommentOut, status_code=status.HTTP_201_CREATED)

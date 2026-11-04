@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phase 1 (backend) built 2026-11-04; Phase 1b and Phase 2 next. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b and 2 (backend) built 2026-11-04; Phase 3 next. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
@@ -15,15 +15,15 @@ artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-2 / 9 phases complete. Phase 0 and Phase 1 done 2026-11-04 (Module 2 Phase 1.2 and
-Module 1 Phase 13 had shipped). Phase 1b (triage an inbox request into a project) is next, then Phase 2.
+4 / 9 phases complete. Phases 0, 1, 1b and 2 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped). Phase 3 (ICE/RICE scoring on the core scoring matrix) is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: open questions below | [x] Complete (2026-11-04) — see "Phase 0 resolutions" |
 | 1 | Data model: Enhancement Request, lifecycle, RBAC | [x] Complete (2026-11-04) — see "Phase 1 notes" |
-| 1b | Triage an organisation inbox request into a project | [ ] Not started |
-| 2 | Demand aggregation + duplicate merge | [ ] Not started |
+| 1b | Triage an organisation inbox request into a project | [x] Complete (2026-11-04) — see "Phase 1b notes" |
+| 2 | Demand aggregation + duplicate merge | [x] Complete (2026-11-04) — see "Phase 2 notes" |
 | 3 | ICE/RICE scoring on the core scoring matrix | [ ] Not started |
 | 4 | Relationships + close-the-loop | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
@@ -130,7 +130,38 @@ Backend built; account and security review in `docs/decisions.md` ("Module 14 (P
 - Status model: `new → under_review → accepted → delivered`, `declined` (reason), `duplicate` (merge only, Phase 2).
 - Migration `0130` (next `0131`). Frontend: types, label maps and path registration only.
 
-**Phase 1b (new)** — moving an inbox request into a project changes its owner tier: renumber the code (the project's `ENH` counter), re-scope its tags, re-home its files, write one audit event, and leave the old code findable in the audit detail. Not folded into Phase 1 because doing it half-way leaves orphaned tags or files.
+**Phase 1b (new)** — moving an inbox request into a project changes its owner tier: renumber the code (the project's `ENH` counter), re-scope its tags, re-home its files, write one audit event, and leave the old code findable in the audit detail. Not folded into Phase 1 because doing it half-way leaves orphaned tags or files. Built; see below.
+
+## Phase 1b notes (2026-11-04)
+
+Backend built; account, security review and one finding in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 1b").
+
+- `POST /orgs/{org}/modules/product_feedback/requests/{id}/move-to-project` and MCP tool `move_inbox_request_to_project`; logic in `modules/product_feedback/triage.py`.
+- The row is updated in place (same id, status, comments, history); new project code, tags re-resolved in the project vocabulary, files become project files, one `moved_to_project` audit event with the old code. One-way; refused if the request has links.
+- Finding: an organisation triager is an effective triager in every project (permission cascade), so a project's `triagers` policy cannot exclude one. Left as is and pinned by a test.
+- **Phase 2 must:** a merge only joins requests of the same tier and owner; decide whether a merged duplicate may be moved.
+- **Phase 5 must add:** the Move to project action (project picker limited to projects the user can open with the list enabled) on the inbox detail page.
+
+## Phase 2 notes (2026-11-04)
+
+Backend built; account, security review and one finding in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 2").
+
+```mermaid
+flowchart LR
+    R[Request] -- Requested by --> ST[Stakeholder<br/>weight = Influence level]
+    R -- Requested by --> PE[Persona<br/>weight = effective persona weight]
+    R -- Requested by --> EN[Engagement]
+    EN -- participants --> ST
+    EN -- covers --> PE
+    D[Duplicate request] -. active merge .-> R
+    D -- its requesters --> R
+```
+
+- **Requesters** are authored with the generic link endpoints (link type `Requested by`, a module `LinkTypeSeed`); there is no requester endpoint. `GET .../requests/{id}/demand` returns the breakdown; every request shape also carries `requester_count`, `weighted_demand`, `merged_into` and `merged_count`.
+- **The hook:** core `ModuleDefinition.demand_party_providers` / `registry.resolve_demand_parties` (documented in `docs/modules.md` §4e2); Module 2 implements it in `stakeholders/demand.py`. Product Feedback imports nothing from Module 2.
+- **Merge:** `POST .../requests/{id}/merge {canonical_id, note}`, `POST .../unmerge`, `GET .../merges`, on both tiers (the inbox merges inbox requests). Reversible; demand is the union, derived from active `EnhancementRequestMerge` rows (migration `0131`, next `0132`).
+- **Phase 4 must:** the informed checkbox per requester reads `compute_demand`'s requesters (merged ones included); the "Delivered" prompt and close-the-loop list use the same union.
+- **Phase 5 must add:** a Requesters panel (the quick-link/link finder restricted to `Requested by`), the demand breakdown with the merged-duplicates list, Merge and Unmerge actions (triager only; canonical picker limited to open non-duplicate requests of the same owner), the `duplicate` badge with "merged into ENH-nnn", and the demand columns on the list and its export.
 
 **Phase 5 must add:** the module's `frontend_manifest` (nav entry), routes for the paths already registered in `frontend/src/modules/product_feedback/module.ts`, the org inbox page, the submission-policy setting on Project admin and the org inbox switch's explanation, plus stories, Playwright and the docs website.
 

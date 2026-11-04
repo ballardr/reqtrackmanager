@@ -8,6 +8,9 @@ version history, lifecycle transitions, comments and the project settings.
 (the owner, the external reference) can be cleared by sending an explicit `null`. `status` is not
 editable here (the transition endpoint owns it).
 
+A request also reports its place in a merge (`merged_into`, `merged_count`) and its demand
+(`requester_count`, `weighted_demand`; see `demand.py`). Both are derived, never written here.
+
 `owner` is a principal: a user, an organisation group or a project group. Requests send a
 `PrincipalRef` (`{type, id}`; null clears it) and responses return a resolved `PrincipalOut`.
 """
@@ -54,6 +57,27 @@ class RequestTransitionRequest(BaseModel):
     comment: str = ""
 
 
+class RequestMoveRequest(BaseModel):
+    """Triage of an inbox request into the project `project_id` (a project of the same organisation)."""
+
+    project_id: UUID
+
+
+class RequestMergeRequest(BaseModel):
+    """Merge of the request in the URL (the duplicate) into `canonical_id`, another request of the same owner."""
+
+    canonical_id: UUID
+    note: str = Field(default="", max_length=2000)
+
+
+class RequestRefOut(BaseModel):
+    """A short reference to another request."""
+
+    id: UUID
+    unique_code: str
+    title: str
+
+
 class RequestOut(ProjectScopedRow):
     """A request merged with its current version. Built explicitly (identity row plus version), never via
     `from_attributes`."""
@@ -78,6 +102,10 @@ class RequestOut(ProjectScopedRow):
     version_number: int
     created_at: datetime
     updated_at: datetime
+    merged_into: RequestRefOut | None = None
+    merged_count: int = 0
+    requester_count: int = 0
+    weighted_demand: float = 0.0
 
 
 class RequestVersionOut(BaseModel):
@@ -135,3 +163,51 @@ class FeedbackSettingsUpdate(BaseModel):
     """Replacement settings."""
 
     submission_policy: SubmissionPolicy
+
+
+class RequesterOut(BaseModel):
+    """One distinct party behind a request. `label` and `weight` are null (and `hidden` true) for a party the
+    caller may not view; it still counts toward the totals."""
+
+    artefact_type: str
+    id: UUID
+    label: str | None = None
+    weight: float | None = None
+    effective_weight: float
+    from_merge: bool
+    via_engagement: bool
+    hidden: bool = False
+
+
+class DemandEngagementOut(BaseModel):
+    """An Engagement the request was raised in; `label` is null when the caller may not view it."""
+
+    id: UUID
+    label: str | None = None
+    hidden: bool = False
+
+
+class DemandOut(BaseModel):
+    """A request's demand: the distinct requesters (its own and those of requests merged into it), the
+    engagements it was raised in, and the totals."""
+
+    request_id: UUID
+    requester_count: int
+    weighted_demand: float
+    requesters: list[RequesterOut]
+    engagements: list[DemandEngagementOut]
+    merged_duplicates: list[RequestRefOut]
+
+
+class RequestMergeOut(BaseModel):
+    """One merge in a request's history (as the canonical request or as the duplicate)."""
+
+    id: UUID
+    canonical: RequestRefOut
+    duplicate: RequestRefOut
+    prior_status: EnhancementRequestStatus
+    merged_by: UUID
+    merged_at: datetime
+    unmerged_by: UUID | None = None
+    unmerged_at: datetime | None = None
+    active: bool
