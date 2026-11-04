@@ -21,6 +21,10 @@ flowchart LR
 3. Choose what happens if the target already has something with the same name, then **Preview**. Each item says what will happen, with a note for anything that may not work in the target.
 4. Choose **Copy**. The dialog says what was copied and links to the target's Reports.
 
+| Copy to another project, after Preview: each report is listed with what will happen to it |
+| --- |
+| ![The Copy 2 items to another project dialog with Solstice Cloud Platform as the target, a rule for a name that already exists, Keep my favourites ticked and two layouts previewed as copies](../../../static/img/screenshots/report-copy-dialog.png) |
+
 ## What is copied
 
 | Item | What the copy is |

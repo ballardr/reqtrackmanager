@@ -13,7 +13,7 @@ A project's **Reports** button (at the top of the project overview) opens a dial
 | Reports |
 | --- |
 | PDF/Word/CSV export of the requirements, with the organisation's report look |
-| ![Reports page with filters and a selected report look](../../static/img/screenshots/reports-page.png) |
+| ![The Reports dialog with the Requirements report: Generate PDF and More formats, the chapter layout and the Resource sections list](../../static/img/screenshots/reports-page.png) |
 
 The same dialog can also offer reports from enabled modules (for example [Context & Strategy's](../modules/context-strategy-module/reports.md) and [Decision Management's](../modules/decision-management-module/reports.md)) in the same **Report** picker, a dialog with search, folders and favourites (see [Finding and organising reports](./custom-reports/organising-reports.md)). A module report is offered only while its module, and the sub-component it belongs to, is on for the project. When no module report applies, the picker is hidden and the page is the requirements report alone.
 
@@ -97,6 +97,14 @@ A **custom report** is a report layout somebody designed in the organisation's o
 ## Large reports are prepared in the background
 
 When you download a file that is too big to produce while you wait, the dialog says so ("It is being prepared in the background and you will be notified when it is ready"). The server works through the queue, allows a bigger report than a download you wait for, and **notifies you** (in the app, and by email if your notification settings send it) when the file is ready or could not be produced. While it is being prepared, a **clock with a count** appears in the top bar beside the notification bell; click it to see which reports are still being prepared.
+
+| A report too big to wait for: the dialog says it is being prepared in the background and a clock appears in the top bar |
+| --- |
+| ![The Reports dialog after Download, with a message that the report is too big to produce while you wait and is being prepared in the background, and a clock with a count of one in the top bar](../../static/img/screenshots/report-background-queued.png) |
+
+| Opened from its notification, the finished report offers Download until its retention passes |
+| --- |
+| ![The report dialog for Requirements by component and category showing a Ready badge, PDF and 2.9 KB, the date it can be downloaded until, and a Download button](../../static/img/screenshots/report-background-ready.png) |
 
 **Click the notification** to open the report in a dialog and **Download** it. If the file has been removed, or the report failed, the same dialog says why and offers **Generate again**.
 

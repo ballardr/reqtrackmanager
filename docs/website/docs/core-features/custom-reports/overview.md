@@ -26,6 +26,10 @@ flowchart LR
 
 Every organisation starts with four ready-made document layouts and one workbook, so a first report needs no design work:
 
+| New from a starter: choose a built-in layout, where the copy goes and its name; the copy is yours to edit |
+| --- |
+| ![The New layout from a starter dialog with the Review Package starter chosen, its description, Copy into This project and the name Review Package (copy)](../../../static/img/screenshots/report-new-from-starter.png) |
+
 | Starter | What it gives you |
 |---|---|
 | **Business Requirements Document** | Purpose and scope, Pain Points, stakeholders and Personas, needs, Strategy, Future State, requirements, constraints and assumptions, decisions, risks, traceability coverage, Open Questions and the approval state of each record. |
@@ -42,6 +46,10 @@ Each section is built from the project's records when you run it, so the documen
 | --- | --- |
 | A project's Reports dialog (**Reports** menu on the overview) | The layout for that project; **Include child projects** adds the readable child projects |
 | The organisation overview's Reports dialog | An organisation layout evaluated once for **each project you can read**, merged into one report: a document has a heading and a new page per project, a table layout a leading *Project* column |
+
+| The organisation overview's Reports dialog: an organisation layout run for every project the person can read, merged under one heading per project |
+| --- |
+| ![The Reports dialog on the organisation overview with the Requirements by category layout, a Projects selector set to All projects, Categories set to Functional, the format choices and the first project's table](../../../static/img/screenshots/report-org-run.png) |
 
 ```mermaid
 flowchart TD

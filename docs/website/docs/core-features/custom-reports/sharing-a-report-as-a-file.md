@@ -25,6 +25,10 @@ flowchart LR
 3. When a pack is chosen, **include the layouts the packs use** (on by default) puts the layouts a pack names into the file, so the pack works where it lands.
 4. Choose **Export**. The browser saves the file under the report's name (or after the project or organisation, such as "Apollo reports", for several).
 
+| The export dialog, opened from a report's row menu: what the file holds and a switch for earlier versions |
+| --- |
+| ![The Export 1 report as a file dialog explaining the zip, with an Include earlier versions tick box unticked and an Export button](../../../static/img/screenshots/report-file-export.png) |
+
 The file holds the layouts and packs, the pictures the layouts use and a pack's saved sets. It holds **no author names or emails, ids, placements, favourites or who may run a report**: those belong to wherever the file is imported.
 
 ## Import
@@ -33,6 +37,10 @@ The file holds the layouts and packs, the pictures the layouts use and a pack's 
 2. Choose what happens when a report with the same name already exists: **import under a new name** ("Name (copy)") or **skip it**. Nothing is ever replaced.
 3. Choose **Preview**. Each layout and pack is listed with what will happen, its number of versions and warnings: a pack that names a layout neither in the file nor here, a module that is off in the project, pictures that will be added to the library. A layout with no version that is valid here (for example it names a colour your organisation's scheme does not have) is listed as **Cannot be imported**, with the first problem.
 4. Choose **Import**. The reports are new, owned by this project (or the organisation, when imported on the organisation's page) and authored by you; the dialog says how many were imported and how many left out. Choose **OK** to close it.
+
+| The import dialog after choosing a file: the preview lists what will be imported and how a clashing name is handled, before anything is changed |
+| --- |
+| ![The Import reports from a file dialog with a zip chosen, a choice for what to do when a name already exists and a preview line naming the Requirements handbook layout, with an Import 1 item button](../../../static/img/screenshots/report-file-import.png) |
 
 | Part | Behaviour |
 | --- | --- |

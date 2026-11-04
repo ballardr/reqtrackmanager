@@ -15928,3 +15928,24 @@ Closes Phases 119 to 121. No product code changed here beyond one test fix. Time
 - **Security pass (identify, verify, remediate).** *Identified:* the dialog guard could stop protecting real unsaved work; group labels from user-typed fields printed in five renderers. *Verified:* the guard is suppressed only while a `ResultActions` view is mounted (that view holds no input), and a chosen-but-unapplied file still asks (story and Playwright); a hostile tag (`# Boom {{project_name}} <b>x</b>`) prints literally in heading and paragraph. *Remediated:* nothing outstanding.
 - **Test fix (found by the full run).** Storybook `Discard Draft Asks Then Opens The Latest Version` read the editor text once and failed under the concurrent backend suite; the editor follows the discard a render after the notice goes, so the check now waits for the value. It passed alone (74 of 74 in the file) before and after.
 - **Results.** Full backend suite (`-n 4`): 7,022 passed, 12 skipped, 14 failed, all the known host mailhog-DNS invite/OIDC tests. Storybook: 3,318 of 3,319 before the fix, the file 74 of 74 after. Playwright (`--no-deps`): export/import, CSV wizard, group name, designer and drafts specs, 30 passed. Core MCP skill tests (7) pass inside the mcp-server container (`fastmcp` is not on the host).
+
+## Custom reports Phase 15: final slice, screenshots (2026-11-04)
+
+The nine Custom reports pages already described the final behaviour; this slice replaced and added the pictures after the User signed off the review checkpoint. Time shape: none.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A throwaway second stack, not the dev data.** A separate database (`reqtrack_docshots`), a backend on 8001 and a frontend on 3005 from the test compose images, seeded with `seed_demo_data.py` so the Phase 100 to 121 demo layouts exist; Falcon-3's terminology cleared for the capture; torn down afterwards. The User's dev data was not touched. | Agent |
+| 2 | **35 screenshots at 1440x900**: the 11 stale ones were retaken on the same file names (picker, variables, designer text, fields, widgets and history, pack editor and preview, report picker, Reports dialog, Files page) and 20 added (Blocks view and block editor, page setup in three groups, layout look, preview with logo, drafts, table of contents, grid editor, snippet picker, `+ Field` in a group, setup list, file export and import, duplicate, starter, copy, file name default, organisation run, background run queued and ready). The unreferenced `report-folders.png` was removed. | Agent |
+| 3 | **One background run was real, one step mocked**: the 409 `async_required` that sends a run to the queue is answered by the capture script, as the Playwright spec does; the queue, file, notification and Ready dialog are the product's own. | Agent |
+
+*Security (identify, verify, remediate).* Identify: a screenshot showing real people or another organisation's data. Verify: every image is of the fictional Solstice Robotics demo organisation and its demo users; no secret, token or email address is visible. Remediate: none needed. The build caught a wrong relative image path in `reports-and-export.md` (fixed).
+
+*Not applicable:* no code, migration, endpoint, bundle, search, MCP tool, audit event or time field.
+
+## Custom reports: 11b moved to Module 6 and the Module 10 plan closed (2026-11-04)
+
+- **Decided by: User.** Phase 11b (Executive Gap Analysis, requirements §47.5, and Engineering Change Impact, §47.6, as report widgets) moves from Module 10 to Module 6 (Engineering Design) as its Phase 9, because it was waiting on Engineering Design. The Module 10 plan is then complete in full and moved to `docs/plans/completed/`.
+- **Decided by: Agent.** Module 6 Phase 9 is written as a goal, risk, outcome and checklist (collectors with `ReportDefinition`, access-respecting traversal, MCP guidance and reference, docs, seeds, tests) and sits after the docs phase because it depends on Phases 3 and 6. Verification Actions and Baselines already exist (the index records that Verification lives in `RequirementAction`), so Design is the one missing piece. Module 10's acceptance criteria 2 and 3 are marked as moved, not met. The Module 6 status table reads 0 / 9.
+- *Not applicable:* no code, migration, endpoint, bundle, search, audit event or time field.
+

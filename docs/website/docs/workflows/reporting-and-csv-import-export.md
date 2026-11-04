@@ -15,7 +15,7 @@ Click **Reports** at the top of the project overview, and pick the **Requirement
 | Reports dialog |
 | --- |
 | PDF/Word/CSV export with the organisation's report look |
-| ![Reports page with filters and a selected report look](../../static/img/screenshots/reports-page.png) |
+| ![The Reports dialog with the Requirements report: Generate PDF and More formats, the chapter layout and the Resource sections list](../../static/img/screenshots/reports-page.png) |
 
 ## Exporting requirements to CSV
 

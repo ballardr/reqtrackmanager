@@ -6,6 +6,10 @@ sidebar_position: 6
 
 A downloaded or stored report is named by a **file name template**: text with `{{placeholders}}` that is filled in each time the report is produced, for example `{{project_code}}-{{report_title}}-{{generated_on}}` gives `ACME-Quarterly review-2026-10-29.pdf`. The extension always comes from the format, never from the template.
 
+| The organisation's Default report file name in Organisation Admin, Reports, Configuration, with a placeholder picker and a worked example |
+| --- |
+| ![The Configuration panel of Organisation Admin's Reports page with the Default report file name set to the project code, report title and generated date, an Insert placeholder list and an example file name](../../../static/img/screenshots/report-file-name-default.png) |
+
 ```mermaid
 flowchart LR
     A["Layout's File name"] --> D{"filled in to<br/>something usable?"}

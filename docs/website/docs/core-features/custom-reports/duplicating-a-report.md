@@ -24,6 +24,10 @@ flowchart LR
 3. In a project, choose where the copy goes: **This project** or **The organisation** (shared with every project; needs the organisation's report right).
 4. Choose **Create copy**. The copy opens in the designer (or pack editor).
 
+| Duplicate layout: the copy's destination and name |
+| --- |
+| ![The Duplicate layout dialog for a layout shared by the organisation, with Copy into set to This project and the name Requirements handbook (with contents) (copy)](../../../static/img/screenshots/report-duplicate.png) |
+
 ## What the copy is
 
 | Part | Behaviour |

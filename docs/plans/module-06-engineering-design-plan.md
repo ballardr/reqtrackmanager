@@ -55,7 +55,7 @@ since building it out is the only way to make the trade-off concrete.
 
 ## Status / Resume Here
 
-0 / 8 phases complete. Phase 0 is next.
+0 / 9 phases complete. Phase 0 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -68,6 +68,7 @@ since building it out is the only way to make the trade-off concrete.
 | 6 | Relationships (Requirement, Decision, Risk, Compliance, Verification, Design) | [ ] Not started |
 | 7 | Frontend UI | [ ] Not started |
 | 8 | Docs website coverage | [ ] Not started — depends on Phase 7 shipping |
+| 9 | Analysis widgets for Reporting: Executive Gap Analysis and Engineering Change Impact (moved here from Module 10 Phase 11b, 2026-11-04) | [ ] Not started — depends on Phases 3 and 6 |
 
 ## Phase 0 — Exploratory: Requirements Clarification & Design Validation
 
@@ -529,6 +530,29 @@ to be under-scoped or missed.
 there is no real user-facing workflow to document accurately before then,
 the same reasoning Decision Management's own Phase 6 and Compliance's
 docs-site page both used.
+
+## Phase 9 — Analysis widgets for Reporting (moved from Module 10 Phase 11b)
+
+**Moved here by the User on 2026-11-04** (**Decided by: User**), so Module 10's plan could close. Module 10 deferred these on 2026-10-28 until Engineering Design, Verification and Baselines existed, so they are built once against real data; this module is where the missing piece (Design, its relationships and its invalidation state) is built. Everything below the first paragraph is **Decided by: Agent** and can be revisited.
+
+**Goal:** two computed analyses, each a collector exposed as a **report widget** (the generic extension point Module 10 shipped: `ModuleDefinition` report widgets and `ReportDefinition`, so a layout or starter embeds them and no core file is edited):
+- **Executive Gap Analysis** (requirements §47.5): compares the defined current state with the defined future state (Context & Strategy Future States, Pain Points, Strategies), each finding tracing to the artefacts it came from. A gap is listed, never inferred without a source.
+- **Engineering Change Impact** (requirements §47.6): from an existing Change Request or a changed/invalidated Design, lists **direct**, **transitive** and **inferred** impacts over the link graph (Requirement, Decision, Risk, Compliance, Verification Action, Design, baselines possibly invalidated by Phase 3), and keeps the three kinds distinguishable in the output.
+
+**Why:** the Module 10 acceptance criteria "Executive Gap Analyses compare defined current and future states, each finding tracing to artefacts" and "Engineering Change Impact reports identify direct and transitive impacts of an existing change" cannot be met honestly until Design and its relationships exist; building them earlier would have meant rewriting them against real data.
+
+**Risk addressed:** an analysis that guesses (a gap or an impact with no traceable source) reads as fact and becomes a second source of truth; an impact walk that ignores the runner's access leaks records they cannot read.
+
+**Outcome:** both are listed in the Report picker and the designer's Widgets tab under this module, run as the person running them (a record they cannot read is omitted and counted), and are embedded by the Business Requirements Document and Engineering Specification starters where those already name them.
+
+**Work (a checklist, not a design):**
+1. Collectors with a `ReportDefinition` each, `record_types` set for the artefact types they name, codes through `ReportContext.code`, perf probe unaffected (no new record type).
+2. Impact traversal reuses the Phase 6 relationship set and `link_nesting.can_open_project` for a related project; "inferred" is a stated rule with its source link kind, not a score.
+3. MCP: both appear as report tools without touching `mcp-server/`; update this module's `mcp_guidance.md` and run `python scripts/generate_mcp_module_tools_reference.py` in `backend/`.
+4. Docs website: add them to this module's page and to the Custom reports widget list; screenshots from the seeded demo data.
+5. Seeds: demo data has a Future State gap and a changed Design so both reports have content.
+
+**Tests:** a collector test per finding kind with its source trace; an access test (a runner who cannot read a linked record sees it omitted and counted); transitive-depth and cycle tests; a starter-embedding test; `test_report_record_codes.py` and the MCP reference tests pass.
 
 ## Acceptance criteria
 

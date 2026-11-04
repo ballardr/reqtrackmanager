@@ -14,6 +14,10 @@ A block that finds records (*for each*, *group*, a sheet) gives them a **name** 
 
 Inside a *group* block, a heading, text or table cell can print the group it sits in: `{{name.value}}` (also `{{name.name}}`) is what the group's records share, such as the category's name, and `{{name.count}}` is how many records it holds. In the designer, press **+ Field** beside the text and choose **Group: Category** (the field the group is by) or **Group: count**. A heading `{{category.value}} ({{category.count}})` above a table whose *Records come from* is the surrounding group prints one heading and table per category, and records with no value fall under `(none)`.
 
+| Inside a group, the + Field list offers the group by what it is grouped by, so a heading can name its group |
+| --- |
+| ![The Heading block's settings in a layout with two nested groups, with the + Field list open and filtered to Group, showing the entry Group: Category](../../../static/img/screenshots/report-group-name-field.png) |
+
 With one group inside another, each has its own name, so a heading can show both: `{{component.value}} - {{category.value}}` prints *Avionics - Safety*. A group *by tags* has one group for each tag, so a record with two tags appears under both and the counts can add up to more than the number of records; untagged records are under `(none)`.
 
 Any block can also have a **Label**, a plain-language name for the designer, such as *Open requirements*. It can hold capitals, spaces and any other text up to 128 characters, shows on the block in the **Blocks** view and in the pickers beside the name, and is never printed in the report or used in a `{{placeholder}}`. In the text view it is a line before the block, `@label "Open requirements"`.
