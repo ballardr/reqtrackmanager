@@ -38,7 +38,8 @@ export function reportLinkResolver(
     }
     const params = new URLSearchParams({ report: link.target, ...link.query });
     if (link.section) params.set("section", link.section);
-    return `/projects/${scope.id}/reports?${params.toString()}`;
+    params.set("reports", "choose");
+    return `/projects/${scope.id}?${params.toString()}`;
   };
 }
 

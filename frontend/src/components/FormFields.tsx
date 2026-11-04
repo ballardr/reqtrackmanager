@@ -8,13 +8,13 @@
  * `PrincipalFormField`. Every field takes `help` (a `(?)` button revealing what the field means,
  * `FieldHelp`) or, for a self-explanatory field, `helpNotNeeded`.
  */
-import { useId, useState } from "react";
+import { useId } from "react";
 import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
-import { useStrings } from "../context/TerminologyContext";
 import { normaliseHexColour } from "../utils/color";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { FieldCaption, FieldHelp, FieldShell, RequiredMark } from "./FieldHelp";
+import { HexColourInput } from "./HexColourInput";
 import type { FieldHelpProps } from "./FieldHelp";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 import { ToggleSwitch } from "./ToggleSwitch";
@@ -217,44 +217,25 @@ export function ColorField({
   emptyLabel?: string;
 }) {
   const id = useId();
-  const strings = useStrings();
-  const [draft, setDraft] = useState<string | null>(null);
-  const shown = draft ?? value;
-  const invalid = draft !== null && draft.trim() !== "" && normaliseHexColour(draft) === null;
   const name = ariaLabel ?? label;
   return (
     <FieldShell label={label} controlId={id} help={help} hint={hint} required={required}>
       <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
-        <input
-          id={id} type="color" value={normaliseHexColour(value) ?? "#000000"} aria-label={name}
-          onChange={(e) => { setDraft(null); onChange(e.target.value); }}
-          style={{ width: 60, height: 36, padding: 2 }}
-        />
-        <input
-          className="input" style={{ width: "7rem" }} value={shown} maxLength={7} spellCheck={false}
-          aria-label={strings.common.hexCode(name)} aria-invalid={invalid || undefined} placeholder="#rrggbb"
-          onChange={(e) => {
-            setDraft(e.target.value);
-            const hex = normaliseHexColour(e.target.value);
-            if (hex) onChange(hex);
-          }}
-          onBlur={() => setDraft(null)}
-        />
+        <HexColourInput id={id} value={value} onChange={onChange} name={name} />
         {presets?.map((preset) => (
           <button
             key={preset.hex} type="button" className="colour-swatch" aria-label={preset.name} title={preset.name}
             aria-pressed={normaliseHexColour(value) === preset.hex}
             style={{ background: preset.hex }}
-            onClick={() => { setDraft(null); onChange(preset.hex); }}
+            onClick={() => onChange(preset.hex)}
           />
         ))}
         {emptyLabel && (
-          <button type="button" className="btn btn-sm" aria-pressed={value === ""} onClick={() => { setDraft(null); onChange(""); }}>
+          <button type="button" className="btn btn-sm" aria-pressed={value === ""} onClick={() => onChange("")}>
             {emptyLabel}
           </button>
         )}
       </span>
-      {invalid && <span role="alert" style={{ fontSize: "0.8rem", color: "var(--color-danger)" }}>{strings.common.hexCodeInvalid}</span>}
     </FieldShell>
   );
 }

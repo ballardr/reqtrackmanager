@@ -55,10 +55,23 @@ READ_ONLY_TOOLS = {
     "list_permissions", "list_custom_roles", "get_custom_role",
     "list_tags", "get_artefact_tags", "find_artefacts_by_tag", "get_record_by_code", "search_records",
     "get_record_list_report",
+    # Custom report layouts: listing, reading, running, and the two text-view converters (which store nothing).
+    "list_report_layouts", "get_report_layout", "run_custom_report", "get_report_layout_variables",
+    "parse_report_layout_text", "format_report_layout_text", "list_report_widgets",
+    # Report snippets: listing and applying one to a tree you hold (nothing is stored).
+    "list_report_snippets", "apply_report_snippet",
+    # Saved report snippets: listing and reading them, and checking a selection (nothing is stored).
+    "list_saved_report_snippets", "get_saved_report_snippet", "check_report_snippet",
+    # Report packs: listing, the run form, the counts preview (stores nothing) and a background run's status.
+    "export_report_file", "list_report_packs", "get_report_pack_form", "preview_report_pack", "get_report_run",
 }
 WRITE_TOOLS = {
     "create_requirement", "update_requirement", "create_artefact_link", "delete_artefact_link",
     "set_artefact_tags", "add_artefact_tag", "remove_artefact_tag",
+    "create_report_layout", "save_report_layout_version", "update_report_layout", "delete_report_layout",
+    "run_report_pack", "copy_reports", "duplicate_report", "import_report_file",
+    "save_report_snippet", "update_saved_report_snippet", "delete_saved_report_snippet",
+    "set_saved_report_snippet_visibility", "copy_saved_report_snippet",
 }
 # AI approval via MCP (docs/decisions.md): approval-type tools, always
 # present when write mode is on (each additionally gated at call time on a
@@ -919,3 +932,69 @@ async def test_get_record_list_report_validates_arguments_and_returns_the_table(
         assert report["metrics"][0]["value"] == len(section["rows"])
         with pytest.raises(ToolError):
             await client.call_tool("get_record_list_report", {"project_id": projects[0]["id"], "record_type": "no_such_type"})
+
+
+@pytest.mark.asyncio
+async def test_custom_report_tools_validate_arguments_and_run_a_layout(admin_token):
+    """Scope and id arguments are checked before any backend call; a project's layouts list and, when it has
+    one the caller can run, run to the report shape the other reports return."""
+    async with _client(admin_token) as client:
+        both = {"project_id": str(uuid.uuid4()), "organization_id": str(uuid.uuid4())}
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_report_layouts", both)
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("run_custom_report", {"layout_id": str(uuid.uuid4()), **both})
+        with pytest.raises(ToolError, match="'layout_id' must be a valid UUID"):
+            await client.call_tool("get_report_layout", {"layout_id": "not-a-uuid", "project_id": str(uuid.uuid4())})
+        with pytest.raises(ToolError, match="'project_ids' must be a valid UUID"):
+            await client.call_tool(
+                "run_custom_report",
+                {"layout_id": str(uuid.uuid4()), "organization_id": str(uuid.uuid4()), "project_ids": ["x"]},
+            )
+
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_report_widgets", both)
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_report_snippets", both)
+        with pytest.raises(ToolError, match="snippet keys look like"):
+            await client.call_tool(
+                "apply_report_snippet", {"key": "../x", "tree": {}, "project_id": str(uuid.uuid4())},
+            )
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_saved_report_snippets", both)
+        with pytest.raises(ToolError, match="'snippet_id' must be a valid UUID"):
+            await client.call_tool("get_saved_report_snippet", {"snippet_id": "../x", "project_id": str(uuid.uuid4())})
+
+        projects = (await client.call_tool("list_projects", {})).data
+        if not projects:
+            pytest.skip("No projects visible to the admin account — seed data (E2E or demo) hasn't been loaded.")
+        listed = (await client.call_tool("list_report_layouts", {"project_id": projects[0]["id"]})).data
+        assert isinstance(listed, list)
+        if not listed:
+            pytest.skip("The first project has no report layouts to run.")
+        report = (
+            await client.call_tool("run_custom_report", {"layout_id": listed[0]["id"], "project_id": projects[0]["id"]})
+        ).data
+        assert report["title"] == listed[0]["name"] and "sections" in report and "notes" in report
+
+
+@pytest.mark.asyncio
+async def test_report_pack_tools_validate_arguments_before_any_backend_call(admin_token):
+    """Scope and id arguments are checked client-side; listing a project's packs answers a list."""
+    async with _client(admin_token) as client:
+        both = {"project_id": str(uuid.uuid4()), "organization_id": str(uuid.uuid4())}
+        with pytest.raises(ToolError, match="either project_id or organization_id"):
+            await client.call_tool("list_report_packs", both)
+        with pytest.raises(ToolError, match="'pack_id' must be a valid UUID"):
+            await client.call_tool("get_report_pack_form", {"pack_id": "nope", "project_id": str(uuid.uuid4())})
+        with pytest.raises(ToolError, match="'project_ids' must be a valid UUID"):
+            await client.call_tool(
+                "preview_report_pack", {"pack_id": str(uuid.uuid4()), "organization_id": str(uuid.uuid4()), "project_ids": ["x"]},
+            )
+        with pytest.raises(ToolError, match="'run_id' must be a valid UUID"):
+            await client.call_tool("get_report_run", {"run_id": "nope"})
+        projects = (await client.call_tool("list_projects", {})).data
+        if not projects:
+            pytest.skip("No projects visible to the admin account — seed data (E2E or demo) hasn't been loaded.")
+        listed = (await client.call_tool("list_report_packs", {"project_id": projects[0]["id"]})).data
+        assert isinstance(listed, list)

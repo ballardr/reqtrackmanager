@@ -108,7 +108,7 @@ from app.modules.context_strategy.pain_point_scores import (
     resolve_model,
 )
 from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
-from app.modules.registry import ReportDefinition, ReportParamDefinition, get_artefact_summary
+from app.modules.registry import ReportDefinition, ReportParamDefinition, ReportPartDefinition, get_artefact_summary
 from app.services import relationships
 from app.services.labels import REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE
 from app.services.principals import principal_text
@@ -1068,6 +1068,7 @@ def collect_open_question_register(db: Session, req: ReportContext) -> ReportRes
         ReportSection("open", "Open Questions", columns, [row(i) for i in items]),
         ReportSection("overdue", "Overdue", columns, [row(i) for i in items if i.is_overdue], gap=True),
         ReportSection("unowned", "Unowned", columns, [row(i) for i in items if i.owner is None], gap=True),
+        ReportSection("not_overdue", "Open, not yet overdue", columns, [row(i) for i in items if not i.is_overdue]),
         ReportSection("by_priority", "By priority", ["Priority", "Open"],
                       [[label(PRIORITY_LABEL, p), str(by_priority[p])] for p in ("high", "medium", "low")]),
         ReportSection("by_owner", "By owner", ["Owner", "Open"], [[o, str(n)] for o, n in sorted(by_owner.items())]),
@@ -1414,17 +1415,37 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "r1", "pain-point-prioritisation", "Pain Point prioritisation",
         "Open Pain Points ranked by the chosen scoring model and persona roll-up, with Blockers always shown.",
         collect_pain_point_prioritisation, subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE,
+        parts=(
+            ReportPartDefinition("ranking", "Ranked Pain Points"),
+            ReportPartDefinition("blockers", "Blockers"),
+            ReportPartDefinition("unscored", "Not scored under this model"),
+            ReportPartDefinition("matrix", "Severity × Frequency matrix"),
+            ReportPartDefinition("intentional", "Intentional limitations"),
+            ReportPartDefinition("personas", "Per-persona breakdown"),
+        ),
         params=(_MODEL_KEY, _ROLLUP),
         record_types=("pain_point",),
     ),
     ReportDefinition(
         "r2", "strategy-cascade", "Strategy cascade and alignment",
         "Organisation Strategy to Requirement, with alignment gaps.", collect_strategy_cascade, subcomponent="strategy",
+        parts=(
+            ReportPartDefinition("cascade", "Cascade"),
+            ReportPartDefinition("no_parent", "Project Strategies with no organisation Strategy"),
+            ReportPartDefinition("no_requirement", "Active Strategies with no Requirement"),
+            ReportPartDefinition("no_strategy", "Future States with no Strategy"),
+        ),
         record_types=("strategy", "future_state", "requirement"),
     ),
     ReportDefinition(
         "r3", "pain-point-coverage", "Pain Point coverage and ageing",
         "Pain Points by type and status, Accepted ones with no Requirement, and age.", collect_pain_point_coverage,
+        parts=(
+            ReportPartDefinition("matrix", "Type × status"),
+            ReportPartDefinition("uncovered", "Accepted Pain Points with no Requirement"),
+            ReportPartDefinition("requirements", "Linked Requirements"),
+            ReportPartDefinition("ageing", "Age of open Pain Points"),
+        ),
         subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE,
         record_types=("pain_point", "requirement"),
     ),
@@ -1432,17 +1453,35 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "r4", "open-question-register", "Open Question register",
         "Unresolved Open Questions by priority and owner, with overdue and unowned items.",
         collect_open_question_register, subcomponent="open_question", org_level=True, org_role_key=_ORG_ROLE,
+        usual_widths={"Priority": "8%", "Status": "9%", "Due": "9%", "Overdue": "8%", "Days open": "8%"},
+        parts=(
+            ReportPartDefinition("open", "Open Questions"),
+            ReportPartDefinition("overdue", "Overdue"),
+            ReportPartDefinition("unowned", "Unowned"),
+            ReportPartDefinition("not_overdue", "Open, not yet overdue"),
+            ReportPartDefinition("by_priority", "By priority"),
+            ReportPartDefinition("by_owner", "By owner"),
+        ),
         record_types=("open_question",),
     ),
     ReportDefinition(
         "r5", "future-state-roadmap", "Future State roadmap",
         "Future States by target date, with missed targets and missing success measures.",
         collect_future_state_roadmap, subcomponent="future_state",
+        parts=(
+            ReportPartDefinition("roadmap", "Roadmap"),
+            ReportPartDefinition("overdue", "Target date passed, not yet Active"),
+            ReportPartDefinition("no_measures", "No success measures"),
+        ),
         record_types=("future_state",),
     ),
     ReportDefinition(
         "r6", "guiding-principle-usage", "Guiding Principle register and usage",
         "Active Guiding Principles and how they are applied.", collect_guiding_principle_usage,
+        parts=(
+            ReportPartDefinition("register", "Active Guiding Principles"),
+            ReportPartDefinition("unused", "Never applied"),
+        ),
         subcomponent="guiding_principle",
         record_types=("guiding_principle",),
     ),
@@ -1450,17 +1489,28 @@ _REPORTS: tuple[ReportDefinition, ...] = (
         "r7", "strategy-change-history", "Strategy change history",
         "Version history of Strategies, Future States and Guiding Principles, and stale Active items.",
         collect_change_history, params=(_STALE_MONTHS, _SINCE),
+        any_subcomponents=("strategy", "future_state", "guiding_principle"),
+        parts=(
+            ReportPartDefinition("history", "Version history"),
+            ReportPartDefinition("stale", "Active, not recently revised"),
+        ),
         record_types=("strategy", "future_state", "guiding_principle"),
     ),
     ReportDefinition(
         "r8", "summary", "Context & Strategy summary", "Headline figures and every report's gap lists in one pack.",
         collect_summary_pack, org_level=True, org_role_key=_ORG_ROLE,
+        any_subcomponents=("strategy", "future_state", "pain_point", "guiding_principle", "open_question"),
         params=(_MODEL_KEY, _ROLLUP, _STALE_MONTHS, _SINCE),
         record_types=("pain_point", "strategy", "future_state", "open_question", "guiding_principle", "requirement"),
+        view_only=True,
     ),
     ReportDefinition(
         "r9", "upgrade-drivers", "Upgrade drivers",
         "Intentional tier limitations with per-persona Severity and churn risk.", collect_upgrade_drivers,
+        parts=(
+            ReportPartDefinition("drivers", "Upgrade drivers"),
+            ReportPartDefinition("churn", "Churn risks"),
+        ),
         subcomponent="pain_point", org_level=True, org_role_key=_ORG_ROLE, params=(_MODEL_KEY, _ROLLUP),
         record_types=("pain_point",),
     ),

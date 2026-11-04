@@ -21,6 +21,7 @@ from app.models.enums import (
     StageReviewResponseChoice,
     StageStatus,
 )
+from app.models.project import MAX_REPORT_NAME_LENGTH
 
 # The module-role grant-marker shape is defined in `schemas.org`
 # (see `ModuleRoleGrantOut`'s own docstring for why), imported here rather
@@ -53,10 +54,36 @@ def _validate_role_inheritance_filter(mode: ProjectRoleInheritanceMode | None, f
         raise ValueError("role_inheritance_filter_role must not be set unless role_inheritance_mode is mirror_role.")
 
 
+def _clean_report_name(value: str | None) -> str | None:
+    """Normalises a Project report name: trimmed, blank stored as None.
+
+    Args:
+        value: The submitted name, or None.
+
+    Returns:
+        The trimmed name, or None when blank.
+
+    Raises:
+        ValueError: If it is longer than `MAX_REPORT_NAME_LENGTH` or holds a control character.
+    """
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if len(value) > MAX_REPORT_NAME_LENGTH:
+        raise ValueError(f"The report name must be at most {MAX_REPORT_NAME_LENGTH} characters.")
+    if any(not ch.isprintable() for ch in value):
+        raise ValueError("The report name must be plain text without control characters.")
+    return value
+
+
 class ProjectCreate(BaseModel):
     organization_id: UUID
     name: str
     summary: str = ""
+    #: Short display name for reports (`{{project_report_name}}`); blank means "use the project name".
+    report_name: str | None = None
     template_project_id: UUID | None = None  # C-E-05: create from an existing template project
     # The project's short code. Required when the organisation's policy is manual assignment,
     # rejected when it is automatic (`services.codes.assign_project_code`).
@@ -81,6 +108,12 @@ class ProjectCreate(BaseModel):
     # seeding a project that's immediately meant to gain children.
     can_be_parent: bool = False
 
+    @field_validator("report_name")
+    @classmethod
+    def _validate_report_name(cls, value: str | None) -> str | None:
+        """Trims the report name, storing blank as None, and rejects an over-long or control-character value."""
+        return _clean_report_name(value)
+
     @field_validator("terminology")
     @classmethod
     def _validate_terminology_keys(cls, value: dict[str, str]) -> dict[str, str]:
@@ -104,6 +137,7 @@ class ProjectOut(BaseModel):
     name: str
     code: str
     summary: str
+    report_name: str | None = None
     created_at: datetime
     updated_at: datetime
     is_archived: bool = False
@@ -170,6 +204,9 @@ class ProjectUpdate(BaseModel):
     # with the old code stop matching (`services.codes.change_project_code`).
     code: str | None = None
     summary: str | None = None
+    #: Sent (even as null or blank) to set or clear the Project report name; absent leaves it unchanged
+    #: (`model_fields_set`, as `parent_project_id`).
+    report_name: str | None = None
     allow_member_change_requests: bool | None = None
     require_change_request_for_approved_links: bool | None = None
     exempt_from_org_link_lock: bool | None = None
@@ -183,6 +220,13 @@ class ProjectUpdate(BaseModel):
     role_inheritance_mode: ProjectRoleInheritanceMode | None = None
     role_inheritance_filter_role: ProjectRole | None = None
     can_be_parent: bool | None = None
+
+
+    @field_validator("report_name")
+    @classmethod
+    def _validate_report_name(cls, value: str | None) -> str | None:
+        """Trims the report name, storing blank as None, and rejects an over-long or control-character value."""
+        return _clean_report_name(value)
 
 
 class TerminologyUpdate(BaseModel):

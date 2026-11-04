@@ -16,6 +16,8 @@ from sqlalchemy import update
 
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
+from app.modules.decisions.reports import REPORT_DEFINITIONS
+from app.services.report_framework import unknown_usual_widths
 from tests.conftest import (
     auth_headers,
     create_component_and_category,
@@ -430,3 +432,14 @@ def test_report_codes_are_bare_in_the_reported_project_and_qualified_elsewhere(c
     assert register()[0] == {"Parent call": f"{parent['code']}-DEC-001", "Child call": f"{child['code']}-DEC-001"}
     for slug in ("approval-ageing", "decision-log", "rationale-coverage"):
         _report(client, admin, parent["id"], slug)
+
+
+def test_every_declared_usual_width_names_a_column_of_its_report(client, admin_token):
+    """A usual width for a heading no table of the report has would be dead; a spec that is not a width is a typo."""
+    _, project, token = _setup(client, admin_token, "Usual Widths Co")
+    _decision(client, token, project["id"], "Use REST")
+    declared = {d.slug: d.usual_widths for d in REPORT_DEFINITIONS if d.usual_widths}
+    assert {"decision-register", "approval-ageing"} <= set(declared)
+    for slug, widths in declared.items():
+        report = _report(client, token, project["id"], slug)
+        assert unknown_usual_widths([s["columns"] for s in report["sections"]], widths) == [], slug

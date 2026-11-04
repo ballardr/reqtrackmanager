@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup } from "./helpers";
+import { loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
 
 /**
  * Job to be done: `AddMembersModal` (frontend/src/components/AddMembersModal.tsx)
@@ -157,7 +157,7 @@ test.describe("staged multi-add member flow", () => {
     });
 
     await test.step("the group's grant went through despite the other row failing", async () => {
-      await modal.getByRole("button", { name: "Cancel" }).click();
+      await closeDialogWithoutSaving(modal, { unsaved: true });
       const groupRow = page.getByRole("row", { name: new RegExp(groupName) });
       await expect(groupRow).toBeVisible();
       // The failed row never reached the backend — no cell for it at all.

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel, Field
 
 from app.schemas.project_scope import ProjectScopedRow
 
@@ -21,7 +21,14 @@ class FileAssetOut(BaseModel):
     size_bytes: int
     uploaded_by: UUID
     is_org_resource: bool
+    confidential: bool = False
     created_at: datetime
+
+
+class FileConfidentialIn(BaseModel):
+    """Body of `PATCH /files/{id}/confidential`."""
+
+    confidential: bool
 
 
 class LinkResourceRequest(BaseModel):
@@ -38,8 +45,9 @@ class ProjectFileOut(ProjectScopedRow):
     uploaded it, so a caller isn't left with an array of filenames and no
     way to tell where any of them came from.
 
-    `source` distinguishes the three origin join-tables
-    (`requirement_attachment`/`action_attachment`/`comment_attachment`).
+    `source` distinguishes the origin join-tables
+    (`requirement_attachment`/`action_attachment`/`comment_attachment`) and the project's report image library
+    (`report_image`, a picture attached to no record).
     `requirement_id`/`requirement_unique_code`/`requirement_name` are set
     for `requirement_attachment` and `comment_attachment` rows;
     `action_id`/`action_unique_code`/`action_title` (and, redundantly,
@@ -52,7 +60,7 @@ class ProjectFileOut(ProjectScopedRow):
 
     file: FileAssetOut
     uploaded_by_display_name: str
-    source: Literal["requirement_attachment", "action_attachment", "comment_attachment"]
+    source: Literal["requirement_attachment", "action_attachment", "comment_attachment", "report_image"]
     requirement_id: UUID | None = None
     requirement_unique_code: str | None = None
     requirement_name: str | None = None
@@ -60,3 +68,49 @@ class ProjectFileOut(ProjectScopedRow):
     action_unique_code: str | None = None
     action_title: str | None = None
     comment_id: UUID | None = None
+
+
+class ProjectFileSearchIn(BaseModel):
+    """Body of `POST /projects/{id}/files/search`: the Files page's filters.
+
+    The file name text is in the body, not the URL, so no access log records it. Every field is optional; the
+    upload window is two UTC instants (inclusive start, exclusive end) the browser works out from the person's
+    local days, and a time without a zone is refused.
+
+    Attributes:
+        search: A substring of the file name (case-insensitive).
+        sources: Only these sources; empty keeps all.
+        kind: Only this file type.
+        uploaded_by: Only files this user uploaded.
+        uploaded_from: Only files uploaded at or after this instant.
+        uploaded_before: Only files uploaded before this instant.
+    """
+
+    search: str = Field("", max_length=255)
+    sources: list[Literal["requirement_attachment", "action_attachment", "comment_attachment", "report_image"]] = []
+    kind: Literal["image", "document", "other"] | None = None
+    uploaded_by: UUID | None = None
+    uploaded_from: AwareDatetime | None = None
+    uploaded_before: AwareDatetime | None = None
+
+
+class ProjectFileUploaderOut(ProjectScopedRow):
+    """One person who uploaded a file in the project (a choice for the Files page's "Uploaded by" filter)."""
+
+    id: UUID
+    display_name: str
+
+
+class FileDetailsOut(BaseModel):
+    """What a picture file says about itself (`services.image_details.ImageDetails`): all fields empty for any other file.
+
+    `taken` is the camera's own clock as written (EXIF holds no time zone), never converted.
+    """
+
+    width_px: int | None = None
+    height_px: int | None = None
+    taken: str | None = None
+    camera: str | None = None
+    description: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None

@@ -2,8 +2,8 @@ import fs from "node:fs";
 
 import { expect, type Page, test } from "@playwright/test";
 
-import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
-import { chooseListAction } from "../listActions";
+import { createDisposableProject, installCleanupHook, loginAs, PERSONAS, closeDialogWithoutSaving } from "./helpers";
+import { chooseExport } from "../listActions";
 
 /**
  * Job to be done: bulk-importing requirements from a CSV whose headers don't match the server's column names
@@ -67,7 +67,7 @@ test.describe("CSV import wizard", () => {
       await modal.getByRole("button", { name: "Download error file" }).click();
       const errorFile = fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
       expect(errorFile).toContain("ZZZ-NO-SUCH");
-      await modal.getByRole("button", { name: "Close", exact: true }).filter({ hasText: "Close" }).click();
+      await modal.getByRole("button", { name: "OK", exact: true }).click();
       await expect(modal).toHaveCount(0);
       await expect(page.getByText(rowOneTitle, { exact: true })).toBeVisible();
     });
@@ -99,7 +99,7 @@ test.describe("CSV import wizard", () => {
     await page.reload();
     await expect(page.getByText(reqName, { exact: true })).toBeVisible();
     const downloadPromise = page.waitForEvent("download");
-    await chooseListAction(page, "Export as CSV");
+    await chooseExport(page, "CSV");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-export.csv");
     const exportedCsv = fs.readFileSync((await download.path())!, "utf-8");
@@ -116,7 +116,7 @@ test.describe("CSV import wizard", () => {
       await modal.getByRole("button", { name: "Preview" }).click();
       await expect(modal.getByText("0 to create, 0 to update, 1 unchanged, 0 with errors.")).toBeVisible();
       await expect(modal.getByRole("button", { name: "Apply 0 change(s)" })).toBeDisabled();
-      await modal.getByRole("button", { name: "Cancel" }).click();
+      await closeDialogWithoutSaving(modal, { unsaved: false });
       await expect(modal).toHaveCount(0);
     });
 

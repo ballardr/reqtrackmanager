@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
 import { API_BASE_URL, createRisk, riskLevels, setUpOrg } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../../reportDownload";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -18,9 +20,13 @@ installCleanupHook();
  * Each test builds its own disposable org (see `./helpers.ts`).
  */
 
-const REPORTS = ["Risk register", "Risk exposure", "Treatment coverage", "Review schedule"];
-
-const picker = (page: Page) => page.getByRole("combobox", { name: "Report", exact: true });
+/** The four Risk reports: the URL slug (also the download's file name) and the title the picker shows. */
+const REPORTS = [
+  { slug: "risk-register", title: "Risk register" },
+  { slug: "risk-exposure", title: "Risk exposure" },
+  { slug: "treatment-coverage", title: "Treatment coverage" },
+  { slug: "review-schedule", title: "Review schedule" },
+];
 
 /** A disposable org with an assessed, scored risk that has no treatment and one unscored risk. */
 async function setUp(page: Page) {
@@ -41,22 +47,20 @@ async function setUp(page: Page) {
 test.describe("Risk Management: reports", () => {
   test("the project Reports page lists the four Risk reports", async ({ page }) => {
     const { project } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
 
-    await expect(picker(page)).toHaveValue("requirements");
-    // With more than one report source the picker prefixes each title with its module name.
-    const options = (await picker(page).locator("option").allTextContents()).map((o) => o.replace(/^[^:]+: /, ""));
-    expect(options).toEqual(expect.arrayContaining(REPORTS));
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
+    expect(await listReports(page)).toEqual(expect.arrayContaining(REPORTS.map((r) => r.title)));
 
-    await picker(page).selectOption("risk-register");
+    await chooseReport(page, "Risk register");
     await expect(page).toHaveURL(/report=risk-register/);
     await page.reload();
-    await expect(picker(page)).toHaveValue("risk-register");
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Risk register");
   });
 
   test("the register shows display labels and derived ratings, and narrows by status", async ({ page }) => {
     const { project, titles } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports?report=risk-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=risk-register`);
 
     const register = page.getByRole("region", { name: "Risks", exact: true });
     await expect(register.getByRole("row")).toHaveCount(3); // header + two risks
@@ -75,11 +79,11 @@ test.describe("Risk Management: reports", () => {
   test("exposure lists unrated risks and coverage lists risks with no effective treatment", async ({ page }) => {
     const { project, titles } = await setUp(page);
 
-    await page.goto(`/projects/${project.id}/reports?report=risk-exposure`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=risk-exposure`);
     await expect(page.getByRole("region", { name: "Not rated" })).toContainText(titles.unscored);
     await expect(page.getByRole("region", { name: /Highest residual risks/ })).not.toContainText(titles.unscored);
 
-    await page.goto(`/projects/${project.id}/reports?report=treatment-coverage`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=treatment-coverage`);
     const untreated = page.getByRole("region", { name: "No effective treatment" });
     await expect(untreated).toContainText(titles.scored);
     await expect(untreated).not.toContainText(titles.unscored); // Identified: not yet expected to be treated
@@ -87,7 +91,7 @@ test.describe("Risk Management: reports", () => {
 
   test("the review schedule flags an assessed risk with no review date", async ({ page }) => {
     const { project, titles } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports?report=review-schedule`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=review-schedule`);
     const unscheduled = page.getByRole("region", { name: "No review scheduled" });
     await expect(unscheduled).toContainText(titles.scored);
     await expect(unscheduled).not.toContainText(titles.unscored);
@@ -95,25 +99,23 @@ test.describe("Risk Management: reports", () => {
 
   test("every Risk report downloads as PDF and CSV", async ({ page }) => {
     const { project, titles } = await setUp(page);
-    await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toHaveValue("requirements");
-    const values = await picker(page).locator("option").evaluateAll((els, labels) =>
-      els.filter((e) => labels.includes((e.textContent ?? "").replace(/^[^:]+: /, ""))).map((e) => ({ value: (e as HTMLOptionElement).value, label: e.textContent ?? "" })),
-    REPORTS);
-    expect(values).toHaveLength(4);
+    await page.goto(`/projects/${project.id}?reports=choose`);
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Requirements report");
+    const offered = await listReports(page);
+    expect(REPORTS.filter((r) => offered.includes(r.title))).toHaveLength(4);
 
-    for (const report of values) {
-      await test.step(`${report.label}: PDF and CSV`, async () => {
-        await picker(page).selectOption(report.value);
-        await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+    for (const report of REPORTS) {
+      await test.step(`${report.title}: PDF and CSV`, async () => {
+        await chooseReport(page, report.title);
+        await expect(reportDownloadButton(page)).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
-          await page.getByRole("button", { name: "Export" }).click();
+          await pickReportFormat(page, kind);
           const [download] = await Promise.all([
             page.waitForEvent("download"),
-            page.getByRole("button", { name: `Download ${kind} report` }).click(),
+            reportDownloadButton(page).click(),
           ]);
-          expect(download.suggestedFilename()).toBe(`${report.value}.${kind.toLowerCase()}`);
-          if (kind === "CSV" && report.value === "risk-register") {
+          expect(download.suggestedFilename()).toBe(`${report.slug}.${kind.toLowerCase()}`);
+          if (kind === "CSV" && report.slug === "risk-register") {
             const csv = await readFile((await download.path())!, "utf8");
             expect(csv).toContain(titles.scored);
             // A report names each record by its code, and lists its tags.
@@ -132,10 +134,10 @@ test.describe("Risk Management: reports", () => {
     });
     expect(off.ok(), await off.text()).toBeTruthy();
 
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
     await expect(page.getByRole("button", { name: "Generate PDF" })).toBeVisible();
     // The platform Record list report keeps the picker, but no Risk report is in it.
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options.filter((o) => REPORTS.includes(o.replace(/^[^:]+: /, "")))).toEqual([]);
+    const offered = await listReports(page);
+    expect(offered.filter((title) => REPORTS.some((r) => r.title === title))).toEqual([]);
   });
 });

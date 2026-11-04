@@ -300,8 +300,10 @@ def test_an_export_and_an_import_are_one_organisation_audit_event_each_without_c
 # --- documents --------------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("fmt", "magic"), [("pdf", b"%PDF"), ("docx", b"PK"), ("csv", b"\xef\xbb\xbf")])
-def test_the_organisations_list_is_also_a_pdf_word_or_csv_document(world, fmt, magic):
+@pytest.mark.parametrize(("fmt", "magic"), [
+    ("pdf", b"%PDF"), ("docx", b"PK"), ("csv", b"\xef\xbb\xbf"), ("odt", b"PK"), ("xlsx", b"PK"), ("ods", b"PK"), ("html", b"<"),
+])
+def test_the_organisations_list_is_also_a_document_or_spreadsheet_in_every_format(world, fmt, magic):
     resp = world["client"].get(
         f"/api/v1/orgs/{world['org']['id']}/reports/record-list", params={"record_type": STRATEGY, "format": fmt},
         headers=auth_headers(world["token"]),

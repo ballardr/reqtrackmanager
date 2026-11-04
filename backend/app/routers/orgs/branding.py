@@ -109,8 +109,8 @@ def update_org_branding(
     db: Session = Depends(get_db),
 ):
     """Sets (or clears, with null values) this organisation's UI accent
-    colour, header wordmark override (U-C-01 override), and outgoing-email
-    footer identity. All fall back to the platform default
+    colour, report accent colour and logo-on-reports choice, header wordmark override (U-C-01 override), and outgoing-email
+    footer identity, and the report colour scheme. All fall back to the platform default
     (`GET /system/branding`) when null — this endpoint never needs to know
     what that default is, it just clears its own override."""
     org = db.get(Organization, organization_id)
@@ -121,6 +121,12 @@ def update_org_branding(
     org.email_footer_company_name = payload.email_footer_company_name
     org.email_footer_website = payload.email_footer_website
     org.email_footer_address = payload.email_footer_address
+    if "report_accent_color_hex" in payload.model_fields_set:
+        org.report_accent_color_hex = payload.report_accent_color_hex
+    if payload.report_include_logo is not None:
+        org.report_include_logo = payload.report_include_logo
+    if payload.report_colour_scheme is not None:
+        org.report_colour_scheme = [e.model_dump() for e in payload.report_colour_scheme] or None
     log_event(db, entity_type="organization", entity_id=organization_id, action="branding_updated",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()

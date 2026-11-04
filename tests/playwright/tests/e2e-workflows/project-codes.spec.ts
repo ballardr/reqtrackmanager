@@ -84,7 +84,7 @@ test.describe("project codes", () => {
     const dialog = page.getByRole("dialog", { name: "New project" });
     await expect(dialog.getByLabel("Code")).toHaveCount(0);
     await expect(dialog.getByText(/assigned automatically from the name/)).toBeVisible();
-    await dialog.getByLabel("Name").fill("Rail Signalling Upgrade");
+    await dialog.getByLabel("Name", { exact: true }).fill("Rail Signalling Upgrade");
     await dialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
 
@@ -114,7 +114,7 @@ test.describe("project codes", () => {
       await openNewProjectForm(page);
       const dialog = page.getByRole("dialog", { name: "New project" });
       await expect(dialog.getByText(/2 to 6 letters, no spaces or hyphens/)).toBeVisible();
-      await dialog.getByLabel("Name").fill("Manual Coded");
+      await dialog.getByLabel("Name", { exact: true }).fill("Manual Coded");
       await expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
       await dialog.getByLabel("Code").fill("mc");
       await dialog.getByRole("button", { name: "Create" }).click();
@@ -127,7 +127,7 @@ test.describe("project codes", () => {
     await test.step("a code already in use is refused with the reason", async () => {
       await openNewProjectForm(page);
       const dialog = page.getByRole("dialog", { name: "New project" });
-      await dialog.getByLabel("Name").fill("Duplicate Coded");
+      await dialog.getByLabel("Name", { exact: true }).fill("Duplicate Coded");
       await dialog.getByLabel("Code").fill("MC");
       await dialog.getByRole("button", { name: "Create" }).click();
       await expect(dialog.getByText(/already in use/)).toBeVisible();

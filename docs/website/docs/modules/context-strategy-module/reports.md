@@ -18,7 +18,7 @@ flowchart LR
 
 ## Generating a report
 
-1. Open the project's **Reports** page and choose a report from the **Report** picker. The list shows *Requirements report* first, then every Context & Strategy report that applies to this project.
+1. Click **Reports** at the top of the project overview, and pick a report from the **Report** picker. The list shows *Requirements report* first, then every Context & Strategy report that applies to this project.
 2. Adjust the report's **options**, if it has any. The report re-generates each time you change one.
 3. Read the result on screen: headline figures first, then the tables. A figure or table that lists problems to fix carries a **Needs attention** marker; a gap table with nothing to fix is marked **None**.
 4. Select **Export** to download it.
@@ -103,16 +103,16 @@ Rows that name a record lead with its code and end with its tags; see [Reports a
 
 | Exporting a report |
 | --- |
-| **Export** offers PDF, Word and CSV of exactly what is on screen, with the options currently set |
-| ![Export menu open beside the branding template selector, offering Download PDF report and Download CSV report](../../../static/img/screenshots/cs-report-export-menu.png) |
+| **Format** and **Download** give PDF, Word or CSV of exactly what is on screen, with the options currently set |
+| ![Report options with the Export menu open, offering Download PDF report and Download CSV report (the screenshot is refreshed in the docs phase)](../../../static/img/screenshots/cs-report-export-menu.png) |
 
 | Format | Contains |
 | --- | --- |
-| **PDF** | The report's notes and **every table** (including the matrix and gap tables), laid out for reading or circulating, with the branding template's cover, accent colour and footer if you chose one. The on-screen figure tiles are not drawn; the figures appear in the tables. Badges keep their colour: Status columns, the Band columns and the R1 matrix cells are filled in the colour the screen shows, and the word or band name is also in the cell text, so a black-and-white print still reads. R8 opens with a Headline figures table, so it is the one to circulate. |
+| **PDF** | The report's notes and **every table** (including the matrix and gap tables), laid out for reading or circulating, with the organisation's cover, accent colour and footer if it has set them. The on-screen figure tiles are not drawn; the figures appear in the tables. Badges keep their colour: Status columns, the Band columns and the R1 matrix cells are filled in the colour the screen shows, and the word or band name is also in the cell text, so a black-and-white print still reads. R8 opens with a Headline figures table, so it is the one to circulate. |
 | **Word (DOCX)** | The same content, order and branding as the PDF, as an editable Word file in landscape: real headings and tables with a repeating header row, and a footer with page numbers. |
 | **CSV** | The report's **first table** only, as a flat file for a spreadsheet. Cell values that a spreadsheet could read as a formula are neutralised. |
 
-| An exported PDF (R1 with a branding template) |
+| An exported PDF (R1 with the organisation's report look) |
 | --- |
 | Page 2 of the PDF: the scope and notes, then each table with the template's accent colour, and the template's footer |
 | ![Exported Pain Point prioritisation PDF page showing scope notes, a Ranked Pain Points table with a blue header row, a Blockers table, and the footer Solstice Robotics Confidential](../../../static/img/screenshots/cs-report-pdf-export.png) |
@@ -125,7 +125,7 @@ sxf,1,Flight logs cannot be exported for audit,Falcon-3 Inspection Drone,Operato
 sxf,2,Pilots cannot tell which redundant flight controller is in command,Falcon-3 Inspection Drone,User,Accepted,High,21,Medium,Blocker: BVLOS Remote Pilot,
 ```
 
-**Branding template** applies an organisation [report template](../../core-features/reports-and-export.md)'s accent colour, cover page, logo, and footer to the PDF and Word file. Its introduction and chapters belong to the requirements report and aren't used here. CSV never carries a template.
+The organisation's [report look](../../core-features/reports-and-export.md) (its accent colour, cover page, logo, and footer) brands the PDF and Word file; there is no per-download choice. CSV never carries it.
 
 ## Using reports from the API or an AI assistant
 

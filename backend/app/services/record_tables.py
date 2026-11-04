@@ -105,7 +105,7 @@ PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
 GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode"})
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
-REPORT_PARAMS = frozenset({"record_type", "report_template_id"})
+REPORT_PARAMS = frozenset({"record_type"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
 #: The column kinds the bulk edit grid edits (a closed set of values or a single value); free text is not.
 GRID_KINDS = frozenset({"enum", "number", "date", "bool"})
@@ -1058,10 +1058,11 @@ def run_import(
     may_create, may_update = import_rights(db, user, project, artefact_type, provider)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
+    provider_find_many = provider.find_many  # bound here so the lambda below keeps the not-None narrowing
     target = _ImportTarget(
         organization=db.get(Organization, project.organization_id), project=project, columns=list(provider.columns(db, project)),
         find=lambda code: _find_record(db, project, provider, code),
-        find_many=(lambda codes: _find_many_exported(provider.find_many, db, project, codes)) if provider.find_many is not None else None,
+        find_many=(lambda codes: _find_many_exported(provider_find_many, db, project, codes)) if provider_find_many is not None else None,
         prepare=(lambda records: provider.prepare(db, project, records)) if provider.prepare is not None else None,
         create=provider.create if may_create else None, update=provider.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="project",
@@ -1088,10 +1089,11 @@ def run_org_import(
     may_create, may_update = org_import_rights(db, user, organization, artefact_type, tier)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
+    tier_find_many = tier.find_many  # bound here so the lambda below keeps the not-None narrowing
     target = _ImportTarget(
         organization=organization, project=None, columns=list(tier.columns(db, organization)),
         find=lambda code: _find_org_record(db, organization, tier, code),
-        find_many=(lambda codes: _find_many_exported(tier.find_many, db, organization, codes)) if tier.find_many is not None else None,
+        find_many=(lambda codes: _find_many_exported(tier_find_many, db, organization, codes)) if tier_find_many is not None else None,
         prepare=(lambda records: tier.prepare(db, organization, records)) if tier.prepare is not None else None,
         create=tier.create if may_create else None, update=tier.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="organisation",

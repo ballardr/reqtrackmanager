@@ -4,7 +4,15 @@ import { createPortal } from "react-dom";
 
 export type ToastKind = "success" | "error";
 
-interface ToastMessage {
+/** What a toast can carry beyond its one line of text. */
+export interface ToastOptions {
+  /** A button on the toast (typically Undo); clicking it runs `onClick` and dismisses the toast. */
+  action?: { label: string; onClick: () => void };
+  /** Extra lines under the text. A toast with details stays until dismissed, so they can be read. */
+  details?: string[];
+}
+
+interface ToastMessage extends ToastOptions {
   id: number;
   text: string;
   kind: ToastKind;
@@ -13,8 +21,12 @@ interface ToastMessage {
 interface ToastContextValue {
   /** Shows a toast; auto-dismisses after ~4s or on manual close. `kind`
    * defaults to "success" since that's the far more common case (see
-   * `showErrorToast` for the common error-handling shorthand). */
-  showToast: (text: string, kind?: ToastKind) => void;
+   * `showErrorToast` for the common error-handling shorthand). With
+   * `options.details` it stays until dismissed. Returns the toast's id for
+   * `dismissToast`. */
+  showToast: (text: string, kind?: ToastKind, options?: ToastOptions) => number;
+  /** Removes a toast early (for example when what its Undo button would undo is no longer there). */
+  dismissToast: (id: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
@@ -38,23 +50,43 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const showToast = useCallback(
-    (text: string, kind: ToastKind = "success") => {
+    (text: string, kind: ToastKind = "success", options?: ToastOptions) => {
       const id = nextId.current++;
-      setToasts((current) => [...current, { id, text, kind }]);
-      setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
+      setToasts((current) => [...current, { id, text, kind, ...options }]);
+      if (!options?.details?.length) setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
+      return id;
     },
     [dismiss]
   );
 
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext.Provider value={{ showToast, dismissToast: dismiss }}>
       {children}
       {createPortal(
         <div className="toast-stack" role="status" aria-live="polite">
           {toasts.map((toast) => (
             <div key={toast.id} className={`toast${toast.kind === "error" ? " toast-error" : ""}`}>
               {toast.kind === "error" ? <TriangleAlert size={16} /> : <Check size={16} />}
-              <span>{toast.text}</span>
+              <div className="toast-body">
+                <span>{toast.text}</span>
+                {toast.details && (
+                  <ul className="toast-details">
+                    {toast.details.map((line, index) => <li key={index}>{line}</li>)}
+                  </ul>
+                )}
+              </div>
+              {toast.action && (
+                <button
+                  type="button"
+                  className="toast-action"
+                  onClick={() => {
+                    toast.action?.onClick();
+                    dismiss(toast.id);
+                  }}
+                >
+                  {toast.action.label}
+                </button>
+              )}
               <button
                 type="button"
                 className="toast-dismiss"

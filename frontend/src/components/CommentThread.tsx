@@ -1,6 +1,7 @@
 import { Heart, Paperclip, Pencil } from "lucide-react";
 import { useState } from "react";
 
+import { FileDetailsToggle } from "./FileDetailsPanel";
 import { fileUrl } from "../api/client";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type { Comment } from "../api/types";
@@ -151,9 +152,12 @@ export function CommentThread({
                 {c.attachments.length > 0 && (
                   <div className="row" style={{ gap: "0.6rem", flexWrap: "wrap" }}>
                     {c.attachments.map((a) => (
-                      <a key={a.id} href={fileUrl(a.id)} target="_blank" rel="noreferrer" className="row" style={{ gap: "var(--space-1)" }}>
-                        <Paperclip size={12} /> {a.filename}
-                      </a>
+                      <span key={a.id} className="row" style={{ gap: "var(--space-1)" }}>
+                        <a href={fileUrl(a.id)} target="_blank" rel="noreferrer" className="row" style={{ gap: "var(--space-1)" }}>
+                          <Paperclip size={12} /> {a.filename}
+                        </a>
+                        <FileDetailsToggle file={a} />
+                      </span>
                     ))}
                   </div>
                 )}

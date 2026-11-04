@@ -14,11 +14,23 @@ Adds one tag to a record, keeping its others (see `set_artefact_tags` for the ru
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tag*` (string)
 
+## `apply_report_snippet` (read)
+
+Inserts a snippet into a layout tree you hold and returns the new tree. Stores nothing: save the result with `save_report_layout_version` or `create_report_layout`. Needs the layout-management permission.
+
+Parameters: `key*` (string), `tree*` (object), `parameters` (object), `container` (string), `index` (integer), `project_id` (string), `organization_id` (string)
+
 ## `approve_requirement` (approval)
 
 Approves a draft or reviewed requirement (the same transition the UI's "Approve" button performs).
 
 Parameters: `project_id` (string), `requirement_id*` (string), `comment` (string)
+
+## `check_report_snippet` (read)
+
+Checks what saving a run of blocks of a layout tree you hold as a snippet would store, or why it cannot be saved. Stores nothing. Needs the layout-management permission.
+
+Parameters: `tree*` (object), `container` (string), `start` (integer), `count` (integer), `to_organization` (boolean), `project_id` (string), `organization_id` (string)
 
 ## `complete_requirement` (approval)
 
@@ -26,11 +38,29 @@ Marks an approved requirement completed (the same transition the UI's "Mark comp
 
 Parameters: `project_id` (string), `requirement_id*` (string)
 
+## `copy_reports` (write)
+
+Copies report layouts, packs, folders and module-report placements from one project to another project of the same organisation. Needs the layout-management permission in BOTH projects. Preview first (the default), then apply.
+
+Parameters: `source_project_id*` (string), `target_project_id*` (string), `layout_ids` (list[string]), `pack_ids` (list[string]), `folders` (list[string]), `placement_keys` (list[string]), `on_conflict` (string), `favourites` (boolean), `dry_run` (boolean)
+
+## `copy_saved_report_snippet` (write)
+
+Copies a saved snippet to a snippet of its own: into the project (a copy of one it inherits, as an editable basis) or up to the organisation, or within the organisation. Needs the layout-management permission where the copy lands (and the organisation's for a copy up). A project picture cannot be copied up (the picture is named). The default name is "<name> (copy)".
+
+Parameters: `snippet_id*` (string), `project_id` (string), `organization_id` (string), `to_organization` (boolean), `name` (string)
+
 ## `create_artefact_link` (write)
 
 Links an artefact to another record of the same project, or of a parent or child project.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_type_id*` (string), `direction*` (string), `other_type*` (string), `other_id*` (string), `other_project_id` (string)
+
+## `create_report_layout` (write)
+
+Creates a custom report layout and its version 1. Needs the layout-management permission for the scope.
+
+Parameters: `name*` (string), `family*` (string), `tree*` (object), `description` (string), `comment` (string), `folder` (string), `project_id` (string), `organization_id` (string)
 
 ## `create_requirement` (write)
 
@@ -50,11 +80,41 @@ Removes a link touching an artefact. Irreversible: confirm with the user first.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `link_id*` (string)
 
+## `delete_report_layout` (write)
+
+Deletes a layout the scope owns, with every version and the introduction/chapters/appendices written for it. Irreversible: confirm with the user first. (A layout a project only inherits is not deleted here.)
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string)
+
+## `delete_saved_report_snippet` (write)
+
+Deletes a saved snippet the scope owns. Layouts already built from it are unchanged. Irreversible: confirm with the user first. (A snippet a project only inherits is hidden instead: `set_saved_report_snippet_visibility`.)
+
+Parameters: `snippet_id*` (string), `project_id` (string), `organization_id` (string)
+
+## `duplicate_report` (write)
+
+Duplicates one report layout or pack as an editable basis for a new one, or starts a layout from a built-in starter (Business Requirements Document and the like). Needs the layout-management permission where the copy lands (and, for a copy up to the organisation, the organisation's). Preview first (the default), then apply.
+
+Parameters: `kind*` (string), `project_id` (string), `organization_id` (string), `source_id` (string), `starter_key` (string), `target` (string), `name` (string), `dry_run` (boolean)
+
+## `export_report_file` (read)
+
+Exports report layouts and packs as one `.zip` report file (returned base64-encoded), to keep or to bring into another project, organisation or installation with `import_report_file`. Needs the layout-management permission for the scope (reading a layout's definition is a manage action).
+
+Parameters: `layout_ids` (list[string]), `pack_ids` (list[string]), `project_id` (string), `organization_id` (string), `include_history` (boolean), `include_pack_layouts` (boolean)
+
 ## `find_artefacts_by_tag` (read)
 
 Finds records of every type that carry some tags: "what is tagged `safety`?" without listing each type.
 
 Parameters: `project_id` (string), `tags*` (list[string]), `tag_mode` (string), `artefact_type` (string)
+
+## `format_report_layout_text` (read)
+
+Writes a valid layout tree as its text view. Stores nothing. Needs the layout-management permission.
+
+Parameters: `tree*` (object), `project_id` (string), `organization_id` (string)
 
 ## `get_artefact_link_graph` (read)
 
@@ -98,6 +158,30 @@ Lists every record of one type in a project as a single table: the "Record list"
 
 Parameters: `project_id` (string), `record_type*` (string), `project_scope` (string), `tags` (list[string]), `tag_mode` (string)
 
+## `get_report_layout` (read)
+
+Reads a custom report layout with its tree (needs the layout-management permission for that scope).
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `version` (integer)
+
+## `get_report_layout_variables` (read)
+
+Lists the run-time variables of a custom report layout: what `run_custom_report` takes as `variables`.
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `project_ids` (list[string])
+
+## `get_report_pack_form` (read)
+
+Lists what a report pack takes to run: its variables and the saved sets of values on offer.
+
+Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string)
+
+## `get_report_run` (read)
+
+Reads one of your own background report runs (a custom report or a report pack): its status and, once ready, its file name.
+
+Parameters: `run_id*` (string)
+
 ## `get_requirement` (read)
 
 Gets a single requirement's full current detail.
@@ -109,6 +193,18 @@ Parameters: `project_id` (string), `requirement_id*` (string)
 Gets a requirement's full version history — every prior state it has been in.
 
 Parameters: `project_id` (string), `requirement_id*` (string)
+
+## `get_saved_report_snippet` (read)
+
+Reads one saved report snippet with its blocks. Needs the layout-management permission.
+
+Parameters: `snippet_id*` (string), `project_id` (string), `organization_id` (string)
+
+## `import_report_file` (write)
+
+Imports a report file (from `export_report_file`, in any organisation or installation) as the project's or the organisation's own layouts and packs. Needs the layout-management permission for that scope. Preview first (the default), then apply.
+
+Parameters: `file_base64*` (string), `project_id` (string), `organization_id` (string), `on_conflict` (string), `folder` (string), `dry_run` (boolean)
 
 ## `list_artefact_link_browse` (read)
 
@@ -190,6 +286,30 @@ Lists projects the caller's ReqTrackManager account has a role on, across every 
 
 Parameters: `organization_id` (string), `search` (string), `include_archived` (boolean)
 
+## `list_report_layouts` (read)
+
+Lists the custom report layouts of a project (its own, its parents' and the organisation's) or of an organisation.
+
+Parameters: `project_id` (string), `organization_id` (string)
+
+## `list_report_packs` (read)
+
+Lists the report packs of a project (its own, its parents' and the organisation's) or of an organisation.
+
+Parameters: `project_id` (string), `organization_id` (string)
+
+## `list_report_snippets` (read)
+
+Lists the report snippets a layout can insert: ready-made fragments such as a cover page, a logo at the top right, record images, document control, approvals or a landscape table section. Needs the layout-management permission.
+
+Parameters: `project_id` (string), `organization_id` (string)
+
+## `list_report_widgets` (read)
+
+Lists the report components a layout can embed as a widget line, `[[widget.<key> name=value]]`.
+
+Parameters: `project_id` (string), `organization_id` (string)
+
 ## `list_requirement_comments` (read)
 
 Lists the discussion thread on a requirement.
@@ -202,11 +322,23 @@ Lists requirements in a project, with the same filters the Requirements page's f
 
 Parameters: `project_id` (string), `status` (string), `search` (string), `keyword` (string), `component_id` (string), `category_id` (string), `include_archived` (boolean), `tags` (list[string]), `tag_mode` (string)
 
+## `list_saved_report_snippets` (read)
+
+Lists the report snippets authors have saved for a scope, to manage them: the project's own, its ancestors' and the organisation's (hidden ones flagged), or the organisation's own. Needs the layout-management permission. (`list_report_snippets` lists what a layout can insert, saved ones included, but not the hidden ones.)
+
+Parameters: `project_id` (string), `organization_id` (string)
+
 ## `list_tags` (read)
 
 Lists the tags a project offers and how new tags are treated.
 
 Parameters: `project_id` (string)
+
+## `parse_report_layout_text` (read)
+
+Reads a layout written in its text view into the stored tree, with positioned errors. Stores nothing.
+
+Parameters: `text*` (string), `project_id` (string), `organization_id` (string)
 
 ## `preview_change_request_links` (read)
 
@@ -214,11 +346,41 @@ Previews which of a change request's proposed links would merge if it were appro
 
 Parameters: `project_id` (string), `change_request_id*` (string)
 
+## `preview_report_pack` (read)
+
+Shows how many records each report in a pack would include for the chosen values. Stores and produces nothing.
+
+Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string), `variables` (object), `variable_set_id` (string), `include_children` (boolean), `project_ids` (list[string])
+
 ## `remove_artefact_tag` (write)
 
 Removes one tag from a record. The tag stays in the project's list.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tag_id*` (string)
+
+## `run_custom_report` (read)
+
+Runs a custom report layout and returns the report as data.
+
+Parameters: `layout_id*` (string), `project_id` (string), `organization_id` (string), `include_children` (boolean), `project_ids` (list[string]), `variables` (object)
+
+## `run_report_pack` (write)
+
+Queues a report pack to be produced in the background as one zip, and returns the run to follow.
+
+Parameters: `pack_id*` (string), `project_id` (string), `organization_id` (string), `variables` (object), `variable_set_id` (string), `include_children` (boolean), `project_ids` (list[string])
+
+## `save_report_layout_version` (write)
+
+Saves a new version of a layout the scope owns. Earlier versions stay, and past runs keep naming theirs.
+
+Parameters: `layout_id*` (string), `tree*` (object), `base_version*` (integer), `comment` (string), `project_id` (string), `organization_id` (string)
+
+## `save_report_snippet` (write)
+
+Saves a run of blocks of a layout tree you hold as a reusable snippet, for a project or the organisation. Needs the layout-management permission for that scope (and the organisation's for `to_organization` from a project).
+
+Parameters: `name*` (string), `tree*` (object), `container` (string), `start` (integer), `count` (integer), `description` (string), `category` (string), `to_organization` (boolean), `project_id` (string), `organization_id` (string)
 
 ## `search_artefact_link_candidates` (read)
 
@@ -238,8 +400,26 @@ Makes a record carry exactly these tags, adding and removing as needed.
 
 Parameters: `project_id` (string), `artefact_type*` (string), `artefact_id*` (string), `tags*` (list[string])
 
+## `set_saved_report_snippet_visibility` (write)
+
+Hides a saved snippet the project inherits (from the organisation or a parent project), or shows it again. It stops being offered in that project only; the snippet itself is unchanged. Needs the project's layout-management permission.
+
+Parameters: `snippet_id*` (string), `hidden*` (boolean), `project_id` (string)
+
+## `update_report_layout` (write)
+
+Renames, re-describes or re-files a layout the scope owns (its tree is changed with `save_report_layout_version`).
+
+Parameters: `layout_id*` (string), `name` (string), `description` (string), `folder` (string), `project_id` (string), `organization_id` (string)
+
 ## `update_requirement` (write)
 
 Edits an unlocked requirement's content in place.
 
 Parameters: `project_id` (string), `requirement_id*` (string), `name` (string), `reasoning` (string), `clarification` (string), `description` (string), `component_id` (string), `category_id` (string), `owner` (object), `target_stage_id` (string), `level` (string), `keywords` (list[string]), `custom_fields` (object), `review_date` (string), `review_lead_days` (integer), `reviewer` (object), `change_note` (string)
+
+## `update_saved_report_snippet` (write)
+
+Renames or re-describes a saved snippet the scope owns (its blocks do not change). Needs the layout-management permission.
+
+Parameters: `snippet_id*` (string), `name` (string), `description` (string), `category` (string), `project_id` (string), `organization_id` (string)

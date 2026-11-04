@@ -2,13 +2,19 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { ReportTemplate } from "../api/types";
 import { installedModules } from "../modules/registry";
-import { buildReportCatalogueEntry, buildReportResult } from "../testing/reportFixtures";
-import { withRouter, withToast } from "../testing/storybook-helpers";
+import { buildReportCatalogueEntry, buildReportResult, buildReportVariable } from "../testing/reportFixtures";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ReportRunner } from "./ReportRunner";
 
 const entry = buildReportCatalogueEntry();
+
+/** Chooses a format in the download list (a report with one format has no list) and presses Download. */
+async function downloadAs(canvas: ReturnType<typeof within>, format: string) {
+  const option = canvas.queryByRole("radio", { name: format });
+  if (option) await userEvent.click(option);
+  await userEvent.click(canvas.getByRole("button", { name: "Download" }));
+}
 const scope = { kind: "project" as const, id: "project-1" };
 const orgEntry = buildReportCatalogueEntry({
   scope: "organization", supports_include_children: false, supports_project_filter: true, params: [],
@@ -16,15 +22,8 @@ const orgEntry = buildReportCatalogueEntry({
   path: "/api/v1/orgs/org-1/modules/fixture_report_module/reports/fixture-report",
 });
 
-const template: ReportTemplate = {
-  id: "tpl-1", organization_id: "org-1", name: "Branded template", accent_color_hex: "#475569",
-  include_cover_page: true, include_logo: true, footer_text: null, content: [],
-  chapters_per_component: false,
-};
-
-function mockRunApis(opts: { templates?: ReportTemplate[]; result?: ReturnType<typeof buildReportResult> } = {}) {
+function mockRunApis(opts: { result?: ReturnType<typeof buildReportResult> } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
-    if (path.includes("/report-templates")) return opts.templates ?? [];
     if (path.startsWith(entry.path) || path.startsWith(orgEntry.path)) return opts.result ?? buildReportResult();
     throw new Error(`Unmocked GET: ${path}`);
   });
@@ -55,12 +54,53 @@ installedModules.push({
 const meta: Meta<typeof ReportRunner> = {
   title: "Components/Reports/ReportRunner",
   component: ReportRunner,
-  args: { entry, scope, organizationId: "org-1" },
-  decorators: [withToast()],
+  args: { entry, scope },
+  decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
 };
 export default meta;
 
 type Story = StoryObj<typeof ReportRunner>;
+
+/** A custom report with a required list variable: it does not run, or offer a download, until a value is chosen. */
+export const ACustomReportWaitsForItsRequiredVariables: Story = {
+  args: { entry: buildReportCatalogueEntry({ params: [], variables: [buildReportVariable()] }) },
+  beforeEach: () => mockRunApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("status")).toHaveTextContent("Choose a value for Categories to run this report.");
+    const held = canvas.getByRole("button", { name: "Download" });
+    await expect(held).toBeDisabled();
+    await expect(held).toHaveAccessibleDescription("Choose a value for Categories to run this report.");
+    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/reports/fixture-report"));
+
+    await userEvent.click(canvas.getByRole("button", { name: /Categories/ }));
+    await userEvent.click(await within(document.body).findByRole("checkbox", { name: "Billing" }));
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    // The chosen values are sent as one JSON query parameter.
+    const run = (api.get as unknown as { mock: { calls: string[][] } }).mock.calls.map((c) => c[0]).find((p) => p.includes("/reports/fixture-report"));
+    const sent = new URLSearchParams(run?.split("?")[1]);
+    await expect(JSON.parse(sent.get("variables") ?? "{}")).toEqual({ categories: ["Billing"] });
+    await expect(canvas.queryByRole("status")).toBeNull();
+  },
+};
+
+/** A variable with a default runs straight away with it, and a download sends the same values. */
+export const ACustomReportRunsWithItsDefaultsAndDownloadsTheSameValues: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      params: [], variables: [buildReportVariable({ default: ["Security"] })], formats: ["json", "pdf", "xlsx"],
+    }),
+  },
+  beforeEach: () => mockRunApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await downloadAs(canvas, "PDF");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalled());
+    const url = (api.getForBlob as unknown as { mock: { calls: string[][] } }).mock.calls[0][0];
+    await expect(JSON.parse(new URLSearchParams(url.split("?")[1]).get("variables") ?? "{}")).toEqual({ categories: ["Security"] });
+  },
+};
 
 /** Runs on mount with the declared defaults and renders the generic viewer. */
 export const RunsWithDefaultsAndShowsResult: Story = {
@@ -107,9 +147,152 @@ export const OrganisationReportCanBeNarrowedToOneProject: Story = {
     await expect(within(canvas.getByLabelText("Project")).getByRole("option", { name: "Borealis" })).toBeInTheDocument();
     await userEvent.selectOptions(canvas.getByLabelText("Project"), "project-2");
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_id=project-2")));
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
+    await downloadAs(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_id=project-2")));
+  },
+};
+
+/** A custom table report offers its own formats (Excel, CSV) and asks the server for exactly the one chosen. */
+export const CustomTableReportOffersExcelAndCsv: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      module_key: "custom_reports", slug: "custom-sheet-1", supports_include_children: true, params: [],
+      formats: ["json", "csv", "xlsx", "ods"], path: "/api/v1/projects/project-1/custom-reports/layout-2/run",
+    }),
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/projects/project-1/custom-reports/layout-2/run")) return buildReportResult();
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"], { type: "application/zip" }));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("radio", { name: "PDF" })).not.toBeInTheDocument();
+    await downloadAs(canvas, "Excel");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=xlsx")));
+    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Excel).")).toBeInTheDocument());
+    await downloadAs(canvas, "ODS");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=ods")));
+  },
+};
+
+/** A custom report run once per project: choosing projects re-runs it with `project_ids`, and downloads carry the same selection. */
+export const OrganisationCustomReportChoosesProjects: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "custom-everywhere-1", supports_include_children: false,
+      supports_project_filter: false, supports_project_multi_filter: true, params: [],
+      formats: ["json", "pdf", "docx"],
+      projects: [{ id: "project-1", name: "Atlas" }, { id: "project-2", name: "Borealis" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-1/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/orgs/org-1/custom-reports/layout-1/run")) return buildReportResult();
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await expect(canvas.queryByLabelText("Project")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Projects" }));
+    await userEvent.click(within(document.body).getByRole("checkbox", { name: "Borealis" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+    await userEvent.keyboard("{Escape}");
+    await downloadAs(canvas, "PDF");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+  },
+};
+
+/** A custom report limited to one project: a single-choice Project picker (no "all projects"), nothing runs until one is chosen,
+ * and the run and download carry exactly that one id. */
+export const SingleProjectCustomReportNeedsOneProject: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "sign-off-1", supports_include_children: false,
+      supports_project_filter: false, supports_project_multi_filter: false, run_scope: "one", params: [],
+      formats: ["json", "pdf", "docx"],
+      projects: [{ id: "project-1", name: "Atlas" }, { id: "project-2", name: "Borealis" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-2/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/v1/orgs/org-1/custom-reports/layout-2/run")) return buildReportResult();
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("This report runs for a single project. Choose the project to run it for.")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Projects" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Download" })).toBeDisabled();
+    await expect(api.get).not.toHaveBeenCalled();
+    await expect(canvas.queryByRole("option", { name: "All projects" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Project/ }), "project-2");
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await downloadAs(canvas, "PDF");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-2")));
+  },
+};
+
+/** A report for one project and its children: the same one-project picker, plus the child-projects switch, whose choice
+ * the run and the download carry. */
+export const OneProjectAndItsChildrenOffersTheChildProjectsSwitch: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "charter-1", supports_include_children: true,
+      supports_project_filter: false, supports_project_multi_filter: false, run_scope: "one_and_children", params: [],
+      formats: ["json", "pdf"],
+      projects: [{ id: "project-1", name: "Atlas" }, { id: "project-2", name: "Borealis" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-3/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async () => buildReportResult());
+    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["x"]));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Projects" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: /Project/ }), "project-1");
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("switch", { name: "Include child projects" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith(expect.stringMatching(/include_children=true.*project_ids=project-1|project_ids=project-1.*include_children=true/)));
+    await downloadAs(canvas, "PDF");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("include_children=true")));
+  },
+};
+
+/** When the caller can report on only one project, a single-project report has nothing to choose and runs at once. */
+export const SingleProjectReportWithOneChoiceRunsAtOnce: Story = {
+  args: {
+    entry: buildReportCatalogueEntry({
+      scope: "organization", module_key: "custom_reports", slug: "sign-off-1", supports_include_children: false,
+      supports_project_filter: false, supports_project_multi_filter: false, run_scope: "one", params: [],
+      formats: ["json", "pdf"], projects: [{ id: "project-1", name: "Atlas" }],
+      path: "/api/v1/orgs/org-1/custom-reports/layout-2/run",
+    }),
+    scope: { kind: "organization", id: "org-1" },
+  },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async () => buildReportResult());
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await expect(api.get).toHaveBeenCalledWith(expect.stringContaining("project_ids=project-1"));
   },
 };
 
@@ -122,49 +305,50 @@ export const ProjectReportHasNoProjectPicker: Story = {
   },
 };
 
-/** A PDF download carries the on-screen values plus the chosen branding template, and confirms with a toast. */
-export const PdfDownloadSendsValuesAndTemplate: Story = {
-  beforeEach: () => mockRunApis({ templates: [template] }),
+/** A document download has no branding choice, even when the organisation has templates: the server applies the
+ * layout's own template, else the organisation's default, so the request names none; it confirms with a toast. */
+export const DocumentDownloadHasNoBrandingChoice: Story = {
+  beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await waitFor(() => expect(canvas.getByLabelText("Branding template")).toBeInTheDocument());
-    await userEvent.selectOptions(canvas.getByLabelText("Branding template"), "tpl-1");
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download PDF report" }));
-    await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(expect.stringMatching(/format=pdf.*report_template_id=tpl-1|report_template_id=tpl-1.*format=pdf/)),
-    );
+    await expect(canvas.queryByLabelText("Branding template")).not.toBeInTheDocument();
+    await downloadAs(canvas, "PDF");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=pdf")));
+    await expect(api.getForBlob).not.toHaveBeenCalledWith(expect.stringContaining("report_template_id"));
     await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (PDF).")).toBeInTheDocument());
   },
 };
 
-/** A Word download carries the on-screen values plus the branding template, like the PDF. */
-export const DocxDownloadSendsValuesAndTemplate: Story = {
-  beforeEach: () => mockRunApis({ templates: [template] }),
+/** A CSV download is a flat export: no template in the request. */
+export const CsvDownloadOmitsTemplate: Story = {
+  beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.selectOptions(await canvas.findByLabelText("Branding template"), "tpl-1");
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download Word report" }));
-    await waitFor(() =>
-      expect(api.getForBlob).toHaveBeenCalledWith(expect.stringMatching(/format=docx.*report_template_id=tpl-1|report_template_id=tpl-1.*format=docx/)),
-    );
-    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (Word file).")).toBeInTheDocument());
+    await downloadAs(canvas, "CSV");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=csv")));
+    await expect(api.getForBlob).not.toHaveBeenCalledWith(expect.stringContaining("report_template_id"));
   },
 };
 
-/** CSV never carries the branding template (it is a flat export). */
-export const CsvDownloadOmitsTemplate: Story = {
-  beforeEach: () => mockRunApis({ templates: [template] }),
+/** Every format a module report declares is in the menu, and none of them sends a branding template. */
+export const EveryDeclaredFormatIsInTheMenu: Story = {
+  args: { entry: buildReportCatalogueEntry({ formats: ["json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"] }) },
+  beforeEach: () => mockRunApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=csv")));
-    await expect(api.getForBlob).not.toHaveBeenCalledWith(expect.stringContaining("report_template_id"));
+    for (const label of ["PDF", "Word", "HTML", "ODT", "CSV", "Excel", "ODS"]) {
+      await expect(canvas.getByRole("radio", { name: label })).toBeInTheDocument();
+    }
+    await downloadAs(canvas, "ODT");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(expect.stringContaining("format=odt")));
+    await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
+    await waitFor(() => expect(within(document.body).getByText("Downloaded Fixture report (ODT).")).toBeInTheDocument());
+    await downloadAs(canvas, "ODS");
+    await waitFor(() => expect(api.getForBlob).toHaveBeenLastCalledWith(expect.stringContaining("format=ods")));
+    await expect(api.getForBlob).toHaveBeenLastCalledWith(expect.not.stringContaining("report_template_id"));
   },
 };
 
@@ -176,17 +360,34 @@ export const DownloadFailureShowsToast: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    await userEvent.click(within(document.body).getByRole("button", { name: "Download CSV report" }));
+    await downloadAs(canvas, "CSV");
     await waitFor(() => expect(within(document.body).getByText("Internal Server Error")).toBeInTheDocument());
+  },
+};
+
+/** A file run that is too big for a request is queued in the background and the person is told so. */
+export const TooBigDownloadIsQueuedInTheBackground: Story = {
+  args: { entry: buildReportCatalogueEntry({ path: "/api/v1/projects/project-1/custom-reports/layout-1/run" }) },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async () => buildReportResult());
+    spyOn(api, "getForBlob").mockRejectedValue(
+      new ApiError(409, "Too big.", { code: "async_required", message: "Too big." }),
+    );
+    spyOn(api, "post").mockResolvedValue({ id: "run-1", status: "queued" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
+    await downloadAs(canvas, "PDF");
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(expect.stringMatching(/\/runs$/), expect.objectContaining({ format: "pdf" })));
+    await waitFor(() => expect(within(document.body).getByText(/being prepared in the background/)).toBeInTheDocument());
   },
 };
 
 /** A failed run shows an inline error, not a blank page. */
 export const RunFailureShowsError: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
+    spyOn(api, "get").mockImplementation(async () => {
       throw new ApiError(500, "Report failed to run.");
     });
   },
@@ -208,10 +409,7 @@ export const NothingToReportOn: Story = {
 export const RegisteredViewReplacesGenericViewer: Story = {
   args: { entry: buildReportCatalogueEntry({ key: "f2", slug: "fixture-view", path: `${entry.path}-view` }) },
   beforeEach: () => {
-    spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
-      return buildReportResult({ key: "f2" });
-    });
+    spyOn(api, "get").mockImplementation(async () => buildReportResult({ key: "f2" }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -263,7 +461,6 @@ export const OrganisationFiguresOpenAProjectList: Story = {
   beforeEach: () => {
     const figure = linkedResult().metrics[0];
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.includes("/report-templates")) return [];
       if (path.includes("/by-project")) {
         return {
           generated_at: "2026-10-06T09:30:00Z", truncated: false,
@@ -284,5 +481,17 @@ export const OrganisationFiguresOpenAProjectList: Story = {
     await expect(await dialog.findByRole("link", { name: /Atlas/ })).toHaveAttribute(
       "href", "/projects/p-1/modules/fixture_report_module/pain-points?blocker=1",
     );
+  },
+};
+
+/** With the result off (the record list's download dialog) the report is not run for the screen, yet it still offers its download. */
+export const WithoutResultItIsNotRunOnScreen: Story = {
+  args: { showResult: false },
+  beforeEach: () => mockRunApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("button", { name: "Download" })).toBeInTheDocument();
+    await expect(api.get).not.toHaveBeenCalledWith(expect.stringContaining("/reports/fixture-report"));
+    await expect(canvas.queryByRole("table")).not.toBeInTheDocument();
   },
 };

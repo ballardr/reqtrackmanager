@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, openProject, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, showLinkRelationships } from "../../e2e-workflows/helpers";
+import { loginAs, openProject, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, showLinkRelationships, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
 
 /**
@@ -61,7 +61,7 @@ test.describe("Compliance: core requirement <-> standard clause links through th
       const found = dialog.getByLabel("Record").locator("option", { hasText: clauseName });
       await expect(found).toHaveCount(1);
       await expect(found).toHaveText(`Compliance standard clause: ${clauseLabel}`);
-      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await closeDialogWithoutSaving(dialog, { unsaved: true });
       await expect(dialog).not.toBeVisible();
     });
 

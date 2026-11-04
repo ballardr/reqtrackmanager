@@ -15,6 +15,8 @@ import csv
 import io
 import uuid
 
+import pytest
+
 from app.database import SessionLocal
 from app.models.project import Project
 from app.modules.compliance.reports import (
@@ -142,12 +144,12 @@ def test_project_and_org_compliance_report_reject_missing_or_invalid_format(clie
 
     missing = client.get(f"{_project_base(project['id'])}/reports", headers=auth_headers(admin_token))
     assert missing.status_code == 422
-    invalid = client.get(f"{_project_base(project['id'])}/reports", params={"format": "xlsx"}, headers=auth_headers(admin_token))
+    invalid = client.get(f"{_project_base(project['id'])}/reports", params={"format": "json"}, headers=auth_headers(admin_token))
     assert invalid.status_code == 422
 
     org_missing = client.get(f"{_base(org_id)}/reports", headers=auth_headers(admin_token))
     assert org_missing.status_code == 422
-    org_invalid = client.get(f"{_base(org_id)}/reports", params={"format": "xlsx"}, headers=auth_headers(admin_token))
+    org_invalid = client.get(f"{_base(org_id)}/reports", params={"format": "json"}, headers=auth_headers(admin_token))
     assert org_invalid.status_code == 422
 
 
@@ -185,6 +187,47 @@ def test_org_compliance_csv_report_lists_project_assignment_roll_up(client, admi
     assert row[standard_col] == standard["reference"]
     assert row[version_col] == version["version_label"]
     assert row[non_compliant_col] == "1"
+
+
+# --- every format (docx, odt, html, xlsx, ods beside pdf and csv) ---------------------
+
+def _archive_text(content: bytes) -> str:
+    """All the XML text inside an Office/OpenDocument zip, for a content assertion."""
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        return "".join(archive.read(n).decode("utf-8", "ignore") for n in archive.namelist() if n.endswith(".xml"))
+
+
+@pytest.mark.parametrize("fmt", ["docx", "odt", "html", "xlsx", "ods"])
+def test_project_compliance_report_is_offered_in_every_format(client, admin_token, org_id, fmt):
+    project, standard, _version = _project_with_assessment(client, admin_token, org_id, project_name=f"All Formats {fmt}")
+    resp = client.get(f"{_project_base(project['id'])}/reports", params={"format": fmt}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"].endswith(f'-compliance-report.{fmt}"')
+    text = resp.content.decode("utf-8") if fmt == "html" else _archive_text(resp.content)
+    assert standard["reference"] in text
+
+
+@pytest.mark.parametrize("fmt", ["docx", "odt", "html", "xlsx", "ods"])
+def test_org_compliance_report_is_offered_in_every_format(client, admin_token, org_id, fmt):
+    project, standard, _version = _project_with_assessment(client, admin_token, org_id, project_name=f"Org All Formats {fmt}")
+    resp = client.get(f"{_base(org_id)}/reports", params={"format": fmt}, headers=auth_headers(admin_token))
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"].endswith(f'-compliance-report.{fmt}"')
+    text = resp.content.decode("utf-8") if fmt == "html" else _archive_text(resp.content)
+    assert project["name"] in text
+
+
+def test_compliance_spreadsheet_matches_the_csv_columns_and_guards_formulas(client, admin_token, org_id):
+    """The Excel/ODS sheet is the CSV's table (same header, same rows), and a formula-looking cell is text in both."""
+    project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Sheet Parity Project")
+    base = f"{_project_base(project['id'])}/reports"
+    csv_rows = list(csv.reader(io.StringIO(client.get(base, params={"format": "csv"}, headers=auth_headers(admin_token)).content.decode())))
+    ods_text = _archive_text(client.get(base, params={"format": "ods"}, headers=auth_headers(admin_token)).content)
+    for column in csv_rows[0]:
+        assert column in ods_text
+    assert "=HYPERLINK(" not in ods_text.replace("&apos;=HYPERLINK(", "").replace("'=HYPERLINK(", "")
 
 
 # --- narrative requirement cell (title always shown) ------------------

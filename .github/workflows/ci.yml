@@ -9,7 +9,7 @@
 #                          actually needs (db, storage, mailhog, backend — not
 #                          frontend/mcp-server/keycloak, which only
 #                          e2e-tests below exercises); backend pytest with
-#                          coverage + JUnit reporting, ruff lint.
+#                          coverage + JUnit reporting, ruff lint, mypy ratchet.
 #   3. e2e-tests         - the full dev/test stack (adds frontend, mcp-server,
 #                          keycloak on top of backend-tests' subset), the
 #                          mcp-server's own integration test suite, then the
@@ -126,10 +126,12 @@ jobs:
     # Available tags: https://mcr.microsoft.com/en-us/artifact/mar/playwright
     container:
       image: mcr.microsoft.com/playwright:v1.63.0-noble
-    # Normal runs finish in ~2 minutes; this is headroom, not an expected
-    # ceiling — see backend-tests'/e2e-tests' timeout-minutes comments for
-    # why every job/step here now has one.
-    timeout-minutes: 15
+    # The story suite (400 files, ~3.3k tests, ~1,900 CPU-seconds) takes
+    # ~7 minutes on a 5-core laptop and longer on a 4-vCPU runner; the rest of
+    # the job is ~2 minutes. This is headroom — see backend-tests'/e2e-tests'
+    # timeout-minutes comments for why every job/step here has one. If it is
+    # outgrown again, shard the suite (`vitest --shard`) instead of raising it.
+    timeout-minutes: 35
     # checks: write is for the "Publish frontend test results" step below
     # (dorny/test-reporter creating a check run) — same reasoning as
     # backend-tests'/e2e-tests' identical permission.
@@ -187,18 +189,17 @@ jobs:
       # written correctly — and then simply never call process.exit(),
       # hanging indefinitely instead of returning. A bare `npm run` with no
       # timeout would hang this step (and the whole job) forever on a run
-      # that already succeeded. 600s is headroom over the ~4-5 minutes the
-      # full ~220-story suite takes on a CI runner (the earlier "~10s" figure
-      # was measured while the Playwright/image version drift meant no story
-      # ran at all, and a 180s cap then killed a healthy run mid-suite before
-      # it could write a report); a genuine hang before producing a report
+      # that already succeeded. 1500s is headroom over the full 400-file
+      # suite on a CI runner (a 600s cap killed a healthy, still-running suite
+      # before it could write a report; the suite is ~7 minutes locally on 5
+      # cores); a genuine hang before producing a report
       # still fails loudly (no vitest-report.xml to check, so the raw exit
       # status propagates), and a real per-test failure is caught explicitly
       # by parsing the JUnit output rather than assumed away.
       - name: Run frontend tests with coverage
         run: |
           set +e
-          timeout 600 npm run test-storybook -- --coverage
+          timeout 1500 npm run test-storybook -- --coverage
           status=$?
           set -e
           if [ $status -eq 0 ]; then
@@ -335,6 +336,15 @@ jobs:
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
+      - name: Build converter image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./converter
+          tags: container-converter:latest
+          load: true
+          cache-from: type=gha,scope=converter
+          cache-to: type=gha,mode=max,scope=converter
+
       # The dev/test stack (tests/container/docker-compose.yml) is the same
       # one developers run locally, and the only one the backend test suite
       # is allowed to run against — tests/conftest.py hard-fails if
@@ -353,7 +363,7 @@ jobs:
       # a second time with none of buildx's GHA cache wired in.
       - name: Start the dev/test stack (backend + its dependencies)
         working-directory: tests/container
-        run: docker compose up -d db storage mailhog backend
+        run: docker compose up -d db storage mailhog converter backend
 
       # Diagnostic only: `docker compose up -d` above fails outright (exit 1)
       # if a `depends_on: condition: service_healthy` dependency never
@@ -422,6 +432,15 @@ jobs:
       # whole-directory scan is the right check here (standard library only; no container or git needed).
       - name: Check committed performance results are anonymised
         run: python3 perf/scrub_check.py
+      # Ratchet: fails on any type error not in backend/mypy_baseline.json (and on a fixed one still
+      # listed, so the baseline only shrinks). Run `python scripts/check_mypy.py --update` after fixing.
+      - name: Type-check backend (mypy)
+        working-directory: tests/container
+        run: docker compose exec -T backend python scripts/check_mypy.py
+
+      - name: Converter tests (real Ghostscript and poppler, inside the sandboxed container)
+        working-directory: tests/container
+        run: docker compose exec -T converter python -m unittest discover -s tests
 
       # The backup tool's tests need restic, age and pg_dump 16, which only the `backup` image
       # has; REQUIRE_DR_TOOLS makes a missing binary fail the test instead of skipping it, so the
@@ -524,15 +543,18 @@ jobs:
   e2e-tests:
     name: E2E (Playwright) suite
     runs-on: ubuntu-latest
-    # Normal runs finish in ~12-15 minutes (docker build x3 + stack startup +
-    # seeding + mcp-server tests + full Playwright suite). Without a ceiling
+    # Setup (docker build x3 + stack startup + seeding + mcp-server tests) takes
+    # ~9 minutes and the full Playwright suite (~510 tests on 2 workers) ~30
+    # more; a 30-minute ceiling cancelled a healthy run mid-suite. If this is
+    # outgrown again, shard the suite across jobs instead of raising it.
+    # Without a ceiling
     # here a stalled step (see docs/decisions.md for a real instance of
     # this: an 18-minute apt-get mirror hang with no output, in what was
     # then this job's "Install Playwright browsers" step before it moved
     # into a Docker image — see "Run Playwright E2E suite" below) just sits
     # until someone notices and cancels it manually, instead of failing the
     # run automatically.
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       # checks: write is for the "Publish E2E test results" step below
       # (dorny/test-reporter creating a check run).
@@ -578,6 +600,15 @@ jobs:
           load: true
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build converter image (cached)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./converter
+          tags: container-converter:latest
+          load: true
+          cache-from: type=gha,scope=converter
+          cache-to: type=gha,mode=max,scope=converter
 
       - name: Build frontend image (cached)
         uses: docker/build-push-action@v7
@@ -1048,6 +1079,14 @@ jobs:
           push: false
           tags: scan-mcp-server:ci
 
+      - name: Build converter image for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./converter
+          load: true
+          push: false
+          tags: scan-converter:ci
+
       # HIGH and CRITICAL findings that have a fix available fail the job: fix
       # them by moving the base image or the dependency, never by an ignore
       # file. `--ignore-unfixed` leaves out only findings with no released fix,
@@ -1060,7 +1099,7 @@ jobs:
           TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
         run: |
           status=0
-          for image in scan-backend:ci scan-backup:ci scan-frontend:ci scan-mcp-server:ci docs-smoke:test; do
+          for image in scan-backend:ci scan-backup:ci scan-frontend:ci scan-mcp-server:ci scan-converter:ci docs-smoke:test; do
             echo "::group::Trivy $image"
             docker run --rm \
               -e TRIVY_DB_REPOSITORY -e TRIVY_JAVA_DB_REPOSITORY \
@@ -1172,7 +1211,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
-        image: [backend, backup, frontend, mcp-server, docs]
+        image: [backend, backup, frontend, mcp-server, converter, docs]
         include:
           - image: backend
             context: ./backend
@@ -1186,6 +1225,8 @@ jobs:
             version_args: true
           - image: mcp-server
             context: ./mcp-server
+          - image: converter
+            context: ./converter
           - image: docs
             context: ./docs/website
             file: ./docs/website/Dockerfile.prod
@@ -1205,7 +1246,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Only the images that declare the build identity ARGs get them; passing an unused build arg is a Docker
-      # warning. A multi-line step output keeps one build step for all five images.
+      # warning. A multi-line step output keeps one build step for all six images.
       - name: Compose build arguments
         id: args
         env:
@@ -1321,7 +1362,7 @@ jobs:
           SEMVER: ${{ needs.version.outputs.semver }}
         run: |
           cd "$RUNNER_TEMP/digests"
-          for image in backend backup frontend mcp-server docs; do
+          for image in backend backup frontend mcp-server converter docs; do
             repo="$REPOSITORY-$image"
             sources=""
             for file in "digests-$image-"*/*; do

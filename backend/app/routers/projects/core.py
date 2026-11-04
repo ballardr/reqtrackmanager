@@ -25,16 +25,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.change_request import ChangeRequest, ReviewComment
+from app.models.change_request import ChangeRequest
 from app.models.enums import (
     ChangeRequestStatus,
     OrgRole,
     ProjectRole,
     ProjectRoleInheritanceMode,
-    ReviewTargetType,
     StageStatus,
 )
-from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
+from app.models.file import RequirementFile
 from app.models.organization import Organization
 from app.models.project import (
     FavoriteProject,
@@ -47,11 +46,10 @@ from app.models.project import (
 )
 from app.models.project_status import ProjectStatusDefinition
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
-from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import memoize_module_state, run_on_project_created_hooks, snapshot_project_module_state
 from app.schemas.changes import ChangeEntryOut
-from app.schemas.file import FileAssetOut, ProjectFileOut
+from app.schemas.file import ProjectFileOut, ProjectFileSearchIn, ProjectFileUploaderOut
 from app.schemas.project import (
     ProjectAncestorOut,
     ProjectCreate,
@@ -76,6 +74,7 @@ from app.services.downloads import filename_safe
 from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
 from app.services.project_export import build_project_bundle, import_project_bundle
+from app.services.project_files import FileFilters, project_file_rows, project_uploaders, row_identity
 from app.services.project_hierarchy import build_project_tree, would_create_project_cycle
 from app.services.project_scope import ProjectScope
 from app.services.rbac import (
@@ -288,14 +287,14 @@ def create_project(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "template_project_id must be a template project in this organisation.")
         project = clone_project(
             db, template, name=payload.name, summary=payload.summary, creator=current_user,
-            parent_project_id=payload.parent_project_id, code=project_code,
+            parent_project_id=payload.parent_project_id, code=project_code, report_name=payload.report_name,
         )
         db.flush()
         _ensure_project_has_a_manager(db, project, current_user.id)
     else:
         project = Project(
             organization_id=payload.organization_id, name=payload.name, summary=payload.summary, code=project_code,
-            status_id=get_default_project_status_id(db, payload.organization_id),
+            report_name=payload.report_name, status_id=get_default_project_status_id(db, payload.organization_id),
             parent_project_id=payload.parent_project_id,
         )
         db.add(project)
@@ -602,7 +601,7 @@ def list_projects(
             out.append(
                 ProjectListItemOut(
                     id=p.id, organization_id=p.organization_id, name=p.name, code=p.code, summary=p.summary,
-                    created_at=p.created_at, updated_at=p.updated_at,
+                    report_name=p.report_name, created_at=p.created_at, updated_at=p.updated_at,
                     is_archived=p.is_archived, is_template=p.is_template,
                     allow_member_change_requests=p.allow_member_change_requests,
                     require_change_request_for_approved_links=p.require_change_request_for_approved_links,
@@ -705,6 +704,36 @@ def get_project(
     return _project_out_with_redacted_parent(db, current_user, project)
 
 
+def _existing_project(db: Session, project_id: UUID) -> Project:
+    """The project, or 404 (the view gate has already shown it exists; this narrows the type for the scope helpers)."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return project
+
+
+def _files_page(
+    db: Session, response: Response, project_id: UUID, project_scope: ProjectScope, user: User,
+    filters: FileFilters, limit: int | None, offset: int,
+) -> list[ProjectFileOut]:
+    """One page of the project's files (plus the related projects' in scope), with `X-Total-Count` set.
+
+    Same-target-scoped resolution, not "has access somewhere": each project's rows come from joins that filter
+    directly on that project's own id (`services.project_files`), so a file belonging to a different project, even
+    one the caller can also view, can never appear. `project_scope` adds the related projects the caller can open
+    (each row labelled `from_project_*`, see `services.project_scope`).
+    """
+    out = project_scope.collect(
+        db, _existing_project(db, project_id), user.id, "requirement", lambda pid: project_file_rows(db, pid, filters),
+        # A file may hang from several records, so a row is identified by its origin as well.
+        id_of=row_identity,
+    )
+    response.headers["X-Total-Count"] = str(len(out))
+    if limit is not None:
+        out = out[offset:offset + limit]
+    return out
+
+
 @router.get("/{project_id}/files", response_model=list[ProjectFileOut])
 def list_project_files(
     project_id: UUID,
@@ -715,127 +744,65 @@ def list_project_files(
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
-    """Lists every file reachable from this project: direct requirement
-    attachments (C-M-02, including linked organisation shared resources —
-    `RequirementFile` covers both), requirement action attachments, and
-    files attached to a comment on one of the project's own requirements.
-    Fills the gap `ProjectMetricsOut.file_count` only anticipated as a
-    metric (U-P-05's "number of files in project, if files are
-    implemented") without ever listing them — `FileAsset` has no
-    `project_id` of its own, so this joins through each of the three
-    context-specific link tables that connect a file back to a project.
+    """Lists every file reachable from this project: direct requirement attachments (C-M-02, including linked
+    organisation shared resources, which `RequirementFile` covers), requirement action attachments, files attached
+    to a comment on one of the project's own requirements, and the pictures in the project's report image library.
+    Fills the gap `ProjectMetricsOut.file_count` only anticipated as a metric (U-P-05's "number of files in project,
+    if files are implemented") without ever listing them: `FileAsset` joins a project through each of the
+    context-specific link tables (and, for a library picture, its own `project_id`).
 
-    Each row carries the context needed to make sense of a flat,
-    project-wide list (which requirement/action/comment it came from,
-    uploader, upload time) rather than a bare array of file metadata with
-    no way to tell where any of them came from — see `ProjectFileOut`.
-
-    Same-target-scoped resolution, not "has access somewhere": every join
-    below filters directly on `project_id` (via `Requirement.project_id`
-    for attachment/comment rows, `RequirementAction.project_id` for action
-    rows), so a file belonging to a different project — even one the
-    caller can also view — can never appear here. Comments on a *change
-    request's* discussion thread are deliberately excluded, matching
-    `ProjectMetricsOut.file_count`'s existing scope (requirement-attached
+    Each row carries the context needed to make sense of a flat, project-wide list (which requirement/action/comment
+    it came from, uploader, upload time), see `ProjectFileOut`. Comments on a *change request's* discussion thread
+    are deliberately excluded, matching `ProjectMetricsOut.file_count`'s existing scope (requirement-attached
     content only).
 
-    `limit`/`offset` (U-P-06) — same optional pagination and
-    `X-Total-Count` header convention as `list_requirements`/
-    `list_projects`.
-
-    `project_scope` adds the files of the related projects the caller can open (each row
-    labelled `from_project_*`, see `services.project_scope`); a file never leaks across projects
-    otherwise: each project's rows are built by the same joins on that project's own id.
+    `limit`/`offset` (U-P-06): same optional pagination and `X-Total-Count` header convention as
+    `list_requirements`/`list_projects`. This unfiltered read is kept for callers with no filters; the page uses
+    `POST .../files/search`, which can carry the file name text out of the URL.
     """
+    return _files_page(db, response, project_id, project_scope, current_user, FileFilters(), limit, offset)
 
-    def rows_for(pid: UUID) -> list[ProjectFileOut]:
-        """This project's files, newest first."""
-        entries: list[dict] = []
 
-        for asset, linked_at, req_id, req_code, req_name in db.execute(
-            select(FileAsset, RequirementFile.created_at, Requirement.id, Requirement.unique_code, RequirementVersion.name)
-            .join(RequirementFile, RequirementFile.file_id == FileAsset.id)
-            .join(Requirement, Requirement.id == RequirementFile.requirement_id)
-            .join(
-                RequirementVersion,
-                (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
-            )
-            .where(Requirement.project_id == pid)
-        ).all():
-            entries.append({
-                "file": asset, "linked_at": linked_at, "source": "requirement_attachment",
-                "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
-            })
+@router.post("/{project_id}/files/search", response_model=list[ProjectFileOut])
+def search_project_files(
+    project_id: UUID,
+    body: ProjectFileSearchIn,
+    response: Response,
+    limit: int | None = Query(None, ge=1),
+    offset: int = Query(0, ge=0),
+    project_scope: ProjectScope = Depends(),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+):
+    """The Files page's list with its filters: file name, source, file type, uploader and upload window.
 
-        # Joined directly on RequirementAction.project_id rather than via a
-        # linked requirement: an action may be linked to zero, one, or several
-        # requirements (via untyped `ArtefactLink` rows), so it has no single
-        # owning requirement to attribute the file to.
-        for asset, linked_at, action_id, action_code, action_title in db.execute(
-            select(FileAsset, RequirementActionFile.created_at, RequirementAction.id, RequirementAction.unique_code, RequirementAction.title)
-            .join(RequirementActionFile, RequirementActionFile.file_id == FileAsset.id)
-            .join(RequirementAction, RequirementAction.id == RequirementActionFile.action_id)
-            .where(RequirementAction.project_id == pid)
-        ).all():
-            entries.append({
-                "file": asset, "linked_at": linked_at, "source": "action_attachment",
-                "action_id": action_id, "action_unique_code": action_code, "action_title": action_title,
-            })
-
-        for asset, uploaded_at, comment_id, req_id, req_code, req_name in db.execute(
-            select(FileAsset, CommentFile.created_at, ReviewComment.id, Requirement.id, Requirement.unique_code, RequirementVersion.name)
-            .join(CommentFile, CommentFile.file_id == FileAsset.id)
-            .join(ReviewComment, ReviewComment.id == CommentFile.comment_id)
-            .join(
-                Requirement,
-                (Requirement.id == ReviewComment.target_id) & (ReviewComment.target_type == ReviewTargetType.REQUIREMENT),
-            )
-            .join(
-                RequirementVersion,
-                (RequirementVersion.requirement_id == Requirement.id) & (RequirementVersion.valid_to.is_(None)),
-            )
-            .where(Requirement.project_id == pid)
-        ).all():
-            entries.append({
-                "file": asset, "linked_at": uploaded_at, "source": "comment_attachment",
-                "requirement_id": req_id, "requirement_unique_code": req_code, "requirement_name": req_name,
-                "comment_id": comment_id,
-            })
-
-        entries.sort(key=lambda e: e["linked_at"], reverse=True)
-
-        uploader_ids = {e["file"].uploaded_by for e in entries}
-        uploader_names = (
-            dict(db.execute(select(User.id, User.display_name).where(User.id.in_(uploader_ids))).all())
-            if uploader_ids else {}
-        )
-
-        out = [
-            ProjectFileOut(
-                file=FileAssetOut.model_validate(e["file"]),
-                uploaded_by_display_name=uploader_names.get(e["file"].uploaded_by, ""),
-                source=e["source"],
-                requirement_id=e.get("requirement_id"),
-                requirement_unique_code=e.get("requirement_unique_code"),
-                requirement_name=e.get("requirement_name"),
-                action_id=e.get("action_id"),
-                action_unique_code=e.get("action_unique_code"),
-                action_title=e.get("action_title"),
-                comment_id=e.get("comment_id"),
-            )
-            for e in entries
-        ]
-        return out
-
-    out = project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, "requirement", rows_for,
-        # A file may hang from several records, so a row is identified by its origin as well.
-        id_of=lambda row: (row.file.id, row.source, row.requirement_id, row.action_id, row.comment_id),
+    A POST so the file name typed into the search is in the body, never in a URL the access log records; it is a
+    read, changes nothing and writes no audit event. The text is used only as a bound pattern and is never logged
+    or traced. Access, project scope, ordering, pagination and `X-Total-Count` are exactly those of
+    `GET .../files`, applied after the filters, so the count matches what the filters leave.
+    """
+    filters = FileFilters(
+        search=body.search, sources=frozenset(body.sources), kind=body.kind, uploaded_by=body.uploaded_by,
+        uploaded_from=body.uploaded_from, uploaded_before=body.uploaded_before,
     )
-    response.headers["X-Total-Count"] = str(len(out))
-    if limit is not None:
-        out = out[offset:offset + limit]
-    return out
+    return _files_page(db, response, project_id, project_scope, current_user, filters, limit, offset)
+
+
+@router.get("/{project_id}/files/uploaders", response_model=list[ProjectFileUploaderOut])
+def list_project_file_uploaders(
+    project_id: UUID,
+    project_scope: ProjectScope = Depends(),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+):
+    """The people who uploaded a file in this project (and the related projects in scope): the choices of the Files
+    page's "Uploaded by" filter. Each person once, sorted by name."""
+
+    def rows_for(pid: UUID) -> list[ProjectFileUploaderOut]:
+        return [ProjectFileUploaderOut(id=uid, display_name=name) for uid, name in project_uploaders(db, pid)]
+
+    people = project_scope.collect(db, _existing_project(db, project_id), current_user.id, "requirement", rows_for)
+    return sorted(people, key=lambda p: p.display_name.lower())
 
 
 @router.get("/{project_id}/export")
@@ -904,6 +871,13 @@ def update_project(
             project.code = new_code
     if payload.summary is not None:
         project.summary = payload.summary
+    if "report_name" in payload.model_fields_set and payload.report_name != project.report_name:
+        log_event(
+            db, entity_type="project", entity_id=project.id, action="report_name_changed", actor_id=current_user.id,
+            organization_id=project.organization_id, project_id=project.id,
+            detail={"from": project.report_name, "to": payload.report_name},
+        )
+        project.report_name = payload.report_name
     if payload.allow_member_change_requests is not None:
         project.allow_member_change_requests = payload.allow_member_change_requests
     if payload.require_change_request_for_approved_links is not None:
@@ -1130,9 +1104,9 @@ def _project_counts(db: Session, pid: UUID) -> _ProjectCounts:
             .join(Requirement, Requirement.id == RequirementFile.requirement_id)
             .where(*live)
         ) or 0
-    by_outcome = dict(db.execute(
+    by_outcome = {outcome: total for outcome, total in db.execute(
         select(ChangeRequest.status, func.count()).where(ChangeRequest.project_id == pid).group_by(ChangeRequest.status)
-    ).all())
+    ).all()}
     counts.proposed = by_outcome.get(ChangeRequestStatus.SUBMITTED, 0) + by_outcome.get(ChangeRequestStatus.IN_REVIEW, 0)
     counts.approved = by_outcome.get(ChangeRequestStatus.APPROVED, 0)
     counts.rejected = by_outcome.get(ChangeRequestStatus.REJECTED, 0)

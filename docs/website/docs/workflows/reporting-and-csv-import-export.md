@@ -6,22 +6,22 @@ sidebar_position: 9
 
 ## Generating a PDF, Word or CSV report
 
-Open a project's **Reports** page:
+Click **Reports** at the top of the project overview, and pick the **Requirements report**:
 
-1. Filter by component, category, status, or keyword to scope what's included.
-2. Optionally pick one of the organisation's **report templates** for a PDF or Word export — an accent colour, cover page, and footer, for consistent on-brand output.
-3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word file or CSV — a PDF or Word file includes the introduction, chapters and appendices written for that report type (**Project Admin → Report Setup**), falling back to the parent project's and then the organisation's defaults field by field wherever the project leaves one blank. See [Report content](../core-features/reports-and-export.md#report-content).
+1. To include only some requirements, filter the **Requirements** list first (component, category, status, tag, or a range of target versions) and use **List actions → Download report** or **Export**: they carry the list's filters.
+2. A PDF or Word export is carries the organisation's **report look** — an accent colour, cover page, logo and footer — so output is consistently on-brand.
+3. Generate the report with **Generate PDF**, or choose **More formats** for an editable Word or ODT file, an HTML page, or the flat table as CSV, Excel or ODS — a document format can append the organisation's shared resource files. For an introduction, chapters and appendices, start from the **Requirements by Component** layout (see [Introductions, chapters and appendices](../core-features/reports-and-export.md#introductions-chapters-and-appendices)).
 
-| Reports page |
+| Reports dialog |
 | --- |
-| Filtered PDF/Word/CSV export with a selectable organisation branding template |
-| ![Reports page with filters and a selected branding template](../../static/img/screenshots/reports-page.png) |
+| PDF/Word/CSV export with the organisation's report look |
+| ![The Reports dialog with the Requirements report: Generate PDF and More formats, the chapter layout and the Resource sections list](../../static/img/screenshots/reports-page.png) |
 
 ## Exporting requirements to CSV
 
-Two doors lead to the same data. The Reports page exports requirements as a formatted CSV. The **Requirements** page's own **List actions** menu (the ⋮ button beside **New requirement**) downloads the list *as it is filtered on screen* as a CSV that you can edit and import back: every field, including custom field values and target stage, with the record's code in the first column. Columns that your organisation's policy keeps out of exports (personal data) are left out, and the menu says so.
+Two doors lead to the same data. The Reports dialog exports requirements as a formatted CSV. The **Requirements** page's own **List actions** menu (the ⋮ button beside **New requirement**) downloads the list *as it is filtered on screen* as a CSV that you can edit and import back: every field, including custom field values and target stage, with the record's code in the first column. Columns that your organisation's policy keeps out of exports (personal data) are left out, and the menu says so.
 
-The same menu also offers **Export as PDF** and **Export as Word file**: the same rows and filters as a formatted document. The Reports page's **Record list** report produces the same table for any record type without opening its list.
+The menu's **Download shown items** item opens a list of formats: **CSV** (the file that imports again), then **PDF**, **Word**, **ODT** and **ODS**: the same rows and filters as a formatted document or spreadsheet. ODT and ODS cannot be imported; CSV is the one file that comes back in. The Reports dialog's **Record list** report produces the same table for any record type without opening its list.
 
 ## Importing requirements from a CSV file
 
@@ -42,7 +42,7 @@ An import goes through the same rules as editing by hand, so an approved require
 
 ## Actions and change requests
 
-The **Actions** and **Change requests** lists have the same **List actions** menu, and its export items download the list as filtered on screen (the change request list's default "Active" view exports the active requests; pick **All statuses** to export them all).
+The **Actions** and **Change requests** lists have the same **List actions** menu, and its **Download shown items** formats download the list as filtered on screen (the change request list's default "Active" view exports the active requests; pick **All statuses** to export them all).
 
 - **Actions** also have **Import**, in the same file format: a row with a code updates that action (title, description, outcome, due date), a row without one creates it. An action's type is required for a new action and must match an existing action type by name.
 - **Change requests** are export-only. The file carries each request's kind, status, target requirement, reason, the values it proposes, who created and decided it, and its dates. There is no import: a change request is a proposal whose content depends on its kind, and it is submitted and approved in the application, so it is written in its form.
@@ -61,7 +61,7 @@ Each file follows the page's filters (status, priority, type, search, "Open only
 
 ## The organisation's own records
 
-The organisation overview lists the records the organisation owns itself, and each list has the same **List actions** menu (CSV, PDF, Word, and import) beside its **New** button: **Strategies**, **Future States**, **Guiding Principles**, **Personas**, **Stakeholders** and **Stakeholder Groups**. The file holds only the organisation's own records, filtered as the panel is, with codes qualified by the organisation code (`ACME-STR-001`; the bare `STR-001` is also accepted on import). A code that belongs to a project's record, or to another organisation, is reported as an unknown code and nothing changes.
+The organisation overview lists the records the organisation owns itself, and each list has the same **List actions** menu (Download shown items as CSV, PDF, Word, ODT or ODS, and import) beside its **New** button: **Strategies**, **Future States**, **Guiding Principles**, **Personas**, **Stakeholders** and **Stakeholder Groups**. The file holds only the organisation's own records, filtered as the panel is, with codes qualified by the organisation code (`ACME-STR-001`; the bare `STR-001` is also accepted on import). A code that belongs to a project's record, or to another organisation, is reported as an unknown code and nothing changes.
 
 Who may import follows the panel: any member may create a Strategy, Future State or Guiding Principle, the matching owner role may change one, and creating or changing a Persona, Stakeholder or Stakeholder Group needs that type's owner role. Personal data is governed by the same organisation policy as in a project, but the permission to export it is the organisation-level one (organisation administrators by default).
 
@@ -76,4 +76,4 @@ The **Risk** register, the **Decisions** list and Compliance **Evidence** have t
 
 ## Where this fits
 
-See [Core Features → Reports and export](../core-features/reports-and-export.md) for report-content editing (Markdown/WYSIWYG, image inserts, organisation defaults), and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.
+See [Core Features → Reports and export](../core-features/reports-and-export.md) for the report formats, the report look and placeholders, and [Authoring and reviewing requirements](./authoring-and-reviewing-requirements.md) for creating requirements one at a time instead of in bulk.

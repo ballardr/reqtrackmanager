@@ -19,6 +19,8 @@ While the project's current stage is still in scoping, requirements within a com
 
 Opening a requirement shows its full detail: name, reasoning, clarification, description, custom field values, an editable form (disabled once locked), its **Versions** table — including who made each change — a discussion thread, file attachments, and, beside the content, the Links and Activity tabs (see [One record's timeline](../workflows/files-comments-and-history.md#one-records-timeline)).
 
+The reasoning, clarification and description can hold equations, written between `\( ... \)` (inline) or `$$ ... $$` (a block of its own); they are typeset when the requirement is locked or you can only read it, and in custom reports (see [Reports](./reports-and-export.md)). While you edit, the text stays as typed. A command that is not on the allowed list (a link, an include, a macro definition) is never drawn and stays as written, and so does a stray `$`.
+
 | Requirement detail |
 | --- |
 | Editable fields, activity, actions and a discussion thread for one requirement, with its links in the Links panel |

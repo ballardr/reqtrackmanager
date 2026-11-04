@@ -1,0 +1,650 @@
+/**
+ * Module: testing/reportLayoutFixtures
+ *
+ * Storybook-only builders for the report layout designer: layouts, versions, the field and widget catalogues and
+ * a fake `ReportLayoutApi` whose methods are `fn()` spies. The fake keeps its layouts in memory, so a story can
+ * save, rename or hide and read the change back, and it parses the text with a tiny stand-in for the server:
+ * text containing the word `BROKEN` yields one positioned error, anything else is valid. The real parser is the
+ * server's and is covered by the backend tests.
+ */
+import { fn } from "storybook/test";
+
+import { ApiError } from "../api/client";
+import type { FileDetails } from "../api/fileDetails";
+import { draftSummary } from "../api/reportLayouts";
+import type {
+  ReportLayoutDraft, BlockCatalogue, BlockField, BlockType, PreviewResult, ReportFieldCatalogue, ReportImage, ReportSnippet, SnippetApplyResult, TreeCheck, TreeProblem,
+  ReportLayoutApi, ReportLayoutDetail, ReportLayoutSummary, ReportLayoutTree, ReportLayoutVersion, ReportWidget, TextParseResult,
+} from "../api/reportLayouts";
+import { DEFAULT_COLOUR_CONTEXT, type ColourContext } from "../utils/reportColours";
+import { stableJson } from "../utils/reportLayoutTree";
+
+/** Longest the designer takes to finish checking text after typing stops, for a story to wait on. */
+export const TEXT_CHECKED_MS = 3000;
+
+export const LAYOUT_TEXT = `@layout document
+
+@heading Requirements of {{project_name}}
+
+@each requirement sort title as req
+  @heading level=2 {{req.code}} {{req.title}}
+@end
+`;
+
+/** A layout summary (own, editable, document). */
+export function buildLayoutSummary(overrides: Partial<ReportLayoutSummary> = {}): ReportLayoutSummary {
+  return {
+    id: "layout-1", organization_id: "org-1", project_id: "project-1", name: "Requirements by component",
+    description: "Every requirement with its component.", folder: "", family: "document", current_version: 2, origin: "project",
+    hidden: false, editable: true, updated_at: "2026-10-20T09:30:00Z", ...overrides,
+  };
+}
+
+/** A shared draft of a layout (written by a colleague, based on the layout's version 2 unless overridden). */
+export function buildLayoutDraft(overrides: Partial<ReportLayoutDraft> = {}, text = `${LAYOUT_TEXT}\n@heading From the draft\n`): ReportLayoutDraft {
+  return {
+    base_version: 2, revision: 3, updated_by: "user-2", updated_by_name: "Sam Rivera", updated_at: "2026-11-03T09:15:00Z",
+    tree: treeOf(text), tree_hash: "draft-hash", problems: [], ...overrides,
+  };
+}
+
+/** A tree standing for `text` (the fake server keeps the text inside it so format can give it back). */
+export function treeOf(text: string, family: "document" | "table" = "document"): ReportLayoutTree {
+  return { schema_version: 1, family, nodes: [], source_text: text };
+}
+
+/** One saved version. */
+export function buildLayoutVersion(version: number, text = LAYOUT_TEXT, overrides: Partial<ReportLayoutVersion> = {}): ReportLayoutVersion {
+  return {
+    version, schema_version: 1, tree: treeOf(text), tree_hash: `hash-${version}`, comment: `Change ${version}`, created_by: "user-1",
+    created_at: `2026-10-${10 + version}T09:00:00Z`, ...overrides,
+  };
+}
+
+/** A layout with its current version. */
+export function buildLayoutDetail(overrides: Partial<ReportLayoutDetail> = {}, text = LAYOUT_TEXT): ReportLayoutDetail {
+  const summary = buildLayoutSummary(overrides);
+  return { ...summary, current: buildLayoutVersion(summary.current_version, text), ...overrides };
+}
+
+/** The record types a stand-in project can use. */
+export function buildFieldCatalogue(): ReportFieldCatalogue {
+  return {
+    types: [
+      {
+        type: "pain_point", label: "Pain point",
+        fields: [
+          { key: "code", label: "Code", kind: "text", reserved: true, choices: [] },
+          { key: "title", label: "Title", kind: "text", reserved: true, choices: [] },
+          { key: "severity", label: "Severity", kind: "number", reserved: false, choices: [] },
+        ],
+      },
+      {
+        type: "requirement", label: "Requirement",
+        fields: [
+          { key: "code", label: "Code", kind: "text", reserved: true, choices: [] },
+          { key: "title", label: "Title", kind: "text", reserved: true, choices: [] },
+          { key: "status", label: "Status", kind: "enum", reserved: true, choices: ["Draft", "Approved"] },
+          { key: "description", label: "Description", kind: "text", reserved: false, choices: [], math: true },
+        ],
+      },
+    ],
+    placeholders: ["project_name", "report_title", "generated_on", "organisation", "layout_version"],
+    group_fields: { value: "text", count: "number" },
+    schema_version: 1,
+  };
+}
+
+const field = (key: string, label: string, kind: string, extra: Partial<BlockField> = {}): BlockField => ({
+  key, label, kind, required: false, help: `About ${label.toLowerCase()}.`, max_length: null, minimum: null, maximum: null, default: null,
+  choices: [], features: [], depends_on: null, families: [], empty_label: "", group: "", basic: false, control: "", inline: false, ...extra,
+});
+
+const source = field("source", "Records", "source", { required: true });
+/** The Label field the server adds to every described block type (designer only; never printed). */
+const LABEL_HELP = "A name for this block in the designer, for example Open requirements. It can hold capitals and spaces and is never printed; other blocks still refer to this one by its Name.";
+const block = (type: string, label: string, template: Record<string, unknown>, extra: Partial<BlockType> = {}): BlockType => {
+  const made: BlockType = {
+    type, label, description: `${label}.`, families: ["document"], fields: [], containers: [], provides: null, template, described: true, groups: [], ...extra,
+  };
+  return { ...made, fields: [...made.fields, field("label", "Label", "text", { max_length: 128, help: LABEL_HELP, basic: true })] };
+};
+
+/** The block catalogue the server publishes (the ten core blocks), for stories of the outline. */
+/** The branding colour and an organisation scheme of two colours, as the designer is told them. */
+export function buildColourContext(overrides: Partial<ColourContext> = {}): ColourContext {
+  return {
+    ...DEFAULT_COLOUR_CONTEXT, accent: "#0f62fe", organization_scheme: [{ name: "alert", colour: "#b42318" }, { name: "success", colour: "#067647" }],
+    ...overrides,
+  };
+}
+
+export function buildBlockCatalogue(): BlockCatalogue {
+  return {
+    blocks: [
+      block("heading", "Heading", { type: "heading", text: "Heading", level: 2 }, {
+        fields: [
+          field("text", "Heading", "text", { required: true, max_length: 500, features: ["placeholders", "marks"] }),
+          field("level", "Level", "integer", { minimum: 1, maximum: 4, default: 1, control: "choice-buttons" }),
+          field("font", "Font", "font", { empty_label: "Document heading font" }),
+          field("size", "Size", "number", { minimum: 6, maximum: 72, empty_label: "Document size" }),
+          field("colour", "Colour", "colour", { empty_label: "Document heading colour" }),
+        ],
+      }),
+      block("text", "Text", { type: "text", text: "Some text." }, {
+        fields: [
+          field("text", "Text", "longtext", { required: true, features: ["placeholders", "markdown"] }),
+          field("font", "Font", "font", { empty_label: "Document font" }),
+          field("size", "Size", "number", { minimum: 6, maximum: 72, empty_label: "Document size" }),
+        ],
+      }),
+      block("page_break", "Page break", { type: "page_break" }),
+      block("contents", "Table of contents", { type: "contents" }, {
+        fields: [
+          field("title", "Title", "text", { max_length: 200, default: "Contents", features: ["placeholders"] }),
+          field("levels", "Levels", "integer", { minimum: 1, maximum: 3, default: 3 }),
+          field("new_page", "New page after", "boolean", { default: true }),
+        ],
+      }),
+      block("spacer", "Spacer", { type: "spacer", height: 1 }, {
+        fields: [
+          field("height", "Height", "number", { required: true, minimum: 0.1, maximum: 200, default: 1 }),
+          field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+        ],
+      }),
+      block("bottom", "At page bottom", { type: "bottom", children: [] }, { containers: [{ key: "children", label: "Contents" }] }),
+      block("section", "Section", { type: "section", page_style: "", children: [] }, {
+        fields: [field("page_style", "Page style", "page_style", { required: true })],
+        containers: [{ key: "children", label: "Contents" }],
+      }),
+      block("image", "Image", { type: "image", file: "" }, {
+        fields: [
+          field("file", "Image", "image", { basic: true, required: true }), field("alt", "Alternative text", "text", { basic: true, max_length: 300 }),
+          field("decorative", "Decorative", "boolean", { basic: true, default: false }),
+          field("width", "Width", "number", { group: "size", minimum: 1, maximum: 1000, empty_label: "Auto" }),
+          field("width_unit", "Width unit", "choice", { inline: true, group: "size", choices: ["cm", "mm", "percent"], default: "cm", depends_on: "width" }),
+          field("height", "Height", "number", { group: "size", minimum: 0.5, maximum: 1000, empty_label: "Auto" }),
+          field("height_unit", "Height unit", "choice", { inline: true, group: "size", choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+          field("align", "Alignment", "choice", { basic: true, control: "choice-buttons", choices: ["left", "center", "right"], default: "center" }),
+          field("placement", "Placement", "choice", { group: "position", choices: ["inline", "wrap", "behind", "front"], default: "inline" }),
+          field("anchor", "Position from", "choice", { group: "position", choices: ["paragraph", "margin", "page"], default: "paragraph", depends_on: "placement" }),
+          field("offset_x", "Across (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("offset_y", "Down (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("caption", "Caption", "text", { group: "caption", max_length: 500, features: ["placeholders"] }),
+          field("caption_position", "Caption position", "choice", { group: "caption", control: "choice-buttons", choices: ["above", "below"], default: "below", depends_on: "caption" }),
+          field("numbering", "Caption numbering", "choice", { group: "caption", choices: ["auto", "always", "never"], default: "auto", depends_on: "caption" }),
+        ],
+        groups: [{ key: "size", label: "Size", open: false }, { key: "position", label: "Position", open: false }, { key: "caption", label: "Caption", open: false }],
+      }),
+      block("shape", "Shape", { type: "shape", shape: "rectangle", fill: "accent", width: 5, height: 2 }, {
+        fields: [
+          field("shape", "Shape", "choice", { basic: true, required: true, choices: ["rectangle", "rounded", "ellipse", "triangle", "line", "arrow", "custom"], default: "rectangle" }),
+          field("fill", "Fill", "colour", { basic: true, default: "accent" }), field("outline", "Outline", "colour", { group: "outline", empty_label: "No outline" }),
+          field("outline_width", "Outline width (mm)", "number", { group: "outline", minimum: 0.1, maximum: 20 }),
+          field("width", "Width", "number", { group: "size", minimum: 0.1, maximum: 1000 }),
+          field("width_unit", "Width unit", "choice", { inline: true, group: "size", choices: ["cm", "mm"], default: "cm", depends_on: "width" }),
+          field("height", "Height", "number", { group: "size", minimum: 0.1, maximum: 1000 }),
+          field("height_unit", "Height unit", "choice", { inline: true, group: "size", choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+          field("svg", "SVG", "longtext", { group: "svg", max_length: 50000 }), field("alt", "Alternative text", "text", { basic: true, max_length: 300 }),
+          field("align", "Alignment", "choice", { group: "position", control: "choice-buttons", choices: ["left", "center", "right"], default: "center" }),
+          field("placement", "Placement", "choice", { group: "position", choices: ["inline", "wrap", "behind", "front"], default: "inline" }),
+          field("anchor", "Position from", "choice", { group: "position", choices: ["paragraph", "margin", "page"], default: "paragraph", depends_on: "placement" }),
+          field("offset_x", "Across (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
+          field("offset_y", "Down (cm)", "number", { group: "position", minimum: -100, maximum: 100, depends_on: "placement" }),
+        ],
+        groups: [{ key: "outline", label: "Outline", open: false }, { key: "size", label: "Size", open: false }, { key: "position", label: "Position", open: false }, { key: "svg", label: "SVG", open: false }],
+      }),
+      block("record_images", "Record images", { type: "record_images" }, {
+        fields: [
+          field("names", "File names", "text_list", { max_length: 200, features: ["placeholders"], group: "which" }),
+          field("types", "File types", "text_list", { max_length: 10, group: "which" }),
+          field("max_count", "Most per record", "integer", { minimum: 1, maximum: 20, default: 5, group: "which" }),
+          field("order", "Order", "choice", { choices: ["name", "uploaded"], default: "name", group: "which" }),
+          field("max_size_mb", "Largest file (MB)", "number", { minimum: 0.1, maximum: 50, group: "which" }),
+          field("caption_source", "Caption", "choice", { choices: ["file_name", "text", "none"], default: "file_name", group: "caption" }),
+          field("caption", "Caption text", "text", { max_length: 500, features: ["placeholders"], depends_on: "caption_source", group: "caption" }),
+          field("caption_position", "Caption position", "choice", { choices: ["above", "below"], default: "below", depends_on: "caption_source", group: "caption", control: "choice-buttons" }),
+          field("numbering", "Caption numbering", "choice", { choices: ["auto", "always", "never"], default: "auto", depends_on: "caption_source", group: "caption" }),
+          field("width", "Width", "number", { minimum: 1, maximum: 1000, group: "size" }),
+          field("width_unit", "Width unit", "choice", { inline: true, choices: ["cm", "mm", "percent"], default: "cm", depends_on: "width", group: "size" }),
+          field("height", "Height", "number", { minimum: 0.5, maximum: 1000, group: "size" }),
+          field("height_unit", "Height unit", "choice", { inline: true, choices: ["cm", "mm"], default: "cm", depends_on: "height", group: "size" }),
+          field("align", "Alignment", "choice", { choices: ["left", "center", "right"], default: "center", group: "position", control: "choice-buttons" }),
+          field("placement", "Placement", "choice", { choices: ["inline", "wrap"], default: "inline", group: "position" }),
+          field("empty_text", "Text when there is nothing", "text", { group: "which" }),
+        ],
+        groups: [
+          { key: "which", label: "Which pictures", open: true }, { key: "caption", label: "Caption", open: false },
+          { key: "size", label: "Size", open: false }, { key: "position", label: "Position", open: false },
+        ],
+      }),
+      block("equation", "Equation", { type: "equation", tex: "a = b" }, { fields: [field("tex", "TeX", "tex", { required: true })] }),
+      block("grid", "Table (custom)", { type: "grid", columns: [{}, {}], rows: [{ cells: [{ text: "Label" }, { text: "Value" }] }] }, {
+        fields: [
+          field("columns", "Columns", "grid_columns", { required: true, basic: true }), field("rows", "Rows", "grid_rows", { required: true, basic: true }),
+          field("header_rows", "Header rows", "integer", { minimum: 0, maximum: 200, default: 0, basic: true }),
+          field("borders", "Borders", "choice", { choices: ["all", "outer", "horizontal", "none"], default: "all", group: "borders" }),
+          field("border_color", "Border colour", "colour", { default: "#999999", group: "borders" }),
+          field("align", "Alignment", "choice", { choices: ["left", "center", "right", "justify"], default: "left", group: "cell_style", control: "choice-buttons" }),
+          field("valign", "Vertical alignment", "choice", { choices: ["top", "middle", "bottom"], default: "top", group: "cell_style", control: "choice-buttons" }),
+          field("fill", "Fill", "colour", { group: "cell_style" }), field("color", "Text colour", "colour", { group: "cell_style" }),
+          field("bold", "Bold", "boolean", { default: false, group: "cell_style", control: "toggle" }),
+          field("font", "Font", "font", { empty_label: "Document font", group: "look" }),
+          field("size", "Size", "number", { minimum: 6, maximum: 72, empty_label: "Table size (9)", group: "look" }),
+        ],
+        groups: [
+          { key: "borders", label: "Borders", open: false }, { key: "cell_style", label: "Cell style", open: false },
+          { key: "look", label: "Look", open: false },
+        ],
+      }),
+      block("table", "Table (records)", { type: "table", source: {}, columns: [] }, {
+        fields: [source, field("columns", "Columns", "columns", { required: true }), field("empty_text", "Text when there is nothing", "text")],
+      }),
+      block("each", "For each record", { type: "each", source: {}, children: [] }, {
+        fields: [source, field("as", "Name", "alias", { default: "record" }), field("empty_text", "Text when there is nothing", "text")],
+        containers: [{ key: "children", label: "Contents" }], provides: { key: "as", kind: "record", default: "record" },
+      }),
+      block("group", "Group records", { type: "group", source: {}, by: "", children: [] }, {
+        fields: [source, field("by", "Group by", "record_field", { required: true, depends_on: "source" }), field("as", "Name", "alias", { default: "group" })],
+        containers: [{ key: "children", label: "Contents" }], provides: { key: "as", kind: "group", default: "group" },
+      }),
+      block("if", "If", { type: "if", when: {}, children: [] }, {
+        fields: [field("when", "Condition", "condition", { required: true })],
+        containers: [{ key: "children", label: "Contents" }, { key: "else_children", label: "Otherwise" }],
+      }),
+      block("widget", "Report component", { type: "widget", key: "" }, {
+        fields: [
+          field("key", "Component", "widget_key", { required: true }), field("params", "Settings", "widget_params", { depends_on: "key" }),
+          field("sort", "Sort", "widget_sort", { depends_on: "key" }), field("empty_text", "Text when there is nothing", "text"),
+        ],
+      }),
+      block("sheet", "Sheet", { type: "sheet", name: "Sheet", source: {}, columns: [] }, {
+        families: ["table"],
+        fields: [
+          field("name", "Sheet name", "text", { required: true, max_length: 31 }), source, field("as", "Name", "alias", { default: "record" }),
+          field("joins", "Joins", "joins"), field("columns", "Columns", "columns", { required: true }),
+        ],
+        provides: { key: "as", kind: "record", default: "record" },
+      }),
+    ],
+    layout_fields: [
+      field("orientation", "Page orientation", "choice", { choices: ["portrait", "landscape"], default: "portrait", families: ["document"] }),
+      field("page_size", "Page size", "choice", { choices: ["A3", "A4", "A5", "Letter", "Legal"], default: "A4", families: ["document"] }),
+      field("margins", "Margins", "margins", { families: ["document"] }),
+      field("mirror_margins", "Mirror margins", "boolean", { families: ["document"] }),
+      field("repeat_table_header", "Repeat table header rows", "boolean", { default: true, families: ["document"] }),
+      field("align_tables", "Line up tables with the same columns", "boolean", { default: true, families: ["document"] }),
+      field("run_scope", "Projects it runs for", "choice", { choices: ["any", "one", "one_and_children"], default: "any", empty_label: "Not set (any number of projects)" }),
+      field("palette", "Colour scheme", "palette", { families: ["document"] }),
+      field("styles", "Fonts", "document_styles", { families: ["document"] }),
+      field("table_header_fill", "Table heading fill", "colour", { families: ["document"], empty_label: "Default (the organisation's accent)" }),
+      field("table_header_text", "Table heading text colour", "colour", { families: ["document"], empty_label: "Automatic (black or white, whichever reads best)" }),
+      field("embed_fonts", "Embed fonts", "boolean", { families: ["document"], help: "Put the font files of the extra fonts inside Word and OpenDocument files." }),
+      field("page_styles", "Page styles", "page_styles", { families: ["document"] }),
+      field("header", "Header", "running_band", { families: ["document"] }),
+      field("footer", "Footer", "running_band", { families: ["document"] }),
+      field("variables", "Variables", "variables"),
+    ],
+    image_column_fields: [
+      field("names", "File names", "text_list", { max_length: 200, features: ["placeholders"] }),
+      field("types", "File types", "text_list", { max_length: 10 }),
+      field("max_count", "Most per row", "integer", { minimum: 1, maximum: 20, default: 5 }),
+      field("order", "Order", "choice", { choices: ["name", "uploaded"], default: "name" }),
+      field("max_size_mb", "Largest file (MB)", "number", { minimum: 0.1, maximum: 50 }),
+      field("width", "Width", "number", { minimum: 1, maximum: 1000 }),
+      field("width_unit", "Width unit", "choice", { choices: ["cm", "mm", "percent"], default: "percent", depends_on: "width" }),
+      field("height", "Height", "number", { minimum: 0.5, maximum: 1000 }),
+      field("height_unit", "Height unit", "choice", { choices: ["cm", "mm"], default: "cm", depends_on: "height" }),
+      field("arrange", "Arrangement", "choice", { choices: ["stacked", "side_by_side"], default: "stacked" }),
+    ],
+    field_kinds: [
+      "text", "longtext", "integer", "number", "boolean", "choice", "tex", "alias", "record_field", "source", "columns", "joins", "condition",
+      "widget_key", "widget_params", "widget_sort", "variables", "page_style", "margins", "page_styles", "running_band", "image", "text_list",
+    ],
+    operators: {
+      text: ["eq", "ne", "contains", "in", "not_in", "empty", "not_empty"],
+      enum: ["eq", "ne", "in", "not_in", "empty", "not_empty"],
+      number: ["eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "empty", "not_empty"],
+    },
+    valueless_operators: ["empty", "not_empty"],
+    list_operators: ["in", "not_in"],
+    schema_version: 1,
+  };
+}
+
+/** A real tree of a small document (a heading, then a For each with a heading and a table inside). */
+export function buildOutlineTree(): ReportLayoutTree {
+  return {
+    schema_version: 1, family: "document", orientation: "portrait",
+    nodes: [
+      { type: "heading", text: "Requirements of {{project_name}}", level: 1 },
+      {
+        type: "each", source: { record_type: "requirement", sort: [{ field: "title" }] }, as: "req",
+        children: [
+          { type: "heading", text: "{{req.code}} {{req.title}}", level: 2 },
+          { type: "table", source: { record_type: "pain_point", linked_from: "req" }, columns: [{ field: "code" }, { field: "title", label: "Pain point" }] },
+        ],
+      },
+    ],
+  };
+}
+
+/** The stand-in checker: empty text or a missing record type is a problem at that path; anything else is fine. */
+export function fakeValidate(tree: ReportLayoutTree): TreeCheck {
+  const errors: TreeProblem[] = [];
+  const walk = (nodes: unknown, prefix: string) => {
+    if (!Array.isArray(nodes)) return;
+    nodes.forEach((raw, i) => {
+      const node = raw as Record<string, unknown>;
+      const here = `${prefix}[${i}]`;
+      if ((node.type === "heading" || node.type === "text") && String(node.text ?? "").trim() === "") errors.push({ path: `${here}.text`, message: "Must not be empty." });
+      const src = node.source as Record<string, unknown> | undefined;
+      if (src && !src.record_type && !src.group) errors.push({ path: `${here}.source.record_type`, message: "Must be a reportable record type: pain_point, requirement." });
+      walk(node.children, `${here}.children`);
+      walk(node.else_children, `${here}.else_children`);
+    });
+  };
+  walk(tree.nodes, "nodes");
+  return { ok: errors.length === 0, errors, node_count: 0 };
+}
+
+/** Two report parts: a table with a setting, and figures. */
+export function buildWidgets(): ReportWidget[] {
+  return [
+    {
+      key: "risk_management.risk-register.register", title: "Risk register", description: "Every risk with its rating.", kind: "section",
+      report_title: "Risk register", module_key: "risk_management", module_name: "Risk Management",
+      params: [
+        { name: "min_rating", type: "integer", default: 1, choices: null, minimum: 1, maximum: 25, description: "Lowest rating to list.", label: "Lowest rating" },
+        { name: "owner", type: "string", default: null, choices: null, minimum: null, maximum: null, description: "Only this owner.", label: "Owner" },
+      ],
+    },
+    {
+      key: "risk_management.risk-register.figures", title: "Headline figures", description: "", kind: "figures",
+      report_title: "Risk register", module_key: "risk_management", module_name: "Risk Management", params: [],
+    },
+    {
+      key: "decisions.decision-register.register", title: "Decision register", description: "Every Decision.", kind: "section",
+      report_title: "Decision register", module_key: "decisions", module_name: "Decision Management", params: [],
+    },
+    {
+      key: "decisions.approval-ageing.ageing", title: "Approval ageing", description: "", kind: "section",
+      report_title: "Approval ageing", module_key: "decisions", module_name: "Decision Management", params: [],
+    },
+    {
+      key: "decisions.decision-log.log", title: "Decision log", description: "", kind: "section",
+      report_title: "Decision log", module_key: "decisions", module_name: "Decision Management", params: [],
+    },
+  ];
+}
+
+/** Pictures in a project's library: the project's own logo and an organisation one used by two layouts. */
+export function buildReportImages(): ReportImage[] {
+  return [
+    { id: "image-1", filename: "site-logo.png", content_type: "image/png", size_bytes: 24_000, tier: "project", owned: true, used_by: [], in_older_versions: false, created_at: "2026-10-20T09:00:00Z" },
+    {
+      id: "image-2", filename: "organisation-wordmark.svg", content_type: "image/svg+xml", size_bytes: 3_400, tier: "organisation", owned: false,
+      used_by: ["Quarterly review", "Decision log"], in_older_versions: false, created_at: "2026-10-01T09:00:00Z",
+    },
+  ];
+}
+
+/** An in-memory picture library for stories; an upload adds a project picture named after the file. */
+export function buildImageLibrary(
+  images: ReportImage[] = buildReportImages(), maxImageBytes = 50 * 1024 * 1024, converterAvailable = true,
+) {
+  const store = [...images];
+  const details: Record<string, FileDetails> = {
+    "image-1": {
+      width_px: 4032, height_px: 3024, taken: "2026-10-12 14:03:11", camera: "Canon EOS 5D", description: "North gate, pump house",
+      latitude: -33.866667, longitude: 151.21,
+    },
+  };
+  return {
+    list: fn(async () => ({ images: store.map((image) => ({ ...image })), max_image_bytes: maxImageBytes, converter_available: converterAvailable })),
+    details: fn(async (id: string): Promise<FileDetails> => details[id] ?? {
+      width_px: null, height_px: null, taken: null, camera: null, description: null, latitude: null, longitude: null,
+    }),
+    upload: fn(async (file: File) => {
+      const added: ReportImage = {
+        id: `image-${store.length + 1}`, filename: file.name, content_type: file.type || "image/png", size_bytes: file.size, tier: "project",
+        owned: true, used_by: [], in_older_versions: false, created_at: "2026-10-30T09:00:00Z",
+      };
+      store.unshift(added);
+      return added;
+    }),
+    remove: fn(async (id: string) => {
+      const at = store.findIndex((image) => image.id === id);
+      if (at >= 0) store.splice(at, 1);
+    }),
+  };
+}
+
+/** A successful document preview. */
+export function buildDocumentPreview(overrides: Partial<PreviewResult> = {}): PreviewResult {
+  return {
+    ok: true, errors: [], family: "document", warnings: [], records_read: 3, duration_ms: 12, projects: 1, sheets: [],
+    html: "<!doctype html><html><body><h1>Requirements of Atlas</h1><p>REQ-001 Brake pads</p></body></html>", ...overrides,
+  };
+}
+
+/** A successful table preview whose only sheet was capped. */
+export function buildSheetPreview(): PreviewResult {
+  return {
+    ok: true, errors: [], family: "table", html: null, warnings: [], records_read: 250, duration_ms: 30, projects: 2,
+    sheets: [{ name: "Requirements", columns: ["Code", "Title"], rows: [["REQ-001", "Brake pads"], ["REQ-002", "Handbrake"]], total_rows: 250 }],
+  };
+}
+
+/** The snippets a stand-in scope offers: a cover page (no parameters), a logo (a picture), record images (a record type) and a table one. */
+export function buildSnippets(): ReportSnippet[] {
+  return [
+    {
+      key: "cover_page", name: "Cover page", description: "Title, project and run date, then a page break.", category: "Cover and front matter", family: "document",
+      formats: ["html", "pdf", "docx", "odt"], module_key: null, parameters: [],
+      blocks: [{ type: "heading", text: "{{project_name}}", level: 1 }, { type: "text", text: "Run on {{run_date}}" }, { type: "page_break" }],
+    },
+    {
+      key: "cover_logo", name: "Logo, top right of the first page", description: "A picture from the library, in front of the text at the top right of the first page.",
+      category: "Cover and front matter", family: "document", formats: ["pdf", "docx", "odt"], module_key: null,
+      parameters: [{ key: "logo", label: "Logo", kind: "image", help: "The picture to place. It must be in this layout's library.", required: true, default: null, max_length: null, choices: [] }],
+      blocks: [{ type: "image", file: "", placement: "front", anchor: "page" }],
+    },
+    {
+      key: "record_images", name: "Record images", description: "Each record of a type, with the pictures attached to it.", category: "Records", family: "document",
+      formats: ["html", "pdf", "docx", "odt"], module_key: null,
+      parameters: [
+        {
+          key: "record_type", label: "Record type", kind: "record_type", help: "The records to show pictures for.", required: true, default: null, max_length: null,
+          choices: [{ value: "requirement", label: "Requirement" }, { value: "pain_point", label: "Pain point" }],
+        },
+        { key: "caption", label: "Caption", kind: "text", help: "Printed under each picture.", required: false, default: "{{file_name}}", max_length: 200, choices: [] },
+      ],
+      blocks: [{ type: "each", source: { record_type: "" }, as: "record", children: [{ type: "record_images" }] }],
+    },
+    {
+      key: "landscape_table", name: "Landscape table section", description: "A section on a landscape page holding a table.", category: "Tables", family: "table",
+      formats: ["html", "pdf"], module_key: null, parameters: [], blocks: [{ type: "heading", text: "Table", level: 1 }],
+    },
+  ];
+}
+
+/**
+ * A stand-in for the server's apply: inserts the snippet's blocks (headings stand in for the rest) into the tree at the target, and
+ * mirrors the insertion into `source_text` so the Text view shows it. A missing picture or record type is refused with the server's wording;
+ * a snippet for the other family is refused.
+ */
+export function fakeApplySnippet(
+  snippets: ReportSnippet[], key: string, body: { tree: ReportLayoutTree; parameters: Record<string, string>; target: { container: string; index: number | null } },
+): SnippetApplyResult {
+  const snippet = snippets.find((s) => s.key === key);
+  const refused = (path: string, message: string): SnippetApplyResult => ({ ok: false, tree: null, changes: [], errors: [{ path, message }], inserted_at: null, count: 0, problems_elsewhere: 0 });
+  if (!snippet) return refused("", "Snippet not found.");
+  if (snippet.family !== body.tree.family) return refused("", `"${snippet.name}" is for a ${snippet.family} layout; this one is a ${String(body.tree.family)} layout.`);
+  for (const p of snippet.parameters) {
+    if (p.required && !body.parameters[p.key]) return refused(`parameters.${p.key}`, `${p.label} is required.`);
+  }
+  const root = body.target.container === "nodes";
+  const list = root ? (body.tree.nodes as unknown[]) : [];
+  const at = body.target.index ?? list.length;
+  const blocks = snippet.blocks.map((b) => ({ ...b }));
+  const nodes = [...list.slice(0, at), ...blocks, ...list.slice(at)];
+  const lines = snippet.blocks.map((b) => (b.type === "page_break" ? "@pagebreak" : `@heading ${String(b.text ?? snippet.name)}`));
+  const text = String(body.tree.source_text ?? `@layout ${String(body.tree.family)}\n`);
+  const written = body.target.index === 0 ? text.replace(/(@layout [^\n]*\n)/, `$1\n${lines.join("\n")}\n`) : `${text.replace(/\n*$/, "\n")}\n${lines.join("\n")}\n`;
+  return {
+    ok: true, tree: { ...body.tree, nodes, source_text: written, ...(snippet.key === "cover_logo" ? { page_styles: [{ name: "Cover" }] } : {}) },
+    changes: [`Inserted ${blocks.length} block${blocks.length === 1 ? "" : "s"} at ${body.target.container}[${at}].`, ...(snippet.key === "cover_logo" ? ["Added page style Cover."] : [])],
+    errors: [], inserted_at: `${body.target.container}[${at}]`, count: blocks.length, problems_elsewhere: 0,
+  };
+}
+
+/** The stand-in parser: `BROKEN` anywhere is one syntax error on its line, else the text is the tree. */
+export function fakeParse(text: string): TextParseResult {
+  const lines = text.split("\n");
+  const index = lines.findIndex((line) => line.includes("BROKEN"));
+  if (index >= 0) return { ok: false, tree: null, errors: [{ line: index + 1, column: lines[index].indexOf("BROKEN") + 1, message: "Unknown word BROKEN." }] };
+  // A top-level block is a line that starts with an `@` word other than the layout line, a closing `@end`, a page style or a variable.
+  const blockLines: Record<string, number> = {};
+  let top = 0;
+  lines.forEach((line, i) => {
+    if (/^@(?!layout\b|end\b|pagestyle\b|var\b)/.test(line)) blockLines[`nodes[${top++}]`] = i + 1;
+  });
+  return { ok: true, tree: treeOf(text, text.startsWith("@layout table") ? "table" : "document"), errors: [], block_lines: blockLines };
+}
+
+/**
+ * An in-memory `ReportLayoutApi`. `layouts` are the scope's layouts (the first is opened by `get`).
+ *
+ * `stateful: false` makes every write answer as if it worked without remembering it, for stories whose api is
+ * shared by every replay of every story in a file (the designer's): a saved version, a rename or a delete then
+ * never changes what the next story reads. The list panel's stories keep the default so a hidden layout really
+ * leaves the list.
+ */
+export function buildLayoutApi(
+  layouts: ReportLayoutSummary[] = [buildLayoutSummary()],
+  overrides: Partial<ReportLayoutApi> & { kind?: "project" | "organization"; stateful?: boolean; seedDraft?: ReportLayoutDraft } = {},
+): ReportLayoutApi {
+  const stateful = overrides.stateful !== false;
+  const store = layouts.map((layout) => ({ ...layout }));
+  const kind = overrides.kind ?? "project";
+  // The shared draft of each layout: `seeded` is what a story starts with (the first layout's), `written` what this api has been sent.
+  // A stateless api answers writes without letting them change what the next read sees, but publishing uses the last write.
+  const seeded = new Map<string, ReportLayoutDraft>(overrides.seedDraft ? [[store[0].id, overrides.seedDraft]] : []);
+  const written = new Map<string, ReportLayoutDraft>();
+  const draftOf = (id: string): ReportLayoutDraft | undefined => (stateful ? written.get(id) ?? seeded.get(id) : seeded.get(id));
+  const publishedTreeOf = (id: string): ReportLayoutTree => {
+    const found = store.find((layout) => layout.id === id) ?? store[0];
+    return buildLayoutVersion(found.current_version, LAYOUT_TEXT).tree;
+  };
+  const fake: ReportLayoutApi = {
+    scope: { kind, id: kind === "project" ? "project-1" : "org-1" },
+    list: fn(async () => store.map((layout) => ({ ...layout }))),
+    create: fn(async (body) => {
+      const created = buildLayoutSummary({
+        id: `layout-${store.length + 1}`, name: body.name, description: body.description, folder: body.folder ?? "", family: body.family, current_version: 1,
+      });
+      store.push(created);
+      return { ...created, current: { ...buildLayoutVersion(1), tree: body.tree } };
+    }),
+    get: fn(async (id: string) => {
+      const found = store.find((layout) => layout.id === id) ?? store[0];
+      const draft = draftOf(found.id);
+      return {
+        ...found, current: buildLayoutVersion(found.current_version, LAYOUT_TEXT),
+        draft: found.editable && draft ? draftSummary(draft) : null,
+      };
+    }),
+    draft: fn(async (id: string) => {
+      const draft = draftOf(id);
+      if (!draft) throw new ApiError(404, "The layout has no draft.");
+      return draft;
+    }),
+    writeDraft: fn(async (id: string, body: { tree: ReportLayoutTree; base_version: number; revision: number }) => {
+      const before = draftOf(id);
+      if (stateful && (before?.revision ?? 0) !== body.revision) {
+        throw new ApiError(409, "The draft changed.", { message: "The draft changed.", code: "draft_conflict", draft: before ? draftSummary(before) : null });
+      }
+      if (stableJson(body.tree) === stableJson(publishedTreeOf(id))) {
+        written.delete(id);
+        return { draft: null };
+      }
+      const next = buildLayoutDraft({
+        revision: body.revision + 1, base_version: body.base_version, tree: body.tree, updated_by: "user-1", updated_by_name: "You",
+        updated_at: new Date().toISOString(),
+      });
+      written.set(id, next);
+      return { draft: next };
+    }),
+    discardDraft: fn(async (id: string) => {
+      if (stateful) {
+        written.delete(id);
+        seeded.delete(id);
+      }
+    }),
+    publishDraft: fn(async (id: string, body: { draft_revision: number; comment?: string }) => {
+      const found = store.find((layout) => layout.id === id) ?? store[0];
+      const draft = written.get(id) ?? seeded.get(id);
+      const next = found.current_version + 1;
+      if (stateful) {
+        found.current_version = next;
+        written.delete(id);
+        seeded.delete(id);
+      }
+      const tree = draft?.tree ?? publishedTreeOf(id);
+      return { ...found, current_version: next, current: { ...buildLayoutVersion(next), tree, comment: body.comment ?? "" }, draft: null };
+    }),
+    versions: fn(async () => [
+      { version: 2, tree_hash: "h2", comment: "Added the heading", created_by: "user-1", created_at: "2026-10-12T09:00:00Z" },
+      { version: 1, tree_hash: "h1", comment: "First draft", created_by: "user-1", created_at: "2026-10-11T09:00:00Z" },
+    ]),
+    version: fn(async (_id: string, version: number) => buildLayoutVersion(version, version === 1 ? "@layout document\n\n@heading Draft\n" : LAYOUT_TEXT)),
+    save: fn(async (id: string, body: { tree: ReportLayoutTree; base_version: number }) => {
+      const found = store.find((layout) => layout.id === id) ?? store[0];
+      const next = body.base_version + 1;
+      if (stateful) found.current_version = next;
+      return { ...found, current_version: next, current: { ...buildLayoutVersion(next), tree: body.tree } };
+    }),
+    update: fn(async (id: string, body: { name?: string; description?: string; folder?: string }) => {
+      const found = store.find((layout) => layout.id === id) ?? store[0];
+      if (stateful) Object.assign(found, body);
+      return { ...found, ...body };
+    }),
+    remove: fn(async (id: string) => {
+      const at = store.findIndex((layout) => layout.id === id);
+      if (stateful && at >= 0) store.splice(at, 1);
+    }),
+    parseText: fn(async (text: string) => fakeParse(text)),
+    formatTree: fn(async (tree: ReportLayoutTree) => String(tree.source_text ?? `@layout ${String(tree.family)}\n`)),
+    fields: fn(async () => buildFieldCatalogue()),
+    widgets: fn(async () => buildWidgets()),
+    blocks: fn(async () => buildBlockCatalogue()),
+    colours: fn(async () => buildColourContext()),
+    validate: fn(async (tree: ReportLayoutTree) => fakeValidate(tree)),
+    snippets: fn(async () => buildSnippets()),
+    applySnippet: fn(async (key, body) => fakeApplySnippet(buildSnippets(), key, body)),
+    preview: fn(async () => buildDocumentPreview()),
+    downloadPreview: fn(async () => new File(["preview"], "Preview - Requirements.pdf", { type: "application/pdf" })),
+    draftVariables: fn(async () => ({ ok: true, variables: [], errors: [] })),
+    images: buildImageLibrary(),
+  };
+  if (kind === "organization") {
+    fake.missingStarters = fn(async () => []);
+    fake.addStarters = fn(async () => []);
+  }
+  if (kind === "project") {
+    fake.setHidden = fn(async (id: string, hidden: boolean) => {
+      const found = store.find((layout) => layout.id === id) ?? store[0];
+      found.hidden = hidden;
+      return { ...found };
+    });
+    fake.restore = fn(async (ids: string[]) => {
+      for (const layout of store) if (ids.includes(layout.id)) layout.hidden = false;
+    });
+  }
+  const { kind: _kind, stateful: _stateful, seedDraft: _seedDraft, ...rest } = overrides;
+  void _kind;
+  void _stateful;
+  void _seedDraft;
+  return { ...fake, ...rest };
+}

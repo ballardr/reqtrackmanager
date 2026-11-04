@@ -5,9 +5,12 @@
  * import)"), rendered by `ListPageLayout` beside the page's own actions so no list hand-builds them. They live
  * in one kebab menu ("List actions") next to the page's New button, not as separate buttons:
  *
- * - **Export** items download the list as a CSV that re-imports, a PDF or a Word document (the record-list
- *   report), each narrowed by the page's own filters (never the full set), plus the import template. A note
- *   under the items says when the personal-data policy left columns out.
+ * - **Download shown items** opens a second list of formats: the CSV that re-imports, then the record-list report
+ *   as PDF, Word, ODT or ODS, each narrowed by the page's own filters (never the full set; the word "shown" says
+ *   so). The import template sits beside it. A note under the items says when the personal-data policy left
+ *   columns out.
+ * - **Download report** opens a dialog (`ReportDownloadDialog`) listing the reports that use the list's record
+ *   type, in the Reports page's folders, and runs the chosen one in place.
  * - **Import from CSV** opens a file picker, then `CsvImportWizard`; it is offered only to a person who may
  *   create or update the type's records, and not at all for a type that gives a reason it cannot be imported.
  *
@@ -21,20 +24,19 @@
  */
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { ReportDownloadKind } from "../api/reports";
-import { omittedColumnsNote, recordOwner, recordTablesApi, type RecordColumns, type RecordTablesApi } from "../api/recordTables";
+import { REPORT_FORMAT } from "../api/reportFormats";
+import { omittedColumnsNote, RECORD_LIST_EXPORT_KINDS, recordOwner, recordTablesApi, type RecordColumns, type RecordTablesApi } from "../api/recordTables";
+import { ProjectContext } from "../context/ProjectContextValue";
 import { useRecordTableExport, fileStem } from "../hooks/useRecordTableExport";
 import { t } from "../i18n/strings";
 import { downloadBlob } from "../utils/download";
 import { CODE_COLUMN_KEY, templateCsv } from "../utils/recordImport";
 import { CsvImportWizard } from "./CsvImportWizard";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
+import { ReportDownloadDialog } from "./ReportDownloadDialog";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 
 const strings = t();
-
-/** The formats of the Export menu: the CSV that re-imports, then the record-list report's PDF and Word. */
-const EXPORT_KINDS: readonly ReportDownloadKind[] = ["csv", "pdf", "docx"];
 
 /** What a list page tells `ListPageLayout` so it can offer Export and Import. */
 export interface RecordListActions {
@@ -131,6 +133,8 @@ function KindActions({
   const [columns, setColumns] = useState<RecordColumns | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const projectOrganizationId = useContext(ProjectContext).organizationId ?? undefined;
   const pickerRef = useRef<HTMLInputElement>(null);
   const label = columns?.label ?? "";
   const owner = useMemo(() => recordOwner({ projectId, organizationId }), [projectId, organizationId]);
@@ -153,18 +157,29 @@ function KindActions({
   const items = useMemo<ActionMenuItem[]>(() => {
     if (!columns) return [];
     const group = kindLabel ? kindLabel.charAt(0).toUpperCase() + kindLabel.slice(1) : undefined;
-    const exports = EXPORT_KINDS.map((kind): ActionMenuItem => ({
-      key: `${recordType}:export:${kind}`,
+    const downloadShown: ActionMenuItem = {
+      key: `${recordType}:download-shown`,
       group,
-      label: strings.recordTables.exportAs(strings.recordTables.formatName[kind]),
-      onSelect: () => {
-        setExporting(true);
-        void exportList(kind).finally(() => setExporting(false));
-      },
-    }));
-    if (!(columns.importable && columns.can_import)) return exports;
+      label: strings.recordTables.downloadShownItems,
+      onSelect: () => undefined,
+      children: RECORD_LIST_EXPORT_KINDS.map((kind): ActionMenuItem => ({
+        key: `${recordType}:export:${kind}`,
+        label: REPORT_FORMAT[kind].label,
+        title: REPORT_FORMAT[kind].title,
+        hint: kind === "csv" ? strings.recordTables.csvReimportHint : undefined,
+        onSelect: () => {
+          setExporting(true);
+          void exportList(kind).finally(() => setExporting(false));
+        },
+      })),
+    };
+    const downloadReport: ActionMenuItem = {
+      key: `${recordType}:report`, group, label: strings.recordTables.downloadReport, onSelect: () => setReportOpen(true),
+    };
+    if (!(columns.importable && columns.can_import)) return [downloadReport, downloadShown];
     return [
-      ...exports,
+      downloadReport,
+      downloadShown,
       { key: `${recordType}:template`, group, label: strings.recordTables.downloadTemplate, onSelect: downloadTemplate },
       { key: `${recordType}:import`, group, label: strings.recordTables.importFromCsv, onSelect: () => pickerRef.current?.click() },
     ];
@@ -182,6 +197,12 @@ function KindActions({
     <>
       {columns.importable && columns.can_import && (
         <FileUploadTrigger ref={pickerRef} showTrigger={false} accept=".csv,text/csv" onSelect={setFile}>{null}</FileUploadTrigger>
+      )}
+      {reportOpen && (
+        <ReportDownloadDialog
+          projectId={projectId} organizationId={organizationId ?? projectOrganizationId} ownedByOrganization={!!organizationId}
+          recordType={recordType} recordLabel={label} onClose={() => setReportOpen(false)}
+        />
       )}
       {file && (
         <CsvImportWizard

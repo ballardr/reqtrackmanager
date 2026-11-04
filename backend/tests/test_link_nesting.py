@@ -787,6 +787,10 @@ _REVIEWED_LINK_READERS = {
     "services/org_deletion.py": "removes every link of a deleted organisation",
     "services/project_export.py": "same-project links only; counts the rest for the manifest",
     "services/relationships.py": "default-deny: excludes cross-level links unless asked",
+    "services/report_traversal.py": (
+        "deliberately includes cross-level links for a report; dormant ones are skipped (is_link_live) and the far end "
+        "is shown only if ArtefactResolver says the caller can see it, else counted as hidden or unavailable"
+    ),
 }
 
 

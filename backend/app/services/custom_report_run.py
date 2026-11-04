@@ -1,0 +1,784 @@
+"""
+Module: services.custom_report_run
+
+Runs a custom report layout for a caller and turns the result into what the report framework serves:
+a `ReportResult` (the Reports page's on-screen run), a `ReportDocument` (PDF, Word) or a CSV, with the
+provenance row and the catalogue entries that make a layout appear beside the module reports.
+
+Responsibilities:
+- Project run: one layout, one project (optionally with its readable child projects), through the
+  caller's `ArtefactResolver`.
+- Organisation-wide run: the same layout evaluated once **per project** the caller can read (narrowed by
+  the caller's project selection), each with that project's own resolver, merged into one report.
+- Merge: a document gets one top-level heading per project (authored headings move one level down) and a
+  page break between projects; a table layout's sheets of the same name are concatenated with a leading
+  `Project` column.
+- Output: `result_for` (on-screen), `document_for` (branding),
+  `render_input_for`, `available_formats`.
+- Provenance: `record_run` writes the `GeneratedReport` row (D11).
+- Catalogue: `project_entries` / `org_entries` describe the runnable layouts like any other report.
+
+Design decisions:
+- **Authorisation is per project and is the traversal layer's.** The organisation-wide run adds no
+  visibility rule: each project is evaluated with `ArtefactResolver(project, caller)`, so a record the
+  caller cannot see is counted and never named, exactly as in a project run. The projects offered are the
+  ones the caller holds a role in (`readable_projects`) and a selection can only narrow them.
+- **A project that hid the layout is skipped** in an organisation-wide run, as it does not offer the layout
+  to its runners; the report says how many were skipped.
+- **One budget for the whole run.** The wall-clock limit is shared by all projects (each gets what is left)
+  and the output limit applies to the total, so a fan-out cannot multiply the single-project caps;
+  `MAX_FANOUT_PROJECTS` bounds the number of evaluations.
+- **The on-screen form is a table view of the document.** Each table becomes a section titled by the
+  headings above it, with the text between them as its note; text after the last table becomes a report
+  note. The PDF and Word are the faithful forms.
+- **Formats follow the layout family and come from the renderer registry** (`services.report_render`): a
+  document layout gives `json` plus `pdf`, `docx`, `html`, `odt`; a table layout `json` plus `csv` (a zip when it has
+  several sheets), `xlsx` and `ods`. A new format is one registration there.
+
+Dependencies: `services.report_layout_eval`, `services.report_layout_scope`, `services.report_framework`,
+`services.report_document`, `models.generated_report`.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+import time
+import uuid
+from collections import defaultdict
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from app.models.generated_report import SCOPE_ORGANIZATION, SCOPE_PROJECT, STATUS_COMPLETED, GeneratedReport
+from app.models.organization import Organization
+from app.models.project import Project
+from app.models.report_layout import (
+    FAMILY_DOCUMENT,
+    FAMILY_TABLE,
+    RUN_SCOPE_ANY,
+    RUN_SCOPE_ONE,
+    RUN_SCOPE_ONE_AND_CHILDREN,
+    ReportLayout,
+    ReportLayoutVersion,
+)
+from app.models.user import User
+from app.services import definition_suppression, report_layout_scope, report_layouts
+from app.services.client_date import effective_today
+from app.services.downloads import filename_safe
+from app.services.link_graph import ArtefactResolver
+from app.services.report_document import ReportBranding, layout_branding
+from app.services.report_file_names import render_stem
+from app.services.report_framework import (
+    ReportCatalogueEntryOut,
+    ReportContext,
+    ReportMetric,
+    ReportProjectOut,
+    ReportResult,
+    ReportSection,
+    ReportVariableOut,
+    readable_projects,
+)
+from app.services.report_images import MAX_REPORT_IMAGES
+from app.services.report_layout_eval import (
+    ASYNC_LIMIT_SCALE,
+    ASYNC_TIMEOUT_SECONDS,
+    DEFAULT_TIMEOUT_SECONDS,
+    MAX_OUTPUT,
+    MAX_RECORDED_VERSIONS,
+    EvalStats,
+    EvaluatedLayout,
+    LayoutLimitError,
+    LayoutTimeoutError,
+    evaluate_layout,
+)
+from app.services.report_layout_tree import record_types_of
+from app.services.report_model import (
+    Block,
+    BulletList,
+    CellLink,
+    Contents,
+    DataCell,
+    Equation,
+    Grid,
+    Heading,
+    LinkedText,
+    Note,
+    NumberedList,
+    PageBreak,
+    Paragraph,
+    ReportDocument,
+    Sheet,
+    SheetCell,
+    Table,
+    contents_sheet,
+    linked,
+    project_report_label,
+)
+from app.services.report_render import RenderedFile, RenderInput, formats_for, render
+from app.services.report_running import apply_default_bands
+from app.services.report_table_alignment import align_tables
+from app.services.report_variables import describe_variables, variable_text
+
+ENGINE_VERSION = "1"
+"""Bumped when evaluation semantics change, so a provenance row says which engine produced a report."""
+MODULE_KEY = "custom_reports"
+MODULE_NAME = "Custom reports"
+#: Most projects one organisation-wide run evaluates.
+MAX_FANOUT_PROJECTS = 200
+_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+class ProjectsNotInScopeError(LookupError):
+    """A requested project is not one the caller can run the report for."""
+
+
+class NoProjectsToRunError(LookupError):
+    """No project is left to run the layout for (none readable, selected, or all have hidden it)."""
+
+
+class FanOutTooLargeError(ValueError):
+    """More than `MAX_FANOUT_PROJECTS` projects were asked for."""
+
+
+class RunScopeError(ValueError):
+    """A run does not fit the projects the layout may run for (its `run_scope`)."""
+
+
+def check_run_scope(version: ReportLayoutVersion, *, chosen: int | None = None, include_children: bool = False) -> None:
+    """Refuses a run that does not fit the layout's `run_scope`.
+
+    `any` (the default) allows a project run and a fan-out over any number of projects; `one` needs exactly one project and
+    no child projects; `one_and_children` needs exactly one project and allows its readable child projects to be merged in.
+    This is the one place the rule is applied; every route, job, pack entry and preview reaches it through
+    `run_project_layout`, `run_organization_layout` or `report_run_jobs.enqueue`.
+
+    Args:
+        version: The version about to run.
+        chosen: The number of distinct projects an organisation-wide run names, `None` for a project run.
+        include_children: Whether the run would add child projects.
+
+    Raises:
+        RunScopeError: The run does not fit.
+    """
+    scope = version.tree.get("run_scope", RUN_SCOPE_ANY)
+    if scope == RUN_SCOPE_ANY:
+        if include_children and chosen is not None:
+            raise RunScopeError("Child projects can only be included when the report runs for one project and its children.")
+        return
+    if scope == RUN_SCOPE_ONE and include_children:
+        raise RunScopeError("This report runs for a single project, so child projects cannot be included.")
+    if chosen is not None and chosen != 1:
+        raise RunScopeError(
+            "This report runs for a single project: choose exactly one project." if chosen == 0
+            else f"This report runs for a single project, but {chosen} were chosen."
+        )
+
+
+@dataclass
+class LayoutRun:
+    """A finished run, before rendering.
+
+    Attributes:
+        layout: The layout that ran.
+        version: The pinned version that ran.
+        organization: The organisation.
+        projects: The projects the run covered.
+        root_project: The project of a project-level run, `None` for an organisation-wide run.
+        evaluated: The evaluation (merged across projects for an organisation-wide run).
+        generated_at: When the run started (UTC).
+        duration_ms: How long evaluation took.
+        notes: Run-level remarks (projects skipped because they hid the layout).
+        today: The caller's calendar day when the run started (`X-Client-Date`), which a file name's `{{generated_on}}` uses.
+    """
+
+    layout: ReportLayout
+    version: ReportLayoutVersion
+    organization: Organization
+    projects: list[Project]
+    root_project: Project | None
+    evaluated: EvaluatedLayout
+    generated_at: datetime
+    duration_ms: int
+    notes: list[str] = field(default_factory=list)
+    today: date = field(default_factory=effective_today)
+
+    @property
+    def scope_label(self) -> str:
+        """The name printed as the report's scope."""
+        return self.root_project.name if self.root_project is not None else self.organization.name
+
+    @property
+    def scope_report_label(self) -> str:
+        """The label `{{project_report_name}}` prints: the root project's report name when set, else `scope_label`."""
+        return project_report_label(self.root_project, self.scope_label)
+
+    @property
+    def family(self) -> str:
+        """`document` or `table`."""
+        return self.evaluated.family
+
+
+def available_formats(family: str, tree: dict[str, Any] | None = None) -> list[str]:
+    """The formats a layout can be produced in: `json` (the on-screen run) then every renderer of its family.
+
+    Args:
+        family: The layout's family.
+        tree: Unused by the shipped renderers (kept so a format that depends on the layout's shape, such as
+            one needing a single sheet, can decide from it).
+
+    Returns:
+        `json` first, then `services.report_render.formats_for(family)`.
+    """
+    return ["json", *formats_for(family)]
+
+
+# --- running ---------------------------------------------------------------------------------------------
+
+
+def _evaluate_project(
+    db: Session, user: User, organization: Organization, root: Project, projects: Sequence[Project],
+    version: ReportLayoutVersion, layout: ReportLayout, title: str, timeout: float, limit_scale: int = 1,
+    variables: Mapping[str, Any] | None = None,
+) -> EvaluatedLayout:
+    """Evaluates the tree for one root project with that project's resolver (the authorisation point).
+
+    The run's "today" is the caller's own calendar day (`X-Client-Date`), which a date variable's `today` default uses.
+    """
+    resolver = ArtefactResolver(db, root, user.id, include_related=True)
+    ctx = ReportContext(
+        module_key=MODULE_KEY, organization=organization, projects=list(projects), root_project=root, today=effective_today(),
+    )
+    return evaluate_layout(
+        db, resolver, ctx, version.tree, title=title, project_ids=[p.id for p in projects], timeout_seconds=timeout,
+        limit_scale=limit_scale, variables=variables, layout_project_id=layout.project_id, layout_version=version.version,
+    )
+
+
+def run_project_layout(
+    db: Session, user: User, project: Project, layout: ReportLayout, version: ReportLayoutVersion, *,
+    include_children: bool = False, background: bool = False, variables: Mapping[str, Any] | None = None,
+) -> LayoutRun:
+    """Runs a layout for `project`.
+
+    Args:
+        db: Active session (read only).
+        user: The caller.
+        project: The project (the route has already authorised the caller for it).
+        layout: A layout the project can reach (the route checked reachability and hiding).
+        version: The version to run (the layout's current one).
+        include_children: Also read the project's readable child projects' records.
+        background: Run with the larger limits of a background run (`report_layout_eval.ASYNC_*`).
+        variables: Values for the layout's run-time variables (a variable not given takes its default).
+
+    Returns:
+        The run.
+
+    Raises:
+        LayoutLimitError: A work, output or time limit was exceeded.
+        VariableValueError: A variable's value is missing, undeclared or unacceptable.
+        RunScopeError: The layout runs for one project without its children and `include_children` is set.
+    """
+    check_run_scope(version, include_children=include_children)
+    organization = db.get(Organization, project.organization_id)
+    assert organization is not None
+    started = datetime.now(UTC)
+    clock = time.monotonic()
+    projects = readable_projects(db, user, organization=organization, root_project=project, include_children=include_children)
+    scale, timeout = (ASYNC_LIMIT_SCALE, ASYNC_TIMEOUT_SECONDS) if background else (1, DEFAULT_TIMEOUT_SECONDS)
+    evaluated = _evaluate_project(db, user, organization, project, projects, version, layout, layout.name, timeout, scale, variables)
+    return LayoutRun(
+        layout, version, organization, projects, project, evaluated, started, round((time.monotonic() - clock) * 1000),
+    )
+
+
+def run_organization_layout(
+    db: Session, user: User, organization: Organization, layout: ReportLayout, version: ReportLayoutVersion, *,
+    project_ids: Sequence[uuid.UUID] | None = None, background: bool = False, variables: Mapping[str, Any] | None = None,
+    variables_for: Callable[[Project], Mapping[str, Any] | None] | None = None, include_children: bool = False,
+) -> LayoutRun:
+    """Runs an organisation layout once per project the caller can read and merges the results.
+
+    Args:
+        db: Active session (read only).
+        user: The caller.
+        organization: The organisation.
+        layout: An organisation-level layout of `organization`.
+        version: The version to run.
+        project_ids: The projects to include (narrowing only); `None` for every project the caller can read.
+        background: Run with the larger limits of a background run (`report_layout_eval.ASYNC_*`).
+        variables: Values for the layout's run-time variables, the same for every project.
+        variables_for: Decides the values per project instead (a report pack's saved set as each project overrides
+            it); it may raise `VariableValueError`, which ends the run.
+        include_children: Add the chosen project's readable child projects (only a layout whose `run_scope` is
+            `one_and_children`).
+
+    Returns:
+        The merged run; its `projects` are the ones evaluated.
+
+    Raises:
+        VariableValueError: A variable's value is missing, undeclared or unacceptable.
+        ProjectsNotInScopeError: A requested project is not one the caller holds a role in.
+        FanOutTooLargeError: More than `MAX_FANOUT_PROJECTS` projects would be evaluated.
+        RunScopeError: `project_ids` does not fit the layout's `run_scope` (exactly one project for `one` and `one_and_children`).
+        NoProjectsToRunError: No project is left to evaluate.
+        LayoutLimitError: A work, output or time limit was exceeded across the whole run.
+    """
+    check_run_scope(
+        version, chosen=len(set(project_ids)) if project_ids is not None else 0, include_children=include_children,
+    )
+    started = datetime.now(UTC)
+    clock = time.monotonic()
+    readable = readable_projects(db, user, organization=organization, root_project=None, include_children=False)
+    if project_ids is not None:
+        by_id = {p.id: p for p in readable}
+        if any(pid not in by_id for pid in project_ids):
+            raise ProjectsNotInScopeError("A selected project is not one you can report on.")
+        chosen = sorted((by_id[pid] for pid in set(project_ids)), key=lambda p: (p.name.lower(), str(p.id)))
+    else:
+        chosen = readable
+    if len(chosen) > MAX_FANOUT_PROJECTS:
+        raise FanOutTooLargeError(
+            f"This report would cover {len(chosen)} projects; select at most {MAX_FANOUT_PROJECTS}."
+        )
+    hiding = [p for p in chosen if layout.id in definition_suppression.get_suppressed_ids(db, p.id, report_layout_scope.LAYOUT_KIND)]
+    hiding_ids = {p.id for p in hiding}
+    chosen = [p for p in chosen if p.id not in hiding_ids]
+    if not chosen:
+        raise NoProjectsToRunError("There is no project to run this report for.")
+    if version.tree.get("run_scope", RUN_SCOPE_ANY) != RUN_SCOPE_ANY:
+        # A layout for one project reads like a project run: no merge heading or Project column, the project is the scope.
+        only = chosen[0]
+        return run_project_layout(
+            db, user, only, layout, version, include_children=include_children, background=background,
+            variables=variables_for(only) if variables_for is not None else variables,
+        )
+    scale, timeout = (ASYNC_LIMIT_SCALE, ASYNC_TIMEOUT_SECONDS) if background else (1, DEFAULT_TIMEOUT_SECONDS)
+    deadline = clock + timeout
+    parts: list[tuple[Project, EvaluatedLayout]] = []
+    produced = 0
+    for project in chosen:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise LayoutTimeoutError("The report took too long to run. Select fewer projects or narrow the layout.")
+        part = _evaluate_project(
+            db, user, organization, project, [project], version, layout, layout.name, remaining, scale,
+            variables_for(project) if variables_for is not None else variables,
+        )
+        produced += part.stats.blocks + part.stats.rows
+        if produced > MAX_OUTPUT * scale:
+            raise LayoutLimitError("The report is too large. Select fewer projects or narrow the layout.")
+        parts.append((project, part))
+    notes = []
+    if hiding:
+        notes.append(f"{len(hiding)} project(s) were left out because they have hidden this report.")
+    return LayoutRun(
+        layout, version, organization, chosen, None, merge_evaluations(parts, layout.name),
+        started, round((time.monotonic() - clock) * 1000), notes,
+    )
+
+
+def merge_evaluations(parts: Sequence[tuple[Project, EvaluatedLayout]], title: str) -> EvaluatedLayout:
+    """Combines per-project evaluations of one layout into one (see the module docstring for the shape).
+
+    Args:
+        parts: `(project, evaluation)` in the order they should appear (every evaluation is of the same layout).
+        title: The document title.
+
+    Returns:
+        The merged evaluation: stats summed, warnings prefixed with the project, the digests combined.
+    """
+    family = parts[0][1].family
+    stats = EvalStats()
+    warnings: list[str] = []
+    for project, part in parts:
+        for record_type, count in part.stats.records_read.items():
+            stats.records_read[record_type] += count
+        for record_type, count in part.stats.records_included.items():
+            stats.records_included[record_type] += count
+        stats.blocks += part.stats.blocks
+        stats.rows += part.stats.rows
+        stats.hidden += part.stats.hidden
+        stats.unavailable += part.stats.unavailable
+        stats.images += part.stats.images
+        stats.image_files += [f for f in part.stats.image_files if f not in stats.image_files]
+        stats.record_images += part.stats.record_images
+        stats.record_image_files += [f for f in part.stats.record_image_files if f not in stats.record_image_files]
+        warnings += [f"{project.name}: {w}" for w in part.warnings]
+    digest = hashlib.sha256("\n".join(f"{p.id}:{e.source_digest}" for p, e in parts).encode()).hexdigest()
+    versions: dict[str, dict[str, int]] = {}
+    truncated = any(part.record_versions_truncated for _, part in parts)
+    for _, part in parts:
+        for record_type, found in part.record_versions.items():
+            versions.setdefault(record_type, {}).update(found)  # a record shown under two projects is one record
+    if sum(len(v) for v in versions.values()) > MAX_RECORDED_VERSIONS:
+        keep = MAX_RECORDED_VERSIONS
+        trimmed: dict[str, dict[str, int]] = {}
+        for record_type in sorted(versions):
+            for record_id in sorted(versions[record_type]):
+                if keep == 0:
+                    break
+                trimmed.setdefault(record_type, {})[record_id] = versions[record_type][record_id]
+                keep -= 1
+        versions, truncated = trimmed, True
+    document = None
+    sheets: list[Sheet] = []
+    if family == FAMILY_DOCUMENT:
+        blocks: list[Block] = []
+        for index, (project, part) in enumerate(parts):
+            assert part.document is not None
+            if index:
+                blocks.append(PageBreak())
+            blocks.append(Heading(project.name, 1))
+            # One contents for the joined report, where the layout put it: the first project's block stands for every part's.
+            kept = [b for b in part.document.blocks if not (isinstance(b, Contents) and any(isinstance(o, Contents) for o in blocks))]
+            blocks += [replace(b, level=min(b.level + 1, 4)) if isinstance(b, Heading) else b for b in kept]
+        first = parts[0][1].document
+        document = replace(first, title=title, blocks=blocks) if first else ReportDocument(title=title, blocks=blocks, show_title=False)
+        document = align_tables(document)  # the per-project tables of one report line up across projects
+    else:
+        sheets = _merge_sheets([part for _, part in parts], [project.name for project, _ in parts])
+    widgets = sorted({key for _, part in parts for key in part.widgets})
+    return EvaluatedLayout(family, document, sheets, warnings, stats, digest, versions, truncated, widgets, parts[0][1].variables)
+
+
+def _merge_sheets(parts: Sequence[EvaluatedLayout], project_names: Sequence[str]) -> list[Sheet]:
+    """The sheets of one run per project as one set: same-named sheets stacked under a leading Project column.
+
+    A link between sheets is moved with its row: it points at the same record's row in the merged target sheet (the
+    project's own block of rows), by the target's name, since a project's run may have left a sheet out. A contents
+    sheet is rebuilt over the merged sheets rather than merged.
+
+    Args:
+        parts: Each project's evaluated table layout, in order.
+        project_names: The project name for each part.
+
+    Returns:
+        The merged sheets, a contents sheet first when any part had one.
+    """
+    with_contents = any(sheet.contents for part in parts for sheet in part.sheets)
+    offset = 1 if with_contents else 0
+    headers: dict[str, list[str]] = {}
+    widths: dict[str, list[float | None] | None] = {}  # the forced column widths, with none for the added Project column
+    start: dict[tuple[int, str], int] = {}
+    total: dict[str, int] = {}
+    for i, part in enumerate(parts):
+        for sheet in part.sheets:
+            if not sheet.contents:
+                headers.setdefault(sheet.name, ["Project", *sheet.columns])
+                widths.setdefault(sheet.name, None if sheet.widths_cm is None else [None, *sheet.widths_cm])
+                start[i, sheet.name] = total.get(sheet.name, 0)
+                total[sheet.name] = start[i, sheet.name] + len(sheet.rows)
+    position = {name: n + offset for n, name in enumerate(headers)}
+
+    def moved(cell: SheetCell, i: int, part: EvaluatedLayout) -> SheetCell:
+        link = cell.link if isinstance(cell, DataCell | LinkedText) else None
+        if link is None:
+            return cell
+        target = part.sheets[link.sheet].name
+        if target not in position:
+            return replace(cell, link=None) if isinstance(cell, DataCell) else str(cell)
+        return linked(cell, CellLink(position[target], link.row + start[i, target]))
+
+    merged: dict[str, list[list[SheetCell]]] = {name: [] for name in headers}
+    for i, (part, project) in enumerate(zip(parts, project_names, strict=True)):
+        for sheet in part.sheets:
+            if not sheet.contents:
+                merged[sheet.name].extend([project, *(moved(c, i, part) for c in row)] for row in sheet.rows)
+    sheets = [Sheet(name, columns, merged[name], widths_cm=widths[name]) for name, columns in headers.items()]
+    return [contents_sheet(sheets), *sheets] if with_contents else sheets
+
+
+# --- output ------------------------------------------------------------------------------------------------
+
+
+def _sections_of_document(blocks: Sequence[Block]) -> tuple[list[ReportSection], list[str]]:
+    """The tables of a document as sections, with the text around them (see the module docstring).
+
+    A section is titled by the headings above its table, outermost first and joined with " / " (so a merged
+    organisation run reads "Alpha / Requirements"); the paragraphs between the previous table and this one
+    become its note.
+    """
+    sections: list[ReportSection] = []
+    trail: list[tuple[int, str]] = []
+    unused: list[str] = []  # headings no table has been titled by yet
+    lines: list[str] = []
+    for block in blocks:
+        if isinstance(block, Heading):
+            trail = [(level, text) for level, text in trail if level < block.level] + [(block.level, block.text)]
+            unused.append(block.text)
+        elif isinstance(block, Paragraph | Note | Equation):  # an equation is shown as written
+            lines.append(block.text)
+        elif isinstance(block, BulletList):
+            lines += [f"• {item}" for item in block.items]
+        elif isinstance(block, NumberedList):
+            lines += [f"{number}. {item}" for number, item in enumerate(block.items, start=1)]
+        elif isinstance(block, Grid):  # a custom table reads on screen as one line per row
+            lines += [" | ".join(" ".join(cell.paragraphs).strip() for cell in row.cells) for row in block.rows]
+        elif isinstance(block, Table):
+            sections.append(ReportSection(
+                key=f"section-{len(sections) + 1}", title=" / ".join(text for _, text in trail) or f"Table {len(sections) + 1}",
+                columns=block.columns, rows=[[str(cell) for cell in row] for row in block.rows], note=" ".join(lines), tones=block.tones,
+                weights=block.weights if block.aligned else None,
+            ))
+            unused, lines = [], []
+        # Gap, PageBreak and Image carry no text.
+    return sections, [*unused, *lines]
+
+
+def result_for(run: LayoutRun) -> ReportResult:
+    """The run as the Reports page shows it on screen.
+
+    Args:
+        run: A finished run.
+
+    Returns:
+        A `ReportResult`: sections from the tables (or sheets), warnings and run remarks as notes, and the
+        records read as the one headline figure.
+    """
+    evaluated = run.evaluated
+    notes = [*run.notes, *evaluated.warnings]
+    if evaluated.family == FAMILY_DOCUMENT:
+        assert evaluated.document is not None
+        sections, leftover = _sections_of_document(evaluated.document.blocks)
+        notes += leftover
+    else:
+        sections = [
+            ReportSection(key=f"sheet-{i + 1}", title=sheet.name, columns=sheet.columns, rows=[[str(c) for c in row] for row in sheet.rows])
+            for i, sheet in enumerate(evaluated.sheets)
+        ]
+    total = sum(evaluated.stats.records_read.values())
+    return ReportResult(
+        key=str(run.layout.id), title=run.layout.name, scope_label=run.scope_label, generated_at=run.generated_at,
+        notes=notes, sections=sections, metrics=[ReportMetric("Records read", total)],
+        data={"family": evaluated.family, "layout_version": run.version.version, "projects": len(run.projects)},
+        eligible_projects=len(run.projects),
+    )
+
+
+def document_for(run: LayoutRun, *, branding: ReportBranding | None) -> ReportDocument:
+    """The run's document for the PDF and Word renderers.
+
+    Args:
+        run: A finished document-family run.
+        branding: The branding for the renderers (the accent colour), or `None`.
+
+    Returns:
+        The document: the evaluated blocks and nothing else. The scope line and the run's remarks are not printed in the
+        file (a layout prints only what it contains); the run's result carries them for the screen.
+    """
+    document = run.evaluated.document
+    assert document is not None
+    return apply_default_bands(replace(document, title=run.layout.name, blocks=list(document.blocks), branding=branding))
+
+
+def render_input_for(run: LayoutRun, *, branding: ReportBranding | None = None) -> RenderInput:
+    """What the renderers are given for a run: the document (with branding) or the sheets."""
+    if run.family == FAMILY_DOCUMENT:
+        return RenderInput(run.layout.name, document=document_for(run, branding=branding))
+    return RenderInput(run.layout.name, sheets=run.evaluated.sheets)
+
+
+def render_file(db: Session, run: LayoutRun, fmt: str) -> RenderedFile:
+    """Renders a finished run as a file in `fmt`: a document with the organisation's accent colour, or the sheets.
+
+    Args:
+        db: Active session (read only).
+        run: A finished run.
+        fmt: A renderer format of the layout's family (not `json`).
+
+    Returns:
+        The rendered file.
+    """
+    branding = layout_branding(db, run.organization) if run.family == FAMILY_DOCUMENT else None
+    return render(fmt, run.family, render_input_for(run, branding=branding))
+
+
+def file_values(run: LayoutRun, extension: str) -> tuple[dict[str, str], dict[str, str]]:
+    """The values a file name template may use for a run: `(plain placeholders, {{var.name}} texts)`.
+
+    Args:
+        run: A finished run.
+        extension: The produced file's extension (`format`).
+
+    Returns:
+        The same facts the document's own placeholders carry, so a name cannot disagree with the report. A project
+        code is empty in an organisation-wide run (it has no single project).
+    """
+    plain = {
+        "report_title": run.layout.name, "project_name": run.scope_label, "project_report_name": run.scope_report_label,
+        "organisation": run.organization.name,
+        "project_code": (run.root_project.code if run.root_project is not None else "") or "",
+        "generated_on": run.today.isoformat(), "layout_version": str(run.version.version), "format": extension,
+    }
+    return plain, variable_text(run.version.tree.get("variables"), run.evaluated.variables)
+
+
+def file_stem(run: LayoutRun, extension: str) -> str:
+    """The download name (without extension) of a run.
+
+    The layout's own `file_name` template, else the organisation's default, else the name this has always had
+    (scope then layout name); a template that fills in to nothing usable falls through to the next.
+
+    Args:
+        run: A finished run.
+        extension: The produced file's extension, for `{{format}}`.
+
+    Returns:
+        A flat, safe stem.
+    """
+    plain, texts = file_values(run, extension)
+    for template in (run.version.tree.get("file_name"), run.organization.report_file_name):
+        stem = render_stem(template, plain, texts)
+        if stem is not None:
+            return stem
+    return f"{filename_safe(run.scope_label, fallback='report')}-{filename_safe(run.layout.name, fallback='report')}"
+
+
+# --- provenance ----------------------------------------------------------------------------------------------
+
+
+def provenance_fields(
+    run: LayoutRun, *, include_children: bool = False, requested_project_ids: Sequence[uuid.UUID] | None = None,
+) -> dict[str, Any]:
+    """The columns of a `GeneratedReport` that describe a finished run (everything but who asked and in what format).
+
+    Identifiers, counts and keys only: no layout text, record content or cell value.
+    """
+    stats = run.evaluated.stats
+    counts: dict[str, int] = defaultdict(int)
+    counts.update(stats.records_read)
+    return {
+        "organization_id": run.organization.id, "project_id": run.root_project.id if run.root_project else None,
+        "scope": SCOPE_PROJECT if run.root_project else SCOPE_ORGANIZATION,
+        "layout_id": run.layout.id, "layout_name": run.layout.name, "layout_version": run.version.version,
+        "tree_hash": run.version.tree_hash, "created_at": run.generated_at, "engine_version": ENGINE_VERSION,
+        "params": run_params(include_children, requested_project_ids, run.evaluated.variables),
+        "scope_project_ids": [str(p.id) for p in run.projects], "widgets": list(run.evaluated.widgets),
+        "record_counts": dict(counts),
+        "stats": {
+            "blocks": stats.blocks, "rows": stats.rows, "hidden": stats.hidden, "unavailable": stats.unavailable,
+            "images": stats.images, "image_files": stats.image_files[:MAX_REPORT_IMAGES],
+            "record_images": stats.record_images,
+            "record_images_digest": hashlib.sha256("\n".join(sorted(stats.record_image_files)).encode()).hexdigest()
+            if stats.record_image_files else "",
+            "warnings": len(run.evaluated.warnings), "duration_ms": run.duration_ms,
+            "colours": dict(run.evaluated.colours),
+        },
+        "source_digest": run.evaluated.source_digest, "record_versions": run.evaluated.record_versions,
+        "record_versions_truncated": run.evaluated.record_versions_truncated,
+    }
+
+
+def run_params(
+    include_children: bool, requested_project_ids: Sequence[uuid.UUID] | None, variables: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The run parameters stored on the provenance row (and read back to run a background job).
+
+    `variables` are the values the layout's run-time variables took: configuration, kept so a run can be repeated
+    and audited, never written to a log line.
+    """
+    return {
+        "include_children": include_children,
+        "requested_project_ids": [str(p) for p in requested_project_ids] if requested_project_ids is not None else None,
+        "variables": dict(variables or {}),
+    }
+
+
+def record_run(
+    db: Session, user: User, run: LayoutRun, fmt: str, *, include_children: bool = False,
+    requested_project_ids: Sequence[uuid.UUID] | None = None,
+) -> GeneratedReport:
+    """Adds the provenance row of a synchronous run (the caller commits).
+
+    Args:
+        db: Active session.
+        user: The caller.
+        run: The finished run.
+        fmt: The requested format.
+        include_children: Whether child projects were included (project-level run).
+        requested_project_ids: The selection of an organisation-wide run, `None` for "all readable".
+
+    Returns:
+        The new row (status `completed`).
+    """
+    row = GeneratedReport(
+        requested_by=user.id, format=fmt, status=STATUS_COMPLETED,
+        **provenance_fields(run, include_children=include_children, requested_project_ids=requested_project_ids),
+    )
+    db.add(row)
+    return row
+
+
+# --- catalogue -----------------------------------------------------------------------------------------------
+
+
+def slug_for(layout: ReportLayout) -> str:
+    """The catalogue slug of a layout: `custom-<name>-<id prefix>`, unique and unable to clash with a module report."""
+    name = _SLUG.sub("-", layout.name.lower()).strip("-")[:40] or "report"
+    return f"custom-{name}-{str(layout.id)[:8]}"
+
+
+def _entry(
+    db: Session, layout: ReportLayout, *, scope: str, path: str, projects: Sequence[Project] = (),
+    domain_projects: Sequence[Project] = (),
+) -> ReportCatalogueEntryOut:
+    """The catalogue entry of a layout, with its run form (`variables`) built over `domain_projects`' definitions."""
+    version = report_layouts.get_version(db, layout.id, layout.current_version)
+    tree = version.tree if version is not None else {"nodes": []}
+    form = describe_variables(
+        db, tree.get("variables"), [p.id for p in domain_projects][:MAX_FANOUT_PROJECTS], today=effective_today(),
+    )
+    run_scope = tree.get("run_scope", RUN_SCOPE_ANY)
+    return ReportCatalogueEntryOut(
+        module_key=MODULE_KEY, module_name=MODULE_NAME, key=str(layout.id), slug=slug_for(layout), title=layout.name,
+        description=layout.description or "A custom report layout.", scope="project" if scope == "project" else "organization",
+        path=path, formats=available_formats(layout.family, tree),
+        supports_include_children=run_scope == RUN_SCOPE_ONE_AND_CHILDREN or (scope == "project" and run_scope == RUN_SCOPE_ANY),
+        supports_project_filter=False, supports_project_multi_filter=scope != "project" and run_scope == RUN_SCOPE_ANY,
+        run_scope=run_scope,
+        projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects], params=[],
+        variables=[ReportVariableOut.model_validate(v) for v in form],
+        kind="sheet" if layout.family == FAMILY_TABLE else "report", folder=layout.folder,
+        record_types=record_types_of(tree),
+    )
+
+
+def project_entries(db: Session, project: Project) -> list[ReportCatalogueEntryOut]:
+    """The layouts a project's runners can run: its effective set minus the ones it has hidden."""
+    return [
+        _entry(
+            db, s.layout, scope="project", path=f"/api/v1/projects/{project.id}/custom-reports/{s.layout.id}/run",
+            domain_projects=[project],
+        )
+        for s in report_layout_scope.resolve_project_layouts(db, project) if not s.hidden
+    ]
+
+
+def org_entries(db: Session, user: User, organization_id: uuid.UUID) -> list[ReportCatalogueEntryOut]:
+    """The organisation layouts `user` can run organisation-wide, each listing the projects they may select."""
+    organization = db.get(Organization, organization_id)
+    assert organization is not None
+    layouts = report_layout_scope.list_org_layouts(db, organization_id)
+    if not layouts:
+        return []
+    readable = readable_projects(db, user, organization=organization, root_project=None, include_children=False)
+    return [
+        _entry(
+            db, layout, scope="organization", path=f"/api/v1/orgs/{organization_id}/custom-reports/{layout.id}/run",
+            projects=readable, domain_projects=readable,
+        )
+        for layout in layouts
+    ]
+
+
+__all__ = [
+    "ENGINE_VERSION", "MAX_FANOUT_PROJECTS", "MODULE_KEY", "FanOutTooLargeError", "LayoutRun",
+    "NoProjectsToRunError", "ProjectsNotInScopeError", "RunScopeError", "available_formats",
+    "document_for", "render_input_for", "merge_evaluations", "org_entries",
+    "project_entries", "provenance_fields", "record_run", "render_file", "file_stem", "run_params", "result_for",
+    "check_run_scope", "run_organization_layout", "run_project_layout", "slug_for",
+]

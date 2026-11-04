@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { chooseReport, listReports, reportPickerButton } from "../../e2e-workflows/reportPicker";
 import { API_BASE_URL, setUpOrg } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../../reportDownload";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -22,9 +24,6 @@ installCleanupHook();
 
 type Headers = Record<string, string>;
 
-/** The picker prefixes each title with its module name once more than one report source is listed. */
-const reportLabel = (title: string): string => `Stakeholders & Personas: ${title}`;
-
 const REPORTS = [
   "Power/interest grid", "Persona validation", "Need coverage", "Engagement staleness", "Engagement & research yield",
 ];
@@ -36,11 +35,6 @@ async function post<T>(page: Page, url: string, headers: Headers, data: object):
 }
 
 const projectBase = (projectId: string) => `${API_BASE_URL}/api/v1/projects/${projectId}/modules/stakeholders`;
-
-/** The "Report" picker on the project Reports page. */
-function picker(page: Page) {
-  return page.getByRole("combobox", { name: "Report", exact: true });
-}
 
 /** Creates a project Stakeholder rated by level name (Low/Medium/High); either may be left unset. */
 async function stakeholder(
@@ -61,15 +55,14 @@ async function stakeholder(
 test.describe("Stakeholders & Personas: Reports", () => {
   test("the project report picker lists all five reports", async ({ page }) => {
     const { project } = await setUpOrg(page, "RepPick");
-    await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toBeVisible();
-    const options = await picker(page).locator("option").allTextContents();
-    expect(options).toEqual(expect.arrayContaining(REPORTS.map(reportLabel)));
+    await page.goto(`/projects/${project.id}?reports=choose`);
+    await expect(reportPickerButton(page)).toBeVisible();
+    expect(await listReports(page)).toEqual(expect.arrayContaining(REPORTS));
 
-    await picker(page).selectOption({ label: reportLabel("Power/interest grid") });
+    await chooseReport(page, "Power/interest grid");
     await expect(page).toHaveURL(/report=power-interest-grid/);
     await page.reload();
-    await expect(picker(page)).toHaveValue("power-interest-grid");
+    await expect(reportPickerButton(page)).toHaveAttribute("aria-label", "Report: Power/interest grid");
   });
 
   test("S1 places each Stakeholder in its quadrant, links to it and lists the unscored", async ({ page }) => {
@@ -84,7 +77,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await stakeholder(page, adminHeaders, org.id, project.id, names.monitor, "Low", "Low");
     await stakeholder(page, adminHeaders, org.id, project.id, names.unscored, "High", null);
 
-    await page.goto(`/projects/${project.id}/reports?report=power-interest-grid`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=power-interest-grid`);
     const quadrant = (name: string) => page.getByRole("region", { name, exact: true });
     await expect(quadrant("Manage closely").getByRole("link", { name: names.manage })).toBeVisible();
     await expect(quadrant("Keep satisfied").getByText(names.satisfied)).toBeVisible();
@@ -107,7 +100,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await stakeholder(page, adminHeaders, org.id, project.id, outside, "High", "High", { target_cadence: "weekly" });
     await post(page, `${projectBase(project.id)}/stakeholder-groups/${group.id}/members`, adminHeaders, { stakeholder_id: member.id });
 
-    await page.goto(`/projects/${project.id}/reports?report=power-interest-grid`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=power-interest-grid`);
     await expect(page.getByRole("region", { name: "Manage closely" }).getByText(outside)).toBeVisible();
     // The view draws the group controls itself, so the generic form shows no raw id box for them.
     await expect(page.getByLabel("Group", { exact: true })).toHaveCount(1);
@@ -117,7 +110,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     await expect(page.getByText(outside)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Manage closely" }).getByText(inside)).toBeVisible();
 
-    await picker(page).selectOption({ label: reportLabel("Engagement staleness") });
+    await chooseReport(page, "Engagement staleness");
     await expect(page.getByLabel("Group", { exact: true })).toHaveCount(1);
     const stale = page.waitForRequest((r) => r.url().includes("engagement-staleness") && r.url().includes(`group_id=${group.id}`));
     await page.getByLabel("Group", { exact: true }).selectOption({ label: `Team ${suffix}` });
@@ -131,18 +124,18 @@ test.describe("Stakeholders & Personas: Reports", () => {
   test("every Stakeholders & Personas report downloads as PDF and CSV", async ({ page }) => {
     const { org, project, adminHeaders, suffix } = await setUpOrg(page, "RepDownload");
     await stakeholder(page, adminHeaders, org.id, project.id, `Downloader ${suffix}`, "High", "High", { target_cadence: "weekly" });
-    await page.goto(`/projects/${project.id}/reports`);
-    await expect(picker(page)).toBeVisible();
+    await page.goto(`/projects/${project.id}?reports=choose`);
+    await expect(reportPickerButton(page)).toBeVisible();
 
     for (const title of REPORTS) {
       await test.step(`${title}: PDF and CSV`, async () => {
-        await picker(page).selectOption({ label: reportLabel(title) });
-        await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+        await chooseReport(page, title);
+        await expect(reportDownloadButton(page)).toBeVisible();
         for (const kind of ["PDF", "CSV"] as const) {
-          await page.getByRole("button", { name: "Export" }).click();
+          await pickReportFormat(page, kind);
           const [download] = await Promise.all([
             page.waitForEvent("download"),
-            page.getByRole("button", { name: `Download ${kind} report` }).click(),
+            reportDownloadButton(page).click(),
           ]);
           expect(download.suggestedFilename()).toMatch(new RegExp(`\\.${kind.toLowerCase()}$`));
           await expect(page.getByText(`Downloaded ${title} (${kind}).`)).toBeVisible();
@@ -161,7 +154,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     for (let i = 1; i <= 12; i++) {
       await stakeholder(page, adminHeaders, org.id, project.id, `Crowd ${String(i).padStart(2, "0")} ${suffix}`, "High", "High");
     }
-    await page.goto(`/projects/${project.id}/reports?report=power-interest-grid`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=power-interest-grid`);
     const manage = page.getByRole("region", { name: "Manage closely", exact: true });
     await expect(manage.getByRole("listitem")).toHaveCount(10);
     await manage.getByRole("button", { name: "Show all 12 Stakeholders" }).click();

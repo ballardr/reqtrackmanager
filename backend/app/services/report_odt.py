@@ -1,0 +1,774 @@
+"""
+Module: services.report_odt
+
+Renders a neutral `ReportDocument` (`services.report_model`) to an editable OpenDocument Text (ODT) file: the
+ODT counterpart of `report_docx` and `report_pdf`, showing the same blocks.
+
+Editable by design: headings are real heading paragraphs with outline levels (so a table of contents can be
+inserted), tables are real tables with a repeating, accent-shaded header row, lists are real lists, and the footer
+carries a live page-number field. Nothing is an image of text or of a table.
+
+Design decisions:
+- **Written as XML text** (`report_odf`), not through an object library: a report of many thousands of table rows
+  stays proportional to the size of the file instead of costing about 10 KB of objects per row.
+- **Every string passes `report_odf.xml_text` or `xml_attr`**, so record text is only ever element content: a
+  `<script>`, `<text:...>` or `<draw:...>` string is stored as literal text. Colours are checked as six hex digits,
+  lengths are formatted from numbers, and an image's type is sniffed from its bytes. A link is written only for an address
+  `report_model.finalize_links` has checked, as an attribute value; there is no macro, field code or external object, and
+  the one field is the fixed page number.
+- **Equations are pictures** (the same drawing the PDF embeds, with a baseline offset inline), then the author's
+  source when one cannot be drawn. They are not native formula objects: those need an embedded sub-document in
+  StarMath/MathML whose rendering differs between office suites, so a picture is the faithful form (`docs/decisions.md`,
+  "ODT and ODS renderers").
+- Branding, cover page, orientation, tone fills and header text contrast follow `report_docx` and use the same
+  helpers (`text_on`, `readable_on_white`, `TONE_FILL`), so formats cannot drift.
+
+Dependencies: `services.report_odf` (package, escaping), `services.report_model`, `services.report_math`,
+`services.report_svg`, `services.branding`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from app.services.branding import readable_on_white
+from app.services.report_font_parts import embed_in_odt
+from app.services.report_fonts import FontFamily
+from app.services.report_grid_render import odt_grid
+from app.services.report_image_layout import place_cell_pictures, placed_size_cm, svg_block_png
+from app.services.report_math import png_of, typeset
+from app.services.report_model import (
+    MAX_CONTENTS_LEVELS,
+    TONE_FILL,
+    BottomEnd,
+    BottomStart,
+    BulletList,
+    Cell,
+    Contents,
+    DocumentStyles,
+    Equation,
+    Gap,
+    Grid,
+    Heading,
+    Image,
+    ImageCell,
+    Note,
+    NumberedList,
+    PageBreak,
+    PageStyle,
+    PageStyleChange,
+    Paragraph,
+    ReportDocument,
+    Styled,
+    Table,
+    VerticalSpace,
+    finalize_links,
+    text_on,
+    text_runs,
+)
+from app.services.report_odf import (
+    MIME_ODT,
+    ODF_VERSION,
+    XML_DECLARATION,
+    OdfPackage,
+    colour,
+    font_faces,
+    length_cm,
+    namespace_attrs,
+    raster_info,
+    xml_attr,
+    xml_text,
+)
+from app.services.report_odt_running import RunningWriter, first_differs, page_layout, running_styles
+from app.services.report_styles import used_extra_families
+from app.services.report_svg import svg_png
+
+_POINTS_PER_CM = 28.3465
+_PIXELS_PER_CM = 96 / 2.54
+_ZEBRA = "#F5F5F5"
+_NOTE_GREY = "#555555"
+_SLOT_ALIGN = {"left": "start", "centre": "center", "right": "end"}
+_ALL_NS = ("office", "style", "text", "table", "draw", "fo", "xlink", "svg", "dc", "meta")
+
+
+# What a layered picture's position is measured from, in ODF terms (`style:horizontal-rel` and `style:vertical-rel`).
+_ANCHOR_REL = {"paragraph": "paragraph", "margin": "page-content", "page": "page"}
+
+
+def _floating_frame_styles() -> str:
+    """Graphic styles for a picture beside the text (`fr_wrap_left`, `fr_wrap_right`) and for each layer and anchor
+    (`fr_behind_paragraph` ... `fr_front_page`)."""
+    common = 'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"'
+    styles = [
+        f'<style:style style:name="fr_wrap_{side}" style:family="graphic"><style:graphic-properties style:wrap="parallel" '
+        f'style:run-through="foreground" style:horizontal-pos="{side}" style:horizontal-rel="paragraph" style:vertical-pos="top" '
+        f'style:vertical-rel="paragraph-content" fo:margin-left="{"0cm" if side == "left" else "0.3cm"}" '
+        f'fo:margin-right="{"0.3cm" if side == "left" else "0cm"}" {common}/></style:style>'
+        for side in ("left", "right")
+    ]
+    for layer, run_through in (("behind", "background"), ("front", "foreground")):
+        for anchor, rel in _ANCHOR_REL.items():
+            styles.append(
+                f'<style:style style:name="fr_{layer}_{anchor}" style:family="graphic"><style:graphic-properties style:wrap="run-through" '
+                f'style:run-through="{run_through}" style:horizontal-pos="from-left" style:horizontal-rel="{rel}" '
+                f'style:vertical-pos="from-top" style:vertical-rel="{rel}" fo:margin-left="0cm" fo:margin-right="0cm" {common}/></style:style>'
+            )
+    return "".join(styles)
+
+
+def _frame_style_xml() -> str:
+    return _floating_frame_styles() + (
+        '<style:style style:name="fr_page_bottom" style:family="graphic" style:parent-style-name="Frame"><style:graphic-properties style:wrap="none" '
+        'style:horizontal-pos="left" style:horizontal-rel="page-content" style:vertical-pos="bottom" '
+        'style:vertical-rel="page-content" draw:fill="none" draw:stroke="none" fo:background-color="transparent" '
+        'fo:margin-left="0cm" fo:margin-right="0cm" '
+        'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"/></style:style>'
+        '<style:style style:name="fr_block" style:family="graphic"><style:graphic-properties text:anchor-type="as-char" '
+        'style:vertical-pos="top" style:vertical-rel="baseline" style:wrap="none" fo:margin-left="0cm" fo:margin-right="0cm" '
+        'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"/></style:style>'
+        '<style:style style:name="fr_inline" style:family="graphic"><style:graphic-properties text:anchor-type="as-char" '
+        'style:vertical-pos="from-top" style:vertical-rel="baseline" style:wrap="none" fo:margin-left="0cm" '
+        'fo:margin-right="0cm" fo:margin-top="0cm" fo:margin-bottom="0cm" fo:padding="0cm" fo:border="none"/></style:style>'
+    )
+
+
+def _paragraph_style(name: str, *, parent: str | None = "Standard", para: str = "", text: str = "", extra: str = "") -> str:
+    """One paragraph style (`para` and `text` are attribute text for the two property elements)."""
+    parent_attr = f' style:parent-style-name="{parent}"' if parent else ""
+    paragraph = f"<style:paragraph-properties {para}/>" if para else ""
+    run = f"<style:text-properties {text}/>" if text else ""
+    return f'<style:style style:name="{name}" style:family="paragraph"{parent_attr}{extra}>{paragraph}{run}</style:style>'
+
+
+#: A cell may be at most this share of the page's text height, so a row always fits a page.
+_CELL_HEIGHT_SHARE = 0.9
+
+#: The character styles of bold / italic / code runs, by name, as `style:text-properties` attributes.
+#: The size of the body text in points when a layout sets none, which the heading sizes are relative to.
+_BODY_POINTS = 10.0
+
+_SPAN_STYLES: dict[str, str] = {
+    "T_Bold": 'fo:font-weight="bold"',
+    "T_Italic": 'fo:font-style="italic"',
+    "T_BoldItalic": 'fo:font-weight="bold" fo:font-style="italic"',
+    "T_Code": 'fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+    "T_BoldCode": 'fo:font-weight="bold" fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+    "T_ItalicCode": 'fo:font-style="italic" fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+    "Internet_20_link": (
+        'fo:color="#0563c1" style:text-underline-style="solid" style:text-underline-width="auto" style:text-underline-color="font-color"'
+    ),
+    "T_BoldItalicCode": 'fo:font-weight="bold" fo:font-style="italic" fo:font-family="\'Courier New\'" style:font-family-generic="modern"',
+}
+
+
+def _text_style(name: str, properties: str) -> str:
+    """One character style (the style of a `text:span`)."""
+    return f'<style:style style:name="{name}" style:family="text"><style:text-properties {properties}/></style:style>'
+
+
+def _span_style(run: Styled) -> str:
+    """The name of the character style for a run's combination of bold, italic and code."""
+    return "T_" + ("Bold" if run.bold else "") + ("Italic" if run.italic else "") + ("Code" if run.code else "")
+
+
+def _heading_text(styles: DocumentStyles, size: float | None = None) -> str:
+    """The `style:text-properties` attributes of a heading style: its weight, and the document's heading font, slant and colour.
+
+    Args:
+        styles: The layout's document styles.
+        size: A font size in points to add (the Title; the heading levels carry their own).
+    """
+    props = f'fo:font-size="{size:g}pt" ' if size is not None else ""
+    props += f'fo:font-weight="{"normal" if styles.heading_bold is False else "bold"}"'
+    if styles.text_font:
+        props += f" style:font-name={xml_attr(styles.text_font.word_name)}"
+    if styles.heading_italic:
+        props += ' fo:font-style="italic"'
+    if styles.heading_colour:
+        props += f' fo:color="{colour(styles.heading_colour)}"'
+    return props
+
+
+def _named_styles(styles: DocumentStyles) -> str:
+    """The `office:styles` content that does not depend on the page styles: default text, headings, notes, the list.
+
+    Args:
+        styles: The layout's document styles; headings scale with the body size (10 pt unless set).
+    """
+    scale = (styles.body_size or _BODY_POINTS) / _BODY_POINTS
+    body_font = xml_attr(styles.body_font.word_name) if styles.body_font else '"Arial"'
+    body_size = f"{styles.body_size or _BODY_POINTS:g}pt"
+    sizes = {1: 16, 2: 14, 3: 12, 4: 11}
+    headings = "".join(
+        _paragraph_style(
+            f"Heading_20_{level}", parent="Heading", extra=f' style:display-name="Heading {level}" style:default-outline-level="{level}"',
+            text=f'fo:font-size="{size * scale:g}pt"',
+        )
+        for level, size in sizes.items()
+    )
+    return (
+        # LibreOffice sizes a text frame holding a table only when its style descends from its own "Frame" style.
+        '<style:style style:name="Frame" style:family="graphic"><style:graphic-properties text:anchor-type="paragraph" '
+        'svg:x="0cm" svg:y="0cm" style:wrap="parallel" style:number-wrapped-paragraphs="no-limit" style:wrap-contour="false" '
+        'style:vertical-pos="top" style:vertical-rel="paragraph-content" style:horizontal-pos="center" '
+        'style:horizontal-rel="paragraph-content"/></style:style>'
+        '<style:default-style style:family="paragraph"><style:paragraph-properties fo:orphans="2" fo:widows="2"/>'
+        '<style:text-properties style:font-name=' + body_font + ' fo:font-size="' + body_size + '"/></style:default-style>'
+        + _paragraph_style("Standard", parent=None, extra=' style:class="text"', para='fo:margin-bottom="0.15cm"')
+        + _paragraph_style(
+            "Title", extra=' style:next-style-name="Standard"', para='fo:margin-top="0.2cm" fo:margin-bottom="0.4cm"',
+            text=_heading_text(styles, 20 * scale),
+        )
+        + _paragraph_style(
+            "Heading", extra=' style:next-style-name="Standard" style:class="text"',
+            para='fo:margin-top="0.4cm" fo:margin-bottom="0.2cm" fo:keep-with-next="always"', text=_heading_text(styles),
+        )
+        + headings
+        + _paragraph_style(
+            "Contents_20_Heading", parent="Heading", extra=' style:display-name="Contents Heading" style:next-style-name="Standard"',
+            text=f'fo:font-size="{16 * scale:g}pt"',
+        )
+        + "".join(
+            _paragraph_style(
+                f"Contents_20_{level}", extra=f' style:display-name="Contents {level}"',
+                para=f'fo:margin-left="{0.6 * (level - 1):g}cm" fo:margin-top="{0.1 if level == 1 else 0}cm" fo:margin-bottom="0.05cm"',
+                text='fo:font-weight="bold"' if level == 1 else "",
+            )
+            for level in range(1, MAX_CONTENTS_LEVELS + 1)
+        )
+        + _paragraph_style("Note", text=f'fo:font-size="8.5pt" fo:font-style="italic" fo:color="{_NOTE_GREY}"')
+        + _paragraph_style("Footer", para='fo:text-align="center" fo:margin-bottom="0cm"', text='fo:font-size="8pt"')
+        + "".join(
+            _paragraph_style(f"Band_{slot}", para=f'fo:text-align="{align}" fo:margin-top="0cm" fo:margin-bottom="0cm"', text='fo:font-size="8pt"')
+            for slot, align in _SLOT_ALIGN.items()
+        )
+        + _paragraph_style("List_20_Bullet", extra=' style:display-name="List Bullet"', para='fo:margin-bottom="0.05cm"')
+        + _paragraph_style("List_20_Number", extra=' style:display-name="List Number"', para='fo:margin-bottom="0.05cm"')
+        + _paragraph_style("Display_20_Equation", para='fo:text-align="center"')
+        + "".join(
+            _paragraph_style(f"P_Image_{align}", para=f'fo:text-align="{align}" fo:keep-with-next="always" fo:margin-bottom="0cm"')
+            + _paragraph_style(f"P_Caption_{align}", para=f'fo:text-align="{align}"', text='fo:font-size="9pt" fo:color="#444444"')
+            + _paragraph_style(f"P_ImageEnd_{align}", para=f'fo:text-align="{align}"')
+            + _paragraph_style(
+                f"P_CaptionTop_{align}", para=f'fo:text-align="{align}" fo:keep-with-next="always"',
+                text='fo:font-size="9pt" fo:color="#444444"',
+            )
+            for align in ("left", "center", "right")
+        )
+        + "".join(_text_style(name, props) for name, props in _SPAN_STYLES.items())
+        + '<text:list-style style:name="L_Number"><text:list-level-style-number text:level="1" style:num-suffix="." style:num-format="1">'
+        '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
+        '<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.9cm" '
+        'fo:text-indent="-0.6cm" fo:margin-left="0.9cm"/></style:list-level-properties></text:list-level-style-number></text:list-style>'
+        + '<text:list-style style:name="L_Bullet"><text:list-level-style-bullet text:level="1" text:bullet-char="•">'
+        '<style:list-level-properties text:list-level-position-and-space-mode="label-alignment">'
+        '<style:list-level-label-alignment text:label-followed-by="listtab" text:list-tab-stop-position="0.9cm" '
+        'fo:text-indent="-0.5cm" fo:margin-left="0.9cm"/></style:list-level-properties></text:list-level-style-bullet></text:list-style>'
+    )
+
+
+def _page_layout_xml(index: int, style: PageStyle) -> str:
+    """One `style:page-layout` (`PL<index>`) of a plain report: the style's paper, orientation and margins, and a small footer."""
+    return page_layout(f"PL{index}", style, bands=False)
+
+
+def _master_name(index: int) -> str:
+    """The master page of style number `index`: the document's own is `Standard`."""
+    return "Standard" if index == 0 else f"Style{index}"
+
+
+def _styles_xml(document: ReportDocument, styles: list[PageStyle], package: OdfPackage) -> str:
+    """`styles.xml`: fonts, named styles, a page layout and master page per page style, and the cover's master page.
+
+    A plain report's master pages carry the branding's footer text and the page number. A report with running headers and
+    footers (a layout's) gets each style's own, a continuation master page for the return to the document's style, and
+    the cover page's layout without any.
+    """
+    running = any(style.header is not None or style.footer is not None for style in styles)
+    if not running:
+        branding = document.branding
+        footer = f"{xml_text(branding.footer_text)}  ·  Page " if branding and branding.footer_text else "Page "
+        footer_xml = (
+            f'<style:footer><text:p text:style-name="Footer">{footer}'
+            '<text:page-number text:select-page="current">1</text:page-number></text:p></style:footer>'
+        )
+        layouts = "".join(_page_layout_xml(i, style) for i, style in enumerate(styles))
+        masters = "".join(
+            f'<style:master-page style:name="{_master_name(i)}" style:page-layout-name="PL{i}">{footer_xml}</style:master-page>'
+            for i in range(len(styles))
+        )
+        cover, automatic, families = '<style:master-page style:name="Cover" style:page-layout-name="PL0"/>', "", []
+    else:
+        writer = RunningWriter(package)
+        has_cover = bool(document.branding and document.branding.include_cover_page)
+        layouts = "".join(page_layout(f"PL{i}", style, bands=True) for i, style in enumerate(styles))
+        layouts += page_layout("PLC", styles[0], bands=False)
+        # The cover page is the first page of the document, so the body's first page is an ordinary one after a cover.
+        masters = "".join(
+            writer.master_page(_master_name(i), f"PL{i}", i, style, first_differs=first_differs(style) and not (i == 0 and has_cover))
+            for i, style in enumerate(styles)
+        ) + writer.master_page("Continue", "PL0", 0, styles[0], first_differs=False)
+        cover = '<style:master-page style:name="Cover" style:page-layout-name="PLC"/>'
+        automatic = _frame_style_xml() + "".join(running_styles(i, style) for i, style in enumerate(styles)) + "".join(writer.styles)
+        families = writer.families
+    return (
+        f'{XML_DECLARATION}<office:document-styles {namespace_attrs(*_ALL_NS)} office:version="{ODF_VERSION}">'
+        f"{font_faces([*document.styles.families, *families])}"
+        f"<office:styles>{_named_styles(document.styles)}</office:styles>"
+        f"<office:automatic-styles>{layouts}{automatic}</office:automatic-styles>"
+        f"<office:master-styles>{masters}{cover}</office:master-styles>"
+        "</office:document-styles>"
+    )
+
+
+class _Body:
+    """Builds `content.xml` for one document: body chunks, the automatic styles they need, and the pictures."""
+
+    def __init__(self, document: ReportDocument, package: OdfPackage, styles: list[PageStyle]) -> None:
+        self.document = document
+        self.package = package
+        self.page_styles = styles
+        self.usable_cm = styles[0].usable_width_cm
+        self.usable_height_cm = styles[0].usable_height_cm
+        self.space_styles: set[str] = set()
+        self.bottom_from = 0  # where the chunks stood when the open page-bottom run began
+        branding = document.branding
+        self.accent = colour(branding.accent_color_hex if branding else None)
+        self.chunks: list[str] = []
+        self.styles: list[str] = []
+        self._frames = 0
+        self._tables = 0
+        self._grids = 0
+        self._own_styles: dict[tuple, str] = {}
+        self._own_families: list[FontFamily] = []
+        self._static_styles()
+
+    # --- styles ---------------------------------------------------------------------------------------------
+
+    def _static_styles(self) -> None:
+        """The automatic styles every document carries: frames, the page break, and the table cell and text styles."""
+        self.styles.append(_frame_style_xml())
+        self.styles.append(_paragraph_style(
+            "P_Float", para='fo:margin-top="0cm" fo:margin-bottom="0cm" fo:keep-with-next="always" fo:line-height="0.04cm"',
+            text='fo:font-size="1pt"',
+        ))
+        self.styles.append(_paragraph_style("P_Break", para='fo:break-after="page" fo:margin-bottom="0cm"'))
+        self.styles.append(_paragraph_style("P_AfterCover", extra=' style:master-page-name="Standard"', para='fo:margin-bottom="0cm"'))
+        self.styles.append(_paragraph_style("P_Continue", extra=' style:master-page-name="Continue"', para='fo:margin-bottom="0cm"'))
+        for index in range(1, len(self.page_styles)):
+            self.styles.append(
+                _paragraph_style(f"P_Style{index}", extra=f' style:master-page-name="{_master_name(index)}"', para='fo:margin-bottom="0cm"'),
+            )
+        head_fill, head_text = self.document.styles.table_head_colours(self.accent)
+        header_text = f"#{head_text}"
+        border = 'fo:border="0.5pt solid #999999" fo:padding="0.08cm"'
+
+        def cell(name: str, fill: str | None) -> str:
+            background = f' fo:background-color="{fill}"' if fill else ""
+            return f'<style:style style:name="{name}" style:family="table-cell"><style:table-cell-properties {border}{background}/></style:style>'
+
+        self.styles.append(cell("C_hdr", f"#{head_fill}"))
+        self.styles.append(cell("C_body", None))
+        self.styles.append(cell("C_zebra", _ZEBRA))
+        for tone, fill in TONE_FILL.items():
+            self.styles.append(cell(f"C_{tone}", f"#{fill}"))
+        for suffix, size in (("", 8), ("_c", 7.5)):
+            para = 'fo:margin-top="0cm" fo:margin-bottom="0cm"'
+            self.styles.append(_paragraph_style(f"P_cell{suffix}", para=para, text=f'fo:font-size="{size}pt"'))
+            bold = f'fo:font-size="{size}pt" fo:font-weight="bold" fo:color="{header_text}"'
+            self.styles.append(_paragraph_style(f"P_hdr{suffix}", para=para, text=bold))
+            for tone, fill in TONE_FILL.items():
+                self.styles.append(_paragraph_style(f"P_{tone}{suffix}", para=para, text=f'fo:font-size="{size}pt" fo:color="#{text_on(fill)}"'))
+
+    # --- pictures --------------------------------------------------------------------------------------------
+
+    def _frame(self, data: bytes, width_cm: float, height_cm: float, *, inline_offset_cm: float | None = None, alt: str = "") -> str:
+        """A `draw:frame` anchored in the text holding the picture `data`, or `""` when `data` is not a supported raster."""
+        info = raster_info(data)
+        if info is None:
+            return ""
+        media_type, extension, _, _ = info
+        path = self.package.add_picture(data, media_type, extension)
+        self._frames += 1
+        style = "fr_block" if inline_offset_cm is None else "fr_inline"
+        offset = "" if inline_offset_cm is None else f' svg:y="{length_cm(inline_offset_cm)}"'
+        title = f"<svg:title>{xml_text(alt)}</svg:title>" if alt else ""
+        return (
+            f'<draw:frame draw:style-name="{style}" draw:name="Picture{self._frames}" text:anchor-type="as-char"{offset} '
+            f'svg:width="{length_cm(width_cm)}" svg:height="{length_cm(height_cm)}">'
+            f'<draw:image xlink:href="{path}" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>{title}</draw:frame>'
+        )
+
+    def _picture(self, data: bytes, *, fixed_width_cm: float | None = None, alt: str = "") -> str:
+        """A picture, shrunk to the usable width (or `fixed_width_cm` wide); `""` when `data` cannot be embedded."""
+        info = raster_info(data)
+        if info is None:
+            return ""
+        _, _, width_px, height_px = info
+        width = fixed_width_cm if fixed_width_cm else width_px / _PIXELS_PER_CM
+        height = width * height_px / width_px
+        if width > self.usable_cm:
+            width, height = self.usable_cm, self.usable_cm * height_px / width_px
+        return self._frame(data, width, height, alt=alt)
+
+    def _floating_block(self, block: Image, data: bytes, size: tuple[float, float]) -> None:
+        """A picture beside the text, or behind or in front of it: a frame anchored to a paragraph of its own.
+
+        The paragraph is one point tall and kept with the next; the text that follows wraps around, over or under the frame.
+        """
+        info = raster_info(data)
+        if info is None:
+            return
+        path = self.package.add_picture(data, info[0], info[1])
+        self._frames += 1
+        if block.placement == "wrap":
+            style, position = f"fr_wrap_{'left' if block.align == 'left' else 'right'}", ""
+        else:
+            style = f"fr_{block.placement}_{block.anchor if block.anchor in _ANCHOR_REL else 'paragraph'}"
+            position = f' svg:x="{length_cm(block.offset_x_cm)}" svg:y="{length_cm(block.offset_y_cm)}"'
+        title = f"<svg:title>{xml_text(block.alt)}</svg:title>" if block.alt and not block.decorative else ""
+        self.chunks.append(
+            f'<text:p text:style-name="P_Float"><draw:frame draw:style-name="{style}" draw:name="Picture{self._frames}" '
+            f'text:anchor-type="paragraph"{position} svg:width="{length_cm(size[0])}" svg:height="{length_cm(size[1])}" '
+            f'draw:z-index="{self._frames}"><draw:image xlink:href="{path}" xlink:type="simple" xlink:show="embed" '
+            f'xlink:actuate="onLoad"/>{title}</draw:frame></text:p>'
+        )
+
+    def _anchor_to_bottom(self) -> None:
+        """Moves the chunks of the open page-bottom run into a text frame fixed to the foot of the page's text area.
+
+        The frame is anchored to a paragraph of its own that ends the page, so the content that follows starts on a new
+        page, as in the PDF. Paragraphs and tables both sit inside a text box.
+        """
+        run = self.chunks[self.bottom_from:]
+        del self.chunks[self.bottom_from:]
+        while run and run[-1] == '<text:p text:style-name="Standard"/>':  # the spacer a table leaves would be blank space under the run
+            run.pop()
+        content = "".join(run)
+        if not content:
+            return
+        self._frames += 1
+        self.chunks.append(
+            f'<text:p text:style-name="P_Break"><draw:frame draw:style-name="fr_page_bottom" draw:name="PageBottom{self._frames}" '
+            f'text:anchor-type="paragraph" svg:width="{length_cm(self.usable_cm)}" '
+            f'draw:z-index="{self._frames}"><draw:text-box fo:min-height="0.1cm">{content}<text:p text:style-name="P_Float"/>'
+            "</draw:text-box></draw:frame></text:p>"
+        )
+
+    def _image_block(self, block: Image, data: bytes) -> None:
+        """An image block: the picture at its placed size and alignment, its alternative text and its caption.
+
+        A picture with a wrap or layer placement is a floating frame instead.
+        """
+        info = raster_info(data)
+        size = placed_size_cm(block, self.usable_cm)
+        if info is None or size is None:
+            return
+        if block.floats:
+            self._floating_block(block, data, size)
+            return
+        frame = self._frame(data, size[0], size[1], alt="" if block.decorative else block.alt)
+        if not frame:
+            return
+        align = block.align if block.align in ("left", "center", "right") else "center"
+        caption_style = f"P_CaptionTop_{align}" if block.caption_above else f"P_Caption_{align}"
+        caption = f'<text:p text:style-name="{caption_style}">{xml_text(block.caption)}</text:p>' if block.caption else ""
+        picture_style = f"P_Image_{align}" if block.caption and not block.caption_above else f"P_ImageEnd_{align}"
+        picture = f'<text:p text:style-name="{picture_style}">{frame}</text:p>'
+        self.chunks.append(caption + picture if block.caption_above else picture + caption)
+
+    def _equation_frame(self, equation: Equation) -> str:
+        """The picture of an equation (on the baseline when inline), or `""` when it cannot be drawn."""
+        drawn = typeset(equation.tex, equation.display)
+        png = png_of(drawn) if drawn is not None else None
+        if drawn is None or png is None:
+            return ""
+        width, height = drawn.width / _POINTS_PER_CM, drawn.height / _POINTS_PER_CM
+        offset = None if equation.display else (drawn.descent - drawn.height) / _POINTS_PER_CM
+        return self._frame(png, width, height, inline_offset_cm=offset, alt=equation.tex)
+
+    # --- text ------------------------------------------------------------------------------------------------
+
+    def _inline(self, value: str) -> str:
+        """Paragraph content for model text: escaped text, a character-styled span per bold / italic / code run, and a
+        picture (else the source) per inline equation."""
+        return "".join(
+            xml_text(part) if isinstance(part, str)
+            else self._styled(part) if isinstance(part, Styled)
+            else (self._equation_frame(part) or xml_text(part.text))
+            for part in text_runs(value)
+        )
+
+    def _styled(self, run: Styled) -> str:
+        """A bold / italic / code / link run: a character-styled span, inside a link when it has one (an address was
+        checked by `finalize_links`; it is an attribute value, escaped, never markup)."""
+        inner = xml_text(run.text)
+        if run.bold or run.italic or run.code:
+            inner = f'<text:span text:style-name="{_span_style(run)}">{inner}</text:span>'
+        if run.href:
+            inner = f'<text:a xlink:type="simple" xlink:href={xml_attr(run.href)} text:style-name="Internet_20_link">{inner}</text:a>'
+        return inner
+
+    def _own_style(self, parent: str, font: FontFamily | None, size: float | None, tint: str | None = None) -> str:
+        """The paragraph style for a block that sets its own font, size or colour: `parent` with those over it.
+
+        One automatic style is written for each distinct combination; the block's font is declared with the others.
+        Returns `parent` itself when the block sets nothing.
+        """
+        if font is None and size is None and tint is None:
+            return parent
+        key = (parent, font.key if font else None, size, tint)
+        if key not in self._own_styles:
+            props = ""
+            if font is not None:
+                props += f" style:font-name={xml_attr(font.word_name)}"
+                if font not in self._own_families:
+                    self._own_families.append(font)
+            if size is not None:
+                props += f' fo:font-size="{size:g}pt"'
+            if tint is not None:
+                props += f' fo:color="{colour(tint)}"'
+            name = f"P_Own{len(self._own_styles) + 1}"
+            self._own_styles[key] = name
+            self.styles.append(_paragraph_style(name, parent=parent, text=props.strip()))
+        return self._own_styles[key]
+
+    def _paragraph(self, style: str, content: str) -> None:
+        self.chunks.append(f'<text:p text:style-name="{style}">{content}</text:p>')
+
+    # --- blocks ----------------------------------------------------------------------------------------------
+
+    def cover(self) -> None:
+        """The opening block: a branded cover page (logo, accent title, then the page the body starts on) or a title line;
+        nothing when the document prints no title of its own."""
+        if not self.document.show_title:
+            return
+        title = self.document.title
+        branding = self.document.branding
+        if branding and branding.include_cover_page:
+            title_colour = colour(readable_on_white(self.accent))
+            self.styles.append(_paragraph_style("P_CoverStart", extra=' style:master-page-name="Cover"', para='fo:margin-top="5cm"'))
+            self.styles.append(_paragraph_style("P_CoverTitle", parent="Title", text=f'fo:font-size="28pt" fo:color="{title_colour}"'))
+            logo = self._picture(branding.logo_bytes, fixed_width_cm=4) if branding.logo_bytes else ""
+            self._paragraph("P_CoverStart", logo)
+            self._paragraph("P_CoverTitle", xml_text(title))
+            self.chunks.append('<text:p text:style-name="P_AfterCover"/>')
+        else:
+            self._paragraph("Title", xml_text(title))
+
+    def _cell_pictures(self, cell: ImageCell, column_cm: float, paragraph_style: str) -> str:
+        """The paragraphs of an image cell: one per line, the pictures of a line as frames anchored in it.
+
+        A picture that cannot be embedded is skipped; a cell with none is an empty paragraph.
+        """
+        placed = place_cell_pictures(cell, column_cm, self.usable_height_cm * _CELL_HEIGHT_SHARE)
+        lines: dict[int, list[str]] = {}
+        for item in placed:
+            data = item.image.data
+            if item.image.svg is not None:
+                try:
+                    data = svg_png(item.image.svg)  # a vector figure is shown as a picture, as in Word
+                except Exception:  # noqa: BLE001 - a figure that cannot be drawn must never break report generation
+                    data = b""
+            frame = self._frame(data, item.width_cm, item.height_cm, alt=item.image.alt) if data else ""
+            if frame:
+                lines.setdefault(item.line, []).append(frame)
+        if not lines:
+            return f'<text:p text:style-name="{paragraph_style}"/>'
+        return "".join(f'<text:p text:style-name="{paragraph_style}">{" ".join(frames)}</text:p>' for _, frames in sorted(lines.items()))
+
+    def table(self, block: Table) -> None:
+        """A real table: shaded, repeating header row, optional zebra rows and tones."""
+        if not block.columns:
+            return
+        self._tables += 1
+        name = f"Tbl{self._tables}"
+        count = len(block.columns)
+        widths = block.relative_widths(self.usable_cm)
+        scale = self.usable_cm / sum(widths)
+        suffix = "_c" if block.compact else ""
+        self.styles.append(
+            f'<style:style style:name="{name}" style:family="table"><style:table-properties style:width="{length_cm(self.usable_cm)}" '
+            'table:align="margins" fo:margin-bottom="0.2cm"/></style:style>'
+        )
+        columns = []
+        for index, width in enumerate(widths[:count]):
+            self.styles.append(
+                f'<style:style style:name="{name}_{index}" style:family="table-column">'
+                f'<style:table-column-properties style:column-width="{length_cm(width * scale)}"/></style:style>'
+            )
+            columns.append(f'<table:table-column table:style-name="{name}_{index}"/>')
+
+        def row(values: Sequence[Cell], cell_style, paragraph_style) -> str:
+            cells = []
+            for column, value in enumerate(values):
+                if isinstance(value, ImageCell):
+                    content = self._cell_pictures(value, widths[column] * scale, paragraph_style(column))
+                else:
+                    content = f'<text:p text:style-name="{paragraph_style(column)}">{self._inline(value)}</text:p>'
+                cells.append(f'<table:table-cell table:style-name="{cell_style(column)}">{content}</table:table-cell>')
+            return f"<table:table-row>{''.join(cells)}</table:table-row>"
+
+        self.chunks.append(f'<table:table table:name="{name}" table:style-name="{name}">{"".join(columns)}')
+        header = row(block.columns, lambda c: "C_hdr", lambda c: f"P_hdr{suffix}")
+        self.chunks.append(f"<table:table-header-rows>{header}</table:table-header-rows>" if block.repeat_header else header)
+        for index, values in enumerate(block.rows):
+            padded = [*values, *([""] * count)][:count]
+            zebra = "C_zebra" if block.compact and index % 2 else "C_body"
+
+            def cell_style(column: int, index: int = index, zebra: str = zebra) -> str:
+                tone = block.tone_at(index, column)
+                return f"C_{tone}" if tone else zebra
+
+            def paragraph_style(column: int, index: int = index) -> str:
+                tone = block.tone_at(index, column)
+                return f"P_{tone}{suffix}" if tone else f"P_cell{suffix}"
+
+            self.chunks.append(row(padded, cell_style, paragraph_style))
+        self.chunks.append("</table:table>")
+        self.chunks.append('<text:p text:style-name="Standard"/>')  # keeps two consecutive tables from merging
+
+    def block(self, block) -> None:
+        """Adds one neutral block."""
+        if isinstance(block, Heading):
+            level = min(max(block.level, 1), 4)
+            mark = f"<text:bookmark text:name={xml_attr(block.anchor)}/>" if block.anchor else ""
+            style = self._own_style(f"Heading_20_{level}", block.font, block.size, block.colour)
+            self.chunks.append(
+                f'<text:h text:style-name="{style}" text:outline-level="{level}">{mark}{self._inline(block.text)}</text:h>',
+            )
+        elif isinstance(block, Paragraph):
+            self._paragraph(self._own_style("Standard", block.font, block.size), self._inline(block.text))
+        elif isinstance(block, Equation):
+            self._paragraph("Display_20_Equation", self._equation_frame(block) or xml_text(block.text))
+        elif isinstance(block, Note):
+            self._paragraph("Note", xml_text(block.text))
+        elif isinstance(block, BulletList):
+            style = self._own_style("List_20_Bullet", block.font, block.size)
+            items = "".join(
+                f'<text:list-item><text:p text:style-name="{style}">{self._inline(item)}</text:p></text:list-item>' for item in block.items
+            )
+            if items:
+                self.chunks.append(f'<text:list text:style-name="L_Bullet">{items}</text:list>')
+        elif isinstance(block, NumberedList):
+            style = self._own_style("List_20_Number", block.font, block.size)
+            items = "".join(
+                f'<text:list-item><text:p text:style-name="{style}">{self._inline(item)}</text:p></text:list-item>' for item in block.items
+            )
+            if items:
+                self.chunks.append(f'<text:list text:style-name="L_Number">{items}</text:list>')
+        elif isinstance(block, Image):
+            data = block.data
+            if block.svg is not None:
+                try:
+                    data = svg_block_png(block, self.usable_cm)  # a vector figure is shown as a picture, as in Word
+                except Exception:  # noqa: BLE001 - a figure that cannot be drawn must never break report generation
+                    data = b""
+            self._image_block(block, data)
+        elif isinstance(block, Table):
+            self.table(block)
+        elif isinstance(block, Grid):
+            self._grids += 1
+            self.chunks.append(odt_grid(block, f"Grid{self._grids}", self.usable_cm, self._inline, self.styles, self._own_families))
+        elif isinstance(block, BottomStart):
+            self.bottom_from = len(self.chunks)
+        elif isinstance(block, BottomEnd):
+            self._anchor_to_bottom()
+        elif isinstance(block, VerticalSpace):
+            # An empty paragraph with a fixed line height, one automatic style per distinct height.
+            height = round(min(block.cm, self.usable_height_cm * 0.98), 3)
+            name = f"P_Space{str(height).replace('.', '_')}"
+            if name not in self.space_styles:
+                self.space_styles.add(name)
+                self.styles.append(_paragraph_style(
+                    name, para=f'fo:margin-top="0cm" fo:margin-bottom="0cm" fo:line-height="{height}cm"', text='fo:font-size="1pt"',
+                ))
+            self.chunks.append(f'<text:p text:style-name="{name}"/>')
+        elif isinstance(block, PageBreak):
+            self.chunks.append('<text:p text:style-name="P_Break"/>')
+        elif isinstance(block, Contents):
+            self._contents(block)
+        elif isinstance(block, PageStyleChange):
+            # An empty paragraph that names a master page starts a new page in that page's layout.
+            index = self.page_styles.index(block.style)
+            style_name = ("P_AfterCover" if block.section_start else "P_Continue") if index == 0 else f"P_Style{index}"
+            self.chunks.append(f'<text:p text:style-name="{style_name}"/>')
+            self.usable_cm = block.style.usable_width_cm
+            self.usable_height_cm = block.style.usable_height_cm
+        elif isinstance(block, Gap):
+            return  # a PDF layout hint; paragraph styles carry the spacing
+
+    def _contents(self, block: Contents) -> None:
+        """A table of contents: an index whose entries are written in and linked to the headings' bookmarks.
+
+        No page number is written (one worked out here would not match the word processor's own layout); the entry template
+        has the right tab and page number, so Tools, Update adds them. A contents with no entries writes nothing.
+        """
+        if not block.entries:
+            return
+        title = block.title if block.title.strip() else ""
+        entry_templates = "".join(
+            f'<text:table-of-content-entry-template text:outline-level="{level}" text:style-name="Contents_20_{level}">'
+            '<text:index-entry-link-start text:style-name="Internet_20_link"/><text:index-entry-text/>'
+            '<text:index-entry-tab-stop style:type="right" style:leader-char="."/><text:index-entry-page-number/>'
+            "<text:index-entry-link-end/></text:table-of-content-entry-template>"
+            for level in range(1, block.levels + 1)
+        )
+        source_title = (
+            f'<text:index-title-template text:style-name="Contents_20_Heading">{xml_text(title)}</text:index-title-template>' if title else ""
+        )
+        body_title = (
+            f'<text:index-title text:name="Contents1_Head"><text:p text:style-name="Contents_20_Heading">{xml_text(title)}</text:p>'
+            "</text:index-title>" if title else ""
+        )
+        entries = "".join(
+            f'<text:p text:style-name="Contents_20_{min(max(entry.level, 1), MAX_CONTENTS_LEVELS)}">'
+            f'<text:a xlink:type="simple" xlink:href={xml_attr("#" + entry.anchor)} text:style-name="Internet_20_link">'
+            f"{xml_text(entry.text)}</text:a></text:p>"
+            for entry in block.entries
+        )
+        self.chunks.append(
+            '<text:table-of-content text:protected="false" text:name="Contents1">'
+            f'<text:table-of-content-source text:outline-level="{block.levels}" text:use-index-marks="false">'
+            f"{source_title}{entry_templates}</text:table-of-content-source>"
+            f"<text:index-body>{body_title}{entries}</text:index-body></text:table-of-content>"
+        )
+        if block.new_page:
+            self.chunks.append('<text:p text:style-name="P_Break"/>')
+
+    def content(self):
+        """`content.xml` as text chunks: the prolog and automatic styles (known only now), then the body."""
+        yield (
+            f'{XML_DECLARATION}<office:document-content {namespace_attrs(*_ALL_NS)} office:version="{ODF_VERSION}">'
+            f"{font_faces([*self.document.styles.families, *self._own_families])}"
+            f'<office:automatic-styles>{"".join(self.styles)}</office:automatic-styles><office:body><office:text>'
+        )
+        yield from self.chunks
+        yield "</office:text></office:body></office:document-content>"
+
+
+def render_odt_document(document: ReportDocument) -> bytes:
+    """Renders `document` as an ODT file.
+
+    Args:
+        document: The neutral report.
+
+    Returns:
+        ODT bytes.
+    """
+    document = finalize_links(document)
+    styles = [document.style]
+    for block in document.blocks:
+        if isinstance(block, PageStyleChange) and block.style not in styles:
+            styles.append(block.style)
+    package = OdfPackage(MIME_ODT, document.title)
+    body = _Body(document, package, styles)
+    body.cover()
+    for block in document.blocks:
+        body.block(block)
+    package.add("content.xml", "text/xml", body.content())
+    package.add("styles.xml", "text/xml", _styles_xml(document, styles, package))
+    return embed_in_odt(package.finish(), used_extra_families(document), embed=document.styles.embed_fonts)
+
+
+__all__ = ["render_odt_document"]

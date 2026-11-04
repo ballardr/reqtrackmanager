@@ -43,6 +43,7 @@ import {
 } from "../utils/recordImport";
 import { RequiredMark } from "./FieldHelp";
 import { FormActions } from "./FormActions";
+import { ResultActions } from "./ResultActions";
 import { InlineSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 
@@ -219,8 +220,10 @@ export function CsvImportWizard({
   const errors = (step === "done" ? result : preview)?.rows.filter((r) => r.action === "error") ?? [];
   const writes = (preview?.created ?? 0) + (preview?.updated ?? 0);
 
+  // A step replaces the previous step's fields, so measured form values would always differ; the file and its
+  // column mapping are re-derived on reopen, so there is no typed work to protect (dirty={false}).
   return (
-    <Modal title={title} onClose={onClose} size="lg">
+    <Modal title={title} onClose={onClose} size="lg" dirty={false}>
       <div className="stack">
         {readError && <p style={{ color: "var(--color-danger)", margin: 0 }}>{readError}</p>}
 
@@ -318,10 +321,9 @@ export function CsvImportWizard({
               ))}
             </ul>
             <p className="text-muted" style={{ margin: 0 }}>{strings.recordTables.errorFileHint}</p>
-            <FormActions
-              onCancel={onClose} cancelLabel={strings.common.close}
-              onSave={downloadErrors} saveLabel={strings.recordTables.downloadErrors}
-            />
+            <ResultActions onOk={onClose}>
+              <button className="btn" onClick={downloadErrors}>{strings.recordTables.downloadErrors}</button>
+            </ResultActions>
           </>
         )}
       </div>

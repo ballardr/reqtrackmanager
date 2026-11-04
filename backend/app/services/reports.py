@@ -1,20 +1,19 @@
 """
 Module: services.reports
 
-Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with support
-for custom Markdown content prepended/appended to the report (R-G-01,
-R-G-02). This module holds only what is specific to requirement reports:
+Generates requirement reports as PDF (R-F-01), DOCX and CSV (R-F-02), with the
+organisation's shared resource files appended as Markdown sections (R-G-04).
+This module holds only what is specific to requirement reports:
 `ReportRequirementRow`, grouping into component chapters and category
-sections, the four-column table and the terminology-aware CSV. The
-intro/chapters/appendices a report carries are resolved by
-`services.report_content`. Everything document-level (branding,
+sections, the five-column table and the terminology-aware CSV. An introduction,
+chapters or appendices are written in a report layout (the "Requirements Report"
+starter), not here. Everything document-level (branding,
 cover page, footer, the Markdown renderer, image resolution, markup escaping)
 lives in `services.report_document`, shared with every module's reports. The
 report is built once as a neutral `ReportDocument` (`services.report_model`) and
 rendered by `report_pdf` or `report_docx`, so the two formats cannot drift.
 
-Image support (`![alt](attachment:<file id>)`, inserted via the report
-content editor's attachment panel) is deliberately resolved from a
+Image support (`![alt](attachment:<file id>)` in a resource file) is deliberately resolved from a
 pre-fetched `images: dict[str, bytes]` mapping passed in by the caller —
 see `report_document.resolve_report_images` for the tenant-isolation check
 that runs before any image reaches the PDF.
@@ -27,18 +26,21 @@ import io
 from dataclasses import dataclass
 from itertools import groupby
 
+from app.models.report_layout import FAMILY_TABLE
 from app.services.csv_safety import csv_safe
 from app.services.labels import REQUIREMENT_STATUS_TONE, requirement_status_label
 from app.services.report_document import ReportBranding
 from app.services.report_docx import render_docx_document
-from app.services.report_model import Block, Gap, Heading, PageBreak, ReportDocument, Table, markdown_to_blocks
+from app.services.report_html import render_html_document
+from app.services.report_model import Block, Gap, Heading, PageBreak, ReportDocument, Sheet, Table, markdown_to_blocks
+from app.services.report_odt import render_odt_document
 from app.services.report_pdf import render_pdf_document
+from app.services.report_render import RenderInput, render
 
 __all__ = [
     "ReportBranding",
     "ReportRequirementRow",
     "build_requirement_document",
-    "default_chapters_per_component",
     "generate_csv_report",
     "generate_docx_report",
     "generate_pdf_report",
@@ -109,50 +111,28 @@ def _group_rows_by_component_and_category(
     return chapters
 
 
-def default_chapters_per_component(rows: list[ReportRequirementRow]) -> bool:
-    """The `chapters_per_component` default when neither a selected
-    template nor an explicit per-generation choice sets it (see
-    `ReportRequest.chapters_per_component`'s docstring for the full
-    precedence): chaptered (`True`) unless some component in the report's
-    scope has fewer than three requirements, in which case a continuous
-    layout reads better than a near-empty chapter (a whole page break for
-    one or two requirements). An empty report (no rows at all) defaults to
-    chaptered — there's no sparse-chapter problem to avoid when there's
-    nothing to chapter.
-    """
-    for _, sections in _group_rows_by_component_and_category(rows):
-        count = sum(len(category_rows) for _, category_rows in sections)
-        if count < 3:
-            return False
-    return True
-
-
 def build_requirement_document(
     *,
     project_name: str,
-    pre_markdown: str,
     rows: list[ReportRequirementRow],
     post_markdown: str,
     branding: ReportBranding | None = None,
     images: dict[str, bytes] | None = None,
     chapters_per_component: bool = True,
-    placeholders: dict[str, str] | None = None,
 ) -> ReportDocument:
     """Builds the neutral document for a project's requirements report, which
     the PDF and DOCX renderers both consume.
 
     Args:
         project_name: The project's display name, used as the report title.
-        pre_markdown: Custom Markdown rendered before the requirement table
-            (R-G-02, e.g. an introduction).
         rows: The requirement rows to tabulate.
-        post_markdown: Custom Markdown rendered after the requirement table
-            (R-G-01, e.g. appendices).
-        branding: Optional selected `ReportTemplate` styling (R-G-05) — an
+        post_markdown: Markdown rendered after the requirement table (the
+            selected resource files, R-G-04).
+        branding: Optional organisation report look (R-G-05) — an
             accent colour applied to the table header, an optional cover
             page (with the org logo if provided), and an optional footer.
         images: Pre-resolved `attachment:<id>` -> image bytes mapping for
-            any images referenced in `pre_markdown`/`post_markdown` — see
+            any images referenced in `post_markdown` — see
             `report_model.markdown_to_blocks`'s docstring.
         chapters_per_component: When `True` (the default), each component
             gets its own chapter heading and starts on a fresh page, with a
@@ -161,16 +141,13 @@ def build_requirement_document(
             component-level heading or forced page break — categories just
             flow continuously in component/category tree order. The
             caller (`routers/reports.py::generate_report`) resolves which of
-            the two applies before calling this — see
-            `default_chapters_per_component`'s docstring for that
-            precedence.
-        placeholders: Values for the `{{...}}` placeholders in the pre/post
-            Markdown (`report_content.build_placeholders`).
+            the two applies before calling this (the request's choice, else
+            the organisation's setting).
 
     Returns:
         The portrait requirements document.
     """
-    blocks: list[Block] = list(markdown_to_blocks(pre_markdown, images, placeholders))
+    blocks: list[Block] = []
     # Same total width (17.5cm) the single combined table used to sum to —
     # Component/Category don't need their own columns (the chapter-per-component /
     # section-per-category structure below already conveys them), so their
@@ -199,7 +176,7 @@ def build_requirement_document(
                 Gap(0.5),
             ]
 
-    blocks += markdown_to_blocks(post_markdown, images, placeholders)
+    blocks += markdown_to_blocks(post_markdown, images)
     return ReportDocument(title=project_name, blocks=blocks, branding=branding)
 
 
@@ -227,6 +204,76 @@ def generate_docx_report(**kwargs) -> bytes:
     return render_docx_document(build_requirement_document(**kwargs))
 
 
+def generate_odt_report(**kwargs) -> bytes:
+    """Builds an OpenDocument text report of a project's requirements.
+
+    Args:
+        **kwargs: As for `build_requirement_document`.
+
+    Returns:
+        The generated ODT file content as bytes.
+    """
+    return render_odt_document(build_requirement_document(**kwargs))
+
+
+def generate_html_report(**kwargs) -> bytes:
+    """Builds a standalone HTML report of a project's requirements.
+
+    Args:
+        **kwargs: As for `build_requirement_document`.
+
+    Returns:
+        The generated HTML page as bytes.
+    """
+    return render_html_document(build_requirement_document(**kwargs))
+
+
+def requirement_table(rows: list[ReportRequirementRow], terminology: dict[str, str] | None = None) -> tuple[list[str], list[list[str]]]:
+    """The requirement rows as a header and plain-text rows: the table behind the CSV, Excel and OpenDocument
+    spreadsheet exports (R-F-02), so their columns cannot drift. Cells are not yet guarded against spreadsheet
+    formulas; each writer does that.
+
+    Args:
+        rows: The requirement rows to export.
+        terminology: The project's terminology overrides (C-C-03); renders the "Component"/"Category" header cells in
+            the project's own words. `None`, or a missing key, gives the English default.
+
+    Returns:
+        `(header, body rows)`.
+    """
+    terminology = terminology or {}
+    component_label = (terminology.get("component") or "component").capitalize()
+    category_label = (terminology.get("category") or "category").capitalize()
+    header = ["ID", "Name", component_label, category_label, "Status", "Reasoning", "Clarification", "Tags"]
+    body = [[
+        row.unique_code, row.name, row.component_name, row.category_name, requirement_status_label(row.status),
+        row.reasoning, row.clarification, row.tags,
+    ] for row in rows]
+    return header, body
+
+
+def generate_sheet_report(
+    fmt: str, rows: list[ReportRequirementRow], title: str, terminology: dict[str, str] | None = None,
+) -> bytes:
+    """Builds an Excel (`xlsx`) or OpenDocument spreadsheet (`ods`) export of requirement rows.
+
+    Args:
+        fmt: `xlsx` or `ods`.
+        rows: The requirement rows to export.
+        title: The workbook title.
+        terminology: As for `requirement_table`.
+
+    Returns:
+        The workbook bytes.
+
+    Raises:
+        KeyError: `fmt` is not a table-family format.
+    """
+    header, body = requirement_table(rows, terminology)
+    sheet = Sheet(name="Requirements", columns=header, rows=body)
+    return render(fmt, FAMILY_TABLE, RenderInput(title=title, sheets=[sheet])).content
+
+
 def generate_csv_report(rows: list[ReportRequirementRow], terminology: dict[str, str] | None = None) -> bytes:
     """Builds a CSV export of requirement rows (R-F-02).
 
@@ -244,16 +291,10 @@ def generate_csv_report(rows: list[ReportRequirementRow], terminology: dict[str,
     Returns:
         The generated CSV file content as bytes.
     """
-    terminology = terminology or {}
-    component_label = (terminology.get("component") or "component").capitalize()
-    category_label = (terminology.get("category") or "category").capitalize()
+    header, body = requirement_table(rows, terminology)
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["ID", "Name", component_label, category_label, "Status", "Reasoning", "Clarification", "Tags"])
-    for row in rows:
-        writer.writerow([
-            csv_safe(row.unique_code), csv_safe(row.name), csv_safe(row.component_name),
-            csv_safe(row.category_name), csv_safe(requirement_status_label(row.status)), csv_safe(row.reasoning),
-            csv_safe(row.clarification), csv_safe(row.tags),
-        ])
+    writer.writerow(header)
+    for row in body:
+        writer.writerow([csv_safe(cell) for cell in row])
     return buffer.getvalue().encode("utf-8")

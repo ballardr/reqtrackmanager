@@ -7,7 +7,7 @@ import { buildUser, withAuth, withRouter, withToast } from "../../testing/storyb
 import { buildRisk, buildRiskScheme, ORG_USERS, PROJECT_ID, RISK_TYPES } from "./riskFixtures";
 import { ProjectRisksPage } from "./ProjectRisksPage";
 import type { Risk } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const RISKS: Risk[] = [
   buildRisk(),
@@ -250,7 +250,7 @@ export const ExportCarriesTheRegistersFilters: Story = {
     await canvas.findByRole("table", { name: "Risks" });
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() =>
       expect(api.getForBlob).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/records/risk/export?status=mitigated&review_overdue=true`,

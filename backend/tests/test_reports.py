@@ -4,13 +4,19 @@ endpoint (merged from separate `/reports/pdf`/`/reports/csv` endpoints,
 2026-09-22 — see docs/decisions.md), selected via the required `format`
 field."""
 
+import io
+import zipfile
+
+import pytest
+
 from app.services.reports import (
     ReportRequirementRow,
     _group_rows_by_component_and_category,
-    default_chapters_per_component,
     generate_csv_report,
+    generate_sheet_report,
+    requirement_table,
 )
-from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.conftest import auth_headers, create_component_and_category, create_project
 
 
 def _seed_requirement(client, admin_token, org_id):
@@ -108,7 +114,7 @@ def test_pdf_report_generates_valid_pdf(client, admin_token, org_id):
     project = _seed_requirement(client, admin_token, org_id)
     resp = client.post(
         f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "pre_markdown": "# Introduction\nSome context.", "post_markdown": "# Appendix\n- item one"},
+        json={"format": "pdf"},
         headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
@@ -118,7 +124,7 @@ def test_pdf_report_generates_valid_pdf(client, admin_token, org_id):
 
 
 def test_report_rejects_missing_or_invalid_format(client, admin_token, org_id):
-    """`format` is required (no default) and restricted to `"pdf"`/`"csv"`
+    """`format` is required (no default) and restricted to the formats the renderers produce (`json` is not a file)
     — the merged endpoint's whole reason for taking a `format` parameter is
     to dispatch on it, so an unset or bogus value must 422, not silently
     fall back to one format."""
@@ -126,7 +132,7 @@ def test_report_rejects_missing_or_invalid_format(client, admin_token, org_id):
     missing = client.post(f"/api/v1/projects/{project['id']}/reports", json={}, headers=auth_headers(admin_token))
     assert missing.status_code == 422
     invalid = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "xlsx"}, headers=auth_headers(admin_token)
+        f"/api/v1/projects/{project['id']}/reports", json={"format": "json"}, headers=auth_headers(admin_token)
     )
     assert invalid.status_code == 422
 
@@ -170,6 +176,38 @@ def test_csv_report_contains_requirement_row(client, admin_token, org_id):
     assert "Boot fast" in text
 
 
+@pytest.mark.parametrize("fmt", ["pdf", "docx", "odt", "html", "csv", "xlsx", "ods"])
+def test_requirement_report_is_offered_in_every_format(client, admin_token, org_id, fmt):
+    """Every renderer the platform registers produces the requirement report, with the requirement in it."""
+    project = _seed_requirement(client, admin_token, org_id)
+    resp = client.post(
+        f"/api/v1/projects/{project['id']}/reports", json={"format": fmt}, headers=auth_headers(admin_token)
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-disposition"].endswith(f'-requirements.{fmt}"')
+    if fmt == "pdf":
+        assert resp.content[:5] == b"%PDF-"
+        return
+    if fmt in ("csv", "html"):
+        text = resp.content.decode("utf-8")
+    else:
+        with zipfile.ZipFile(io.BytesIO(resp.content)) as archive:
+            text = "".join(archive.read(n).decode("utf-8", "ignore") for n in archive.namelist() if n.endswith(".xml"))
+    assert "Boot fast" in text
+
+
+def test_requirement_spreadsheet_has_the_csv_header_and_guards_formulas():
+    row = _row("SW-1", "Core", 0, "Perf", 0)
+    row.name = "=HYPERLINK(\"http://evil\")"
+    header, body = requirement_table([row])
+    assert header[:2] == ["ID", "Name"]
+    ods = generate_sheet_report("ods", [row], "Project")
+    with zipfile.ZipFile(io.BytesIO(ods)) as archive:
+        content = archive.read("content.xml").decode("utf-8")
+    assert "=HYPERLINK(" not in content.replace("'=HYPERLINK(", "").replace("&apos;=HYPERLINK(", "")
+    assert body[0][1] == row.name  # the shared table is unguarded; each writer guards
+
+
 def test_csv_report_header_uses_project_terminology_overrides_for_component_and_category():
     """C-C-03: a project that renamed "component"/"category" (Project
     Admin's Terminology tab) should see its own vocabulary in the CSV
@@ -208,169 +246,33 @@ def test_csv_report_endpoint_reflects_projects_saved_terminology_override(client
     assert header_line == "ID,Name,Module,Topic,Status,Reasoning,Clarification,Tags"
 
 
-def test_report_config_persists_and_is_used_as_pdf_default(client, admin_token, org_id):
-    project = _seed_requirement(client, admin_token, org_id)
-
-    empty = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert empty == {"default_report_template_id": None, "content": []}
-
-    saved = client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"content": [{
-            "report_key": "requirements",
-            "intro": "Welcome to the report.",
-            "chapters": [{"title": "Scope", "body": "What this covers."}],
-            "appendices": [{"title": "Glossary", "body": "Terms used."}],
-        }]},
-        headers=auth_headers(admin_token),
-    )
-    assert saved.status_code == 200
-    assert saved.json()["content"][0]["intro"] == "Welcome to the report."
-
-    reread = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert reread["content"][0]["chapters"] == [{"title": "Scope", "body": "What this covers."}]
-
-    # Generating without ad-hoc pre/post markdown should fall back to the
-    # persisted config rather than producing a bare report.
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "pdf"}, headers=auth_headers(admin_token)
-    )
-    assert resp.status_code == 200
-    assert resp.content[:5] == b"%PDF-"
-
-
-def test_report_config_is_readable_by_a_plain_stakeholder_not_just_a_manager(client, admin_token, org_id):
-    """Regression: GET report-config was gated to require_project_manage,
-    even though it's read-only content stakeholders/members need to
-    generate reports (C-U-03) — ReportsPage.tsx and ProjectAdminPage.tsx's
-    single Promise.all reload both fetch it, so this silently 403'd (and,
-    for ProjectAdminPage, hung the whole page on its loading spinner) for
-    any project role below manager/administrator. PUT stays manage-only."""
-    project = _seed_requirement(client, admin_token, org_id)
-    user_id = create_org_user(client, admin_token, org_id, "stakeholder_report@example.com", role="member")
-    client.post(
-        f"/api/v1/projects/{project['id']}/roles",
-        json={"user_id": user_id, "role": "stakeholder"},
-        headers=auth_headers(admin_token),
-    )
-    stakeholder_token = login(client, "stakeholder_report@example.com", "Password123!")
-
-    resp = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(stakeholder_token))
-    assert resp.status_code == 200
-
-    denied = client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"content": [{"report_key": "requirements", "intro": "Should not be allowed."}]},
-        headers=auth_headers(stakeholder_token),
-    )
-    assert denied.status_code == 403
-
-
-def test_project_falls_back_to_organisation_report_defaults(client, admin_token, org_id):
-    """A project with no report content of its own (R-G-01/R-G-02) should
-    use the organisation's defaults field-by-field, and the effective
-    endpoint says where each field came from — the same "narrower scope
-    overrides a broader default" shape used for branding."""
-    project = _seed_requirement(client, admin_token, org_id)
-    effective_url = f"/api/v1/projects/{project['id']}/report-content/effective?report_key=requirements"
-
-    defaults = client.put(
-        f"/api/v1/orgs/{org_id}/report-defaults",
-        json={"content": [{
-            "report_key": "requirements", "intro": "Org-wide introduction.",
-            "chapters": [{"title": "Standard scope", "body": "Applies to every project."}],
-        }]},
-        headers=auth_headers(admin_token),
-    )
-    assert defaults.status_code == 200
-    assert defaults.json()["content"][0]["intro"] == "Org-wide introduction."
-
-    fetched = client.get(f"/api/v1/orgs/{org_id}/report-defaults", headers=auth_headers(admin_token)).json()
-    assert fetched["content"][0]["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
-
-    # The project's own config holds nothing; the effective view inherits the org's.
-    own = client.get(f"/api/v1/projects/{project['id']}/report-config", headers=auth_headers(admin_token)).json()
-    assert own["content"] == []
-    effective = client.get(effective_url, headers=auth_headers(admin_token)).json()
-    assert effective["intro"] == "Org-wide introduction."
-    assert effective["intro_source"]["scope_type"] == "organization"
-    assert effective["chapters_source"]["scope_type"] == "organization"
-    # Appendices default is empty, so nothing set them.
-    assert effective["appendices_source"] is None
-
-    # The project's own intro, once set, takes priority over the org default.
-    client.put(
-        f"/api/v1/projects/{project['id']}/report-config",
-        json={"content": [{"report_key": "requirements", "intro": "Project-specific introduction."}]},
-        headers=auth_headers(admin_token),
-    )
-    overridden = client.get(effective_url, headers=auth_headers(admin_token)).json()
-    assert overridden["intro"] == "Project-specific introduction."
-    assert overridden["intro_source"]["scope_type"] == "project"
-    # Chapters weren't set on the project, so the org default still applies there.
-    assert overridden["chapters"] == [{"title": "Standard scope", "body": "Applies to every project."}]
-    assert overridden["chapters_source"]["scope_type"] == "organization"
-
-    resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "pdf"}, headers=auth_headers(admin_token))
-    assert resp.status_code == 200
-    assert resp.content[:5] == b"%PDF-"
-
-
-def test_default_chapters_per_component_heuristic():
-    """Chaptered unless some component in scope has fewer than three
-    requirements — see default_chapters_per_component's docstring."""
-    assert default_chapters_per_component([]) is True  # nothing to chapter
-
-    all_healthy = [
-        _row("A-1-001", "Airframe", 0, "Functional", 0),
-        _row("A-1-002", "Airframe", 0, "Functional", 0),
-        _row("A-1-003", "Airframe", 0, "Functional", 0),
-        _row("B-1-001", "Avionics", 1, "Safety", 0),
-        _row("B-1-002", "Avionics", 1, "Safety", 0),
-        _row("B-1-003", "Avionics", 1, "Safety", 0),
-    ]
-    assert default_chapters_per_component(all_healthy) is True
-
-    one_sparse = [
-        *all_healthy,
-        _row("C-1-001", "Firmware", 2, "Regulatory", 0),  # only 1 requirement in this component
-    ]
-    assert default_chapters_per_component(one_sparse) is False
-
-
-def test_chapters_per_component_precedence_payload_beats_template_beats_heuristic(client, admin_token, org_id):
-    """Router-level: an explicit payload choice wins over the selected
-    template's setting, which wins over the sparse-component heuristic."""
+def test_chapters_per_component_precedence_payload_beats_the_organisations_setting(client, admin_token, org_id):
+    """Router-level: an explicit payload choice wins over the organisation's setting."""
     project = create_project(client, admin_token, org_id)
     sw_id, perf_id = create_component_and_category(client, admin_token, project["id"])
-    # Only one requirement in this component -> heuristic alone would pick continuous.
     client.post(
         f"/api/v1/projects/{project['id']}/requirements",
         json={"name": "Solo requirement", "reasoning": "x", "component_id": sw_id, "category_id": perf_id},
         headers=auth_headers(admin_token),
     )
+    url = f"/api/v1/projects/{project['id']}/reports"
 
-    heuristic_resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "pdf"}, headers=auth_headers(admin_token))
-    assert heuristic_resp.status_code == 200
+    def settings(chapters: bool) -> None:
+        resp = client.put(
+            f"/api/v1/orgs/{org_id}/advanced-settings", json={"report_chapters_per_component": chapters}, headers=auth_headers(admin_token),
+        )
+        assert resp.status_code == 200, resp.text
 
-    template_forces_chapters = client.post(
-        f"/api/v1/orgs/{org_id}/report-templates",
-        json={"name": "Always Chaptered", "chapters_per_component": True}, headers=auth_headers(admin_token),
-    ).json()
-    template_resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "report_template_id": template_forces_chapters["id"]}, headers=auth_headers(admin_token),
-    )
-    assert template_resp.status_code == 200
-    # The template forces chaptered (with its page break + heading) despite
-    # the sparse component the heuristic alone would have gone continuous for.
-    assert len(template_resp.content) > len(heuristic_resp.content)
+    settings(False)
+    continuous = client.post(url, json={"format": "pdf"}, headers=auth_headers(admin_token))
+    assert continuous.status_code == 200
 
-    payload_overrides_template = client.post(
-        f"/api/v1/projects/{project['id']}/reports",
-        json={"format": "pdf", "report_template_id": template_forces_chapters["id"], "chapters_per_component": False},
-        headers=auth_headers(admin_token),
-    )
-    assert payload_overrides_template.status_code == 200
-    # Explicit payload choice (continuous) wins over the template's chaptered setting.
-    assert len(payload_overrides_template.content) < len(template_resp.content)
+    settings(True)
+    chaptered = client.post(url, json={"format": "pdf"}, headers=auth_headers(admin_token))
+    assert chaptered.status_code == 200
+    # Chaptered adds the component heading and its page break.
+    assert len(chaptered.content) > len(continuous.content)
+
+    overridden = client.post(url, json={"format": "pdf", "chapters_per_component": False}, headers=auth_headers(admin_token))
+    assert overridden.status_code == 200
+    assert len(overridden.content) < len(chaptered.content)

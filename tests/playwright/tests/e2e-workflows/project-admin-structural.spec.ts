@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, PERSONAS, selectProjectAdminGroup } from "./helpers";
+import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -194,7 +194,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       await reassignTo(page, "Milestone 2");
       // The refusal is shown inside the dialog, which stays open; cancel it, and the stage is still there.
       await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
-      await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+      await closeDialogWithoutSaving(page.getByRole("dialog"), { unsaved: false });
       await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(page.locator('input.input[value="Milestone 1"]:not([placeholder])')).toBeVisible();
     });

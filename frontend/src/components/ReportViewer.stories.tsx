@@ -54,6 +54,25 @@ export const NothingToReportOn: Story = {
   },
 };
 
+/** Two sections whose columns line up carry the same weights: their headings are the same width whatever the cells hold. */
+export const AlignedSectionsShareColumnWidths: Story = {
+  args: {
+    result: buildReportResult({
+      sections: [
+        { key: "first", title: "Overdue", columns: ["Question", "Owner"], rows: [["A much longer question than the next table holds", "Sam"]], note: "", gap: false, weights: [3, 1] },
+        { key: "second", title: "Not yet overdue", columns: ["Question", "Owner"], rows: [["Short", "A long owner name"]], note: "", gap: false, weights: [3, 1] },
+      ],
+    }),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const widthOf = (section: string, column: string) =>
+      within(canvas.getByRole("region", { name: section })).getByRole("columnheader", { name: column }).getBoundingClientRect().width;
+    await expect(widthOf("Overdue", "Question")).toBeCloseTo(widthOf("Not yet overdue", "Question"), 0);
+    await expect(widthOf("Overdue", "Question")).toBeGreaterThan(widthOf("Overdue", "Owner"));
+  },
+};
+
 export const LightTheme: Story = { ...SectionsMetricsAndGapBadge, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...SectionsMetricsAndGapBadge, globals: { theme: "dark" } };
 

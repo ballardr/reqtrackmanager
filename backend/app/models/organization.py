@@ -250,12 +250,26 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
         nullable=True,
     )
     pat_max_lifetime_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    report_output_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Default file name template (without extension) for a generated report that sets none of its own
+    #: (`services.report_file_names`); `None` keeps the built-in "<scope>-<report>" names.
+    report_file_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    #: The organisation's one report look. Built-in reports (requirements PDF, module reports) apply it; a custom layout
+    #: applies none of it unless the layout reads it as `{{org.*}}` (`services.report_org_values`).
+    #: `report_accent_color_hex` falls back to the UI accent (`accent_color_hex`), then the platform default.
+    report_accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    report_include_logo: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    #: The organisation's report colour scheme: a list of `{name, colour}` (`services.report_colours`), up to 8, that a layout
+    #: with no scheme of its own resolves colour names by. `None` is none set: only the four standard names resolve.
+    report_colour_scheme: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB, nullable=True)
+    report_footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_include_cover_page: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    #: Whether the requirements report organises requirements into one chapter per component, each on its own page.
+    #: A per-generation choice (`ReportRequest.chapters_per_component`) overrides it.
+    report_chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
-
-    # The organisation's default report intro/chapters/appendices live in
-    # `ReportContent` rows (models/report_content.py), one per report type.
 
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -386,40 +400,6 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     default_module_entitlement_policy: Mapped[ModuleEntitlementPolicy] = mapped_column(
         str_enum(ModuleEntitlementPolicy), default=ModuleEntitlementPolicy.OPEN
     )
-
-
-class ReportTemplate(UUIDPKMixin, TimestampMixin, Base):
-    """A named, reusable PDF report preset for an organisation (R-G-05):
-    branding (accent colour, cover page, logo, footer). Its optional
-    introduction/chapters/appendices are `ReportContent` rows
-    (`scope_type="template"`), one per report type.
-
-    Org-scoped (shared across the org's projects) to match how the org logo
-    already works. Selected optionally at report-generation time; when none
-    is selected, `services/reports.py` produces today's plain, unbranded
-    output with the project's own resolved content.
-
-    Attributes:
-        chapters_per_component: Whether a PDF generated with this template
-            organises requirements into one chapter per component (each on
-            its own page) with a sub-section per category, or renders
-            continuously (category headings only, no per-component page
-            breaks) — see `services/reports.py::generate_pdf_report`. A
-            per-generation choice on the report page (`ReportRequest.
-            chapters_per_component`) always overrides this when set.
-    """
-
-    __tablename__ = "report_templates"
-    __table_args__ = (UniqueConstraint("organization_id", "name"),)
-
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
-    name: Mapped[str] = mapped_column(String(255))
-    accent_color_hex: Mapped[str] = mapped_column(String(7), default="#475569")
-    include_cover_page: Mapped[bool] = mapped_column(Boolean, default=True)
-    include_logo: Mapped[bool] = mapped_column(Boolean, default=True)
-    footer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
 class PendingInvite(UUIDPKMixin, TimestampMixin, Base):

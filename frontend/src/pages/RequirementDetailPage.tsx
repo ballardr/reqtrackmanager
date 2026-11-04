@@ -64,6 +64,7 @@ import { ActionFields } from "../components/ActionFields";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { DetailCard } from "../components/DetailCard";
+import { MathText } from "../components/MathText";
 
 /**
  * Requirement detail view: direct editing while unlocked, a discussion
@@ -674,18 +675,18 @@ export function RequirementDetailPage() {
           )}
           <div>
             <div className="text-muted">{strings.requirements.reasoning}</div>
-            <p style={{ marginTop: "var(--space-1)" }}>{requirement.reasoning}</p>
+            <p style={{ marginTop: "var(--space-1)" }}><MathText text={requirement.reasoning} /></p>
           </div>
           {requirement.clarification && (
             <div>
               <div className="text-muted">{strings.requirements.clarification}</div>
-              <p style={{ marginTop: "var(--space-1)" }}>{requirement.clarification}</p>
+              <p style={{ marginTop: "var(--space-1)" }}><MathText text={requirement.clarification} /></p>
             </div>
           )}
           {requirement.description && (
             <div>
               <div className="text-muted">{strings.requirements.description}</div>
-              <p style={{ marginTop: "var(--space-1)" }}>{requirement.description}</p>
+              <p style={{ marginTop: "var(--space-1)" }}><MathText text={requirement.description} /></p>
             </div>
           )}
           <div className="row">

@@ -2576,9 +2576,9 @@ def require_project_module_enabled(module_key: str):
     return _dependency
 
 
-def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str):
-    """FastAPI dependency factory requiring one project-scoped
-    sub-component of `module_key` to be effectively enabled (`app.modules.
+def require_project_any_subcomponent_enabled(module_key: str, subcomponent_keys: tuple[str, ...]):
+    """FastAPI dependency factory requiring at least one of the project-scoped
+    sub-components `subcomponent_keys` of `module_key` to be effectively enabled (`app.modules.
     registry.is_module_subcomponent_enabled`) for the organisation owning
     the project named by the `project_id` path parameter, for a caller who
     is otherwise a member of that project (Platform
@@ -2601,7 +2601,7 @@ def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str)
         current_user: User = Depends(get_current_user_or_module_frame(module_key)),
         db: Session = Depends(get_db),
     ) -> User:
-        """See the enclosing `require_project_subcomponent_enabled` factory's docstring."""
+        """See the enclosing `require_project_any_subcomponent_enabled` factory's docstring."""
         _enforce_module_frame_scope(request, project_id=project_id)
         check_pat_scope_for_project(request, db, project_id)
         organization_id = _project_organization_id(db, project_id)
@@ -2611,11 +2611,17 @@ def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str)
         _require_org_2fa(db, organization_id, current_user)
         if not get_effective_project_roles(db, current_user.id, project_id):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
-        if not is_module_subcomponent_enabled(db, project_id, module_key, subcomponent_key):
+        if not any(is_module_subcomponent_enabled(db, project_id, module_key, key) for key in subcomponent_keys):
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
         return current_user
 
     return _dependency
+
+
+def require_project_subcomponent_enabled(module_key: str, subcomponent_key: str):
+    """FastAPI dependency factory requiring one project-scoped sub-component of `module_key` to be effectively
+    enabled: `require_project_any_subcomponent_enabled` with a single key (see it for the 404-not-403 rationale)."""
+    return require_project_any_subcomponent_enabled(module_key, (subcomponent_key,))
 
 
 def require_project_module_enabled_dynamic(
@@ -3087,6 +3093,16 @@ admin opts in" rationale, applied here to `OrgRole` instead.
 EXPORT_PERSONAL_DATA = "export_personal_data"
 """The administrative permission that lets a person include or import personal-data record columns."""
 
+MANAGE_ORG_REPORT_LAYOUTS = "manage_org_report_layouts"
+"""The administrative permission that lets a person manage the organisation's custom report layouts."""
+
+MANAGE_PROJECT_REPORT_LAYOUTS = "manage_project_report_layouts"
+"""The administrative permission that lets a person manage a project's custom report layouts."""
+
+_PROJECT_REPORT_LAYOUT_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR})
+"""Project roles that hold `MANAGE_PROJECT_REPORT_LAYOUTS` in their project (organisation admins hold it
+through `_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
+
 _PERSONAL_DATA_EXPORT_PROJECT_ROLES = frozenset({ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.PROJECT_MANAGER})
 """Project roles that hold `EXPORT_PERSONAL_DATA` in their project (organisation admins hold it through
 `_ORG_ROLE_PERMISSIONS`; anyone else needs a custom or module role that lists it)."""
@@ -3471,6 +3487,8 @@ def get_effective_permissions(
             permissions |= _artefact_permissions_for_levels(_PROJECT_ROLE_LEVELS.get(role, ()))
         if project_roles & _PERSONAL_DATA_EXPORT_PROJECT_ROLES:
             permissions.add(EXPORT_PERSONAL_DATA)
+        if project_roles & _PROJECT_REPORT_LAYOUT_ROLES:
+            permissions.add(MANAGE_PROJECT_REPORT_LAYOUTS)
 
     permissions |= _module_role_permission_grants(
         db, user_id, organization_id=organization_id, project_id=project_id,
@@ -3517,7 +3535,7 @@ def permission_satisfied(held: set[str], required: str) -> bool:
     return encode_permission(ALL_ARTEFACT_TYPES, level) in held
 
 
-def require_permission(*allowed: str, entity_scope: str | None = None):
+def require_permission(*allowed: str, entity_scope: str | None = None, server_admin_bypass: bool = True):
     """FastAPI dependency factory requiring at least one of the given
     Fine-Grained Access Control permission atoms, resolved via
     `get_effective_permissions`/`permission_satisfied` — coexisting with,
@@ -3546,7 +3564,9 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
     silently checking nothing.
 
     Server admins bypass every check, consistent with every existing
-    `require_*` dependency in this module — but only after `_enforce_
+    `require_*` dependency in this module (unless `server_admin_bypass=False`, for
+    customer content a server admin must not reach: such a route treats them like any
+    other caller) — but only after `_enforce_
     module_frame_scope` has already run for the resolved scope (see the inner `_dependency`'s own docstring): a mis-scoped
     Tier B `<ModuleFrame>` token must never be rescued by the fact that
     the underlying real user happens to be a server admin (or to hold a
@@ -3579,6 +3599,9 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
             module-gated dependency's "module disabled or entity absent ->
             404" posture. `None` (the default) is every existing call
             site's shape — completely unaffected.
+        server_admin_bypass: `False` makes a server admin subject to the same
+            permission resolution as everyone else (no data access inside an
+            organisation by virtue of the server role alone). Default `True`.
     """
 
     def _dependency(
@@ -3648,7 +3671,7 @@ def require_permission(*allowed: str, entity_scope: str | None = None):
                 _enforce_module_frame_scope(request, organization_id=organization_id)
                 check_pat_scope(request, organization_id)
 
-        if current_user.is_server_admin:
+        if server_admin_bypass and current_user.is_server_admin:
             return current_user
 
         if organization_id is not None:

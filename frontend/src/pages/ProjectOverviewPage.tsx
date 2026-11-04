@@ -8,6 +8,7 @@ import { activityEntityLabel, activityEntryLink, activityEntryNotes, describeAct
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
+import { ReportsButton } from "../components/ReportsButton";
 import { Spinner } from "../components/Spinner";
 import { StatusPieChart } from "../components/StatusPieChart";
 import { getArtefactListPath } from "../modules/artefactPaths";
@@ -173,6 +174,7 @@ export function ProjectOverviewPage() {
         </div>
         <div className="row" style={{ alignItems: "center" }}>
           <ProjectScopeSelect scope={projectScope} compact coveredProjects={metrics.scope_project_count} />
+          <ReportsButton scope={{ kind: "project", id: project.id }} organizationId={project.organization_id} project={project} />
           <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
             <Plus /> {strings.requirements.newRequirement}
           </Link>

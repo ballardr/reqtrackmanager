@@ -5,6 +5,7 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import { FormActions } from "./FormActions";
 import { Modal } from "./Modal";
 import { Popover } from "./Popover";
+import { ResultActions } from "./ResultActions";
 
 const meta: Meta<typeof Modal> = {
   title: "Components/Modal",
@@ -33,11 +34,150 @@ export const ClosesOnEscape: Story = {
   },
 };
 
+/** A dialog with no form (a viewer, a picker) still closes on a backdrop click. */
 export const ClosesOnBackdropClick: Story = {
   play: async ({ args }) => {
     const body = within(document.body);
     await userEvent.click(body.getByRole("presentation"));
     await expect(args.onClose).toHaveBeenCalledOnce();
+  },
+};
+
+const FORM_BODY = (
+  <>
+    <label className="stack">
+      Title
+      <input className="input" defaultValue="Original" />
+    </label>
+    <FormActions onCancel={fn()} onSave={fn()} />
+  </>
+);
+
+/** A dialog that holds a form does nothing on a backdrop click, so a stray click cannot lose the edit. */
+export const FormIgnoresBackdropClick: Story = {
+  args: { title: "New thing", children: FORM_BODY },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.click(body.getByRole("presentation"));
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await expect(body.getByRole("dialog", { name: "New thing" })).toBeInTheDocument();
+  },
+};
+
+/** The header's close button is the only way out of a form dialog: there is no Cancel beside Save. */
+export const FormHasCloseButNoCancel: Story = {
+  args: { title: "New thing", children: FORM_BODY },
+  play: async () => {
+    const dialog = within(document.body).getByRole("dialog", { name: "New thing" });
+    await expect(within(dialog).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    await expect(within(dialog).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  },
+};
+
+/** Nothing changed: Close leaves at once, without a prompt. */
+export const UnchangedFormClosesAtOnce: Story = {
+  args: { title: "New thing", children: FORM_BODY },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.click(body.getByLabelText("Close"));
+    await expect(args.onClose).toHaveBeenCalledOnce();
+    await expect(body.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+  },
+};
+
+/** Close with a change asks first; Keep editing returns to the form with the change intact. */
+export const ChangedFormAsksAndKeepEditingKeepsTheChange: Story = {
+  args: { title: "New thing", children: FORM_BODY },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    const field = body.getByLabelText("Title");
+    await userEvent.type(field, " edited");
+    await userEvent.click(body.getByLabelText("Close"));
+    await expect(await body.findByText("Discard unsaved changes?")).toBeInTheDocument();
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await userEvent.click(body.getByRole("button", { name: "Keep editing" }));
+    await expect(body.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+    await expect(field).toHaveValue("Original edited");
+  },
+};
+
+/** A step that edited a field and then moved to a result view is settled: OK closes, with no prompt. */
+function FormThenResult({ onClose }: { onClose: () => void }) {
+  const [done, setDone] = useState(false);
+  return (
+    <Modal title="Import" onClose={onClose}>
+      {done ? (
+        <>
+          <ResultActions onOk={onClose} />
+          <p role="status">Imported.</p>
+        </>
+      ) : (
+        <>
+          <label className="stack">
+            File
+            <input className="input" defaultValue="" />
+          </label>
+          <FormActions onCancel={fn()} onSave={() => setDone(true)} saveLabel="Import" />
+        </>
+      )}
+    </Modal>
+  );
+}
+
+/** A result view ends with one OK and never asks to discard the earlier step's edits; the unfinished step still asks. */
+export const ResultViewClosesWithOkAndNoPrompt: Story = {
+  render: (args) => <FormThenResult onClose={args.onClose} />,
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("File"), "reports.zip");
+    await userEvent.click(body.getByLabelText("Close"));
+    await expect(await body.findByText("Discard unsaved changes?")).toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "Keep editing" }));
+    await userEvent.click(body.getByRole("button", { name: "Import" }));
+    await expect(await body.findByText("Imported.")).toBeInTheDocument();
+    await expect(body.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "OK" }));
+    await expect(body.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+    await expect(args.onClose).toHaveBeenCalledOnce();
+  },
+};
+
+/** Escape goes through the same prompt, and Discard is what finally closes. */
+export const EscapeAsksThenDiscardCloses: Story = {
+  args: { title: "New thing", children: FORM_BODY },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("Title"), "x");
+    await userEvent.keyboard("{Escape}");
+    await expect(await body.findByText("Discard unsaved changes?")).toBeInTheDocument();
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await userEvent.click(body.getByRole("button", { name: "Discard changes" }));
+    await expect(args.onClose).toHaveBeenCalledOnce();
+  },
+};
+
+/** An edit that is typed and then undone is compared by value, so it reads as unchanged. */
+export const EditUndoneReadsAsUnchanged: Story = {
+  args: { title: "New thing", children: FORM_BODY },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    const field = body.getByLabelText("Title");
+    await userEvent.type(field, "x");
+    await userEvent.type(field, "{Backspace}");
+    await userEvent.click(body.getByLabelText("Close"));
+    await expect(args.onClose).toHaveBeenCalledOnce();
+  },
+};
+
+/** A caller that tracks its own state passes `dirty`; it wins over the measured value and guards any dialog. */
+export const ExplicitDirtyAsksEvenWithoutAForm: Story = {
+  args: { dirty: true },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.click(body.getByRole("presentation"));
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await userEvent.click(body.getByLabelText("Close"));
+    await expect(await body.findByText("Discard unsaved changes?")).toBeInTheDocument();
   },
 };
 
@@ -163,6 +303,7 @@ export const FormActionsSitInThePinnedHeader: Story = {
     const scroller = dialog.querySelector(".dialog-body")!;
     await expect(header.contains(save)).toBe(true);
     await expect(header).toHaveTextContent("That title is taken.");
+    await expect(within(dialog).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
     await expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
     const before = save.getBoundingClientRect().top;
     scroller.scrollTop = scroller.scrollHeight;

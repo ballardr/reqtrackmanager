@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { expect, fn, userEvent, within } from "storybook/test";
 
+import { FormActions } from "./FormActions";
 import { SidePanel } from "./SidePanel";
 
 const meta: Meta<typeof SidePanel> = {
@@ -31,10 +32,46 @@ export const ClosesOnEscape: Story = {
   },
 };
 
+/** A panel with no form still closes on a backdrop click. */
 export const ClosesOnBackdropClick: Story = {
   play: async ({ args }) => {
     const body = within(document.body);
     await userEvent.click(body.getByRole("presentation"));
+    await expect(args.onClose).toHaveBeenCalledOnce();
+  },
+};
+
+const FORM_BODY = (
+  <>
+    <label className="stack">
+      Title
+      <input className="input" defaultValue="Original" />
+    </label>
+    <FormActions onCancel={fn()} onSave={fn()} />
+  </>
+);
+
+/** A panel that holds a form ignores the backdrop and asks before closing with an unsaved change. */
+export const FormIgnoresBackdropAndAsksBeforeDiscarding: Story = {
+  args: { children: FORM_BODY },
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.click(body.getByRole("presentation"));
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await userEvent.type(body.getByLabelText("Title"), "x");
+    await userEvent.click(body.getByLabelText("Close"));
+    await expect(await body.findByText("Discard unsaved changes?")).toBeInTheDocument();
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await userEvent.click(body.getByRole("button", { name: "Discard changes" }));
+    await expect(args.onClose).toHaveBeenCalledOnce();
+  },
+};
+
+/** Unchanged: Close leaves at once. */
+export const UnchangedFormClosesAtOnce: Story = {
+  args: { children: FORM_BODY },
+  play: async ({ args }) => {
+    await userEvent.click(within(document.body).getByLabelText("Close"));
     await expect(args.onClose).toHaveBeenCalledOnce();
   },
 };

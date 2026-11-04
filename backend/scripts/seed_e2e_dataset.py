@@ -31,6 +31,7 @@ Intended primary usage is against a freshly migrated database.
 
 from __future__ import annotations
 
+import base64
 import sys
 
 import httpx
@@ -262,10 +263,132 @@ def create_link_type(
     return r.json()
 
 
-def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
-    """Saves per-report-type content at one tier: `/orgs/{id}/report-defaults` or `/projects/{id}/report-config`."""
-    r = httpx.put(f"{BASE}{path}", json={"content": content}, headers=headers, timeout=30)
+REQUIREMENTS_BY_COMPONENT_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** by component, generated {{generated_on}}."},
+        {
+            "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+            "children": [
+                {"type": "heading", "level": 2, "text": "{{comp.value}} ({{comp.count}})"},
+                {
+                    "type": "table", "source": {"group": "comp", "sort": [{"field": "title"}]},
+                    "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}],
+                    "empty_text": "No requirements.",
+                },
+            ],
+        },
+    ],
+}
+"""A small custom report layout: the project's requirements grouped by component."""
+
+
+REQUIREMENTS_BY_CATEGORY_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "variables": [
+        {
+            "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+            "source": {"record_type": "requirement", "field": "category"},
+        },
+    ],
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** in the chosen categories: {{var.categories}}."},
+        {
+            "type": "table",
+            "source": {
+                "record_type": "requirement", "sort": [{"field": "title"}],
+                "where": [{"field": "category", "op": "in", "value": {"var": "categories"}}],
+            },
+            "columns": [{"field": "code", "label": "Code"}, {"field": "category", "label": "Category"}, {"field": "title", "label": "Requirement"}],
+            "empty_text": "No requirements in these categories.",
+        },
+    ],
+}
+"""A custom report layout with a run-time variable: the person chooses which categories to show when running it."""
+
+
+CONTEXT_OVERVIEW_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait", "margins": {"left": 2, "right": 2},
+    "page_styles": [{"name": "Wide tables", "page_size": "A3", "orientation": "landscape", "margins": {"left": 1.5, "right": 1.5}}],
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Context & Strategy for **{{project_name}}**, built from report widgets."},
+        {"type": "heading", "level": 2, "text": "Headline figures"},
+        {"type": "widget", "key": "context_strategy.summary.figures", "params": {"stale_months": 12}},
+        {
+            "type": "section", "page_style": "Wide tables",
+            "children": [
+                {"type": "heading", "level": 2, "text": "Pain Points by type and status"},
+                {"type": "text", "text": "Open and closed Pain Points, as counted by the Pain Point coverage report."},
+                {"type": "widget", "key": "context_strategy.pain-point-coverage.matrix", "empty_text": "No Pain Points yet."},
+            ],
+        },
+    ],
+}
+"""A custom report layout that embeds Context & Strategy report tables as widgets; its headings and prose are its own.
+
+Its wide matrix sits in a section with an A3 landscape page style inside an A4 portrait report."""
+
+
+PAIN_POINTS_WITH_PICTURES_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "table", "source": {"record_type": "pain_point", "sort": [{"field": "title"}]},
+            "columns": [{"field": "code"}, {"field": "title"}, {"images": {"types": ["png", "jpg"], "max_count": 3}, "label": "Pictures"}],
+            "empty_text": "No pain points.",
+        },
+    ],
+}
+"""A custom report layout with an images column: each Pain Point's attached pictures beside its code and title (a share of the column wide)."""
+
+
+def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict) -> dict:
+    """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-layouts", json={"name": name, "description": description, "family": "document", "tree": tree},
+        headers=headers, timeout=30,
+    )
     r.raise_for_status()
+    return r.json()
+
+
+def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
+    """Hides an inherited report layout in one project."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/report-layouts/{layout_id}/visibility", json={"hidden": True}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def create_report_snippet(
+    headers: dict, path: str, name: str, description: str, tree: dict, *, start: int, count: int = 1, category: str = "House style",
+) -> dict:
+    """Saves blocks `start` to `start + count` of a layout tree as a report snippet at one tier: `/orgs/{id}` or `/projects/{id}`
+    (followed by `/report-snippets`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-snippets",
+        json={
+            "name": name, "description": description, "category": category, "tree": tree,
+            "selection": {"container": "nodes", "start": start, "count": count},
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict) -> dict:
+    """Creates a report pack at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-packs`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-packs", json={"name": name, "description": description, "definition": definition},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
 
 def create_project_link_type(
@@ -362,6 +485,21 @@ def upload_comment_attachment(headers: dict, project_id: str, requirement_id: st
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments/{comment_id}/files",
         files={"file": (filename, content, "text/plain")}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+# A 1x1 transparent PNG: the project's report image library picture on Alpha-1 (the Files page's preview and source filter).
+E2E_LIBRARY_PICTURE = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
+
+def upload_project_report_image(headers: dict, project_id: str, filename: str, content: bytes) -> dict:
+    """Adds a picture to a project's report image library (it appears on the project's Files page as a library picture)."""
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/report-images", files={"file": (filename, content, "image/png")}, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -972,15 +1110,47 @@ def main() -> None:
     )
     gamma5_reqs = seed_project_content(h_g, gamma5, 2)
     gamma6_reqs = seed_project_content(h_g, gamma6, 2)
-    print("Seeding per-report-type content: Gamma's organisation default for 'all reports', and a requirements"
-          " introduction and chapter on Gamma-5 that its child Gamma-6 (which sets none) inherits.")
-    put_report_content(h_g, f"/orgs/{gamma['id']}/report-defaults", [
-        {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
-    ])
-    put_report_content(h_g, f"/projects/{gamma5['id']}/report-config", [
-        {"report_key": "requirements", "intro": "Gamma-5 requirements, inherited by its child projects.",
-         "chapters": [{"title": "Scope", "body": "Shared by the Gamma-5 programme."}], "appendices": []},
-    ])
+    print("Seeding custom report layouts: a Gamma organisation layout, a Gamma-5 layout its child inherits, and Gamma-6"
+          " hiding the organisation's.")
+    org_layout = create_report_layout(
+        h_g, f"/orgs/{gamma['id']}", "E2E Org layout", "Organisation layout every Gamma project inherits.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
+    )
+    create_report_layout(
+        h_g, f"/projects/{gamma5['id']}", "E2E Gamma-5 layout", "Gamma-5's own layout.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
+    )
+    hide_report_layout(h_g, gamma6["id"], org_layout["id"])
+    create_report_layout(
+        h_g, f"/orgs/{gamma['id']}", "E2E Variables layout", "Runs for the categories chosen when it is run.", REQUIREMENTS_BY_CATEGORY_LAYOUT,
+    )
+    create_report_layout(
+        h_g, f"/orgs/{gamma['id']}", "E2E Widget layout", "Embeds Context & Strategy report tables as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+    )
+    create_report_layout(
+        h_g, f"/orgs/{gamma['id']}", "E2E Pictures layout", "A table of Pain Points with an images column.", PAIN_POINTS_WITH_PICTURES_LAYOUT,
+    )
+    print("Seeding saved report snippets: an organisation one, and Gamma-5's own.")
+    create_report_snippet(
+        h_g, f"/orgs/{gamma['id']}", "E2E Org snippet", "Organisation snippet every Gamma project inherits.",
+        REQUIREMENTS_BY_COMPONENT_LAYOUT, start=2,
+    )
+    create_report_snippet(
+        h_g, f"/projects/{gamma5['id']}", "E2E Gamma-5 snippet", "Gamma-5's own snippet.", REQUIREMENTS_BY_COMPONENT_LAYOUT, start=0,
+        category="Gamma-5",
+    )
+    create_report_pack(
+        h_g, f"/orgs/{gamma['id']}", "E2E Pack", "Two layouts handed over as one zip.",
+        {
+            "schema_version": 1,
+            "variables": [{
+                "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+                "source": {"record_type": "requirement", "field": "category"},
+            }],
+            "entries": [
+                {"kind": "layout", "name": "E2E Variables layout", "format": "pdf", "filename": "variables"},
+                {"kind": "layout", "name": "E2E Org layout", "format": "docx"},
+            ],
+        },
+    )
     parent_type = create_project_link_type(
         h_g, gamma5["id"], forward_name=LINK_TYPES_PARENT_VERB, reverse_name="E2E Parent reverse", flow="forward_is_upstream",
     )
@@ -1080,6 +1250,7 @@ def main() -> None:
     upload_comment_attachment(
         h_ab, alpha1["id"], alpha1_reqs[5]["id"], files_comment["id"], "e2e-comment-attachment.txt", b"E2E comment attachment.",
     )
+    upload_project_report_image(h_ab, alpha1["id"], "e2e-library-picture.png", E2E_LIBRARY_PICTURE)
 
     print("\nDone. Personas (all password: E2ePass123!):")
     print("  e2e-serveradmin@example.com   - server admin, zero org memberships")
@@ -1103,7 +1274,8 @@ def main() -> None:
     print(f"Custom link type 'E2E Supersedes' on Alpha, requirement link {alpha1_reqs[1]['unique_code']} -> {alpha1_reqs[0]['unique_code']}")
     print("Requirement actions: 'E2E Review Action' (completed) and 'E2E Test Action' (pending) on Alpha-1")
     print(f"Files on Alpha-1 ({alpha1['id']}): direct attachment on {alpha1_reqs[4]['unique_code']}, action attachment on "
-          f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']} — one of each project-files origin.")
+          f"'E2E Review Action', comment attachment on {alpha1_reqs[5]['unique_code']}, and the report image library picture "
+          "'e2e-library-picture.png' — one of each project-files origin.")
     print(f"Compliance standard {FGAC_STANDARD_NAME!r} (id {fgac_standard['id']}) on Alpha — Role Management page's"
           " entity-scope picker fixture.")
     print(f"Personas on Gamma (Stakeholders & Personas enabled for Gamma only): org personas {PERSONA_ORG_WEIGHTED_NAME!r}"

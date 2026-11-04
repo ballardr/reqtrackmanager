@@ -383,6 +383,8 @@ def link_to_earlier(
                 counts[end_id] = counts.get(end_id, 0) + 1
 
         here = ctx.project_uuid
+        link_type: Any
+        project_pair: tuple[Any, Any]
         for index in range(len(batch.ids)):
             for _ in range(_poisson(rng, mean)):
                 roll = rng.random()

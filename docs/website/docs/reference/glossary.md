@@ -122,10 +122,6 @@ A record code with its owner's code in front, such as `ACME-REQ-001` (project co
 
 The short name of a record, such as `REQ-001` (requirement), `PP-001` (pain point), `OQ-001` (open question), `NEED-001` (stakeholder need), `EVD-001` (compliance evidence), `CR-001` (change request), or `PER-001` (Persona), `STK-001` (Stakeholder), `SGP-001` (Stakeholder group), `STR-001` (Strategy), `FUT-001` (Future State) and `GP-001` (Guiding Principle). Numbered per project, or per organisation for a record the organisation owns, and never reused. See [Qualified code](#qualified-code) for the form that is unambiguous across projects.
 
-#### Report content
-
-The introduction, chapters and appendices written for a report type at the template, project or organisation level, with `{{placeholders}}` filled at generation. See [Reports and export → Report content](../core-features/reports-and-export.md#report-content).
-
 #### Requirement version
 
 One historical or current state of a requirement's content (name, reasoning, description, status, custom field values). Editing a requirement never overwrites a version — it closes the current one and opens a new one. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).

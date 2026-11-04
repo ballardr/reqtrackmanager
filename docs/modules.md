@@ -373,6 +373,10 @@ class ModuleDefinition:
     not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
     scaling_probes: dict[str, ScalingProbe] = {}  # how the scaling-shape guard fills and reads a type through its API
     no_scaling_probe: dict[str, str] = {}  # artefact types the guard cannot fill through an API, with the reason
+    report_fields: dict[str, ReportFieldProvider] = {}  # fields a custom report layout may use for a type (§4m)
+    not_reportable: dict[str, str] = {}  # artefact types deliberately outside custom reports, with the reason (§4m)
+    report_starter_sections: tuple[ReportStarterSection, ...] = ()  # your parts of the platform's starter report layouts (§4v)
+    report_snippets: tuple[ReportSnippet, ...] = ()  # fragments of a report layout the designer can insert, about your records (§4aa)
     link_type_seeds: tuple[LinkTypeSeed, ...] = ()  # link types you ship; any artefact links to any by default (§4f-bis)
     reports: tuple[ReportDefinition, ...] = ()  # reports core serves for you (§4g)
     notification_types: tuple[NotificationTypeDefinition, ...] = ()  # notification kinds you send (§4h)
@@ -1224,12 +1228,1097 @@ Read left to right: the same provider defines the columns of the file out and th
 - **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (a Pain Point scored per persona has no single severity). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
 - **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export (no `create`/`update`) and gives a reason in `not_importable`; a core type's reason is in `CORE_NOT_IMPORTABLE` (`services/record_tables_core.py`, change requests). Do not add per-type export or import code to a core file.
 
+### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
+
+A custom report layout (a tree a person authors) reads records through two core pieces, so a layout never
+hand-queries a table and a module adds no report code to a core file.
+
+```mermaid
+flowchart LR
+    R["root_records(type)"] --> V["ArtefactResolver<br/>(the link graph's authorisation)"]
+    L["linked_records(parents, type)"] --> V
+    V -->|"visible ids only"| F["load_records(type, ids, fields)<br/>one query per type"]
+    V -->|"not visible"| C["counted per parent,<br/>never named or traversed"]
+    P["ReportFieldProvider<br/>(your fields)"] --> F
+```
+
+- `report_fields[artefact_type] = ReportFieldProvider(from_clause, columns, fields, where, status_labels)`. Build
+  it with `services.report_fields.from_search(SEARCH_PROVIDERS[type], *typed_fields)`: the joins, current-version
+  filter, identity columns and status labels come from the type's search declaration, and its vetted text fields
+  come across. Add typed fields with `date_field`, `enum_field`, `bool_field`, `number_field`, `instant_field`,
+  `principal_field` (a user or group, shown by name) and `name_lookup_field` (a foreign key as the row's name).
+- Fields are **opt-in**. A column that is not declared cannot be reached from a layout, so a Restricted or
+  consent-sensitive column (an email address, a participant, a consent record) is excluded by omission. `code`,
+  `title`, `status` and `tags` are reserved: the engine builds them.
+- A type that cannot be reported gives a reason in `not_reportable`. `backend/tests/test_report_fields.py` fails
+  for a registered type with neither, for a reserved or repeated key, and for one key with two labels.
+- `load_records` does **not** authorise. It is given only ids that `root_records` or `linked_records` returned;
+  both run every candidate through `ArtefactResolver`, the same rule as the link graph (project membership, module
+  enabled, `view` on the type in the record's own project, nesting). A record that fails is counted per parent, never
+  named, and never a stepping stone to the next hop; a type no module can display is counted apart (`unavailable`).
+- Work is bounded: `MAX_ROOTS` and `MAX_LINKED` set `truncated` rather than fail, and the number of queries does not
+  grow with the number of records.
+- Time: an `instant` field is a past UTC `datetime`, a `date` field is a plain calendar date; neither is converted
+  on the server.
+
+### 4n. Custom reports: layouts, the tree and the evaluator (Module 10 Phase 2)
+
+A layout is a versioned JSON tree a person authors; the evaluator turns it into the neutral report model for one
+caller. A layout is configuration, not an artefact type: no `PREFIX-nnn` code, not linkable, not searched.
+
+```mermaid
+flowchart LR
+    T["Layout tree<br/>(report_layout_versions.tree)"] --> V["validate_tree<br/>shape · caps · fields · aliases"]
+    V -->|"refs per block"| E["evaluate_layout"]
+    R["root_records / linked_records<br/>(ArtefactResolver)"] --> E
+    F["load_records<br/>(report fields)"] --> E
+    E --> D["ReportDocument<br/>(document family)"]
+    E --> S["Sheet list<br/>(table family)"]
+    E --> W["warnings · stats"]
+```
+
+- **Storage.** `report_layouts` (owner: organisation, or a project when `project_id` is set; `family` `document` or
+  `table`; `current_version`) and `report_layout_versions` (immutable tree, SHA-256 `tree_hash`, comment). Saving appends a
+  version through `services.report_layouts.save_version`, which refuses a save based on a stale version
+  (`LayoutConflictError`) and stores nothing for an identical tree. An ORM guard refuses to update a saved version.
+- **Drafts.** `report_layout_drafts` holds at most one mutable, shared working copy per layout (unique `layout_id`, removed with the
+  layout): the tree only, its hash, the `base_version` it started from, a `revision` that rises with every write, and who and when.
+  It may be invalid (it is checked when published, as a save is; `GET .../{id}/draft` returns the `problems`), a tree equal to the
+  saved version is not kept, and only its size is bounded (`MAX_TREE_BYTES`). `PUT .../{id}/draft` `{tree, base_version, revision}`
+  autosaves (409 `draft_conflict` naming who, when `revision` is stale; 409 when a new draft is based on an old version),
+  `DELETE .../{id}/draft` discards (audited), and `PUT .../{id}/tree` with `from_draft` (and optionally `draft_revision`) publishes the
+  draft as the next version and removes it in one transaction; a failed publish keeps the draft. The layout detail carries a
+  `draft` summary (who, when, `base_version`, `revision`, never the tree), also for MCP `get_report_layout`. A project reaches only its
+  own layouts' drafts. No run, list, pack, copy, duplicate or bundle reads a draft; autosaves are not audited event by event.
+  The designer (`useLayoutDraft`) opens on the draft, writes the active view's tree a few seconds after editing pauses (a per-person
+  `report_designer_autosave` preference; off: Save draft), numbers its writes by `revision`, and publishes with `from_draft` after
+  writing what is pending. The text view, untouched, is never written back, so opening a layout cannot create a draft.
+- **Tree.** `{schema_version, family, orientation?, page_size?, margins?, mirror_margins?, page_styles?, header?, footer?, variables?, nodes}`. Blocks: `heading`, `text` (restricted Markdown: paragraphs, `#` headings, bullet and numbered lists, `**bold**`, `*italic*`, `` `code` ``; see §4w),
+  `table`, `grid`, `each`, `group`, `if`, `page_break`, `contents` (a table of contents, one per layout), `spacer`, `bottom`, `section`, `image`, `record_images`, `equation` (document); `sheet` (table). Unknown keys are errors. There is no
+  expression language and no raw HTML block.
+- **Images.** An `image` block names a library file by id (`services/report_images.py`): a project layout may use its
+  own project's pictures (`file_assets.project_id`) and the organisation's shared resources, an organisation layout the
+  organisation's only (`usable_by_layout`, checked at save, validate and run). Pictures are judged by their bytes, embedded
+  without metadata and within byte and pixel caps; size is one rule for every renderer (`services/report_image_layout.py`);
+  they travel with their layouts in the project and organisation bundles (`report_layout_images`). Size limits are
+  settings (`REPORT_IMAGE_MAX_BYTES`, `REPORT_IMAGE_MAX_PIXELS`, `REPORT_IMAGE_MAX_TOTAL_BYTES`); widths and heights may be
+  cm, mm or (widths) a percentage; caption numbering is `auto`, `always` or `never`. API: `/orgs/{id}/report-images`,
+  `/projects/{id}/report-images` (list with the size limit, upload, delete). A picture's size and EXIF come from the general
+  `GET /files/{id}/details` (same read rule as the download), shown by `FileDetailsToggle` wherever files are listed.
+- **Custom tables.** A `grid` block is an author-written table (`columns`, `rows` of `cells`; `header_rows`, `borders`,
+  `border_color` and the style keys `align`, `valign`, `fill`, `color`, `bold`, which cascade grid, column, row, cell). A merged
+  cell carries `colspan` / `rowspan` and the covered positions are left out of their rows; `services/report_grid.py` is the one
+  span check (`place_spans`, called by the tree validator and by `place_grid` for the renderers). The evaluator resolves the
+  cascade and the colour words to `#rrggbb` and reads each cell's text as Markdown into paragraphs (`Grid`, `GridRow`,
+  `GridCell` in `report_model`); `services/report_grid_render.py` draws it in PDF, Word, OpenDocument and HTML, taking each
+  renderer's own inline-text writer so a cell's styles, links and equations are drawn by the same code as a paragraph's. Document
+  layouts only. Text view `@grid` / `@col` / `@row` and `| a | b |` lines. The designer edits it in a dialog
+  (`components/ReportGridField.tsx`, `ReportGridEditor.tsx`, the pure matrix in `utils/reportGrid.ts`): the schema's
+  `grid_columns` field kind draws the summary and button and saves `columns`, `rows` and `header_rows` together; `grid_rows`
+  draws nothing of its own.
+- **Record images.** A `record_images` block (inside an `each`) prints the pictures attached to that block's record. A module
+  lets its types take part with `ModuleDefinition.record_attachments[type] = RecordAttachmentProvider(link table, record
+  column)` (core types: `services/record_attachments_core.py`), or gives a reason in `no_record_attachments`
+  (`backend/tests/test_report_record_images.py` fails for a reportable type with neither); a type whose attachments may
+  concern identifiable people gives that reason and is not offered. `services/report_record_images.py` lists a batch of
+  records' files in one query, never one a person marked `FileAsset.confidential`, narrows them by the block's rules
+  (`names` with `*` and `?` and no regular expressions, `types`, `max_size_mb`, `order`, `max_count`), then reads only the
+  survivors and decides what is a picture from the bytes. A `{{placeholder}}` in a pattern is filled into the literal
+  stretches only, so a value never becomes a wildcard. The files are reached through the record's own link table, so a
+  picture prints when the caller could open it from the record's page; pictures share the library pictures' caps and are
+  recorded in the run's stats as a count and a digest. `PATCH /files/{id}/confidential` (uploader, project manager, or an
+  organisation admin for an organisation resource; audited) sets the mark, which changes nothing but reports.
+- **Image columns (Phase 46).** A table or sheet column `{"images": {...rules}, "label"?, "from"?}` shows the pictures attached to each
+  row's record. It uses the record-images rules through the one `_validate_picture_rules` and the same `candidate_files` and one-batch
+  file query (a name pattern may read the row as `{{row.field}}`), plus a size (`width` with `width_unit` `percent` of the column by
+  default 90, or cm or mm; `height`) and `arrange` (`stacked` or `side_by_side`). A document table's cell is a
+  `report_model.ImageCell` and every renderer draws it through `report_image_layout.place_cell_pictures` (sized against the cell, shrunk
+  only to the physical page limit); a sheet's cell is the file names as text. The layout root's `repeat_table_header` (default true)
+  reaches `Table.repeat_header` (PDF `repeatRows`, Word `w:tblHeader`, ODT header rows, HTML `thead`). The designer draws the column's
+  settings from `BlockCatalogue.image_column_fields`.
+- **Which projects a layout runs for.** The layout root's `run_scope` (`any` by default; `one`; `one_and_children`; text words
+  `anyprojects`, `oneproject`, `projecttree`; constants in `models.report_layout`). `custom_report_run.check_run_scope` refuses (422
+  `RunScopeError`) an organisation run that does not name exactly one distinct project in `project_ids` when the scope is `one` or
+  `one_and_children`, `include_children` when the scope is `one`, and `include_children` on an `any` fan-out; it is called by
+  `run_project_layout`, `run_organization_layout` and `report_run_jobs.enqueue`, so every route, the preview, queued runs, "generate
+  again" and MCP are held to it. A `one` or `one_and_children` organisation run is handed to `run_project_layout` for the chosen
+  project (no merge heading or Project column; provenance scope is the project), and with `include_children` its readable child
+  projects are merged into the one report. A pack lists such an entry `not_available` unless one project is named; an organisation
+  pack runs a `one_and_children` entry for the project alone. The catalogue entry carries `run_scope`.
+- **Sheet links and the Contents sheet.** A sheet column `{"field", "from"?, "label"?, "link": {"sheet": "<name>"}}` makes the
+  cell open the row its record has on the named sheet. `TreeValidator.sheet_links` checks, once every sheet is known, that the
+  sheet exists and its own source is the column's record type (the same sheet is allowed). The evaluator keeps
+  `{(type, id): first row}` per sheet and the cells waiting for a link, and `_Run.resolve_sheet_links` turns each into a
+  `report_model.CellLink(sheet position, row)` (a `LinkedText`, or a `DataCell` with `link`); a record that is not on the target
+  sheet stays plain text and one warning counts them. The target is a position, so XLSX (`'Name'!A12` hyperlink location) and
+  ODS (`text:a` with `#'Name'.A12`) write the name the tab really got after cleaning and de-duplication, with an apostrophe in a
+  name doubled; CSV drops the link. The root `contents_sheet` adds a first sheet (`report_model.contents_sheet`: each sheet's name
+  as a link, and its row count). A fan-out run (`custom_report_run._merge_sheets`) moves each link to the same record's row in
+  the merged target sheet and rebuilds the Contents sheet. A cell holding several records is not produced by any column today
+  (a column reads one record); a join gives one row per linked record. Number, date and time-of-day fields are `DataCell`s
+  (`typed_cell`), a time as naive UTC with a literal `Z` in its number format.
+- **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
+  `{record_type, linked_from: alias, link_types?, direction?}` (records linked to a surrounding record; link types are
+  named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
+  `where`, `sort` and `include_archived`. `group` buckets records by a field; `{{group.value}}` (also written `{{group.name}}`) and `{{group.count}}`
+  are its values, and a nested group is reached by its own `as` name (`{{comp.value}} - {{cat.value}}`). A record
+  falls into one group, except when grouping by `tags`, where it falls into one group per tag (an untagged record
+  into `(none)`), so counts can add up to more than the records. The designer's [+ Field] menu and Fields tab list
+  the group's entries as "Group: <field grouped by>" and "Group: count".
+- **Sheets (table family).** A `sheet` is a root source plus up to five left `joins` along links
+  (`{as, source: {record_type, linked_from}}`); a column names the record it reads with `from`. One row per
+  combination, blank cells where nothing is linked, so nothing drops out of an export.
+- **Placeholders.** `{{alias.field}}` and the global `{{project_name}}`, `{{project_report_name}}`
+  (the project's optional short Project report name, else `{{project_name}}`'s value), `{{report_title}}`, `{{generated_on}}`,
+  `{{organisation}}`. They are validated at save time against the field registry and the aliases in scope, and
+  substituted into already-parsed blocks at run time, so a record value can never become Markdown or a placeholder.
+- **Names and labels.** An alias is lower-case letters, digits, underscores and single hyphens (never trailing),
+  starting with a letter, up to 128 characters (`report_layout_tree.MAX_NAME_CHARS`); a field name never holds a hyphen.
+  Any block may carry a `label` (1 to 128 characters, no control characters): a designer-only name that no renderer,
+  placeholder or file name reads. The validator accepts the key on every block (`TreeValidator._labelled`), the block
+  catalogue appends the Label field to every described block, and the text view writes it as a `@label "…"` line
+  before the block.
+- **Tiers and visibility.** A layout is owned by an organisation or a project (`routers/report_layouts.py`:
+  `/orgs/{id}/report-layouts`, `/projects/{id}/report-layouts`). A project sees its own, its ancestors' (nearest
+  first) and the organisation's, de-duplicated by name with the nearest winning (`services/report_layout_scope.py`):
+  additive, not the Action Types "own rows, else the ancestor's" rule, which would hide every inherited layout as soon
+  as a project made one. A project hides an inherited layout with a `ProjectDefinitionSuppression` tombstone (kind
+  `report_layout`, per project, not inherited downwards; a hidden layout still holds its name) and restores it;
+  deleting the layout drops every tombstone. Platform starter layouts join as a read-only tier below the
+  organisation when they exist.
+- **Permissions.** Two administrative atoms, `manage_org_report_layouts` and `manage_project_report_layouts`
+  (`services/permissions.py`), grantable to users and groups through custom roles. Organisation admins hold both;
+  project administrators (and so managers) hold the project one in their project. Listing needs only membership;
+  reading a tree, versions or writing needs the atom, and an inherited layout is read-only where it is inherited.
+  Running a layout needs neither.
+- **Bundles.** `services/report_layout_bundle.py` adds `report_layouts` (every version) and `report_layouts_hidden`
+  (by name) to `project.json` and `report_layouts` to `org.json`; an import validates every tree again, drops a
+  version that is not valid here, renumbers 1..n, makes the importer the author, and never overwrites a layout in a
+  merge (a taken name imports as "<name> (imported)").
+- **Authorisation.** None of its own: every record comes from `root_records`/`linked_records`, so the caller's link
+  graph decides. Unseen records are counted in a note ("2 records not shown ...") and never named; a block with a
+  `where` says "Up to N" because the count precedes the filter.
+- **Limits.** Authoring caps in `report_layout_tree` (`MAX_DEPTH`, `MAX_NODES`, `MAX_COLUMNS`, text and size caps);
+  run caps in `report_layout_eval` (`MAX_WORK`, `MAX_OUTPUT`, a wall-clock timeout) raise `LayoutLimitError`; a read that
+  hit a traversal cap adds a warning instead.
+- **Text view.** `services/report_layout_text.py` reads and writes the tree as lines a person can type
+  (`parse_text`, `format_tree`); `POST .../report-layouts/text/parse` and `.../text/format` expose it at both tiers for
+  the designer (manage permission, nothing stored, the text never logged). `parse_text(format_tree(t))` returns `t`
+  exactly for every valid tree, so editing as text and saving unchanged makes no new version. A syntax error gives a
+  line and column and no tree; otherwise the validator runs and each of its errors is reported at its block's line.
+- **Column widths.** A table or sheet column may carry `width` (`30%`, `4 cm`, `40 mm`; absent is automatic), resolved by
+  `services/report_column_width.py` for every renderer: `Table.widths` (fixed layout in PDF `colWidths`, Word `tblLayout fixed` and
+  grid, ODT column styles, HTML `<colgroup>` with `table-layout: fixed`) and `Sheet.widths_cm` (XLSX/ODS; CSV ignores it).
+  Auto columns share what the fixed ones leave; no column is laid out narrower than 8 mm. The text view writes `width 12%` after
+  a `@column` heading (`colwidth` on `@images`). Starter tables take their usual widths from `USUAL_WIDTHS`
+  (`services/report_starter_blocks.py`).
+
+```mermaid
+flowchart LR
+    X["Text view<br/>@each … @end"] -->|"parse_text"| T["Layout tree"]
+    T -->|"format_tree"| X
+    T --> V["validate_tree"]
+    V -->|"errors mapped to lines"| X
+```
+
+  Grammar: first line `@layout document [portrait|landscape]` or `@layout table`; a block is `@name …` and
+  `each`, `group`, `if` (with `@else`), `table`, `sheet` and `@text` close with `@end`. A source is a record type or
+  `in <group>` then any of `from <name>`, `via "<link type>", …`, `direction <d>`, `archived true|false`,
+  `where <condition>`, `sort <field> [asc|desc]`, plus the block's `as`, `by`, `empty "<text>"`
+  (`none` after `via`, `where`, `sort` is an empty list). Table and sheet columns and joins are `@column
+  [name.]field "label"` and `@join <source> as <name>` lines. A line that is not a directive is text; a text line
+  starting `@` is written `@@`. A widget is the one block written as a line of its own, `[[widget.<module>.<report>.<part>
+  name=value]]` (§4p).
+
+  **Conditions.** A `where` clause (and an `@if`) holds a condition: a test of one field, `<field> <op> [value, …]`, or
+  tests combined with `and`, `or`, `not` and brackets. `not` binds tightest, then `and`, then `or`; several `where`
+  clauses must all hold. Operators by kind of field: text and person `eq ne contains in not_in empty not_empty`; enum
+  the same without `contains`; number and date `eq ne gt gte lt lte in not_in empty not_empty`; instant the
+  comparisons and `empty`; yes/no `eq ne`. `in` and `not_in` take a comma-separated list (`where category in
+  Safety, Security`), of any kind that has an `eq`. An empty value matches only `empty`, `ne` and `not_in`, so "everything
+  except General" keeps records with no category. The tree stores a test as `{field, op, value}` and a combination as
+  `{"all": [...]}`, `{"any": [...]}` (two or more) or `{"not": ...}`; a `where` list is an implicit `all`, so trees
+  saved before combinations existed are unchanged. At most `MAX_CONDITIONS` tests per `where` and
+  `MAX_CONDITION_DEPTH` levels of nesting. The writer brackets only what keeps the tree reading back identically (a
+  nested `all` or `any` is bracketed, an `all` inside an `any` is not), and quotes a value that is `and`, `or`, `not`,
+  `true`, `false` or holds a bracket; a bare `and` / `or` / `not` as a value is a syntax error that says so.
+
+```
+@group requirement by category as cat where category not_in General, Legacy and (status eq approved or owner not_empty)
+  @heading {{cat.value}}
+  @table in cat sort title
+    @column title
+  @end
+@end
+```
+
+```
+@layout document
+@group requirement by component as comp
+  @heading {{comp.value}}
+  @each in comp sort title as req
+    @heading level=3 {{req.code}} {{req.title}}
+    @table stakeholder from req empty "No stakeholders."
+      @column title "Stakeholder"
+    @end
+  @end
+@end
+```
+- **Extending.** A later block type (equation) calls `report_layout_tree.register_block_spec` (its
+  validator), `report_layout_eval.register_evaluator` (its evaluation) and `report_layout_text.register_text_form`
+  (its text form); `backend/tests/test_report_layout_eval.py` and `test_report_layout_text.py` fail when one exists
+  without the others. No core file is edited per block type.
+- **Time.** A layout stores no schedule. Run times are UTC instants; `instant` conditions compare as UTC whatever zone
+  the literal is written in; `date` conditions compare plain dates.
+
+### 4o. Custom reports: running a layout (Module 10 Phase 5)
+
+A layout appears in the report catalogue beside the module reports (`module_key` `custom_reports`) and runs through
+its own routes, as the Record list report does: it is core, not a module, so no module declares it.
+
+```mermaid
+flowchart LR
+    C["Report catalogue<br/>(project / organisation)"] --> R["GET .../custom-reports/{id}/run"]
+    R --> P["Project run<br/>one resolver"]
+    R --> O["Organisation run<br/>one resolver per project"]
+    P --> E["evaluate_layout"]
+    O --> E
+    E --> M["merge (organisation run)"]
+    M --> F["json · pdf · docx · csv"]
+    E --> F
+    F --> G["generated_reports row<br/>(after rendering succeeds)"]
+```
+
+- **Routes** (`routers/custom_reports.py`, `services/custom_report_run.py`).
+  `GET /projects/{id}/custom-reports/{layout}/run?format=&include_children=` runs a layout the
+  project can reach (its own, an ancestor's or the organisation's) unless the project hid it (404).
+  `GET /orgs/{id}/custom-reports/{layout}/run?format=&project_ids=a,b` runs an organisation layout
+  once **per project** the caller holds a role in and merges the results; `project_ids` can only narrow that set (404
+  for a project outside it), a project that hid the layout is left out (and the report says so), at most
+  `MAX_FANOUT_PROJECTS` are evaluated, and a document gets one heading per project with a page break between them
+  (authored headings move one level down) while a table layout's sheets of one name are concatenated with a leading
+  `Project` column. Running needs only access to the project or organisation: neither manage permission.
+- **Authorisation** is unchanged: each project is evaluated with `ArtefactResolver(project, caller)`, so a record the
+  caller cannot see is counted and never named. The wall-clock limit and the output cap are shared by the whole run.
+- **Formats** come from the renderer registry (`services/report_render.py`; `available_formats` is `json` plus
+  `formats_for(family)`): a document layout gives `pdf`, `docx`, `html` and `odt`; a table layout `csv` (one CSV, or a zip
+  with one CSV per sheet when there are several), `xlsx` and `ods`. Table formats are for the table family only. A
+  new format is one `register_renderer(Renderer(key, families, render))` (ODT and ODS were); a renderer sees only the neutral
+  model (`RenderInput`: a `ReportDocument` or `Sheet`s). The `json` form is the Reports dialog's on-screen view: each
+  table of the document becomes a section titled by the headings above it ("Alpha / Requirements"), the text between
+  tables is its note. The catalogue entry lists the formats and, for an organisation layout,
+  `supports_project_multi_filter` and the `projects` the caller may choose among; the Reports dialog offers them as a
+  **Projects** selector.
+- **Cells and pages are safe by construction.** Every CSV, XLSX and ODS text cell goes through `csv_safe` and is written
+  as text (an XLSX cell is typed `s` and an ODS cell is a `string` value with no formula attribute, never a formula,
+  and both are cut at 32,767 characters). A sheet cell is `str | report_model.DataCell`: a `number`, `date` or
+  `instant` field becomes a `DataCell` through `typed_cell` (finite, under 10^15, an instant as naive UTC), which XLSX
+  and ODS store as a number or date (`yyyy-mm-dd`, `yyyy-mm-dd hh:mm:ss"Z"`) and CSV writes as its own text, so a typed
+  value is never taken for a formula and user text is never typed; sheet and zip member names are
+  cleaned and made unique. The HTML page escapes every string, carries no script and a
+  `Content-Security-Policy` of `default-src 'none'; img-src data:; style-src 'unsafe-inline'`, inlines a raster image
+  only as a `data:` URI of a type sniffed from its bytes and an SVG only after sanitising. ODT and ODS
+  (`services/report_odf.py`, `report_odt.py`, `report_ods.py`) are written as XML text, not through an object
+  library (which cost 1.1 GB for 100,000 rows): every string passes `xml_text`/`xml_attr`, an image's type is sniffed,
+  and the package holds no macro, link, script or field code but the page number. ODT headings, tables, lists and
+  the footer page number are real ODF structures; equations are pictures (then the source), not formula objects.
+- **SVG figures.** `Image(svg=...)` holds markup that is untrusted until `report_svg.sanitize_svg` allow-lists it
+  (no entity or DOCTYPE with its own declarations — the plain `<!DOCTYPE svg PUBLIC ...>` a vector editor writes is accepted — no script, `foreignObject`, `style` element, event handler or external reference;
+  `href` only to `#id`; an `image` survives only as a base64 `data:` PNG, JPEG, GIF or WebP, re-encoded without metadata and held to the pixel and count limits, `report_raster`); every renderer sanitises again. The PDF draws it as vector through `svglib` (a `resvg-py` PNG
+  if `svglib` cannot), Word embeds a PNG (`python-docx` cannot take SVG), HTML inlines it. Text in an SVG is drawn
+  with the bundled DejaVu font; a module producing a diagram wraps its own labels. A figure that cannot be drawn is
+  skipped, never an error.
+- **No separate introduction, chapters or appendices.** A layout's own text blocks carry them; report content as a
+  stored tier (template, project, organisation) was removed, so the PDF, Word and OpenDocument renderers add nothing
+  around the evaluated blocks but the scope line and notes. The "Requirements by Component" starter shows the pattern.
+- **Provenance** (`models/generated_report.py`). Every run writes one `generated_reports` row after rendering succeeds
+  (so a refused or failed run leaves none): layout id, name, version and tree hash, caller, UTC time, engine version,
+  format, parameters, the projects covered, the widgets that ran (§4p), records read per type, block/row/hidden counts, the
+  version number of every versioned record in the report (`record_versions`, from `SearchColumns.version`, which
+  `versioned_provider` sets; bounded at `MAX_RECORDED_VERSIONS`, `record_versions_truncated` when cut) and a
+  SHA-256 `source_digest` over all the records in the report (type, id, last-change time). It holds identifiers, counts and keys only, no layout text or cell value, and survives the
+  layout's deletion. Layout runs are recorded here rather than in `audit_events`, as a report read is for the module
+  reports.
+- **Limits.** `LayoutLimitError` answers 413 and a timeout 408 for the on-screen (`json`) form; for a file format it
+  answers 409 `{"detail": {"code": "async_required"}}` (§4s). Both write nothing.
+- **MCP.** `list_report_layouts`, `get_report_layout`, `run_custom_report`, `parse_report_layout_text`,
+  `format_report_layout_text`, `list_report_widgets` and, in write mode, `create_report_layout`, `save_report_layout_version`,
+  `update_report_layout`, `delete_report_layout` (`mcp-server/server.py`, skill `reqtrack-mcp`). `run_custom_report`
+  always returns the `json` form.
+
+### 4p. Custom reports: widgets (Module 10 Phase 6)
+
+A `widget` block embeds one **component** of a module report (§4g) in a document layout: one of its tables, its
+headline figures, or its caveat notes. A widget is only the component. It never adds a heading or a sentence, so the
+layout owns every word around it and the same table can sit under different explanations in different reports.
+
+```mermaid
+flowchart LR
+    D["ReportDefinition.parts<br/>(table keys the module declares)<br/>+ figures · notes on every report"] --> C["report_widgets.list_widgets<br/>key = module . slug . part"]
+    C --> V["validator: key + the report's parameters"]
+    C --> L["GET …/report-layouts/widgets<br/>designer picker · MCP"]
+    V --> E["_eval_widget"]
+    G["widget_available<br/>module / sub-component enabled<br/>for this project"] --> E
+    E --> R["report's own collector<br/>(run once per report + settings)"]
+    R --> B["part_blocks:<br/>one table · figures · notes"]
+    B --> O["layout document<br/>(headings and prose are the layout's)"]
+    E --> P["provenance:<br/>widget keys + output digest"]
+```
+
+- **Declaring components.** A module lists the tables of a report it wants embeddable in
+  `ReportDefinition.parts` (`ReportPartDefinition(key, title)`, `key` being the `ReportSection.key` the collector
+  gives the table). Every report also offers `figures` (a `Measure | Value` table, with a `Group` column when the
+  report groups them) and `notes` without declaring them. A table whose key depends on the data (the summary pack's
+  re-listed gap tables, the risk matrices) is not embeddable. A registry test fails when a collector produces a table
+  that is not declared, or a declaration names a table the collector does not produce.
+- **Key.** `<module key>.<report slug>.<part>` (`risk_management.risk-register.register`). A slug is unique only within
+  its module, so a bare slug could turn ambiguous and change what a stored layout means; all three segments are stable.
+- **Text.** `[[widget.context_strategy.summary.figures stale_months=12]]` on a line of its own, optionally with
+  `sort <column> [asc|desc]` (up to three, most significant first) and ending `empty "No risks recorded."`. A value is a bare word, number, `true` or `false`, or quoted text; anything that would
+  read back differently (`"1"`, `"true"`, a date with a space) is quoted. A line starting `[[widget` is always a widget,
+  and a syntax error when malformed, so prose that needs such a line writes it inside `@text`. `@widget` is not accepted.
+- **Sorting.** `sort` orders a table or the figures by the heading of one of its columns (`"sort": [{"column": "Next
+  review", "descending": true}]`), reading each cell as a person would: numbers as numbers, ISO dates as dates, anything
+  else as text ignoring case, empty cells last either way. A report's ratings are text, so "High" sorts alphabetically
+  and not by severity; use the report's own order when severity matters. A heading the table does not have is a
+  run-time warning and is skipped (a table's columns are only known when the report runs). Without `sort`, the order is
+  the report's own. For a plain list of records, prefer a `table` block, which sorts and filters by the record's fields.
+- **Tree.** `{"type": "widget", "key": "...", "params": {"name": value}, "sort": [...], "empty_text": "..."}`; `params`,
+  `sort` and `empty_text` are left out when unused. Parameters belong to the report, so every component of a report takes the same
+  ones; values are JSON literals of the declared type (date and id as text) checked against its
+  `ReportParamDefinition`s, with bounds and choices. There are no placeholders or expressions in a parameter; `empty_text`
+  may use the global placeholders (`{{project_name}}`). Document family only.
+- **Running.** The report's own collector runs with a `ReportContext` over the same organisation and projects as the
+  layout run, for the project being evaluated (an organisation-wide run runs it once per project), **once per report
+  and set of parameters** however many of its components the layout embeds. At most `MAX_WIDGET_REPORTS` (20) such runs
+  per layout. A component with nothing in it shows `empty_text`, or nothing. The widget runs only where the report's
+  module, and its sub-component if it declares one, is enabled for that project (`widget_available`, the gate the
+  report's own project route applies); elsewhere the layout says so in a note and a warning and carries on. A report that
+  rejects its parameters (4xx) is shown the same way, never as a failed layout; any other error is a bug and propagates.
+- **Provenance.** `generated_reports.widgets` lists the widget keys that ran. Their data is not read through the field
+  registry, so no record versions are recorded for it; instead a SHA-256 of each report's output is folded into
+  `source_digest`, so a change in what a widget reports changes the digest.
+- **Designer and agents.** `GET .../report-layouts/widgets` (organisation and project tier, manage permission) and the
+  `list_report_widgets` MCP tool list the components whose module the organisation or project can use, with the report's
+  parameters. Saving does not check availability (an organisation layout runs in many projects); each run does.
+
+**Tables with the same headings line up.** `services/report_table_alignment.align_tables` runs on the evaluated document (and again on an organisation-wide run once the projects' documents are joined). Tables whose headings are identical and whose page style gives the same usable width form a group; each column takes the largest `column_needs` of any table in the group (the measure the PDF also uses for a lone table), resolved by `resolve_table_widths_cm` and written to each `Table.weights` with `aligned=True`, which every renderer already honours (the preview adds `table-layout: fixed`). A table with `widths`, `col_widths_cm` or its own `weights` (an image column) is never regrouped; an empty, one-column or lone table is left alone. The PDF adds `TABLE_GAP_CM` after a table that is followed by a table. The on-screen run carries the same weights in `ReportSection.weights` (aligned tables only), which `ReportSectionTable` turns into a `<colgroup>`. The layout root's `align_tables` (default true; text words `align`/`noalign`; document layouts only) is carried to `ReportDocument.align_tables`; off, `align_tables` returns the document unchanged. A report may declare `ReportDefinition.usual_widths` (column heading to `30%`/`4 cm`/`40 mm`, in every table of the report, like `cell_tones`): `collect_widget` copies them onto each section (`apply_usual_widths`) and then onto the widget's `Table.usual_widths`, and the rule fixes those columns at the width while the rest share what is left by content, for a group and for a lone table. Only widgets use them (a module report's own PDF is unchanged); a module's tests check every declared heading with `report_framework.unknown_usual_widths`.
+
+### 4q. Custom reports: the designer (Module 10 Phase 8)
+
+The designer is core UI over the layout API, with no per-module code: modules reach it through the field registry (§4m)
+and widget list (§4p), which it only reads.
+
+```mermaid
+flowchart LR
+    ED["ReportLayoutDesigner<br/>text editor"] -->|"POST …/text/parse (debounced)"| P["parse + validate<br/>positioned errors"]
+    ED -->|"POST …/preview"| V["report_layout_designer.preview_*<br/>transient layout, caller's access,<br/>run caps, nothing stored"]
+    V --> H["document: standalone HTML<br/>table: capped sheets"]
+    ED -->|"PUT …/tree + base_version"| S["report_layouts.save_version<br/>409 if the layout moved on"]
+    F["GET …/fields"] --> FP["field picker"]
+    W["GET …/widgets"] --> WP["widget picker"]
+    FP --> ED
+    WP --> ED
+```
+
+- **Endpoints** (both tiers, manage permission, server administrators excluded as for every layout route):
+  `GET .../report-layouts/fields` returns the record types the scope can use (module and sub-component enabled, the same
+  gate as the widget list) with their fields from `report_fields.field_catalogue`, the global `{{placeholders}}` and the
+  fields of a group; `POST .../report-layouts/preview` takes `text` or `tree` (exactly one) and answers
+  `{ok, errors}` for text with problems (200, nothing run), else a document as one standalone HTML page
+  (`report_html`, script-free, CSP meta) or a table as sheets capped at `PREVIEW_MAX_ROWS` with their real row counts.
+- **A preview is a run that leaves nothing behind.** It goes through `custom_report_run` with an unsaved `ReportLayout`
+  and version that are never added to the session, so the caller's own read access, the work/output/time caps and the
+  fan-out rules apply unchanged; it writes no `generated_reports` row and no audit event (nothing was produced to keep)
+  and never logs the text. Refusals (413, 408, 404, 422) are the run route's (`routers.custom_reports.guard_run`).
+- **Frontend.** `api/reportLayouts.ts` (`ReportLayoutApi`, one injectable interface per scope), `ReportSetupPanel` (the
+  one folder list of layouts, packs and module reports in Project Admin's Reports and Org Admin's Reports), `ReportLayoutFormModal` (create and edit share
+  `ReportLayoutFields`), `ReportLayoutDesigner` (page `/projects/:id/report-layouts/:layoutId`, `/orgs/:id/report-layouts/:layoutId`),
+  `ReportLayoutFieldPicker`, `ReportLayoutWidgetPicker` (reuses `ReportParamsForm`), `ReportLayoutPreviewPanel` (a
+  sandboxed frame with an empty `sandbox` attribute for the HTML) and `ReportLayoutHistory` (a line diff of two
+  versions' text views, computed in the browser). `utils/reportLayoutText.ts` only helps a person write (names in scope
+  at the caret, insertion, snippets, the widget line); the server stays the only parser and validator, so the client
+  holds no block model that could drift from the tree.
+- **Block editor.** The designer's second view edits the same tree on a Blockly workspace (`ReportLayoutBlocks`, loaded lazily so
+  the library stays out of the main bundle). Block types are generated from the block catalogue (`GET .../blocks`) in
+  `utils/reportLayoutBlocklyBlocks.ts`: a label, the short fields (`text`, `alias`, `tex`, `integer`, `boolean`, `choice`; an
+  optional text is not short) inline with a small label each, a read-only summary of what only the inspector edits, and a
+  statement input per child list. A small integer range or a choice is a dropdown. A module's block type therefore needs no
+  frontend code. `utils/reportLayoutBlockly.ts` converts tree and workspace state both ways without importing Blockly; a block's
+  `data` keeps the whole node minus its child blocks, so a key the editor does not draw survives and opening a layout never
+  rewrites it (a round-trip story pins this). The inspector beside the workspace shows every field of the selected block with the
+  shared field components (`ReportLayoutBlockField`, `ReportLayoutSourceEditor`, `ReportLayoutConditionEditor`,
+  `ReportLayoutColumnsEditor` (also joins), `ReportLayoutWidgetEditor`, `ReportLayoutVariablesField`, and `ReportLayoutJsonField`
+  for a kind or block type it does not know) and "Add to <list>" menus. There is no Blockly toolbox: "Add block" above the canvas
+  (`paletteEntries`: Heading by level, Text and Table first, then the rest by name) adds at the place a select beside it states
+  (after the selected block, inside it, or the end of the layout), creating the block in the workspace so one Ctrl/Cmd+Z undoes
+  it. The canvas has the page's width; the inspector goes under it by container query when the editor is narrow. An inspector
+  edit that changes only values is patched into the blocks in place; a change of shape redraws the workspace. Blockly deselects
+  when focus leaves the workspace, so the inspector keeps showing the last block chosen. The designer holds the tree while the
+  blocks are shown, checks it with `POST .../validate` after each pause, keeps the text view's text in step through `text/format`
+  for the preview and for switching back, and saves the tree itself. A block dropped outside the layout is not part of it and is
+  counted in the inspector. `utils/reportLayoutTree.ts` holds the pure tree reads and inserts, the names in scope (from each
+  block's `provides`) and the path reading that puts a server problem on its block.
+- **Two views.** The designer's `Tabs` are **Text** and **Blocks**. The blocks edit the one tree the designer holds; from the
+  text the designer parses the text as it stands (an immediate `text/parse`, not the pause-and-check result) and refuses with the
+  reason if it has problems; to the text it formats the tree only if the tree changed since it was entered. Dirty, Save, the
+  preview and the validate check read the tree in either view. (A rich-text document view existed briefly and was removed; so was
+  the card outline the block editor replaced.)
+- **Text view tools.** `ReportLayoutBlockToolbar` is an icon button per block (headings by level) with tooltips;
+  `ReportLayoutPageSetup` opens the Page setup dialog (paper, orientation, margins, mirrored margins, page styles) and writes
+  them into the `@layout document [landscape] [size] [mirror] [margins …]` line and one `@pagestyle` line per style (§4g, "Page styles"); `ReportLayoutFieldPicker` is one searchable list of the report and project
+  placeholders (`PLACEHOLDER_NAMES`: `project_name`, `project_report_name`, `project_code`, `project_description`, `report_title`, `generated_on`,
+  `organisation`) and the fields of every name in scope; `SaveVersionButton` asks for the note in a popover. The page size
+  reaches `ReportDocument.page_size` and every renderer through `report_model.page_dimensions_cm`.
+- **Page styles.** A document layout's own pages are `page_size` (A4 when absent), `orientation` and `margins`
+  (`{top, bottom, left, right, gutter}` in cm; 1.5 cm on every side and no gutter when absent; 1 to 10, gutter 0 to 5). `page_styles` is
+  a list of named styles (`{name, page_size?, orientation?, margins?}`, at most 10, unique names) that leave out what they share with the
+  layout. The `section` block (`page_style`, `children`) lays its contents out in one style: a new page in that style, the contents, then a
+  new page back in the layout's own style; a section with no output leaves no page, and a section cannot contain another. `mirror_margins`
+  is one switch for the whole layout (Word keeps it per document): `left` and the gutter are the inner edge and `right` the outer. Every
+  style must leave 5 cm of text width and height. The evaluator emits `PageStyleChange` blocks (`services/report_model.py`; flat, so a
+  renderer only switches style where one falls) and `services/report_page_styles.py` owns the vocabulary, the checks and the resolution.
+  Per format: PDF has one ReportLab page template per style (two when mirrored, picked by the parity of the page the style starts on),
+  Word a section per change with its own size, margins and gutter and `w:mirrorMargins`, ODT a page layout and master page per style
+  (`style:page-usage="mirrored"`; the gutter joins the inner margin), HTML a labelled `<section>` as wide as the page and CSS named pages
+  (`@page psN`) for printing. A table-family layout has no pages and refuses the keys.
+- **Headers and footers.** The root and each page style may carry `header` and `footer`: `{left?, centre?, right?, logo?: {file, height, slot?},
+  first_page?: "same"|"none", left_width?/centre_width?/right_width?: "25%"|"4 cm", valign?/left_valign?/centre_valign?/right_valign?: "top"|"middle"|"bottom"}`
+  (`services.report_band_cells.resolve_band_cells` decides the widths and alignments every renderer uses: unset cells fit their text, the centre takes the
+  spare room, default alignment top, so a document starter, which writes no band, prints the default centred page number in every format; a cell is text of up to 300 characters on three lines; `{}` prints nothing; a style that writes none prints the
+  document's, and the document's, where it writes none, a page number; the organisation's footer text and logo are read as `{{org.footer_text}}` and the `org_logo` picture, §4ab).
+  Cells take the report-wide placeholders, `{{layout_version}}`, `{{page}}`, `{{pages}}` and `{{var.name}}`, never a record field; the
+  evaluator fills them (`generated_on` is the caller's own day) and leaves the two page fields to the renderer (`RunningBand`,
+  `report_model`). A band must fit inside its margin (0.5 cm to the page edge + its tallest cell, `report_page_styles.band_height_cm`), checked
+  at save for each style with the margin it will print in. A logo is a library picture and goes through `report_images.image_nodes`, so the
+  tier rule, "used by" and the bundles treat it like an image block. Per format (three-column table in each): PDF draws the bands after
+  the body on a canvas that keeps pages open until the end so `{{pages}}` is known (`report_pdf_running`); Word writes a borderless table in
+  each section's header, first-page and (mirrored) even-page parts with `PAGE` and `NUMPAGES` fields; ODT writes header, left-hand and first-page
+  headers on each master page, a continuation master page for the return to the document's style, and trims the layout's margins so the body
+  starts where the margin says (`report_odt_running`); HTML shows bands on screen and prints through `@page` margin boxes (no logo).
+  `report_running.apply_template_defaults` is the one place the template's defaults are applied.
+- **Kind is fixed.** The server parses text without knowing the layout, so the designer compares the text's `@layout`
+  kind with the layout's and reports a mismatch as a problem before saving.
+- **Block schemas for the visual designer.** A `BlockSpec` carries a `schema` (`services/report_layout_block_schema.py`):
+  label, description, the block's `fields` (key, label, `kind`, required, help, bounds, choices, `depends_on`), its child
+  lists (`containers`: `children`, an `if`'s `else_children`), the name it brings into scope (`provides`, for example
+  `as`) and a `template` node. `GET .../report-layouts/blocks` (both tiers, manage permission) lists them with the
+  layout-level fields and the field `kind`s the designer can draw; `POST .../report-layouts/validate` takes a tree and
+  answers `{ok, errors: [{path, message}], node_count}` (200 either way, nothing stored, the tree never logged). A schema
+  describes; `BlockSpec.validate` still decides. A type with no schema is offered as raw JSON; a test fails for a
+  registered type without one.
+- **Extending.** A new block type needs its server pieces (§4n), a `schema` (the visual designer draws its form from
+  it) and, to be offered as a shortcut in the text editor, an entry in `BLOCK_SNIPPETS`; the editor, pickers and
+  preview need no change. Build its form from the existing field kinds; a new kind needs a control in the designer.
+
+### 4r. Custom reports: math (Module 10 Phase 9)
+
+Equations are TeX in the layout and the neutral model; each renderer asks `services/report_math.py` for the form it
+needs, and shows the author's own text when it cannot draw one.
+
+```mermaid
+flowchart LR
+    A["@equation block, or inline and display math<br/>in a text block or a math-capable field"] --> V["tex_problem<br/>command allow-list"]
+    V -->|"refused"| S["source shown as written<br/>+ one warning"]
+    V --> T["typeset<br/>ziamath → SVG (paths only)"]
+    T --> H["HTML: inline SVG in em"]
+    T --> P["PDF: vector (display), PNG (inline)"]
+    V --> O["omml<br/>latex2mathml → mathml2omml"]
+    O -->|"in the tested subset"| W["Word: native equation"]
+    O -->|"outside it"| I["Word: PNG of the SVG"]
+```
+
+- **Where math is recognised.** `\( x \)` is inline and `$$ x $$` is display. Both are found in the **author's own text**
+  and in the value of a record field its provider marks **math-capable** (`ReportField.math`, `from_search(...,
+  math_fields=...)`; today the requirement's description, reasoning and clarification). A delimiter inside any other
+  substituted value stays text (the evaluator keeps a per-character mask of where a delimiter counts), so a title cannot
+  become an equation; an author may still write `\( k = {{record.title}} \)`. A bare `$` is never a delimiter, and an
+  opener with no closer is ordinary text. Scanned: the paragraphs, headings and list items of a text block, and the
+  cells of a document table whose field is math-capable. A `$$ $$` where there is no room for a block (a heading, an
+  item, a cell) is drawn inline, and a display equation cannot hold a blank line (Markdown ends the paragraph). Sheets
+  of the table family (CSV, XLSX, ODS) keep the TeX as text.
+- **The `equation` block** is `{type: "equation", tex}` (a display equation; text view `@equation <TeX>` on one line, no
+  spaces at either end). The neutral model has `Equation(tex, display)` for a block and `MathText`, a `str` subclass whose
+  value is the text as written and whose `parts` are its runs and inline equations, so a heading, paragraph, list item or
+  cell needs no new field and every string-only consumer (CSV, the on-screen result) sees the source; only the
+  evaluator makes either, so a module report's ordinary text is never scanned.
+- **Allow-list, not block-list.** `tex_problem` admits named commands (Greek letters, operators, relations, arrows,
+  fractions, roots, delimiters, `\mathbb`-style fonts, `\text`, a few environments such as `matrix`, `cases`, `aligned`),
+  at most 2,000 characters and ten levels of braces, `&` only inside an environment, plain characters inside `\text{}`,
+  and none of `% # $ ~ "`. `\href`, `\input`, `\includegraphics`, `\def` and the rest are refused, because `latex2mathml` is
+  lenient and would pass some of them through. A save refuses an `equation` block, or an authored equation in a text
+  block, that fails; TeX that arrives at run time (a field value, a placeholder) is checked then.
+- **Drawing.** `ziamath` (plain SVG 1, glyphs as paths, so no font is needed and nothing in the output can fetch) gives the
+  SVG, which still passes `report_svg.sanitize_svg`. HTML sizes it in `em` and lowers it by its descent; the PDF embeds a
+  display equation as vector (`svglib`) and an inline one as a PNG placed with an `<img>` tag, because ReportLab reads an
+  inline image only from a file path (a temporary directory per render, removed afterwards). TeX that fails to parse is
+  shown as its source with the warning "An equation could not be drawn and is shown as written." (never the TeX itself).
+- **Word.** The converter's markup is unwrapped from its empty `m:box` wrappers, a square root gets the hidden degree Word
+  requires, and any element outside `OMML_ELEMENTS` (accents, limit operators, aligned equations) sends the equation to a
+  PNG instead. `tests/test_report_math.py` pins the markup for the supported subset. Checked in LibreOffice (Phase 0);
+  **a person must open a sample in Word before release.**
+- **On screen.** `components/MathText.tsx` draws the same fields on the requirement page (when locked or read-only) and a
+  change request's proposed text with **KaTeX** (`trust: false`, DOMPurify, MathML kept for screen readers). It first applies
+  `utils/mathTex.ts`, a port of the allow-list that reads `utils/mathAllowList.json`, generated by
+  `backend/scripts/generate_math_allowlist.py`; `tests/test_report_math_allowlist.py` fails when the file is stale and both
+  sides run the vectors in `utils/mathTexCases.json`, so the screen and the report accept the same equations and show the
+  rest as written. A new math-capable field is shown with `<MathText text={...} />`.
+- **Bounds.** A run draws at most `MAX_EQUATIONS` (1,000) equations, then shows the rest as written; results are cached per
+  TeX, so the same equation per record is typeset once.
+- **Extending.** A new renderer (ODT) calls `typeset`, `omml`, `png_of`, `source_of` and `report_model.text_runs`; nothing
+  else in the layout needs to change. A provider marks a field math-capable with `text_field(..., math=True)` or `from_search(..., math_fields=)`.
+
+### 4s. Custom reports: background runs (Module 10 Phase 10)
+
+A file run that passes the synchronous limits is produced in the background, stored for a limited time and announced
+with a notification. The job is the run's own provenance row (`GeneratedReport`), so there is one table and one history.
+
+```mermaid
+flowchart LR
+    R["GET .../run?format=pdf"] -->|"over the limits"| X["409 async_required"]
+    X --> Q["POST .../runs<br/>(queued row)"]
+    Q --> L["leader: run_job_loop<br/>FOR UPDATE SKIP LOCKED"]
+    L --> J["run_job: as the requester,<br/>background limits x5, 10 min"]
+    J --> S["object store<br/>report-runs/ORG/RUN.ext"]
+    J --> N["notification<br/>report_run_finished"]
+    S --> D["GET /report-runs/ID/download<br/>(requester only)"]
+    E["expiry pass (15 min)"] --> S
+```
+
+- **Hand-off.** There is no cost estimate: the synchronous run is attempted with its normal limits and the `LayoutLimitError`
+  it raises for a file format becomes a 409 `async_required` (the on-screen `json` form keeps 413/408, there being no file
+  to queue). `ReportRunner` answers it with `POST .../custom-reports/{layout}/runs` (project and organisation; body
+  `format`, `include_children` or `project_ids`), which pins the layout's current version and the
+  request on a `queued` row (202). At most `MAX_ACTIVE_PER_USER` (5) rows per requester are queued or running (429).
+- **Job state** is `GeneratedReport.status`: `completed` (a synchronous run), `queued`, `running`, `ready`, `failed`,
+  `expired`; with `started_at`, `finished_at`, `expires_at`, `output_key`, `output_filename`, `output_size` and a fixed-sentence
+  `error` (never an exception message).
+- **The queue** is worked by `services/report_run_jobs.run_job_loop`, started through the lifespan's `start_singletons`, so
+  one process works it. It claims the oldest queued row with `FOR UPDATE SKIP LOCKED` and runs one job at a time in a worker
+  thread. A job still `running` past `ASYNC_TIMEOUT_SECONDS` plus two minutes (the leader died) is marked `failed`, never
+  re-run.
+- **Limits.** A background run uses `ASYNC_LIMIT_SCALE` (5) times the work and output limits and `ASYNC_TIMEOUT_SECONDS`
+  (600 s) (`evaluate_layout(limit_scale=)`, `run_*_layout(background=True)`); a stored file over `MAX_OUTPUT_BYTES`
+  (200 MB) fails.
+- **Authorisation.** The job runs with the requester's resolver, after re-checking that the account is active, the
+  organisation is active, they still hold a role in the project or organisation and the layout is still reachable and not
+  hidden. Only the requester lists (`GET /api/v1/report-runs[?organization_id=]`), reads, downloads or deletes a run; another
+  person's run is a 404. Download re-checks the same access and the expiry. `?active=true` narrows the list to runs
+  that are queued or running (the top-bar indicator).
+- **Generate again.** `POST /api/v1/report-runs/{id}/again` (`report_run_jobs.requeue`) queues a fresh run of an
+  `expired` or `failed` run's stored request (format, scope, variable values, pack set): the requester,
+  the layout or pack's reach and its *current* version are checked again, the old file is never reused, the queue limit
+  applies and the response says whether the definition changed since (`definition_changed`). 404 not the caller's or the
+  report is gone or unreachable; 409 the run is waiting, running or still downloadable; 422 the stored values no longer fit;
+  429 too many queued.
+- **Where the person meets a run.** There is no list page. The `report_run_finished` notification links to
+  `/report-runs/:id` (`ReportRunDialog`: Download, or the expired/failed explanation with Generate again) and a clock with
+  a count in the top bar (`ReportRunsIndicator`, polling `?active=true`) shows runs still in progress.
+- **Retention.** `effective_retention_days`: `Organization.report_output_retention_days` (Org Admin > Reports >
+  Background reports), else `report_output_default_retention_days` (7), never above `report_output_max_retention_days` (30).
+  The expiry pass (every 15 minutes) deletes the object of a `ready` row past `expires_at` and marks it `expired` (file
+  columns cleared, provenance kept), and deletes provenance rows older than `report_run_record_retention_days` (400) that are
+  not queued, running or ready. Deleting an organisation deletes its stored objects (`org_deletion`).
+- **Notification** type `report_run_finished` (core `NotificationType`): title "Report ready: <layout>" or "Report could not
+  be produced: <layout>", body the expiry time or the failure sentence; no report content.
+- **Not in MCP.** `run_custom_report` returns the on-screen JSON; a file has no MCP form, so there are no MCP tools for
+  background runs.
+
+
+### 4t. Custom reports: run-time variables (Module 10 Phase 10b)
+
+A layout declares typed variables the person supplies when running it, so one layout serves any selection (for example
+the categories to show) without a copy per scope. Variables narrow a report; they never widen what the caller may read.
+
+```mermaid
+flowchart LR
+    L["Layout tree<br/>variables + {var: name}"] --> V["resolve_values<br/>supplied, else default"]
+    U["Run form<br/>GET .../variables"] --> S["values"]
+    S --> V
+    V --> B["bind_variables<br/>copy with literals"]
+    B --> C["validate again"]
+    C --> E["evaluate<br/>(unchanged)"]
+    D["ReportField.domain<br/>(db, project ids)"] --> U
+    V --> P["GeneratedReport.params.variables"]
+```
+
+- **Declaration.** Root `variables`: `name`, `type` (`text`, `number`, `date`, `bool`, `enum`), `label`, `multiple`, `default`
+  (a date may default to `today`), and for an enum either `options` or a `source {record_type, field}`. The text view writes
+  them as `@var` lines and references as `$name`.
+- **References** are `{"var": name}` in a condition `value` (kind and list-ness checked at save), a widget parameter (one value
+  of a fitting parameter type) and `{{var.name}}` in text. Substitution happens before evaluation, so no evaluator, operator
+  or widget has a variable case.
+- **Value domain hook.** `ReportField.domain(db, project_ids) -> list[str]` offers a closed list a project defines; an enum's
+  labels and the status labels need none; `services.report_fields.field_domain` is the single read path. A module whose field names a
+  project-defined row passes the lookup table's `project_id` column to `name_lookup_field`. A field with no domain takes free input.
+- **Runs.** `variables` is accepted by both run routes, `.../runs`, the draft preview and the MCP `run_custom_report`; 422
+  `variable_values` lists each problem by variable. The values used are stored on `GeneratedReport.params` and echoed by the
+  run form (`GET .../custom-reports/{id}/variables`, and `POST .../report-layouts/variables` for a draft). The catalogue entry
+  carries the run form as `variables`.
+
+### 4u. Custom reports: report packs (Module 10 Phase 10c)
+
+A report pack lists several reports (custom layouts and module reports), each with its own format, and is run with
+one set of variables into a zip with a `manifest.json`. A pack is configuration like a layout: organisation or project
+level, immutable versions, additive project visibility with hide and restore, the same manage permissions.
+
+```mermaid
+flowchart LR
+    F["Run form<br/>GET .../report-packs/{id}/form"] --> V["pack variables"]
+    V --> P["POST .../preview<br/>records per entry, nothing stored"]
+    V --> R["POST .../run"]
+    R --> E1["layout entry<br/>custom_report_run + renderer"]
+    R --> E2["module report entry<br/>report_module_run + framework renderer"]
+    E1 --> Z["zip: manifest.json + NN-name.ext"]
+    E2 --> Z
+    E1 --> G["GeneratedReport per entry<br/>shared pack_run_id"]
+    E2 --> G
+```
+
+- **Definition** (`services/report_pack_definition.py`): `variables` (declared as a layout's), optional `template`, and up to
+  25 `entries`: `{"kind": "layout", "name", "tier"?, "format", "filename"?, "variables"?}` or
+  `{"kind": "report", "module_key", "report", "format", "filename"?, "params"?}`. A layout is named, never identified by id.
+- **Variables** reach a layout entry by name, type and list-ness; a value the entry fixes wins; else the layout's default.
+- **Every entry runs as the caller** through the report's own path and gates, so a pack never widens access. An entry that
+  cannot run (not found, hidden, module off, no role, format not offered, variables not settable) is listed in the manifest
+  as `not_available` with a reason; no runnable entry is a 409 `nothing_to_run`.
+- **Files** are flat, `NN-<stem>.<ext>`; the stem is the entry's `filename` (or name) cleaned to letters, digits and `._- `.
+- **Bounds:** 25 entries, 100 MB, 120 seconds for the pack, plus each layout's own caps. A file run over a bound answers 409 `async_required`
+  and is queued with `POST .../report-packs/{id}/runs` (a preview over a bound is a 413); the background job stores the zip like any
+  background output, with larger bounds (200 MB, 15 minutes) and the requester's access re-checked.
+- **Saved variable sets** (`services/report_pack_sets.py`): a set is a name and values for some of the pack's variables, saved
+  with the pack or added by a project. A project overrides a pack-defined set per variable (nearest ancestor's override wins,
+  then the set's value) and resets it by deleting the override. A run takes `variable_set_id`; what is typed wins. In an
+  organisation run every project's entries use that project's effective values and the manifest lists them per project.
+- **Bundles.** `services/report_pack_bundle.py` adds `report_packs` (every version, with its sets), `report_packs_hidden`,
+  `report_pack_sets_added` and `report_pack_set_overrides` (by pack and set name) to `project.json` and `report_packs` to `org.json`;
+  an import validates everything again, drops what is not valid here with a warning and never overwrites a pack in a merge.
+- **MCP.** `list_report_packs`, `get_report_pack_form`, `preview_report_pack`, `get_report_run` (read) and `run_report_pack` (write mode,
+  queues the zip; the file is downloaded in the app).
+- A module adds nothing for its reports to appear in a pack: they are found through the registry.
+
+### 4v. Custom reports: starter layouts (Module 10 Phase 11)
+
+Every organisation is created with four ready-made document layouts (and a table layout, the Project Workbook, §4ad): **Business Requirements Document**, **Engineering
+Specification**, **Review Package** and **Requirements by Component** (the requirements report grouped by component and category,
+with an Introduction and Appendices to write). They are ordinary organisation layouts once written (editable, versioned, hideable, shared
+with projects), so an organisation adapts one rather than cloning it first.
+
+```mermaid
+flowchart LR
+    C["Core parts<br/>requirements, change requests,<br/>the document's own words"] --> A["StarterLayout.tree<br/>merge by order"]
+    M["Module parts<br/>ModuleDefinition.report_starter_sections"] --> W["wrapped in<br/>if module &lt;key&gt;"] --> A
+    A --> L["organisation layout<br/>(create_layout)"]
+    L --> R["run in a project:<br/>a part whose module is off is left out"]
+```
+
+- **A module contributes its own parts.** `ModuleDefinition.report_starter_sections` holds `ReportStarterSection(starter, order, nodes)`:
+  blocks over the module's own record types and report widgets. `services/report_starters.py` holds only the parts about core records
+  and the document's words, merges every module's parts by `order` and wraps each in `{"type": "if", "when": {"module": key}}`, so core
+  names no module. A part opens with its own heading. Build blocks with `services/report_starter_blocks.py`.
+- **`if` on a module.** An `if` test can be `{"module": key}` (text view: `@if module risk_management`): true where that module is
+  available in the project being run. The part, heading included, is left out otherwise, rather than printed with a false "none recorded".
+- **Adding them.** New organisations get them at creation (`routers/orgs/core.py`, `services/bootstrap.py`); an existing organisation
+  asks with `POST /orgs/{id}/report-layouts/starters` (New → Add missing starters on the Reports list, manage-layouts permission); `GET` on the same path names the starters still missing, and the menu item is offered only when one is. A starter whose name is
+  already used is skipped, so it is safe to repeat and never overwrites an edit. An upgrade seeds nothing by itself.
+- A new module with something to say in a starter adds a section; a new starter adds a `StarterLayout` and a key in
+  `services/report_starter_blocks.py`. `backend/tests/test_report_starters.py` validates every starter as assembled.
+
+### 4w. Report text: bold, italic, code and numbered lists (Module 10 Phase 13, text formatting)
+
+The Markdown reader (`report_model.markdown_to_blocks`) is shared by a layout's text block and by the resource-file sections the
+requirements report appends, so both get the same formatting in every document format.
+
+```mermaid
+flowchart LR
+    A["Author's Markdown"] --> B["Set equations aside<br/>(inline and display)"]
+    B --> C["markdown-it<br/>link, image, html, entity rules off"]
+    C --> D["Runs: str and Styled<br/>(bold, italic, code)"]
+    D --> E["Put equations back as written"]
+    E --> F["Fill placeholders per run<br/>(a value is never parsed)"]
+    F --> G["Paragraph / list item as MathText"]
+    G --> H["HTML · DOCX · ODT · PDF<br/>one style each, same words"]
+```
+
+- **Model.** `Styled(text, bold, italic, code)` is a third kind of part in a `MathText` (beside plain strings and `Equation`), and
+  `NumberedList(items)` joins `BulletList`. A `MathText` reads as its words without the markers, so CSV, the on-screen result and every
+  string-only consumer see plain text; text with no style is the plain `str` it always was.
+- **What is a style.** `**x**` bold, `*x*` / `_x_` italic, `***x***` both, `` `x` `` code; `\*`, `\_`, `` \` ``, `\[`, `\]` and `\\` make a marker
+  literal. Everything else stays as written: bare addresses and autolinks, reference-style links, images inside a sentence (an image alone on its line is still a
+  picture), raw HTML, entities, strikethrough. No hyperlink path exists in any renderer.
+- **Links.** `[words](address)` is a `Styled` run with an `href`. `link_problem` allows an absolute `http` or `https` address with a host,
+  `mailto:` with one address, or `#anchor` (a heading of the same document), and refuses whitespace, control characters, quotes,
+  angle brackets, backslashes and anything over 2000 characters. markdown-it's own link normalising and validation are replaced (an
+  address stays exactly as written, so `{{record.url}}` survives to be filled), the autolink, reference and image rules stay off, and a
+  link with an address that is not allowed is kept as written text. In a layout the evaluator fills the address and checks it again on
+  the final text (`checked_link`: a failure drops the link with one warning that never repeats the address); a record value can
+  therefore reach an address (accepted by the User, 2026-10-28) but never produce anything other than an allowed link.
+  `finalize_links` runs first in every renderer: each `Heading` gets an anchor (`heading_anchor`, unique in reading order:
+  `overview`, `overview-2`) and a link to a heading that is not there becomes plain words. HTML writes `<a href>` (outside addresses
+  `rel="noopener noreferrer nofollow" target="_blank"`) and heading ids; Word a relationship target or a bookmark (`sec_` plus a hash
+  of the anchor) with `w:hyperlink`; OpenDocument `text:a` and `text:bookmark`; PDF `<a href>` and `<a name>`. The designer's
+  sandboxed preview shows links but does not follow outside ones.
+- **Safety order.** Equations are set aside before the reader runs and put back unread (a `_` or `*` in TeX is never emphasis);
+  placeholders and record values are filled run by run after the Markdown is read, and a value takes the style of the run it is
+  inside but is never read for styles. The layout evaluator keeps a run's style through placeholder filling and equation finding
+  (`_restyled`); an equation inside a styled run is drawn unstyled.
+- **Renderers.** HTML `<strong>`/`<em>`/`<code>` and `<ol>`; Word run bold/italic, a Courier New code font and the `List Number`
+  style; OpenDocument `text:span` with named character styles (`T_Bold`, `T_Italic`, `T_BoldItalic`, `T_Code`, …) and the `L_Number`
+  list style; PDF `<b>`, `<i>` and `<font face="Courier">` around the escaped words, and a numbered `ListFlowable`. A heading is bold
+  already and reads as plain words.
+- **Behaviour change.** Existing text containing a matched `*…*`, `**…**`, `_…_` or a backtick pair now prints styled, and a line
+  starting `1. ` becomes a numbered list; an unmatched marker, `5 * 3`, `snake_case` and a lone `_` are unchanged. This applies to
+  layouts and appended resource files.
+
+### 4x. Reports picker: folders, placements and the sub-component gate (Module 10 Phase 16)
+
+Every entry of the report catalogue has a **folder** and a **kind** (`report`, `sheet` for a table layout, `pack`).
+The folder is a path of up to three levels (`Handover/Quarterly`, `services/report_folders.py`), decided in layers:
+
+```mermaid
+flowchart LR
+    D["Default<br/>module name · Platform ·<br/>Custom reports · Report packs"] --> A["Author's folder<br/>ReportLayout.folder · ReportPack.folder"]
+    A --> O["Organisation placement"] --> P["Parent project placement"] --> C["Project placement"]
+    C --> E["ReportCatalogueEntryOut.folder<br/>and the picker's tree"]
+```
+
+- **`ReportPlacement`** (`models/report_placement.py`, `services/report_placements.py`) is one row per (organisation or
+  project, report key) holding an optional `folder` and, for a module or platform report, an optional `hidden`. Each
+  is `NULL` for "no override here"; the nearest tier with a value wins per attribute (the way action types fall
+  back to the nearest ancestor). A report is named by a stable key: `report:<module>.<report key>`, `layout:<id>`,
+  `pack:<id>`; deleting a layout or pack deletes its placements.
+- A shared layout or pack is hidden through its own definition-suppression tombstone, so a placement may only *move*
+  it. A hide of a module report is a tidy-up, not access control: the report route still answers and runs its own gate.
+- `GET/PUT /api/v1/{orgs|projects}/{id}/report-placements` lists everything a scope can place (hidden included, so it can
+  be restored) and sets one override; `GET .../report-placements/resolved` is the read for any member. The permission
+  is the existing manage-report-layouts one at each tier. Changes are audited (`report_placement`).
+- **`ReportFolder`** (`models/report_folder.py`, `services/report_folder_store.py`) keeps a folder nothing is filed in yet, one row per
+  (organisation or project, path). The listing is those rows plus every folder a visible layout, pack or placement uses (a project
+  also sees its ancestors' and the organisation's); `GET/POST/PATCH/DELETE /api/v1/{orgs|projects}/{id}/report-folders` lists,
+  adds, renames and deletes (path in the body or query string). Rename and delete change only what the scope owns; a delete moves
+  what was filed in it up one level and deletes no report. Same permission as layouts; audited (`report_folder`); both bundles carry
+  the rows (`services/report_folder_bundle.py`).
+- Placements travel in both bundles (`services/report_placement_bundle.py`): a module report by key, a layout or pack by name,
+  resolved after the layouts and packs are imported; a name with nothing to apply to is a warning.
+- **Sub-components.** A `ReportDefinition` names the sub-component it needs (`subcomponent`) or, for a report spanning
+  several, the ones it spans (`any_subcomponents`, offered while at least one is enabled). `report_enabled_for_project` and
+  `report_enabled_for_organization` (`modules/registry.py`) are the one check the catalogue, the report route, the
+  widget list and the module run all use.
+- Favourites are not a table: they are a list of report keys in the person's `ui_preferences` (`report_favourites`). The folders left open are kept the same way (`report_picker_folders`: folder ids by picker; each host names its picker with `pickerId`), and a picker opens fully collapsed the first time.
+- Frontend: `ReportPicker` (dialog over the shared `FolderTreeList`), `ReportSetupPanel` (Org Admin and
+  Project Admin: layouts, packs and module reports as one folder list, merged client-side in `utils/reportSetupRows` from the layout, pack, placement and folder lists) `ReportFolderChooser` and `ReportFolderField` (the form field that opens the chooser in a popover).
+
+### 4y. Custom reports: default file names (Module 10 Phase 40)
+
+A downloaded or stored report is named by a `{{placeholder}}` template (`services/report_file_names.py`). The same
+placeholder syntax, run facts and resolver the document's text uses fill it, so a name cannot disagree with the report.
+
+```mermaid
+flowchart TD
+    E["Pack entry filename"] --> S
+    L["Layout tree file_name"] --> S
+    O["organizations.report_file_name"] --> S
+    S["render_stem: fill, clean each value,<br/>clean the whole, cap"] --> R{usable?}
+    R -->|yes| N["stem + extension chosen by the renderer"]
+    R -->|no| B["next source, else the built-in scope-report name"]
+    N --> D["file_response -> content_disposition<br/>(RFC 5987 for anything not printable ASCII)"]
+```
+
+- **Where a template lives.** `file_name` on the layout tree root (`@filename "..."` in the text view, a `file_name` field
+  kind in `LAYOUT_FIELDS`), `file_name` on a pack definition (the zip) and `filename` on a pack entry (all part of the
+  versioned JSON, so they travel in bundles unchanged), and `organizations.report_file_name` (the default for a report
+  that sets none, including the built-in reports: framework module reports, the requirements report, the compliance
+  reports and the record-list report; in the organisation bundle).
+- **Order.** Layout: its `file_name`, else the organisation's, else `<scope>-<layout>`. Pack zip: its `file_name`, else the
+  organisation's, else `<scope>-<pack>`. Pack entry: its `filename`, else the layout's `file_name`, else the layout name.
+- **Placeholders.** `report_title`, `project_name`, `project_report_name`, `project_code`, `organisation`, `generated_on` (the caller's own day: the
+  run records `LayoutRun.today` from `effective_today()`), `layout_version`, `format` and `var.<name>`. The organisation
+  default has no `layout_version` and no variables. A record field is refused at save: a file has no current record (the
+  record-image name rule, which has one, shares the syntax).
+- **Safety.** `clean_filename` folds accents, replaces anything outside `A-Za-z0-9 ._-`, collapses `..` and repeated dashes,
+  strips leading and trailing dots, spaces and dashes, prefixes a Windows device name and caps the length; each value is
+  cleaned and cut to 40 characters before it is joined. `file_response` builds the header through `content_disposition`.
+  An empty or unusable result falls back; a run never fails because of a name.
+- **Live example.** `POST /api/v1/report-file-names/example` (any signed-in person; stateless, data-free) answers the
+  example, the problems and the placeholders valid for the place; the shared `FileNameField` shows them.
+
+### 4z. Custom reports: copying between projects (Module 10 Phase 41)
+
+`services/report_copy.py` copies layouts, packs, folders and module-report settings from one project to another of the
+same organisation (`POST /projects/{target}/report-copy`, `dry_run` to preview; `GET /projects/{source}/report-copy/targets`).
+It adds no table and needs nothing from a module: a layout or pack is serialised by the project bundle's own entry builders
+(`report_layout_bundle.layout_entry`, `report_pack_bundle.pack_entry`, both with `latest_only`) and created by the bundle's
+importers (`import_layout_entry`, `import_pack_entry`), so a field a module's blocks or a later change adds to the bundle
+reaches a copy with no edit here.
+
+```mermaid
+flowchart TD
+    Q[Request: source, ticked items, name rule] --> G{Gates}
+    G -->|no access / other organisation| N404[404]
+    G -->|no manage right| N403[403]
+    G -->|archived| N409[409]
+    G -->|ok| PL[plan_copy: reads only]
+    PL -->|dry_run| OUT[Plan returned]
+    PL -->|apply| AP[apply_copy: folders, layouts + pictures, packs, settings, favourites]
+    AP --> AU[One audit event: counts and ids]
+```
+
+- **Gates.** `manage_project_report_layouts` in the target (dependency) and in the source (checked in the route; a source the
+  caller cannot see at all is 404), no server-administrator bypass; both projects unarchived and in one organisation.
+- **Names.** A taken name is renamed `Name (copy)`, `(copy 2)`, ... or skipped; nothing is replaced. A pack entry naming a
+  copied layout is re-pointed at the copy's name.
+- **Pictures.** An organisation picture stays a reference; a project (or ancestor) picture is copied once into the target
+  project's library, read through `files.read_file` and re-uploaded by the bundle's picture importer.
+- **Selection UI.** `FolderTreeList` takes optional `checks` (tick boxes, a folder covering its items, a mixed state);
+  `ReportSetupPanel` uses them for its copy mode and `ReportCopyDialog` previews and applies.
+
+### 4aa. Custom reports: snippets (Module 10 Phase 43)
+
+A **snippet** is a named fragment of a layout (a cover page, a logo at the top right, record images, document details, document review
+and control, approvals (these three are custom tables, `grid` blocks) and a landscape table section) that an author inserts into the layout they are editing. Inserting **copies** the blocks in: nothing
+links back, so changing a snippet never alters a layout. A snippet adds no block type, no data access (its blocks run with the
+runner's permissions) and the built-in and module snippets store nothing: the designer holds the draft and the server only builds
+and validates the result. Authors can also keep their own (see "Saved snippets" below).
+
+```mermaid
+flowchart LR
+    C["Core set<br/>services/report_snippets_core.py"] --> R["get_report_snippets()"]
+    M["Module set<br/>ModuleDefinition.report_snippets"] --> R
+    R --> V["visible_snippets:<br/>module on for the scope,<br/>record-type choices"]
+    V --> L["GET .../report-layouts/snippets"]
+    V --> A["apply_snippet<br/>draft tree + values + container/index"]
+    A --> P["POST .../snippets/{key}/apply:<br/>new tree, changes, or the reasons"]
+```
+
+- **A module contributes its own.** `ModuleDefinition.report_snippets` holds `ReportSnippet(key, name, description, category, blocks,
+  family, root, parameters, formats)`; a snippet about a module's own records is offered only where that module is on (the
+  organisation, or the project). Core names no module. `backend/tests/test_report_snippets.py` applies every built-in to an empty
+  layout and to one that already has what it adds.
+- **Parameters fill declared paths.** A `ReportSnippetParameter` (`image`, `record_type` or `text`) names the paths in the fragment that
+  receive its value (`nodes[0].children[1].source.record_type`), never a token parsed out of text, so the fragment is a valid tree
+  from the start. A picture is checked against the layout owner's library (an organisation layout cannot take a project's picture), a
+  record type against what the scope can report; a picture and a record type are never defaulted.
+- **Root additions** (`root`: `page_styles`, `variables`) are reused when identical, a page style with a clashing name is renamed
+  (`Cover 2`) and the inserted sections follow, a clashing variable is refused; nothing is overwritten.
+- **Only the snippet's own problems refuse it.** A draft is often mid-edit, so a problem elsewhere in the layout is counted
+  (`problems_elsewhere`), not a reason to refuse; a problem inside what was inserted, or caused by it (the block or page-style limit,
+  a section inside a section), refuses it with the reason and path.
+- **`layout_aware`** (built-in snippets only) adjusts a fragment to the layout: the logo is sized to the page's top margin and placed
+  from the page corner so its right edge meets the right margin. The position is fixed at insert time.
+- **Formats.** `formats` lists where the result is true; the logo is an image in front of the text anchored to the page, printed by
+  PDF, Word and OpenDocument text but only approximated in the browser preview.
+- **MCP.** `list_report_snippets` and `apply_report_snippet` (read-and-compute, nothing stored) in the core server and skill.
+
+**Saved snippets (Phase 45).** An author keeps a selection of a layout (a block with everything inside it, or a run of top-level
+blocks) as a snippet of a project or the organisation (`report_snippets`, `SavedReportSnippet`; core configuration, not an artefact
+type, so no code, tags or search). It is stored as the blocks and the `root` they need (the page styles their sections use, the
+variables they read), has no parameters or versions, and is offered by `visible_snippets` under the key `saved-<id>` after the
+built-in and module snippets, so the insert dialog, the apply service and MCP treat it like any other.
+
+```mermaid
+flowchart LR
+    D["Draft tree + selection"] --> F["fragment_from_selection:<br/>blocks + page styles + variables"]
+    F --> K["validate_fragment:<br/>tree validator + picture rule at the tier"]
+    K --> T[("report_snippets<br/>org or project")]
+    T --> S["report_snippet_scope:<br/>own, ancestors, organisation,<br/>less those the project hides"]
+    S --> V["visible_snippets"]
+    T --> B["Bundles: report_snippets,<br/>report_snippets_hidden,<br/>report_snippet_images"]
+```
+
+- **One check on every way in.** `report_snippet_store.validate_fragment` runs on save, copy, bundle import and MCP create: the tree
+  validator over a minimal wrapping tree (no unknown block, no raw HTML, nothing that refers to something outside the selection) and
+  the picture rule at the snippet's tier (a project picture is refused at organisation level and on a copy up, and named). Apply
+  still re-checks the whole result.
+- **Visibility is additive** like layouts and packs (own, ancestors', organisation's, de-duplicated by name, nearest wins); a project
+  hides an inherited snippet through a `ProjectDefinitionSuppression` tombstone (kind `report_snippet`) and restores it.
+- **Routes** `/orgs/{id}/report-snippets` and `/projects/{id}/report-snippets` (list, read, `check`, save, rename, delete, copy; at
+  project level `visibility`, `restore`, `check-organization` and `organization`), gated by the layout-management permissions.
+- **Bundles.** `services/report_snippet_bundle.py` adds `report_snippets`, `report_snippets_hidden` (by name) and
+  `report_snippet_images` to `project.json`, and `report_snippets` and `report_snippet_images` to `org.json`; an import revalidates
+  every fragment, skips one that is not valid here with a warning, and never overwrites a name in a merge.
+- **MCP.** `list_saved_report_snippets`, `get_saved_report_snippet`, `check_report_snippet` (read) and `save_report_snippet`,
+  `update_saved_report_snippet`, `delete_saved_report_snippet`, `set_saved_report_snippet_visibility`,
+  `copy_saved_report_snippet` (write mode).
+
+### 4ab. The organisation's report look (Module 10 Phase 49)
+
+An organisation has **one report look**, not a list of templates: `Organization.report_accent_color_hex` (`NULL` follows the UI
+accent, then the platform's), `report_include_logo`, `report_footer_text`, `report_include_cover_page` and
+`report_chapters_per_component`. The accent and logo are set on the Branding page, the others under Reports →
+Configuration (`PUT /orgs/{id}/branding`, `PUT /orgs/{id}/advanced-settings`; a client that does not send a field leaves it).
+
+```mermaid
+flowchart LR
+    Org["Organization report look"] --> Built["Built-in report<br/>(requirements, module, record-list)"]
+    Org --> Reader["report_org_values"]
+    Reader --> Text["{{org.footer_text}} in text, header, footer"]
+    Reader --> Cond["if org.include_cover_page"]
+    Reader --> Logo["org_logo image / header logo"]
+    Text --> Layout["Custom layout"]
+    Cond --> Layout
+    Logo --> Layout
+    Org -. accent only .-> Layout
+```
+
+- **A built-in report applies the look**, always: `report_document.resolve_branding(db, organization)` (accent, cover page, logo,
+  footer, and `report_chapters_per_component`, which a request's `chapters_per_component` overrides).
+- **A custom layout is never forced.** It prints the footer text, the cover page and the logo only where it reads them; the
+  renderers are given the accent colour alone (`report_document.layout_branding`) and the only default a layout gets is a page
+  number (`report_running.apply_default_bands`).
+- **The `org` scope** is a closed set owned by core (`services/report_org_values.py`: `footer_text`, `include_cover_page`,
+  `include_logo`, `chapters_per_component`, `report_accent`), not a registry. It reads as `{{org.key}}` in text, headings, captions
+  and header/footer cells, and as `org.key` in an `if` (a bool takes `eq`/`ne` with `true`/`false`; the text view writes
+  `@if org.include_cover_page eq true`). An unknown key is a checked problem at save time; `org` is a reserved block name, like
+  `var`. A value is text or a boolean and never becomes markup.
+- **The logo is an image source**: an `image` block's or a header/footer logo's `file` may be `org_logo` (no library file; the
+  run warns once and leaves it out when the organisation has no logo). It is not a library picture, so image visibility,
+  "used by" and bundles skip it.
+- **Migration 0125** folded the old `report_templates` into the organisation (the default template, else the only one; extras are
+  dropped and counted in the log) and saved a **new version** of each document layout whose effective template had a footer,
+  a cover page or a logo, so it reads the values where the old output printed them. The cover is an `if` block of the
+  organisation's logo, the title and a page break; the engine's plain title still prints above it, which the old cover page replaced.
+- **Bundles.** `org.json` carries `report_look`; an older bundle's `report_templates` becomes the look on a new organisation (the
+  default one, else the only one) with a notice for each extra, and is ignored by a merge (the target's look is never touched). A
+  layout entry's `report_template` and a pack definition's `template` are ignored with a notice.
+
+### 4ac. Custom reports: the shape block (Module 10 Phase 57)
+
+A `shape` block is a coloured rectangle, rounded rectangle, ellipse, triangle, line or arrow, or the author's own SVG, that sits
+in line with the text, beside it, or behind or in front of it. It is **a generated picture**: `_eval_shape` builds an SVG
+(`services/report_shapes.py`) and emits an `Image`, so a shape takes every placement, anchor, offset and layering rule the image
+block has (in line, wrap, behind, in front; paragraph, margin or page anchors) with no new path in the four renderers.
+
+```mermaid
+flowchart LR
+    Node["shape node<br/>(tree)"] --> Eval["_eval_shape"]
+    Org["org report_accent"] --> Eval
+    Eval -->|preset| Draw["shape_svg<br/>(numbers + colour only)"]
+    Eval -->|custom| San["sanitize_svg"]
+    Draw --> Img["Image(svg=...)"]
+    San --> Img
+    Img --> PDF["PDF: vector"]
+    Img --> HTML["HTML: inline SVG"]
+    Img --> Word["Word: transparent PNG"]
+    Img --> ODT["ODT: transparent PNG"]
+```
+
+- **Tree** keys: `shape` (`rectangle`, `rounded`, `ellipse`, `triangle`, `line`, `arrow`, `custom`), `fill`, `outline`,
+  `outline_width` (mm), `width` and `height` (cm or mm), `svg` (custom only), `alt`, `align`, `placement`, `anchor`, `offset_x`,
+  `offset_y`. A colour is `#rgb`/`#rrggbb` or `accent` (the organisation's report accent, `{{org.report_accent}}`), `white`,
+  `black`, `none`. A preset needs both sizes; a custom shape keeps its own when they are empty. A line or arrow is coloured by
+  `outline` (black unless set) and takes no fill; an arrow's height is its head. Placement is validated by the image block's own
+  rule (`_validate_image_placement`); a caption is not a shape key.
+- **Safety.** Nothing the author types becomes markup: a preset is built from validated numbers and a validated colour; a custom
+  SVG is checked at save time by `report_shapes.svg_problem` (the `report_svg.sanitize_svg` allow-list, a 50,000 character limit,
+  and a `viewBox` or width and height on the root) and sanitised again by each renderer.
+- **Sizes** are exact, in cm or mm; a percentage is not offered (the text width is unknown when the drawing is made, so an outline
+  or corner would stretch). A shape wider than the text is scaled down with its proportions.
+- **Word and OpenDocument** get a PNG at 300 dpi of the printed size with a **transparent** background
+  (`report_image_layout.svg_block_png`; this now applies to every SVG picture block, which used to have a white one), not a native
+  shape object: a flat colour does not justify a second drawing path per format. Layers are drawn in document order, so a shape
+  placed behind and then an image placed behind at the same spot shows the image on the shape.
+- A document layout only (`FAMILY_DOCUMENT`); a table layout refuses it at save. A shape is part of the tree, so bundles carry it
+  with no new table.
+
+### 4ae. Custom reports: colour words and colour schemes (Module 10 Phase 72)
+
+A colour setting in a layout holds a **colour word**, never markup: a hex colour (`#rgb`/`#rrggbb`), a reserved word (`accent`, the
+organisation's report accent, and `accent_light` and `accent_dark`, a fixed tint (85% to white) and shade (25% to black) of it; `white`,
+`black`, `none`) or the **name** of a colour in a scheme. A name is kept as a name, so changing the scheme re-colours every block
+that uses it. One resolver, `services/report_colours.resolve_colour`, turns a word into `#rrggbb`; every renderer and the HTML preview
+write a colour only from what it returns.
+
+```mermaid
+flowchart LR
+    L["layout palette<br/>(tree.palette, up to 8)"] --> E["effective_scheme"]
+    O["organisation scheme<br/>(Organization.report_colour_scheme)"] --> E
+    S["standard four<br/>primary secondary tint neutral"] --> E
+    E --> R["resolve_colour(word, accent, scheme)"]
+    A["org report accent"] --> R
+    R --> X["#rrggbb<br/>shape SVG, and later every colour setting"]
+```
+
+- **Resolution order:** the layout's own scheme, then the organisation's, then the standard four (`primary` = the accent, `secondary` =
+  `accent_dark`, `tint` = `accent_light`, `neutral` = a fixed grey), which always resolve. A layout with no `palette` follows the
+  organisation's, live (the run's provenance row, `stats.colours`, records the names a run used and what each resolved to).
+- **A scheme entry** is `{name, colour}`: a name is 1 to 24 lower-case letters, digits or underscores starting with a letter and is not a
+  reserved word; the colour is a hex colour or a reserved word except `none`, never another name, so resolution is one step.
+- **Checks.** `validate_tree(tree, organization_colours=...)` refuses a name no scheme defines (path of the block field) when the
+  organisation's names are given: the layout save routes, the validate endpoint and every run pass them, so deleting an organisation
+  colour a layout names turns that layout's next run into a 422 naming the block. Where the organisation is not at hand (the text
+  parser, snippets, bundle import) a well-formed name is accepted unchecked. Removing a scheme name a block still uses is refused in
+  the editor and is the same checked problem on a hand edit.
+- **A new colour setting** declares its block field with `kind="colour"` (`BlockField`), validates it with
+  `colour_word_problem(value, v.colour_names)` and resolves it with `resolve_colour(word, run.org_values["report_accent"], run.scheme)`,
+  calling `run.note_colours(word)` so the provenance row names it. The designer draws the field with `ColourChoiceField` with no
+  per-block case; `colourNamesUsed` (frontend) finds the names in use through the same schema kind.
+- **Text view:** `@palette primary=#1f3a5f warn=#b45309` (before the first block, once) and `@palette follow` (no scheme of its own, written
+  as no line). **Bundles:** the layout's palette is part of its tree; the organisation's scheme is `report_look.colour_scheme` in `org.json`
+  (an invalid one is dropped with a warning). **API:** `PUT /orgs/{id}/branding` takes `report_colour_scheme` (`[]` clears it);
+  `GET .../report-layouts/colours` (organisation and project scope) answers the branding colour and scheme the designer offers.
+- Document layouts only; a table layout refuses a `palette`.
+
+### 4ad. Custom reports: the Project Workbook starter (Module 10 Phase 58)
+
+Every organisation is also created with a table layout, **Project Workbook**: one sheet per reportable record type holding its core
+detail, with a Contents sheet. It is generated from the report field registry when starters are written, so a module adds its sheet by
+declaring its record type's report fields, with no edit to a core file.
+
+```mermaid
+flowchart LR
+    P["get_report_field_providers()<br/>core types, then each module's"] --> T["workbook_tree()<br/>a sheet per type"]
+    F["core_field_keys(type)<br/>code, title, status, tags<br/>+ ReportField.core"] --> T
+    T --> W["module sheets wrapped in<br/>if module &lt;key&gt;"] --> L["organisation table layout"]
+    L --> R["run in a project: a sheet whose module is off is left out"]
+```
+
+- **Declare a core field.** Pass `core_fields=("description", "owner")` to `services.report_fields.from_search` (or set `core=True` on a
+  `ReportField`): the person responsible and the main descriptive text. Code, title, status and tags are always core. A test fails for a
+  type with no core field of its own.
+- **`if` in a table layout.** The `if` block is allowed in the table family so a sheet can be conditional; the only usable test there is
+  `{"module": key}` (`@if module <key>`).
+- **Width.** Sheet columns carry absolute widths so any number of core fields fits.
+
+### 4af. Custom reports: document fonts (Module 10 Phase 74)
+
+A document layout's tree has two optional root keys: `styles` (`{"body": {"font", "size"}, "headings": {"font", "bold", "italic", "colour"}}`, every key optional, no empty object) and `embed_fonts` (boolean). Table layouts refuse both.
+
+```mermaid
+flowchart LR
+    T["tree: styles, embed_fonts"] --> V["document_styles_problems<br/>(save, validate, run)"]
+    T --> R["resolve_styles<br/>(font keys -> families, colour word -> #rrggbb)"]
+    CAT["report_font_catalogue<br/>family_or_fallback"] --> R
+    R --> D["ReportDocument.styles<br/>(DocumentStyles)"]
+    D --> PDF["report_pdf: _Look + using_family"]
+    D --> DOCX["report_docx: docDefaults + heading styles"]
+    D --> ODT["report_odt: default + heading styles, font-face"]
+    D --> HTML["report_html: validated CSS"]
+    DOCX --> EMB["embed_in_docx / embed_in_odt<br/>(extra families, when embed_fonts)"]
+    ODT --> EMB
+```
+
+- **Keys.** A font key is `sans`, `serif`, `mono`, `unicode` or `x-<slug>`; its *form* is checked at save, not that the server has it, so a layout moved between servers keeps its key. A size is 6 to 72 in half points. `headings.colour` is a colour word (`none` is refused), checked like any colour field.
+- **Resolution.** `report_styles.resolve_styles` turns keys into `FontFamily` objects (`family_or_fallback`: an unavailable family becomes the bundled one of the same generic kind with a run note), and the colour word into `#rrggbb`; a scheme name used is added to the run's `stats.colours`. A heading with no font of its own follows the body font.
+- **Renderers read only `ReportDocument.styles`.** PDF: `_Look` derives the paragraph styles once per distinct setting, `report_fonts.using_family` makes the fallback and `text_width` family-aware for the whole render, and headings scale with the body size from ReportLab's 10 pt. Word: `w:docDefaults` and the Title and Heading 1 to 4 styles (headings scale from Word's 11 pt body), not a run per paragraph. ODT: the default style, `Title` and `Heading`, and `style:font-face` declarations. HTML: a `body` and a heading rule built from validated names, numbers and `#rrggbb` only. With nothing set every renderer keeps its own look.
+- **Embedding.** After a Word or ODT file is built, `embed_in_docx` / `embed_in_odt` run with `used_extra_families(document)` (administrator-provided families only, and the faces the document uses; `embed=embed_fonts`). The bundled families are never embedded.
+- **Warnings.** `GET .../report-layouts/{id}` and `POST .../validate` carry `warnings` for a font key the server lacks.
+- **Text view.** `@style body font=serif size=11`, `@style headings font=sans colour=primary bold italic` (`nobold`, `noitalic`), and `embedfonts` / `noembedfonts` on the `@layout` line.
+- **Table heading colours.** Root keys `table_header_fill` and `table_header_text` (a colour word; document layouts only) resolve into `DocumentStyles.table_header_fill/text`; `DocumentStyles.table_head_colours(accent)` gives the fill (else the accent) and the text (else black or white by contrast) every renderer draws a document table's heading row in, and the evaluator applies them to a custom table's header rows that set no fill of their own. Text view: `@tableheadings fill=primary text=white`.
+- **Designer.** The `document_styles` field kind (`ReportDocumentStylesField`) draws the Fonts group from `GET /system/report-fonts/choices`; `embed_fonts` is an ordinary boolean field.
+- **A block's own look.** A `text` block takes optional `font` and `size`, a `heading` block `font`, `size` and `colour` (the same rules as `styles`: a font key's form, 6 to 72 in half points, a colour word with `none` refused). The evaluator resolves them (`_Run.block_look`, one family lookup per key per run, a missing family a run note) onto `Heading.font/size/colour` and `Paragraph`/`BulletList`/`NumberedList` `font/size`; a Markdown heading inside a text block keeps the heading style. Renderers: PDF derives a style per distinct look (`_Look.body_for` / `heading_for`); Word writes the run properties on that block's runs only; ODT writes one automatic paragraph style per look over the block's parent style (`P_Own<n>`, so the heading keeps its outline level) and declares the font; HTML adds an inline `style` built from the validated family, number and `#rrggbb`. `used_extra_families` includes block fonts, so `embed_fonts` embeds them. `font_keys` walks the tree for the save warning.
+- **Marks in headings.** A heading's text is read for `*italic*`, `**bold**` and `` `code` `` by `report_model.inline_markdown` (the Markdown reader's inline half: equations set aside and put back, placeholders filled afterwards run by run), so a heading and a text block read marks identically. The anchor and contents words are the text without the marks.
+- **Text view.** `@heading level=2 font=sans size=18 colour=primary …`, `@text font=serif size=11` … `@end` or `@text font=serif "…"`; a text block with no font or size is still plain prose. The block editor draws the new `font` field kind with the shared `FontChoiceField` (also used by the Fonts group).
+
 ### 4g. Reports: one collector, everything else from core (Module 1 Phase 12b)
 
 A module that reports on its records declares a `ReportDefinition` per report on
 `ModuleDefinition.reports` and writes one `collect_*` function for each. Core
-(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|docx|csv`,
-access gating, typed parameters, MCP tools, the catalogue and the branded PDF and Word output.
+(`services/report_framework.py`) supplies the rest: routes, `?format=json|pdf|docx|html|odt|csv|xlsx|ods`,
+access gating, typed parameters, MCP tools, the catalogue and the branded document output. One function,
+`report_framework.render_result`, decides a module report's file formats: the documents (`pdf`, `docx`, `html`, `odt`)
+render the neutral `ReportDocument` of the result and the spreadsheets (`xlsx`, `ods`) one tab per section through the
+`report_render` registry; `csv` is the first section only. The record-list routes use the same function, so a new
+format is one registration there and every report gains it.
 
 ```mermaid
 flowchart LR
@@ -1285,17 +2374,13 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   well as one with a single prefix: include it with `prefix=<the module's project prefix>`.
 - **Parameters** are declared, not hand-written: core validates types and bounds
   (422), checks `choices` (400), applies defaults, and derives the OpenAPI and
-  MCP parameters from the same declaration. `format`, `include_children`
-  and `report_template_id` are framework-level; unknown query parameters are
+  MCP parameters from the same declaration. `format` and `include_children`
+  are framework-level; unknown query parameters (an older client's `report_template_id` among them) are
   ignored.
-- **Branding.** `?report_template_id=` applies an organisation report template's
-  accent colour, cover page, logo and footer to the PDF and DOCX (400 for another
-  organisation's template). A template's, project's and organisation's
-  authored intro, chapters and appendices for this report are applied to the PDF
-  and DOCX: content is keyed `"<module_key>.<report key>"` (the `ReportDefinition.key`),
-  so declaring a report is all a module does; there is no per-module edit
-  (`services/report_content.py`). Organisation-wide runs use the template and
-  organisation tiers only.
+- **Branding.** The organisation's one report look (§4ab) is applied to the PDF and DOCX
+  automatically: there is no template to choose. A report prints its own scope line, notes and sections;
+  authored text around a report is written in a layout that embeds its widgets
+  (§4p), so declaring a report is all a module does.
 - **Validation.** A definition with a duplicate key/slug, malformed parameter,
   `org_level` without an `org_role_key`, an unknown sub-component, or an
   `org_role_key` that is not an org-scoped role is excluded and logged: no
@@ -1312,6 +2397,8 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   registered artefact types the report names (`backend/tests/test_report_record_codes.py` fails for a
   report that declares none, or an unregistered type). A custom view renders the server's `code`
   string and does not format it again.
+- **Read-only reports.** `ReportDefinition.view_only=True` marks a report meant to be read on screen (a summary pack). The catalogue entry carries `view_only`; a record list's "Download report" leaves it out, the Reports dialog still shows it, and its `parts` remain widgets. Nothing in core names a report.
+- **Packs on a record list.** `ReportPackOut.record_types` is the sorted union of the types its entries read (a module report's `ReportDefinition.record_types`, a layout tree's `record_types_of`), resolved for the asking scope (`report_pack_run.pack_record_types`); a record list's "Download report" offers a pack when its types include the list's.
 - **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
   `report_document.safe` and DOCX cells through `report_docx.clean_text`. Do not put Restricted data (secrets, file content) in
   a result: report reads are not audit-logged, on the basis that every field is
@@ -1324,6 +2411,7 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   JSON carry the text only, so a toned cell's text also names the band ("2 (High ×2) · Critical"), which keeps
   a greyscale print readable. A matrix is an ordinary table whose cells are toned (Pain Point R1's
   Severity × Frequency, Risk RK2's Likelihood × Consequence).
+- **Embeddable tables: declare `parts`.** `ReportDefinition.parts` lists the tables of the report a custom report layout can embed on its own (§4p), by the `ReportSection.key` the collector gives them. A test fails when a collector produces a table that is not declared; a table whose key depends on the data cannot be.
 - **Status badges: declare, don't loop.** `ReportDefinition.cell_tones` maps a column heading to
   `{label: tone}` (`{"Status": tones_by_label((RISK_STATUS_LABEL, RISK_STATUS_TONE))}`), and the framework tones
   every matching cell in every section of the report, so a collector needs no change. Keep a `*_TONE` map beside
@@ -1338,8 +2426,8 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   `branding.readable_on_white`, which darkens a light accent until it reads.
 - **Not built yet:** rich cells (Compliance's multi-line narrative) and row caps; add them when a second
   consumer needs them.
-- **On-screen UI is core too (Phase 13).** The project Reports page and Org
-  Overview's "Reports" group list whatever the catalogue returns and run it with
+- **On-screen UI is core too (Phase 13).** The Reports dialog (`ReportsDialog`, opened from the "Reports" menu
+  on the project and organisation overviews) lists whatever the catalogue returns and run it with
   the shared `ReportRunner` (parameter form from the declaration, `ReportViewer`,
   PDF/Word/CSV). A module needs no UI for a report whose table form is enough. To draw
   something richer, register a view on the frontend

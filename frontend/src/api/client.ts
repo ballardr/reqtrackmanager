@@ -168,8 +168,8 @@ export interface Page<T> {
   totalUnfiltered?: number;
 }
 
-async function requestPage<T>(path: string): Promise<Page<T>> {
-  const response = await rawRequest(path);
+async function requestPage<T>(path: string, options: RequestInit = {}): Promise<Page<T>> {
+  const response = await rawRequest(path, options);
   const items = (await response.json()) as T[];
   const totalHeader = response.headers.get("x-total-count");
   const totalUnfilteredHeader = response.headers.get("x-total-unfiltered-count");
@@ -183,6 +183,8 @@ async function requestPage<T>(path: string): Promise<Page<T>> {
 export const api = {
   get: <T>(path: string) => request<T>(path),
   getPage: <T>(path: string) => requestPage<T>(path),
+  /** A paginated read whose filters travel in a POST body, so text a person typed is in no URL a server logs. */
+  postPage: <T>(path: string, body: unknown) => requestPage<T>(path, { method: "POST", body: JSON.stringify(body) }),
   /** `signal` lets the caller cancel the request (a superseded search); `timeoutMs` takes precedence when both are given. */
   post: <T>(path: string, body?: unknown, timeoutMs?: number, signal?: AbortSignal) =>
     request<T>(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined, signal }, timeoutMs),
@@ -198,25 +200,39 @@ export const api = {
     for (const [key, value] of Object.entries(fields ?? {})) formData.append(key, value);
     return request<T>(path, { method: "POST", body: formData });
   },
-  postForBlob: async (path: string, body?: unknown): Promise<Blob> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json", "X-Client-Date": localToday() };
-    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-    const response = await fetch(`${BASE_URL}${path}`, {
-      method: "POST",
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) throw new ApiError(response.status, response.statusText);
-    return response.blob();
+  /** Posts JSON and returns the file in the response; a failed response throws the same `ApiError` (with its structured `detail`) as any other call. */
+  postForBlob: async (path: string, body?: unknown): Promise<Blob> =>
+    (await rawRequest(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined })).blob(),
+  /**
+   * Posts JSON and returns the file as a `File` named as the server named it (its `Content-Disposition`), so a download
+   * keeps the name the server's rules produced; a response with no name yields a plain `Blob`.
+   */
+  postForFile: async (path: string, body?: unknown): Promise<Blob> => {
+    const response = await rawRequest(path, { method: "POST", body: body !== undefined ? JSON.stringify(body) : undefined });
+    const blob = await response.blob();
+    const name = dispositionFileName(response.headers.get("Content-Disposition"));
+    return name ? new File([blob], name, { type: blob.type }) : blob;
   },
-  getForBlob: async (path: string): Promise<Blob> => {
-    const headers: Record<string, string> = { "X-Client-Date": localToday() };
-    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-    const response = await fetch(`${BASE_URL}${path}`, { headers });
-    if (!response.ok) throw new ApiError(response.status, response.statusText);
-    return response.blob();
-  },
+  /** Downloads a file; a failed response throws the same `ApiError` (message and structured `detail`) as any other call. */
+  getForBlob: async (path: string): Promise<Blob> => (await rawRequest(path)).blob(),
 };
+
+/**
+ * The file name the server chose in a `Content-Disposition` header (the RFC 5987 `filename*` form when present, else the
+ * quoted `filename`), or `null` when there is none.
+ */
+export function dispositionFileName(header: string | null): string | null {
+  if (!header) return null;
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1].trim());
+    } catch {
+      // A malformed escape: fall through to the plain form.
+    }
+  }
+  return /filename="([^"]*)"/i.exec(header)?.[1] ?? null;
+}
 
 export function wsBaseUrl(): string {
   return BASE_URL.replace(/^http/, "ws");

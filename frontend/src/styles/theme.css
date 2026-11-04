@@ -315,7 +315,13 @@ textarea {
   background: var(--color-header-hover-bg);
 }
 
-.app-header .text-muted {
+.app-header .math-text--display {
+  display: block;
+  margin: var(--space-2) 0;
+  overflow-x: auto;
+}
+
+.text-muted {
   color: var(--color-header-text-muted);
 }
 
@@ -497,7 +503,94 @@ select.input[size] {
   color: var(--color-text);
 }
 
-.app-header .notification-dropdown .text-muted {
+.app-header .notification-dropdown /* Custom table editor (components/ReportGridEditor.tsx). The cells are drawn as the printed page shows them, so an unset
+   fill and text colour are paper white and black in both themes (the colours the author sets are drawn as they are). */
+.grid-editor__toolbar {
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.grid-editor__divider {
+  align-self: stretch;
+  border-left: 1px solid var(--color-border);
+  margin: 0 var(--space-1);
+}
+
+.grid-editor__sizes {
+  align-items: flex-end;
+}
+
+.grid-editor__scroller {
+  max-width: 100%;
+  overflow: auto;
+  padding: 2px;
+}
+
+.grid-editor__grid {
+  display: grid;
+  grid-auto-rows: minmax(2.5rem, auto);
+  gap: 0;
+  min-width: min-content;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.grid-editor__grid:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.grid-editor__cell {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  background: #ffffff;
+  color: #000000;
+  border: 1px solid var(--color-border);
+  cursor: cell;
+  user-select: none;
+  overflow-wrap: anywhere;
+}
+
+.grid-editor__cell--header-edge {
+  border-bottom-width: 3px;
+}
+
+.grid-editor__cell--selected {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 9999px rgba(47, 133, 90, 0.14);
+}
+
+.grid-editor__cell--active {
+  outline-width: 3px;
+}
+
+.grid-editor__text {
+  white-space: pre-wrap;
+  width: 100%;
+}
+
+.grid-editor__blank {
+  width: 100%;
+  border: 1px dashed currentColor;
+  border-radius: 3px;
+  opacity: 0.45;
+  font-size: 0.75rem;
+  text-align: center;
+  align-self: center;
+}
+
+.grid-editor__span {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 0.65rem;
+  opacity: 0.6;
+}
+
+.text-muted {
   color: var(--color-text-muted);
 }
 
@@ -684,7 +777,7 @@ select.input[size] {
   padding: 0.3rem 0.55rem;
   border-radius: var(--radius-md);
   white-space: nowrap;
-  /* Above every overlay a control can sit in (Modal and SidePanel 1100, Popover 1150) so field help opened
+  /* Above every overlay a control can sit in (Modal, SidePanel and Popover, all 1100) so field help opened
      inside a dialog is not hidden behind it; below the toast stack (1200). */
   z-index: 1175;
   pointer-events: none;
@@ -900,6 +993,11 @@ a.figure-projects-link:hover {
   background: var(--color-surface-alt);
 }
 
+.report-table-aligned {
+  /* Column widths come from the <colgroup>, so two tables with the same headings line up; a long word breaks in its column. */
+  table-layout: fixed;
+  overflow-wrap: anywhere;
+}
 .report-section {
   scroll-margin-top: 4.5rem; /* clear the sticky app header when a figure links to a section */
 }
@@ -920,6 +1018,14 @@ a.figure-projects-link:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+/* A value and its unit on one row in a block's form; the two stack when the panel is too narrow for both. */
+.block-field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  align-items: end;
 }
 
 .row {
@@ -977,35 +1083,6 @@ a.figure-projects-link:hover {
 
 .text-muted {
   color: var(--color-text-muted);
-}
-
-/* components/RichTextEditor.tsx's WYSIWYG surface — a plain
-   contentEditable div styled as `.input`, with just enough block-level
-   spacing for the headings/lists it can contain to be readable while
-   editing (the same tags renderMarkdown/htmlToMarkdown round-trip). */
-.rich-text-editable {
-  cursor: text;
-}
-
-.rich-text-editable:focus {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
-}
-
-.rich-text-editable h1,
-.rich-text-editable h2,
-.rich-text-editable h3 {
-  margin: 0.3rem 0;
-  font-size: 1.05em;
-}
-
-.rich-text-editable ul {
-  margin: 0.3rem 0;
-  padding-left: 1.3rem;
-}
-
-.rich-text-editable p {
-  margin: 0.3rem 0;
 }
 
 /* Left navigation rail: same theme-aware surface as every other panel
@@ -1960,6 +2037,143 @@ th:has(> .th-with-action > .th-sort) {
   color: var(--color-primary);
 }
 
+/* `FolderTreeList`: a file manager's list view. The list is one grid (the component sets the column template as
+   `--ftl-columns`, and `--ftl-columns-narrow` without the `hideBelow` columns) and each row a subgrid of it, so the
+   columns line up and, when they do not fit, the list scrolls sideways inside its own region with the Name cell held
+   at the left edge. Rows are grid rows (not a <table>) so a row can be a tree-grid row with its own keyboard focus.
+   Banded rows have rounded ends and an open report is outlined. See docs/ux-style-guide.md's "Pattern: folder tree
+   list". */
+.folder-tree-list {
+  /* Positioned so an absolutely placed child (the screen-reader-only header text) scrolls with the list instead of
+     escaping its clipping and widening the page. */
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--ftl-columns);
+  column-gap: var(--space-3);
+  row-gap: 1px;
+  overflow-x: auto;
+}
+@media (max-width: 639px) {
+  .folder-tree-list {
+    grid-template-columns: var(--ftl-columns-narrow);
+  }
+  .folder-tree-wide {
+    display: none;
+  }
+}
+.folder-tree-header,
+.folder-tree-row {
+  --ftl-row-bg: var(--color-surface);
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-width: 0;
+}
+.folder-tree-header {
+  background: var(--ftl-row-bg);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  padding-inline: var(--space-3);
+}
+.folder-tree-header .th-sort {
+  padding-inline: 0;
+}
+.folder-tree-row {
+  background: var(--ftl-row-bg);
+  border-radius: var(--radius-md);
+  min-height: 2.25rem;
+  padding: 0.15rem var(--space-3);
+}
+.folder-tree-row > [role="gridcell"] {
+  border-bottom: 0;
+  min-width: 0;
+  padding: 0;
+}
+/* The Name cell stays put while the other columns scroll under it, so it needs the row's own opaque background. */
+.folder-tree-name-cell {
+  background: var(--ftl-row-bg);
+  inset-inline-start: 0;
+  position: sticky;
+  z-index: 1;
+}
+.folder-tree-band {
+  --ftl-row-bg: var(--color-surface-alt);
+}
+.folder-tree-row:hover {
+  --ftl-row-bg: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+}
+.folder-tree-row:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.folder-tree-selected {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+.folder-tree-name {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.folder-tree-toggle,
+.folder-tree-item {
+  align-items: center;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+.folder-tree-toggle {
+  display: inline-flex;
+}
+.folder-tree-toggle > svg {
+  flex-shrink: 0;
+  height: 1rem;
+  width: 1rem;
+}
+.folder-tree-folder-icon {
+  color: var(--color-info);
+}
+.folder-tree-item {
+  display: block;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.folder-tree-check {
+  flex-shrink: 0;
+  margin: 0;
+}
+.folder-tree-chevron-gap {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1rem;
+}
+.folder-tree-type-icon {
+  color: var(--color-text-muted);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.folder-tree-type-icon > svg {
+  height: 1rem;
+  width: 1rem;
+}
+.folder-tree-description {
+  font-size: 0.85rem;
+}
+.folder-tree-empty {
+  font-size: 0.9rem;
+  font-style: italic;
+  grid-column: 1 / -1;
+}
+
 /* Borderless expand/collapse control that fills its own table cell — for a
    plain disclosure toggle whose label and chevron are one single clickable
    unit (unlike `.nav-link-row-toggle`, which sits beside a separately
@@ -2130,6 +2344,11 @@ td:has(> .disclosure-toggle) {
   .resource-menu {
     flex-direction: column;
   }
+  /* In the stacked layout the content pane takes the width it is given: fit-content let a wide child (the folder tree
+     list's columns) widen the pane and the page past the viewport; a wide child scrolls in its own region instead. */
+  .resource-menu > .resource-menu-content {
+    align-self: stretch;
+  }
 }
 
 /* Responsive layout: single column below 720px (U-P-02). */
@@ -2194,6 +2413,35 @@ td:has(> .disclosure-toggle) {
   color: var(--color-text);
   border: 1px solid var(--color-danger);
   border-left: 4px solid var(--color-danger);
+}
+
+.toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.toast-details {
+  margin: 0;
+  padding-left: var(--space-4);
+  opacity: 0.85;
+  font-size: 0.82rem;
+}
+
+.toast-action {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-md);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.15rem var(--space-3);
+  white-space: nowrap;
+}
+
+.toast-action:hover {
+  background: color-mix(in srgb, currentColor 15%, transparent);
 }
 
 .toast-dismiss {
@@ -2287,6 +2535,42 @@ td:has(> .disclosure-toggle) {
   color: var(--color-text-muted);
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+/* A menu row that opens a second list (`ActionMenuItem.children`). The list is placed beside its parent by
+   `ActionMenu` (position: fixed, so the popover's own scrolling never clips it); on a narrow screen it is
+   inline beneath the parent, indented. */
+.menu-submenu-host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-submenu-parent {
+  width: 100%;
+}
+
+.menu-item-hint {
+  font-size: 0.8rem;
+}
+
+.menu-submenu-chevron {
+  margin-left: auto;
+  flex: none;
+}
+
+.menu-submenu {
+  z-index: 1160;
+  min-width: 160px;
+  padding: var(--space-1);
+}
+
+/* Same width as NARROW_VIEWPORT_PX in ActionMenu.tsx (which also sets position: static). */
+@media (max-width: 639px) {
+  .menu-submenu {
+    margin: 0.15rem 0 0 var(--space-3);
+    box-shadow: none;
+  }
 }
 
 .menu-footer {
@@ -2645,6 +2929,12 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
+/* A closed collapsible bar that holds non-default content: an accent edge beside the "N changed" pill (text plus edge, never colour alone). */
+.collapsible-bar--marked {
+  border-left: 3px solid var(--color-accent);
+  padding-left: var(--space-2);
+}
+
 /* A pill that follows running text on the same line (a status after a title): a gap, not a margin hack at each use. */
 .badge-after {
   margin-inline-start: var(--space-3);
@@ -2745,4 +3035,395 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 
 .form-grid-wrap:has(.field-required) > .form-required-legend {
   display: block;
+}
+
+/* Report layout designer: the editor and the tabbed panel (components/DesignerSidePanel.tsx) side by side from 1100px,
+   stacked below. The Blocks view gives the panel a fixed width so the canvas gets the rest; the panel folds to its rail. */
+.layout-designer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 1100px) {
+  .layout-designer {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  }
+
+  .layout-designer--blocks {
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 28rem);
+  }
+
+  .layout-designer--panel-folded {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  /* The JSON view has no side panel. */
+  .layout-designer--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The designer's view tabs and Save, pinned under the app header so Save is in reach however long the layout is. */
+.designer-bar {
+  position: sticky;
+  top: var(--header-height);
+  z-index: 10;
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.designer-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.designer-bar__tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.designer-bar__save {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-bottom: var(--space-1);
+}
+
+/* The draft status, its Save draft and Discard changes buttons and the Autosave switch, in one line before Save new version. */
+.designer-bar__draft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.designer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.designer-panel__toggle {
+  align-self: flex-end;
+}
+
+.designer-panel__body[hidden] {
+  display: none;
+}
+
+/* The layout text: monospace, never wrapped so a line number in an error stays a line of the text. */
+.layout-editor {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+.layout-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.layout-problems button {
+  all: unset;
+  cursor: pointer;
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+.layout-problems button:hover,
+.layout-problems button:focus-visible {
+  text-decoration: underline;
+}
+
+/* Report layout block editor: the Blockly workspace; the selected block's form is in the designer's panel (or under the canvas in a dialog). */
+.blocks-toolbar {
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.blocks-target {
+  width: auto;
+  max-width: 28rem;
+}
+
+/* The snippet picker: the list beside the selected snippet's detail, stacked when the dialog is narrow. */
+.snippet-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.snippet-rows,
+.snippet-outline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.snippet-outline {
+  gap: var(--space-1);
+}
+
+.snippet-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: inherit;
+  cursor: pointer;
+}
+
+.snippet-row[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.snippet-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.blocks-stage {
+  position: relative;
+  height: 70vh;
+  min-height: 26rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.blocks-workspace {
+  position: absolute;
+  inset: 0;
+}
+
+.blocks-inspector {
+  min-width: 0;
+}
+
+.blocklyText.rl-block-title {
+  font-weight: 700;
+}
+
+.blocklyText.rl-summary {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.outline-field-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+/* The preview page is untrusted markup in a sandboxed frame; it gets a white paper so its own styles read as printed. */
+.layout-preview-frame {
+  width: 100%;
+  height: 70vh;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
+.layout-field-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.layout-diff {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-alt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.layout-diff-line {
+  display: block;
+  white-space: pre;
+}
+
+.layout-diff-line--add {
+  background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.layout-diff-line--remove {
+  background: color-mix(in srgb, var(--color-danger) 20%, transparent);
+}
+
+
+/* The report image picker: a thumbnail beside the field, and the library's grid of picture cards. */
+.report-image-thumb { height: 3rem; max-width: 6rem; object-fit: contain; border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); }
+/* Every drawn library picture (PictureImage): a checkerboard by default so a white or black mark stays visible; two tokens per theme. */
+.picture-backdrop { --checker-a: var(--color-surface); --checker-b: var(--color-surface-alt); background-color: var(--checker-a); background-image: linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%), linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%); background-size: 16px 16px; background-position: 0 0, 8px 8px; }
+.picture-backdrop[data-backdrop="light"] { background: #ffffff; }
+.picture-backdrop[data-backdrop="dark"] { background: #1c222c; }
+.file-thumb { width: 2.5rem; height: 2.5rem; flex: none; object-fit: contain; border-radius: var(--radius-sm, 4px); }
+.file-thumb--icon { display: inline-flex; align-items: center; justify-content: center; color: var(--color-text-muted, inherit); background: var(--color-surface-alt); }
+.report-image-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--space-3); max-height: 50vh; overflow-y: auto; }
+.report-image-card { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); min-width: 0; }
+.report-image-card[data-selected] { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.report-image-pick { display: flex; flex-direction: column; gap: var(--space-1); padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.report-image-pick img { width: 100%; height: 6rem; object-fit: contain; }
+.report-image-name { overflow-wrap: anywhere; font-size: 0.85rem; }
+.report-image-browser { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem); gap: var(--space-3); align-items: start; }
+.report-image-details { padding: var(--space-2); border: 1px solid var(--color-border); border-radius: var(--radius-sm, 4px); min-width: 0; }
+.report-image-preview { width: 100%; max-height: 10rem; object-fit: contain; }
+.report-image-facts { margin: 0; display: grid; gap: var(--space-1); }
+.report-image-facts div { display: grid; gap: 0; }
+.report-image-facts dt { font-size: 0.75rem; color: var(--color-text-muted, inherit); }
+.report-image-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .report-image-browser { grid-template-columns: minmax(0, 1fr); } }
+
+/* A flat list of editable items (ItemRowList): name left, actions right, banded by a hairline. Its own class names: `.item-row` belongs to the `ItemRow` component above. */
+.item-row-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.item-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+.item-list-row + .item-list-row {
+  border-top: 1px solid var(--color-border);
+}
+
+.item-list-row__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.item-list-row__detail {
+  font-size: 0.85rem;
+}
+
+.item-list-row__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* `ColourChoiceField`: the button that shows the current colour, and the lines of its popover. A chip is never the only
+   signal: the colour's name is written beside it, and "no colour" is drawn struck through. */
+.colour-chip {
+  flex: none;
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--color-border);
+}
+
+.colour-chip--none {
+  background: linear-gradient(to top right, transparent calc(50% - 1px), var(--color-text-muted) calc(50% - 1px), var(--color-text-muted) calc(50% + 1px), transparent calc(50% + 1px)), var(--color-surface);
+}
+
+.table-heading-sample {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  max-width: 28rem;
+}
+
+.table-heading-sample th,
+.table-heading-sample td {
+  border: 1px solid var(--color-border);
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+}
+
+.colour-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-start;
+  min-height: 2.25rem;
+}
+
+.colour-choice__heading {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.colour-choice__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.colour-choice__line:hover,
+.colour-choice__line:focus-visible {
+  background: var(--color-surface-alt);
+}
+
+.colour-choice__line[aria-pressed="true"] {
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-text);
+}
+
+/* A choice drawn as a row of buttons (`ChoiceButtons`): wraps in a narrow panel; the chosen one is bold as well as edged. */
+.choice-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.choice-buttons .btn[aria-checked="true"] {
+  font-weight: 700;
 }

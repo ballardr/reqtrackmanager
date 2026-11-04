@@ -31,14 +31,9 @@ import { Download } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import type { ReportDownloadKind } from "../api/reports";
+import { REPORT_FORMAT } from "../api/reportFormats";
+import type { ReportFileKind } from "../api/reports";
 import { Popover } from "./Popover";
-
-const OPTION_LABEL: Record<ReportDownloadKind, string> = {
-  pdf: "Download PDF report",
-  docx: "Download Word report",
-  csv: "Download CSV report",
-};
 
 /**
  * `kinds` lists the formats on offer (default PDF and CSV, what the compliance
@@ -46,20 +41,23 @@ const OPTION_LABEL: Record<ReportDownloadKind, string> = {
  * download button ("More formats") rather than standing alone. `extras` adds
  * related downloads that are not a format of the report (a list's import
  * template) under the formats, and `note` is one muted line under them (columns
- * the personal-data policy left out).
+ * the personal-data policy left out). `disabled` holds the trigger back while the host cannot produce a file.
  */
-export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">({
+export function ReportExportButton<K extends ReportFileKind = "pdf" | "csv">({
   onDownload,
   kinds = ["pdf", "csv"] as K[],
   label = "Export",
   extras = [],
   note,
+  disabled = false,
 }: {
   onDownload: (kind: K) => Promise<void>;
   kinds?: readonly K[];
   label?: string;
   extras?: readonly { key: string; label: string; onSelect: () => void | Promise<void> }[];
   note?: ReactNode;
+  /** True to disable the trigger (the host is not ready to produce a file). */
+  disabled?: boolean;
 }) {
   const [downloading, setDownloading] = useState<K | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -77,7 +75,7 @@ export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">
 
   return (
     <>
-      <button ref={triggerRef} type="button" className="btn" onClick={() => setMenuOpen((v) => !v)}>
+      <button ref={triggerRef} type="button" className="btn" disabled={disabled} onClick={() => setMenuOpen((v) => !v)}>
         <Download /> {downloading ? "Exporting…" : label}
       </button>
       {menuOpen && (
@@ -86,9 +84,9 @@ export function ReportExportButton<K extends ReportDownloadKind = "pdf" | "csv">
             {kinds.map((kind) => (
               <button
                 key={kind} type="button" className="btn" style={{ justifyContent: "flex-start" }} disabled={downloading !== null}
-                onClick={() => handleDownload(kind)}
+                title={REPORT_FORMAT[kind].title} onClick={() => handleDownload(kind)}
               >
-                <Download /> {downloading === kind ? "…" : OPTION_LABEL[kind]}
+                <Download /> {downloading === kind ? "…" : `Download ${REPORT_FORMAT[kind].label} report`}
               </button>
             ))}
             {extras.map((extra) => (

@@ -12321,3 +12321,3644 @@ An end-to-end audit (authentication, authorisation, tenant isolation, files, out
 ### CI: the ruleset's required image check was reporting nothing
 
 **Decided by: Agent.** PR #42 sat as BLOCKED with every job green. The "Main Branch" ruleset requires a check named `Build, version, and push production container images`, which the single image job used to report; the multi-arch split replaced it with `docker-build` (a matrix) and `docker-publish`, so nothing reported that name and GitHub waited on it forever. A new `images-gate` job in `.github/workflows/ci.yml` reports the name again and passes only if `version` and every `docker-build` leg succeeded and `docker-publish` succeeded or was skipped (pull requests). Chosen over editing the ruleset because the ruleset is a repository-admin setting, and a gate keeps the ruleset stable if the matrix changes again. The branch-protection checklist in the change-management policy notes it.
+
+## Custom reports Phase 0: PDF engine, math, ODF and tree bake-off (2026-10-26)
+
+Exploratory; the one shipped change is the PDF font fix recorded in the next entry. Prototypes ran in throwaway `python:3.12-slim` containers (the backend image's base) against shared samples (title, equations, inline SVG, hostile `<img>` sources, long tables with repeating header, a named landscape `@page`, page-number footer, a data-URI font).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **PDF engine: stay on ReportLab.** WeasyPrint was rejected on its measured memory (553 MB at 5,000 rows, 2.2 GB at 20,000, against 71 MB and 156 MB) and speed; ReportLab also handles equations and SVG figures (below). The document family gets an HTML renderer for the preview and the HTML format, separate from the PDF renderer; each is about 150 lines over the neutral model. | User |
+| 2 | **Math in PDF and HTML: server-side TeX to SVG with `ziamath`** (pure Python, MIT, about 3 MB, 10 to 40 ms an equation), configured for plain SVG 1 output (`zm.config.svg2 = False`); the PDF embeds it as vector through `svglib`. | Agent |
+| 3 | **Math in DOCX: OMML from `latex2mathml` + `mathml2omml` (both MIT) for a tested subset, an image of the same SVG for anything outside it.** | Agent |
+| 4 | **SVG figures: vector into the PDF through `svglib`** (LGPL-3.0, compatible with this GPL-3 project; needs `lxml`, `tinycss2`, `cssselect2`); **PNG through `resvg-py` for DOCX and as the PDF fallback**, always given an explicit font directory. | Agent |
+| 5 | **ODT/ODS: `odfpy`** (Apache-2.0); **XLSX: `openpyxl`** write-only (MIT). | Agent |
+| 6 | **Register a bundled Unicode TrueType font for PDFs.** The PDF renderer only ever used the built-in Helvetica, so text outside Latin-1 printed as black boxes (fixed, next entry). | Agent |
+
+### PDF engine comparison (WeasyPrint measured; the ReportLab column is today's behaviour plus the tests below)
+
+| Criterion | ReportLab (today) | WeasyPrint 70 | Headless Chromium |
+|---|---|---|---|
+| Math in the PDF | Equation images | Not rendered from MathML (flattened to text), so SVG images are used | Native MathML |
+| Inline SVG | Needs conversion | Renders | Renders |
+| Repeating header, landscape section, page-number margin box, bundled font | Hand-built | Verified (font via `data:` URI embeds as a subset) | Verified |
+| Fetch lock-down | None by construction | `URLFetcher` subclass: `file://`, `http://` and metadata-IP requests reached it and were refused; `data:` only | Interception aborted all; JavaScript off; sandbox on as an unprivileged user |
+| Image weight over base | 0 | about 20 MB | about 460 MB |
+| Files to change to migrate | n/a | 5 (`report_pdf.py`, `report_document.py`, `report_framework.py`, `reports.py`, `modules/compliance/reports.py`); every other report already uses the neutral model | Same 5 |
+
+### Scale (same 4-column wrapped-text table; time / peak memory)
+
+| Rows (pages) | ReportLab | WeasyPrint |
+|---|---|---|
+| 500 | 0.4 s / 45 MB | 4.0 s / 118 MB |
+| 5,000 (162) | 5.8 s / 71 MB | 38 s / 553 MB |
+| 20,000 (646) | 52 s / 156 MB | 178 s / 2.2 GB |
+
+WeasyPrint was 3 to 10 times slower and 2 to 14 times heavier than ReportLab, which is why it was rejected: a run would need a row cap, an async path, and a limited subprocess to stay safe. Chromium was not scale-tested.
+
+### ReportLab with equations, figures and Unicode (tested)
+
+- **Equations (vector):** `ziamath` SVG embedded through `svglib` renders correctly (fractions, roots, sums, integrals, matrices, Greek, operators) in 3 to 27 ms **only with `zm.config.svg2 = False`**; ziamath's default SVG 2 output (`symbol`/`use`) rendered garbled in `svglib`. Equations render as SVG-to-PNG through `resvg-py` as well (3x zoom, 3 to 9 KB each); that is the fallback if `svglib` raises. `\hat` and `\lim_{x\to 0}` render in both.
+- **Figures:** the sample diagram (shapes, text, a curve) rendered through `svglib` in vector. Untested: markers, gradients, filters; any `svglib` failure falls back to the `resvg-py` PNG.
+- **Hostile SVG through `svglib`** (loaded from a string, so there is no base path): `file://` and `http://` image references were not fetched (an error was logged), an external entity expanded to nothing, and a billion-laughs style entity chain produced no text. Defence in depth still applies: reject any SVG containing `<!DOCTYPE` or `<!ENTITY` before parsing.
+- **Existing defect found: PDFs use only the built-in Helvetica** (no `registerFont` anywhere in `backend/app`), so Cyrillic and letters such as Polish `ł` print as black boxes today (Latin-1 and the euro sign are fine). A registered Unicode TrueType font fixes Latin Extended, Cyrillic and Greek; **Arabic and Hindi are not shaped, and CJK needs a CJK font**, so those remain a known PDF limitation (DOCX, ODT and HTML are unaffected). WeasyPrint (Pango) would have handled shaping; this is the one capability given up.
+
+### Math
+
+- **TeX is untrusted input.** `latex2mathml` is lenient: `\href{http://x}{y}` became `<mrow href="http://x">` and `\input{/etc/passwd}` passed through as text, so a command allow-list runs before conversion.
+- **`ziamath` output is safe by construction:** for `\href`, `\url`, `\input`, `\includegraphics` and a `<script>` string the SVG contained only `svg`, `symbol`, `use`, `path` and `rect` elements and one internal reference (`#STIXTwoMath`); glyphs are paths, so no font is needed. The renderer still allow-lists elements and attributes of the SVG it embeds. Inline equations should use text style and be sized in `em` (a display-style sum rendered too small inline). A parse error (`\text{<img ...>}`) raised and degrades to the source text. A matrix, `cases` and `aligned` all rendered; matplotlib's math renderer failed on all three, so it is rejected.
+- **DOCX, verified in LibreOffice only (Word is not checked and cannot be automated):** `mathml2omml` output is valid for fractions, sums, integrals, matrices, Greek letters and operators, but emits `<m:rad>` without the required `<m:deg>`, so every square root rendered as an empty box; adding `<m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/>` fixed it. `\hat{x}` and `\lim_{x\to 0}` still render a missing-glyph marker. Hence the supported subset is fixed by a golden test, and anything outside it falls back to the equation image. A person must open one sample in Word before release.
+- LibreOffice drops OMML silently unless `libreoffice-math` is installed; only the test environment needs LibreOffice, never production.
+- Microsoft's `MML2OMML.XSL` is not used, so its redistribution terms do not matter.
+
+### SVG figures
+
+- `python-docx` cannot embed SVG; DOCX figures are rasterised with `resvg-py`, which draws shapes but **omits all text unless given fonts** (`font_dirs`), so the renderer bundles and passes a font directory. `cairosvg` (LGPL, needs `libcairo`) crashed on an SVG with an undefined marker, so it is rejected.
+- SVG text does not wrap and `foreignObject` is not relied on: a module producing a diagram (Module 16) must wrap its own labels.
+
+### ODF and spreadsheets
+
+`odfpy` wrote an ODT and a multi-row ODS; LibreOffice opened the ODT (to PDF) and read the ODS back correctly (to CSV). Formula-injection guards (`csv_safe`) apply to XLSX and ODS cells too.
+
+### Data model facts
+
+- A Stakeholder's Pain Points are `ArtefactLink` rows of the module-registered relationship kind `experiences_pain_point` (`modules/stakeholders/relationships.py`); the example report traverses the generic link graph and needs no module-specific query.
+- The neutral model has eight blocks (`Heading`, `Paragraph`, `Note`, `BulletList`, `Image`, `Table`, `Gap`, `PageBreak`); `Image` holds raster bytes only and gains an SVG form.
+
+### Draft tree vocabulary
+
+`schema_version`, then a list of nodes. Document family: `heading(level,text)`, `text(restricted markdown)`, `table(source,columns)`, `each(record_type, where, children)` (nested over link kinds), `if(field, op, value, children)`, `widget(key, params)`, `equation(tex)`, `image(asset)`, `page_break`, `section(orientation)`. Table family: `sheet(name, source, columns)`. Values are `{{record.field}}` only: no expressions, no raw HTML node. Text grammar: one directive per line, `@each requirement` / `@end`, `[[widget.key a=b]]`, `{{field}}`; the exact grammar is for the text-view phase.
+
+### Sync/async threshold
+
+A cheap count pre-pass (record counts per `each` source, multiplied through nesting) compared with an organisation-tunable limit chooses synchronous or queued before any rendering. ReportLab built 20,000 rows in 52 s and 156 MB, so the limit is set by time, not memory; tune with the profiling dataset tiers.
+
+### Review (identify, verify, remediate)
+
+*Identify:* hostile-input paths a report engine adds: URL fetches from record text, TeX in data, SVG in data, a lenient TeX converter, a renderer exhausting memory. *Verify:* each was exercised (fetch attempts observed and refused; `\href` leak observed in `latex2mathml`; `ziamath` output inspected for dangerous elements; `cairosvg` crash and `resvg` text omission observed; `svglib` fetch and entity behaviour observed; WeasyPrint memory measured to 2.2 GB). *Remediate:* carried into the phase specs as requirements (command allow-list before conversion, SVG element allow-list and DOCTYPE rejection, no raw HTML node, rasteriser failures degrade to a placeholder). No regression against an adopted policy.
+
+### Not applicable, checked
+
+*Seed scripts, codes, search, bundles, parity, time, modules, MCP skill, docs website:* no model, record type, tool or user-visible surface changed.
+
+## PDF reports: text outside Latin-1 printed as black boxes (2026-10-26)
+
+**Decided by: Agent** (the approach: keep Helvetica, switch only unprintable characters); **User** asked for the fix to be made now.
+
+**Defect (found while testing ReportLab for custom reports):** the PDF renderer used only the built-in Helvetica and registered no font, so Cyrillic, Polish letters such as `ł` and similar printed as black boxes in every PDF (requirements report, module reports, Compliance reports, record-list report). Latin-1 text and the euro sign were fine.
+
+**Fix:** `services/report_fonts.py` registers the bundled DejaVu Sans (regular and bold, `app/assets/fonts`, Bitstream Vera / DejaVu licence alongside; 1.4 MB). `report_document.safe` wraps each run of characters Helvetica cannot encode (Windows-1252) in a `<font>` tag after escaping, so every Paragraph (headings, text, notes, lists, table cells, Compliance's own cells) is covered at one choke point; `styled_table` turns a plain string cell that needs it into a Paragraph; the footer is drawn run by run; column sizing measures each character in its own font. Text Helvetica can print is not touched, so existing reports look as before (a heading or header cell keeps its bold weight in the fallback run). Italic maps to regular (no oblique shipped).
+
+**Known limit (recorded in the README, the architecture document and the docs website):** ReportLab does not shape or reorder text, so Arabic and Indic scripts are not supported in PDFs, and CJK needs a font that is not shipped; those characters still print as missing-glyph boxes. The Word export stores the text as written.
+
+**Tests:** `backend/tests/test_report_fonts.py` (escaping survives, runs wrapped once, bold variant, widths, the PDF embeds the Unicode font only when text needs it, every block type and the footer, plain-cell conversion, footer centring). The existing report suites (155 tests) and the Compliance and report-code tests (40) pass; a rendered sample was inspected by eye (Cyrillic and Polish heading, paragraph, both table styles, footer).
+
+### Review (identify, verify, remediate)
+
+*Identify:* every place text reaches a ReportLab surface: Paragraph (through `safe`), plain table strings (`styled_table`), the canvas footer, string-width measurement, and document metadata (ReportLab encodes it itself). Compliance and the framework use the same helpers, so no per-module change was needed. *Verify:* the escaping test shows `<img src="file://...">` stays escaped and only the `<font>` tag is added; the Latin-1 test shows unchanged output. *Remediate:* the above. A new binary asset was added; its licence file ships with it.
+
+### Not applicable, checked
+
+*Authentication, RBAC, secrets, audit, retention, tenant isolation:* untouched. *Modules:* no module file changed; the fix is in core services. *Seed scripts, codes, search, bundles, parity, time, MCP skill:* no model or tool changed. *IPv6:* no listener. *UI:* no frontend change, so no Storybook or Playwright addition.
+
+## Custom reports Phase 1: report field registry and traversal (2026-10-26)
+
+**Decided by: Agent** (design); the field-registry-per-type and traversal-through-the-link-graph shape is in the plan, decided by the User.
+
+### What was built
+
+- `ModuleDefinition.report_fields` / `not_reportable` (`ReportFieldProvider`, `ReportField`) with `get_report_field_providers()`; core types in `services/report_fields_core.py`, each module's in its own `report_fields.py` (decisions, risk, context & strategy, stakeholders, compliance). All 20 registered artefact types are reportable.
+- `services/report_fields.py`: builders, `field_catalogue`, `load_records` (one query per type plus people and tags) and `format_value`.
+- `services/report_traversal.py`: `root_records` and `linked_records`, both through the link graph's `ArtefactResolver`.
+- Tests: `backend/tests/test_report_fields.py` (coverage, declaration rules, every field executed as SQL, values, query count, module boundary) and `test_report_traversal.py` (roots, both directions, link-type filter, hidden/unavailable/dormant, caps, query count, the example shape).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A provider is SQL expressions, not Python getters.** It reuses the type's search declaration (`from_search`) for joins, current-version filter and identity columns, so a versioned type is joined in one place and a batch is one query; typed fields are layered on top. Rejected: per-record getter functions (one query per record or a hand-written batch loader per type, 20 times). | Agent |
+| 2 | **Search text fields come across by default, typed fields are added explicitly.** The search's list is already an opt-in, vetted set, so a new type gets usable text fields with no second list to keep in step; `search_fields=False` opts out. | Agent |
+| 3 | **`load_records` does not authorise; traversal is the one gate.** Authorisation is not re-implemented: `ArtefactResolver` decides, the loader only reads ids it was given. Hidden records are counted per parent, never named, never traversed through. | Agent |
+| 4 | **People fields show a name, never an email.** `principal_field` uses `principal_labels`/`principal_text` (a user's name, `Name (Org group)` for a group), so an owner and an assignee are on parity and no address leaks into a report. | Agent |
+| 5 | **Personal and consent-sensitive columns are omitted.** No engagement participant, consent or retention column is a field; the Stakeholders provider carries only text the search already treats as opt-in, a persona weight and an engagement date. | Agent |
+| 6 | **Not fields yet:** Pain Point per-persona scores and Risk ratings (one value per persona, or a score computed from a scoring model) belong to the module reports and to widgets, not to a flat field. | Agent |
+| 7 | **No `math` flag on a field yet.** The plan marks fields math-capable for the math phase; adding the attribute now would be dead code, so it is added there. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a layout reaching a record the caller cannot read (the main risk of any report engine); a column leaking personal data; a loader called with unchecked ids; unbounded traversal. *Verify:* tests show a record in another project, with `view` removed, in a disabled module, and over a dormant cross-project link is counted and not named or traversed (`test_report_traversal.py`); a test asserts no personal-data column is a field; the query count is constant in the number of records and parents. *Remediate:* the single-gate design above, the caps, and omission of sensitive columns. No regression against an adopted policy.
+
+### Not applicable, checked
+
+*Authentication, RBAC, secrets, audit, retention:* no endpoint, permission or stored data yet (those are Phases 3 and 5), so no audit event or policy change. *Migrations, seed scripts, bundles, search, codes, MCP skill, docs website, UI (Storybook/Playwright):* no model, tool or user-visible surface changed. *Nested projects / organisation defaults:* no project-scoped config table added. *Time:* `instant` fields are past UTC instants, `date` fields are plain dates; boundary tests are in `test_report_fields.py`.
+
+## Custom reports Phase 2: layout model, tree schema, versioning and evaluator (2026-10-26)
+
+**Decided by: Agent** (design), within the plan the User signed off (layouts are versioned JSON trees; no expression language; layouts at organisation and project level; the runner's permissions bound every run).
+
+### What was built
+
+- Tables `report_layouts` (organisation- or project-owned, `family`, `current_version`) and `report_layout_versions` (immutable tree, SHA-256, comment), migration 0111, `ON DELETE CASCADE` from organisation and project.
+- `services/report_layout_tree.py`: the vocabulary, the validator (positioned errors, caps, field and alias checks) and `register_block_spec`.
+- `services/report_layout_eval.py`: `evaluate_layout` into a `ReportDocument` or `Sheet`s (`Sheet` added to `report_model`), `register_evaluator`, run caps.
+- `services/report_layouts.py`: create, save a version, rename, delete, read versions, audit.
+- Tests: `test_report_layout_tree.py`, `test_report_layouts.py`, `test_report_layout_eval.py` (the requirements, Pain Points, Stakeholders example runs end to end).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Strict, expression-free tree.** Unknown keys are errors; a value is a `{{alias.field}}` reference or a literal; a condition is one field, one operator valid for the field's kind, one literal. No raw HTML block. | Agent |
+| 2 | **Validation is by registry key, authorisation is at run time.** An author may write a layout for a type they cannot read; the link graph's resolver decides what the runner sees, so the validator needs no per-user knowledge. | Agent |
+| 3 | **Placeholders are substituted after parsing**, in one non-rescanning pass, so a title such as `# x {{record.code}}` stays literal text (tested). | Agent |
+| 4 | **Aliases and groups.** `each` and `group` bind a name (`as`, default `record` / `group`); a nested block may not reuse an enclosing name. `group` buckets by a field (value, count) and its members are iterated with `source: {group: alias}`, which is how "by component, then by category" is expressed. | Agent |
+| 5 | **Link types are stored by name** (forward or reverse, case-insensitive), resolved for the project at run time; an unmatched name warns instead of silently matching everything. | Agent |
+| 6 | **Page orientation is a root property**, not a `section` block: the neutral `ReportDocument` has one orientation per document, so a mid-document section would promise what no renderer can do. The Phase 0 draft's `image` and `equation` nodes are not in this vocabulary yet (equations arrive with Math, images with the renderers). | Agent |
+| 7 | **Unseen records are counted, never named.** A note says "N records not shown"; a block with a `where` says "Up to N" because the count is taken before the filter. | Agent |
+| 8 | **Linked records are fetched in batches.** The first nested block that needs the records linked to one parent fetches for every record of that type read so far, so link queries follow the number of nested blocks, not records (tested: the same statement count for 2 and 6 requirements). | Agent |
+| 9 | **Limits.** Authoring caps in the validator (depth 8, 500 blocks, 30 columns, 20,000 characters per text, 512 KB per tree). Run caps raise `LayoutLimitError`: 200,000 record visits, 100,000 output blocks plus rows, 60 s. A traversal cap only warns. The sync/async threshold stays a later phase. | Agent |
+| 10 | **Versioning.** A save names the version it started from and is refused if the layout moved on (`LayoutConflictError`); an identical tree stores nothing; the layout row is locked while the number is chosen; an ORM guard refuses to update a version. | Agent |
+| 11 | **Audit** carries ids, the version, the tree hash and the block count, never the layout's text. Written in the service so every caller records it; permission is checked by the caller (endpoints arrive with tiers and permission). | Agent |
+| 12 | **A layout is not an artefact type** (D16, signed off below): no code, link or search entry; deleted with its owner by foreign key, not by `org_deletion`. | Agent |
+
+### Signed off by the User (2026-10-26)
+
+| # | Decision | By |
+|---|---|---|
+| 13 | **D15: project visibility of layouts is additive** (platform starters + organisation + nearest ancestors' + own, de-duplicated by name; a project can hide an inherited one and restore it), not the Action Types "own rows, else ancestor's" rule. | User |
+| 14 | **D16: a layout is configuration for now, but must stay promotable to an artefact type.** Nothing in the model blocks it: a UUID key, an owner (organisation or project), a name unique per owner, a version history and an audit trail. Promotion later adds a `unique_code` column with a backfill, a registered artefact summary, search provider and record table, and bundle hooks; no existing column needs to change. Hence no layout-specific shortcut (a name used as a key, an id baked into a stored tree) is allowed. | User |
+| 15 | **D6: ODT and ODS follow the other five formats** (the renderer interface proves itself first). | User |
+| 16 | **Sheets join along links, as a left join.** A `sheet` has a root source and up to `MAX_JOINS` (5) `joins`, each `{as, source: {record_type, linked_from: <earlier name>, ...}}`; a column reads a field of any name in the sheet with `from`. One row per combination (requirement x Pain Point x Stakeholder); a record with nothing linked keeps its row with blank cells and a join following a blank one stays blank, so nothing silently drops out of an export. A parent that appears in many rows has its unseen records counted once. Row explosion is stopped by the output cap. | User (left join, now), Agent (shape) |
+| 17 | **The manage-layouts permission is two permissions** (organisation layouts, project layouts), not one scoped by grant. Built with tiers and permission. | User |
+| 18 | **Seeds and bundle hooks for layouts wait for tiers and permission**, when a layout can first be created; round-trip tested then. | User |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a layout reaching data its runner cannot read; a record value becoming Markdown, a placeholder or markup; a layout naming a column the registry omits (a Restricted or consent-sensitive one); unbounded work from nesting; two authors overwriting each other's changes; history rewritten under a run's provenance; layout text in the audit trail. *Verify:* tests show hidden and unavailable records are counted and absent from the output (`test_records_the_caller_cannot_see_are_counted_and_never_named`), hostile titles stay literal (`test_a_record_value_never_becomes_markup_or_a_placeholder`, `test_a_title_that_looks_like_a_placeholder_is_not_substituted_again`), an undeclared field is refused (`test_an_unknown_field_is_named_with_the_type_it_was_asked_of`), the caps stop a run (work, output, time), a stale save is refused, a saved version cannot be updated, and the audit detail never contains the text (`test_every_change_is_audited_without_the_layouts_text`). *Remediate:* the above; one defect found and fixed while testing: a duplicate alias used to delete the enclosing block's alias from scope when the inner block closed, so later errors were wrong. No regression against an adopted policy: the classification policy and system description now list report layouts as Confidential customer content.
+
+### Not applicable, checked
+
+*Authentication, RBAC, secrets:* no endpoint, no permission and no credential yet (the manage permission and the endpoints are the next phases); the service trusts its caller and says so. *Seed scripts, bundles, search, codes, MCP skill, docs website, UI (Storybook/Playwright):* the new tables are not reachable by anyone yet, so there is nothing to demonstrate, export or document for users; the seeds and the project and organisation bundle hooks ship with tiers and permission (decision 18, **Decided by: User**), the first user-facing pages with run and designer. *Nested projects / organisation defaults:* the tier and hide rules (D15) are decided when layouts become visible lists. *Time:* run times are UTC instants, `instant` conditions compare as UTC whatever zone the literal carries (tested at 09:00 UTC+10 and 23:00 UTC-8), `date` conditions compare plain dates, no future schedule is stored. *Users and groups parity:* no person-valued field is introduced; person fields in the registry already show users and groups alike. *IPv6:* no listener.
+
+
+## Custom reports Phase 3: tiers, permissions, hide and restore, bundles (2026-10-26)
+
+**Decided by: Agent** (design), within D12/D13/D15/D16 and decisions 17 and 18 of the previous entry, which the User signed off.
+
+### What was built
+
+- `routers/report_layouts.py`: organisation (`/orgs/{id}/report-layouts`) and project (`/projects/{id}/report-layouts`) endpoints: list, create, read, version list and read, save a version, rename, delete; for a project also `PUT .../{id}/visibility` and `POST .../restore`.
+- `services/report_layout_scope.py`: the project's effective set and the hide/restore tombstones (`ProjectDefinitionSuppression`, kind `report_layout`).
+- Two administrative permission atoms, `manage_org_report_layouts` and `manage_project_report_layouts` (`services/permissions.py`, `services/rbac.py`).
+- `services/report_layout_bundle.py`, wired into `project_export`, `org_export` (fresh import and merge).
+- Seeds: `seed_demo_data.py` (organisation layout, Falcon-3 layout, Avionics hides the organisation's) and `seed_e2e_dataset.py` (Gamma organisation layout, Gamma-5 layout, Gamma-6 hides the organisation's).
+- No migration: the tables came with the model phase, and a tombstone reuses an existing table.
+- Tests: `test_report_layout_tiers.py` (permissions, endpoints, additive view, hide/restore, bundles).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Two atoms, held as the plan said.** Organisation admins hold both; a project administrator holds the project atom in their project. Because a project manager implies an administrator (`_normalize`), managers hold it too. A custom or module role can grant either to a user or an organisation group (tested for both). | User (two atoms), Agent (who holds them) |
+| 2 | **Server administrators are not exempt.** `require_permission` bypasses for a server admin by design; a layout is Confidential customer content and the server role gives no data access inside an organisation, so `require_permission` gained `server_admin_bypass=False` and both gates use it (tested: 403 on every layout route). | Agent |
+| 3 | **Additive visibility (D15), de-duplicated by name, nearest wins.** Own, then ancestors nearest first, then the organisation. A hidden layout keeps its name, so hiding does not let a farther layout of the same name show through. Hiding is per project and not inherited downwards (as the other organisation defaults). Only an inherited layout can be hidden; a project's own is deleted. | User (additive), Agent (name rule) |
+| 4 | **Who sees what.** Any organisation member lists organisation layouts; any project member lists the effective set (summaries, no tree). A tree, a version or any write needs the atom. A hidden layout is listed (flagged) only to a manager, so a runner never sees it. | Agent |
+| 5 | **An inherited layout is read-only where it is inherited.** A project manager can read it (to see what it hides or to copy) but a write is 403; it is changed where it is owned. A "clone into this project" action arrives with the designer. | Agent |
+| 6 | **Deleting a layout drops every project's tombstone for it** (`forget_definition`); no foreign key holds one. A deleted ancestor project can leave a descendant's tombstone orphaned; ids are never reused, so it is inert. | Agent |
+| 7 | **Bundles.** A project bundle carries its own layouts (every version, original author email and save time as information only) and the inherited layouts it hides, by name. An organisation bundle carries the organisation's layouts. An import validates every tree again against this installation's registry, drops a version that is not valid (warning), skips a layout with no valid version (warning), renumbers versions 1..n and makes the importer the author. Hides are re-applied by name after the organisation's layouts are in; a name with no inherited layout is a warning. | Agent |
+| 8 | **A merge never overwrites a layout.** A name already in the target organisation imports as "<name> (imported)" (skipped with a warning if that is taken too). It is not a merge conflict kind, so the merge dialog is unchanged; a user choice (keep/replace) could be added with the designer if wanted. | Agent |
+| 9 | **Nested-project check (new project-scoped definition table).** Decided: additive, not "own rows, else the ancestor's" (D15). Organisation-defaults check: a project can hide and restore (API now; the project panel arrives with the designer). | User (D15) |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a project reading or changing another project's or another organisation's layout; a project administrator changing organisation layouts; a project changing an inherited layout under the owner; a server administrator reading customer layouts; a bundle planting a tree that this installation would never accept (unknown field, wrong family, hostile block); a hidden layout leaking to a runner; layout text in the audit trail; a stale tombstone hiding a different layout. *Verify:* tests cover another project's id (404), another organisation's admin (403/404), a project administrator on the organisation route (403) and on another project (403), inherited write/delete (403), a server administrator on every route (403), a plain member (list only), the audit events for hide and restore (ids, no text), deletion clearing tombstones, the bundle revalidation (a corrupted version dropped, an all-invalid layout skipped, a hide with no match reported), and that a merge keeps the existing layout untouched. *Remediate:* one defect found and fixed during the review: the shared permission gate let a server administrator through (decision 2). One wrong assumption in my own test corrected (a manager does hold the project atom). No policy regression: the access-control policy gained the two atoms (item 9).
+
+### Not applicable, checked
+
+*Time:* no new time field; a version's save time is a past instant in UTC. *Users and groups parity:* the atoms are grantable to a group (tested); no person field added. *Search, codes, MCP:* a layout is still not an artefact type (D16); MCP tools arrive with the run pipeline. *UI, Playwright, Storybook, website:* no screen yet (the designer is a later phase), so there is nothing to render or test in a browser; the role-management page lists the two atoms because they appear in the permission list. *Seeds:* extended as above (written against the API; not run against a fresh stack in this change). *IPv6:* no listener.
+
+
+## Custom reports Phase 4: the text view (2026-10-26)
+
+**Decided by: Agent** (grammar and design), within D3 (the User's decision that the JSON tree is canonical and a readable text view is generated from it and editable back, kept lossless by a round-trip test) and D5/D8 (no expressions, no template language).
+
+### What was built
+
+- `services/report_layout_text.py`: `parse_text` (text to tree, positioned errors) and `format_tree` (tree to text), a registry of per-block text forms (`register_text_form`), grammar documented in the module docstring and `docs/modules.md` §4n.
+- `POST .../report-layouts/text/parse` and `.../text/format` at the organisation and project tier (`routers/report_layouts.py`), behind the same manage permission as reading a tree. They store and audit nothing.
+- Tests: `test_report_layout_text.py` (no database: 227 cases) and `test_report_layout_text_api.py`.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Lossless means exactly equal, not equivalent.** `parse_text(format_tree(t)) == t` for every valid tree, including keys present but empty (`where: []`, `link_types: []`, `else_children: []`, `joins: []`, `descending: false`, `level: 1`), so a layout opened as text and saved unchanged has the same hash and makes no new version. Tested over a hand-made corpus of awkward values and 150 seeded random trees (every one valid by construction; the test fails if the generator stops producing `if` or `group`). Explicit markers (`where none`, `via none`, `sort none`, `@joins none`, `sort x asc`) carry the empty cases. | Agent |
+| 2 | **Directive per line, plain lines are text.** `@name clauses`, closed by `@end` for containers; any other line is Markdown text, so prose is typed as prose. A text line starting `@` is written `@@`. This replaces the Phase 0 sketch's `[[widget …]]`-style line for blocks that are not widgets; widgets (D5, `[[widget.key a=b]]`) register their own text form in Phase 6. | Agent |
+| 3 | **Text that cannot be plain lines has two explicit forms.** Edge blank lines, `\r`, or a text block directly after another use `@text … @end` or `@text "json"`, so nothing is lost and adjacent text blocks stay separate. | Agent |
+| 4 | **Quoting is by need.** Names, fields and enum-like values are bare; anything else is JSON-quoted (`"in review"`, dates, numbers-as-text). A bare `true`/`false`/number is a bool/number, so a text value that looks like one is always written quoted. Headings are the rest of the line unless that is ambiguous. | Agent |
+| 5 | **Syntax first, then meaning.** A syntax error gives line and column and no tree (indexes would be wrong); a clean parse runs `validate_tree` and reports each error at the line of the block (or column/join line) it concerns, with the path relative to that block. The parser never duplicates a rule the validator owns (families, field names, operators per kind). | Agent |
+| 6 | **Bounded input.** 1,000,000 characters; nesting capped at the tree's `MAX_DEPTH` and blocks at `MAX_NODES` while parsing (an iterative frame stack, so hostile nesting cannot recurse); errors stop at 50. Pathological lines (long runs of quotes, backslashes, commas, `@`) are tested. | Agent |
+| 7 | **One text form per block type, enforced.** A test fails if a registered block type has no text form (or the reverse), as for evaluators, so Phases 6 and 9 cannot ship a block the designer cannot show. | Agent |
+| 8 | **The text view is always schema version 1** (the header carries the family and orientation only); a future tree version needs a header token when it exists. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* hostile or huge text exhausting the parser (deep nesting, millions of blocks, regex backtracking); a text line being read as a directive (injection of a block via a record value is not possible here, since text is author input, but an `@end` line in prose could close a block early); the parser accepting something the validator rejects, or the reverse; layout text in logs or the audit trail; the endpoints reachable without the manage permission. *Verify:* tests for each cap, for 20,000-token and 5,000-character pathological lines, for prose containing `@end`, `@@`, indented `@` and `[[widget` lines, for the permission gate at both tiers (member 403/404, anonymous 401/403) and for the secret phrase appearing neither in the log nor in a new audit row. *Remediate:* three defects found and fixed while testing: an infinite loop when mapping a root-level validator error (`orientation`) to its line, a text block losing its indentation when inside a block's `@text`, and whitespace-only lines inside text being read back as empty. No policy regression: the text is the same Confidential content as the tree (data-classification policy already lists report layouts) and is neither logged nor audited.
+
+### Not applicable, checked
+
+*Time:* no time field; condition values keep the tree's rules (instants are UTC text, dates plain). *Users and groups parity:* no person-valued field (a `principal` field's value is compared as text, as in the tree). *Module boundary:* no per-module code; block text forms register through a generic extension point. *Search, codes, MCP, seeds, bundles:* the text view is a view of data already covered (a bundle carries the tree, not the text); MCP tools arrive with the run pipeline. *UI, Playwright, Storybook, website:* no screen yet; the designer (a later phase) is the first caller of the two endpoints and carries the user-facing syntax reference. *IPv6:* no listener.
+
+
+## Custom reports Phase 5: the run pipeline (2026-10-26)
+
+**Decided by: Agent** (design), within D1, D5, D11 and D14, and the User's answer below on what an organisation-scope run means.
+
+### What was built
+
+- `services/custom_report_run.py` and `routers/custom_reports.py`: `GET /projects/{id}/custom-reports/{layout}/run` and `GET /orgs/{id}/custom-reports/{layout}/run`, formats `json`, `pdf`, `docx`, `csv` limited by the layout's family, `report_template_id`, the layout's introduction/chapters/appendices, `include_children` (project) and `project_ids` (organisation).
+- Both report catalogues list layouts (`module_key` `custom_reports`); `ReportCatalogueEntryOut.supports_project_multi_filter`; the Reports page's **Projects** selector (`ReportParamsForm`, `ReportRunner`).
+- `models/generated_report.py` and migrations 0112 and 0113: one provenance row per run, with the version of each versioned record.
+- Report content keyed `custom.<layout id>` (`services/report_content.py`: `is_valid_report_key`, `portable_entries`, `delete_layout_content`, editor options), portable as `custom:<layout name>` in project and organisation bundles (`project_export`, `org_export`, `report_layout_bundle`).
+- MCP: `list_report_layouts`, `get_report_layout`, `run_custom_report`, `parse_report_layout_text`, `format_report_layout_text`; write mode `create_report_layout`, `save_report_layout_version`, `update_report_layout`, `delete_report_layout`; skill and generated reference updated.
+- Tests: `backend/tests/test_custom_report_run.py` (45), MCP integration test, Storybook stories for the selector, Playwright `custom-report-run.spec.ts`.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **An organisation-scope run is a fan-out**: the organisation layout is evaluated once per project the caller can read and the results are merged, with a selector for which projects are included. Rejected: running it against one chosen project only. | User |
+| 2 | **Merge shape.** A document gets one top-level heading per project with a page break between (authored headings move one level down, clamped at 4); a table layout's sheets of the same name are concatenated with a leading `Project` column. | Agent |
+| 3 | **Authorisation is per project.** Each project is evaluated with its own `ArtefactResolver`; the projects offered are those the caller holds a role in (`readable_projects`) and `project_ids` can only narrow them (404 outside). A project that hid the layout is skipped, and the report says how many. Cross-project links are still followed by each project's resolver (`include_related`), so a record can appear under two projects. | Agent |
+| 4 | **One budget for the whole run.** The deadline is shared (each project gets what is left), the output cap applies to the total, and at most 200 projects are evaluated (422 beyond). Without this a fan-out multiplies every single-project cap. | Agent |
+| 5 | **Formats follow the family.** Document: `json`, `pdf`, `docx`. Table: `json`, and `csv` for exactly one sheet (400 otherwise, naming what is offered). CSV of several sheets, XLSX, ODT/ODS and HTML arrive with the renderers; this table is the one place to extend. | Agent |
+| 6 | **The on-screen form is the document's tables as sections**, each titled by the headings above it joined with " / " (a merged run reads "Alpha / Requirements"), the text between tables as its note, leftover text as report notes. The PDF and Word are the faithful forms. | Agent |
+| 7 | **Catalogue and parameters.** `slug` is `custom-<name>-<id prefix>` (unique, cannot clash with a module slug); the multi-project choice is a comma-separated `project_ids` query value so the existing run-values machinery needs no array type; an empty selection means every project. | Agent |
+| 8 | **Provenance.** One `generated_reports` row for every run of every format, written after rendering succeeds (a refused run leaves none), holding identifiers, counts and keys only. `layout_id` has no foreign key and the name and tree hash are copied, so the row outlives the layout. **Record versions are recorded** (D11, confirmed by the User on 2026-10-26 after an interim digest-only build): `record_versions` is `{type: {record id: version number}}` for every versioned record in the report, taken from a generic `SearchColumns.version` that `versioned_provider` and the change-request provider set (so a new versioned type gets it with no report code; a test fails for a versioned report type without it). It is bounded at 20,000 records per run (`MAX_RECORDED_VERSIONS`); a larger report is cut in a stable order and `record_versions_truncated` says so. `source_digest` (SHA-256 over every record in the report: type, id, last-change time) still covers all of them, so a cut list never hides a change. A record shown under two projects of an organisation-wide run is listed once. The baseline of D11 stays optional until Module 8 (migration 0113 added the two columns). | User (versions), Agent (bound, digest alongside) |
+| 9 | **A run is not an `audit_events` entry.** The provenance row is its record, as a module report read is not audited because the same caller already reads every field through the module's endpoints. | Agent |
+| 10 | **Content keys.** `custom.<layout id>`, valid only for a layout the scope can reach (project: its effective layouts; organisation and templates: the organisation's own); the editors list them; deleting a layout deletes its content rows (the scope id has no foreign key). In a bundle the key is `custom:<layout name>`; an import binds it to the layout it created (so a merge that stored the layout as "<name> (imported)" binds to that copy), else to the layout of that name the scope reaches, else skips it with the existing "unknown report types" warning. Layouts are therefore imported before report content in all three import paths. | Agent |
+| 11 | **MCP.** The tools proxy the REST routes; `run_custom_report` always returns `json`; scope is `project_id` or `organization_id` (an explicit organisation id selects the organisation's own layouts, both is an error). Deleting a layout is exposed in write mode with a confirm-first note, as `delete_artefact_link` is. | Agent (User's carried-over MCP decision) |
+| 12 | **Nested projects / organisation defaults, checked.** No new definition table: `generated_reports` is a log, not a vocabulary. Layout visibility stays as D15. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* an organisation-wide run showing a project (or records of one) the caller cannot read; a selection widening scope; a hidden layout still running; the fan-out multiplying the limits; provenance holding report content; report content saved against a layout the scope cannot reach, or bound to the wrong layout on import; a CSV cell starting with `=`; a run recorded although it failed. *Verify:* tests cover a member with a role in one project seeing only it and getting 404 for another (and for a malformed id, 422), a record without `requirement:view` counted and never named, the hidden-layout skip and 404, a project layout refused on the organisation route, the output budget shared across three projects and the project cap, a deadline in the past (408), a refused run leaving no row, the row's fields and that no record text appears in it, versions pinned across a save, provenance after the layout is deleted, `'=1+1` in the CSV, content accepted and refused per scope, content printed in the Word file and the organisation run using only the organisation tier, deletion clearing content, and the project, organisation and merge bundle round trips including the rename. *Remediate:* no defect was found in the new code by those tests (the failures were in the tests themselves). The type check found one real gap, `report_catalogue.get_project_report_catalogue` passed an unchecked `Project | None` onward, now a 404, which also retired three older baselined findings. A new gap is recorded in the data-retention policy: the provenance rows are never expired (item 3 of its known gaps), and a row naming 20,000 versioned records is a few hundred kilobytes.
+
+### Not applicable, checked
+
+*Time:* a run's time is a past instant in UTC, a version's likewise; no date parameter or scheduled time was added; the `{{generated_on}}` placeholder is the UTC date, as in the module reports. *Users and groups parity:* no person-valued field. *Search, codes:* a layout is still not an artefact type (D16). *Seeds:* no new field to demonstrate; the layouts the Phase 3 seeds create run as they are (those seed edits have still not been executed against a fresh stack). *Pre-existing failure:* `test_org_export_import.py::test_import_invites_a_member_with_no_existing_account` fails on the host with `SMTPConnectError` (the mailhog name does not resolve outside Compose), as noted for host pytest; not caused by this change.
+
+
+## Custom reports Phase 7: renderers (2026-10-26)
+
+**Decided by: Agent** (design), within D6 and D7 and the User's answers below (scope and the HTML and table-family questions).
+
+### What was built
+
+- `services/report_render.py`: the renderer registry (`Renderer`, `RenderInput`, `register_renderer`, `formats_for`, `render`) and the shipped renderers: `html`, `pdf`, `docx` (document family), `csv` (zip for several sheets) and `xlsx` (table family).
+- `services/report_html.py`: a standalone, script-free HTML page (the download and the designer's later preview).
+- `services/report_svg.py` and `Image.svg` on the neutral model: SVG sanitiser, vector in the PDF (`svglib`), PNG in Word (`resvg-py`), inline in HTML.
+- `custom_report_run.available_formats` now reads the registry; the route accepts `html`, `xlsx`; `file_response` knows `html`, `xlsx`, `zip`.
+- Reports page: Export offers HTML and Excel; a zip comes back named `.zip`.
+- Dependencies: `reportlab` 4.2.5 to 5.1.0, `svglib` 2.3.2, `resvg-py` 0.5.0, `openpyxl` 3.1.5, `lxml` 6.1.3, stubs `types-openpyxl` and `lxml-stubs`.
+- Tests: `test_report_svg.py` (15), `test_report_render.py` (13), `test_custom_report_run.py` (now 48), Storybook stories, Playwright specs for HTML, Excel and the CSV zip.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Full plan scope, including the SVG `Image` now**, rather than leaving it to the Math phase. | User |
+| 2 | **HTML is a standalone downloadable page and the preview**: inline CSS, no script, a `Content-Security-Policy` meta (`default-src 'none'; img-src data:; style-src 'unsafe-inline'`), every string escaped, images only as sniffed `data:` URIs. | User (format), Agent (hardening) |
+| 3 | **Table formats are for the table family only.** A document layout is not offered XLSX or CSV (no implicit sheets). | User |
+| 4 | **A renderer sees only the neutral model** (`ReportDocument` or `Sheet`s), never a layout, record or user, so formats cannot drift and ODT/ODS are one registration each. The existing module reports keep their own PDF/Word path. | Agent |
+| 5 | **CSV of several sheets is a zip** of one CSV per sheet (names cleaned, unique case-insensitively); one sheet stays a plain CSV, so the `csv` format never changes shape for a single-sheet layout. The client names the file by the response type. | Agent |
+| 6 | **Spreadsheet cells are text.** `csv_safe` applies to CSV and XLSX; an XLSX cell is typed `s` (never evaluated), cut at Excel's 32,767 characters; sheet names have `[]:*?/\` replaced, are at most 31 characters and unique. | Agent |
+| 7 | **SVG is untrusted and sanitised by every consumer.** No DOCTYPE or entity (refused), entity resolution and network off, element and attribute allow-lists (no `script`, `foreignObject`, `style` element, handlers), `href` only to `#id` (an `image` may embed a raster as a `data:` URI, see "Bitmaps inside an SVG"), external `url(...)` or script values refused, 1,000,000 character limit on the markup. A figure that cannot be drawn is skipped, as a bad raster is. | Agent |
+| 8 | **ReportLab is upgraded to 5.1.0.** `svglib` 2.x needs 4.4.3 or later and 1.x builds against Cairo, which the image does not have; the type stubs were already at 5.0. All PDF, Word and report suites pass unchanged. | Agent |
+| 9 | **New lxml stubs surfaced older type findings** (two untyped-lxml accesses in the Word picture and a Word test); both were fixed rather than baselined, so the baseline is smaller. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* record text becoming HTML or script in the HTML page; a hostile SVG fetching, expanding or running something in any renderer; a cell becoming a formula in Excel or LibreOffice; path tricks in zip member names; a very large cell or sheet name breaking a workbook; the ReportLab upgrade changing existing PDFs. *Verify:* tests cover hostile record text in every HTML position (headings, paragraphs, notes, lists, cells, footer, title), the CSP tag, no `data:` or `<img>` for non-image bytes and a bad accent colour; DOCTYPE, entity, external `url(...)`, `javascript:` and `data:` values, a non-SVG document, malformed XML and an oversize source all refused; script, foreign object, image, style, handlers, `<a>` and external hrefs stripped while a clean figure and an internal `#id` reference survive; PDF, Word and HTML each survive a hostile or broken figure; formula-looking, over-long and oddly named cells and sheets; zip names with slashes and dots; the existing PDF and Word tests (141) and every module report test (113, which include the Compliance, Risk, Decisions, Stakeholders and Context & Strategy PDF and Word exports) under ReportLab 5.1. A real stack run downloaded the HTML, an Excel workbook and a two-sheet zip. *Remediate:* no defect in the new code was found by those tests; the type check found the two older lxml findings, fixed.
+
+### Not applicable, checked
+
+*Authentication, RBAC, audit:* no new endpoint or permission (formats on the existing run route; provenance records the format). *Time:* no time field. *Search, codes, bundles, seeds:* no model or record type. *Nested projects:* no definition table. *MCP:* tools return `json` only. *Not yet exercised by a layout:* no layout block produces an `Image` or equation until Math, so SVG figures are reachable today only by a module building a `ReportDocument`; their renderers are covered directly. *Word and LibreOffice fidelity of an SVG PNG* and *Excel opening the workbook* were not checked in the real applications (openpyxl reads it back; LibreOffice is not installed here).
+
+
+## Custom reports Phase 6: widgets (2026-10-26)
+
+**Decided by: Agent** (design), within D1 and D5, and the User's correction below. The first build embedded a whole report (its headings, notes and every table) per widget; the **User corrected it the same day**: a widget should be a component such as a table, with the general text written in the layout, so the components can be reused in other reports. This entry describes the corrected design.
+
+### What was built
+
+- `ReportDefinition.parts` (`ReportPartDefinition(key, title, description)`, `modules/registry.py`): the tables of a report a layout can embed, named by the `ReportSection.key` the collector uses; validated with the rest of the declaration. All 22 reports declare theirs (the four modules' `reports.py`).
+- `services/report_widgets.py`: the widget catalogue (every declared part, plus `figures` and `notes` on every report), keyed `<module key>.<slug>.<part>`; availability per organisation and project; parameter validation and typing.
+- `services/report_widget_run.py`: runs the report's own collector with a `ReportContext` over the layout run's projects and returns one component as blocks (`part_blocks`); `output_digest`.
+- The `widget` block in all three registries: validator (`report_layout_tree`), evaluator (`report_layout_eval._eval_widget`, collecting each report once per parameter set), text form `[[widget.<key> name=value ... empty "text"]]` (`report_layout_text`, `TextForm.bracketed`).
+- `GET /orgs/{id}/report-layouts/widgets` and `GET /projects/{id}/report-layouts/widgets` (manage permission), the `list_report_widgets` MCP tool, skill and generated reference.
+- Provenance: `generated_reports.widgets` holds the widget keys that ran; a digest of each report's output joins `source_digest`.
+- Seeds: a "Context overview" layout (demo) and "E2E Widget layout" (e2e) built from widgets under their own headings.
+- Tests: `tests/test_report_widgets.py` (catalogue, parameters, validator, text round trip and malformed lines, blocks, evaluator, provenance, routes, and a test that each report's declared parts equal the tables its collector produces), a Playwright step in `custom-report-run.spec.ts`, an MCP server test.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A widget is a component of a report, never prose.** It produces a table, the headline figures or the caveat notes; no heading, no section note, no "None." text. The layout writes every word around it, so the same component can be reused under different explanations in other reports. Replaces the first build (whole report per widget). | User (the principle), Agent (design) |
+| 2 | **Components are declared on the report** (`ReportDefinition.parts`), not discovered by running it, so the designer can list them, a typo is caught on save, and a registry test (`test_every_report_declares_the_tables_its_collector_produces`) fails when a declaration and its collector disagree. Every report also offers `figures` and `notes` without declaring them. A table whose key depends on the data (the summary pack's re-listed gap tables, the risk matrices) cannot be declared and so is not embeddable. | User (chose declared parts over run-time discovery), Agent (built-ins, exemptions) |
+| 3 | **The key is `<module key>.<slug>.<part>`.** Slugs are unique only within a module, so a bare slug could become ambiguous and silently change what a stored layout means. | Agent |
+| 4 | **Parameters belong to the report**, are literal JSON values of the declared type checked at save time (bounds, choices; date and id as text), and have no placeholder or expression. Every component of a report takes the same ones. `params` is left out when empty. | Agent |
+| 5 | **One run per report and parameter set.** A report is collected once per layout run however many of its components are embedded; different settings run again. The cap is therefore on distinct runs (`MAX_WIDGET_REPORTS`, 20), not on widget blocks. This is also why widgets inside `each`/`group`/`if` are allowed: repeats cost no further collector run (an earlier draft refused them; the output cap bounds the rest). | Agent |
+| 6 | **Empty components.** A component with no rows gives no blocks; the block's optional `empty_text` (text form `empty "..."`, global placeholders only) says what to show instead, as `table` blocks do. The text form uses a trailing `empty "..."` clause rather than a parameter name so no report parameter can clash with it. | Agent |
+| 7 | **Document family only.** A table layout's only block is `sheet`. A widget as a sheet is a later extension if wanted. | Agent |
+| 8 | **Gated as the report's own project route is, per project.** A widget runs only where the report's module (and sub-component) is enabled for the project being evaluated (`widget_available`); elsewhere the layout carries on with a note and a warning, because an organisation layout runs in many projects. A collector that refuses its parameters (4xx) is shown the same way; any other exception is a bug and propagates. An organisation-wide run runs a report once per project at project level; the report's `org_role_key` belongs to its own organisation route and does not apply. | Agent |
+| 9 | **Save-time validation is by registry key; the designer's list is narrowed.** Saving does not check availability (as for record types and fields), but the widget list omits modules the organisation or project has no entitlement for or has disabled. | Agent |
+| 10 | **Provenance.** Widget keys that ran go in `generated_reports.widgets` (existing column, no migration). Widget data is not read through the field registry, so no record versions are recorded for it; a SHA-256 of each report's output is folded into `source_digest` instead. Rows are hashed, never stored. | Agent |
+| 11 | **Text syntax.** `[[widget.<key> name=value ...]]` on a line of its own (D5). A line starting `[[widget` is always a widget and a syntax error when malformed; prose that needs one writes it inside `@text` (the writer does this, so the round trip stays exact). `@widget` is rejected with a pointer. Bare values only where they read back as the same value. | Agent |
+| 12 | **A table's own heading and one-line note are not carried.** They are prose; the layout's author writes the equivalent. A report's `notes` component carries the report-level caveats; a section-level note (for example a quadrant's explanation) has no component. Raise it if a caveat there turns out to matter. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a widget running where the report's module is off or the caller has no role; an organisation-wide run widening what a report covers; a layout author passing a parameter (a group id) that reaches data outside the project; widgets multiplying work; report text becoming markup; a collector error hiding a defect or failing the whole layout; widget data escaping provenance; layout or parameter text in logs; the list showing modules an organisation cannot use; a declaration drifting from what a collector produces. *Verify:* tests show a module that is off leaves a note and no run (and over HTTP for an organisation layout); the context carries the run's projects, the module's own key and typed parameters; a refused parameter becomes a note while a bug propagates; many components of one report collect once and different settings collect again; the 21st distinct run is refused; the output cap applies; the provenance digest changes when the data changes and not otherwise; every key, parameter type, bound, choice and unknown name is validated; the list omits an unenabled module and needs the manage permission; the text round trip holds for awkward values, `empty` clauses and prose that looks like a widget line; and the declared parts equal the produced tables for every report. The stakeholder group parameter was read: the collector resolves the group inside each project's own group set and answers 404 otherwise, so an id from elsewhere reaches nothing. *Remediate:* the nested-widget amplification worry from the first build is removed by decision 5 rather than by a restriction. No policy regression: widgets add no data class (the output is the Confidential report data the report already returns to the same caller), no permission and no audit event; the module gate of the access-control policy is the one applied.
+
+### Not applicable, checked
+
+*Time:* date parameters are literal calendar dates the author wrote; a report that uses today uses the run's reference date, as standalone. *Users and groups parity:* no person field added. *Module boundary:* nothing per module in a core file; `parts` is a generic field on `ReportDefinition`, each module declares its own. *Search, codes, bundles:* a layout stays configuration (D16); the bundle carries the tree, an import revalidates it, so a key the target lacks drops that version with the existing message. *Nested projects / organisation defaults:* no definition table. *UI, Storybook:* no screen; the designer's widget picker (Phase 8) is the first UI caller of the list endpoint. *IPv6:* no listener.
+
+## Custom reports: conditions with in / not_in, and / or / not, and widget sort (2026-10-26)
+
+**Decided by: User** (asked for `in`, `not in`, brackets with `or` and `and`, sort options, and for it to work on any field, not only categories); the shape is **Agent**'s.
+
+### What was built
+
+- `in` and `not_in` on every kind of field that has a value to compare (text, person, enum, number, date), each value checked against the field's kind. Before, `in` existed only for enums.
+- Conditions combine with `and`, `or`, `not` and brackets, in a `where` and in an `@if`. Tree form: a test stays `{field, op, value}`; a combination is `{"all": [...]}`, `{"any": [...]}` (two or more) or `{"not": ...}`; a `where` list is an implicit `all`.
+- Widgets take `sort <column> [asc|desc]` (up to three) to order a table or the figures by a column heading.
+- Tests: `tests/test_report_conditions.py` (operators per kind, validator, truth tables, text precedence, a round trip for every nesting shape plus 100 random conditions, end-to-end runs on real requirements, widget sort); `docs/modules.md` §4n and §4p, the website page and the MCP skill.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Backward compatible, no schema bump.** A combination is a new kind of entry inside the existing `where` list, and an `if`'s `when` may be a test or a combination, so every stored tree, bundle and seed is valid and hashes unchanged. | Agent |
+| 2 | **Text precedence is `not` > `and` > `or`**, with brackets. Brackets are structure, not decoration: `a and (b and c)` reads back as a nested `all`, distinct from `a and b and c`, so the text view stays lossless (parse(format(tree)) == tree, tested for every shape and 100 random conditions). The writer brackets only what it must (a nested `all`/`any`, except an `all` directly inside an `any`). | Agent |
+| 3 | **Words of logic are not values.** A bare `and`, `or`, `not` as a value is a syntax error that says to quote it, the writer quotes them, and brackets are no longer part of a bare word (a value with a bracket is quoted). Text written by hand before this, containing such a bare word or bracket, now needs quotes. | Agent |
+| 4 | **An empty value is never "in" and always "not in"** (as `ne` already treated it), so "everything except General" keeps records with no category. | Agent |
+| 5 | **`in` is allowed for every kind that has an `eq` other than yes/no and instants**, with typed values (a number list is numbers, a date list is dates). | User (generalise beyond categories), Agent (kinds) |
+| 6 | **Bounds.** At most 10 tests per `where` however nested (`MAX_CONDITIONS`), 4 levels of nesting (`MAX_CONDITION_DEPTH`), 20 values per list; the text parser caps `not` chains at the same 4 and open brackets at 8, so hostile text cannot recurse deeply. | Agent |
+| 7 | **Widget sort reads cells as a person would**: numbers as numbers, ISO dates as dates, other text ignoring case, empty last either way; multi-key and stable. A report's ratings are text, so "High" sorts alphabetically, not by severity. The column names of a report's table are only known when it runs, so a missing heading is a run warning, not a save error; the notes component cannot be sorted (warning). I had advised against widget sorting for the ordering reasons above; the User asked for it, and the limits are documented rather than hidden. | User (asked), Agent (design) |
+| 8 | **Not done: ordering of groups** (`group` still lists groups by the group field's value, empty last). Raise it if wanted. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a condition reading a field the registry omits (Restricted or consent-sensitive) through a nested path; unbounded work or recursion from nested conditions (validator, parser, evaluator); a text view that reads back as a different tree; a value that changes meaning when written as text (`and`, `or`, `not`, brackets, `true`); a stored tree no longer valid; empty values silently dropping records; the sort re-ordering a report's cell colours against its rows. *Verify:* nested fields go through the same `record_field` check, so an omitted column is refused with its position, and nested fields join the references the evaluator loads (tested); depth and test counts are capped in the validator and the parser (tests for 5 levels, 11 tests, 5 `not`s and 9 brackets); a round trip is tested for every nesting of `all`, `any`, `not`, for lists, and for 100 seeded random conditions; reserved words and brackets in values are tested both ways; the old `where` shape is tested valid; the empty-value rule and typed lists are tested; sorting keeps tones with their rows and leaves the report's own rows untouched. *Remediate:* two defects found by those tests and fixed: a lone `sort` at the end of a widget line was reported as a missing parameter, and a leftover `or` was accepted as a field name, giving a confusing error two tokens later. No policy regression: conditions only select among records the runner can already see (the link graph still decides visibility) and add no data class.
+
+### Not applicable, checked
+
+*Time:* date lists are plain calendar dates, instants still have no `in`. *Users and groups parity:* `in` works on person fields, which hold users and groups alike. *Module boundary:* nothing per module. *Bundles, seeds, search, codes:* no new table or column. *UI, Storybook:* the text editor is Phase 8; the tree shape is what its condition builder will edit. *IPv6:* no listener.
+
+## Custom reports Phase 8: the designer (2026-10-26)
+
+**Decided by: User** (group 1 is a coded text view with live preview, D4; the field and widget pickers, history and shared patterns are in the plan's Phase 8); the design below is **Agent**'s except where marked.
+
+### What was built
+
+- Backend: `GET .../report-layouts/fields` (record types and fields the scope can use, global placeholders, group fields) and `POST .../report-layouts/preview` at both tiers, `services/report_layout_designer.py`; `routers.custom_reports.guard_run` is now public and generic so the preview answers refusals exactly as a run does. Tests: `tests/test_report_layout_designer.py` (17).
+- Frontend: `api/reportLayouts.ts`, `ReportLayoutsPanel` (Project Admin Report Setup, Org Admin Templates & reports), `ReportLayoutFormModal`, `ReportLayoutDesigner` and page, `ReportLayoutFieldPicker`, `ReportLayoutWidgetPicker`, `ReportLayoutPreviewPanel`, `ReportLayoutHistory`, `utils/reportLayoutText.ts`. Stories for every component and the page, and `tests/playwright/tests/e2e-workflows/report-layout-designer.spec.ts` (6 tests).
+- Docs: `docs/modules.md` §4q, the website's Custom reports section, the architecture paragraph and the style guide's "Pattern: text designer".
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The text view is the only editing surface in this phase and the server the only parser.** The client holds no block model, so it cannot drift from the tree; the WYSIWYG editor (Phase 13) edits the same tree. The saved text is the author's own, never reflowed on save. | User (D3/D4), Agent |
+| 2 | **A preview is a run that leaves nothing behind**: it goes through `custom_report_run` with an unsaved layout and version (never added to the session), so the caller's own access, the caps and the fan-out rules apply, but no `generated_reports` row and no audit event is written (nothing was produced for anyone to keep), and the text is never logged. | Agent |
+| 3 | **A preview is on demand**, not per keystroke: a run reads real data and has caps, and a parse (cheap) is what is checked as the author types (400 ms pause). A result is dropped when the text changes. | Agent |
+| 4 | **Preview HTML is the renderer's own standalone page** shown in an iframe with an empty `sandbox` attribute (no scripts, no same-origin access) on top of the page's own CSP meta; a table layout comes back as sheets capped at 200 rows with the real counts, so a very large table cannot freeze the page. | Agent |
+| 5 | **No condition builder or per-block form editor in group 1.** The earlier note that this phase would edit the condition tree is deferred to the WYSIWYG editor; conditions are written in the text (`@if`, `where ... and ... or ...`), which the parser already reports on by position. Raise it if the text is found too hard. | Agent |
+| 6 | **Pickers insert text at the caret and nothing else**: fields as `{{alias.field}}` using the name in scope (the enclosing `@each`/`@group`, found by a line scan, since a half-typed layout cannot be parsed), widgets as the finished `[[widget...]]` line with the report's settings in `ReportParamsForm`, blocks as starter text. The field picker therefore needs a name in scope; outside any block only the global placeholders are offered. Table-column field names are typed by hand. | Agent |
+| 7 | **An insertion never goes before or on the `@layout` line, and goes to the end until the author has placed the caret** (found by the end-to-end test: an untouched editor inserted at position 0 and broke the layout). | Agent |
+| 8 | **The kind is fixed, so the designer checks it.** The server parses text without the layout, so a text whose first line names the other kind is reported as a problem at line 1 before Save or Preview (found by the end-to-end test: preview ran and Save was then refused by the server). | Agent |
+| 9 | **Save is explicit and versioned; no autosave.** A concurrent save is a 409 with the newer version, shown with a confirmed Reload; leaving with unsaved changes asks first (Back link and the browser's own prompt). In-app navigation through the nav rail is not intercepted (the app's router is not a data router, so there is no blocker), which the browser prompt does not cover either; accepted. | Agent |
+| 10 | **A layout shared from elsewhere is read-only**, with Make a copy; Delete on a shared layout in a project hides it (organisation defaults pattern) and the restore button is the shared `RestoreOrgDefaultsButton`, whose wording ("Add organisation defaults") also covers layouts shared by a parent project. | Agent (pattern), User (D15) |
+| 11 | **Delete is Tier 2** (type the name): a layout's versions go with it and cannot be recovered; runs already produced keep their provenance row. | Agent |
+| 12 | **Version comparison is computed in the browser** from two ordinary reads (text view of each) with a line diff, capped at about four million comparison cells (larger texts show as replaced), so there is no comparison endpoint to secure or version. | Agent |
+| 13 | **Admin placement.** The list lives inside the existing Report Setup and Templates & reports groups as a section, not a new admin group; the designer is a page. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* the preview reading more than the runner can see (a draft naming a record type the author could not read); the preview or field list showing a type the scope has switched off; the preview writing a provenance row, audit event or log line carrying layout text or record values; preview HTML running script or fetching, or a record value becoming markup; a non-manager or a server administrator reaching the catalogue or the preview; an oversized text or a preview over the caps stalling a worker; a stale preview shown against edited text; a concurrent save overwritten; a picker inserting before the layout line or into a different layout kind; the history diff stalling the browser on large texts. *Verify:* tests show the catalogue lists a module's types only once the module is on and needs the manage permission at both tiers (member and anonymous refused); the preview returns the page for the caller's own records, narrows to chosen projects, refuses a project the caller cannot report on (404) and an invalid tree (422 with positions), reports text problems without running anything, caps sheet rows with the real count, and leaves the audit, layout and provenance tables unchanged with the text absent from the log; the HTML carries the CSP and no script (the renderer's own tests cover escaping); the frame is sandboxed with an empty attribute (story). Stories cover a stale result being dropped, a 409 and a 422 on save, the kind mismatch, a read-only shared layout and the insertion rules; the end-to-end spec runs the whole flow against the real stack. *Remediate:* two defects found by the end-to-end run and fixed (decisions 7 and 8). No policy regression: the preview adds no data class (the output is the Confidential report data the same caller may already run), no permission, and stores nothing, so the data retention policy is untouched; access control is the existing layout manage gate with the runner's own read access, and server administrators remain excluded.
+
+### Not applicable, checked
+
+*Time:* the preview's reference date is the run's, as for a run; no stored or scheduled time is added. *Users and groups parity:* no person field added; person fields in a layout already hold users and groups. *Module boundary:* nothing per module in a core file; the designer reads the field registry and widget list generically, and block shortcuts are core block types. *Nested projects:* the preview's "include child projects" is the run's own option; no definition table. *Bundles, seeds, search, codes, export/import:* no new table or column; layouts stay configuration (D16). *MCP:* no tool added; the existing layout tools are unchanged, so the skill is untouched. *IPv6:* no listener.
+
+## Backend type checking: mypy with a ratchet baseline (2026-10-26)
+
+**Decided by: User** (asked for type checking to be added and set up); the baseline approach is **Agent**'s.
+
+- `mypy==2.4.0` and the stub packages for the typed-by-stub libraries (`types-boto3[s3]`, `types-passlib`, `types-qrcode`, `types-reportlab`) are pinned in `backend/requirements.txt` beside `ruff` and `pytest`. APScheduler 3.x has neither a `py.typed` marker nor a stub package, so it alone has an `ignore_missing_imports` override in `backend/pyproject.toml`. `check_untyped_defs`, `warn_unused_ignores` and `warn_redundant_casts` are on.
+- The first run found 1,095 existing errors in about 150 files (mostly `Optional` results used without narrowing, e.g. `db.get(...)`). Fixing them in this change would have touched code unrelated to it, and a gate that starts red is not run, so `backend/scripts/check_mypy.py` is a ratchet in the style of `check_field_help.py`: `backend/mypy_baseline.json` counts findings per file, error code and message; any finding not in it fails, and so does a fixed finding still listed (run `--update`), so the debt only shrinks. It is a CI step after `ruff` in `backend-tests`. The baseline is a record of debt, not a licence: new code is fixed, not baselined, and no `# type: ignore` was added. The Phase 3 and 4 report-layout files are clean (four findings fixed on the way: a `Literal` origin, an untyped scratch dict, an optional user id, a response-model list).
+- Left for later, as its own sweep: burn the baseline down (`python scripts/check_mypy.py --list`), starting with the `union-attr`/`arg-type` families in `app/modules/context_strategy/project_router.py`, `app/modules/compliance/service.py` and `app/routers/change_requests/workflow.py`. A global `mypy` outside the project virtualenv gives meaningless results (missing dependencies, wrong Python), which is why the docs say to use `.venv`.
+
+## Custom reports Phase 9: math (2026-10-27)
+
+**Decided by: User** (scope, D9: `\( \)` and `$$ $$`, never a bare `$`, recognised in authored text and in record fields a provider marks math-capable; TeX is untrusted; PDF and HTML show a server-made `ziamath` SVG; and, answering questions at the end of the phase, equations in headings, list items and table cells, KaTeX on record screens, the mypy override kept, and the Word check left to the User); the design below is **Agent**'s except where marked.
+
+### What was built
+
+- `services/report_math.py`: the TeX command allow-list (`tex_problem`), `split_math`, `typeset` (SVG with size and baseline), `png_of`, `omml` (Word's native markup for a tested subset), `source_of`.
+- Neutral model: `Equation(tex, display)` for a block and `MathText`, a `str` subclass carrying its runs, used by headings, paragraphs, list items and table cells; HTML, PDF and Word renderers draw them; every string-only consumer (CSV, `custom_report_run`'s on-screen result) sees the source.
+- Layouts: an `equation` block (validator, evaluator, text form `@equation <TeX>`), equations inside text blocks, and the evaluator's per-character mask of where a delimiter counts. `ReportField.math` / `FieldInfo.math` / `from_search(math_fields=)`; the requirement's description, reasoning and clarification are marked.
+- Frontend: an **Equation** insert shortcut and a "equations drawn" note on a math-capable field in the picker; `components/MathText.tsx` (KaTeX) on the requirement page and a change request's proposed text, with `utils/mathTex.ts` applying the same allow-list from the generated `utils/mathAllowList.json` and shared vectors `mathTexCases.json`; `katex` and `@types/katex` as direct dependencies (the existing `katex` override now reads `$katex`, since npm refuses an override that differs from a direct dependency). Seeds: `seed_demo_data.py` gains a "Design formulae" layout. Docs: `docs/modules.md` §4r, the architecture paragraph, the website's reports page.
+- Dependencies pinned in `requirements.txt` (backend) and `frontend/package.json` (`katex` 0.18, MIT): `ziamath` 0.13 and `ziafont` 0.11 (MIT; the bundled STIX Two Math font is SIL OFL 1.1), `latex2mathml` 3.81.1 and `mathml2omml` 0.0.2 (MIT). No migration: the tree is JSON.
+- Tests: `test_report_math.py` (allow-list over every allowed command and environment, hostile TeX, splitter, drawing, a golden test of the Word markup), `test_report_math_render.py` (HTML, Word, PDF, temporary files), `test_report_layout_math.py` (validation, text-view round trip, evaluator rules and cap), `test_report_math_allowlist.py` (the generated frontend list is current; shared vectors); Storybook stories for `MathText` and `mathTex` and Playwright specs for the shortcut, the preview, the refusal and a locked requirement's page.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **TeX is checked by an allow-list before any converter runs**: named commands (Greek, operators, relations, arrows, fractions, roots, delimiters, font commands, `\text`), a few environments, at most 2,000 characters and ten levels of braces, `&` only inside an environment, plain characters inside `\text{}`, and none of `% # $ ~ " `` ` ``. `latex2mathml` is lenient (`\href` became a link in Phase 0), so a block-list would miss things. A test draws every allowed command, so the list cannot name something the typesetter cannot draw. | Agent |
+| 2 | **Math is switched on where it is written or declared, never by scanning.** The evaluator keeps a per-character mask: delimiters count in the author's own text and in a math-capable field's value, not in any other substituted value, so a title cannot become an equation; `\( k = {{record.title}} \)` still works because the delimiters are authored. A module report's ordinary `Paragraph` is never scanned (a regular expression in a description contains `\(`). | Agent |
+| 3 | **Headings, paragraphs, list items and the cells of a document table are scanned** (**User**: extend beyond paragraphs). `MathText(str)` carries the runs, so no field was added to `Heading`, `BulletList` or `Table` and string-only consumers see the source unchanged. A `$$ $$` where there is no room for a block is drawn inline (its source then reads `\( \)`); the sheets of the table family keep the TeX as text, as a spreadsheet cell cannot hold an equation. | User (scope), Agent (mechanism) |
+| 4 | **`ReportField.math` is a per-field opt-in** (`text_field(math=True)`, `from_search(math_fields=)`), validated to text fields. Marked now: a requirement's description, reasoning and clarification. Other providers opt in when their owners decide; none was marked without a reason. | Agent |
+| 5 | **KaTeX draws equations on record screens** (**User**: add it now). `MathText` shows a requirement's description, reasoning and clarification (when locked or read-only) and a change request's proposed text. KaTeX alone is wider than the report allow-list (it accepts `\def`), so the screen first applies a TypeScript port of the allow-list that reads a list generated from `report_math.py`; a backend test fails when the generated file is stale and both sides run the same vectors, so the two cannot disagree silently. Rendering uses `trust: false`, a macro-expansion cap and DOMPurify; the page text stays React text. The editing forms still show the TeX as typed. The Reports page's on-screen result stays source text (it cannot tell a math-capable cell from other text). | User (scope), Agent (mechanism) |
+| 6 | **PDF: display equations are vector (`svglib`), inline ones a transparent PNG** placed with an `<img>` tag, because ReportLab reads an inline image only from a file path (it rejects `data:` URIs). The PNGs are written to a per-render temporary directory removed in a `finally`; the `<img>` tags are built from numbers and a path this module made, never from text. | Agent |
+| 7 | **Word gets native equations only for a conservative subset.** The converter's empty `m:box` wrappers are unwrapped, a square root gets the hidden degree Word requires, `xml:space="preserve"` is set so `\text{if }` keeps its space, and an equation using an element outside `OMML_ELEMENTS` (accents, `limUpp`/`limLow`, aligned equations) or a limit operator (`\lim`, whose subscript Word stacks underneath) becomes a PNG. The golden test pins the markup. **Verified in Word by the User (2026-10-27)** on a generated sample covering every supported construct, the picture fallbacks and equations in a heading, a list item and table cells; all rendered correctly. Not automated, and LibreOffice is not installed here, so a converter upgrade is re-checked by the golden test and the same sample. | Agent |
+| 8 | **An equation that fails the allow-list or cannot be drawn is shown as the author wrote it**, with the single warning "An equation could not be drawn and is shown as written." The warning never quotes the TeX (it could be a record's text and warnings are returned and may be stored). Every renderer repeats the check, so an equation that reached one without the evaluator's check still cannot reach a converter. | Agent |
+| 9 | **A run draws at most 1,000 equations** (`MAX_EQUATIONS`), then shows the rest as written with a warning; typesetting is cached per TeX and serialised by a lock (`ziamath` keeps module state), so the same equation per record costs once. | Agent |
+| 10 | **The `equation` block is one line of TeX with no placeholders.** `@equation <TeX>` keeps the text view exactly lossless (tested, including quotes, `@`, `{{x}}`); a value can be put into an equation by writing it in a text line between authored delimiters. | Agent |
+| 11 | **`mathml2omml` is added to the existing no-stubs mypy override** beside APScheduler (a library with no `py.typed` and no stub package, one function used). A configuration edit made to follow the precedent rather than ignore the finding at the import. | Agent, confirmed by User |
+
+### Review (identify, verify, remediate)
+
+*Identify:* TeX in a record field or a layout reaching a converter that passes `\href`, `\input` or markup through; markup inside `\text{}` or an equation's name reaching HTML, Word XML or ReportLab markup; a record title becoming an equation; an unbounded number of typeset calls; temporary files left behind; the SVG or OMML being something other than what the converter was meant to emit; the warning or an error repeating customer text. *Verify:* the allow-list tests refuse each of 17 dangerous commands, hostile `\text{}` arguments, control and invisible characters, unbalanced and over-deep braces, oversize input and a stray `&`; the HTML tests show the TeX escaped in `aria-label`, the CSP unchanged, and an undrawable equation as an escaped `<code>`; the Word tests show hostile text beside an equation stored as text only, every element of the output inside the subset and an undrawable equation as source; the PDF tests show a hostile `<img src="file:///etc/passwd">` beside an inline equation neither fetched nor failing, and no `report-math-*` directory left after success or a failed build; the evaluator tests show a title's delimiters stay literal in a paragraph, a heading and a cell, a closing delimiter inside a plain value does not close the author's equation, the warning never contains the TeX, and the cap holds. On screen, the stories show a refused command and a hostile `<img onerror>` / `<script>` beside an equation never reach the page, ordinary text with `$5` is unchanged, and the MathML is present for screen readers. The ziamath SVG holds only `svg`, `path`, `rect` and `g` and still passes `sanitize_svg`. *Remediate:* the above. Two defects found by the tests and fixed: typesetting was cached on the raw string, so the same TeX with different whitespace was drawn twice; and `lim` produced Word markup that placed its subscript beside the operator (now a picture). No policy regression: the equation text is the same Confidential layout or record content as before, is never logged or audited, and no new endpoint or permission exists.
+
+### Not applicable, checked
+
+*Authentication, RBAC, secrets, audit, retention, tenant isolation:* untouched (no endpoint, permission, stored row or column; the tree is the existing JSON). *Time:* no time field. *Search, codes, bundles:* no record type or table; a layout's tree carries equations like any block. *Users and groups parity:* no person field. *Nested projects / organisation defaults:* no definition table. *Modules:* the field flag and the block are generic extension points; no module file changed and no core file names a module. *MCP skill:* no tool changed (a layout's tree is the existing JSON argument). *Core tables and constants keyed by kind:* none added. *IPv6:* no listener.
+
+## Custom reports Phase 10: background runs (2026-10-27)
+
+**Decided by: User** (D14: a run expected to exceed a threshold becomes a background job, the person is notified when the download is ready, only background output is stored, and it expires after an organisation-set limit capped by a platform ceiling). **Decided by: Agent** for the mechanism below.
+
+### What was built
+
+- `GeneratedReport` is also the job row: `status` (`completed` for a synchronous run, then `queued`, `running`, `ready`, `failed`, `expired`), `started_at`, `finished_at`, `expires_at`, `output_key`, `output_filename`, `output_size`, `error` (migration 0114); `Organization.report_output_retention_days` (Org Admin > Templates & reports > Background reports, with the platform default and ceiling shown beside it).
+- `services/report_run_jobs.py`: `enqueue`, `run_job`/`run_next` (claim with `FOR UPDATE SKIP LOCKED`, run as the requester, store, notify), `expire` (files, lost jobs, old provenance rows), the requester's `list_for`/`get_for`/`read_output`/`delete_output`, and `run_job_loop`, started through the lifespan's `start_singletons`.
+- Routes: a file run over the synchronous limits answers 409 `{"code": "async_required"}`; `POST /projects/{id}/custom-reports/{layout}/runs` and `POST /orgs/{id}/custom-reports/{layout}/runs` queue it (202); `GET /api/v1/report-runs[?organization_id=]`, `GET .../{id}`, `GET .../{id}/download`, `DELETE .../{id}` are the requester's own.
+- `evaluate_layout(limit_scale=)` and `run_project_layout`/`run_organization_layout(background=True)`: 5 times the work and output limits and a 600 s deadline (`ASYNC_LIMIT_SCALE`, `ASYNC_TIMEOUT_SECONDS`); `custom_report_run.render_file`, `file_stem` and `provenance_fields` were extracted so the request and the job render and record a run identically.
+- Notification type `report_run_finished`; org deletion deletes stored objects; frontend `ReportRunsPanel` (under the report on both Reports pages), `useReportRuns`, the 409 hand-off in `ReportRunner`, the retention field, stories and `custom-report-background-run.spec.ts`.
+- Settings: `REPORT_OUTPUT_DEFAULT_RETENTION_DAYS` (7), `REPORT_OUTPUT_MAX_RETENTION_DAYS` (30), `REPORT_RUN_RECORD_RETENTION_DAYS` (400).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **No cost estimate: attempt the run, hand off on a limit.** The plan proposed a cheap count pre-pass; an estimate that is wrong either way (nested sources, widgets, fan-out) costs a bad refusal or a bad wait, while the attempt is bounded by the existing 60 s timeout. A `LayoutLimitError` on a file format becomes 409 `async_required`; the on-screen `json` form keeps 413/408 because there is no file to queue. Revisit with data. | Agent |
+| 2 | **The job is the provenance row**, not a second table: one history per run, one place the retention and the organisation cascade already apply. The request (layout version, format, parameters) is pinned on the row at queue time so the job runs the layout as it was asked for. | Agent |
+| 3 | **Run by the leader, one at a time, in a worker thread.** The leader-election mechanism already exists for singleton jobs; `SKIP LOCKED` keeps the claim safe if that ever changes. Cost: one background run at a time per deployment and its CPU shares the leader process's GIL. Accepted for the first version; the queue is the seam to change it. | Agent |
+| 4 | **Limits are 5 times the synchronous ones and 10 minutes**, and a stored file is capped at 200 MB (`MAX_OUTPUT_BYTES`): the whole rendered file is held in memory and written in one call. | Agent |
+| 5 | **Only the requester can list, download or delete a run**, administrators included; another person's run is a 404. Stored output is Confidential and the requester's access was the only thing the run was checked against. | Agent |
+| 6 | **Access is re-checked when the job runs and when the file is downloaded** (active account and organisation, a role in the project or organisation, the layout still reachable and not hidden), so a report never holds more than the requester can read at that moment, and a person removed from the project cannot take an earlier file with them. | Agent |
+| 7 | **A job left `running` past its deadline plus two minutes is marked failed, never re-run.** A re-run could produce a file the requester no longer expects and doubles the load that probably killed the process. | Agent |
+| 8 | **Retention: the organisation's setting, else a platform default, never above a platform ceiling.** Expiry deletes the object first and clears the row's file columns after, so a failed delete is retried. The row stays as `expired`. | User (D14), Agent (7 and 30 day values) |
+| 9 | **Provenance rows are now expired too** (400 days, not while queued, running or ready), closing the retention policy's gap 3. A platform setting, not an organisation one: the row holds no content and the period is about evidence, not data protection. | Agent |
+| 10 | **At most 5 queued or running runs per person** (429): the queue is shared, so one person or script must not be able to fill it. | Agent |
+| 11 | **Failure messages are fixed sentences**, never an exception string, and only the exception type is logged. The row is readable by the requester and a message or traceback can quote record content. | Agent |
+| 12 | **No MCP tools.** A file has no MCP form (`run_custom_report` returns the on-screen JSON), so there is nothing to queue from an assistant. | Agent |
+| 13 | **The queueing request is the same download the person just made**, sent again to `.../runs` with a toast saying so, with no extra confirmation dialog: they have already asked for the file. | Agent |
+| 14 | **The organisation bundle carries `report_output_retention_days`; run rows and stored files do not** (provenance and short-lived output are not organisation content to move). | Agent |
+| 15 | **Time shapes.** `created_at`, `started_at`, `finished_at` are past instants (UTC). `expires_at` is a derived deadline computed from the UTC finish time plus a number of days; it is not a time a person scheduled, so it carries no IANA zone. Boundary hours do not apply: nothing here uses a calendar date or a wall-clock time; tests pin the retention arithmetic and expiry comparisons against injected instants. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* another person fetching or deleting a run; access that changes between queueing and running or downloading; a queue filled by one person; a job stuck `running` after a crash; stored objects outliving the organisation; exception text with record content reaching logs or the row; storage keys built from user text; stored output outliving its retention; the download path serving a file after expiry; an administrator reaching a run.
+
+*Verify and remediate:* a run is looked up by `requested_by` and everything else is a 404 (tests: another member, a project manager, a server administrator); access is re-checked at run time and on download (tests: an archived requester gets a failure, not a file, and cannot download a ready one); the cap of five returns 429; `expire` marks an over-age `running` job failed; **found: deleting an organisation left its stored objects behind** (the rows cascade, the objects are named only on the rows), fixed in `org_deletion` with a test; **found: the run failure paths logged `logger.exception`**, whose message and traceback can quote record content, now `type(exc).__name__` only; keys are `report-runs/<org id>/<run id>.<extension of the renderer>`, no user text; the download checks `expires_at` as well as the status, so an expired file is refused before the expiry pass reaches it (test). **Found and fixed on the way: `api.getForBlob` threw away the response body, so a structured error (the 409 code) could not be read by the client; it now uses the shared request path.** The advanced settings save had no success feedback (the style guide's feedback rule); it now toasts. A Phase 9 docstring line in `report_math.py` exceeded the line limit and was wrapped.
+
+*Residual, recorded:* stored output is in the object store and so in the object mirror and backup sets taken while it exists (retention policy, new gap 3); one background run at a time per deployment; the rendered file is held in memory (200 MB cap); the sync attempt spends up to 60 s before handing off.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file; the job is generic and the notification type is a core one. *Core tables and constants keyed by kind:* none added. *Search, codes:* no record type. *Users and groups parity:* the run is for the requesting user; the retention setting is organisation-wide. *Nested projects / organisation defaults:* no definition table. *Bundles:* see decision 14. *Seeds:* no new feature data to demonstrate (a run is made by using the product). *IPv6:* no listener.
+
+
+## Custom reports Phase 10b: run-time variables (2026-10-27)
+
+**Decided by: User** (D18 to D20, D23: a layout declares typed variables the person supplies when running; options come from any record type's field through a generic value-domain hook; variables narrow a report, they are not access control). **Decided by: Agent** for the mechanism below.
+
+### What was built
+
+- Tree schema 1 (additive, no version bump): the root may carry `variables` (`name`, `type` text/number/date/bool/enum, `label`, `multiple`, `default`, `options` or `source {record_type, field}`). A reference is `{"var": name}` as a condition value (`in`/`not_in` need a list variable, every other operator a single one, checked against the field's kind) or a widget parameter (one value of a parameter type the variable fits), and `{{var.name}}` in text. `var` is a reserved block name. `services/report_variables.py` holds the vocabulary, `resolve_values`, `bind_variables`, `describe_variables`, `variable_options` and `stale_value_warnings`.
+- Generic value-domain hook: `ReportField.domain(db, project_ids)`; an enum's labels and the status labels are the domain without declaring one; `name_lookup_field` takes the lookup table's `project_id` column and offers the project's names and its ancestors' (component, category, stage, action type, decision type). A field with no closed list takes free input. `services.report_fields.field_domain` is the one read path.
+- Evaluation: `evaluate_layout(variables=)` validates, resolves values (supplied, else default, `today` being the caller's own day), substitutes them into a copy of the tree and validates that copy, so the evaluator only sees literals; `EvaluatedLayout.variables` carries what was used. `GeneratedReport.params["variables"]` records it; a queued job runs with the values resolved when it was queued.
+- API: `variables` on the run routes (a JSON query parameter on GET, a field on the `.../runs` and preview bodies); 422 `{"code": "variable_values", "problems": [{name, message}]}`; `GET .../custom-reports/{id}/variables` (project and organisation) and `POST .../report-layouts/variables` (a draft) return the run form; the catalogue entry carries `variables`. MCP: `run_custom_report(variables=)` and `get_report_layout_variables` (skill updated).
+- Text view: `@var <name> <type> [list] [label "..."] [default v, ...] [options "a", ...] [from record.field]` before the first block; `$name` is a reference in a condition value or widget parameter (`"$name"` quoted is the text); round trip tested.
+- Frontend: `ReportVariablesForm` (shared by the Reports page and the designer preview), `ReportRunner` holds the run back (and hides Export) until every variable with no default has a value, the preview panel follows the draft's `@var` lines, stories and `custom-report-variables.spec.ts`; both seed scripts gain a "by category" layout.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Substitute, then validate again.** Binding replaces references with checked literals in a copy and the copy is validated, so the evaluator, the widget cache key and every operator see only literals, and a value gets the same size, kind and `MAX_IN_VALUES` checks as an authored one. Cost: a second validation per run of a layout with variables. | Agent |
+| 2 | **A variable with no default must be given**; an empty list is refused. "No restriction unless chosen" would make `in` on an empty list ambiguous (everything or nothing); an author who wants "all" gives a default listing them or does not filter. | Agent |
+| 3 | **Options advise, they do not enforce, except an enum's own `options`.** A value outside a source field's current domain runs, and the run says (naming the variable, never the value) that it may match nothing: the list can change between choosing and running. | Agent |
+| 4 | **Values travel in a JSON query parameter** on GET runs. The front proxy logs the path only (`nginx.conf`), as for search; values are configuration, stored on the provenance row and never written to a log line, a metric label or an audit event. The MCP tool uses the same parameter. | Agent |
+| 5 | **A `{{var.name}}` value is text** in the placeholder pass, never markup, a placeholder or an equation (tested with a hostile value). `var` cannot be an `as` name. | Agent |
+| 6 | **A date's `today` default is the caller's own day** (`X-Client-Date`, `effective_today()`); the day is resolved before queueing, so a background job runs with the concrete date. The run's `generated_on` placeholder now uses the same day. | Agent |
+| 7 | **Organisation fan-out takes one set of values for every project**; options are offered across the projects the caller can read (capped at `MAX_FANOUT_PROJECTS`). Per-project values arrive with saved sets (10c, D25). | Agent |
+| 8 | **Domain of a project-defined vocabulary includes ancestors' definitions**, matching how a child project inherits Action Types and Decision Types; the organisation tier does not exist for these tables. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a value used as markup, a placeholder, an equation or TeX; a value widening what a caller reads; an unbounded list or text; options revealing definitions the caller cannot see; values reaching logs; a variable named like a block alias.
+
+*Verify and remediate:* values are text literals filled in one pass over the author's text (hostile-value test); the resolver and traversal are untouched, so a variable only narrows; counts and lengths are capped (20 variables, 20 list values, 200 characters, 100 options, 20,000 characters of JSON); options are definition names the caller can already list in the project (project view role required for the form, a project the caller cannot report on is a 404); no log line carries a value; `var` is rejected as an alias.
+
+*Residual, recorded:* a project's category names are offered to any member who can run reports in it (they already list them in the project); the request URL with values can appear in the browser history and the backend's own access log if it is enabled (the proxy logs the path only).
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file; the hook is a generic field attribute. *Core tables and constants keyed by kind:* none added. *Search, codes, tags, quick links:* no record type. *Users and groups parity:* no person-valued field is added. *Nested projects:* no new project-scoped table; the domain walks ancestors. *Bundles:* variables are part of the layout tree, which already travels. *Time:* a date variable is a calendar date (the person's own day); a run's time stays a UTC instant.
+
+## Custom reports Phase 10c, part 1: report packs and the pack run (2026-10-27)
+
+**Decided by: User** (D19 to D25: a pack lists several reports, each with its own format, run with one set of variables into a zip with a manifest; organisation and project tiers with additive visibility; an entry that cannot run is listed, never dropped). **Decided by: Agent** for the mechanism below. Phase 10c is delivered in parts; this is the backend core (definition, store, tiers, run, zip, manifest, provenance). Saved variable sets and overrides (D24, D25), the bundles, the background path, MCP and the UI follow and are not built yet.
+
+### What was built
+
+- `report_packs` and immutable `report_pack_versions` (migration 0115), the layout pattern: partial unique names per owner, an ORM guard refusing a version update, optimistic `base_version`, an unchanged save stores nothing, audit events carry ids, hash and counts only. A pack is configuration: no code, not linkable, not searched.
+- Definition (`services/report_pack_definition.py`, schema 1): `variables` (declared and checked by the layout validator, so a pack variable has the same types, options and source field), an optional `template` (an organisation report template, by name), and up to 25 `entries`: a layout by name and optional tier (`{"kind": "layout", "name", "tier", "format", "filename", "variables"}`) or a module report (`{"kind": "report", "module_key", "report", "format", "filename", "params"}`).
+- Tiers (`services/report_pack_scope.py`): organisation and project packs, additive visibility (own, ancestors', organisation's, de-duplicated by name), hide and restore through `ProjectDefinitionSuppression` (kind `report_pack`), the same permissions as layouts (D22, no new permission).
+- Run (`services/report_pack_run.py`, `services/report_module_run.py`): every entry is produced as the caller. A layout entry goes through `custom_report_run`; a module report entry through a service-level run of its `ReportDefinition` with the gates its own route applies (module and sub-component enabled, an organisation variant, the module role). The zip holds `manifest.json` and flat `NN-<stem>.<ext>` files.
+- API (`routers/report_packs.py`): manage routes at both tiers; `GET .../{id}/form` (variables with defaults and options), `POST .../{id}/preview` (counts per entry, nothing stored) and `POST .../{id}/run` (the zip). Provenance: one `GeneratedReport` row per included entry sharing `pack_run_id`; a module report row carries `report_key` and a `layout_id` derived from it.
+- `EvalStats.records_included` (distinct records that passed a block's conditions) is the figure the preview and manifest show; `records_read` counted records before the conditions narrowed them, which would have hidden exactly what D23's preview is for.
+- `report_framework._content_blocks_for` became public (`content_blocks_for`) for the module report path, and `report_widgets.param_value_problem` is public for the pack's report parameters. Two route handlers in `report_framework` gained an `assert organization is not None`, clearing a baselined mypy finding.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Entries name a layout, never an id.** A definition is then portable in a bundle and resolves for the project it runs in; `tier` pins the owner's tier (`organization`, or `project` meaning the project's own or an ancestor's). A project layout that shadows an organisation layout of the same name makes the organisation tier unreachable in that project, as for any other reader. | Agent |
+| 2 | **Pack variables reach a layout entry by name, type and list-ness**; an entry may fix its own value, which wins; otherwise the layout's own default applies. The values still pass the layout's own declaration (`resolve_values`), so a pack cannot bypass a layout's rules. A mismatch of type makes the pack variable simply not apply. | Agent |
+| 3 | **A variable problem in one entry makes that entry "not available" (naming variables, never values), not a failed pack.** Pack-level values that are wrong are a 422 before anything runs. | Agent |
+| 4 | **Run and preview are POSTs with a body**, so variable values never appear in a URL the front proxy logs. The download is the POST's response. | Agent |
+| 5 | **No partial output.** A layout entry over its caps, a pack over 120 seconds or 100 MB is `PackLimitError` (413); nothing is zipped or recorded. Until the background path is built for packs the answer is 413, not 409 `async_required`. | Agent |
+| 6 | **Nothing runnable is a 409 `nothing_to_run`**, and records nothing; a pack with some runnable entries succeeds and lists the rest (D21). | User (rule), Agent (status code) |
+| 7 | **Nested projects (checklist):** a pack is a project-scoped configuration table. It takes the additive rule of layouts (D15, D22) rather than Action Types' "own rows, else the ancestor's", because a project that made one pack would otherwise hide every inherited one. | Agent |
+| 8 | **A module report entry records provenance as a layout-less row**: `layout_id` is a UUIDv5 of `<module key>.<report key>`, `layout_version` 0, `report_key` set. The column stays non-null for every existing reader. | Agent |
+| 9 | **A pack's default branding template is stored by name** (portable) and a request's `report_template_id` overrides it; a name with no template is ignored, not an error. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* an entry reading more than the caller can (a pack widening access); a file name taken from user text becoming a path in the zip; a pack variable value or record text in the manifest, a log or an audit event; an unbounded zip or run; a module report run without its module or role gate; a hidden layout or pack still runnable; a requester seeing another project's or tier's pack.
+
+*Verify and remediate:* each entry uses the report's own run path with the caller's resolver (test: an outsider cannot run, the manifest holds no record text, a report whose module is off or that has no organisation variant is listed not available); stems go through `clean_filename` and the zip name is `NN-` plus the stem, so `../../x`, absolute paths and hidden names cannot survive (parametrised test); the manifest carries names, keys, counts, formats, the variable values (configuration, D23) and UTC times; audit events carry ids, hash and counts; caps on entries (25), definition size, zip size and wall time; a hidden pack is a 404 for runners and a hidden layout is not available to a pack; the visibility, 403 for an inherited edit and name-uniqueness rules are tested.
+
+*Residual, recorded:* record counts in the manifest and preview can reveal how many records match a category the runner can read; they cannot reveal a record the runner cannot read. A module report's rows are counted as rows, not records.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file; module reports are reached through the registry. *Core tables and constants keyed by kind:* none added. *Search, codes, tags, quick links:* no record type. *Users and groups parity:* no person-valued field; manage permissions already take users and groups. *Time:* the manifest and provenance times are UTC instants; a date variable keeps the caller's own day. *Not yet built (later parts of 10c):* saved variable sets and per-project overrides, bundle export and import, the background path, MCP, the UI, seeds and the website.
+
+## Custom reports Phase 10c, part 2: saved variable sets, project overrides and per-project values (2026-10-27)
+
+**Decided by: User** (D24: saved sets per pack, an organisation pack's set overridable per project by variable with a reset, projects may add their own sets, nearest ancestor's override wins then the organisation's, editing needs the project report-layout permission; D25: in an organisation run each project's entries use that project's effective set and the manifest lists the values per project). **Decided by: Agent** for the mechanism below.
+
+### What was built
+
+- `report_pack_variable_sets` (a pack's named values; `project_id` null = saved with the pack, else added by that project) and `report_pack_set_overrides` (one project's per-variable values over a pack-defined set), migration 0116. Both cascade from the pack and the project. The column is `variable_values` because `values` is a reserved word in PostgreSQL.
+- `services/report_pack_sets.py`: create, rename, change, delete; `put_override` / `reset_override`; `effective_sets(pack, project)` resolves each variable from the running project up through its ancestors (`get_project_chain_ids`, nearest first), else the set's own value; `set_values_for`; `stale_warnings`.
+- Endpoints: organisation `.../report-packs/{id}/sets` (list, create, patch, delete); project the same, plus `PUT/DELETE .../sets/{set_id}/override`. On the project side a set on the project's own pack is saved with the pack; on an inherited pack it is the project's own set beside the pack's, and the pack's own sets are overridden, not edited (403). Run and preview take `variable_set_id`; typed `variables` win over the set. The run form lists the sets with the values this project would use and any warnings.
+- Organisation run: `custom_report_run.run_organization_layout(variables_for=)` lets the pack give each project its own values (the set with that project's overrides). The manifest records `variable_set`, `warnings` and, per entry, `variables_by_project` when the projects' values differ.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Override is per variable, nearest first.** A variable the override does not list falls back to the next ancestor's override, then the set's value. An empty override removes it. A child inherits its parent's override and a parent never sees a child's. | User (per variable, reset, nearest wins), Agent (empty put = reset) |
+| 2 | **A set belongs to the pack, not a version.** A new version keeps the saved choices; a stored name the version no longer declares is ignored with a remark in the manifest, never an error. A value of a retyped variable that no longer fits is an error at run (the usual `variable_values`), because guessing would change what a report contains. | Agent |
+| 3 | **Names are unique where they can be seen** (the pack's own sets and the project-added sets of the project and its ancestors), so picking by name is unambiguous; a project-added set cannot be used in an organisation run (it is one project's). | Agent |
+| 4 | **A value no longer among its variable's options is flagged on the form and in the manifest, not dropped or refused** (options advise, as for any variable). The warning names the variable, never the value. | User (flag, do not drop), Agent (wording) |
+| 5 | **Nested projects (checklist):** both new tables are project-or-pack-scoped config; the override resolution walks ancestors with the same cycle-safe helper as layouts and link types, always on and independent of role inheritance. | Agent |
+| 6 | **Audit events carry ids, names and variable counts, never values** (values are configuration, shown to people who can manage or run the pack). | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a project changing the organisation's set for everyone; a project reading another project's added set or override; a set holding a value that is not valid for the variable; a deleted set or pack leaving overrides; values reaching logs or audit events; the organisation run applying one project's override to another; a runner (no manage permission) changing a set.
+
+*Verify and remediate:* the organisation's sets are edited only through the organisation routes and a project can only write its own override row (tested: 403 on edit, delete and a pack's own-set override); sets and overrides cascade with the pack and the project (tested); an organisation run resolves each project through `effective_sets` for that project (tested with two projects, one overriding); values are validated by `check_values` on every write; a member without the project permission gets 403 on set writes but can read the sets on the run form (tested); audit detail is checked to hold no value (tested).
+
+*Residual, recorded:* the set values on the run form are visible to anyone who can run the pack; they are choices (categories, dates), not secrets, and the pack's definition and its entries stay manager-only.
+
+### Not applicable, checked
+
+*Modules, core enums/constants, search, codes, tags, quick links:* none touched. *Users and groups parity:* no person-valued field. *Time:* a date variable keeps the caller's own day; nothing scheduled is stored. *Still to do in Phase 10c:* bundles (sets and overrides travel by pack and set name), the background path and MCP, the UI, seeds and the website.
+
+## Custom reports Phase 10c, parts 3 to 5: bundles, background packs, MCP and the screens (2026-10-27)
+
+**Decided by: User** (D19 to D25, and "do all of 10c"). **Decided by: Agent** for the mechanism below. This closes Phase 10c.
+
+### What was built
+
+- **Bundles** (`services/report_pack_bundle.py`, called from `project_export.py` and `org_export.py` beside the layout bundle): a project bundle carries its own packs (every version, with the sets saved with them), the inherited packs it hides, the sets it added to inherited packs and the overrides it holds, all by name; an organisation bundle carries the organisation's packs with their sets. An import validates every definition again, renumbers versions, drops a version that is not valid here (with a warning), skips a set whose values no longer fit, never overwrites a pack in a merge ("<name> (imported)") and reports a hide, added set or override whose pack it cannot find.
+- **Background packs** (`report_run_jobs.enqueue_pack`, `_run_pack_job`): a pack too big for a request answers 409 `async_required`; `POST .../{id}/runs` queues it (the values and set are checked at once, access again when it runs). The job row is `format zip` with `params.kind == "pack"`; it runs as the requester with larger bounds (200 MB, 15 minutes between entries, plus each layout's own background limits), stores the zip like any background output (retention, expiry, requester-only download) and then writes the entries' provenance rows with the same `pack_run_id`. A date variable's `today` is the day the person asked (`client_date` in the job params). A lost-job reaper allows a pack job its longer bound.
+- **MCP**: `list_report_packs`, `get_report_pack_form`, `preview_report_pack` (read) and `get_report_run` (read), `run_report_pack` (write mode: queues the zip; the file is downloaded in the app, never sent through MCP). The skill and the generated tool reference are updated.
+- **Screens**: Report packs under Report Setup (project) and Templates & reports (organisation) (`ReportPacksPanel`); the pack editor at `/projects/:id/report-packs/:packId` and `/orgs/:id/report-packs/:packId` (`ReportPackEditor`: Reports, Variables, Saved sets, History); the pack on the Reports page and the organisation overview as a "Pack: <name>" entry (`ReportPackRunner`: variables, saved choices, branding template, live counts per report, download or background queue). Shared pieces: `useReportTemplates` (extracted from `ReportRunner`, which now uses it), `JsonObjectField`, `utils/reportPackDraft`. `api.postForBlob` now throws the structured `ApiError` of any other call.
+- Seeds: the demo dataset gains an organisation pack with a saved set; the e2e dataset gains an "E2E Pack". Playwright: `custom-report-packs.spec.ts`. Website: "Report packs" in Reports and export.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A queued pack keeps what the person typed and the chosen set's id, and resolves them when the job runs**, because an organisation run's per-project values depend on each project's overrides at that moment. The values are validated when queued, so a bad request is a 422 then, not a failed job. | Agent |
+| 2 | **The pack job is one row (`zip`) and the entries' rows are written when it finishes**, so the Background reports list shows one item per pack and provenance still has a row per report. | Agent |
+| 3 | **Overrides and added sets travel in the project's section, a pack's sets in the pack's.** An override is that project's data; moving it with the organisation's set would apply it to projects it was never made for. | Agent |
+| 4 | **MCP does not return the zip.** `run_report_pack` queues a background run (a write-mode action, since it stores output and notifies); `preview_report_pack` is the safe check. | Agent |
+| 5 | **JSON boxes for an entry's pinned values and a module report's options.** A structured control per variable would need the layout's and report's declarations at edit time; the server validates the JSON and the editor shows its positioned problems. Revisit if people find them hard to use. | Agent |
+| 6 | **The organisation run has no project selector for packs** (the API accepts `project_ids`); it covers every project the caller can read. | Agent |
+| 7 | **A pack editor's Save compares canonical JSON** (sorted keys), so a definition built in a different key order is not "changed". A story caught the first version always enabling Save. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a bundle importing an invalid or hostile definition or a set naming undeclared variables; a pack job running with more access than the requester holds now, or for a hidden pack; a stored zip readable by anyone but the requester or past its retention; a lost pack job never reaped or a long one reaped early; MCP exposing zip content or running without write mode; values in logs, audit events or notifications; a variable value or record text in the manifest; XSS through a pack name or reason in the screens.
+
+*Verify and remediate:* every imported version and set is validated again through the same services as an edit (tests: corrupted definition and set, merge never overwrites, unmatched hide/added set/override reported); the job re-checks the requester's account and access, the pack's reachability and hiding (tests: archived requester fails with the fixed sentence, hidden pack cannot be queued, only the requester downloads); the zip is stored and expired by the existing output mechanism, so retention, deletion with the organisation and requester-only download apply unchanged; the reaper distinguishes pack rows; the MCP tools only proxy the API with the caller's token and `run_report_pack` exists only in write mode (the skill generator labels it); the manifest, audit events and notifications carry names, ids and counts (tests); names and reasons render as React text.
+
+*Residual, recorded:* a stored zip is Confidential data at rest under the same encryption posture as other background output (no application-level encryption; see the data classification and retention policies). An organisation pack's module report entries can only be organisation-level reports (the editor offers the organisation catalogue); a project that runs such a pack runs them at its own level.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file. *Core enums/constants:* none added (`format` stays a string, `report_key` a plain column). *Search, codes, tags, quick links:* a pack is configuration, not an artefact type. *Users and groups parity:* no person-valued field; manage permissions already take users and groups. *Nested projects:* decided additive in part 1 (D15); overrides walk ancestors. *Time:* manifest and job times are UTC; a date variable keeps the caller's day. *SOC 2 policies:* output retention and classification follow the Phase 10 mechanism; no new control regressed and no new gap beyond the recorded residual.
+
+## Custom reports Phase 11: starter layouts (2026-10-28)
+
+**Decided by: User** (starters are seeded organisation rows; Gap Analysis and Change Impact deferred). **Decided by: Agent** for the mechanism below. Phase 11b (the two analysis widgets) stays open.
+
+### What was built
+
+- **Three starters** (`services/report_starters.py`): Business Requirements Document, Engineering Specification, Review Package. Each is a `StarterLayout` holding the parts about core records and its own words, plus every part a module contributes.
+- **Modules contribute their own parts.** `ModuleDefinition.report_starter_sections` (`ReportStarterSection(starter, order, nodes)`, read with `get_report_starter_sections`); Context & Strategy, Stakeholders, Decisions, Risk Management and Compliance each add a `report_starters.py`. The core merges by `order` and wraps each part in an `if` on that module, so the core file names no module, record type or report of one.
+- **`if` on a module.** A new `if` test `{"module": key}` (text view `@if module <key>`): true where the module is available in the project being run. It is additive to tree schema 1 (no version bump) and works in any layout.
+- **Writing them.** `add_starter_layouts` creates the ones an organisation lacks, by name, skipping any name in use. It runs at organisation creation (`routers/orgs/core.py`, `services/bootstrap.py`; not at import, which brings its own layouts) and on request: `POST /orgs/{id}/report-layouts/starters`, an **Add starter layouts** button on the organisation's Report layouts (manage-layouts permission, no server-admin bypass).
+- Tests: `backend/tests/test_report_starters.py` (20), plus `if`-on-module cases in the tree, text and evaluator suites; test helpers delete the starters from a test organisation by default (`create_org_admin_in(keep_starter_layouts=)`), so tests that list layouts need not know about them. Storybook stories for the button; Playwright `report-starter-layouts.spec.ts`. Website: "Starter layouts" and the `@if module` bullet in Reports and export; `docs/modules.md` §4v.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Starters are ordinary organisation layouts written per organisation**, not a read-only platform tier. The Agent recommended a runnable read-only tier (an organisation's copy would not drift from improvements and could not be edited by accident) and flagged the trade-off: a copy does not receive a later release's improved starter, and it is editable and deletable. The User chose seeded rows. Mitigation: names are skipped, never overwritten, and **Add starter layouts** brings back a deleted one. | User |
+| 2 | **Gap Analysis and Change Impact are deferred (Phase 11b)** until Engineering Design, Verification/Validation and Baselines exist, so they are built once against real data. The design description starter is likewise not built. | User |
+| 3 | **No module is named in a core file.** A starter that listed Pain Points, Risks or Decisions in `report_starters.py` would be the module's own data hand-edited into core (the Modular Feature System Boundary). Each module registers its parts; the core wraps them. A first version did the hand-edit and was corrected in the same phase. | Agent |
+| 4 | **A part whose module is off is omitted, not printed empty**, because "No Pain Points recorded." in a project that has no Pain Points module is false. This needed a generic test in `if` rather than an organisation-time filter, since an organisation layout runs in many projects with different modules and a module can be switched on later. | Agent |
+| 5 | **Seeded at organisation creation, and on request for an existing organisation; never by an upgrade** (the module-defaults rule: a migration seeds nothing). The audit event of an automatic write has no actor. | Agent |
+| 6 | **Headings are not numbered**, because parts from modules arrive in an order the core does not control and a fixed "7." would go stale. | Agent |
+| 7 | **The tests' default organisation has no starters**; a test that is about them asks for them. Otherwise every test that lists an organisation's layouts (19 failed on the first run) would need to filter. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* a starter exposing records the runner cannot read; a module's part leaking when the module is off or the caller lacks the module's permission; the starter tree carrying text from data (injection) or a Restricted column; the new `if` test letting a layout name an unknown module or read another project's state; the Add starters endpoint available without the manage permission or to another organisation; an automatic write attributed to a person; starters overwriting an organisation's edited layout.
+
+*Verify and remediate:* a starter runs through the same evaluator as any layout, as the runner, so record access, hidden-record counts and widget gates are unchanged (tests: starters run with every module on and in a project with none); the module test is checked against the registry at save and evaluated per project by `is_module_enabled_for_project` (tests: unknown key refused, on, off, `not`); the module tests omit headings and text (test: nothing of a module's content appears where it is off); every field used is already in the report field registry, which omits Restricted and consent-sensitive columns; prose is the layout's literal text and record values never become markup; the endpoint uses `manage_org_layouts` scoped to the path organisation (test: a plain member gets 403); existing names are skipped (tests: an edited starter keeps its saved version, a renamed starter's name is re-added only if free); automatic writes carry `actor_id=None`, and the audit event holds ids, counts and the hash only.
+
+*Residual, recorded:* an organisation's copy of a starter does not change when a later release improves the starter (decision 1); a part for a module a project uses but whose records the runner cannot read shows the usual "not shown" note.
+
+### Not applicable, checked
+
+*Modules:* nothing per module in a core file (decision 3). *Core enums/constants:* none added; `starter` and the module key are plain strings validated against the registry. *Search, codes, tags, quick links, record export/import:* a layout is configuration, not an artefact type. *Users and groups parity:* no person-valued field. *Nested projects:* a starter is an organisation layout, visible to child projects by the additive rule. *Time:* no time fields; the generated date is the run's. *Bundles:* starters travel as organisation layouts already do; a project or organisation import does not reseed them. *Seeds:* both seed scripts create organisations through the API, so they now include the starters; no change needed. *MCP:* no new tool; `list_report_layouts` lists them. *SOC 2 policies:* no control regressed; no new gap.
+
+
+## Custom reports Phase 12: ODT and ODS renderers (2026-10-28)
+
+**Decided by: Agent** (design), within D6 (User: ODT and ODS follow once the renderer interface has proved itself). Phase 7's note that "ODT/ODS are one registration each" held: no layout, route, provenance or MCP change was needed.
+
+### What was built
+
+- `services/report_odf.py` (package: zip with `mimetype` first and stored, manifest, fixed metadata, `xml_text`/`xml_attr` escaping, image sniffing), `report_odt.py` (document family) and `report_ods.py` (table family); both registered in `report_render.py`, which also gained `render_ods` and a shared `sheet_title`.
+- ODT: real heading paragraphs with outline levels, real tables with a repeating accent-shaded header row, zebra rows and tones, real bullet lists, a footer with a live page-number field, A4 portrait or landscape, a cover page (logo, accent title, the body starts on the next page; no footer on the cover), pictures and equations.
+- ODS: one tab per sheet, bold header row (repeated when printed, frozen on screen through `settings.xml`), sized columns, every cell a `string` value.
+- `odt` and `ods` in the download media types, the route's `format` values, the catalogue, packs (any layout entry can use them), the Reports page's Export menu and the pack entry editor.
+- Tests: `test_report_odf.py` (30: package structure, escaping in every position, whitespace, headings, tables, cover, footer, orientation, pictures, equations, cell safety, sheet names, streaming of 20,000 rows), route tests in `test_custom_report_run.py`, Storybook stories, Playwright steps in `custom-report-run.spec.ts`. LibreOffice 7 (in a throwaway container) opened an ODT with cover, footer, table, tones, list, picture, inline and display equations and a landscape page break, converting it to PDF with the header row repeating on the second page, and read an ODS back to CSV with `'=x` as text.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **ODF is written as XML text, not through `odfpy`** (reverses the Phase 0 library pick). `odfpy` builds an object tree: a table of 100,000 rows of six cells took 1.1 GB and 45 seconds to build and write, and a background run allows five times that. Streaming text is proportional to the file, adds no dependency and puts every string through one escaping choke point. | Agent |
+| 2 | **Equations in ODT are pictures, then the author's source**; not native formula objects. A formula object is an embedded sub-document whose StarMath/MathML rendering differs between suites and could only be checked in LibreOffice here, so it would repeat Word's "tested subset" work for one application. Raise it if editable equations in ODT matter. | Agent |
+| 3 | **An SVG figure is a PNG in ODT**, as in Word, so text in it is drawn with the bundled font rather than whatever the reader's system has. | Agent |
+| 4 | **ODS cells follow the XLSX rules**: text only, `csv_safe` first, cut at 32,767 characters (a limit no suite needs but which keeps the two files identical in content), sheet names cleaned and unique. | Agent |
+| 5 | **Fixed an XLSX defect found on the way:** a sheet name starting or ending with an apostrophe is refused by Excel and LibreOffice; `sheet_title` now strips it for both formats (test: `test_sheet_titles_are_clean_for_every_spreadsheet_format`). | Agent |
+| 6 | **Not changed:** module reports (`report_framework`) keep PDF, Word and CSV; the pack entry for a module report is still limited to those. | Agent |
+
+### Review (identify, verify, remediate)
+
+*Identify:* record text becoming markup in any ODF element or attribute; a cell becoming a formula; control characters or a NUL making the XML unreadable; a hostile accent colour or sheet name reaching an attribute; a non-image or an SVG-as-raster embedded unsanitised; memory growth on a large run; a package a reader rejects (mimetype not first or compressed, manifest missing a part). *Verify:* tests with `<script>`, `</text:p><draw:frame>`, quotes and NUL in every position (headings, paragraphs, notes, lists, cells, footer, title, sheet names, header cells) and a parse of every XML part; a bad accent colour and a quoted sheet name; no `table:formula` attribute and every cell typed `string`; non-image bytes skipped and the type sniffed (a PNG is `image/png` whatever it is called); the mimetype entry first and stored and the manifest listing every part; 20,000 rows streamed. LibreOffice opened both files. Word was not tried with ODT and Excel was not tried with ODS (only LibreOffice is available here). *Remediate:* the two failures were test mistakes (a shell-expanded `$` in the sample; the header row sits outside the body rows); no product defect surfaced beyond decision 5.
+
+### Not applicable, checked
+
+*Authentication, RBAC, audit:* no new endpoint or permission; provenance already records the format. *Time:* the only time is the creation time in the metadata (UTC, past instant). *Search, codes, tags, bundles, record export/import, seeds:* no record type or table. *Nested projects:* no definition table. *MCP:* tools return JSON only; no skill change. *SOC 2 policies:* no control regressed, no new dependency; the PDF/Word/ODF renderers still never fetch anything.
+
+## Custom reports Phase 13 Phase 0: the visual designer's views, library and block schemas (2026-10-28)
+
+**Decided by: User** for the views and the schema source (answers to the Phase 0 questions); **Decided by: Agent** for the library, round-trip rule and outline controls. No code changed in this step.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | The designer offers **three views of one tree**: the text view that exists, a block outline and a rich-text document, switchable at any time. The User first asked for all three options (outline, rich-text, hybrid), then clarified they meant three views, not three editors. | User |
+| 2 | Block forms are rendered from **server-published block schemas** (`BlockSpec.fields`). This keeps the module boundary: a module block type registered through `register_block_spec` brings its own form. | User |
+| 3 | Rich-text library TipTap, not Lexical (see plan D28). Checked 2026-10-28: `@tiptap/react` 3.32.0 and `lexical` 0.52.0, both MIT and not deprecated; neither is installed yet. This is a desk comparison, not a measured bake-off; 13c opens with a proof of concept that can reverse it. | Agent |
+| 4 | Rich-text view is document family only and lossless or refused (plan D29). Table-family layouts (`sheet`) have no prose and use outline and text. | Agent |
+| 5 | Phase 8 decision 1 (no client block model) is superseded; the safeguards are in plan D31. | Agent |
+
+*Risk recorded:* three views over one tree is three places a tree can be mis-shown. Mitigations: the designer holds one tree; each view is a pure function of it; the server validates after every edit; a round-trip identity test per converter (text exists; rich-text in 13c); a Playwright test that edits in each view and checks the others show the change.
+
+*Not applicable at this step:* no endpoint, permission, data or audit change; nothing to bundle, search or seed.
+
+## Custom reports Phase 13a: block schemas and the tree check (2026-10-28)
+
+**Decided by: User** for the shape (forms drawn from server-published schemas, Phase 13 Phase 0); the vocabulary below is **Agent**'s.
+
+### What was built
+
+- `services/report_layout_block_schema.py`: `BlockField`, `BlockContainer`, `BlockProvides`, `BlockSchema`, the field `kind`s the designer can draw (`FIELD_KINDS`) and the layout-level fields (`LAYOUT_FIELDS`: orientation, variables). `BlockSpec.schema` (optional, defaults to none) carries it; the ten core blocks declare theirs in `report_layout_tree.py`.
+- `GET …/report-layouts/blocks` and `POST …/report-layouts/validate` at both tiers, behind the existing manage permission (server administrators excluded, as for every layout route). `services/report_layout_designer.py`: `block_catalogue`, `check_tree`.
+- Tests: `tests/test_report_layout_blocks.py` (15): every registered type has a schema, kinds are drawable, `depends_on` names a sibling, templates are recognised nodes, both tiers, permission, nothing stored or logged.
+- Also fixed: two lines over the lint limit in `routers/custom_reports.py` (the ODT format description from Phase 12).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A schema describes; `validate` decides.** The editor offers what the schema lists and shows the validator's errors on the card, so a schema out of step with a validator cannot save an invalid tree. | Agent |
+| 2 | **Composite kinds are named (`source`, `columns`, `joins`, `condition`, `widget_*`, `variables`)** rather than expressed as nested generic fields, because each has structure the generic form would lose (a source reads the names in scope). A module block type composes its form from these kinds; an unknown kind is shown as JSON and still validated by the server. | Agent |
+| 3 | **A name a block brings into scope is declared (`provides`)**, so the designer lists `{{alias.field}}` names by walking the tree, with no case for `each` or `group` in the client. | Agent |
+| 4 | **A type with no schema is offered as raw JSON** (`described: false`), and a test fails for a registered type without one. | Agent |
+| 5 | **Schema text (labels, help) is English from the server**, like the validator's messages; the frontend does not translate it. The field-help rule (`strings.help`) governs hand-written forms, not these. | Agent |
+| 6 | **The block list is not gated by module.** No block type belongs to a module today (modules reach layouts through widgets and fields, which are gated). If a module registers a block type, add a `module_key` to the schema then, with the same gate the widget list uses. | Agent |
+| 7 | **`validate` answers 200 with the problems** (like text parse), not 422, because a draft with problems is the normal state of an editor. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* an endpoint that accepts an arbitrary tree; a schema exposing data a caller should not see; the tree logged or stored.
+- *Verify:* `validate` runs `validate_tree`, which is size-capped (`MAX_TREE_BYTES`), depth-capped and node-capped, and reads only the field registry (the same registry the text view endpoints use); it reads no records and writes nothing. The block list is static code metadata, identical for every caller. Both need the manage permission and exclude server administrators. A test asserts no layout row, no audit event and no logged text from a validate call.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool or time field; no seed change (no stored data); no user-facing screen yet, so no website or Playwright change (13b's outline is the first surface).
+
+## Custom reports Phase 13b: the block outline (2026-10-28)
+
+**Decided by: User** for the views and the schema-driven forms (Phase 13 Phase 0) and for keeping the composite controls as named kinds (answer to the 13a question); the choices below are **Agent**'s.
+
+### What was built
+
+- `GET …/report-layouts/blocks` also publishes the condition operators per field kind (`operators`, `valueless_operators`, `list_operators`), so the outline never restates the validator's rule. A test now requires every field of a core block to carry help text.
+- Frontend: `ReportLayoutOutline` (cards, controls, problems by block), `ReportLayoutOutlineField` (a control per `kind`), `ReportLayoutSourceEditor`, `ReportLayoutConditionEditor`, `ReportLayoutColumnsEditor` (columns and joins), `ReportLayoutWidgetEditor`, `ReportLayoutVariablesField` (the pack variables editor, now with overridable wording), `ReportLayoutJsonField` (unknown kinds and block types), `CommaListField`, `utils/reportLayoutTree.ts`; `api.blocks()` and `api.validate()`. The designer gained a **Text | Outline** `Tabs` pair.
+- Tests: about 85 story interactions across the new files (including 8 designer stories), one Playwright spec (build a layout in the outline, preview it, save, read it back as text, reload).
+- Also fixed: the pack entries story still expected two formats for a table layout after ODS was added (Phase 12); `ReportLayoutOutline` handles a layout shared read-only.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The designer keeps the text view's text current while the outline is open**, by calling `text/format` once the tree validates. The preview, the dirty check and the switch back to text then read one string, and no second preview path exists. The cost is a format call per pause; the pause is 400 ms. | Agent |
+| 2 | **Switching reads the text as it stands** (an immediate `text/parse`, not the pause-and-check result), so a clean text is never refused because the check had not finished. A switch back with no outline edits leaves the author's text exactly as typed; one with edits needs a valid outline. | Agent |
+| 3 | **Dirty in the outline compares the tree** (`stableJson`, keys sorted) with the saved version's tree, not the text. | Agent |
+| 4 | **Moves are buttons; focus follows the control just used**, or its opposite when that control is now disabled (a block moved to the end). | Agent |
+| 5 | **Server text drives the forms.** Labels and help come from the block schema; the outline's own wording (menus, buttons, messages) is in `strings.reportOutline`. | Agent |
+| 6 | **The text-only pickers (Fields, Widgets) are hidden in the outline**, since the outline's own forms carry the same choices with the names in scope. | Agent |
+| 7 | **Layout variables reuse the pack variables editor** rather than a second one, with `intro` and `emptyText` props so the wording says layout. | Agent |
+| 8 | **No drag and drop** (plan D30); no condition-value type is checked in the client beyond choosing a control that suits the kind. The server's `validate` is the only judge. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a form that lets a person name a field the catalogue omits (a Restricted or consent-sensitive column); the tree shown or sent with data beyond the caller's access; a layout text echoed into a log or URL; HTML or markup produced from a record value.
+- *Verify:* the field and record-type pickers list only `GET …/fields`, which is the registry's opt-in set, and `validate` rejects any other name; no new endpoint beyond 13a's, which store nothing and never log the tree; the outline draws text with React (escaped), and the preview is the existing sandboxed frame; variables are typed literals (plan D18), and the outline only edits their declarations.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool, audit event or time field; no seed change (no stored data). The Phase 13d switcher work (rich-text view) is still open; this phase's switcher is the two-view form of it.
+
+## Custom reports Phase 13c: the document view (2026-10-28)
+
+**Decided by: User** for the view and the library question (three views, Phase 13 Phase 0); the rest is **Agent**'s. The view is built and tested; it is not yet reachable from the designer (the switcher is the next step).
+
+### What was built
+
+- `utils/reportLayoutDoc.ts`: `treeToDoc`, `docToTree`, `parseMarkdown` / `serializeMarkdown`, `addrAt` (an editor position to a tree address), `NotRepresentableError`. No editor dependency.
+- `ReportLayoutRichText` (the TipTap editor), `reportLayoutRichTextExtensions.ts` (the schema), `ReportLayoutRichTextViews.tsx` (a node view per node), `reportLayoutRichTextContext.ts`, and `ReportLayoutSettings` (the layout-level settings and loose problems, now shared with the outline).
+- `backend/scripts/export_starter_trees.py` writes the starters' trees to `frontend/src/testing/starterLayoutTrees.json`; a backend test fails when the file is out of date.
+- Dependencies added (MIT, v3.32.0): `@tiptap/core`, `react`, `pm`, `extensions`, `extension-document`, `-text`, `-paragraph`, `-list`. `npm audit --omit=dev` reports no vulnerabilities; the lockfile was regenerated with `sync-lockfile.sh` under Node 24.
+- Tests: 12 converter interactions (round trip over the three starters and a crafted corpus), 16 editor interactions (typing, lists, Enter in a heading, settings, moves, add, raw source, problems, redraw from outside, refusal, read-only), 3 settings stories, one backend test.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **TipTap is confirmed (plan D28).** The proof of concept passed: the strict schema accepts every document the converter makes (the three starters included), React node views carry the outline's forms, typing a `- ` makes a list, and structural edits redraw the document. Lexical was not built. | Agent |
+| 2 | **Prose is plain text; there are no formatting marks.** The engine does not interpret inline Markdown (bold, links), so offering them would show what the report does not print. What the view adds over the text view is structure typed as such. | Agent |
+| 3 | **A text block is prose only if it round-trips exactly.** The reader understands the canonical spelling (`# Heading` of levels 1 to 4, paragraphs, `- ` bullet lists, blank-line separated); the result must serialise back to the same string, and a paragraph line must not start with anything the server's Markdown reader could take for other syntax (list markers, quotes, fences, tables, HTML, link definitions, images, setext rules) or end in a backslash. Anything else is a raw-Markdown source box. This is plan D29's "lossless or refused" with a lossless fallback for the one block type where refusing would shut the author out. | Agent |
+| 4 | **Everything that is not prose is carried as data.** A block's other keys are one opaque `props` object edited with the outline's forms, a block with child lists becomes a container with a slot per list (read from the catalogue), and a block type the catalogue does not know is a whole-node leaf. A module's block type therefore needs no code here, and a child list present-but-empty is kept distinct from an absent one. | Agent |
+| 5 | **Structural edits go through the tree helpers and redraw the document.** Move, indent, outdent, duplicate and add use the same functions as the outline, so the two views cannot disagree about a rule. The cost: such an edit is one undo step that replaces the document. | Agent |
+| 6 | **The editor never holds a layout the designer does not.** It reports every edit as a tree and redraws only when the tree changes from outside, comparing with the echo of its own edit. | Agent |
+| 7 | **The document view is for document layouts.** A table layout shows a note pointing to the outline and the text. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a new third-party editor dependency; markup or script reaching a layout through paste or typing; a record value becoming markup; the tree logged.
+- *Verify:* the schema has no HTML, link, image or mark node, so pasted rich text is reduced to the allowed nodes and the saved tree is plain strings the server validates again (and the report engine does not interpret inline Markdown); attributes are held as data and not rendered into the HTML; the editor draws text through React and ProseMirror, not as inserted HTML; no new endpoint, request or log line. The packages are MIT, current, not deprecated, and `npm audit --omit=dev` is clean. Dependency adoption follows the vendor-management and change-management policies (a maintained library, pinned through the lockfile, no runtime network access).
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool, audit event or time field; no seed change. The docs website and the style guide are updated when the view joins the designer's switcher.
+
+## Custom reports Phase 13c2: bold, italic, code and numbered lists in report text (2026-10-28)
+
+**Decided by: User** (2026-10-28, answers to the scope questions): bold, italic, inline code and numbered lists, no links, applied to layouts **and** to report introductions, chapters and appendices. This reverses the neutral model's earlier rule that inline Markdown is not interpreted, and the 13c decision that prose has no formatting marks. The design below is **Agent**'s.
+
+### What was built
+
+- **Engine** (`services/report_model.py`): `Styled(text, bold, italic, code)` as a third part of a `MathText`, `NumberedList`, and a rewritten `markdown_to_blocks` shared by layouts and report content. `report_layout_eval.py` keeps a run's style through placeholder filling and equation finding (`_restyled`). Renderers: HTML (`strong`, `em`, `code`, `ol`), Word (run bold/italic, Courier New, `List Number`), OpenDocument (`text:span` with `T_*` character styles and an `L_Number` list style) and PDF (`<b>`, `<i>`, Courier, a numbered list with `1.`). The on-screen result reads a `MathText` as plain words.
+- **Document view** (`utils/reportLayoutProse.ts`, new; `reportLayoutDoc.ts` imports it): bold, italic and code marks, ordered lists, a formatting toolbar (`ReportLayoutRichTextToolbar`), and a stricter canonical reader and writer. New dependencies: `@tiptap/extension-bold`, `-italic`, `-code` (MIT, 3.32.0, `npm audit` clean).
+- Tests: `backend/tests/test_report_inline_markdown.py` (reader, evaluator, four renderers), 22 story interactions in the document view and 16 in the converter. Checked by eye in LibreOffice (ODT and DOCX) and as a ReportLab PDF. Existing tests that asserted the old verbatim behaviour were updated (`test_report_docx.py`, `test_report_layout_eval.py`).
+- Also fixed: a ReportLab list type finding is gone from the `mypy` baseline (1080 to 1077).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Three styles only.** `**x**` bold, `*x*` or `_x_` italic, `` `x` `` code. The reader turns off the image, autolink, raw HTML, entity, strikethrough and backslash-escape rules of markdown-it (and, at first, the link rule), so those print as written. (Links were added afterwards at the User's request: see "Custom reports Phase 13c4".) An image alone on its line is still a picture (matched by its own pattern). | Agent |
+| 2 | **Equations are set aside before the reader runs and put back unread**, so `\(a_1 * b_2\)` is never emphasis and the math rules (plan D9) are untouched. | Agent |
+| 3 | **Escapes are only the four we document** (`\*`, `\_`, `` \` ``, `\\`), set aside the same way. A backslash anywhere else (`C:\temp`, an unclosed `\(`) prints as written; the stock escape rule would have dropped it, a regression found by existing tests. | Agent |
+| 4 | **Values are never read for styles.** Placeholders and record values are filled run by run after the Markdown is read, and a value takes the style of the run it sits in (`**{{req.title}}**` prints the title bold) but cannot add one. | Agent |
+| 5 | **A string-only consumer sees plain words.** A styled paragraph is a `MathText` whose string value has no markers (CSV, the on-screen result, the section note); text with no style stays the plain `str` it was. | Agent |
+| 6 | **Behaviour change accepted by the User:** existing text with a matched `*…*`, `**…**`, `_…_` or backtick pair now prints styled, and a line starting `1. ` becomes a numbered list (it was a paragraph per item before). Unmatched markers, `5 * 3` and `snake_case` are unchanged. | User |
+| 7 | **A heading reads as plain words** (it is bold already) and an equation inside a styled run is drawn unstyled. | Agent |
+| 8 | **The document view keeps its safety net.** A text block is prose only if the strict reader and writer reproduce it exactly; the reader refuses anything it is unsure of (a stray `*`, a backslash that is not one of the four escapes, `_` emphasis, a code span holding a backslash or backtick, a styled run touching punctuation and a letter), and it is stricter than the server on purpose, so the worst a mismatch can do is leave a block as a source box. The writer moves leading and trailing space outside the markers, escapes literal markers and trims block edges. | Agent |
+
+### Known limits
+
+- The report content editor (`RichTextEditor`) still offers a **Link** button; a link prints as written text, as before.
+- Nested lists are flattened into one list (the reader's earlier behaviour, now explicit).
+- A styled run that touches punctuation on one side and a letter on the other may not be emphasis to every reader; the document view leaves such text as source.
+- In a code span a backslash escape is applied by the server (the escape is set aside before code spans are read); the document view leaves such code as source.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a markup or hyperlink path from author text or a record value into four renderers; a style or list injected through a record value or placeholder; equation text altered by the new reader; unescaped words inside the new PDF markup (ReportLab parses markup), ODT XML or HTML; denial of service through crafted emphasis.
+- *Verify:* only three styles are produced and the words in each are escaped by the same choke point as before (`report_document.safe`, `xml_text`, `html.escape`, python-docx's text API), tested with `<` and `&` inside styled runs in HTML, ODT and PDF markup; a value cannot reach the reader (filled afterwards, tested with `**` and a backtick in a title and in an organisation placeholder); links, raw HTML and entities are off and tested to print literally; equations round-trip unchanged. markdown-it-py's emphasis matching is linear for these inputs and the text-size caps (`MAX_TEXT_CHARS`, tree size) are unchanged.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, endpoint, permission, audit event or time field; no seed change. The docs website (`reports-and-export.md`), `docs/modules.md` §4w and `docs/solution-architecture.md` are updated.
+
+## Custom reports Phase 13c4: links in report text (2026-10-28)
+
+**Decided by: User** (2026-10-28): links are wanted; clickable kinds are web (`http`, `https`), email (`mailto`) **and links to sections of the same document**; bare web addresses are not linked automatically; an address **may use a placeholder, checked after it is filled in**. This reverses the 13c2 choice of "no links". The design below is **Agent**'s.
+
+### What was built
+
+- **Engine:** `Styled.href`, `link_problem`, `heading_anchor`, `Heading.anchor` and `finalize_links` in `services/report_model.py`; the Markdown reader (markdown-it with its link normalising and validation replaced by a small subclass, `reference` rule off) turns `[words](address)` into a styled run; the evaluator fills the address and checks it on the final text (`checked_link`, one warning that never repeats the address). Renderers: HTML `<a>` with heading ids, Word hyperlinks (external relationship targets, internal bookmarks `sec_<hash>`), OpenDocument `text:a` and `text:bookmark`, PDF `<a href>` and `<a name>`. Every renderer calls `finalize_links` first.
+- **Document view:** a TipTap Link mark (typing or pasting an address does not link it; a click does not follow it; the address must pass `linkProblem`), a Link toolbar button, `ReportLayoutLinkDialog` (web, email or a section picked from the layout's headings; remove link), `sectionsOf(tree)`, link reading and writing in `utils/reportLayoutProse.ts` (links with styled words, edge spaces outside the brackets, `\[` `\]` escapes only where a bracket could open a link).
+- **Shared vectors:** `frontend/src/testing/linkVectors.json` holds addresses (allowed and refused) and headings with their anchors; a backend test and the front end's stories both check it, so the two ports of the rules cannot drift.
+- **Dependency:** `@tiptap/extension-link` 3.32.0 (MIT, `npm audit` clean).
+- Tests: `backend/tests/test_report_links.py` (rules, reader, `finalize_links`, evaluator, four renderers, hostile addresses), converter and dialog stories, 7 editor stories. Checked in LibreOffice (ODT) and as a ReportLab PDF; the PDF file holds `/URI` annotations.
+- Also: markdown-it's reference-definition rule is off, so a line such as `[ref]: https://…` prints as written instead of vanishing; `\[` and `\]` join the escapes (six now).
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **What may be a link**: an absolute `http`/`https` address with a host, `mailto:` with one address, or `#anchor`. Whitespace, control characters, quotes, angle brackets, backslashes and addresses over 2000 characters are refused, so an address can never carry markup. `javascript:`, `data:`, `file:`, `ftp:` and relative paths are refused. | Agent |
+| 2 | **A link that is not allowed stays as written text** (`[x](javascript:…)` prints as typed), and one whose address fails after a record value is filled in becomes its plain words with one warning. | Agent |
+| 3 | **Section anchors** are the heading's words lower-cased with other runs as a hyphen (`Scope & Goals` is `scope-goals`), made unique in reading order by `-2`, `-3`. `finalize_links` computes them on the final document, so headings a layout makes per record are numbered too; a link to a heading that is not there becomes plain words. The dialog lists only headings with literal words, because a heading holding a `{{value}}` has an anchor that depends on the record. | Agent |
+| 4 | **A record value may decide where a link goes** (accepted by the User): `[x]({{record.url}})` is allowed, still limited to the three kinds above. Residual risk: anyone who can edit that record field can point the report's link at any web address; the report's reader sees ordinary link text. Not logged: the address is never in a warning or log line. | User |
+| 5 | **Bare addresses and `<…>` autolinks are not linked.** | User |
+| 6 | **Outside links open in a new tab with `noopener noreferrer nofollow`** in HTML; the designer's preview frame is sandboxed with no permissions, so it shows links but does not follow outside ones (section links work inside the page). | Agent |
+| 7 | **The document view's link rules are a port** (`linkProblem`, `headingAnchor`) kept in step by shared vectors; the view is stricter than the server and leaves a link it is unsure of (an address that is not allowed, a code span or link inside link text, emphasis around a link, nested brackets) as source. | Agent |
+
+### Known limits
+
+- Word bookmark names are a hash of the anchor, so a document edited by hand keeps working only while its headings keep their text.
+- Emphasis wrapped around a link (`*[x](y)*`) is read by the server but shown as source in the document view; write the emphasis inside the link (`[*x*](y)`).
+- The report content editor's Link button now makes working links for the three kinds; any other address it writes prints as typed.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a script, file or data address as a link; an address carrying quotes or markup into HTML, ODT XML, Word XML or ReportLab markup; a record value choosing a dangerous address; link text or a heading anchor carrying markup; an internal link or bookmark used to confuse a reader; denial of service through many links or very long addresses; a link opening the sandboxed preview or leaking the page.
+- *Verify:* `link_problem` is the single rule, applied by the reader, again by the evaluator on the filled text, and again by `finalize_links` before any renderer (tested with a hostile run built without the reader: it is dropped); the address reaches each format only as an escaped attribute or a relationship target (tested in all four, including `"><b>` and `javascript:`); only three address kinds exist, and a record value cannot produce a fourth; an anchor is letters, digits and hyphens by construction, and a Word bookmark is a hash; addresses are capped at 2000 characters and the existing text, node and block caps bound the number of links; HTML outside links carry `rel="noopener noreferrer nofollow"` and the preview is sandboxed; the PDF link is an annotation, never fetched by the server. The accepted residual (decision 4) is recorded above.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, endpoint, permission, audit event or time field; no seed change. The docs website, `docs/modules.md` §4w, the architecture note and the plan are updated.
+
+## Custom reports Phase 13d: the three views in the designer (2026-10-28)
+
+**Decided by: User** (three views of one tree, Phase 13 Phase 0); the switching rules below are **Agent**'s. This closes Phase 13.
+
+### What was built
+
+- `ReportLayoutDesigner`: the `Tabs` set is **Text**, **Outline** and, for a document layout, **Document** (`ReportLayoutRichText`). The two tree views share the one tree (`outlineTree`) and its check, text sync, dirty state and Save, so a switch between them converts nothing.
+- Tests: 5 designer stories (the document view, an edit seen in the outline and the text and saved, no document view for a table layout, a refused layout with the reason, a read-only shared layout) and one Playwright spec (typing in place, bold, a web link and a section link through the dialog with a refused `javascript:` address, preview, save, the same layout in the text and outline views, reload).
+- Docs: the website's designer section, the style guide's text-designer pattern (three views), `docs/modules.md` §4q.
+
+### Decisions
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Switching from the text parses the text as it stands** (not the pause-and-check result) and refuses with the reason when it has problems or declares the other kind of layout. | Agent |
+| 2 | **Switching to the text formats the tree only if it changed since it was entered**, so opening a view and leaving it untouched leaves the author's own text exactly as typed. | Agent |
+| 3 | **The document view refuses a tree it cannot show without changing it, before switching** (`treeToDoc` raises `NotRepresentableError`), shows the reason in the designer's note and stays on the current view; the outline can always open the tree. | Agent |
+| 4 | **The Fields and Widgets pickers are text-view tools**; the outline and document carry the same choices in their own forms. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a view that saves a tree the server has not checked; a view that changes text it did not mean to; a view that shows another scope's layout as editable.
+- *Verify:* Save is enabled only for a tree the server's `validate` accepted for exactly that tree (compared by identity), and the server validates again on save; a read-only shared layout renders every tree view without controls (tested for the outline and the document); no new endpoint, request or log line.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle, search, code, MCP tool, audit event or time field; no seed change.
+
+## Custom reports Phase 15: website slice for layouts, the designer and packs (2026-10-28)
+
+The custom-reports material had grown to about 120 dense lines inside the Reports and export page, with no screenshots. It moves to its own nested section, as the Compliance module's pages did.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Four pages under Core Features → Custom reports** (overview, designing a layout, blocks and variables, report packs) replace the section of `reports-and-export.md`, which keeps a short pointer and the background-runs section, since that applies to every file report. Anchors other pages link to (`#report-content`, `#how-reports-name-records`, `#large-reports-are-prepared-in-the-background`) are unchanged. | Agent |
+| 2 | **Eight screenshots at 1440x900 from the seeded demo organisation**: the Reports page running a layout and its variable, the designer's text, outline, document and history views, the pack editor and the pack's record counts. Captured with a throwaway script; the Falcon-3 project's "Spec" terminology was cleared for the capture and restored. | Agent |
+| 3 | **Phase 15 stays open**: the background-reports list, starter layouts list and organisation-wide run have no screenshot yet, and later phases add pages. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a screenshot or page that shows data from another organisation or a real person; documentation that promises behaviour the product does not have.
+- *Verify:* every shot is of the seeded demo organisation (Solstice Robotics, fictional); captions were checked against what each image shows (two captions that said three reports and an unavailable report were corrected).
+- *Remediate:* captions corrected.
+
+*Not applicable:* no code, migration, endpoint, bundle, search, MCP tool, audit event or time field.
+
+## Custom reports Phase 16: a Reports picker with folders, favourites and placements (2026-10-28)
+
+The first review of the custom-reports work asked for: a Reports chooser that can file reports in folders (module reports in their module's folder by default), hides reports of sub-components a project has off, and offers search, favourites and a reports / sheets / packs filter; a filter and search on the Report layouts list; and a widget list whose sections collapse (all closed to start) and nest module then report. A second message added that folders nest and that people with the right authority can move or hide upstream reports to suit themselves.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A dialog picker, not a drop-down** (`ReportPicker`): a button naming the current report, a dialog with search, a Show filter (Reports, Sheets, Packs), a Favourites folder first and nested folders. | User |
+| 2 | **Favourites are per person, on the server**, in the existing `ui_preferences` bag (`report_favourites`, by stable report key), with no new table or migration. | User (server-side per person) / Agent (the bag) |
+| 3 | **"Sheets" are table layouts**; "Reports" are document layouts and module reports. A catalogue entry carries `kind`. | User |
+| 4 | **Folders are author-chosen** (`folder` on layouts and packs, set in the create and edit form) **and nest** (`A/B`, up to three levels, 40 characters a level, 120 in all). | User |
+| 5 | **Authorised people can move or hide upstream reports.** A `ReportPlacement` row per (organisation or project, report key) holds an optional folder and, for module and platform reports, an optional hidden flag. | User |
+| 6 | **Nearest tier wins, per attribute** (project, then parent projects, then the organisation), the rule action types follow. This is the nested-project check for the new table: a child with no row of its own inherits its parents' placements. | Agent |
+| 7 | **An organisation can place any module report of a module it has enabled**, not only the organisation-wide ones, because its placement reaches every project's picker. | Agent |
+| 8 | **A placement may hide only module and platform reports.** A shared layout or pack is hidden from its own list through the existing definition-suppression tombstone, so a placement can only move it; two mechanisms for one hide would disagree. | Agent |
+| 9 | **Hiding is tidying, not access.** A hidden report still answers on its route and checks the caller's role and module state; the confirm and the docs say so. | Agent |
+| 10 | **The permission is the existing manage-report-layouts one** at each tier (no bypass for a server administrator), since arranging what a team is offered is the same job. | Agent |
+| 11 | **A report spanning several sub-components** declares `any_subcomponents` and is offered while at least one is on (Context & Strategy's change history and summary). Engagement & research yield is deliberately not one of them: engagements stand without Personas, Stakeholders or Needs, and an existing test pins that, through one check (`report_enabled_for_project` / `_organization`) used by the catalogue, the route, the widget list and the module run. `ReportDefinition.subcomponent` is unchanged. | Agent |
+| 12 | **The picker starts collapsed** (only the folder holding the selection is open); a search or filter opens every folder with a match. The widget list follows the same rule. | User (collapsed) / Agent (search opens) |
+| 13 | **`TreeView` gained a controlled mode** (`expanded`, `onToggle`) rather than a second tree component. | Agent |
+| 14 | **No MCP tool for placements**; `create_report_layout` and `update_report_layout` take `folder`, the catalogue entries carry the effective folder, and the skill says so. Arranging the list is a person's job. | Agent |
+
+### Shapes of time and data
+
+`updated_at` on a placement is a past instant in UTC. No scheduled time and no calendar date is added. Placements are configuration, not artefacts: no code, not searched, not linkable (the reason is on `models/report_placement.py`).
+
+### Export and import
+
+Placements travel in the project and organisation bundles (`services/report_placement_bundle.py`): a module report by key, a layout or pack by name. A layout's and a pack's `folder` travel with them. Round-trip tests in `backend/tests/test_report_placements.py`. An invalid folder in a hand-edited bundle is dropped, a placement that names nothing here is a warning.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a placement used to hide a report from people who should not run it (or read as if it did); a manager placing a report in a scope they cannot reach; a folder name used as markup or a path; a placement key injected to reach another scope's row; a hidden report leaking through the widget list or a pack; ui_preferences growth from favourites.
+- *Verify:* the run routes never consult placements and a test runs a hidden report; placing needs the manage permission and `valid_keys` limits a key to what the scope itself can list (anything else is a 422, with nothing stored); a folder is tidied and size-limited by the server, rendered as text only and never used in a query or path; rows are scoped by organisation and project with cascading foreign keys and removed with their layout or pack; the bag is already size-bounded (200 keys, 32 KiB) and favourites are capped at 100; an imported file is validated again. Audit events record the key and values only.
+- *Remediate:* none needed beyond the above. Residual: a manager can learn the titles of reports in modules their organisation has enabled (already visible to them in the catalogue).
+
+*Not applicable:* no change to authentication, secrets, retention or classification (a placement holds no personal or Restricted data).
+
+## Custom reports Phase 17: text designer fixes (2026-10-28)
+
+The second review of the designer asked for icon buttons with tooltips above the text, a popover for the change note, one searchable list of fields and placeholders, no Document tab, a page size setting and project facts as placeholders. It also asked for a Blockly-like editor in place of the outline (Phase 18), the removal of report content and the project default template (Phase 19) and a Download report action on record lists (Phase 20); those are planned, not built here.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The Document view is removed**, with its TipTap editor, converter, link dialog and `@tiptap/*` dependencies. Bold, italic, code, lists and links stay in the engine and the text view; the outline and the text cover the same blocks and the Blockly editor will replace the outline. The starter-tree fixture and its export script (used only by the document round-trip test) are gone; the link vectors the backend still tests against moved to `backend/tests/data/`. | User |
+| 2 | **Block shortcuts are icon buttons with tooltips** (`ReportLayoutBlockToolbar`), each keeping the accessible name "Insert block: <name>"; headings are offered by level (1, 2, 3) instead of one Heading button. | User |
+| 3 | **"Save new version" opens a popover for an optional note** (`SaveVersionButton`), in the layout designer and the pack editor alike; there is no note field on the page. | User |
+| 4 | **One field list**: the report and project placeholders and the fields of every name in scope in one list, with a search and a From filter (`ReportLayoutFieldPicker`). | User |
+| 5 | **Page size** is a document layout's `page_size` (A3, A4, A5, Letter, Legal; A4 when absent), written in the `@layout` line in either order with the orientation, set from a Page setup button in the text view and from the outline's Layout settings, and honoured by the PDF, Word and OpenDocument renderers and the width of the HTML view. It is additive to tree schema 1, so no version bump. | Agent |
+| 6 | **New placeholders** `{{project_code}}` and `{{project_description}}` (the project's summary), filled in a layout run; the substituted value stays plain text, never markup. The legacy report content does not fill them (it is removed in Phase 19). | Agent |
+| 7 | **No new endpoint or table**; the field catalogue already lists `PLACEHOLDER_NAMES`. | Agent |
+
+### Shapes of time and data
+
+No time or date field is added. A project's summary is project data the runner can already read (it is shown on the project), so printing it adds no access.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a project summary printed into a report becoming markup; a layout choosing a page size that makes the renderer allocate without bound; a header word making the text parser accept an unvalidated value.
+- *Verify:* placeholders are substituted as text in one pass and a value is never re-scanned; page sizes come from a fixed table and an unknown name falls back to A4, with the tree check refusing it first; the parser accepts only the listed words, each at most once.
+- *Remediate:* none needed.
+
+*Not applicable:* no migration, bundle section (the tree carries `page_size`), permission, audit event, MCP tool or search change.
+
+## Custom reports Phase 18: the block editor on Blockly (2026-10-28)
+
+The designer's second view, the card outline, is replaced by a Blockly workspace (`ReportLayoutBlocks`). The User chose Blockly, themed, with blocks generated from the server's block schemas, in the second design review (2026-10-28); the rest of the design below was the Agent's.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Blockly 13.4 (Apache-2.0), themed from the app's colour tokens** (read from the CSS custom properties, re-read when `data-theme` changes), zelos renderer. Loaded lazily (`React.lazy` in the designer) so its ~1 MB stays out of the main bundle. | User (library, theming), Agent (renderer, lazy load) |
+| 2 | **Blocks are generated from `BlockType`** (`utils/reportLayoutBlocklyBlocks.ts`): a label, the short fields inline (`text` that is required, `alias`, `tex`, `integer`, `boolean`, `choice`) with a small label each (omitted when it repeats the block's name), a read-only summary of what only the inspector edits, a statement input per child list. A choice or an integer with fewer than ten values is a dropdown with a "not set" option. A module's block type needs no frontend code; a type the catalogue does not describe becomes an `Unknown block` carrying its whole node. | Agent |
+| 3 | **Headings by level** in the palette and the Add menu (Heading 1 to 3, like the text view's toolbar); the block shows its level as a dropdown. | User (headings by level), Agent (levels offered) |
+| 4 | **The inspector beside the workspace shows every field of the selected block** with the shared field components, and the Add block / Add to <list> menus add a block and select it. The inline fields are a quick edit of the same values. Reason: embedding React editors (source, condition, columns, widget settings) in SVG blocks would give two editing worlds, and a plain form is the way in for a person who does not use a pointer. | Agent |
+| 5 | **The tree stays canonical.** A block's `data` keeps its node minus child blocks, inline fields overwrite it on the way back, and a value a control cannot hold stays in `data`, so opening a layout never rewrites it (a story pins tree to blocks and back as the identity, with keys the editor does not draw, an out-of-range level, an unknown type and an empty child list). | Agent |
+| 6 | **Edits that change only values are patched into the blocks in place** (selection, scroll and focus stay); a change of shape redraws the workspace. Blockly deselects a block when focus leaves the workspace, which typing in the inspector does, so the inspector keeps the last block chosen. | Agent |
+| 7 | **A block dropped outside the layout is not part of it**; Blockly's orphan handling greys it and the inspector counts it, so it is neither lost silently nor saved. | Agent |
+| 8 | **Problems from the server's validate check** show as a warning mark on the block and under the field in the inspector. | Agent |
+| 9 | **The card outline is removed** (`ReportLayoutOutline`, its stories, and the tree helpers only it used: move, indent, outdent, duplicate, remove). `ReportLayoutOutlineField` became `ReportLayoutBlockField`. The tab reads **Blocks**. | User (replaced by Blockly), Agent (naming) |
+
+### Shapes of time and data
+
+No time or date field is added; no endpoint, table, migration or bundle section changes (the tree is unchanged, so no schema version bump).
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a hostile or malformed tree reaching the editor (a layout from another tier, an imported bundle) executing something or breaking it; layout text rendered as markup on a block; a new third-party dependency; Blockly's injected styles against a content security policy.
+- *Verify:* block fields draw text through SVG text nodes, never HTML; tooltips are plain text from the server's schema; the editor never uses Blockly's XML or code generators; `data` is parsed with `JSON.parse` inside a try block and used only if it is a plain object; text lengths are limited to the schema's `max_length`; the tree is still validated by the server on every change and on save. The application's policy only restricts framing, so Blockly's `<style>` injection is not blocked. Blockly is an npm dependency (caret range, lockfile synced under Node 24), Apache-2.0, run with sounds off.
+- *Remediate:* none needed.
+
+### Verification
+
+Storybook: 12 new stories for the editor (draws, round trip, field edit, inspector, in-place patch, add menus, levels, warnings, loose block, read-only, table family) and the designer's stories rewritten for the Blocks tab (80 passing across the report component and utility stories). Playwright: the designer spec's two outline tests now drive the Blocks view through the real stack (11 passing). Not yet done: new website screenshot of the Blocks view (the old outline screenshot is removed; the docs slice is part of the website phase after the review checkpoint).
+
+## Custom reports Phase 19: report content and the project default template removed (2026-10-28)
+
+The second design review asked for report content (an introduction, chapters and appendices held per report at the template, project and organisation tiers) and a project's default branding template to go. Everything the content did is now written in a report layout. The User chose to **drop the stored content rather than convert it** ("there isn't enough adoption for this to be an issue yet"), asked for a requirements counterpart so the requirements report can be reproduced as a layout, and limited the template change to the project's default pointer.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Stored report content is removed everywhere**: the `report_contents` table and its model, `services/report_content.py`, `report_content_bundle.py`, the `report-config`, `report-content/effective`, `report-defaults` and `report-types` endpoints, the `content` field on a report template, the intro/appendix blocks threaded through the framework, module-report, custom-report and pack renderers, and the editors in Project Admin, Org Admin and the Reports page. Migration 0118 drops the table; the rows are **not converted** (downgrade recreates it empty). | User |
+| 2 | **The requirements counterpart is a starter layout, not a widget.** A layout's `group` and `table` blocks over the `requirement` record type already reproduce the report (component chapters, category sections, ID / Name / Reasoning / Status / Tags), and a widget is a part of a registered module report, which the core requirements report is not. "Requirements by Component" is the fourth starter, with an Introduction and an Appendices section to write. It is written under a name the platform's own "Requirements report" does not share. | Agent (the User asked for a widget; this meets the same aim without a core report registration) |
+| 3 | **Only the project's default template pointer is removed** (`projects.default_report_template_id`, its Project Admin field, the pre-selection on the Reports page and the project bundle field). Organisation report templates stay, are branding only (accent colour, cover page, logo, footer, chapters per component) and are picked per run. | User |
+| 4 | **The requirements report's request no longer takes `pre_markdown` / `post_markdown`.** They were the per-run form of the same content. The selected resource files (R-G-04) are still appended after the tables and still resolve `attachment:` images through `resolve_report_images`. | Agent |
+| 5 | **Older bundles still import.** A bundle that carries `report_content`, `report_images`, the legacy intro/chapter/appendix keys, a template's `content` or a project's default template name has them skipped with one warning per import (`LEGACY_REPORT_CONTENT_KEYS`), never an error. New bundles carry none. | Agent |
+| 6 | **Dead code that only served the editors is deleted**: `ReportContentEditor`, `ReportChapterListEditor`, `RichTextEditor` (the Markdown editor with the image picker), `reportContentInheritance`, `utils/markdown.ts` and the `.rich-text-editable` styles, with their stories. They can come back from history if a Markdown editor is wanted again. | Agent |
+| 7 | **`docs/requirements.md` R-G-02** ("custom markdown text at the beginning of generated reports, such as introduction and body chapters") is authoritative and was not changed. A layout's text blocks, headed by the Introduction section of the starter, carry that text; the requirement now reads as met by layouts rather than by a stored field. Flagged here so the User can confirm that reading. | Agent |
+
+### Shapes of time and data
+
+No time or date field is added or changed. Stored data is **deleted** (report content rows, the default-template column): a one-way change, recorded here and in the migration.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* an endpoint left behind that still reads or writes the dropped table; a bundle import that trusts removed keys; deleted rows leaving a polymorphic owner with dangling references; the resource-file image path losing its tenant check now that it is the only caller.
+- *Verify:* the five endpoints answer 404 (`test_the_report_content_endpoints_no_longer_exist`); an older organisation or project bundle imports with one warning and creates no content (two tests); organisation deletion no longer needs the polymorphic cleanup because nothing is stored; `resolve_report_images` is unchanged and its cross-organisation, cross-project and unknown-reference cases (`test_report_images.py`) now run through a resource file.
+- *Remediate:* none needed. The change removes an authorization surface (the per-scope content write gates) rather than adding one.
+
+*Not applicable:* no change to authentication, secrets or classification, no new permission, audit event or MCP tool (no MCP tool touched report content), no module-boundary edit (the starter is core and names no module), no new bundle section.
+
+### Verification
+
+Backend: ruff clean; pytest on the touched areas passed (reports, templates, starters, images, docx, custom reports, framework, packs, run jobs, record list reports, placements, layouts, project and organisation export/import and merge, bundle hooks, search, doc links, MCP skill reference, organisation lifecycle); the one failure is the known mailhog DNS test (`test_import_invites_a_member_with_no_existing_account`). The full suite was not run. Migration 0118 was applied by the rebuilt `tests/container` backend (`alembic_version` 0118, table and column gone). Frontend: `tsc`, `eslint` and the Storybook stories for the Reports page, Project Admin, Org Admin and the report runner pass. Playwright: the image-in-a-resource-file, template/Report Setup and starter-layout specs pass; `report-content-per-type.spec.ts` is deleted with its feature. Website: Reports and export, three workflow pages, the glossary, the custom reports overview and two concept pages updated; the two Report Setup / Report Defaults screenshots are removed. `scripts/check_doc_links.py` passes.
+
+## Custom reports Phase 20: Download report from record lists (2026-10-28)
+
+The second design review asked for a way to take a report away from the list the records are on: the list actions menu gains **Download report**, which offers only the reports that use the list's record type (no engagement report on the requirements list).
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A catalogue entry says which record types it uses** (`ReportCatalogueEntryOut.record_types`). A module report takes `ReportDefinition.record_types` (already declared, and already tested to be registered and coded). A custom layout takes `report_layout_tree.record_types_of(tree)`: every block's, sheet's or join's `source.record_type`, plus the types of the report behind each `widget` block. No new declaration and no per-module edit: the field is derived from what is already declared. | Agent |
+| 2 | **The platform "Record list" report is not matched** (its entry declares none): its PDF and Word are already the list's Export items, and offering it again would list the same file twice. | Agent |
+| 3 | **The dialog loads the catalogue when it opens**, not when the list page loads, so a list nobody downloads a report from costs no extra request (the project catalogue builds every layout's run form). A type no report uses shows "No report uses …" instead of hiding the menu item. | Agent |
+| 4 | **The picker is reused, not copied**: `ReportPickerPanel` (search, type filter, folders, favourites) is split out of the Reports page's dialog and embedded; a pick runs the report in place with `ReportRunner`, so variables, branding template, formats and background runs behave as on the Reports page. The panel opens every folder when nothing is chosen. | Agent |
+| 5 | **The list's own filters are not passed on.** A report has its own selection and variables; the filtered rows are what the Export items download. | Agent |
+| 6 | **Report packs are not offered here.** A pack is several reports and has no single record type; they stay on the Reports page. | Agent |
+
+### Shapes of time and data
+
+No time or date field is added. `record_types` is derived data (a list of registered type keys); nothing is stored.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* the new field leaking a type the caller cannot see; the dialog widening what the catalogue returns.
+- *Verify:* the field is a list of type keys already visible to anyone who can open the layout or report; the dialog calls the existing catalogue routes (`require_project_view`, the organisation role), so who may list and run a report is unchanged, and the run still goes through the report's own gate.
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification, permission, audit or retention change; no MCP tool touched; no module-boundary edit (nothing in a core file names a module); no new project-scoped table or bundle data; no user/group field.
+
+### Verification
+
+Backend: `record_types_of` and the catalogue field are pinned in `test_custom_report_run.py`; the reports, framework, placements and record-list report suites pass. Frontend: stories for the dialog and for the menu item; `tsc -b` and eslint clean. Playwright `list-download-report.spec.ts` (only the matching report is listed in its folder, it runs and downloads a PDF, Choose another returns to the list).
+
+## Custom reports Phase 21: pickers remember their folders; star on the right (2026-10-29)
+
+The third review asked that the report picker open the way it was left, not always with Platform expanded, and that the favourite star sit on the right of the report's row.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Open folders are a per-person preference**, `ui_preferences.report_picker_folders`: an object of folder ids by picker. No backend change (the bag is open-ended and size-bounded). | Agent |
+| 2 | **Each place names its picker** with a required `pickerId` (`project-reports`, `organization-reports`, `record-list-download`), so one picker's folders do not open another's. | Agent |
+| 3 | **First use is fully collapsed**, the Favourites folder and the selection's folder included; the old "open the selection's folder" and "Platform is open" rules go, and the record-list dialog no longer opens every folder. | Agent |
+| 4 | **A search opens every folder holding a match but never writes the saved state**, so clearing it restores the person's layout. Folder ids come from folder paths, so a saved id for a folder that no longer exists is harmless; the list is capped at 100. | Agent |
+| 5 | **The star is the last control of the row** (title and description, kind badge, star). | User |
+
+### Shapes of time and data
+
+No time or date is involved; the preference is a list of strings.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a preference carrying something sensitive; an unbounded write.
+- *Verify:* the value is folder names the person can already see in the picker; the existing `ui_preferences` limits (key count, size) apply.
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification, permission, audit or retention change; no MCP tool; no module-boundary edit; no new table or bundle data; no user/group field.
+
+### Verification
+
+Storybook: `ReportPicker` (collapsed first time, remembers, search leaves the saved folders, star on the right), `ReportCatalogue` and `ReportDownloadDialog` updated. Playwright `report-picker-and-folders.spec.ts` (remembered across close and reload) and `list-download-report.spec.ts` updated; the picker helper finds report rows by `data-report-picker-item`, not by the star's position. `tsc` and eslint clean.
+
+## Custom reports Phase 22: one Download menu, every format (2026-10-29)
+
+The third review found ODT and ODS missing "for some reason". Cause: module reports (and the record-list report) declared `json, pdf, csv, docx` in core, so only custom layouts reached the renderer registry.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A module report's result goes through the existing renderers.** `report_framework.render_result` is the single place its formats are decided: `pdf`, `docx`, `html`, `odt` render the neutral `ReportDocument` already built for PDF and Word, `xlsx` and `ods` render each section as a tab (`result_sheets`), `csv` stays the first section. A format a report cannot make honestly is not listed; none is excluded today because every result is a document of tables. | Agent |
+| 2 | **Excel is offered with ODS** though the plan named only ODT, HTML and ODS: it is the same sheets and the renderer already exists, so leaving it out would be a second inconsistency. | Agent |
+| 3 | **The record-list routes (project and organisation) use the same function.** Their CSV is still the export file that re-imports. The row cap (`MAX_DOCUMENT_ROWS`) now applies to the four document formats (`DOCUMENT_FORMATS`), not to the spreadsheets, which stream. Every format is audited as an export. | Agent |
+| 4 | **The menu is the existing `ReportExportButton`** (it lists what the catalogue entry's `formats` declares), so the runner, the record-list dialog and the organisation Reports group show the new formats with no per-format button. Its trigger keeps the label **Export**: the compliance panels share the component and a rename is cosmetic churn across about twenty tests. | Agent |
+| 5 | **The branding template is sent only with the document formats** (`DOCUMENT_KINDS` in `ReportRunner`), so a spreadsheet request never carries one. | Agent |
+| 6 | **A pack entry for a module report may take every file format** (`report_pack_definition.REPORT_FORMATS` is now the framework's, minus `json`; a layout entry already could take any of its family's). The pack editor offers the same list. `render_module_report` already rendered any of them. Told by the User after the first cut left packs on PDF, Word and CSV. | User |
+
+### Shapes of time and data
+
+No new time or date. Files are produced from the result as before; `generated_at` stays a UTC instant.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a new file format bypassing the formula guard, the row cap or the export audit; markup or a formula in a record value reaching a new format.
+- *Verify:* spreadsheet cells go through the registry's `csv_safe` and text-typed cells (test: a `=HYPERLINK` cell is written with the leading apostrophe in XLSX); the HTML and ODT writers are the ones custom layouts already use (test: markup in data is escaped); the record-list routes audit `html`, `odt`, `xlsx`, `ods` (test) and refuse an over-long document in `html`/`odt` as in `pdf`/`docx` (test).
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification, permission or retention change; no MCP tool signature change (module report MCP tools return JSON); no module-boundary edit (core change is generic); no new table or bundle data; no user/group field.
+
+### Verification
+
+Backend: `test_report_framework.py` (every declared format produces a real file; `result_sheets`; `render_result` refuses `json`), `test_record_list_report.py`, `test_org_record_tables.py`. Storybook: `ReportRunner` lists every declared format and only documents carry the template. Playwright: `report-docx-export.spec.ts` downloads HTML, ODT, XLSX and ODS from a module report.
+
+
+## Custom reports Phase 23: the Reports page becomes a Reports dialog (2026-10-29)
+
+The third review asked for the Reports page to go: choosing and downloading a report happens in a dialog opened from the top of the project overview. The User answered the open questions interactively.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **No Reports page, route or navigation entry.** `ReportsPage`, `/projects/:id/reports` and the nav item are removed; the old route is not redirected (an old bookmark reaches the catch-all). Saved navigation preferences that mention the item are ignored like any item that no longer exists. | User |
+| 2 | **A "Reports" menu at the top of the project and organisation overviews** (`ReportsMenuButton`) with two items, **Choose a report…** and **Background reports…**. Both open `ReportsDialog`. The organisation menu appears only when its catalogue or packs list something, as the old Reports group did, and that group is gone. | User (menu and shared dialog), Agent (the two items: a menu of one item would not be a menu, and the background-runs list needed a home) |
+| 3 | **Whether the dialog is open is the `reports` search parameter** (`choose` or `runs`) on the overview, with `report` and `section` choosing a report and a section as before. A report figure that points at another report now links to `/projects/<id>?reports=choose&report=…&section=…` (`utils/reportLinks.ts`); this is the new deep link, not a redirect of the old path. Closing removes the three parameters and keeps the rest (the overview's project-scope filter). | Agent |
+| 4 | **Background reports live in the dialog** (the `runs` view, with a sentence saying how one comes about when empty). The list is no longer drawn under every report. | User |
+| 5 | **Branding template chain.** A document report uses: the template named in the request, else the layout's own template, else the organisation's default, else none (`report_document.effective_report_template`, used by the layout, module-report, record-list and requirement-report routes; a pack uses its named template, else the default). The default is `ReportTemplate.is_default`, at most one per organisation (a partial unique index; setting one clears the previous, in the same request). The layout's own is `ReportLayout.report_template_id` (`ON DELETE SET NULL`). Migration 0119. | User |
+| 6 | **The download step names the template that will apply** ("Default (House style)") and lets the person choose another. There is no explicit "none" while a default or an override applies: the User asked that a template always be used when one is available. | User |
+| 7 | **A layout's template is set when modifying a layout, not when creating one** (the User's words: "this can only be set when modifying a report layout"). The create form omits `Branding template` for that reason; both forms share `ReportLayoutFields`, which takes the field when given templates. | User |
+| 8 | **The requirement report keeps its filters and resource sections.** The plan's table says the filters and the "Template & layout" section go; only the second is removed (its template and chapter-layout choices are now plain fields above the buttons). The filters (R-G-03) and resource sections (R-G-04) are in the authoritative requirements and are that report's own parameters, so they stay in its step of the dialog. Flagged for the User to confirm. | Agent |
+| 9 | **The MCP layout tools do not take the template** (they keep their signatures, so the agent skill is unchanged); an MCP-created layout follows the organisation default until someone sets one in the designer. | Agent |
+| 10 | **Bundles.** The organisation bundle carries `is_default` per template (an existing default in the target organisation wins on a merge, so the unique index cannot be hit), and templates are now imported before layouts so a layout can name one. A layout travels with `report_template` (the template's name), looked up in the target organisation; a name with no match is a warning and the default applies. | Agent |
+| 11 | **Nested projects:** no new project-scoped definition table, so no fallback decision. **Users and groups:** no person-valued field. **Save and activate, MCP, search, codes:** not applicable. | Agent |
+
+### Shapes of time and data
+
+No new time or date. Templates and layouts hold no scheduled time.
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a layout naming another organisation's template (reading its branding, cross-tenant); a second default created by a race or a bundle; the default silently branding a report for a caller who should not choose branding.
+- *Verify:* the layout create and update paths refuse a template outside the layout's organisation (test: 422, and the override is cleared when the template is deleted); a requested id outside the organisation is a 400 on every run route (`ForeignReportTemplateError`); the one-default rule is a database partial unique index, with clearing done before the insert or flag change (test); a template is already readable by every organisation member, so naming it as a default exposes nothing new; setting the default stays an organisation-admin action and is audited (`report_template` created/updated carry `is_default`).
+- *Remediate:* none needed.
+
+*Not applicable:* no authentication, secret, classification or retention change; no module-boundary edit (`ReportCatalogueEntry.report_template_id` is generic).
+
+### Verification
+
+Backend (`test_report_templates.py`): one default per organisation, the precedence (requested, layout, default, none), a layout's template set, kept when left out, cleared with `null` and shown in the catalogue, a foreign template refused, delete clears the override, the organisation and project bundles carry the flag and the name. The wider report, bundle and import suites ran (323 passed; the one failure is the known mail-server DNS test, `test_import_invites_a_member_with_no_existing_account`). Storybook: `ReportsDialog`, `ReportsMenuButton`, the organisation overview's menu, the layout form's template field, the template form's default checkbox. Playwright: `reports-dialog.spec.ts`; every spec that opened `/projects/<id>/reports` now opens `?reports=choose`.
+
+### Known gap
+
+The docs website text now says "Reports dialog" and describes the template chain, but its screenshots of the old page (`reports-page.png`, `custom-reports-picker.png`, `report-pack-preview` and the module report pages') are unchanged: they are retaken in the website phase after the review, as the plan says.
+
+## Custom reports Phase 24: Download report as two steps (2026-10-29)
+
+The third review asked for the record-list **Download report** dialog to be a two-step flow, to name the project, to stop previewing the report, and to leave out reports meant only to be viewed.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Two steps with a shared `StepIndicator`** (1 Choose a report, 2 Configure and download) and a **Back** button; no other dialog had a step indicator, so there was no existing component to reuse. | User (steps), Agent (component) |
+| 2 | **Step 2 names the report and the project** (or the organisation, for an organisation-owned list), using the project term and organisation label. The name comes from `useScopeName` (one cached fetch per scope). | User |
+| 3 | **No preview.** `ReportRunner` takes `showResult` (default true); off, it neither runs the report for the screen nor shows a result, only the parameters, variables, template choice and format menu. The Reports dialog still previews. | User |
+| 4 | **`ReportDefinition.view_only`** (default false), carried on `ReportCatalogueEntry`. The record-list dialog drops flagged reports; widgets key off `parts`, so they are unaffected. Only the Context & Strategy summary is flagged. Custom layouts and packs are never view-only. A generic field, so no per-module code in core. | User (rule), Agent (field name) |
+| 5 | **Where a view-only report is found: the Reports dialog**, unchanged (its on-screen view is the Phase 23 dialog). The plan asked to confirm this with the User; Agent kept the existing behaviour because nothing else changes for those reports, so the User can redirect it at the review checkpoint. | Agent |
+| 6 | **Not applicable:** no new table (no nested-project fallback), no person-valued field, no time or date, no export/import or bundle change (a code-only flag), no MCP tool change. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* the flag hiding a report from the list must not be mistaken for access control; the scope name fetch exposing a name the caller cannot read.
+- *Verify:* `view_only` only filters what the dialog offers: the catalogue and run routes still apply module enablement, role and scope exactly as before, and the Reports dialog is unchanged. The name comes from the project and organisation endpoints the person already calls on every page, which enforce their own access; a failure shows an ellipsis.
+- *Remediate:* none needed.
+
+### Verification
+
+Backend (`test_custom_report_run.py`): the catalogue flags the summary and nothing else as view-only and still lists it. Storybook: `StepIndicator`, the dialog (view-only report left out, step 2 names the project, Back, organisation list) and `ReportRunner` without a result. Playwright (`list-download-report.spec.ts`): view-only report not listed even when searched, step 2 names the project and shows no table, PDF download, Back.
+
+## Custom reports Phase 25: report packs offered wherever reports are downloaded (2026-10-29)
+
+The third review found packs hard to find: they were only in the Reports picker. Phase 23 already put the project and organisation Reports dialog on the one picker that lists packs (`useReportPackEntries`), so this phase adds the third place, the record list's **Download report** dialog.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A pack is offered on a record list when any report in it reads the list's record type**, the same rule as for reports. `ReportPackOut.record_types` is derived on the server from the pack's entries (`report_pack_run.pack_record_types`: a module report's `ReportDefinition.record_types`, a layout's `record_types_of(tree)`), so the client has no list of types. | User (rule), Agent (field) |
+| 2 | **The types are derived as the asking scope sees them.** A layout entry is resolved as at run time (`_find_layout`: the project's reachable layouts, or the organisation's only), so an entry the scope cannot reach adds no type and a pack naming only such entries is not offered. The type list is computed on every pack summary and detail response (list, read, save, rename) so they cannot disagree. | Agent |
+| 3 | **Packs are filed by the same placements as in the Reports dialog.** The shared `extraItem` (`utils/extraReportItem.ts`) turns a host entry (the requirement report, a pack) into a picker item with its placement applied; `ReportCatalogue` and `ReportDownloadDialog` both use it. | Agent |
+| 4 | **Step 2 for a pack is the pack's own run form** (`ReportPackRunner`: variables, saved choices, the per-report record counts and the zip). That table is the pack's what-is-included check, not a preview of a report, so it stays; the dialog still names the pack and the project. | Agent |
+| 5 | **Not applicable:** no new table (no nested-project fallback, no bundle change: `record_types` is derived), no person-valued field, no time or date, no MCP tool change (`list_report_packs` gains one additive field). The Reports dialogs of a project and an organisation were already offering packs; stories now pin both. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* the list of types leaking a layout the caller cannot read; offering a pack the caller cannot run.
+- *Verify:* the types are type keys only, derived from layouts the asking scope can already reach; pack listing keeps its membership gate and a hidden pack is still dropped. Running a pack is unchanged: every entry runs as the caller with its own gates.
+- *Remediate:* none needed.
+
+### Verification
+
+Backend (`test_report_packs.py`): types from layout and report entries on the organisation and project lists, a missing layout adds none, a project's own layout is not reached from the organisation tier, and the single read and save carry the types (a first draft left `project` undefined in the read route, caught by the Playwright pack specs and now pinned). Storybook: the download dialog (packs that read the type, a pack's step 2 and Back, a pack listed when no report is) and the Reports dialog for a project and for an organisation. Playwright (`list-download-report.spec.ts`): a pack that reads requirements is offered, one that does not is not, and the zip downloads.
+
+## Custom reports Phase 26: folder chooser (2026-10-29)
+
+The third review found the folder field a text box prone to misspelling that gave no sight of where other reports live. It becomes a chooser: a tree of the folders the scope can use, with New folder, Rename and Delete beside it, on layouts, packs and placements.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **Empty folders live in a per-scope table** (`report_folders`: organisation or project, a tidied path, unique per owner case-insensitively). A folder is still a label on a layout, pack or placement; a row only keeps a folder nothing is filed in yet. The listing (`services/report_folder_store.list_folders`) is the union of rows and folders in use, with the levels above each, so a folder in use can never be missing. | User |
+| 2 | **Deleting a folder never deletes a report.** What this scope filed at or below it (layouts, packs, placements, sub-folder rows) moves up one level, to the top level from a first-level folder, and the counts come back and are shown in a Toast. The delete is a Tier-1 confirm that says so. | User |
+| 3 | **Placements share the chooser and the list; rename is included.** Rename changes the last level and keeps the parent; what is filed in it and below follows; a name a sibling already has is refused (a change of case alone is allowed). A placement's chooser also offers the default folders of module reports (read-only). | User |
+| 4 | **Nesting is additive** (the nested-project check for a new project-scoped table): a project sees its own folders, its ancestors' and the organisation's together, as it does layouts and packs. The Action Types rule (own rows, else the nearest ancestor's) would make a child's first folder hide every inherited one, which is wrong for a vocabulary of labels. No root-only seeding hook (nothing is seeded). | Agent |
+| 5 | **A scope changes only what it owns.** An inherited folder can be filed under but is not renamed or deleted from below (404); the response flags each folder `own` and the chooser disables Rename and Delete with the reason. | Agent |
+| 6 | **Permission is the manage-report-layouts one at each tier**, with no server-administrator bypass, for list as well as change (the lists only serve the forms of those who manage). | Agent |
+| 7 | **Bundles:** both bundles carry the scope's own folder rows (`report_folders`, `services/report_folder_bundle.py`); import tidies each path again, skips one already listed and warns about an invalid one. The folder on a layout or pack already travelled with it. No hidden-defaults tombstone applies: a folder is not a hideable organisation default. | Agent |
+| 8 | **Time, person fields, MCP, search, codes:** not applicable (no date, no person, no MCP tool, not an artefact type). | Agent |
+| 9 | **A folder path travels in the body or query string**, never the URL path (it contains `/`). The free-text field, its datalist and `useFolderSuggestions` are removed; the layout and pack forms take an optional `folderApi` (live for the scope by default) and `onFoldersChanged` so the list behind reloads. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- *Identify:* a scope reading or changing another organisation's or project's folders; a rename or delete reaching rows the scope does not own; a mutation without an audit event; a path used as markup or a file name.
+- *Verify:* every route takes the manage-report-layouts permission for its tier and resolves the project or organisation from the path; the store selects rows by the scope's own organisation and project id only; each change is one `report_folder` audit event with paths and counts, never a report title (a test pins this); a path is shown as text and never put in a file name, query or markup.
+- *Remediate:* none needed.
+
+### Verification
+
+Backend (`test_report_folders.py`): add, nested levels listed, folders in use listed, duplicate (case-insensitive) and unusable paths refused, additive nesting with `own` flags, an inherited folder not changeable, rename moving layouts, packs, placements and sub-folders, sibling clash refused, delete moving up one level without deleting a report (first-level goes to the top level), a project moving only its own reports, permission, audit without titles, cascade on project delete, and both bundle round trips (a bad path warned about). Storybook: `ReportFolderChooser` (tree, choose, add, Enter not submitting the form, depth limit, rename, delete with confirm, inherited folder locked), the layout, pack and placement dialogs. Playwright (`report-picker-and-folders.spec.ts`): a folder is chosen, added, renamed and deleted from the layout form and the layout follows; the organisation move step builds its nested folder in the chooser.
+
+
+
+## Custom reports Phase 27: designer layout review (2026-10-29)
+
+The User's screenshot showed the Blocks view working as built but starved: the design column was half the page, the inspector took 22rem of it and Blockly's always-open palette filled the rest, so the layout's own blocks were not visible, and the inspector's Text field read as a second text view. The fix is layout first, then the palette.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The Blocks view takes the page's width.** The design grid is one column in Blocks (`layout-designer--blocks`); the preview no longer sits beside it by default. The inspector sits beside the canvas while the editor is at least 44rem wide and under it otherwise, decided by a container query on the editor itself, so a preview panel that narrows the editor stacks the inspector rather than squeezing the canvas. | User |
+| 2 | **The Blockly flyout palette is removed** (it took a column and listed the least useful blocks first). **Add block** above the canvas is the one way to add a block; it lists the blocks from the server's schemas under "Most used" (Heading 1 to 3, Text, Table) and "Other blocks" (by name). Blocks on the canvas still drag. | User |
+| 3 | **A block lands where a stated line says.** Beside the dropdown a select names the place: after the selected block, inside it (one option per child list, default for a container), or at the end of the layout; with nothing selected the line reads "Adding at the end of the layout". The new block is selected at once so its settings open. "Add to <list>" in the inspector stays. Trade-off: a new block can no longer be dropped straight into a nested spot, only inserted next to or inside the selection and then dragged; if authors miss it, the palette comes back as a toggle that is off by default. | Agent (rule and wording; the User asked that the dropdown must not guess a location) |
+| 4 | **The addition is made in the workspace, not by rewriting the tree,** so it is one undo step (Ctrl+Z, Cmd+Z on a Mac: Blockly maps the shortcut to the platform's key) and reaches the tree through the same change events as a dragged block. Selection is deferred one tick because the closing menu returns focus to its button, which would deselect the block. | Agent |
+| 5 | **The preview is a dialog or an optional panel.** In Blocks, **Preview** opens it in a dialog and **Preview panel** (a toggle) shows it beside the blocks; the toggle is a per-person preference (`report_layout_preview_beside`, default off). The text view keeps its Preview, Fields and Widgets tabs beside the editor. A closed dialog drops the run result and the variable values; the run is a click away. | Agent |
+| 6 | **Not applicable:** no backend, schema, migration, bundle, permission, time or person-field change (a layout is unchanged; the preference is a UI preference). | Agent |
+
+### Verification
+
+Storybook: Add block with nothing, a leaf and a container selected (inside by default, then After), undo, the order of the list, the designer's Preview dialog and panel toggle. Playwright (`report-layout-designer.spec.ts`): the canvas is wide with no palette and no preview, blocks land after the selection and at the end, undo removes the last block, the preview opens in a dialog and beside the blocks.
+
+
+## Custom reports Phase 28: background reports page removed (2026-10-29)
+
+The Reports button on the overviews opens the chooser directly. The "Background reports" view was only the list of the person's asynchronous runs, so it is removed; the notification and a top-bar indicator replace it, and `GET/DELETE /report-runs` and the download stay (the notification, the dialog and API clients use them).
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The Reports menu becomes one button** (`ReportsButton`) that opens `ReportsDialog` on the chooser. Any `reports=` value opens the chooser, so an old `?reports=runs` link lands there. `ReportRunsPanel`, `useReportRuns`, their strings, stories and e2e steps are deleted. | User |
+| 2 | **Clicking a "report ready" notification opens the report in a dialog** (`ReportRunDialog`, page `/report-runs/:id`, resolved by `notificationLink` for the `generated_report` entity, which also covers an organisation-wide run that has no project). The dialog downloads on a click rather than on open, because browsers block a download no click started and the dialog is needed for the other states. | User (dialog), Agent (click) |
+| 3 | **An expired or failed run offers Generate again** (`POST /report-runs/{id}/again`, `report_run_jobs.requeue`). It is a fresh run: the requester, the layout or pack's reach, its current version and the stored values are all checked again, the old file is never reused, the format, scope, branding and variable values (and a pack's saved set) are those of the earlier run, and the dialog states that it is a fresh run and, once queued, whether the layout was edited since (`definition_changed`). **It always goes through the queue** (never synchronous), so a large one is bounded like any other, the queue limit applies and the person is notified again. The stored request was checked first: a `GeneratedReport` row keeps the format, branding template id, include-children, requested projects, variables, and for a pack its id and set; module reports are only queued as pack entries, so nothing else needs storing. | User (behaviour), Agent (always queued) |
+| 4 | **An indicator in the top bar shows runs in progress**: `ReportRunsIndicator`, a clock with a count beside the notification bell, hidden at zero, whose popover lists name, format, state and time and offers nothing else. It is the live count (`GET /report-runs?active=true`, the caller's own rows, newest first) rather than a pinned notification, which would need its own read/unread, e-mail and bell-count rules and replacing by the finished one. Polling is every 4 s while any run is in progress and every 60 s otherwise, and a queued run (`REPORT_RUN_QUEUED_EVENT`) refreshes it at once. | User (indicator), Agent (clock badge, polling) |
+| 5 | **Deleting a stored file by hand is gone from the product.** Expiry (the organisation's retention) is the only way a file goes; cancelling a queued run is gone with the list. The API routes stay. | User |
+| 6 | **Module and bundle boundaries:** the report feature is core, so the notification route is a case in the core `notificationLink` beside the other core entity types; no module is named. No new table, column or migration, so no bundle change, and no search, code, tag or list-scope surface (a run is not an artefact). | Agent |
+| 7 | **Not applicable:** no new field, so no help text, required marker or seed-script change; the dates are past instants shown in the browser's zone. | Agent |
+
+### Security review (identify → verify → remediate)
+
+- **Generate again as a path to data:** identified that a stored request replayed later could run with the old access. Verified `requeue` calls `_can_run` (active account, active organisation, a role in the project or organisation), `reachable_layout`/`reachable_pack` (not hidden), the current version and `resolve_values`/`check_request` before queueing, and that the job re-checks them again when it runs. Another person's run id answers 404 (tests `test_only_the_requester_can_generate_a_run_again`, `test_a_requester_who_lost_access_cannot_generate_again`, `test_a_deleted_layout_cannot_be_generated_again`).
+- **Queue abuse:** `enqueue` and `enqueue_pack` apply the per-person limit, so Generate again cannot exceed it (`test_generating_again_counts_against_the_queue_limit`).
+- **No new data at rest or in logs:** no file or value is copied; the variable values stay in `params` as before and are not logged. The notification link carries only the run id, which is only readable by its requester. The retention policy's wording about deletion on request was updated (no button, route kept).
+
+### Verification
+
+Backend (`test_report_run_jobs.py`, `test_report_packs.py`): generate again from expired and failed, the format, scope and values kept, the layout-changed flag, refusals (waiting or ready 409, other person 404, lost access, deleted layout, queue limit), a pack run with its set, the `active` filter. Storybook: the dialog in each state, Generate again and its refusal, the page, the indicator, the one-click button and an old `runs` link, the notification link. Playwright (`custom-report-background-run.spec.ts`, `reports-dialog.spec.ts`): queue, the button opens the chooser, notification, click, download, file removed then Generate again, a failed run, and the indicator. The website pages that named the menu items were corrected; their screenshots wait for the review checkpoint.
+
+## Custom reports Phase 29: settings that do not belong in the download dialog (2026-10-29)
+
+The requirement report in the Reports dialog loses its Filters section, and no download dialog offers a branding template any more. Narrowing a table is the requirements list's job (its Export and Download report carry the list's filters); branding is decided by the server.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **The requirement report's R-G-03 filters are removed from the project dialog.** The User's intent for R-G-03 ("filters on requirements for custom generated reports") is the table downloads from the record list pages, which export what the page's filters show. `docs/requirements.md` is authoritative and is not edited; this reading is the record, and the User may amend the requirement's wording. The API (`POST /projects/{id}/reports`) still accepts the filters for API and MCP callers. | User |
+| 2 | **Two gaps in the requirements list are closed so nothing is lost:** a **Component** filter (`component_id`, which the list endpoint already took) and a **target version range** (`target_stage_from_id`, `target_stage_to_id`). The status, category, tag (the old "keyword" is a tag) and include-archived filters already existed. | User |
+| 3 | **The range replaces the single target version filter and is defined by the stages' order**, a stage's `sort_order` (id as the tie-break), never its name. Either end may be open; a backwards range or a stage that is not the project's matches nothing (so rows from a related project never match another project's stage). `target_stage_id` stays on the API. On the page the URL holds `stage_from`/`stage_to`; the older `stage` parameter is read as a range of one and dropped as soon as either end changes, so bookmarks and dashboard links keep working. | Agent |
+| 4 | **One implementation for list, Export and Download report:** `RequirementFilters` + `filter_requirements` carry the new fields, and the requirement record-table provider lists them in `filter_params`, so Export (CSV, PDF, Word) and Download report get them with no extra code. | Agent |
+| 5 | **No branding template choice in any download dialog** (report runner, requirement report, pack runner): a layout's own template, else the organisation's default, else none. Module reports and the requirement report use the organisation default only (no per-report override). `report_template_id` stays on the run routes, so API and MCP callers can still name one. A pack still resolves its requested template, else its own named template, else the default. `ReportRunner`, `ReportPackRunner` and `ReportCatalogue` lose their now-unused `organizationId` prop. | User |
+| 6 | **Not applicable:** no new table, column or migration (so no bundle change); no new item type (no code, search, tag, list-scope or record-table change beyond the filter parameters); no new field with help text or required marker; no seed-script change; no MCP tool change (the run routes and parameters are unchanged); no style-guide change (the filter panel pattern is unchanged). | Agent |
+
+### Security review (identify → verify → remediate)
+
+- **Filter parameters as a way to read more:** identified that new query parameters on the list could reach rows the caller may not see. Verified they only narrow the result of `filter_requirements`, after the unchanged view check and `ProjectScope.collect` gate, and that the range resolves stages only within the project being listed. No authorization or scoping code changed.
+- **Branding template as a cross-organisation reference:** verified that removing the picker removes no check: `effective_report_template`, the pack `_template` and the run routes still reject a template of another organisation (`ForeignReportTemplateError`, existing tests).
+- **Logging:** the new parameters are stage and component ids, not text a person searched for; nothing new is logged or audited with values.
+
+### Verification
+
+Backend: `test_requirement_list_filters.py` (component, inclusive range by order, names ignored, backwards or foreign range empty, single stage, the shared export route); `test_report_templates.py` pins that a download uses the layout's template, else the organisation default, else none, and that a module report uses the default only. Storybook: `RequirementsPage` (component and range sent, an end cleared), `ReportsDialog` (no filters or template choice), `ReportRunner` (no branding choice, no `report_template_id` on any format). Playwright: `requirements-component-and-version-range-filters.spec.ts` (filters, Export carries the range, the old `stage` link) and the three specs that used the template select updated. The website text was corrected; the screenshots (the Reports dialog and the Export menu beside the branding selector) wait for the review checkpoint.
+
+## Custom reports Phase 30: one report format label map (2026-10-29)
+
+ODT and ODS were named in full ("Download OpenDocument spreadsheet report") on buttons and overflowed narrow dialogs, while PDF, HTML and CSV were acronyms; the names were also spelled out separately in three places (`ReportExportButton`, `ReportRunner`'s toast names, `api/reportPacks.ts`).
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `frontend/src/api/reportFormats.ts` holds `REPORT_FORMAT`, one `{ label, title }` per `ReportFileKind` (`label` the short name on buttons, list cells, options and toasts; `title` the full name, a tooltip). `ReportExportButton`, the `ReportRunner` toasts, the pack entry editor and the pack run table read it; `PACK_FORMAT_LABEL` and the per-component maps are gone. | Agent |
+| 2 | Only ODT and ODS change meaning: **Word** and **Excel** stay as people call them. The pack screens previously said "Excel workbook" and "HTML page" where the Export menu said "Excel" and "HTML"; one map means the short forms ("Excel", "HTML") everywhere, with the long form as the tooltip. | User (ODT/ODS only, Word and Excel unchanged); Agent (unifying the pack screens) |
+| 3 | The full name is the button's `title` rather than its accessible name: the visible text ("Download ODT report") must stay inside the accessible name, so the tooltip is exposed as the description. | Agent |
+| 4 | `scripts/check_report_format_labels.py` (and `backend/tests/test_report_format_labels.py`) fails a string literal spelling out "OpenDocument text" or "OpenDocument spreadsheet" in frontend code outside the map; comments, prose help text, stories and tests are excluded. Baseline empty. | Agent |
+| 5 | **Not applicable:** no backend, table, migration, bundle, MCP, seed or style-guide-pattern change; no new form field. The record-list menu's `Export as Word file` wording belongs to Phase 31, which rebuilds that menu on the same map. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Display-only change: no authorization, scoping, logging, secret or data-retention code was touched; nothing new is logged.
+
+### Verification
+
+Storybook: `ReportExportButton` (labels and tooltips for ODT and ODS, no full name in the visible text), `ReportRunner` (toast names), `ReportPackEntriesEditor` (option labels). Playwright specs `custom-report-run` and `report-docx-export` updated to the new button names and toast text. The label check runs as a backend test. The website text and screenshots wait for the review checkpoint.
+
+## Custom reports Phase 31: every download surface offers every format (2026-10-29)
+
+ODT and ODS (and, for the requirement and compliance reports, HTML, Excel and the rest) were missing from several places that offer CSV, PDF or Word. The inventory below classifies every surface that lists a file format; the **User** directed (2026-10-29) that the compliance reports be fixed to offer all formats rather than be recorded as a gap.
+
+### Inventory
+
+| Surface | Before | Now |
+|---|---|---|
+| Record-list menu (`ListActions`) | CSV, PDF, Word flat | **Download shown items** submenu: CSV, PDF, Word, ODT, ODS (backend `reports/record-list` already rendered every format) |
+| Requirement report (`POST /projects/{id}/reports`, `RequirementReportPanel`) | PDF, Word, CSV | PDF, Word, ODT, HTML, CSV, Excel, ODS (`ReportRequest.format`; table formats from `requirement_table`, the same rows as the CSV) |
+| Project and organisation compliance reports (five Export buttons) | PDF, CSV | PDF, Word, ODT, HTML, CSV, Excel, ODS (`modules/compliance/report_files.py`) |
+| Module reports, custom layouts, report runner, packs, organisation record tables | already every format | no change |
+| MCP (`run_report`, report tools) | JSON only; packs and layouts take the formats the renderers register | no change: no tool takes a file format, so the skill and module tool reference are unchanged |
+| Bundle, audit, standard JSON/zip exports | not documents or spreadsheets | not applicable |
+
+### Decisions
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The record-list menu has two first-level entries for downloads, **Download report** and **Download shown items**; the latter opens a second list (CSV first with the hint "re-imports", then PDF, Word, ODT, ODS). The template and import items follow, with no separate heading. HTML and Excel are not on the list (`EXEMPT` in `test_report_download_surfaces.py` says why); they remain in Download report. | User (menu shape); Agent (HTML and Excel left off) |
+| 2 | ODT and ODS are export-only: CSV stays the one file that re-imports, so "the exported file is the import file" is unchanged. | User |
+| 3 | `ActionMenu` gains a generic submenu (`ActionMenuItem.children`, plus `hint` and `title` on any item): opens on click, Enter, Space, Right, and on hover after 150 ms; beside the parent on the side with room (position fixed, so the popover's overflow never clips it), inline beneath it under 640px. A menu with a submenu gets Up/Down/Home/End/Right/Left/Escape; Escape closes the submenu before the menu. Flat menus are unchanged (still Tab). | Agent |
+| 4 | The compliance reports keep their ReportLab PDF and CSV writers. Word, ODT and HTML are rendered from a neutral `ReportDocument` built beside them, Excel and ODS from a `Sheet` of the same table the CSV uses (`project_compliance_table`, `org_compliance_table`), so the table formats cannot drift. The neutral model has single-line cells, so a requirement is one cell of bold-labelled runs separated by " · " in the new formats and on separate lines in the PDF. Rebuilding the PDF on the neutral document would lose that. | Agent |
+| 5 | The compliance document formats apply no branding template (the PDF never did). | Agent |
+| 6 | `backend/tests/test_report_download_surfaces.py` fails when a renderer is registered but a surface does not offer it without a reason: the requirement report, both compliance reports, the report framework and record-list route, the frontend format map, the record-list menu, the requirement panel and the compliance exports. | Agent |
+| 7 | **Not applicable:** no migration, no new table, no module registry change, no bundle change, no seed change, no new form field. The compliance routes' format parameter is now `ComplianceReportFormat`; `xlsx` is no longer a 422 there. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: the compliance and requirement report routes gained formats; the record-list route already served them. Verify: authorisation is unchanged (the same `_require_view`/`_require_manage` and `require_project_view` dependencies run before any format is chosen); the collectors, and so the data, are identical for every format. Excel and ODS go through `render_xlsx`/`render_ods`, which store every cell as text and prefix formula characters (`csv_safe`), and a test pins that a formula-looking justification is not a formula in ODS; HTML escapes through the shared renderer; no text from a record is logged. Remediate: nothing found. Observation, unchanged by this phase and not required by the logging policy: a requirement or compliance report download is not an audit event (a record-list export is, as `records_exported`, in every format). Compliance reports have no row cap for document formats, as the PDF had none.
+
+### Verification
+
+Backend: `test_compliance_reports.py` (every format for the project and organisation report, sheet parity with the CSV columns and formula guard), `test_reports.py` (every format of the requirement report, shared table and formula guard), `test_report_download_surfaces.py`. Storybook: `ActionMenu` (submenu by click, by hover, by keyboard), `ListActions` (menu shape, every format carries the filters, narrow width), `RequirementReportPanel`; every list page's export story now uses `chooseExport`. Playwright: `list-download-shown-items-formats.spec.ts` (Change requests: submenu, hover, ODT and ODS download), and the existing list-export, requirement report and project compliance specs updated. Website: reports-and-export, the reporting workflow and the compliance reporting page. The screenshots of the Export controls wait for the review checkpoint.
+
+## Custom reports Phase 32: folder tree list (2026-10-29)
+
+The report chooser drew folders as a nested list of buttons. It is now a file manager's list view, built as one shared component so the report setup list can reuse it.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `FolderTreeList` (generic over the item type, over the existing `FolderNode` tree) replaces `TreeView` in `ReportPicker`; `TreeView` stays for the other trees. Layout is a CSS grid of ARIA `treegrid` rows (not a `<table>`), so a row can take keyboard focus: header with a sortable Name column, optional further columns, folder rows with a chevron and folder icon, item rows with a type icon, indent 1.25rem per level, banded rows with rounded ends from the theme tokens. | Agent |
+| 2 | Folders come first at each level, then items, each by the chosen column; a `pinned` folder (Favourites) stays on top whatever the sort. | Agent (folders first, as the plan stated) |
+| 3 | A folder's chevron, icon and name are one button named "Expand X" / "Collapse X"; an item's type icon sits outside its button (role `img`, named Report, Sheet or Pack) so the button's name stays the title and existing selectors and the saved-folder behaviour keep working. | Agent |
+| 4 | Keyboard: the rows are one roving tab stop; Up/Down/Home/End, Right (open, then step in), Left (close, then to the parent), Enter. The inner name buttons are not tab stops; trailing controls (the star) are. | Agent |
+| 5 | Open state stays controlled by the caller (`expanded`/`onToggle`), so the saved layout per picker, search opening every folder without writing it, and the first-use all-collapsed rule are unchanged. | Agent |
+| 6 | An open empty folder shows a muted "Empty folder" row; the chooser itself never builds one (a folder exists only while it holds a report) but the setup list will. | Agent |
+| 7 | The `Kind` badge on packs and sheets is replaced by the type icon (the plan's Phase 34 reaches the same end for the setup list). No extra columns in the chooser: the mechanism (`columns`, `sortValue`, `hideBelow`) is proved in stories for Phase 33 and 34. | Agent |
+| 8 | **Not applicable:** no backend, migration, bundle, MCP, seed or search change; no new form field (the search box and type filter already carry their labels). Time shape: none. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: presentation only; no new request, no new data, no authorisation change. Verify: rows render titles and descriptions as React text (no HTML injection); the folder id used in a selector is escaped with `CSS.escape`. Remediate: nothing found.
+
+### Verification
+
+Storybook: `FolderTreeList` (folders first, deep indent, empty folder, empty list, Name sort, column sort, mouse, keyboard, narrow width, themes) and `ReportPicker` (type icons, favourites pinned when sorted, keyboard choice); the picker, catalogue, dialog and download dialog stories pass. Playwright: `report-picker-and-folders.spec.ts` gained "the picker is a file-manager list" (sort header, type icons, arrow keys and Enter, no sideways scroll at 360px); the Reports dialog and list-download specs pass unchanged. Style guide: new "Pattern: folder tree list". Website: the picker description. Screenshots wait for the review checkpoint.
+
+
+## Custom reports Phase 33: Report setup as one list (2026-10-29)
+
+Report setup had three sections (Layouts, Packs, Report folders). It is now one folder list, `ReportSetupPanel`, in the chooser's shape (`FolderTreeList`), in Project Admin → Report Setup and Org Admin → Templates & reports. The layouts, packs and placements panels, `ReportListControls` and `utils/reportListFilter` are removed.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The user asked for packs to be in the same list as layouts, for the Report folders section to go, and for the list to show as a folder list consistent with the picker; they confirmed the list is meant to hold module and platform reports too (they were only reachable through the Report folders section). | User |
+| 2 | **Client-side merge** of the placement, layout, pack and folder lists (`utils/reportSetupRows`), joined by the placement key (`layout:<id>`, `pack:<id>`, `report:<module>.<key>`); no combined endpoint. A layout or pack the placement list omits (hidden in a project) is added from its own list so it can be shown again. | Agent (the plan preferred a client merge) |
+| 3 | The row model has three types (layout, pack, module report) and a shape (report, sheet, pack) that picks the icon; `rowCan` derives the actions once. A hidden row stays in the list with a **Hidden** badge and a **Show** action, so no state is only reachable through a bulk button; `RestoreOrgDefaultsButton` stays for the bulk case (layouts and packs only). | Agent |
+| 4 | **Move to folder** is on every row. Moving an owned layout or pack edits its own folder (`update`), moving any other row sets this scope's placement, so one action works everywhere. The owned dialog names the first row "No folder (the default)" and the placement dialog "Top level", because an empty folder means the default for the first and the top level for the second. | Agent |
+| 5 | Folder rows carry **New folder inside**, **Rename** and **Delete** (rename and delete only for a folder the scope owns, from the folder list's `own` flag); the **New** menu creates a layout, pack or folder. `FolderTreeList` gained `renderFolderActions`, `buildFolderTree` gained `emptyFolders` (folders that exist but hold nothing show, except while filtering). | Agent |
+| 6 | A module report's name button opens **Move to folder** (the one thing a manager does to it here); a layout opens the designer and a pack the editor. | Agent |
+| 7 | The old **Kind** column is not carried over: the type icon says it (the plan's next phase gives the list its column chooser for Version, Folder and the rest). `useOpenFolders` (extracted from `ReportPicker`) remembers open folders per person and scope; search or any filter opens every folder with a match and does not overwrite the saved layout. | Agent |
+| 8 | **Nested projects:** unchanged. A child shows the parent's and organisation's rows as shared and its own placements as overrides, exactly as the three lists did. **Not applicable:** no backend, migration, bundle, MCP, seed or search change; no new project-scoped table; users/groups parity (no person field); time shape (none, "Last changed" is a past instant shown in the browser's zone). | Agent |
+
+### Coverage of the removed sections
+
+| Capability | Where it is now |
+|---|---|
+| Layouts: new, starter layouts, open, view, edit details, copy, delete, hide in a project, restore hidden | New menu; Add starter layouts (organisation); row menu; Add organisation defaults |
+| Packs: new, open, view, edit details, copy, delete, hide, restore | New menu; row menu; Add organisation defaults |
+| Report folders: move, reset folder, hide, show, follow the default again | row menu (Move to folder…, Reset folder to default, Hide/Show, Follow the default again) |
+| Folder tree: new folder, rename, delete (previously only inside a move/edit dialog) | folder row menu and the New menu; the dialogs still offer them |
+| Search, Kind/Module/Status/Shared-from filters | one search plus Type, Show and (project) Shared from filters |
+
+### Security review (identify → verify → remediate)
+
+Identify: presentation only; every call is an existing, already-authorised endpoint, so no new request, data or permission. Verify: titles, descriptions and folder names render as React text; folder paths go to the API in a body or query string as before; delete keeps its typed-name confirm and hiding its confirm; a 403 on any list shows the load failure rather than a partial list. Remediate: nothing found.
+
+### Verification
+
+Storybook: `ReportSetupPanel` (20 stories: every row type's actions, move, hide and restore, folders, filters, organisation and project variants, load failure), `ReportMoveDialog`, `ReportFolderNameDialog`, `FolderTreeList` folder actions. Playwright: `report-setup-list.spec.ts` (new: type icons, no Kind column, module report in the list, type filter, folder make/rename/move/delete) and the four specs that drove the old sections (`report-picker-and-folders`, `report-layout-designer`, `custom-report-packs`, `project-admin-templates-and-reports`) updated and passing. Style guide, `docs/modules.md` and the website's organising-reports, designing-a-layout and overview pages updated; the Report folders screenshot is dropped until the review checkpoint recaptures screenshots.
+
+## Custom reports Phase 34: Report setup columns, narrow widths and type icons (2026-10-30)
+
+The report setup list gained a column chooser, scrolls inside its own region at phone width and keeps the type icon at the start of each name (already in place from the previous phase). One new shared control (`ColumnChooser`) and its preference hook (`useColumnChoice`); `FolderTreeList` was re-laid out as one grid.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The user asked for the narrow-width fix, a column selector hiding Version, Kind and Folder by default, and the type icon in place of the Kind column. | User |
+| 2 | **No existing column selector** was found (record lists and the bulk-edit grid have fixed columns; export columns are chosen server-side), so `ColumnChooser` (`components/ColumnChooser.tsx`) is new and there was no call site to migrate. It is an icon button opening a `Popover` of checkboxes with the Name column ticked and locked, an accent border when the choice is not the default, and a reset. | Agent |
+| 3 | The choice is a per-person, per-list preference: `useColumnChoice(key, allIds, defaultIds)` stores the shown ids in `ui_preferences` as `column_choice_<key>` (setup list: `report_setup_organization` / `report_setup_project`). No stored value means the defaults; a stored id that is no longer a column is ignored; a column added later shows only if the defaults show it. | Agent |
+| 4 | Defaults: In the list, Shared from (project) and Last changed are on; **Version, Type and Folder are off**. The Kind column was removed last phase, so it comes back as **Type** (Report, Sheet, Pack, the same words as the icon's name) and is off by default, with Folder (the full path). | Agent |
+| 5 | **Narrow widths.** `FolderTreeList` is now one CSS grid whose rows are subgrids (column template in `--ftl-columns`, and `--ftl-columns-narrow` without the `hideBelow` columns under 640px), so columns line up and the list scrolls sideways inside its own region; the Name cell is sticky at the left edge (opaque row background, a story measures it holds at the edge). Name has a 12rem floor and wraps. Previously the hidden columns still held tracks, so the actions cell fell into the wrong track under 640px. | Agent |
+| 6 | Two layout causes of a page that scrolled sideways at 360px were found by measuring, not guessed: the stacked `.resource-menu` (below 720px) sized its content pane to fit-content, so any wide child widened the page, and now stretches it (`align-self: stretch`, a generic rule for every page in that layout); and the list's screen-reader-only header text was absolutely placed outside any positioned ancestor, so it escaped the list's clipping (`position: relative` on the list). | Agent |
+| 7 | **One icon per row type** is the existing set (document, table, pack). A module report is a document or table, so it takes those; a separate "module report" icon was not added because the chooser draws the same icons and a report must look the same in both. The Shared from column carries the source. No legend: the icon names itself (`role="img"`, tooltip). | Agent |
+| 8 | **Not applicable:** no backend, migration, bundle, MCP, seed or search change; no new project-scoped table (so no nested-project fallback decision); users and groups parity does not apply. Website text waits for the docs phase with its screenshots. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: presentation and one preference key. Verify: the preference is the user's own `ui_preferences` bag (size-bounded server-side, no secret or Restricted value), read back through a validated filter against known column ids; no new request, permission or logged value. Remediate: none needed.
+
+### Verification
+
+Storybook: `ColumnChooser` (2), `FolderTreeList` (columns line up with the header; phone width scrolls with Name held; long names wrap), `ReportSetupPanel` (columns off until chosen, then reset); all 52 Report story files green (412 tests). Playwright `report-setup-list` (chooser defaults, tick, reload, reset; 360, 768 and 1280px: no sideways page scroll and the row's actions reachable) and the report picker, Reports dialog, list download, project admin and pack specs, all green (57 tests). Time: no date or time field is involved.
+
+## Custom reports Phase 35: Page styles and sections (2026-10-30)
+
+A document layout can now set its margins (with a gutter and mirrored margins for double-sided printing) and name page styles that a new `section` block lays its contents out in, for example an A3 landscape table inside an A4 portrait report. All four document formats (PDF, Word, ODT, HTML) honour them. The Page setup control became a dialog; the Blocks view got the same fields.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The user asked for margins and page styles settable, and for part of a report to be in another page style. Asked whether to support mirrored (gutter) margins for double-sided printing, the user chose **yes**. | User |
+| 2 | **Model.** The root's `page_size` and `orientation` stay as they were and are the document's own style, so no stored layout changes meaning and the tree schema version is unchanged. New optional root keys: `margins` (`top`, `bottom`, `left`, `right`, `gutter`, cm), `mirror_margins`, `page_styles`. `page_styles` is a **list** of `{name, page_size?, orientation?, margins?}`, not a name-keyed map, so a name can hold spaces and a problem path is `page_styles[1].margins.top` (the text view maps a path back to its line by stripping `.key` and `[n]`). A style leaves out what it shares with the layout and inherits it, per margin side. | Agent |
+| 3 | **Section** is a container block (`section`, with `page_style` and `children`), not a "switch from here" marker, because a marker leaks into everything after it and does not nest; the other scope blocks (`each`, `group`, `if`) are containers too. A section cannot contain another, even through an `if` (checked while validating the subtree). It starts on a new page and the report returns to its own style on a new page after it. A section that produces no output leaves no page behind. | Agent (as planned) |
+| 4 | The model is **flat**: the evaluator emits a `PageStyleChange` block into the section's style and another back to the document's after the content, so no renderer recurses; each renderer switches style where one falls and tables use that section's usable width. | Agent |
+| 5 | **Margin limits:** each side 1 to 10 cm (the minimum leaves room for the headers and footers of a later phase and the PDF page number), gutter 0 to 5, at most 10 styles, a name of 1 to 40 characters, and every style (and the layout) must leave **5 cm** of text width and height. Checked at save and again in the text view, never trusted from the client. | Agent |
+| 6 | **Default margin is 1.5 cm on every side** in every format. Before, Word, ODT and landscape PDF used 1.5 cm but a portrait PDF used 2 cm top and bottom and 2.54 cm left and right, so one default removes that drift; **a portrait PDF's text is now wider and a little taller than before**. | Agent |
+| 7 | **Mirror is one switch for the whole layout** (`mirror_margins`), not per style, because Word stores "mirror margins" once per document, and one rule that behaves the same in all four formats beats per-style behaviour in three of them. The gutter is per style. With mirroring, `left` and the gutter are the inner edge and `right` the outer. | Agent |
+| 8 | **Per format.** PDF: one ReportLab page template per style (right-hand and left-hand when mirrored), and a small action flowable chooses the template for the next page by that page's parity, so a mirrored section starts on the correct side; ReportLab's own `autoNextPageTemplate` was tried and left out because it stays on the left-hand template for two pages. Word: `add_section` per change with its own size, margins and `gutter`, `w:mirrorMargins` placed in schema order, and the cover-page footer rule kept to the first section. ODT: a `style:page-layout` and master page per style, `style:page-usage="mirrored"`, the gutter added to the inner margin (ODF has none). HTML: no pages, so a labelled `<section>` as wide as the page and `@page` rules for printing (`page: psN`, `:left` for mirrored), built from numbers only. | Agent |
+| 9 | **Text view:** `@layout document [portrait\|landscape] [size] [mirror] [margins side=cm …]`, `@pagestyle "name" [orientation] [size] [margins …]` before the first block (like `@var`), and `@section "name"` … `@end`. All round-trip (a test), and each mistake is a positioned error. | Agent |
+| 10 | **Designer.** The text view's Page setup is a dialog (was a popover, too small for a list of styles) built from three shared pieces, `PageMarginsFields`, `PageStylesEditor` and `PageOutline` (a to-scale sketch of the page, the text area and the gutter); the Blocks view's layout settings use the same pieces through three new field kinds (`margins`, `page_styles`, `page_style`), so a module-published form would work too. Every non-obvious field has help text. | Agent |
+| 11 | **Bundles and MCP.** A layout's tree travels whole in the project and organisation bundles, so the new keys round-trip (a test). The MCP layout tools pass the tree to the same validator and publish no static list of root keys, so there is no skill text to change. | Agent |
+| 12 | **Three tests that already failed at HEAD were fixed** (stale after the links phase, not caused by this one): the block catalogue test (page size field), the inline Markdown test that expected `\[x\]` to print as written (a backslash now escapes a bracket so it is not a link) and the HTML math test that expected a bare `<h3>` (a heading now carries an anchor id). One test patched `report_pdf.build_pdf`, which the PDF renderer no longer calls; it patches `_build_pdf`. | Agent |
+| 13 | **Not applicable:** no new table or column and no migration (the tree is JSON), so no nested-project fallback decision, no organisation-defaults hide/restore and no new search, code or record-list export; users and groups parity does not apply. **Time:** no date or time is stored or compared. **Not done:** headers and footers (the next phases) and a check in Microsoft Word itself (LibreOffice only, as for earlier phases). | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a layout author's number reaching a page size, a margin in XML or CSS, a name reaching an XML attribute or CSS selector, a section that recurses or an image of the page budget; the HTML print CSS. Verify: margins are numbers checked to a range at save and again by the text parser (a `bool` is refused, a string is refused); a page style's name is never written into a renderer's markup (an index is: `PL1`, `Style1`, `ps1`, `s1r`), so a hostile name cannot reach XML, CSS or an id; the HTML CSS is formatted from numbers only and the CSP is unchanged; the tree caps (depth, node count, size) already bound sections and a style list is capped at 10; the page labels are escaped text. Remediate: none needed.
+
+### Verification
+
+Backend: 47 new tests (model arithmetic, tree checks, text round trip and positioned errors, the evaluator through the preview API, PDF page sizes and text offsets including mirrored pages and a mirrored section's parity, Word sections, gutter and mirror setting, ODT layouts and masters, HTML sections and print rules, a project bundle round trip) and the 755 existing report tests (page size, renderers, layouts, packs, the run and download surfaces, the MCP skill reference). A sample report with an A3 landscape section opened in LibreOffice as Word and as ODT gave pages of A4, A3 landscape and A4. Storybook: stories for `PageOutline`, `PageMarginsFields`, `PageStylesEditor`, `ReportLayoutPageSetup` (reads, writes, adds and removes a style) and the new field kinds, and all 17 report layout story files green (152 tests). Playwright: a new spec sets margins, mirroring and a style in the dialog, uses a section, previews it, saves, reloads and finds it in the Blocks view; the existing page-setup spec now closes the dialog.
+
+
+## Custom reports Phase 36: Images in reports (2026-10-30)
+
+A document layout can now hold an **Image** block: a picture from the library of the layout's own tier, with width, height, alignment, a caption (optionally numbered "Figure n:") and alternative text, drawn the same way in PDF, Word, ODT and HTML. Wrapping and layering are Phase 38; headers, footers and a logo in them are Phase 37.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Visibility.** A project layout may use its own project's pictures and any organisation picture; an organisation layout may use organisation pictures only (it runs for, and is inherited by, every project). Enforced at save (a checked problem naming the file), by the validate endpoints, and again at run time by `report_images.load_image`, so a hand-typed id cannot cross it. | User (2026-10-29) |
+| 2 | **Where a project's pictures live.** Asked, the user chose a nullable `file_assets.project_id` (migration 0121) over a separate `report_images` table: a file in a project's library has `project_id` set and `is_org_resource` false; the organisation's library is the existing shared resources, so the Markdown attachment picker and the Image block share one library. `GET /files/{id}` admits a project picture to the project's members only. Deleting a project cascades the row; the stored bytes follow the existing project-deletion behaviour for files. | User |
+| 3 | **Caption numbering.** Asked, the user chose a per-image switch, default on; on review the user asked for it to be **automatic by default and forceable either way**. The block's `numbering` is `auto` (the default; a picture with a caption is numbered "Figure n: caption" in document order, a bare one such as a logo is not), `always` (numbered even with no caption, printing "Figure n") or `never`. A cross-reference to a number is not built. | User |
+| 4 | **Tree.** Block `image`: `file` (a library file id, never bytes), `alt`, `decorative`, `width` with `width_unit` (`cm`, `mm` or `percent` of the text width), `height` with `height_unit` (`cm` or `mm`), `align`, `caption` (placeholders allowed), `caption_position`, `numbering`. The user asked for millimetres beside centimetres (an engineer's unit); the evaluator converts to centimetres so the model and renderers are unchanged. Bounds per unit: cm 0.5 to 100, mm 5 to 1000, percent 1 to 100. Alternative text is required unless `decorative` is true (an HTML image with no text alternative is an accessibility defect). Two field kinds were added to the designer vocabulary, `image` and `number`. A document block only. | Agent (as planned) |
+| 5 | **One size rule for four renderers** (`report_image_layout.placed_size_cm`): a width keeps the picture's shape; a height alone sizes it by height; both stretch it; no size prints it at its natural size at 96 pixels per inch; it is **never wider than the text** of the page it is on (a percentage is of that page's text width, so it follows a section's page style). | Agent |
+| 6 | **Metadata is stripped on every embed.** A raster is re-encoded after its EXIF orientation is applied, so GPS position, camera owner and comments never reach a report (a JPEG stays a JPEG at quality 90; everything else becomes PNG, keeping transparency; an animated GIF keeps its first frame). The pixel count is read from the header before the image is decoded. SVG is sanitised (`report_svg.sanitize_svg`); PDF and HTML keep it vector, Word and ODT get a PNG. | Agent (as planned) |
+| 7 | **Caps are deployment settings** (the user found 10 MB too small and asked for an environment setting with a 50 MB default): `REPORT_IMAGE_MAX_BYTES` (default 50 MB, never above `MAX_UPLOAD_BYTES`, so raise both and a proxy's `client_max_body_size` together), `REPORT_IMAGE_MAX_PIXELS` (default 100 million; a decoded picture takes about four bytes a pixel in a worker, so this, not file size, bounds memory; read from the header before decoding) and `REPORT_IMAGE_MAX_TOTAL_BYTES` (default 200 MB of embedded bytes per run, times the background multiplier); plus a fixed 200 pictures per run. A run over a run cap fails with the narrow-or-download message. The listing returns the size limit so the picker refuses an oversize file before sending it. **Decided by:** User for the setting and default, Agent for the pixel and total settings and their defaults. Nothing is ever fetched from a URL. A picture that is deleted, of another tier or unreadable is skipped with one run warning and never fails the report. | Agent |
+| 8 | **Upload is judged by its bytes**, never by the declared type or file name (`sniff_image`): PNG, JPEG, GIF, WebP or an SVG that survives the sanitiser. HTML, PDF and an SVG with a script, DOCTYPE or external reference are refused with a message. | Agent |
+| 9 | **API.** `GET/POST /orgs/{id}/report-images`, `DELETE /orgs/{id}/report-images/{file}` and the same under `/projects/{id}/report-images`; gated by the layout-manage permission of the tier, audited (id only). A project's list also shows the organisation's pictures, marked not owned: a project deletes only its own, the organisation's manager deletes organisation pictures. Each entry names the layouts whose current version uses it, and the delete confirmation shows them. Deleting a picture that is in use is allowed: the layouts skip it with a warning and cannot be saved until the block is fixed. | Agent |
+| 10 | **Bundles.** A layout's pictures travel with it in a `report_layout_images` section (the name `report_images` belongs to removed report content and is a legacy key the importers warn about) with the bytes in `files/`. An import copies each into the target's library (a project's for a project layout, the organisation's for an organisation layout) and rewrites the blocks' file ids; an organisation picture that already exists in the importing organisation is kept by reference; one whose bytes are missing is reported and its version is dropped like any invalid version. | Agent |
+| 11 | **Provenance** records the number of pictures drawn and their distinct file ids (capped), never bytes. | Agent (as planned) |
+| 12 | **Text view:** `@image "<file id>" [alt "…"] [decorative true\|false] [width n [cm\|mm\|percent]] [height n [cm\|mm]] [align …] [caption "…"] [caption_position …] [numbering auto\|always\|never]`; each clause is written only when the block has the key, so a tree round-trips exactly (a test). No toolbar snippet: a snippet cannot choose a file. | Agent |
+| 13 | **Not built, stated:** a link on a picture (an external address on an image is an unneeded phishing and tracking surface; revisit with a clear need), a table-column thumbnail, wrapping and layering (Phase 38), and the organisation's own "copy a project picture up" (Phase 42). **Not applicable:** a new project-scoped vocabulary table (none), human-readable codes and global search (a file is not an artefact type), users and groups parity, time and dates (no date or time is stored). | Agent |
+| 14 | **Hardening found on the way:** the HTTP 422 constant the new routes first used is deprecated (`HTTP_422_UNPROCESSABLE_CONTENT` is used); the default block template carries no empty `alt`, so a new image block shows the descriptive "describe the image" problem instead of "must not be empty". | Agent |
+| 16 | **Photograph details wherever a file is listed.** The user asked for EXIF to be visible when choosing photos, because photographs are rarely named usefully, and then for the project Files page and the organisation's file page to show it too. One endpoint, `GET /files/{id}/details` (`routers/files.py`, reader in `services/image_details.py`), returns pixel size as displayed, when it was taken, camera, the EXIF description and the recorded position. It is open to exactly the people who may download the file: the download's access rule was extracted into `_authorise_read` and both endpoints call it, so they cannot drift; an anonymous caller is refused even for a public logo. One shared component shows it (`FileDetailsToggle`: an info button opening a `Popover`, only for pictures, details read when first opened; `FileDetailsFacts` is the same list the image picker's side panel uses) on the picker, `FileAttachmentList` (requirement, action, module record and discussion attachments), the project Files page, the organisation's shared resources and comment attachments. The first version's report-image-specific details routes were removed in favour of this. **Time rule:** EXIF carries no time zone, so "taken" is the camera's own wall clock shown exactly as written, never converted or compared. The position is shown as numbers with no map link (no request to a third party). EXIF text is control-character-stripped, cut to 200 characters and rendered as text only. The stored original keeps its metadata (anyone who can read the file could already read it); it is still stripped from every report. The user confirmed showing GPS. | User (request), Agent (design) |
+| 15 | **Shared components.** The existing `ResourcePickerModal` is a multi-file attach list over an organisation's shared resources; the Image block needs a single pick from a thumbnail grid with upload, search and delete, so `ReportImageField` is a new component rather than a one-off copy of it. If a second single-pick image surface appears, extract the grid. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a layout author reaching another project's or organisation's file by id; a hostile upload (a script in an SVG, an HTML file named `.png`, a decompression bomb, an EXIF-laden photo); a caption or alternative text reaching markup; a bundle carrying a file id of another tenant; a project picture readable beyond the project. Verify: the visibility rule is a single function (`usable_by_layout`) used at save, validate, run and export, and tested for the organisation tier, own project, another project and another organisation; an upload is sniffed from bytes, an SVG goes through the existing sanitiser, a raster's pixel count is read from the header before decoding and every embed is re-encoded without metadata (tested with an EXIF owner and orientation); captions and alt text are escaped in HTML, XML and ReportLab markup (a test with markup in both); a bundle id is remapped through the importer's own mapping and a picture of the target organisation is kept only if it passes `usable_by_layout` there; `GET /files/{id}` for a project picture requires a role in that project and the personal-access-token project scope, and an organisation member with no role in the project is refused (a test). Remediate: none needed beyond item 14.
+
+### Verification
+
+Backend: 65 new tests (tree checks, text round trip and positioned errors, the sizing rule, metadata removal, upload sniffing, the pixel cap, all four renderers including captions above and below, alignment, decorative images and escaping, the library API, the tier rule at save, validate and run, download authorisation, deletion with warning, provenance, and project and organisation bundle round trips including missing bytes); the existing report, bundle and file suites (627 tests) pass apart from one invite test that needs the `mailhog` host. Storybook: `ReportImageField` stories (empty library, many images, upload added, too large, a server refusal, delete behind a confirmation, a missing picture, light and dark) and the block field story for the new kinds. Playwright: a new spec uploads a picture in the designer, sets alt text, width, alignment and caption, previews the numbered figure, saves, reloads, shows the text line, proves an organisation layout refuses a project picture, and deletes a picture in use; a second shows an organisation picture in a project's library. A LibreOffice check of the Word and ODT output was not repeated for pictures (the sizes are asserted from the files).
+
+
+## Custom reports Phase 37: Headers and footers (2026-10-30)
+
+A document layout can now print a **header** and a **footer** in the top and bottom margin of its pages: an invisible row of three cells (left, centre, right) holding text with placeholders and page numbers and an optional logo, set for the layout and, separately, for each page style. All four document formats draw them.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Precedence with the branding template.** Asked, the user chose that the layout overrides the template: the template's footer text (and its logo, as a header) is the default for a page style whose layout wrote none, and a page style's own header or footer replaces it. The designer's Print choice says so ("The report template's default"; "Same as the layout's" for a style). Module and requirement reports (no layout) keep the template exactly as before. | User |
+| 2 | **Odd and even.** Asked whether to support different left- and right-hand page content, the user chose **yes, mirror the slots**: when margins mirror, the left and right cells swap on left-hand pages (so a page number stays at the outer edge). It is not separate odd and even text. Word uses its odd/even header parts, ODT `style:header-left`, PDF swaps by page parity and HTML `:left` margin boxes. | User |
+| 3 | **An invisible three-column table.** The user asked for an easy way to have content left, middle and right. Each band is a borderless three-column table in every format (a real Word table, an ODF table, drawn cells in PDF, a CSS grid in HTML), each cell up to three lines, so content lines up without tab stops. | User (request), Agent (shape) |
+| 4 | **Tree.** Root and each `page_styles` entry take `header` and `footer`: `{left?, centre?, right?, logo?: {file, height, slot?}, first_page?: "same"\|"none"}`. Absent means inherit (a style takes the layout's, the layout takes the template's); `{}` means print nothing. No tree version bump. A cell is text of up to 300 characters on three lines; a logo is 0.3 to 5 cm high. | Agent |
+| 5 | **Placeholders.** Cells accept the report-wide placeholders, the new `{{layout_version}}`, `{{page}}`, `{{pages}}` and `{{var.name}}`; a record field is refused (a band prints on every page, outside any record). The plan's `{{run_date}}` is **not added**: `{{generated_on}}` already is the caller's own calendar day (`effective_today()`, from `X-Client-Date`), so a second name for it would only duplicate. The evaluator fills text placeholders; the page fields stay fields for the renderer. A value is plain text in a cell and never markup. A per-section page count is not offered: `{{pages}}` is the whole document's total in all four formats, and a section total is not possible in all of them. | Agent |
+| 6 | **Time rule.** `{{generated_on}}` is a past instant shown as the caller's own calendar date, never the server's UTC day (a test sends two client dates; the shape is "a person's calendar date"). Nothing is stored or compared. | Agent |
+| 7 | **First page.** `first_page: "none"` skips the band on the first page of the document and on the first page of each section in that page style (a cover page has no header); the return to the document's style continues the document and shows it. Page numbering carries on across sections. A template with a cover page makes its default header and footer skip the first page, as the Word and ODT footers always did. | Agent |
+| 8 | **Fit.** A band needs 0.5 cm to the page edge plus its tallest cell (3 lines are 1.2 cm, or the logo's height) and must fit inside the margin it sits in. Checked at save for the document and for every style with that style's own margin, including a style that inherits a document header it is too small for; the message says the margin needed. Not a clipped page. | Agent (as planned) |
+| 9 | **A logo is a library picture**, held as `logo.file`. `report_images.image_nodes` yields logos with the image blocks, so the tier rule (project layout: own project or organisation; organisation layout: organisation only), the save-time check, the "used by" list and the project and organisation bundles (with the id rewritten on import) treat it exactly as an Image block. A logo that cannot be used is left out with a run warning. Metadata is stripped as for every embedded picture. | Agent |
+| 10 | **Per format.** PDF draws the band after the body on a canvas that keeps pages open to the end, so `{{pages}}` is known in one pass. Word writes the band into each section's own header, first-page and (mirrored) even-page parts with `PAGE` and `NUMPAGES` fields; a style change unlinks the parts. ODT writes `style:header`, `-left` and `-first` on each master page; because ODF places a header inside the text area, the layout's top and bottom margin shrinks to the page-edge gap and the header takes the rest, so the body starts where the margin says; a **continuation** master page serves the return to the document's style (no first-page header). The cover page keeps a layout without bands. HTML shows the bands on screen with `n` and `N` for the numbers and prints through `@page` margin boxes, where the browser supports them (no logo; the first-page rule applies to the document's first page only). | Agent |
+| 11 | **Template defaults are applied in one place** (`report_running.apply_template_defaults`, from `custom_report_run.document_for`): a layout's document always has a footer, so a **layout's PDF now prints a page number** where it printed none before (Word and ODT already did). | Agent |
+| 12 | **Text view:** `@header` and `@footer` lines under `@layout` (the layout's) or under a `@pagestyle` line (that style's): `left "…" centre "…" right "…" logo "<id>" height n slot s first none`; `@header` alone is an empty header. Round-trips (a test); each mistake is a positioned error. **Designer:** a shared `RunningBandEditor` (Print choice, three cells, placeholder inserter, logo through the shared image picker, first-page choice, and how much margin it takes) used in the Page setup dialog for the layout and each style, and through a new `running_band` field kind in the Blocks view's Layout settings. | Agent |
+| 13 | **Not applicable:** no table or column and no migration (the tree is JSON), so no nested-project fallback and no organisation-defaults hide/restore; users and groups parity, codes and search do not apply. **Not done, stated:** a logo in the HTML print margin boxes; a Word check (LibreOffice only); a section-only page total; a fit check that measures text width (it counts lines). | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a band's text reaching markup in four formats (ReportLab, WordprocessingML, ODF XML, HTML and a CSS `content` string); a logo reaching another tenant's or project's file; a placeholder reading a record the viewer may not see; a header too large or too many (resource use). Verify: every cell is plain text escaped at one point per renderer (a hostile cell is tested in Word, HTML and the CSS string, where angle brackets, quotes, ampersands and backslashes are written as CSS escapes so `</style>` cannot end the style element); a cell cannot name a record field (refused at save), so a band reads no record; the logo goes through `usable_by_layout` at save, at run time (`load_image`) and at bundle export, and a bundle id is remapped by the importer; the cell, line, logo-height and fit limits bound the work; the page-style name is still never written into markup. Remediate: none needed.
+
+### Verification
+
+Backend: 48 new tests (tree structure, placeholders and fit including the inherited case, text round trip and positioned errors, the model and template defaults, PDF page text with totals, first-page and section rules and mirrored cells, Word parts and fields and odd/even headers, ODT master pages and layout margins, HTML bands and margin boxes with a hostile cell, the preview with the caller's date, the logo tier rule at save and a project bundle round trip) and the existing report suites. A sample report with an A3 landscape section and a mirrored variant opened in LibreOffice as Word and as ODT: the first page and the section's first page have no header, the return page has one, and the totals read "of 9". Storybook: stories for `RunningBandEditor` (own text, placeholder, nothing and inherit, first page, an over-tall logo, removing a logo, read-only), the page setup dialog (written lines, read lines) and the Blocks field kind. Playwright: a new designer spec sets a header and footer in the dialog, previews the bands, sees a too-tall header refused, saves and reads both back in the Blocks view.
+
+## Custom reports Phase 38: Image wrapping and layering (2026-10-30)
+
+An Image block now has a **placement**: *in line* (as before), *wrap* (the text that follows runs beside it), *behind* the text or *in front of* it. A layered picture is positioned in centimetres from an **anchor** (this block's place in the text, the corner of the page's text area, or the corner of the sheet). All four document formats draw all four placements.
+
+### Spike (the plan's first step)
+
+A scratch sample per format, each opened or rendered and looked at: ReportLab (`ImageAndFlowables`, a zero-size flowable that records where it was met, drawing on the open page), Word (`wp:anchor` with `wrapSquare` / `wrapNone`, `behindDoc`, `positionH/V` from paragraph, margin or page), ODT (`draw:frame` with `style:wrap` and `style:run-through`, anchored to a paragraph) and HTML (float and absolute positioning), the Word and ODT files opened in LibreOffice (the check image) and the PDF and HTML rendered.
+
+| Mode | PDF | Word | ODT | HTML |
+|---|---|---|---|---|
+| Square wrap, left and right | Works (`ImageAndFlowables`), splits across a page; the picture stays whole on the page it starts on | Works | Works | Works (float) |
+| Top and bottom | The existing in-line block | Same as in line | Same as in line | Same as in line |
+| Behind the text | Works, by writing the picture at the start of the page's content once the page is laid out | Works (`behindDoc`) | Works (`run-through: background`) | Works (negative z-index in an isolated body) |
+| In front of the text | Works (written after the content) | Works | Works | Works |
+| Page, margin and paragraph anchors | Works | Works | Works | **No pages:** a page or margin anchor is measured from where the block sits |
+| Inside a table cell | Not applicable: table cells hold text only | | | |
+
+No mode was ruled out, so there is no fallback path and no "unsupported" list apart from the HTML anchor row.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Modes offered:** in line, wrap, behind, in front. *Top and bottom* is not a fifth mode: it is the in-line block, which already gives the picture a line of its own in every format. Asked, the user chose this over a separate fifth mode. | User |
+| 2 | **Anchors:** paragraph, margin and page, with an across and a down offset in cm (negative allowed, within 100 cm). Asked, the user chose all three, not paragraph only. Margin follows a mirrored page's own inner margin in PDF and Word and ODT natively. | User |
+| 3 | **What a wrapped picture sits beside:** the text blocks that follow it (headings, paragraphs, notes, lists), for the picture's height, then the text runs across the full width; a table, an equation, another picture, a page break or a section ends the wrap in PDF. Word and ODT wrap any text that overlaps the picture, so a heading just after short text also sits beside it. Asked, the user chose this over "only the next paragraph", which Word and ODT cannot match. | User |
+| 4 | **Wrap side is the alignment.** A wrapped picture must be aligned left or right (the default, centre, is refused with a message saying so). A layered picture has no alignment; it is placed by its anchor and offsets. | Agent |
+| 5 | **No caption on a floating picture.** A caption belongs to a picture on a line of its own; a floating picture would need a text box in Word and ODT. `caption`, `caption_position` and `numbering` are refused with a path on a wrap, behind or in-front picture, so the designer never promises one a format cannot print. A settings-the-mode-ignores rule applies the other way too: `anchor`, `offset_x` and `offset_y` are refused on an in-line or wrapped picture. Nothing is silently dropped. | Agent |
+| 6 | **Fallbacks and warnings.** No format needs one (see the spike), so none is built; the only approximation is HTML's page and margin anchors, stated in the field's help text and the website. A picture that cannot be drawn is left out, as before, and never fails a run. The plan's run-stats warning for a fallback therefore has nothing to report and is not added. | Agent |
+| 7 | **No gap after a floating picture** (the evaluator emitted a 0.2 cm gap after every picture): the space belongs to the text it sits with. | Agent |
+| 8 | **Tree and text view.** `placement` (`inline`, default), `anchor` (`paragraph`, default), `offset_x`, `offset_y`; no tree version bump, no migration. The text view writes `placement behind anchor page x 2 y 3` on the `@image` line; absent keys stay absent. | Agent |
+| 9 | **Per format.** PDF: the wrapped picture and the text blocks after it become one `ImageAndFlowables`; a layered picture is a zero-size flowable that records its position, and `RunningCanvas` (which already keeps pages open for `{{pages}}`) draws behind-pictures at the start of the page's content and in-front pictures at its end. Word: python-docx writes the picture inline; the inline is rewritten as a `wp:anchor` (square wrap, column-relative left or right; or no wrap, with `behindDoc`, unique `relativeHeight` and `posOffset` in EMU), held in a one-point paragraph kept with the next. ODT: a frame in a one-point paragraph (`P_Float`) with a graphic style per side or layer and anchor. HTML: `float` for a wrap (a wrapped figure carries the width and a 60% cap, because a percentage cap on a picture inside a float resolves against nothing), and an absolutely positioned figure in a zero-height `div` for a layer. | Agent |
+| 10 | **Not applicable:** no table or column, so no nested-project fallback, hide/restore, bundle change (the picture is a library file reference, exactly as in Phase 36), users-and-groups parity, human code or search. The seed scripts have no image demo to extend. | Agent |
+| 11 | **Not done, stated:** Word itself was not run (LibreOffice only); a floating picture's collision with a table is not managed (keep one away from a table in Word and ODT); HTML print does not reproduce a page-anchored position. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: an offset or anchor value reaching XML or CSS (Word `posOffset`, ODT `svg:x`, an HTML `style` attribute); a picture reaching another tier's library; a picture's caption or alt text reaching markup; resource use from a huge or negative offset. Verify: the placement, anchor and offsets are validated at save (choice sets, a number within ±100 cm, never a boolean) and written from numbers (formatted with `round`, `:.3f` or `:g`), never from strings; the tier rule, size caps and metadata stripping of Phase 36 are unchanged because a placed picture takes the same path; the alt text and any text are escaped as before (a test puts markup in the alt of a layered picture). Remediate: none needed.
+
+### Verification
+
+Backend (one run of the report suites): tests for the tree rules (every mode valid with its own settings; fifteen refusals with their paths), the text view round trip and positioned errors, the published block schema, PDF (text beside a wrapped picture narrower than the page and full width after it, across a page break and ending at a table, a behind picture before the text and an in-front one after it in the content stream, page and margin and paragraph anchor positions in points, a picture that cannot be drawn), Word (anchor, wrap element, `behindDoc`, anchor frame and EMU offsets for each mode and anchor, z-order, keep-with-next, bad picture skipped), ODT (graphic style per side, layer and anchor, offsets, tiny paragraph) and HTML (float, layer, escaping), and a preview run through the API. The Word and ODT files from the real renderers were opened in LibreOffice and the PDF and HTML were rendered and looked at. Storybook: a story for the placement choice, anchor choice and a signed offset. Playwright: two new specs (a wrap needs a side, a layered picture's alignment problem and the in-line position problem, a behind picture with page offsets previewed, saved and read back in the text view).
+
+## Custom reports Phase 39: Record images (2026-10-30)
+
+A layout can now print the pictures attached to a record: a **Record images** block (document layouts, inside a *For each record* block) lists the files attached to that block's record, keeps those that match its rules and prints each as a figure, in all four document formats and the preview, through the Image block's own size, alignment, caption and numbering. A file's owner can mark a picture **confidential**, which keeps it out of every report.
+
+```mermaid
+flowchart LR
+    A[For each record] --> B[Record images block]
+    B --> C[Files attached to the record<br/>its own link table, never comments]
+    C --> D{confidential?}
+    D -->|yes| X[never read]
+    D -->|no| E[Rules: name patterns, types,<br/>size, order, count]
+    E --> F[Decode by content:<br/>raster or sanitised SVG]
+    F --> G[Figure with size and caption]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Generic extension point, no case per module.** `ModuleDefinition.record_attachments` maps one of the module's artefact types to a `RecordAttachmentProvider(link table, record column)`; core types register in `services/record_attachments_core.py`. A reportable type with none gives a reason in `no_record_attachments` (`get_record_attachment_providers`, `get_no_record_attachment_reasons`); `test_every_reportable_type_offers_its_attachments_or_says_why_not` fails otherwise. Offered: requirement, requirement action, strategy, future state, pain point, guiding principle, open question, risk, decision, persona, stakeholder need, compliance evidence. Not offered, with the reason in code: change request, stakeholder, engagement (their attachments may show or concern identifiable people), stakeholder group, research finding and the three other compliance types (no attachments of their own). Pain Points could already hold files, so nothing was added to them. | Agent |
+| 2 | **Confidential is one column on the file, not on each attachment table.** `file_assets.confidential` (default false, migration 0122) instead of the plan's column on about fourteen link tables: one column, one migration, one bundle field, and it works for every type, including ones added later. A confidential file is excluded in the query, so its bytes are never read. The user asked for the flag (default no) and for its effect to be stated where it is set; **otherwise rules only**, with no "include in reports" opt-in flag. | User (flag and its wording); Agent (a column on the file) |
+| 3 | **Where it is set and what it says.** The lock button beside a picture in the shared `FileAttachmentList` (so every page that lists attachments has it, with no per-page wiring) and the line under the list: "A picture marked confidential is left out of reports. It does not change who can open it." Offered on pictures only, because only pictures are ever printed; a PDF would get a switch that does nothing. The list calls the API itself and keeps the answer for its rows. | Agent |
+| 4 | **Who may change it.** `PATCH /files/{id}/confidential` reads the file under the download rule (`_authorise_read`, which now also returns the owning project), then allows the uploader, a project manager or administrator of the owning project (`can_manage_project_settings`, which includes organisation admins) or, for an organisation resource, an organisation admin. A reader who is none of these gets 403, so a mark cannot be removed by someone it was meant to bind. Audited as `file` `confidential_set` / `confidential_cleared` with the file id and new value only, never the name, and only when the value changes. | Agent |
+| 5 | **Authorisation is the record's.** The block reads only for a record the traversal already showed the caller, and reaches a file only through that record's own link table, so a picture prints exactly when the caller could open it from the record's page. It does not use the shared-library rule the Image block uses (that rule stops a report on one project embedding another project's attachment; here the owner is the record). Comment-thread files are not record attachments. | Agent |
+| 6 | **Rules.** `names` (up to 10 patterns of up to 200 characters, `*` and `?` only, case-insensitive, matched against the whole file name, at most 4 `*`), `types` (extensions from png, jpg, jpeg, gif, webp, svg), `max_count` (1 to 20, default 5), `order` (`name`, or `uploaded` oldest first), `max_size_mb` (0.1 to 50), `caption_source` (`file_name`, `text`, `none`; a file has no description of its own), `empty_text`, and the Image block's size and alignment. Placement is *in line* or *wrap* only: a picture per record layered behind or over the text has no meaning (and wrap needs caption source none, as a wrapped picture has no caption). | Agent |
+| 7 | **No regular expressions, a linear matcher.** An author's pattern runs over every attachment, so it is matched by a two-pointer wildcard walk (pattern length times name length, one backtrack point) with the star cap; a hostile pattern cannot slow a run. | Agent (plan) |
+| 8 | **A pattern may use the record's values; they are always literal.** `{{rec.code}}-*` picks the photo named after each record. The pattern is split at its wildcards and only the literal stretches are filled, so a record titled `*` or `../` matches only itself and can never add a wildcard or a path. The one placeholder resolver the text blocks use fills it, the syntax a file name template shares (Custom reports Phase 40). | User (variables in the rule); Agent (the shared resolver) |
+| 9 | **Cheap tests first, bytes last, content decides.** Name, extension, recorded size and order narrow the candidates from the database row; only the survivors are read, in order, until the count is met. A file is a picture because its *bytes* decode as PNG, JPEG, GIF, WebP or sanitised SVG, never its claimed type or extension, so a text file named `site-fake.png` is skipped with a run warning and does not use up a place. Raster metadata (EXIF, GPS) is stripped as in the Image block. | Agent |
+| 10 | **Caps and the async path.** Record pictures count toward the same per-run picture and byte caps as library pictures (`MAX_REPORT_IMAGES`, `report_image_max_total_bytes`, multiplied for a background run); a run that exceeds them stops with the existing "narrow it, or download it as a file prepared in the background" message. One query per `each` loads the attachments of all its records, not one per record. | Agent |
+| 11 | **Provenance.** The run's stats record `record_images` (how many were printed) and `record_images_digest` (a SHA-256 of the sorted file ids), never bytes or names. | Agent (plan) |
+| 12 | **Bundles.** `confidential` travels with an attachment in the project bundle (core requirement files and every module's file entries) through `import_bundled_file(confidential=...)`; a bundle without it imports as not confidential. The layout carries only rules, so no file ids need rewriting. | Agent |
+| 13 | **Designer and text view.** A new field kind `text_list` (one entry per line, shared `TextListField`) edits the name and type lists; the block's other fields use the existing kinds. The text view writes `@record_images names "a", "b" types png, jpg max_count 3 ...`, absent keys staying absent. | Agent |
+| 14 | **Not done, stated.** The thumbnail-in-a-table-column form: the plan asked the user whether it was wanted, the user asked what it is (a small picture per row of a report table), and the block alone was built on the recommendation, so the thumbnail column became Phase 46 of the plan (photos column in tables, with a configurable size); a per-file "include in reports" opt-in (the user chose rules only); a record-images block for a group or a sheet; any change to who can see a confidential file. | Agent (thumbnail, to confirm); User (no opt-in flag) |
+| 15 | **Checklist items judged not applicable:** no new table (so no nested-project fallback, hide/restore or code), no new artefact type (no search provider or `record_tables`), no group-versus-user field, no time field, no MCP tool (a layout is already reachable through the existing layout tools). A new project-scoped column needing bundle and migration (the confidential mark) is covered by rows 2 and 12. The seed scripts carry no attachments to demonstrate. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a report printing a picture its owner meant to keep out (the confidential mark bypassed by a path that reads the file another way); a reader clearing someone else's mark; a pattern or a record's value acting as a wildcard, a regular expression or a path; a non-image file or a script-bearing SVG embedded because of its claimed type; a picture of a record the caller cannot see; a report on 5,000 records reading every file into memory; the mark leaking through the audit trail or a log. Verify: the confidential column is in the only query that lists a record's files, so there is no second path (`record_files`); the endpoint's allow-list is checked against a stranger (403), a member who did not upload it (403), an anonymous caller (401) and an unknown file (404); filled values are substituted only into literal stretches and tested with `*`, `?` and `../` values; type is decided from content and SVG goes through `sanitize_svg`; records come only from the traversal's own result; the caps are shared with library pictures and the matcher is bounded; the audit detail holds an id and a boolean. Remediate: nothing found open. One point recorded rather than fixed, a deliberate limit: a confidential file remains downloadable by whoever could always open it from the record, because the user asked that the mark affect reports only.
+
+### Verification
+
+Backend: `test_report_record_images.py` (tree rules with their paths, text view round trip and positioned errors, the matcher including hostile patterns and values, candidate selection, the registry rule, a run over Pain Points with name, type, count, order, size and code rules, captions and empty text, the confidential mark and who may set it, its audit events, the run's counts and digest, all four download formats, and a project bundle round trip of the mark) plus the existing file, layout, report, bundle and documentation suites. Frontend: stories for `TextListField`, the new field kind and the confidential control on `FileAttachmentList` (mark, clear, refused, badge), the type check and lint. End to end: `report-layout-record-images.spec.ts` (mark a photo confidential on the record's page, see the block's rules in the designer, preview and the PDF's embedded picture count for a name rule, the confidential exclusion and clearing the mark; passing, with the designer, image, file-details, project-files and attachment specs). Backend regression: the file, layout, report, bundle and documentation suites pass except `test_import_invites_a_member_with_no_existing_account`, which fails on the host's SMTP DNS lookup (the known host-pytest mailhog limitation, not a regression); the mypy ratchet reports no new errors.
+
+## Custom reports Phase 40: Default output file names (2026-10-30)
+
+A layout, a pack, a pack entry and the organisation can set a **file name template**, text with `{{placeholders}}`, that names a downloaded or stored report (`ACME-Quarterly review-2026-10-29.pdf`). A live example beside every field shows the name from sample values.
+
+```mermaid
+flowchart LR
+    T[Template] --> V{checked at save}
+    V -->|unknown name, record field,<br/>undeclared variable| X[refused with its path]
+    V -->|ok| F[Fill: each value cleaned and cut]
+    F --> C[Clean the whole, cap, device names]
+    C --> U{usable?}
+    U -->|yes| H[Stem + extension from the renderer]
+    U -->|no| N[Next source, then the built-in name]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Where it is stored.** `file_name` on the layout tree root (additive to schema 1, no version bump; it is in the versioned tree, so text view `@filename`, Blocks, API, MCP and bundles carry it with no further code), `file_name` on the pack definition and the existing `filename` of a pack entry, now a template. | Agent |
+| 2 | **Module reports get an organisation default.** The plan's default was layouts and packs only; the user chose an **organisation default pattern** for module reports. It is `organizations.report_file_name` (migration 0123; in the organisation bundle, dropped with a warning if invalid) and applies to every report that sets no name of its own: framework module reports, the requirements report, both compliance reports and the record-list report's document formats. It also applies to a layout or pack that sets none, so there is one rule rather than a second for layouts. List and table CSV exports are data exports, not reports, and keep their names. | User (organisation default); Agent (scope of "module reports") |
+| 3 | **No override at download time.** The name is what the author or organisation set; the trimmed download dialog gets no extra field. | User |
+| 4 | **Order.** Layout, pack zip and pack entry: its own template, then (entry only) its layout's, then (layout and zip) the organisation's, then the built-in name. An entry takes its layout's name rather than the organisation's, since the zip already carries the organisation's naming. | Agent |
+| 5 | **One name per concept: `generated_on`, not `run_date`.** The plan listed `{{run_date}}`; the document placeholders already have `{{generated_on}}` (the caller's calendar day), and a second spelling of the same value would drift. A name uses the same run facts as the text: `report_title`, `project_name`, `project_code` (empty in an organisation-wide run), `organisation`, `generated_on`, `layout_version`, `format`, `var.<name>`. The run records the caller's day when it starts (`LayoutRun.today`, `PackRun.today`), so a background job names its file with the day it was asked for. | Agent |
+| 6 | **A record field is refused, with the reason.** `{{req.code}}` is a checked problem at save ("a file has no current record"). The record-image name rule already read the document's placeholders and the per-record binding, so it needed no change; it now shares the documented syntax and is tested with `{{var.x}}` filled as a literal. | Agent |
+| 7 | **Safety.** One sanitiser (`clean_filename`, moved to `services/report_file_names.py`): accents folded (`Café` becomes `Cafe`, where it was `Caf-`), anything outside `A-Za-z0-9 ._-` becomes a dash, `..` and repeated dashes collapse, leading and trailing dots, spaces and dashes go, Windows device names (`CON`, `NUL.txt`) are prefixed with `_`, each substituted value is cut to 40 characters (so a long list cannot crowd the name out; a longer project name is shortened in the file name, not elsewhere) and the whole to 100. The extension is never from the template. `file_response` now builds its header through `content_disposition` (RFC 5987, no CR, LF or quote can reach it), where it wrote the stem raw and relied on every caller. | Agent |
+| 8 | **Never fails a run.** An empty template or one that fills in to nothing falls through to the next source; an unknown name at render time is empty. It is refused only when it is saved. | Agent |
+| 9 | **Live example from the server.** `POST /report-file-names/example` takes the template, the place (layout, pack, entry, organisation), the declared variables and an extension and answers the example, the problems and the placeholders valid there, from fixed sample values. Stateless and data-free, so any signed-in person may call it; nothing is stored, audited or logged. The shared `FileNameField` shows it, with an Insert list that appends a placeholder (no caret handling). | Agent |
+| 10 | **Checklist items judged not applicable:** no new table beyond one nullable column (no nested-project fallback, hide/restore, code or search), no new artefact type, no group-versus-user field, no new module point (the framework and core reports resolve the default through one helper, `org_default_stem`, so no module edit). Time: `generated_on` is a **person's calendar date** (the caller's `X-Client-Date`), tested with UTC+10 and UTC-8. Bundles: the layout and pack definitions carry the template; the organisation bundle carries `report_file_name` with a round-trip test. MCP: no tool changes (a layout reaches the field through the existing layout tools; downloaded files are named by the same function). | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a record value, variable or template writing a path (`../`) or an absolute name; a line break or quote injecting a header; a device name or reserved name that breaks a Windows save; an author's template reading a field the caller cannot see; the example endpoint becoming a way to read data or to probe; a name that reveals more than the report's own title; the organisation setting changed by someone who should not. Verify: a name is built only from fixed run facts (not from record fields) and cleaned twice; the hostile-value test covers separators, `..`, CR/LF, quotes, tabs, NUL, device names, percent-encodings and a 500-character value; `file_response` encodes through `content_disposition` and a test sends a quote and CR/LF; the example endpoint uses sample values only and takes the template as data; the organisation field is part of `advanced-settings`, which already requires an organisation administrator. Remediate: nothing found open. Recorded rather than fixed: the project name is a project-level fact that any holder of the report already sees in its heading, so it is not new information in a file name.
+
+### Verification
+
+Backend: `test_report_file_names.py` (fill, hostile values, device names, accents, the template check, the example, header injection, the layout key and `@filename` round trip and positioned errors, a layout run in four formats, `{{format}}`, the caller's day at UTC+10 and UTC-8, a variable in the name, a table layout's zip, the organisation default for a layout and for the requirements report and its settings route, a pack's zip and entries and its refused templates, the example endpoint, the record-image name rule's shared syntax) and an organisation bundle round trip; the existing layout, pack, run, framework, report, download and bundle suites. Frontend: stories for `FileNameField` and the changed pack editor, entries editor, block field and Org Admin stories; type check and lint. End to end: `report-file-names.spec.ts` (the pack editor's example, mistake, insert and saved names and the zip downloaded under them; the organisation default set, kept and applied to a built-in report).
+
+
+## Custom reports Phase 41: Copy reports between projects (2026-10-30)
+
+A project administrator copies layouts, packs, folders and module-report settings from one project to another project of the **same organisation**: tick them in Report setup (or use one row's menu), choose the target, preview, copy. The copy is the target project's own and independent of the source.
+
+```mermaid
+flowchart LR
+    S[Source setup list<br/>tick rows and folders] --> D[Dialog: target, name rule]
+    D -->|dry run| P[Plan: copy, rename, skip,<br/>exists, cannot carry + warnings]
+    P -->|copy| R[Route: both gates]
+    R --> B[Bundle entry per layout / pack<br/>latest version only]
+    B --> I[Bundle importer in the target<br/>validate, create, version 1]
+    I --> A[One audit event<br/>counts and ids]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **What is copied.** Layouts (the latest version only, as version 1 of the copy; the source keeps its history), packs (latest definition, with the saved sets as the source project sees them, overrides applied), the folders the source project added, and the project's own settings (folder, hide) of module reports. A layout or pack inherited from an ancestor or the organisation is copied as the target's own, editable copy. Favourites: only the caller's own, by adding the copies' keys to their stored list (another person's are never touched). | User (everything, latest version only); Agent (favourites carry by key) |
+| 2 | **One serialiser, not a second copier.** A layout or pack becomes its project-bundle entry (`report_layout_bundle.layout_entry`, `report_pack_bundle.pack_entry`, with `latest_only`) and is created by the bundle importer (`import_layout_entry`, `import_pack_entry`), so validation, the create path and a field added later are shared. The importers' private helpers became public for this and the importers now return the new row. No bundle change was needed: nothing new is stored. | User (via the plan); Agent |
+| 3 | **Never a silent replace.** A name the target project already owns is renamed `Name (copy)`, `Name (copy 2)`, ... or skipped, the caller's choice (rename is the default). There is no replace option. An existing folder or setting is left as it is. | User (never silent); Agent (no replace at all) |
+| 4 | **Gates: manage report layouts in both projects, one organisation.** Target through `require_permission(manage_project_report_layouts, server_admin_bypass=False)` (403). The source is held to the same permission: reading a layout's definition is already a manage action (a plain member can run a report but not read its tree), so the plan's "read the source" is read as that. A caller who may see the source but not manage its reports gets 403; one with no access to it, a project of another organisation or an unknown project gets the same 404 and learns nothing. Archived source or target: 409. | User (read source, manage target, same organisation); Agent ("read" means the layout read gate) |
+| 5 | **Preview then apply.** `dry_run` plans with no writes (names, conflicts, warnings are computed from reads only, so no picture bytes are stored); the apply recomputes the same plan, so the preview cannot disagree. The dialog discards a preview when the target or name rule changes. | User |
+| 6 | **Pictures.** An organisation picture stays a reference; a picture from a project library is copied into the target project's library, once however many copied layouts use it. A picture from an ancestor's library (an inherited layout) is copied too, since the source caller already sees it in that layout's output. Confidential flags are not set (library pictures have none). | User (project picture copied); Agent (ancestor case) |
+| 7 | **Packs follow the layouts they name.** An entry naming a copied layout is re-pointed at the copy's (possibly renamed) name; one naming a project-owned layout that is not part of the copy is reported ("left out") since the target may have no layout of that name; an entry naming a module report whose module is off in the target is reported. | User (copied with it or reported); Agent (re-pointing) |
+| 8 | **Warnings, not refusals, for what may not carry.** A layout using report parts of a module that is off in the target, a variable default that is not among the target's current options, a copy that shadows an inherited report of the same name, pictures copied. They are kept as written; the layout's own checked-problem list shows the rest at save. Conditions that name a custom field, component, category or stage by literal value are kept as written without a warning: the report cannot know the target's vocabulary without running, and a mismatch matches nothing rather than leaking anything. | User (kept with a warning); Agent (only variable defaults are checked) |
+| 9 | **Nested projects.** Copying into a child makes the copy the child's own; it shadows an inherited report of the same name (and the preview says so), as any project's own layout does. No new project-scoped definition table, so there is no fallback to decide. | Agent |
+| 10 | **Selecting in the list.** The shared `FolderTreeList` gained optional tick boxes (`checks`: a folder's box covers what is in it, with the mixed state), used by a "Copy to another project…" mode; a row's menu copies that one report. A module report the project has not set up itself has nothing to copy and cannot be ticked. An organisation list has no cross-project copy (it is already shared with every project). The result view links to the target's Report setup (the toast carries text only). | Agent |
+| 11 | **Checklist items judged not applicable:** no new table or column (no bundle change, code, search, tags, nested-project fallback or hide/restore), no group-versus-user field, no new module point. Time: copies carry no dates of their own. Seeds: a copy is an action over existing data, so neither seed script needs a field. MCP: `copy_reports` (write mode, defaults to a dry run) and the skill are updated. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a copy as a way to read a source the caller cannot open (a layout's definition, its pictures, its pack sets); moving data into a project whose members should not see it (a project picture, an ancestor's picture); crossing organisations; a server administrator reaching customer content; a viewer copying a definition they could only run; a copy replacing or shadowing the target's own work; record content or layout text leaking through the audit event or a log; an over-large or hostile request. Verify: both gates run on the server in the route (the source after the target, 404 for no access or another organisation, 403 for no manage right, no server-administrator bypass); the service re-checks one organisation; each selected item must be reachable and unhidden in the source or the whole request is refused with nothing written (a 404 that names no other project's content); imports go through the normal create path (tree re-validated, picture visibility rule re-applied); picture files are read only for pictures the layout's owner may use and are re-uploaded under the target's own organisation and project; there is no replace; the audit event holds counts, the source id and the name rule, never names or text (tested); lists are capped at 100 per kind; MCP is write-gated with the same RBAC. Remediate: nothing found open. Recorded rather than fixed: a project manager of both projects can place a project's pictures in the other project's library, which is the point of the feature and needs the manage right in both.
+
+### Verification
+
+Backend: `test_report_copy.py` (latest version as version 1, independent of the source; an inherited layout as the project's own; a pack with its sets following a renamed layout; a pack naming a layout left behind; folders and placements, with existing ones left alone; a placement the source does not hold refused and a folder it did not add ignored; favourites carried; rename each time, skip and never replace; the dry run writing nothing; shadowing; a child project; project pictures copied once and organisation pictures kept by reference; the target and source gates (404, 403), another organisation and an unknown project, an unreachable or hidden layout, the same project, too many items, archived projects; the targets list; the audit event without names; the bundle round trip of the copies), the existing layout, pack, placement and folder suites after the importers were made public, the mypy ratchet. MCP: `test_skill.py` and `test_server.py` after the tool and the regenerated reference. Frontend: stories for `ReportCopyDialog`, the setup panel's copy mode and `FolderTreeList`'s tick boxes; type check and lint; the spacing-token check (a leftover value in `FileNameField` was fixed). End to end: `report-copy-between-projects.spec.ts` (tick, preview, rename on a taken name, copy, link to the target, originals untouched; one report from its menu with skip; nowhere to copy to).
+
+
+## Custom reports Phase 42: Duplicate a report (2026-10-30)
+
+A person who manages report layouts duplicates one layout or pack, or starts a layout from a built-in starter, as an editable basis for a new report. The copy is the latest version as version 1, independent of the source and always editable.
+
+```mermaid
+flowchart LR
+    R[Row menu, designer,<br/>pack editor] --> D[Duplicate dialog]
+    N[New, New from a starter] --> D
+    D -->|dry run, debounced| P[Plan: name, shadows,<br/>folder, warnings, blocked pictures]
+    P -->|Create copy| S[Route: gates]
+    S --> B[Bundle entry, latest only]
+    B --> I[Bundle importer: validate, create, version 1]
+    I --> A[One audit event: ids and tier]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Packs are duplicated too, with a server routine,** not only the old client-side "Make a copy". A pack copies its definition with no saved sets (they belong to the pack they were saved against); its entries still name the same layouts, resolved by name where the copy lands, and the plan warns for a layout name or a module report that is not there. | User (asked) |
+| 2 | **Built-in starters are a source of their own** (`New from a starter…` in Report setup, `kind: starter`), independent of the organisation's seeded copy, which is an ordinary layout that can be edited or deleted. The dialog picks the starter, the server builds the tree from `report_starters`. A starter keeps its own name when free, else `(copy)`. | User (asked) |
+| 3 | **One endpoint, not one per kind:** `POST /projects/{id}/report-duplicate` and `POST /orgs/{id}/report-duplicate` take `kind: layout \| pack \| starter`, a source id or starter key, `target: project \| organization`, an optional `name` and `dry_run`; `GET .../starters` lists the starters. (The plan sketched `.../report-layouts/{id}/copy`; a layout-only route would have needed a second one for packs and a third for starters.) | Agent |
+| 4 | **One serialiser again.** The source becomes its bundle entry (`layout_entry` / `pack_entry`, latest only, sets cleared) and the bundle importer creates it, as the cross-project copy does, so validation, the create path and a later field are shared. The Phase 41 warning helper became public (`report_copy.layout_warnings`, now taking a tree). The client-side `copyReportLayout` is gone. | Agent |
+| 5 | **Gates.** Manage report layouts where the copy lands, through `manage_project_report_layouts` (project) or `manage_org_report_layouts` (organisation page); a copy **up** from a project also needs the organisation permission (403, checked in the route, no server-administrator bypass anywhere). Reading a definition is itself a manage action, so there is no read-only duplicate. A source the scope cannot reach, or in another organisation, is 404. An archived project is 409. | Agent (per the plan) |
+| 6 | **Sources a project can duplicate:** its own, an ancestor's, the organisation's, and a hidden inherited one (a manager sees hidden rows in the list, so the action is there; the cross-project copy refuses hidden ones because it copies "what the source sees"). On an organisation page only the organisation's own. | Agent |
+| 7 | **Names.** Suggested `<name> (copy)`, `(copy 2)` ... free among the destination's own reports and what the project inherits; a name the destination owns is refused (409; the dialog shows it before saving); a name that matches only an inherited report is allowed with a shadow warning, as any project report may shadow one. | Agent (per the plan) |
+| 8 | **Pictures.** An organisation picture stays a reference. A picture the destination project can already use (its own, in the same project) is reused, not copied again. A parent project's picture, duplicated into a child, is copied into the child's library. **A copy up with any project picture is refused (409, the plan lists the filenames)**: publishing a project's picture to every member of the organisation is the person's decision. | Agent (refuse; the plan's suggested default) |
+| 9 | **Folder.** The copy is filed in the source's effective folder (a project's placement counted) when the destination offers it, else at the top level with a warning. | Agent |
+| 10 | **Run chooser: no Duplicate (deviation from the plan, flagged).** The plan listed "the catalogue entry of a layout the caller can read". The chooser is a run picker open to anyone who can run reports; it has no row actions beyond the favourite star and the catalogue carries no manage flag, so adding the action would mean either showing it to people who cannot use it or extending every catalogue entry for a rare path. Report setup lists every layout a manager can reach (hidden, inherited), so the action lives there, in the designer and in the pack editor. Revisit if the User wants it in the chooser. | Agent |
+| 11 | **Unsaved edits in the designer are not copied;** the dialog says so (a note) and copies the saved version, rather than interrupting with a save-or-copy prompt. | Agent |
+| 12 | **Checklist items judged not applicable:** no new table or column (no bundle, code, search, tags, nested-project fallback or hide/restore change, no module point), no group-versus-user field (the gate is the existing permission, which groups already satisfy), no seed-script field. Time: the copy carries no dates of its own. The `duplicate_report` MCP tool (write mode, defaults to a dry run) and the skill are updated. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a duplicate as a way to read a source the caller cannot open (a layout's tree, a pack's definition); moving a project's data to everyone in the organisation (a picture, a layout) through a copy up; crossing organisations; a viewer who can only run a report copying its definition; a copy replacing or shadowing existing work; a server administrator reaching customer content; layout text or names leaking through the audit event. Verify: the route runs the manage gate for the scope and the organisation gate for a copy up; the service resolves the source only through the scope (`reachable_layout`/`reachable_pack`, or an organisation-owned row of the caller's organisation), so another organisation's or an unreachable id is the same 404 and a probe learns nothing; a project picture refuses a copy up in the service, so a hand-made request cannot bypass the dialog; a taken name is refused before anything is written and the importer creates through the layout's own create path (tree validation, image check); the audit event holds ids and the tier, never a name or tree. Remediate: none needed. All of it is pinned by `test_report_duplicate.py`.
+
+### Verification
+
+Backend: `test_report_duplicate.py` (a shared layout becomes the project's own editable latest version, independent both ways; variables and the default file name travel; a parent project's and a hidden layout can be duplicated; a starter, with or without the organisation's own copy, in a project and in the organisation; name suggestion, taken, shadow; copy up needing the organisation right, the picture refusal in the plan and the apply, an organisation picture kept; pictures reused in the same project and copied into a child's library; the organisation page; a pack without its sets, with the missing-layout warning on a copy up; the gates, another organisation, unknown and unreachable sources, archived; the audit event without names or text; the bundle). `test_report_copy.py` unchanged and passing. ruff and the mypy ratchet clean. MCP: `test_skill.py` and the regenerated skill reference. Frontend: `ReportDuplicateDialog` stories (suggestion and create, taken name, shadow, blocked pictures, refused copy up, starter choice, organisation page, unsaved note, cancel), the setup panel, designer and pack editor stories, and `report-duplicate.spec.ts` (shared layout to project, starter and taken name, copy up refused with a project picture); the designer spec's copy step now uses the dialog.
+
+
+## Custom reports: tidying the picture library (2026-10-30)
+
+The image library dialog gained an **Unused only** filter and a **Delete several…** mode (mark owned pictures, one confirmation), asked for by the User after the Phase 41 review. There is deliberately no "Delete all unused" button.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Bulk deletion by marking, not by a one-click purge.** The person chooses which pictures go; "Mark all shown" with the filter on is the quick path. | User |
+| 2 | **"Unused" means no saved version of any layout uses it.** The listing's `used_by` stays the current versions' layouts; a new `in_older_versions` flag is set for a picture nobody uses now but an older version embeds (text search of the stored trees, looked up only for pictures with no current user). The filter hides both; the card says "Only in older versions". Deleting such a picture is still allowed. | Agent |
+| 3 | **No new endpoint.** Bulk delete is the existing per-picture delete called in turn (each audited as before); a failure does not stop the rest and the toast says how many went. Marking is limited to pictures the library owns, as single delete is. Marking a picture in use is allowed; the confirmation says how many are. | Agent |
+| 4 | **Not covered:** record-image rules read attachments, not the library, and a pack embeds no pictures, so neither affects "unused". Other file areas (attachments, shared resources) have no unused view; not part of this change. | Agent |
+
+Security: the same manage-layouts permission and own-library rule as single delete apply on every call; `in_older_versions` is derived from layouts in the caller's own organisation only and reveals no layout names.
+
+Verification: backend `test_report_images.py` (in use now, only older versions, never used); stories for the filter, the empty filter, bulk delete, the in-use count in the confirmation and un-owned pictures; end to end `report-layout-images.spec.ts` (filter, mark all, delete, the used picture stays).
+
+
+## Custom reports Phase 43: Report snippets, model and apply service (2026-10-30)
+
+A snippet is a named fragment of a document layout that the designer inserts by copying its blocks. This change builds the model, the generic extension point, the apply service, the built-in set, the API and the MCP tools. The designer's insert control is the next change; saving a snippet an author wrote is the one after.
+
+```mermaid
+flowchart LR
+    S[Snippet registry:<br/>core set + ModuleDefinition.report_snippets] --> V[visible_snippets for the scope]
+    V --> Ap[apply_snippet: values, root, insert, validate]
+    Ap -->|only the snippet's own problems refuse| O[New tree + changes, or reasons]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Logo, top right: an anchored image in front of the text** (page anchor), not a header logo on a Cover style and not an inline right-aligned picture. It works wherever inserted, composes with the Cover page snippet and is true in PDF, Word and OpenDocument text; the HTML preview measures from the block, so HTML is not listed for it. The apply step sizes it to fit above the text (at most 4 cm wide, at most 1.6 cm tall and inside the top margin) and sets the offsets from the layout's paper, orientation and right margin; the position is fixed at insert time and a later paper change needs a nudge (said in the description). | User (asked) |
+| 2 | **The built-in set is the six in the phase title:** Cover page, Logo top right, Document control, Record images, Landscape table section, Approvals. Figure with caption and the "none recorded" line are one declarative entry each if wanted. | User (asked) |
+| 3 | **Document control and Approvals are lists with fill-in lines, not tables.** A `table` block needs a record source and there is no block for a table of fixed words, so a table would need a new block; a list prints the same in every format. Revisit with a static table block. | Agent |
+| 4 | **Parameters fill declared paths** (`nodes[0].file`), not `${name}` tokens, so a fragment is always a valid tree. A picture and a record type are never defaulted; an empty one is refused. | Agent (per the plan) |
+| 5 | **Generic extension point:** `ModuleDefinition.report_snippets` and `get_report_snippets()` (core set in `services/report_snippets_core.py`), the pattern starters use. A module's snippet is offered only where that module is on. `ReportSnippet.layout_aware` is a hook for built-in snippets that must read the layout (the logo); author-saved snippets will have none. | Agent |
+| 6 | **Apply stores nothing and logs nothing**, like the validate endpoint: no audit event, no version, no parameter value in a log. The draft is the designer's. | Agent (per the plan) |
+| 7 | **Only the snippet's own problems refuse it.** A draft is often mid-edit (a freshly added block fails until filled in), so a problem elsewhere in the layout is counted in `problems_elsewhere`, while a problem inside the inserted blocks or added page styles, or one the insertion causes (block limit, page-style limit, a section inside a section), refuses it with its path. Errors after the insertion point are compared with the layout's own errors with their paths shifted back. | Agent |
+| 8 | **Root additions reuse, rename or refuse:** an identical page style is reused, a different one with the same name is added as `Name 2` and the inserted sections follow, a clashing variable is refused (text that reads it cannot be rewritten safely). | Agent (per the plan) |
+| 9 | **Target is a list of blocks plus an index** (`nodes`, `nodes[2].children`, `nodes[2].else_children`), the same list-and-index the Add block control uses; the path is parsed against a fixed vocabulary, so it cannot address anything but a list of blocks. | Agent |
+| 10 | **API:** `GET .../report-layouts/snippets` and `POST .../report-layouts/snippets/{key}/apply` at both tiers, gated by the layout-management permission with no server-administrator bypass, placed before `/{layout_id}`. MCP: `list_report_snippets` and `apply_report_snippet`, read-and-compute (not write-gated); skill and reference updated. | Agent |
+| 11 | **Checklist items judged not applicable:** no new table or column, so no bundle, code, search, tags, nested-project fallback, hide/restore, seed-script or migration change (author-saved snippets, the next-but-one change, add the table and carry these decisions); no person field; no date or time. The docs website is unchanged: nothing a reader of it can reach exists until the designer's insert control is built. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a snippet as a way to embed a picture the layout's owner may not use (a project picture in an organisation layout); a hand-made request addressing something other than a list of blocks; a parameter value landing in a field it was not declared for or injecting markup; a large tree or many insertions exhausting limits; a record type the scope cannot report; a module's snippet offered where the module is off; the draft tree or parameter text appearing in logs or audit; a server administrator reaching customer content. Verify: the picture is checked at apply time against the layout owner's library (the parameter check and the whole-tree image check), naming the file; the target path is tokenised against `nodes` / `children` / `else_children` and must resolve to a list; values are set only at paths the snippet declared and the result is validated whole by the layout validator (no raw HTML, no unknown block); the block and page-style limits are enforced on the result; record types come from the scope's own catalogue; module snippets are filtered by the module's state for the organisation or project; the route stores and audits nothing and logs no body; both routes use the manage gate without bypass. Remediate: none needed. Pinned by `test_report_snippets.py`.
+
+### Verification
+
+Backend: `test_report_snippets.py` (the six built-ins, unique keys and real targets; each applies to an empty layout and to one that already has it, validates and round-trips through the text view; the cover page adds then reuses its page style; a different same-named style is kept and the section follows the new name; the page-style limit; a cover inside a section refused; the logo sized and placed from the page, following paper and margins, never given a placeholder; a project picture refused in an organisation layout naming the file and accepted in the project's; a missing or unknown picture; record type outside the scope; text defaults and length; unknown parameter; the target index and container, bad targets, wrong family; a draft with other problems takes a snippet and counts them; the block limit; nothing stored or audited; 404, 403 and unauthenticated; the project scope). ruff and the mypy ratchet clean. MCP: `test_skill.py` and `test_mcp_skill_reference.py` with the regenerated reference.
+
+## Custom reports Phase 44: Insert snippet in the Blocks and Text views (2026-10-30)
+
+The designer now inserts the report snippets built in the previous change, from both views, through one dialog.
+
+```mermaid
+flowchart LR
+    B[Blocks: Insert snippet] --> P[Snippet dialog:<br/>search, category, outline, parameters]
+    T[Text: Insert snippet<br/>text read as a layout first] --> P
+    P -->|POST snippets/key/apply| S[Server builds and validates the tree]
+    S -->|Blocks: root changes + blocks in one undo group| BV[Workspace]
+    S -->|Text: format tree, replace text| TV[Editor + Undo insertion]
+    BV --> N[Notice: what changed]
+    TV --> N
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **One dialog, one apply, two renderers.** `ReportSnippetPicker` asks the server (`ReportLayoutApi.snippets` / `applySnippet`) and hands the result to the view; neither view holds snippet or tree rules, so a snippet gives the same tree from either. The server's text round trip is pinned by `test_report_snippets.py`. | Agent (per the plan) |
+| 2 | **Blocks: the root changes are taken as returned, the blocks are made in the workspace in one Blockly event group.** One Ctrl+Z removes every inserted block. A page style the snippet added is not undone with them (it is a layout setting, not a block) and the notice says so. The root keys are merged into the tree the workspace builds its next tree from before the blocks arrive, so the two cannot overwrite each other. | Agent |
+| 3 | **Text: insert at the end or the start of the layout, not at the caret.** The plan said "at the caret", but the server applies a snippet to a tree, and mapping a caret line to a top-level block is a heuristic (a text block spans lines) that would sometimes land a cover page inside a block's text. The draft is read with the parser first (it must read cleanly), the snippet applied, and the tree written back with the formatter; the text format has no comments, so nothing the author wrote is lost, only re-spaced. A caret choice can be added later by returning the formatted fragment from the server. | Agent |
+| 4 | **Text: an explicit Undo insertion button**, offered while the text is still exactly what the insertion wrote (a browser undo does not survive a programmatic replace). Any edit removes it. | Agent |
+| 5 | **Blocks places: the place Add block states, plus the start of the layout.** The logo and cover page belong at the start, which Add block's targets (after, inside, end) cannot reach without selecting the first block. Add block itself is unchanged. An empty layout offers one place (start and end are the same). | Agent |
+| 6 | **The preview is an outline of the fragment's blocks** (block names with the start of their text), not a rendered sample: a sample would mean running a report on made-up data, and an outline is true for every snippet including a module's. The plan allowed this fallback. | Agent |
+| 7 | **Selecting a snippet and pressing Insert is one step even with no parameters**; nothing is inserted by a stray click. The plan's "inserts at once" is read as "no extra parameter step". | Agent |
+| 8 | **A snippet for the other layout family is shown disabled with the reason**, not hidden (plan 44 (d)). A refusal from the server is listed in the dialog, which stays open; the layout's own problems are not blamed on the snippet (the notice counts them). | Agent (per the plan) |
+| 9 | **Parameters use the shared field components** (`ReportImageField` for a picture, `LabeledSelect` for a record type, `TextField` for a text) with the server's `help` text and `required` marks; the picture comes from the layout's own library, so the tier rule is the server's. | Agent (per the plan) |
+| 10 | **The last category is remembered per person** in the `report_snippet_category` UI preference (the open bag `ui_preferences`); a remembered category the scope does not offer shows everything. | Agent (per the plan) |
+| 11 | **Out of scope, as planned:** offering snippets in the New layout dialog. **Checklist items judged not applicable:** no table, column, migration, bundle, code, search, tags, nested-project fallback, seed-script or MCP change (the MCP tools shipped with the service); no person field; no date or time. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: the client placing a snippet's picture where the layout's owner may not use it; the draft tree or parameter values reaching logs; a client building its own tree and skipping validation; the Text view overwriting the author's text with something that does not read back. Verify: the picture rule and every other check are the server's apply step (unchanged, covered by `test_report_snippets.py`; an e2e test pins that an organisation layout refuses a project picture); the client sends the tree to an endpoint that stores and logs nothing, and the returned tree is what the existing validate and save paths check again before anything is saved; the Text view only replaces text with the formatter's output for a tree the parser accepted, and keeps the old text for Undo. Remediate: none needed.
+
+### Verification
+
+Storybook: `ReportSnippetPicker` (search and category, a snippet with no parameters, a required picture from the library, a record type and an optional text, the wrong family disabled with the reason, a refusal shown with the dialog open, several places, the remembered category, none, a failed load, thirty snippets, a narrow dialog), `ReportSnippetNotice`, `ReportLayoutBlocks` (placed at the stated place, at the start, after the selected block, one undo removes the whole snippet, a root change travels with the blocks, no button when read-only) and `ReportLayoutDesigner` (text insertion, start, Undo, Undo gone after an edit, text with problems refused, Blocks notice with the Ctrl+Z hint, a shared layout offers none). Playwright `report-snippets.spec.ts` (Blocks cover page at the start, previewed and saved; logo from the library; Text insert, undo, start insert, save; refusals). The docs website's designer page describes Insert snippet.
+
+## Custom reports Phase 45: Author-saved report snippets (2026-10-30)
+
+An author keeps a block that took effort (a house-style heading, a risk table) as a snippet for a project or the organisation, inserts it into other layouts beside the built-in set, and a project can hide the ones it inherits.
+
+```mermaid
+flowchart LR
+    B[Blocks: select a block] --> S[Save as snippet dialog]
+    T[Text: caret or selection<br/>top-level blocks it touches] --> S
+    S -->|check: blocks, page styles, variables,<br/>or why not| API[report-snippets API]
+    S -->|save| API
+    API --> R[(report_snippets<br/>org or project)]
+    R --> V[visible_snippets: built-ins, modules, saved]
+    V --> P[Insert snippet dialog, MCP, apply service]
+    R --> M[Report setup: Report snippets<br/>edit, copy, delete, hide, restore]
+    R --> X[Project and organisation bundles]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Nested projects: additive visibility, like layouts and packs** (a project sees its own, its ancestors' and the organisation's snippets, de-duplicated by name with the nearest winning; hide and restore through `ProjectDefinitionSuppression`, kind `report_snippet`). The Action Types "own rows, else the nearest ancestor's" rule would hide every inherited snippet once a project saved one of its own. Checklist for a new project-scoped definition table answered. | User (asked) |
+| 2 | **Save as snippet is in both views.** Blocks: the selected block, saved with everything inside it, as a run of one in its own list (any depth). Text: the top-level blocks the caret or selection touches, from the line each block starts on that the server's parse now reports (`block_lines` on the text-parse response). Whole top-level blocks only, so what is saved is always something the server can store as written; a nested block is saved from the Blocks view. The draft must read cleanly first. | User (asked: both views); the Text rule Agent |
+| 3 | **A saved snippet has no parameters and no versions.** It is the blocks as saved; the author edits after inserting. Changing the blocks means saving a selection again (a new snippet, or delete and save), not a second editor. Details (name, description, category) are editable in place. | Agent (per the plan) |
+| 4 | **Page styles and variables the blocks use are carried automatically** (`root`): a section's `page_style` names, and a variable read as `{"var": name}` or `{{var.name}}`. The save dialog lists them before saving. At insert the existing reuse / rename / refuse rules apply. | Agent (per the plan) |
+| 5 | **The fragment is validated as a whole layout would be** (the tree validator over a minimal wrapping tree), so no unknown block, no raw HTML, and no reference to something defined outside the selection (an alias of an enclosing `each`) can be stored. The refusal gives the reason with the path. The same check runs on save, copy, bundle import and MCP create (`report_snippet_store.validate_fragment`). | Agent |
+| 6 | **Pictures obey the library rule at the tier.** A fragment naming a project's picture can be saved only at that project's level; at organisation level it is refused with the picture named, and a copy up is refused the same way. At insert the existing whole-tree image check still applies, so a snippet that reached an organisation layout some other way is refused there too. The image library's "used by" list now includes saved snippets ("<name> (snippet)"). | Agent (per the plan) |
+| 7 | **Key `saved-<id>`** is how an inserted saved snippet is addressed, so it cannot clash with a built-in or module key; `GET .../report-layouts/snippets` returns saved ones with `saved_id` and `origin`, and leaves out the ones a project hides. | Agent |
+| 8 | **Own routes under `report-snippets`** (`/orgs/{id}/…`, `/projects/{id}/…`): list, read, check, save, rename or re-describe, delete, copy, and at project level visibility and restore, plus `check-organization` and `organization` for saving a project draft at organisation level (which needs the organisation right). Gated by the layout-management permissions with no server-administrator bypass; no new permission. A snippet is configuration, not an artefact type (no `PREFIX-nnn`, not linkable, **not searchable**: a snippet is found through the insert dialog's own search, and it holds layout configuration, not records). | Agent |
+| 9 | **Management is a Report snippets section in Report setup** (a plain table, since snippets have no folders): edit details, make a copy, copy to the organisation, delete (type the name), hide or show an inherited one, and Add organisation defaults for the hidden ones, through the shared `RestoreOrgDefaultsButton`. Edit and save share one field group (`ReportSnippetFields`). | Agent (per the plan) |
+| 10 | **Copy uses the same store path as save** (`copy_snippet`), so the picture rule, the check and the name rules are shared. The default name is "<name> (copy)", then "(copy 2)". | Agent |
+| 11 | **Bundles:** `report_snippets` (+ `report_snippets_hidden` by name, `report_snippet_images`) in `project.json` and `org.json`. Import goes through the store (revalidated; one that fails is skipped with a warning), renames a taken name "(imported)" on a merge, rewrites picture ids through the same importer as layouts, and re-applies hides by name after the organisation's snippets exist. A bundle from before this change imports unchanged. Authors and times are not restored. | Agent (per the plan) |
+| 12 | **MCP:** `list_saved_report_snippets`, `get_saved_report_snippet`, `check_report_snippet` (read); `save_report_snippet`, `update_saved_report_snippet`, `delete_saved_report_snippet`, `set_saved_report_snippet_visibility`, `copy_saved_report_snippet` (write mode). Skill, reference and `docs/mcp-server.md` updated. | Agent (per the plan) |
+| 13 | **Audit events carry the tier, family and block count only** (`created`, `updated` with the changed field names, `deleted`, `hidden`, `restored`); never block or snippet text. | Agent |
+| 14 | **Checklist items judged not applicable:** no person field (a snippet has an author but no owner field to fill); no date or time; no `Save and activate` (no lifecycle); not an item type, so no code, tags, quick link, search, export or import list; no module boundary change (reports are core; a module's snippets still register through `ModuleDefinition.report_snippets`). `seed_demo_data.py` and `seed_e2e_dataset.py` each save one snippet. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a saved snippet as a way to give a layout a picture its owner may not use (a project picture saved or copied to the organisation, or planted at that tier by a bundle); an invalid or hostile fragment stored through the API, a bundle or MCP (unknown block, raw HTML, a field the registry does not know, a reference to something outside it); a snippet used to widen data access; one organisation reaching another's snippets by id; an inherited snippet changed or deleted from a child project; a person without the layout right listing, reading or saving; block text reaching logs or the audit trail; a deleted snippet leaving a tombstone or breaking layouts built from it; a bundle from an older install failing. Verify: the one `validate_fragment` check runs on every way in and the apply step re-checks the whole result (pinned by the tests below); a snippet holds blocks only and runs with the runner's permissions when a report runs, so it cannot widen what anyone reads; every id is looked up with the caller's organisation and tier (404 otherwise), an inherited snippet answers 403 to edit or delete and 404 to hide when it is the project's own; the routes use the manage gate without bypass and the organisation gate for the organisation tier; audit details are counts and field names; delete forgets every project's tombstone and layouts keep the copied blocks; the older-bundle import is tested. Remediate: none needed.
+
+### Verification
+
+Backend `test_report_snippet_store.py` (save and offer; a container saved whole; any list as a selection; selections outside the layout; a selection that needs something outside it; page styles and variables carried and inserted into a layout without them; family; names unique per owner ignoring case, details checked; project picture refused at organisation level and on copy up while an organisation picture copies down; a planted organisation row refused at insert; additive visibility with the nearest name winning; hide and restore; own versus inherited; delete forgetting tombstones; another organisation's 404; rename and delete leave built layouts unchanged; copy names; the manage right; audit without text; read with blocks; the image library's "used by"; project and organisation bundle round trips, a bad fragment skipped, a hide with nothing to hide, an older bundle, a merge that never overwrites; the text parse's block lines). Storybook: save dialog, fields, panel, selection helpers, the picker's saved badge, and the designer and blocks stories for Save as snippet. Playwright `report-saved-snippets.spec.ts`. MCP `test_skill.py` with the regenerated reference.
+
+## Custom reports Phase 46: image columns in tables, and the header-row switch (2026-10-30)
+
+A table (or sheet) column can show the pictures attached to each row's record, such as photos or diagrams, and a layout can turn off the repeating of its tables' heading rows.
+
+```mermaid
+flowchart LR
+    C["Column {images: rules}<br/>table or sheet block"] --> V["validate: type offers attachments,<br/>shared picture rules, size, arrangement"]
+    V --> E["Evaluate: one file query for all rows,<br/>rules pick files, bytes decide what is a picture"]
+    E -->|document table| IC["ImageCell: pictures sized against the cell"]
+    E -->|sheet| TX["Cell text: the file names"]
+    IC --> P["PDF: flowables, nested table per line"]
+    IC --> W["Word: pictures in the cell's paragraphs"]
+    IC --> O["ODT: frames in the cell"]
+    IC --> H["HTML: img in the td"]
+    R["Layout root: repeat_table_header"] --> Hd["PDF repeatRows, Word tblHeader,<br/>ODT header-rows, HTML thead"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **It is an "images" column, not a "photos" or "thumbnail" column.** What is attached may be a diagram or a screenshot. The tree key is `images`, the designer button is **Add images column**, the text line is `@images`. | User |
+| 2 | **No size limits of our own; the default is 90% of the column's width.** The size is the picture's own rule: a width as a percentage of the column (the default, 90, and the unit that survives a change of page size, orientation or column widths), or in cm or mm, and an optional height. Only a **physical** limit is applied: pictures in one cell are shrunk together, keeping their shapes, when the cell would be taller than the page's text height (a row that cannot fit on any page cannot be laid out by any renderer). That limit is not a design size cap and is said in the field help. The plan's 8 cm cap and 3 cm default are dropped. | User |
+| 3 | **Several pictures per cell: stacked or side by side (wrapping), chosen per column** (`arrange`). | User |
+| 4 | **A sheet takes the column too, as text.** A sheet (Excel, ODS, CSV) holds text, so its cell lists the matching file names (no picture is read from storage, so a mislabelled file can appear there that a document would leave out). The plan had refused the column in sheets. | User |
+| 5 | **The header-row switch is one setting of the layout** (`repeat_table_header`, default on), not a table property. Off prints a table's heading row only at its start. Document layouts only (a table layout has no pages, so it is a checked problem there). The text view writes `norepeatheader` (or an explicit `repeatheader`) on the `@layout` line; Page setup has the checkbox. The page-setup rewriter keeps the word, which it would otherwise have dropped. | User (per layout, not per table) |
+| 6 | **One rules model with the record-images block.** The file rules (name patterns with `*` and `?`, types, most per row, order, largest file) are validated by `_validate_picture_rules` for both, and files are chosen by the same `candidate_files` over the same one-batch attachment query, with the same confidential exclusion, authorisation (only records the traversal showed the caller) and bytes-decide-the-type check. A name pattern can read the row's own record as `{{row.field}}`. Most per row defaults to the block's 5. | Agent (per the plan) |
+| 7 | **Cell model:** `report_model.ImageCell(images, arrange, text)` joins a `Cell = str \| ImageCell` in `Table.rows`; `str(cell)` is the file names, so code that only reads text is unchanged. `Table.weights` (relative column widths; an image column weighs 3 against 1) gives an id beside it a narrow column in all four formats, and `Table.repeat_header` carries the switch. | Agent |
+| 8 | **One sizing rule for four renderers:** `report_image_layout.place_cell_pictures` sizes each picture as an Image block is sized, against the cell's inner width (column less 0.2 cm padding each side), lays out stacked or wrapped lines and applies the physical height limit. PDF draws flowables (a nested table per line of side-by-side pictures), Word puts pictures in the cell's paragraphs, ODT puts frames in the cell's paragraphs, HTML puts `<img>` in the `<td>` sized by CSS (a percentage is the browser's own share of the cell). A picture that cannot be drawn is skipped. | Agent |
+| 9 | **Caps:** pictures in cells count toward the run's existing picture caps (`MAX_REPORT_IMAGES`, the byte total, the background multiplier), so the same "narrow it or download in the background" message applies. The provenance row's `record_images` count includes them. | Agent (per the plan) |
+| 10 | **The designer draws the column's settings from the server** (`BlockCatalogue.image_column_fields`, like the layout fields), through the shared `ReportLayoutBlockField`, so help text, required marks and the unit labels need no per-column client code; the width unit reads "% of the column's width" there. | Agent |
+| 11 | **Checklist items judged not applicable:** no new table, column or migration (the tree is JSON; the confidential mark and the attachment providers exist), so no bundle change beyond the layout tree; no person field; no date or time. `seed_demo_data.py` and `seed_e2e_dataset.py` each gain a Pain Points layout with an images column. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a pictures column as a way to print files the caller could not open from the record (another record's files, another project's), a confidential file, or a file that is not a picture (a script, HTML, an SVG with active content); a hostile name pattern making a run slow; a name pattern value (`{{row.title}}`) injecting a wildcard or a path; a very large or very many pictures exhausting memory or output; a sheet cell listing a file name a person should not see; a picture too tall for any page breaking the whole report; the layout text or file names appearing in logs. Verify: files are reached only through the row record's own attachment table, for records the traversal showed the caller, and a confidential file is excluded in the query; the type comes from the bytes, an SVG is allow-listed and a raster is re-encoded without metadata; patterns are matched by the linear two-pointer matcher with a star cap, and a filled value is matched as plain text; the run caps count cell pictures; a sheet lists only the names of files attached to records the caller was shown and not marked confidential (names are the same metadata the record's own page shows); a cell is shrunk to the physical page limit, tested with a 900 px tall picture; nothing new is logged. Remediate: none needed.
+
+### Verification
+
+Backend `test_report_image_columns.py`: the tree (every setting valid, each bad setting naming its path, a type with no attachments naming the reason, a column that is both a field and images, a sheet's `from`), the text view round trip and its error lines, the sizing rule (a percent of the column, scaling with the column, no cap below the physical limit, stacked and wrapping lines, an unreadable picture skipped), a run over Pain Points (each row's own pictures, the 90% default and a chosen size, side by side, most per row, the row's own code in a pattern, a confidential file left out, one file query for all rows, a type that cannot hold attachments refused at save), the sheet's text fallback, every document format drawing the pictures, a 28-picture table over several pages, a picture taller than a page, and the header switch in all four formats. The PDF, Word and ODT output was also rendered (PDF with the ReportLab output viewed page by page; Word and ODT converted by LibreOffice, `lo-check:local`, and viewed). Excel and Word themselves were not run. Storybook: the columns editor with Add images column, settings, removal and read-only; the switch field (on unless set off); Page setup's checkbox, which keeps the word. Playwright `report-image-columns.spec.ts`.
+
+
+## Custom reports Phase 47a: typed spreadsheet cells (2026-10-30)
+
+A sheet's number, date and time-of-day fields are now stored in Excel and OpenDocument spreadsheets as real numbers and dates, so a spreadsheet can sort, filter and add them. They were text, by a deliberate rule (one injection-safe form for every format). The User approved typed cells on 2026-10-30 and asked for them as their own phase before the sheet-link phase.
+
+```mermaid
+flowchart LR
+    A["Field kind: number, date, instant"] --> B["typed_cell(text, value)"]
+    B -->|"finite, under 10^15, a date or instant"| C["DataCell(text, value)"]
+    B -->|"anything else"| D["text"]
+    C --> X["XLSX: number or date + format"]
+    C --> O["ODS: float or date value + data style"]
+    C --> V["CSV: its own text"]
+    D --> G["csv_safe guard, text cell"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Typed only by field kind.** A cell is typed only when the catalogue declares the field `number`, `date` or `instant` and the loaded value is a number, a date or a datetime. Text, enums, people, codes, tags and booleans (`Yes`/`No`) stay text; so does everything a user typed. The single decision point is `report_model.typed_cell`. | Agent |
+| 2 | **Guard rules.** A number that is not finite (`nan`, `inf`) or has 15 or more digits (Excel keeps 15) stays text, so the file is valid and nothing is silently rounded. Text is never converted to a number, so `=1+1` or `-7` typed by a person is still a guarded text cell. | Agent |
+| 3 | **Instants are UTC and have no zone in a spreadsheet.** An aware datetime is converted to UTC and stored naive; the display format ends in a literal `Z` (`yyyy-mm-dd hh:mm:ss"Z"`) so the zone is visible. Browsers still do any conversion to local time (the report is a past instant, per the time rules); a date is the plain calendar date. | Agent |
+| 4 | **CSV is unchanged apart from negative numbers.** A `DataCell` writes its own text and skips `csv_safe`, because its text comes from a typed value and cannot be a formula; a negative number is no longer written as `'-3`. Text still goes through `csv_safe`. | Agent |
+| 5 | **Cell model:** `report_model.DataCell(text, value)` and `SheetCell = str \| DataCell`; `Sheet.rows` holds `SheetCell`. `str(cell)` is the text, so the designer preview, column sizing and every producer that emits strings are unchanged. Phase 47 extends this type with a link target. | Agent |
+| 6 | **Not done:** typing cells in a document table (a document prints text), percentages and currency formats, an author choice of date format, booleans as TRUE/FALSE. | Agent |
+| 7 | **Checklist items judged not applicable:** no table, column or migration; bundles carry only the layout tree; no new field or form, so no help text, story or seed-script change; the time boundary is covered by the instant tests below (09:00 at UTC+10 and 23:00 at UTC-8 are stored as the UTC instant). | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a typed cell as a way round the formula guard (user text reaching a numeric or date cell, or a cell with a formula data type); a value that produces an invalid or lossy file (`nan`, `inf`, a very large integer, an aware datetime openpyxl refuses); XML injection through the new ODS attributes.
+Verify: only values loaded as a number, date or datetime are typed, and the typed text is made by `format_value` from that value, never from a string; text cells keep `data_type = "s"` and `csv_safe`; the ODS attributes are a float written from a number, or an ISO date from a `date`/`datetime`, never a string from a record. Non-finite and over-large numbers fall back to text (test). LibreOffice read the ODS and XLSX as numbers and dates (`sdval` in its HTML export), with `=1+1` and `-7` still text.
+Remediate: none needed after the checks above. Excel itself was not run.
+
+### Verification
+
+`test_report_render.py`: `typed_cell` for ints, floats, `Decimal`, dates, aware instants at UTC+10 and UTC-8, and the text fallbacks; XLSX stores numbers and dates with their formats and text stays `s` and guarded; ODS has float and date value types, the data styles and well-formed XML; CSV writes the typed text (`-3` stays `-3`, `-7` text is `'-7`); an aware instant reads back as UTC. `test_report_layout_eval.py`: a sheet over requirements types the review date and leaves the title and an empty date as text. The related report suites also passed.
+
+
+## Custom reports Phase 47: links between sheets, a Contents sheet and a linked-sheets snippet (2026-10-31)
+
+A table layout's sheet column can now open the row its record has on another sheet of the same workbook, a layout can start with a generated Contents sheet, and a built-in snippet inserts two linked sheets. Typed cells (numbers, dates, UTC times) came first, as their own change (the entry above).
+
+```mermaid
+flowchart LR
+    T["Sheet column: link {sheet}"] --> V["Validator: sheet exists, lists the column's record type"]
+    V --> E["Evaluator: first row of each root record per sheet"]
+    E --> R["resolve_sheet_links: CellLink(position, row)"]
+    R -->|"record not on the target sheet"| W["plain text + one warning"]
+    R --> X["XLSX hyperlink location"]
+    R --> O["ODS text:a #'Sheet'.A12"]
+    R --> C["CSV: text only"]
+    K["contents_sheet"] --> S["Contents sheet first; positions +1"]
+    F["Fan-out merge"] --> M["links moved by sheet name + each project's row block; Contents rebuilt"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Contents sheet: yes**, a layout option (`contents_sheet`, text `@layout table contents` / `nocontents`, a checkbox in the layout settings). One row per sheet: its name as a link to its heading row, and its row count (typed). A sheet of the author's called "Contents" is refused while it is on. | User |
+| 2 | **Starter: a snippet, not a starter.** Starters are document layouts built from module-contributed parts wrapped in `@if module`; a sheet cannot sit inside an `if` and a starter's family is fixed to document, so a one-sheet-per-module workbook starter is not possible without reworking starters. The plan's fallback was taken: a built-in table snippet, **Two linked sheets** (a sheet of one kind of record and a second whose rows show the record linked to them, as a link), in a new *Workbooks* category. A per-module workbook (requirements, pain points, decisions, personas) is built by inserting it for each pair, or by hand. | User (starter if possible, else snippet); Agent (the snippet's shape) |
+| 3 | **Several records in one cell: XLSX gets one row per linked record, ODS may link every item.** A spreadsheet cell holds one hyperlink in XLSX but several in ODS. **No column produces a cell with several records today** (a column reads one record; a join already gives each linked record its own row), so only a single link per cell exists and nothing is lost; the model (`CellLink` on a cell) would need a list of spans if a column that joins several records into one cell is ever added. The User's wish that each item in such a cell link is therefore met by the join layout in both formats and is not built as a multi-link cell. | User (option 2); Agent (no producer exists) |
+| 4 | **Internal only.** The target is a sheet and a row of the workbook, held by position so the renderer writes the name the tab really got; there is no external URL, no scheme to validate, and no link to the record in the app (not requested; a separate, riskier feature). A sheet name in an anchor is quoted and an apostrophe doubled (`'Owner''s list'!A3`, `#'Owner''s list'.A3`). | Agent |
+| 5 | **A column links by naming a sheet** (`link: {sheet}`), valid when that sheet's own source is the column's record type; the same sheet is allowed. The sheet may be written after the column, so the check runs once every sheet is known. A document table, an images column and a column over a type no sheet lists are refused with the path and the sheets on offer. | Agent |
+| 6 | **A record that is not on the target sheet** (filtered out by its conditions, hidden from the caller, cut by a cap or past the last row a spreadsheet holds, 1,048,576) leaves the cell as plain text; one warning per run counts them. A record on the target sheet twice opens its first row. | Agent |
+| 7 | **Fan-out runs.** An organisation run merges each project's sheets under a Project column; each link is moved to the same record's row in the merged target sheet (the target found by name, plus the rows the earlier projects contributed) and the Contents sheet is rebuilt over the merged sheets. | Agent |
+| 8 | **Designer.** The columns editor offers **Link to sheet** for a sheet column, listing only the layout's sheets that list the column's record type (a link to a sheet that was removed stays visible so the problem shows). The choice is not offered for a document table. The server draws nothing here; the text view reads `link "<sheet>"` after the heading. A column heading written as the bare word `link` must now be quoted. | Agent |
+| 9 | **Checklist items judged not applicable:** no table, column or migration (the tree is JSON and the bundles carry it); no person field; the time rules do not apply (links hold positions). The seed scripts hold no table layout, so they need no change. Excel itself was not run; LibreOffice (`lo-check:local`) was used for the earlier typed-cell check, and the XLSX and ODS anchors were read back from the XML and by openpyxl. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a link as a way to make a cell open something outside the workbook (a `file:`, `http:` or `javascript:` target built from a record value), a sheet name breaking out of the anchor (an apostrophe, a quote or markup in the name), a link used to reach a record the caller could not read, and unbounded work in the id-to-row map.
+Verify: the target is never text from a record or from the author's cell: it is a sheet position and a row number chosen by the evaluator, written as an internal location (XLSX `location`, never `r:id` or a URL; ODS `#'Name'.A12`); the sheet name comes from the renderer's own cleaned tab name, with `'` doubled and the attribute escaped (`xml_attr`); a name with `[ ] : * ? / \` is already refused at save. A link exists only for a record that is a root record of the target sheet, and that sheet's rows were loaded through the same authorisation as any other (a hidden record is never on it, so its cell stays text). The map holds `(type, id)` and a row number per root record and is bounded by the existing output cap. The cell text stays formula-guarded and is the cell's own, so a linked `=cmd` is still written as `'=cmd`.
+Remediate: none needed after the checks above.
+
+### Verification
+
+Backend: `test_report_layout_tree.py` (a link to a sheet of the type, written later, to itself, to a missing sheet naming the sheets, to a sheet of another type naming both, malformed links, a document table, the contents flag and its reserved name), `test_report_layout_text.py` (link and contents round trips, the document-table and missing-name errors), `test_report_layout_eval.py` (links to the right row, a record filtered out stays text with one warning, the same sheet and a repeated record, the Contents sheet and the +1 positions), `test_report_render.py` (XLSX locations including an apostrophe name and a tab renamed by cleaning, ODS references, an unknown target dropped, CSV text only and still guarded), `test_custom_report_run.py` (merged sheets with and without Contents), `test_report_snippets.py` (the table snippet and its refusal in a document). Storybook: the columns editor's link choice (only same-type sheets, No link removes it, a removed sheet stays visible, none without a matching sheet). Playwright `report-sheet-links.spec.ts`: a two-sheet workbook downloaded as XLSX and ODS (link locations read from the files, CSV plain), the Contents sheet, the designer's choices, a refused link and the text view.
+
+## Custom reports Phase 48: Templates & reports page: collapsed sections, one Configuration section, starters in the New menu (2026-10-31)
+
+The eighth review's first phase. Page behaviour and strings only, plus one read endpoint.
+
+| Choice | Decision | Decided by |
+|---|---|---|
+| Section state | Org Admin → Templates & reports opens with **Reports** (renamed from Report Setup) expanded and Report snippets, Configuration and Report templates collapsed (`defaultCollapsed`). A person's saved open/closed choice (`ui_preferences`) is kept, so an existing person sees the page as they left it; only a first visit gets the new default. | User (review), Agent (keeping saved state) |
+| Rename | `strings.admin.reportSetup` is "Reports" in the organisation page and the Project Admin nav item and heading; the website pages and the decisions that name the old label were updated, historic decisions-log entries keep the name they were written under. | User (review) |
+| Configuration | Report file names and Background reports are one **Configuration** section with one **Save configuration** button (both fields already travelled in one `saveAdvanced` call, so there is no new endpoint). Phase 49 adds the footer, cover page and chapters fields here. | User (review) |
+| Starters | The Add starter layouts button is gone. **Add missing starters** is an item of the New menu, shown only while a starter is missing. `GET /orgs/{id}/report-layouts/starters` returns `{missing: [names]}` (`report_starters.missing_starter_names`, the same case-insensitive name rule `add_starter_layouts` uses; manage-layouts permission). The plan said the starters endpoint already knew what was present; it only had a POST, so the read was added. A failed check hides the item rather than the list. | Agent |
+| Project page | A project has no starter action (starters are an organisation action), so the rule has nothing to hide there; the project Reports list is unchanged apart from the label. | Agent |
+
+### Found and fixed on the way
+
+- **A pack's zip was downloaded under the pack's name, ignoring the file-name template.** The server names the zip by the pack's `file_name`, else the organisation default (`Content-Disposition`), but `ReportPackRunner` always saved it as `<pack name>.zip`; the Playwright spec for it was failing. Two causes: the client never read the header, and a cross-origin browser cannot read `Content-Disposition` unless CORS exposes it. `api.postForFile` now returns a `File` named as the server named it (`dispositionFileName` reads `filename*` first), the runner falls back to the pack's name only when there is none, and `CORSMiddleware.expose_headers` lists `Content-Disposition` (`backend/tests/test_cors_expose_headers.py`). Same class of defect as the `X-Total-Unfiltered-Count` entry: pytest's TestClient and curl bypass CORS, only the browser spec sees it.
+- `report-starter-layouts.spec.ts` still looked for a "Report layouts" table that the setup list replaced; it now uses the folder list.
+
+### Verification
+
+Backend: `test_report_starters.py` (missing list empty, after a delete, after adding again; permission 403), `test_cors_expose_headers.py`. Storybook: `ReportSetupPanel` (organisation without a missing starter has no item; with one the item adds it and goes; a project never offers it), `OrgAdminPage` (only Reports open; one Save sends the retention and file name), `ProjectAdminPage` (label). Playwright: new `org-templates-and-reports-page.spec.ts` (default section state, one Save kept across a reload), `report-starter-layouts.spec.ts` (item absent, adds a deleted starter, absent again), `report-file-names.spec.ts` (pack zip name), the other report specs renamed to the new label. No authentication, authorisation, secret or retention behaviour changed (the new endpoint reuses the existing manage gate); the website's screenshots wait for the docs phase.
+
+## Custom reports Phase 49: one report look per organisation; layouts read it (2026-10-31)
+
+Report templates are gone. An organisation has one report look (`Organization.report_accent_color_hex`, `report_include_logo`, `report_footer_text`, `report_include_cover_page`, `report_chapters_per_component`); a built-in report applies it, and a custom layout prints any of it only where it asks. See `docs/modules.md` §4ab for the mechanism.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| One look or several | One per organisation. "Different clients are different custom layouts." The template list, `report_templates`, a layout's template override, a pack's `template` name and every `report_template_id` parameter (REST, MCP, run records, bundles) are removed; an older client that still sends `report_template_id` is ignored, not refused. | User |
+| Where each setting lives | Report accent colour and Include logo on the Branding page (`PUT /branding`); default footer text, Include cover page and Chapter per component in the Configuration section (`PUT /advanced-settings`). A field a client does not send is left as it is (`model_fields_set` for the nullable ones), because both endpoints already replace the rest. | User, Agent (partial-update rule) |
+| A custom layout is never forced | The layout's document formats get the accent colour only (`layout_branding`) and a page-number footer where it wrote none. It reads the rest as `{{org.footer_text}}`, `if org.include_cover_page`, `org.include_logo`, `org.chapters_per_component`, `org.report_accent` and the `org_logo` image. Built-in reports (requirements report, module and record-list reports) apply the look. | User |
+| Separate report accent | Yes; unset follows the organisation's UI accent, then the platform's (`report_accent_hex`). | User |
+| Migration | Existing layouts keep their look: the default template (else the only one) becomes the organisation's look; each document layout whose effective template had footer text, a cover page or a logo is saved as a **new version** that reads the values (root footer `{{org.footer_text}}  ·  Page {{page}}`, header logo `org_logo`, a cover `if` block), unless it wrote its own header or footer. An organisation with no template keeps the plain look it had (logo off). Extra templates are dropped and counted in the migration log. | User (migrate), Agent (shape) |
+| `org` scope | A closed set owned by core, validated at save (`{{org.nope}}` is a problem), reserved as a block name like `var`, text or boolean only. Not a registry: these are organisation settings, not module data. | Agent |
+| Logo as an image source | `file: "org_logo"` on an `image` block or a header/footer logo. It is not a library picture, so `image_nodes` leaves it out and bundles, visibility and "used by" never see it. | Agent |
+| Chapters per component | The sparse-component heuristic (`default_chapters_per_component`) is removed: it only applied to an organisation with no template, and every organisation now has an explicit value (default on). A request's `chapters_per_component` still overrides. An organisation that had no template and relied on the heuristic now chapters every component until it switches the setting off. | Agent |
+| Bundles | `org.json` carries `report_look`. An older bundle's templates become the look of a new organisation (default, else only) with a notice per dropped extra; a merge never touches the target's look. A layout bundle's `report_template` and a pack definition's `template` are ignored with a notice; stored pack definitions lost the key and were re-hashed. | Agent |
+| Old migrations | `0003`, `0071` and `0119` now return early when `report_templates` does not exist, because a database built from the current models (the test database) no longer creates it. | Agent |
+
+### Not done in the migration (flagged)
+
+- The engine still prints a plain title above a cover: the old cover page replaced the title block, the migrated `if` cover adds the logo and title after it. Making a layout able to suppress the engine title is a separate change.
+- The designer's image and logo pickers do not yet offer "Organisation logo"; the Text view takes `logo "org_logo"` and the Blocks editor keeps a value it did not write.
+
+### Found and fixed on the way
+
+- A merge conflict of a module's own kind (a Compliance standard) was given the resolution `keep_existing` by the frontend, which the server refuses for that kind, and the panel never showed it. `defaultResolutions` now defaults every conflict to `skip` and `ImportConflictPanel` lists the non-project conflicts under "Other items" with skip or import-as-copy.
+
+### Verification
+
+Backend: new `test_report_look.py` (settings round trip and partial clients, permissions, the built-in report applying the look, a layout printing the footer only when it reads it, the cover and logo conditions, the logo image, validation of `org.*`, the text format, bundles, the migration's layout rewrite and pack strip against the real tables); the template tests in the report, record-list, framework, pack, run-job and org-merge suites were rewritten or removed. Storybook: `OrgAdminPage` (no templates section; Branding sets and clears the report accent and logo; Configuration saves the footer, cover and chapters), `ReportLayoutFormModal`, `ImportConflictPanel`. Playwright: `org-templates-and-reports-page.spec.ts` (Configuration and Branding persist), `project-admin-templates-and-reports.spec.ts`, `reports-dialog.spec.ts`. The SOC 2 policies are unaffected (no Restricted data, no authorisation change: the two endpoints keep their org-admin gate).
+
+## Custom reports Phase 50: the Folder field of a layout or pack form is a value that opens a move popover (2026-10-31)
+
+The layout and pack create/edit forms no longer carry the whole folder tree inline. `ReportFolderField` shows the folder as a button styled as a field (the path, or "No folder") and opens a `Popover` holding the unchanged `ReportFolderChooser`. Frontend only: no API, schema, migration or bundle change.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| What the form shows | The current folder only, labelled "Folder", with the field help (reworded: press it to move). Create and edit use the same field through the shared `ReportLayoutFields` / `ReportPackFields` groups. | User |
+| Packs | Changed too: the pack form had the identical inline chooser, and a second one-off copy is what the shared-component rule forbids. | Agent |
+| When the move is written | With the form's Save, as before (the chooser only edits form state); Cancel discards it. Add, Rename and Delete folder stay inside the chooser and apply at once, as before. | Agent |
+| When the popover closes | When a row is chosen (new `onPick`), not after adding, renaming or deleting a folder, so a person can add a folder and still choose another. | Agent |
+| Staying open behind a dialog | The delete confirmation is a separate modal, and a click in it is "outside" the popover, which would close the popover and unmount the chooser under the dialog. The chooser now reports `onConfirmChange`, and the field ignores a close while that dialog or a folder change is in flight. | Agent |
+| Move dialog | Keeps the chooser inline: it is a dialog whose only job is moving, so a popover inside it would add a click for nothing. | Agent |
+
+Verification: stories for `ReportFolderField` (value only, pick closes and sets, add keeps it open) and the layout and pack forms (move saved, Cancel discards, delete confirmation keeps the popover open, Save waits for a folder change); the Playwright folder spec now drives the popover. The SOC 2 policies are unaffected (UI only).
+
+## Custom reports Phase 51: report snippets are created and edited from the Report snippets section (2026-10-31)
+
+The Report snippets section (organisation Templates & reports, project Reports) gains **New snippet**, and **Edit** (formerly Edit details) now changes a snippet's blocks as well as its details. One dialog, `ReportSnippetEditorDialog`, serves both; it reuses the layout editors (`ReportLayoutBlocks`, the layout text parser) rather than a snippet-specific editor.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Editing surface | The shared Blocks and Text editors on a tree, with the server's `parseText`/`formatTree`/`validate` as in the designer. No per-panel editor. | User |
+| Editing existing blocks | Yes: an own snippet's blocks are editable, not only its details. | User |
+| Kind | Chosen first on create (document or table), disabled once the first block exists, fixed on edit. The empty tree is written by the server (`@layout <kind>`), never spelled out in the client. | Agent |
+| API | No new create endpoint: a new snippet is `save` with the whole tree selected (`nodes`, from 0, all). `PATCH .../report-snippets/{id}` gains an optional `tree`; its blocks replace the snippet's through the same `fragment_from_selection` and `validate_fragment` a save uses, so the same rules refuse the same problems (family must match, at least one block, pictures obey the tier rule). The audit event records `blocks` among the changed fields and the block count, never text. | Agent |
+| Permissions | Unchanged: the layout-management permission of the tier; an inherited snippet is still read-only (403). | Agent |
+| Page styles and variables | A defined page style or variable the blocks do not use is not stored (the fragment carries only what the blocks use), as when saving a selection. | Agent |
+| Shared check display | The server check's result (block count, what it carries, reasons) is one component, `ReportSnippetCheckSummary`, used by the save dialog and the editor. | Agent |
+
+Not done, and flagged: the designer still has its own copy of the Blocks/Text switching logic (it also carries the preview, pickers and version history); the dialog does not share that code. Extracting a shared tree-editor hook from the designer is a larger refactor than this phase and is not scoped.
+
+Verification: backend tests (whole-tree replace, carried page styles, empty/unknown/other-kind refusals, inherited 403); stories for the dialog and the panel; Playwright spec creates a snippet from the panel, edits it through Text and inserts it into a layout. The SOC 2 policies are unaffected (no authorisation, secret, logging or retention change; same audit pattern).
+
+## Custom reports Phase 52: one Snippets menu and layout settings on the layout block (2026-10-31)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Snippet buttons | Insert snippet and Save as snippet are one icon button, **Snippets**, opening an `ActionMenu` (`ReportSnippetMenu`), in both Blocks and Text. The two text buttons and the `saveFromText` string are gone. | User |
+| Reusable menu parts | `ActionMenu` gains an optional `icon` (its trigger was always the kebab) and `ActionMenuItem` an optional `disabled`; the Save item is disabled with the reason as its title when no block is selected (it was a disabled button with a title before). | Agent |
+| Layout settings | The stacked, collapsible "Layout settings" section is gone. The root Layout block has a gear (`FieldImage`) button, and selecting the Layout block (by the gear or by clicking it, which also works in a read-only layout, where Blockly does not make fields clickable) shows `ReportLayoutSettings` in the block editor panel. Selecting any other block returns to that block. | User |
+| Problems | A problem on a layout setting (or on no block) is a warning on the Layout block and is listed in the panel when it is open; previously the "not on a setting" ones sat permanently above the blocks. | Agent |
+| Text view | Unchanged: the layout directives and `ReportLayoutPageSetup`. | Agent |
+
+Verification: stories (menu, layout block selection and warning, designer menu flows), Playwright (designer, snippet specs updated to the menu). Front-end only; no authorisation, secret, logging or retention change, so the SOC 2 policies are unaffected.
+
+## Custom reports Phase 53: the Blocks view edits values in the block editor only (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Where a value is edited | Only in the block editor beside the canvas. Blocks carry no editable Blockly field; they show their type label and one read-only `_summary` line. | User |
+| Summary content | The start of the block's text (or its record type), a heading's level (`level 2`) and a "for each" alias (`as req`), joined with " · ". Generic over the schema (reads `level` and `as`, never a block type), so a module's block gets the same line. | Agent |
+| Removed | `isInline`, `inlineFields`, `inspectorFields`, `controlValue`, the dropdown/checkbox/text controls and the inline write-back in `blockStateToNode`. A block's `data` (the node minus child lists) is now the only thing read back, so opening a layout cannot rewrite a value. | Agent |
+| Server schema | No per-field `inline` flag existed in the block schemas (the split was a client heuristic on field kind), so nothing is deleted server-side. | Agent |
+| Text view | Unchanged. | Agent |
+
+Verification: stories (summary, edit through the editor, designer flows that edited a Blockly field now edit in the editor), Playwright block-editor specs (no `.blocklyEditableField` on the canvas). Front-end only; the SOC 2 policies are unaffected.
+
+
+## Custom reports Phase 54: one tabbed, collapsible right-hand panel in the designer (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Shape | One shared `DesignerSidePanel` for both views: Text has Preview, Fields, Widgets; Blocks has Block and Preview. It folds to a rail with `DetailLayout`'s toggle and icons, and keeps its panels mounted when hidden (a preview result and the block form survive a tab switch). | User (mock) |
+| Block tab label | **Block**, not "Block editor" or the mock's "Blocks": the Blocks view tab and the canvas region are already called that. | Agent |
+| Remembering | The fold and each view's last tab are kept per person with `useUiPreference` (the server-side bag `DetailLayout` uses), not `localStorage`. It follows the person across devices, is the repo's one mechanism for display preferences, and replaces the old `report_layout_preview_beside` preference. A block being selected brings the Block tab forward without overwriting the remembered tab. | Agent |
+| How the block form reaches the panel | `ReportLayoutBlocks` draws its inspector into an `inspectorHost` element the caller owns (a portal) and calls `onInspect` when a block is selected or the layout's settings open. The designer's host is in the Block tab; the snippet editor dialog, which has no side panel, gives a host under the canvas. The old inline `blocks-layout` grid is removed. | Agent |
+| Preview | The Preview toolbar button and the "Preview panel" toggle are gone; **Open in dialog** is on the Preview tab in both views. The preview only runs on demand, so leaving the tab has nothing to cancel; the panel stays mounted so the last result remains. | Agent |
+| Narrow widths | Below 1100px the panel stacks under the editor as a full-width card with no fold button. | Agent |
+
+Also fixed: `ReportFolderField.stories.tsx` used a raw `1rem` that `check_spacing_tokens.py` flagged (now `var(--space-5)`).
+
+Verification: `DesignerSidePanel` stories (tabs, state kept, fold), designer and block-editor stories (Block/Preview tabs, selection brings Block forward, fold shared by both views, `onInspect`), Playwright (panel tabs, fold and remembered tab across a reload; the preview specs open the dialog through the Preview tab). Front-end only; the SOC 2 policies are unaffected.
+
+## Custom reports Phase 55: forced table column widths (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Units | A column's `width` is a percentage of the table (`30%`), a length (`4 cm`, `40 mm`) or absent (auto). Percent is the primary unit because it survives a change of page size or orientation. | User |
+| Where it is resolved | One module, `services/report_column_width.py`, gives every renderer the same rule: fixed columns take their width, auto columns share the rest (by weight where the table has weights, such as an images column), then the row is scaled to the table's width. A `Table` carries the raw `widths`; each renderer resolves them against its own usable width. A table with no width is unchanged. | Agent |
+| Fixed means fixed | Word already sets `tblLayout fixed` and the grid; ODT writes column styles; PDF gives `colWidths`; HTML gets a `<colgroup>` and `table.fixed { table-layout: fixed }` (cells already break long words). No column is laid out narrower than 8 mm (`MIN_COLUMN_CM`): a 1 % column on a page crashed ReportLab (negative cell width) until the floor was added; that is the stated limit for a column too narrow for a word, which then breaks inside it. | Agent |
+| Validation | Each width must parse and be 1-100 % or 5 mm-100 cm. Percentages summing over 100 are one error on the `columns` path. Lengths summing past the page are allowed (scaled down at render time, because the page is not known to the tree). | Agent |
+| Repeated tables | The width belongs to the block's column, so every table a block produces (one per component) has the same widths. | User |
+| Text view | `@column code "ID" width 12%`, `width 4 cm`, `width auto` (reads as no width). `@images` writes `colwidth` because its `width` already means the picture's; the tree key is `width` in both. The written form is canonical (`12%`, `4 cm`) so a layout round-trips exactly. No drag handle is built. | Agent |
+| Sheets | A sheet has no page, so a length is the column's width, a percentage is of a nominal 25 cm sheet, and auto keeps the content-sized width (XLSX and ODS; CSV ignores it). A fan-out run keeps the widths and gives the added Project column none. | Agent |
+| Starters | `report_starter_blocks.fixed_columns` gives a starter table its usual widths by field key (`USUAL_WIDTHS`: code 12 %, status 10 %, description 30 %, ...), so the Business Requirements Document, Engineering Specification, Requirements by Component and every module's starter section print steady columns. Copies already in an organisation are ordinary layouts and are not rewritten; the setup list's Add missing starters never overwrites them. | Agent |
+| Requirement-document tables with `col_widths_cm` | The built-in report tables that already pass `col_widths_cm` are unchanged (`widths` takes precedence only when set). | Agent |
+
+Verification: `test_report_column_width.py` (grammar, resolver and floor, tree check, text round trip and errors, identical columns across two tables of different content in PDF/Word/ODT/HTML, XLSX/ODS widths, a run over real records, every starter table), the columns editor story, Playwright (`report-column-widths.spec.ts`: set a width in the designer, text view and preview; the Engineering Specification prints identical colgroups for two components). Front-end change is one field per column (`help` text), no new endpoint; the SOC 2 policies are unaffected.
+
+## Custom reports Phase 56: the preview remembers the projects chosen (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Scope of the memory | Per layout: the key is scope (organisation or project), scope id and layout id. Preview only; the run dialog is unchanged (mention to the User if wanted there too). | User |
+| What is remembered | The projects an organisation preview is narrowed to and the project preview's "include child projects" switch. Run-time variable values are not (they follow the draft's `@var` lines and may change with it). | Agent |
+| Where it lives | `localStorage` in `utils/reportPreviewMemory.ts`, never the server: a per-viewer convenience that is neither shared nor audited. Not `useUiPreference` (that bag is server-side, so it would follow the person across devices and be stored in the account). A blocked or full store falls back to an in-memory copy until reload. | User (not on the server), Agent (helper shape) |
+| Stale ids | Read back against the projects on offer on every render; a project that was deleted or can no longer be chosen drops silently, so the default (all projects) applies. Writes keep only the surviving ids. Reading each render (rather than copying into state) keeps the side panel and the preview dialog, which show the same panel, in agreement. | Agent |
+| "Falls back to the project the person came from" | Nothing to fall back to: an organisation preview has no originating project, and a project preview runs on its own project. The default is unchanged. | Agent |
+
+Time shapes: none (no dates stored). Verification: `ReportLayoutPreviewPanel` stories (remembered across a reopen, other layout unaffected, a gone project dropped, the child-projects switch), Playwright `report-layout-designer.spec.ts` (choose, reopen, same selection; a stored id for a gone project is dropped). Frontend only; no endpoint, schema or policy change, so the SOC 2 policies and the bundles are unaffected.
+
+## Custom reports Phase 57: the shape block (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| What a shape is | A `shape` block: rectangle, rounded rectangle, ellipse, triangle, line, arrow (presets) or `custom` (the author's SVG), with fill, outline, size and the image block's placement (in line, wrap, behind, in front; paragraph, margin or page anchor; offsets). | User |
+| How it is drawn | The evaluator builds an SVG (`services/report_shapes.py`) and emits an `Image`, so a shape reuses every placement, anchor and layering path of the four renderers instead of adding a fifth. Native Word `wps` shapes and ODT `draw:custom-shape` were not built: a flat colour does not justify a second drawing path per format, and the fallback the User's brief allowed (a rasterised picture) draws correctly in LibreOffice (checked: Word and ODT converted to PDF show plate, ellipse, triangle, line and arrow). PDF and HTML stay vector. | Agent |
+| Transparent rasters | Word and ODT get the SVG as a **transparent** PNG at 300 dpi of the printed size (`report_image_layout.svg_block_png`), not the old white-backed 1200 px one. This also applies to every SVG picture in the image library: a white-on-transparent logo or a shape under a picture needs it, and on a white page nothing else changes. Table-cell pictures still use the old path. | Agent |
+| Layer order | Document order: a later block draws above an earlier one (verified for PDF content order, Word `relativeHeight` and ODT `draw:z-index`). So a logo on a plate is a Shape then an Image, both placed behind at the same spot. | User (the brief), Agent (rule) |
+| Sizes | Preset width and height are required, in cm or mm; **no percentage** (the text width is unknown when the SVG is drawn, so an outline or corner would stretch). A shape wider than the text is scaled down with its proportions. This narrows the plan's "cm, or percent". | Agent |
+| Colours | `#rgb`/`#rrggbb`, or `accent` (the organisation's report accent, read from the run's `org` values), `white`, `black`, `none`. A line or arrow is coloured by `outline` (black default) and takes no fill; an arrow's height is its head. A caption is not a shape key, and a shape has no text (put text or an image in front). | Agent |
+| Safety | Nothing typed becomes markup: presets are built from validated numbers and a validated colour; a custom SVG goes through `sanitize_svg` at save time (plus a 50,000 character limit and a `viewBox`, or width and height, on the root) and again in every renderer. No SVG feature a format cannot draw is refused, because each format has the resvg fallback; PDF falls back to PNG when svglib cannot draw it. | Agent |
+| Tree key | The preset is the `shape` key, not `kind`, so the designer's choice-label map (keyed by field key) cannot clash with another block's field. | Agent |
+| Authoring | Block schema once from the server; text view `@shape rounded fill #475569 width 5 cm height 2 cm placement behind anchor page x 1 y 1`, custom `@shape custom svg "..." width 3 cm`. The block editor uses the generic schema-driven form (a choice for the shape, a growing long-text field for the SVG). The preset icon toggles and the SVG dialog the plan suggested were **not built**: that suggestion was the Agent's, and the generic form needed no new component. Raise it if the User wants the icon row. | Agent |
+| Families, bundles | Document layouts only (a table layout refuses it at save). The shape is part of the tree, so bundles carry it with no new table or export code. | Agent |
+| Not built | Rotation, a diagonal line (use a custom SVG), a drop shadow, text inside a shape, a page-wide shape wider than the text area (the image sizing rule clamps to the text width, as for pictures). | Agent |
+
+Time shapes: none. Verification: `test_report_shapes.py` (54 tests: tree check, text round trip and errors, SVG output and safety, PDF layer order in the content stream, Word transparent PNG and anchor order, ODT frame and z-order, HTML layer, a run with the organisation's accent, a save refused for an unsafe SVG), the existing report suite (2,265 passed; `test_report_run_jobs.py::test_the_list_can_be_narrowed_to_runs_in_progress` failed once under `-n 4` and passes alone: a timing flake in a test this change does not touch, not investigated further), LibreOffice conversion of the Word and ODT output viewed, the block-field story, a Playwright spec (`report-layout-shapes.spec.ts`, **written but not run**: the Docker stack was not up). SOC 2: no auth, secret, logging or retention change; custom SVG is untrusted input handled by the existing sanitiser.
+
+## Custom reports Phase 58: the Project Workbook starter (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| What "core detail" is | Code, title, status and tags (the engine's reserved fields, so every type has them) plus the fields a type marks `ReportField.core`: the person responsible (owner, assignee, decision maker) and the main descriptive text. `from_search(core_fields=...)` marks them; each module declares its own, and `test_report_workbook_starter.py` fails for a type that marks none. Owner and description were added to the plan's "identity and status only" after the User chose them from the options offered. | User |
+| Where it lives | A built-in **Project Workbook** starter (a table layout), written like the document starters, so it is an ordinary organisation layout and appears in "New from a starter". `StarterLayout` gained a `family`; the workbook's tree is generated by `report_starters.workbook_tree` from `get_report_field_providers()`, one `sheet` per reportable type with a Contents sheet, so a new module's type gets a sheet with no core edit. | User |
+| Module off in a project | Each module's sheet is wrapped in `{"type": "if", "when": {"module": key}}`. This needed the `if` block in the **table** family (`BlockSpec("if", (document, table))`); in a table layout only the `module` test can be used (there is no enclosing record to test). | Agent |
+| Sheet names and widths | The type's display label cut to 31 characters, numbered if two collide. Column widths are absolute (cm), because a share of the sheet must total 100% whatever number of core fields a type declares. | Agent |
+| Cross-sheet links | None. Sheets are of different record types, and a link column needs a join that no starter can assume; the plan's "where a link column exists" is therefore not exercised. | Agent |
+| Limits | The table family's row and time caps and the background run apply; the workbook is not special-cased. | User |
+
+Bugs found and fixed on the way: `report_traversal.root_records` ordered by the type's code column, which is a constant for a type without a code (the compliance assessment), and Postgres refuses a constant in `ORDER BY`, so any sheet or table of that type failed; and `report_duplicate` labelled a copied starter as a document layout whatever its family.
+
+Time shapes: none. Verification: `test_report_workbook_starter.py` (marker coverage, valid tree, one sheet per type, module wrapping, a new type appearing without an edit, XLSX with the right sheets where modules are on or off, ODS), the updated starter and duplicate tests, a traversal regression test, and a Playwright step in `report-starter-layouts.spec.ts` (run 2026-11-01 with Phase 59: green after correcting the assertion, since a written XLSX keeps strings inline in the sheet and has no `sharedStrings.xml`). SOC 2: no auth, secret, logging or retention change; no Restricted or personal-data field is marked core.
+
+## Custom reports Phase 59: demo report with the logo on a shape (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| The report | An organisation layout **Project overview with logo** (folder Handover): a rounded plate filled with `accent` placed behind, the product logo placed in front of it, both anchored to the title's paragraph and set to the right of it so the title stays readable, then the project name and a requirements table. | Agent |
+| The picture | `backend/scripts/data/logo.svg`, uploaded through the existing organisation report-image route. It is a byte-for-byte copy of the repository's white-on-transparent `logo.svg`, kept under `backend/` because a container build copies only that directory. Seeding it first failed: the SVG sanitiser refused its `<!DOCTYPE svg PUBLIC ...>` line, which every vector editor writes (see the next row). | Agent |
+| SVG DOCTYPE rule relaxed | **Security control changed (flagged to the User, 2026-11-01).** `sanitize_svg` refused every DOCTYPE, so an SVG exported from Illustrator, Affinity or Inkscape (all write the standard W3C DOCTYPE reference) could not be uploaded. It now accepts only the bare form `<!DOCTYPE svg>`, `<!DOCTYPE svg PUBLIC ".." "..">` or `<!DOCTYPE svg SYSTEM "..">` with no internal subset, and still refuses any `<!ENTITY`, any DOCTYPE with `[...]` and a second DOCTYPE. Why this is safe: entity expansion and XXE need a declaration, and only an internal subset can declare one; the parser has DTD loading, entity resolution and network access off so the named DTD is never fetched; and the sanitised copy is re-serialised from the root element so the DOCTYPE never travels on. The earlier rule was stricter than the threat required. | Agent |
+| The workbook | Organisation creation already adds the Project Workbook starter. The seed also calls the idempotent `POST .../report-layouts/starters`, so a demo organisation created before the starter existed has it too. | Agent |
+| E2E dataset | Not changed: no spec needs the demo layout by name. `report-layout-shapes.spec.ts` builds the same shape-then-image layout in its own disposable organisation from the same bundled file. | Agent |
+
+Bugs found and fixed on the way: a TypeScript error in `ReportLayoutBlockField.stories.tsx` (an option user-event 14 does not have) that failed the frontend image build; the Phase 58 Playwright step looked for `xl/sharedStrings.xml`; the Phase 57 spec's custom-SVG step waited for the Blocks tab's "No problems." on the Text tab, which says "The text is valid." Both Phase 57 and 58 specs had never been run and are green now.
+
+Time shapes: none. Verification: `test_seed_demo_report_layout.py` (the layout validates and layers a shape under an image; the bundled logo is white and passes the sanitiser); the new layout and logo were created on the live demo organisation through the seed's own functions, then run to PDF (logo visible in white on the blue plate, title and table clear of it), Word (two layered pictures: one behind the text, one in front) and the workbook to XLSX (21 sheets); Playwright `report-layout-shapes.spec.ts` (3 tests, green, repeated twice) and `report-starter-layouts.spec.ts`. A full seed against an empty database was not run: the shared test database holds the Playwright dataset and was not wiped. SOC 2: no auth, secret, logging or retention change.
+
+## Custom reports: EPS logos (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Support EPS? | Yes, for the report image library, because Illustrator and Affinity users commonly hold their logo as EPS. | User |
+| How | **Convert once, at upload, to SVG**: Ghostscript (EPS to a one-page PDF cropped to the bounding box) then poppler `pdftocairo` (PDF to SVG), then the existing `sanitize_svg`. The library stores the SVG (`logo.eps` is stored as `logo.eps.svg`: the library does not require unique names, so appending keeps a converted file distinct from a hand-exported `logo.svg`), so no interpreter ever runs at report time or on a record attachment (`sniff_image` still does not recognise EPS). Vector was chosen over a 300 dpi PNG so the logo stays sharp in PDF and HTML. | User (vector over PNG), Agent (shape) |
+| **Security control added (flagged)** | PostScript is a programming language and Ghostscript has a long CVE history, so this puts an interpreter in the upload path. Confinement: `-dSAFER`; argument list with no shell; fixed input file name; private temporary directory as working directory, `HOME` and `TMPDIR`; cleared environment; no stdin; 30 s timeout; `RLIMIT_AS` 2 GiB, `RLIMIT_CPU` 30 s, `RLIMIT_FSIZE` 64 MiB; own session; the converter's output is never shown to the uploader; the result is sanitised like any SVG and refused if nothing drawable remains. The upload runs in a worker thread so a slow file does not block the event loop. The size cap applies before conversion. | Agent |
+| Dependencies | `ghostscript` and `poppler-utils` added to the backend image (Debian packages, patched with the base image). A missing tool is reported as "not installed on this server", not as a bad file. | Agent |
+| Known limits | Soft masks are lost, and the cairo SVG turns text into glyph shapes (so it prints correctly but is not selectable text). A bitmap inside the EPS is kept as an embedded raster (see "Bitmaps inside an SVG"). A very complex EPS can exceed the 1,000,000 character markup limit and is refused with a reason. | Agent |
+
+*Identify:* an uploaded PostScript file reading or writing files, running a command, looping forever or exhausting memory; a converted SVG carrying script or an external reference; an EPS reaching the interpreter through any route other than the library upload. *Verify:* in the backend image, a file that tries `%pipe%` commands and file reads and writes is refused and creates nothing; a non-terminating program is stopped after the timeout and returns a 422; a real EPS converts to a vector SVG in under a second; the unit tests check the fixed command, the cleared environment, the timeout and the size cap, and that `sniff_image` still refuses EPS. *Remediate:* none outstanding. Residual risk: a Ghostscript vulnerability that bypasses `-dSAFER` would give code execution as the backend's own unprivileged `app` user. **Correction (2026-11-01, found on review):** the first version of this entry said the converter has no network and no secrets. Both were wrong: the child's environment is cleared, but it shares the backend's user, so it can read the backend process's environment (`/proc/1/environ`, including `DATABASE_URL`), and outbound network is not blocked. Those are the consequences of an escape; the package updates and `-dSAFER` are the only controls today. Proper hardening is a separate converter container (no network, no secrets, read-only filesystem, its own user), recorded as an open gap, **now built** (see "Custom reports: the converter service" below, which supersedes the in-backend conversion described here). SOC 2: no auth, secret, logging or retention change; a new third-party component (Ghostscript, poppler) for the vendor list.
+
+## Custom reports: bitmaps inside an SVG (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Keep an embedded bitmap? | Yes. Logos exported from Illustrator and Affinity often carry a bitmap (a photograph, a texture, an EPS with a raster) as an `<image href="data:image/png;base64,...">`, and the sanitiser dropped it, leaving a hole. Blocking it protected nothing the library does not already accept: the same bytes can be uploaded as a PNG. | User |
+| Security control changed (flagged) | `sanitize_svg` keeps an `image` element only when its `href` is a base64 `data:image/png|jpeg|gif|webp` URI. The bytes are decoded, held to the pixel limit and re-encoded without metadata by `report_raster.normalise_raster` (the same function the library upload and a record attachment use), and the element gets the new URI. Any other `image` (an http, file or relative reference, `image/svg+xml` which could nest a document, `data:text/html`, undecodable data) is dropped and the rest of the figure kept. An over-large picture refuses the whole SVG. | Agent |
+| Limits | At most 20 bitmaps, 25 million pixels each and 60 million together; up to 16 million characters of base64 on top of the 1,000,000 character cap on the markup itself (measured after the bitmaps are taken out, so the allowance does not raise the cap on the vector part). | Agent |
+| Refactor | `normalise_raster`, `RASTER_TYPES`, `ImageRejectedError`, `NormalisedImage` and `max_image_pixels` moved from `report_images` to the new `report_raster` module so the sanitiser can use them without a circular import; `report_images` still re-exports them. | Agent |
+| Cost | Every consumer re-sanitises, so a stored SVG's bitmaps are re-encoded at each use (about 0.1 to 0.3 s for the three-bitmap 730 KB sample). Not cached, because the images are small next to a report run; revisit if a profile shows it. | Agent |
+
+*Identify:* a bitmap parser (Pillow) now runs on bytes taken from inside an uploaded SVG; an `image` reaching a renderer with a URL; a decompression bomb; metadata leaking through the embedded copy. *Verify:* `test_report_svg.py` covers each allowed format, both href spellings, metadata removed from JPEG EXIF and PNG text, twelve refused hrefs (URL, file, nested SVG, HTML, bad base64, not an image, script), other attributes and children of the `image` stripped, the pixel and count limits, the markup cap holding with a bitmap present, idempotence, and the bitmap's colour reaching a rendered PNG. The three-bitmap and one-bitmap sample logos render in PNG and PDF. *Remediate:* none outstanding. The converter-sandbox gap recorded under the EPS entry is unchanged.
+
+## Custom reports: the converter service (2026-11-01)
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Isolate the EPS converter? | **Yes: a separate container, `converter`** (new top-level `converter/`), closing the gap recorded under "EPS logos" (the converter shared the backend's user, network and, through `/proc`, its environment). Ghostscript and poppler are removed from the backend image; the backend calls the service over HTTP (`services/report_converter.py`, `REPORT_CONVERTER_URL`). | User |
+| Also accept PDF? | **Yes.** A PDF's first page is converted by `pdftocairo` alone (no PostScript interpreter), stored as `name.pdf.svg`. Recognised by the `%PDF-` header within 1 KiB. | User |
+| Optional | **The converter is an opt-in Compose profile** (`--profile converter` or `COMPOSE_PROFILES=converter`, plus `REPORT_CONVERTER_URL=http://converter:8300`) so a deployment that does not want the extra container runs none. The backend `depends_on` it with `required: false`. Without it, the library listing returns `converter_available: false`, the upload dialog does not offer `.eps` or `.pdf`, and a file sent anyway is refused as "not available on this server". The dev/test stack runs it always, because the suites test it. | User |
+| Sandbox | `internal` network shared only with the backend (no route out, no DNS: checked from inside the container), no secrets and no application code, non-root uid 10001, read-only root filesystem, `noexec` `tmpfs` scratch, `cap_drop: ALL` (checked: all capability sets zero), `no-new-privileges`, `pids_limit`, memory and CPU ceilings. The per-tool limits from the in-backend version (`-dSAFER`, cleared environment, timeout, rlimits, new session) stay as a second layer. | Agent |
+| Interface | `POST /convert/eps` and `/convert/pdf` (raw bytes in, SVG out, `422` with a plain reason, `503` busy or missing tool, `413`), `GET /health`. The type is judged from the bytes by the converter as well as by the backend. Two conversions at once; a third waits 10 s then gets `503`. No authentication: the network is the boundary, as for the other internal services. Listener is dual-stack IPv6, falling back to IPv4. Standard library only. | Agent |
+| Trust | The backend still sanitises the reply (`sanitize_svg`) and caps its size (reading is streamed, no redirects, no proxy settings). The converter converts; it decides nothing about what is stored. | Agent |
+| Fonts | `fonts-urw-base35` is installed because an EPS often names Helvetica or Times without embedding them. | Agent |
+| CI | The converter image is built (cached), its unit tests run inside it against real Ghostscript and poppler, it is Trivy-scanned and pushed to ghcr like the other images. | Agent |
+
+*Identify:* a PostScript or PDF exploit reaching the backend's database credentials, object-store keys or network; the converter reaching the internet; a hostile reply SVG; the converter being unavailable or busy. *Verify:* `converter/tests` (17, real tools, including a hostile file that tries to write a file and open a pipe, an infinite loop stopped by the timeout, the HTTP interface, IPv6 where available); `test_report_converter.py` (stand-in server over real HTTP: reply sanitised, reasons shown, nothing leaked, size cut-off, no redirects or proxy, not configured or unreachable, upload route, listing flag; the real-converter cases run in the container stack); a Playwright spec uploads a real EPS and a real PDF and a damaged PDF through the dialog; a Storybook story each for the dialog with and without the converter; network, filesystem and capabilities checked from inside the running container. *Remediate:* none outstanding. *Gaps:* the converter can still read the files of a conversion in flight (they are its input) and burn its own CPU and memory ceilings; both are bounded and neither reaches anything else. The `internal` network is a Docker feature: a deployment that runs the image another way (Kubernetes) must apply the equivalent egress policy, as `docs/deployment.md` says.
+
+## Custom reports Phase 60: the Add block menu scrolls (2026-11-01)
+
+**Decided by: Agent.** The User could not scroll the Add block menu to its last entry.
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Where is the fix? | In `Popover`, not in `ActionMenu` or the Add block caller. The popover already capped its height and scrolled inside; its capture `scroll` listener on `window` also fired for its own scrolling, and each re-measure cleared the height cap, which reset `scrollTop` to 0. Scrolls inside the bubble are now ignored and the offset is restored after a re-measure. Every popover and menu (Snippets, the column chooser, list actions) gets the fix. | Agent |
+| Grouping of the Add block entries | Unchanged ("Most used" and "Other blocks" already exist). | Agent |
+
+*Identify:* a menu taller than the window whose wheel and keyboard focus scrolls are undone. *Verify:* a story (30 entries, short viewport; fails without the fix) and a Playwright spec at 600 px height (wheel to the last entry and add it; keyboard focus keeps it in view). *Remediate:* none outstanding.
+
+## Custom reports Phase 61: the snippet result is a toast (2026-11-01)
+
+**Decided by: Agent** (the toast, its wording and the rule for staying open); **Decided by: User** (feedback must not push the blocks down).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Replace the card? | `ReportSnippetNotice` and its strings are deleted. `useSnippetToast` shows a toast: "Inserted X" for a plain insertion. | Agent |
+| What was not lost | The first change line (the block count) is implied by the title. Any other line (a page style or variable added or reused) and the "n problems already in the layout" line are listed in the toast, which then stays until dismissed; a plain insertion times out like any success toast. | Agent |
+| Undo | `ToastContext` gains an optional `action` (label, handler; clicking runs it and dismisses) and `details`, and `showToast` returns an id for the new `dismissToast`: generic, used by any later Undo toast. Blocks has Ctrl+Z, so its toast says so in its text and has no button. Text view Undo is a button that restores the old text only if the draft still equals the inserted text, so it never discards later typing. Switching view removes the toast. | Agent |
+| Selection | Unchanged and now covered by a story: the first inserted block is selected and the panel's Block tab comes forward. | Agent |
+
+Time shapes: none. *Identify:* feedback that changes the height of the thing being edited; an Undo that outlives the text it undoes. *Verify:* Toast stories (action, details that outlast the timeout), designer stories (text insert, Undo, edit then Undo leaves typing, Blocks toast and selection), the three Playwright snippet specs. *Remediate:* none outstanding.
+
+## Custom reports Phase 62: pictures are drawn on a checkerboard (2026-11-01)
+
+**Decided by: User** (a white logo must be visible in the image previews); **Decided by: Agent** (always a checkerboard rather than detecting white marks, the switch and the places it applies).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Detect white-on-transparent or always draw a backdrop? | Always a checkerboard. Detection needs pixel analysis of every upload (SVGs too), flips with the theme and misses mid-grey marks; a checkerboard is never wrong. Built from `--color-surface` and `--color-surface-alt`, so it reads in light and dark. | Agent |
+| One style or per picker? | One `.picture-backdrop` class through `PictureImage` (`components/PictureImage.tsx`): the chosen-image thumbnail, the library grid, the large preview, the organisation logo preview on Branding and the server default logo preview. The page header logo and the report preview (a white page) are unchanged. | Agent |
+| Switch | Checkerboard, Light or Dark beside the large preview, for judging a logo against the page it prints on. One per-person display preference (`picture_backdrop`, `usePictureBackdrop` over `useUiPreference`), read by every `PictureImage`; an unknown stored value falls back to the checkerboard. | Agent |
+
+Side effect: any story that renders a picture now needs the auth context (`useUiPreference` reads the user); the image field, block field and running-band stories got `withStatefulAuth`. Time shapes: none. *Identify:* a logo invisible against the page's own background. *Verify:* `ReportImageField` story (class, default, switch), `report-image-backdrop` Playwright spec, the image and designer story files and `report-layout-images` spec. *Remediate:* none outstanding.
+
+## Custom reports Phase 63: image Width and Height say Auto (2026-11-01)
+
+**Decided by: User** (the author must be able to set width or height to auto to keep the ratio); **Decided by: Agent** (how Auto is shown, the warning and where it stops).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Change the tree? | No. An absent `width`/`height` already was Auto (ratio kept from the other, or the picture's own size), so there is no migration and saved layouts are unchanged. The gap was only that nothing said so. | Agent |
+| How is Auto shown? | A generic `BlockField.empty_label` (served as `empty_label`): the editor shows it as the empty box's placeholder. The image block's Width and Height set it to "Auto"; any later field whose empty value has a meaning can use it, with no per-block code. A checkbox or extra button was rejected: it would duplicate "empty" as a second state to keep in step. | Agent |
+| Stretch warning | `ImageStretchWarning` under the image block's fields (a role="status" note, not an error): shown when Width and Height are both lengths (cm or mm) whose ratio differs from the picture's by more than 5% (`utils/imageStretch.ts`). A width as a share of the text is not judged (the page width is not known in the browser) and an SVG has no pixel size; both say nothing. The pixel size comes from the existing library `details` call, so no backend response changed. | Agent |
+| Text view | `width auto` and `height auto` are read as no key and never written back, so round trips are stable; `auto` with a number for the same size is the usual "written once" error. | Agent |
+| Other blocks | The shape's size (no intrinsic ratio), the record-images block and the images column keep their settings. | Agent |
+
+Time shapes: none. *Identify:* an empty box was the only way to ask for Auto, so nobody found it. *Verify:* backend tests (text `auto` round trip and duplicate error, catalogue `empty_label` on image and not on shape), stories (`AnEmptyImageSizeSaysAuto`, `ImageStretchWarning`), `report-layout-images` Playwright spec (placeholder, preview style, warning, text view). *Remediate:* none outstanding.
+
+## Custom reports Phase 64: spacer block (2026-11-01)
+
+**Decided by: User** (report elements for vertical space); **Decided by: Agent** (bounds, defaults and the model change).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Reuse `Gap`? | No. `Gap` is a PDF-only layout hint that Word, ODT and HTML deliberately skip, so honouring it would change every existing report. A new `VerticalSpace(cm)` model block is kept in all four formats. | Agent |
+| Height | A number in cm or mm, 1 mm to 20 cm (default 1 cm). Text view `@spacer 1.5 cm`. A document-family block; allowed inside `section`, `each` and `group`; a table layout refuses it at save. | Agent |
+| PDF | A ReportLab `Spacer`, capped at 98% of the page style's text height so it cannot overflow a frame. At the top of a page it is kept (the paragraph's own space-before, which a frame drops at its very top, then applies after it: 6 pt). One taller than the room left moves to the next page. | Agent |
+| Word | An empty paragraph with an *exact* line height and no space before or after (`auto` or `at least` grow with the font). | Agent |
+| ODT | An empty paragraph with a fixed `fo:line-height`, one automatic style per distinct height. | Agent |
+| HTML | `<div class="spacer" aria-hidden="true">` of that height. | Agent |
+| Push to the bottom of the page | **Requested by the User during the phase, not built.** Not a height but a position: content that follows must be measured and bottom-anchored, which PDF can do exactly (measure, then fill) but Word and ODT only with frames or floating tables, and the HTML preview has no pages. Raised with the User as its own follow-up rather than a flag on this block; see the plan's Phase 64b. | User (request); Agent (split) |
+
+Time shapes: none. *Identify:* empty text blocks gave different gaps per format. *Verify:* `tests/test_report_spacer.py` (validation, text round trip, the PDF gap measured from text positions, a spacer at the top of a page, a spacer taller than a page, Word exact line height XML, ODT style, HTML), an evaluator test, a block-field story, `report-spacer.spec.ts`. *Remediate:* none outstanding.
+
+## Custom reports Phase 64b: content at the foot of the page (2026-11-01)
+
+**Decided by: User** (a table or text stays at the bottom while what is above grows; floating table or frame in Word and OpenDocument); **Decided by: Agent** (the container form and the details below).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Form | A container block `bottom` ("At page bottom"), not a flag on the spacer: a spacer cannot know how tall what follows is, and explicit children make "what follows" well defined. Document family only; allowed inside `section`, `each` and `group`; refused in a table layout; text view `@bottom` … `@end`. | Agent |
+| Not allowed inside | A page break, a section, a widget (a module report may bring either) and another `bottom`: all fail validation at save. | Agent |
+| Model | Flat markers `BottomStart` / `BottomEnd` around ordinary blocks (as `PageStyleChange` is flat), so a renderer needs no recursion; a run that produces nothing leaves no markers. | Agent |
+| PDF | Exact: measure the flowables at the text width, then a `CondPageBreak` (moves to a fresh page when they do not fit) and a filler that takes the rest of the page above them, 3 pt of slack so a measuring error never pushes the last line over. A run at least 95% of the text height is not anchored and flows normally. | Agent |
+| Word | The run's body elements are moved into one borderless, one-cell floating table (`tblpYSpec="bottom"` against the margin, zero cell margins, fixed width), so a table, text or a mix all work; a page break after it. Verified rendering in LibreOffice only; **Word is not checked and cannot be automated here**, so the User is asked to open a layout once. | User (floating table) / Agent |
+| OpenDocument | The run's chunks go into a `draw:text-box` in a frame anchored to the foot of the page content, in a paragraph that ends the page. LibreOffice sizes a frame holding a table only when its graphic style descends from its own `Frame` style, so that style is written and named as the parent (found by experiment: with any other parent the table silently disappeared). | Agent |
+| HTML | No pages, so the contents print in place (the block's description says so). | Agent |
+| Word position and footer clearance | **Found by the User opening samples in Word (2026-11-01), over several rounds.** The table first printed over the page-number footer. Adding clearance by estimate left a ~1 cm gap; tightening the footer's spacing changed nothing; a three-variant sample then showed (a) `_table` ends every table with an empty default-style paragraph (about 1.1 cm with its spacing) that travelled into the cell under the table, and (b) the margin anchor did not follow the bottom margin once that was removed (the table landed ~0.5 cm below it), whereas the page-edge anchor was exact (2.0 cm of space gave 2.0 cm). So: trailing blank paragraphs are dropped from the run (in ODT, the blank `Standard` paragraph); the floating table is anchored to the **page edge** (`vertAnchor="page"`, `tblpYSpec="bottom"`); and the distance from the edge is the cell's **bottom margin** (an empty trailing paragraph was kept by Word but dropped by LibreOffice): the bottom margin, or, when the footer reaches above it, the footer's top (plain footer: 1.27 cm up plus about 0.7 cm) plus 0.3 cm. Footer spacing was tried at the User's choice and reverted (no effect). Checked in LibreOffice; the page-edge anchor is the part measured in Word. | User (found, chose the footer try) / Agent |
+| What follows | Starts on a new page in every format: in PDF the filler uses the rest of the page, and Word and ODT end the page with the anchor paragraph, so the three agree. | Agent |
+
+Time shapes: none. *Identify:* a sign-off table could only be placed by guessing the height of what was above it. *Verify:* `tests/test_report_bottom.py` (validation, text round trip, PDF bottom edge equal however long the header is, no-fit moves to a new page, too-tall flows, Word floating-table XML and trailing paragraph, ODT frame and style, HTML in place), an evaluator test, a block story, `report-page-bottom.spec.ts`, and one sample rendered in PDF, Word and ODT through LibreOffice and compared by eye (the block sat at the foot in all three). *Remediate:* none outstanding; Word to be confirmed by the User.
+
+## Custom reports Phase 65: which projects a layout runs for (2026-11-01)
+
+**Decided by: User** (a layout can be set so it runs for one project only; then, that a one-project layout may also merge its nested projects, chosen as one three-way setting rather than a second flag); **Decided by: Agent** (the details below).
+
+| Question | Decision | Decided by |
+|---|---|---|
+| Where the setting lives | `run_scope` on the layout tree beside `repeat_table_header`, not a column: it is versioned with the tree and travels in bundles, copies and duplicates with no change to those. Values `any` (default), `one`, `one_and_children`; both families. The first build was a `single_project` boolean; the User asked for nested projects to be mergeable and chose one three-way setting over a second flag, so no invalid combination exists. Layout settings field "Projects it runs for" (with help); text words `anyprojects`, `oneproject`, `projecttree` on the `@layout` line, written only when the key is present so existing layouts do not change. | User (three-way form), Agent (names) |
+| What each means | `any`: as before (a project run, or an organisation fan-out over a selection; `include_children` on an organisation fan-out is refused). `one`: exactly one distinct project and no child projects. `one_and_children`: exactly one project; `include_children` (an optional run-time switch, as in a project run) merges its readable child projects into the same report; children the caller cannot read are never added. | Agent |
+| Where it is enforced | One function, `custom_report_run.check_run_scope`, called at the top of `run_project_layout`, `run_organization_layout` and `report_run_jobs.enqueue` (so the sync run, the draft preview, pack entries and the MCP `run_custom_report` all reach it, and queuing is refused with a 422 up front; "generate again", which re-reads the current version, answers with the repeat-refused message). A job needs no check of its own: it runs the version it pinned when queued. The refusal is a 422 `RunScopeError`, raised before any project is read, so it reveals nothing about records. | Agent |
+| Result shape | A `one` or `one_and_children` organisation run is handed to `run_project_layout` for the chosen project: the report reads like that project's own (no merge heading or Project column, `{{project_code}}` filled), and the provenance scope is the project. The root project is already one the caller holds a role in, so authorisation is unchanged. | Agent |
+| Packs | A `one`/`one_and_children` layout in an organisation-wide pack run without exactly one project is listed `not_available` with the reason, not a failure of the whole pack. **Limit:** an organisation pack has no child-projects input, so a `one_and_children` entry runs for the project alone there; a project pack run passes `include_children` as before. | Agent |
+| Catalogue and UI | The catalogue entry carries `run_scope` and offers `supports_project_multi_filter` only for `any`; `supports_include_children` for a project run unless `one`, and for an organisation run only for `one_and_children`. `ReportParamsForm` offers a required single-choice Project picker (no "All projects"); `ReportRunner` and the designer preview hold the run until one is chosen and pre-select the only choice. A choice field's `empty_label` is now its blank option's text (used by "Not set (any number of projects)"). All shaping only; the server is the control. | Agent |
+| Placeholders | Layout settings shows a hint, never an automatic change, when an organisation layout prints `{{project_name}}`, `{{project_code}}` or `{{project_description}}` while still running for any number of projects. | Agent |
+
+Time shapes: none. *Identify:* a sign-off sheet or a charter was wrong when merged across projects, and a UI-only restriction would be bypassed by the API and MCP. *Verify:* `tests/test_report_run_scope.py` (tree, text round trip of all three words, 422 for none/several/blank, one accepted, duplicates of one id accepted, 404 for an unreadable project kept, an old layout still fans out, children refused for `one` and for a fan-out, children merged and limited to what the caller can read for `one_and_children`, project-form result, catalogue flags, queue, generate-again refused after the layout is changed, draft preview), a pack case in `test_report_packs.py`, Storybook stories for the runner, the preview, the page setup and the settings, and `custom-report-run.spec.ts`. *Remediate:* none open. No authorisation rule changed: each project is still evaluated with the caller's own access.
+
+## Custom reports Phase 66: page number and total pages in a header or footer (2026-11-01)
+
+**Decided by: Agent** (the User's request was that page and total pages can be inserted in a header or footer; the plan's suggestions were followed).
+
+| Question | Decision |
+|---|---|
+| Reproduced? | Yes, though the control existed. `RunningBandEditor` defaults its list to `BAND_PLACEHOLDERS` (which has `page` and `pages`), but the Blocks view settings and the Page setup dialog pass the server catalogue (`PLACEHOLDER_NAMES`), and the server keeps the page fields apart (`PAGE_FIELD_NAMES`) because they are valid only in a band. So in the real app the Insert list never offered them; the story passed only because it used the default. |
+| Fix | The editor adds the page choices itself, whatever list it is given (and drops any `page`/`pages` in it): **Page number**, **Total pages**, **Page X of Y** (writes `Page {{page}} of {{pages}}`). No tree or server change; the spelling stays `{{page}}`/`{{pages}}`. |
+| Insert position | At the caret of the cell last edited (selection kept on every select and on leaving the cell, since the Insert list takes the focus); at the end if the cell was never clicked. Helpers `insertAtCaret` and `pageSample` in `utils/reportPageSetup.ts`. |
+| Sample | A line under a cell that holds a page field: "Prints as: Page 3 of 12". Only cells with a page field show one (other placeholders are filled at run time, so a sample would be invented). |
+| One editor | All three places a band is edited (layout settings, Page setup, page styles) already share `RunningBandEditor`; the Text view's page setup uses it too, so nothing else needed the change. |
+
+Time shapes: none. *Identify:* an author could not find the page number control. *Verify:* stories (page fields offered with a catalogue that names none, insert at the caret) and the Playwright header/footer spec inserts Page X of Y from the live catalogue. A downloaded PDF/Word was not re-read in this phase; rendering of the fields is unchanged and covered by the existing backend page-field tests. *Remediate:* done as above.
+
+## Custom reports Phase 67: column lists with a remove button and a gear popover (2026-11-01)
+
+**Decided by: Agent** (the User's request: column heading and width behind a gear, a plain list with an x and a gear, no "Column 1 field" label; the plan's suggestions were followed).
+
+| Question | Decision |
+|---|---|
+| Shared component | `FolderTreeList` is a folder tree grid with item icons and sorting, too heavy for a flat list, so the row shape is a new small `ItemRowList` (name, muted detail, actions). No other call site had this shape (`RemovableItemList` is a chip list), so nothing else needed converting; the custom table editor will reuse it. |
+| Row | Name is the heading, else the field's label (images column: "Images"); the field's code is a muted detail when a heading hides it. Move up/down and × are icon buttons named with the column's name ("Remove column Code"); a column with no field yet reads "Choose a field". |
+| Gear | `SettingsPopoverButton` (gained `defaultOpen`) holds Field, Heading, Width, Reads from (sheets with joins), Links to sheet, and the image rules for an images column, with their help text unchanged. Labels lost their "Column N" prefix (the popover is named "Settings for column <name>"). A gear is marked when the width, link, join or image rules differ from the default. |
+| New column | Opens its settings at once, since an empty field is invalid. |
+| Confirm | Remove stays unconfirmed (re-adding restores it), as before. |
+
+Time shapes: none. *Identify:* four boxes per column made a wide table's editor a wall of fields. *Verify:* stories for the list, the popover fields, marked gear, long heading and the images column; the column-widths, image-columns and sheet-links Playwright specs open the gear first. The popover's accessible name follows the heading as it is typed, so specs find it by its common start. Backend untouched.
+
+
+## Custom reports Phase 68: custom tables spike, merged cells and per-cell style in four formats (2026-11-01)
+
+A measured choice of cell model for the `grid` block (Phase 69), with a working drawing in each document format. No user-visible change. The prototype and its tests are kept as `backend/tests/report_grid_spike.py` and `test_report_grid_spike.py` (29 tests) and become the first renderer tests of Phase 69.
+
+```mermaid
+flowchart LR
+    G["Grid: widths, columns, rows, header_rows"] --> P["place(): span checks, style cascade<br/>grid, column, row, cell"]
+    P --> PDF["ReportLab Table<br/>SPAN, BACKGROUND, VALIGN"]
+    P --> DOCX["Word table<br/>gridSpan, vMerge, shd, vAlign, trHeight"]
+    P --> ODT["ODF table<br/>spanned, covered-table-cell, min-row-height"]
+    P --> HTML["HTML table<br/>colspan, rowspan, classes, validated hex"]
+```
+
+### Method
+
+One case set (the plan's: a 4 x 4 grid, a title cell across four columns, a label down two rows, columns 1 and 3 black with white bold text from one column setting, a right-aligned, a justified and a middle-aligned cell, a blank row 2 cm tall) drawn in all four formats. The PDF was rendered and viewed; the Word and ODT files were converted by LibreOffice (`lo-check:local`) and viewed; the HTML was viewed in a browser. A second set, 30 groups of three rows with a label spanning each group, a 70-character unbreakable word in a 6 cm column and a header row, ran over three pages in PDF, Word and ODT. A third set held one row of 120 to 150 lines, taller than a page. **Word itself and Excel were not run**: Word output is checked by LibreOffice and by a structural check of the XML (`docx_problems`).
+
+### Findings
+
+| Case | PDF (ReportLab) | Word | ODT | HTML |
+|---|---|---|---|---|
+| Column and row spans | `SPAN`; covered cells hold empty strings | `gridSpan`, and `vMerge` restart then continue through python-docx's `merge`; the covered cells' empty paragraphs must be removed | `number-columns-spanned` / `number-rows-spanned` plus one `covered-table-cell` per covered position | `colspan` / `rowspan`; covered positions omitted |
+| Fill, vertical and horizontal alignment, text colour, bold | `BACKGROUND`, `VALIGN`, Paragraph style per cell | `w:shd`, `w:vAlign`, paragraph `w:jc`, run colour and bold; **the shading and `vAlign` are written on every covered cell too**, so a vertical merge does not depend on which cell a reader takes the style from | cell style (`fo:background-color`, `style:vertical-align`) and paragraph style (`fo:text-align`, `fo:color`, `fo:font-weight`) per cell | a class from a closed list for alignment; `background-color` and `color` in `style` only after a `#rrggbb` check |
+| Minimum row height | **No minimum exists**: the height is the larger of the author's minimum and the measured height of the row's single-row cells | `w:trHeight` `atLeast` | `style:min-row-height` | `tr` `height` (acts as a minimum) |
+| A row stays whole across pages | Default (`splitInRow` 0) | `w:cantSplit` | `fo:keep-together="always"` on the row style | `break-inside: avoid` (not measured) |
+| Header rows repeat | `repeatRows` | `w:tblHeader` | `table:table-header-rows` group | `thead` |
+| A vertical merge across a page break | **Never split**: all 30 groups stayed whole, the break fell at a group boundary | **Split** (LibreOffice: group 29 had its label on page 2 and its other rows on page 3) even with `cantSplit` on every row; fixed by `keepNext` on every paragraph of every row of the group but the last, after which no group split | Not split | Not measured (no print run); rows carry `break-inside: avoid` |
+| A 70-character word in a narrow column | Broken at the cell edge | Broken at the cell edge | Broken at the cell edge | `overflow-wrap: anywhere` |
+| A row taller than a page | **`LayoutError`: the whole run fails**, also with `splitInRow` while the cell is one Paragraph | Split across pages, header repeated, 120 of 120 lines | Split across pages despite `keep-together`, header repeated, 120 of 120 lines | Not measured (no print run) |
+
+### Decisions
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **A distinct `Grid` neutral type, not spans on `Table`.** A record table's rows are data and its sheet family never takes a grid; the table path of four renderers stays as it is.  | Agent |
+| 2 | **Storage:** a merged region is `colspan` / `rowspan` on its top-left cell and the covered positions are **omitted** from the row (the HTML way). A covered cell cannot hold text by mistake, and validation is one pass (`place`): each row's cells plus the positions covered from above must equal the column count; a span may not run past the grid, overlap another cell, or cross from the header rows into the body. Every problem names the row and the cell. | Agent |
+| 3 | **Style cascade** grid, column, row, cell (most specific wins), resolved once in `place` so the four renderers read finished values. Alignment and vertical alignment are closed words; colours are `#rrggbb` only in the spike (Phase 69 widens this to Phase 72's colour words, resolved to hex before they reach a renderer); anything else is refused naming the cell. No author text reaches XML, an attribute or CSS except as escaped text. | Agent |
+| 4 | **Header rows** are the leading rows only, a count, and a merge may not cross the boundary: ODF's header rows are one group of leading rows, so one cell cannot sit in both groups (not tried, by design), and PDF `repeatRows` and Word `tblHeader` have the same shape. | Agent |
+| 5 | **Rows stay whole, merged groups stay together.** Word needs `keepNext` on the group's paragraphs to match PDF and ODT (above); it is cheap and has no visible effect on a group that fits. A group taller than a page splits, as any table does. | Agent |
+| 6 | **A row taller than a page must not fail the run.** ReportLab's `LayoutError` would lose the whole report. The PDF drawing gives each cell's text as a list of Paragraphs (one per line of author text), leaves a too-tall row's height to ReportLab and sets `splitInRow` **only for a grid that has such a row** (it lifts the whole-row rule for every row of that grid). A single paragraph longer than a page in one cell is not split by ReportLab; the Phase 69 limits (2,000 characters a cell) keep that to a narrow column, and the renderer must catch `LayoutError` for the grid and fall back to the same text at no minimum height rather than fail. | Agent |
+| 7 | **Contrast** is a warning (the author chose it), at under 4.5:1 for a cell with both fill and text colour set, computed by `branding.contrast_ratio`. Not an error. | Agent |
+| 8 | **Not for the sheet family.** A grid in a table-family layout is a checked problem at save; XLSX/ODS merged cells are a separate feature if asked. | Agent |
+| 9 | **ODF text** goes through `xml_text` (a newline is `text:line-break`, a run of spaces is `text:s`); the first draft wrote the raw string and lost every line break, which the over-tall row test showed. | Agent |
+| 10 | **Not done, stated:** Word and Excel were not run; the keep-together result for Word is LibreOffice's reading of the same XML. The User is asked to open a Word file of the case set when Phase 69 lands (the spike's own output is not a deliverable). Row heights in a nested table, text inside a cell beyond plain text (bold, links, placeholders, equations) and images in a cell were not part of the spike; Phase 69 builds them on the same cell. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: cell text or a style value reaching XML (Word, ODF), CSS (HTML `style`) or a ReportLab paragraph's mini-markup; a colour or alignment value used as an injection route; resource use from a huge span or a very tall cell. Verify: text is written escaped or as run text (tests put `<w:p/>&amp;`, `<script>` and an attribute-breaking colour through every format), PDF paragraphs are `html.escape`d before ReportLab reads them as markup, every style value comes from a closed set or a `#rrggbb` match and is refused with the cell named otherwise, and spans are checked against the grid before any drawing. Limits on columns, rows and characters are Phase 69's checks. Remediate: none needed.
+
+Time shapes: none. Not applicable: no table, column, migration, project-scoped vocabulary, human code, search provider or bundle change (nothing is stored; the spike is code and tests only). The seed scripts hold no grid.
+
+## Custom reports Phase 72: document colours, a colour scheme and the branding colour wherever a colour is set (2026-11-02)
+
+A colour in a layout is now a **colour word**: a hex colour, a reserved word (`accent`, `accent_light`, `accent_dark`, `white`, `black`, `none`) or the **name** of a colour in a scheme. A block stores the name (`"fill": "primary"`), so changing the scheme re-colours every block that uses it. A layout can carry its own scheme; one that does not follows the **organisation's** report colours, live, and then four standard names taken from the branding colour. One control, `ColourChoiceField`, offers the branding colour first in every colour setting.
+
+```mermaid
+flowchart LR
+    B["block field<br/>fill = primary"] --> R["resolve_colour"]
+    L["layout palette"] --> E["effective_scheme"]
+    O["organisation scheme<br/>(Branding page)"] --> E
+    S["standard four"] --> E
+    E --> R
+    A["report accent"] --> R
+    R --> H["#rrggbb in the SVG, the document, the preview"]
+    R --> P["run provenance: stats.colours<br/>(names used and what each resolved to)"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **The scheme is a tree key `palette`** (`[{name, colour}]`, at most 8, document layouts only), versioned, copied, duplicated and bundled with the tree; no key means "follow the organisation's". No migration for existing layouts. Text view `@palette a=#112233 b=accent` and `@palette follow` (written as no line, so the round trip is exact). | Agent (the plan's suggestion) |
+| 2 | **Resolution order: the layout's, then the organisation's, then the standard four** (`primary` = the accent, `secondary` = `accent_dark`, `tint` = `accent_light`, `neutral` = `#6b7280`), which always resolve so a starter needs no scheme of its own. A later source overrides an earlier one of the same name. The organisation's scheme is live-inherited. | User (live inheritance, 2026-11-01); Agent (order, the four names) |
+| 3 | **The organisation's scheme is `Organization.report_colour_scheme`** (JSONB, NULL = none; migration 0126), edited on **Branding** (`PUT /orgs/{id}/branding`, sent only when present; `[]` clears), carried as `report_look.colour_scheme` in the organisation bundle (an invalid one is dropped with a warning). | User (stored on the organisation beside the accent); Agent (shape) |
+| 4 | **A name** is 1 to 24 lower-case letters, digits and underscores **starting with a letter** (the plan did not say; a leading digit would look like a number), unique within the scheme, and not a reserved word. **An entry's colour** is a hex colour or a reserved word except `none` (the plan said hex or `accent`; the light and dark forms, white and black cost nothing and let a scheme follow the branding), **never another name**, so resolution is one step and cannot loop. | Agent |
+| 5 | **Derived words:** `accent_light` is 85% of the way from the accent to white and `accent_dark` 25% towards black (the plan's suggestion). Python rounds half to even and the browser half up, so a displayed swatch can differ from the printed colour by one step in one channel on an exact half; the server's value is the one printed. | Agent |
+| 6 | **Unknown names are checked where the organisation's names are known.** `validate_tree(..., organization_colours=...)` refuses a name no scheme defines, naming the block's path; the layout save routes, the validate endpoint and every run pass the organisation's names, so **deleting an organisation colour a layout names turns the next run into a 422 naming the block** (the run route now answers any invalid stored tree 422 instead of an unhandled error). Where the organisation is not at hand (the text parser, snippets, bundle import) a well-formed name is accepted unchecked and the save or run decides. The consequence for the old shape check: a word like `red` is now shaped like a name, so only `Red!`-style values are refused without an organisation. | Agent |
+| 7 | **Provenance:** a run's `stats.colours` records `{name: #rrggbb}` for the scheme names it used (no migration: `stats` is JSON), so a saved run stays explainable after the scheme changes. | Agent (the plan asked for it) |
+| 8 | **One control:** `ColourChoiceField` (button with chip **and** name, popover list: branding colour with its actual colour, the layout's scheme, the organisation's, the standard four, light and dark forms, white, black, none where allowed, Custom colour). The pair of picker and hex box is extracted from `ColorField` into `HexColourInput`, which both use. A server block field of `kind="colour"` is drawn with it with no per-block case, so the shape fill and outline use it now and the custom table (Phases 69 and 70) and the document styles (Phase 74) get it by declaring the kind. `ColourChoiceField` is checked by `scripts/check_field_help.py`. | Agent |
+| 9 | **A used name is fixed.** The scheme editor refuses to remove, rename, start over past, or follow the organisation past a name a block uses (with the reason in text), because the name is the link; the server also reports it as a checked problem on a hand edit. **Start from** copies a set (the organisation's, Branding, monochrome, cool, warm) and keeps any used name the set lacks; nothing stays linked to a set. | Agent |
+| 10 | **A scheme entry's settings use the choice list inline** (`ColourChoiceList`), not a second popover, so popovers never nest. | Agent |
+| 11 | **Designer data:** `GET .../report-layouts/colours` (organisation and project scope, same gate as the other designer calls) answers the branding colour (`report_accent_hex`, including its UI-accent and platform fallbacks) and the organisation's scheme; `ReportLayoutApi.colours` is optional, and the designer and the snippet editor fall back to stock choices if it is absent or fails. | Agent |
+| 12 | **Not built here, stated:** the **contrast warning** for a fill and text colour pair (no such pair exists until the custom table has cell fill and text colour; it belongs to Phases 69 and 70); colour in snippets and the starters (Phase 77); the heading colour (Phase 74). The shape block's stored default is still the word `accent`. | Agent |
+| 13 | **Not applicable:** a project-scoped vocabulary table (the scheme is a layout tree key and an organisation column, so no nested-project fallback and no hide or restore of defaults); users and groups; human codes and search (a colour is not a record); time shapes (none). The organisation scheme travels in the organisation bundle and the layout's palette in the layout's tree, which the layout bundles carry whole (tests below). A module needs no core edit: `colour` is a generic field kind. | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: a colour word reaching SVG, XML or CSS markup (today the shape SVG; the grid and the document styles next); a scheme or organisation colour used as an injection route; an unbounded scheme; an administrator-only setting changed by someone else; a name that is a secret or personal data. Verify: every colour reaches an attribute only as the `#rrggbb` `resolve_colour` returns (a name, a word and a hex are matched against closed patterns, an unknown name resolves to the accent); the scheme is validated as a whole (`palette_problems`: at most 8 entries, exact keys, name and colour patterns, no reserved word, no duplicate) on the layout save, the layout text, the organisation PUT (a 422 from the schema) and the bundle import (dropped with a warning); the organisation's scheme is written only through the existing org-admin branding route and read by the designer through the layout-management gate; names and colours are configuration and are never logged. Tests put reserved words, a name pointing at a name, a duplicate, a ninth entry and markup-shaped colours through each path. Remediate: none needed.
+
+### Verification
+
+Backend `test_report_colours.py`: the resolver (every reserved word, hex, the derived tint and shade, the standard four with no scheme, a name following another organisation's accent, the three-level order, an unknown name or bad accent never breaking a run), the scheme checks (13 bad cases with paths), the tree (a scheme name and a standard name valid; unknown refused with the block path only where the organisation's names are known; removing a used name; table layouts refused), the text view (round trip, `follow`, bad lines positioned, once and before the first block), the organisation's scheme (API, validation, `[]` clears, a branding update that omits it leaves it), a run resolving layout then organisation then standard, provenance, a deleted organisation colour refused at save and at run, and the designer's colours endpoint at both scopes. `test_report_look.py` (organisation bundle carries the scheme; a valid one is imported, an invalid one dropped with a warning), `test_report_layout_tiers.py` (project bundle round trip) and `test_report_duplicate.py` (the scheme travels). Storybook: `ColourChoiceField` (10) and `ReportColourSchemeEditor` (15). Playwright `report-colours.spec.ts`: set the organisation's colour on Branding, use it by name on a shape, override it in the layout and see the preview change, a used colour cannot be removed, the text view, follow again; an unknown name refused with its path; Start from and a standard name. `seed_demo_data.py` sets two organisation colours and the logo demo's plate uses `primary`.
+
+## Custom reports Phase 69: the custom table (`grid`) block, tree, checks, text view and four drawings (2026-11-02)
+
+A document layout can hold a **Table (custom)** block: a table written cell by cell, with merged cells and per-cell alignment, fill, text colour and bold, drawn the same in PDF, Word, OpenDocument and the HTML preview. It is the counterpart of the record `table` (renamed **Table (records)** in the Add block menu so authors can tell the pair apart). It builds on the spike's findings (see "Custom reports Phase 68") and Phase 72's colour words.
+
+```mermaid
+flowchart LR
+    T["tree: grid<br/>columns, rows, cells"] --> V["validate_tree<br/>place_spans, colour words, limits"]
+    X["text view<br/>@grid, @col, @row, | cells |"] <--> T
+    T --> E["_eval_grid<br/>cascade, colour to hex,<br/>cell text to paragraphs"]
+    E --> M["Grid model<br/>GridRow, GridCell"]
+    M --> P["place_grid"]
+    P --> PDF["pdf_grid"]
+    P --> DOCX["docx_grid"]
+    P --> ODT["odt_grid"]
+    P --> HTML["html_grid"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Shape.** Tree `grid`: `columns` (1 to 20 objects, each `width` and the style keys), `rows` (1 to 200, each `cells`, `height` + `height_unit`, style keys), `header_rows`, `borders` (`all`, `outer`, `horizontal`, `none`), `border_color` and the style keys on the grid itself. A cell is `text` (required, may be empty, 2,000 characters), `colspan`, `rowspan` and the style keys. A merged cell is written once on its top-left position, covered positions omitted (the spike's choice). | Agent (the plan's suggestion, confirmed against the spike) |
+| 2 | **Header rows are a count (`header_rows`), not a per-row flag**, and the layout's `repeat_table_header` switch decides whether they repeat (the plan's own `repeat_header` key on the grid is dropped: one switch for every table, as Phase 46 made it). | Agent |
+| 3 | **One span check.** `services/report_grid.place_spans` is called by the tree validator (on tree numbers) and by `place_grid` (on the finished model), so the rule lives once; problems name `rows[r].cells[i]` and the text view maps them to the row's line. | Agent |
+| 4 | **Cell text is Markdown read by the text block's reader, then flattened to paragraphs**: a line break starts a paragraph, a heading is bold, a list item carries its bullet or `n.` as text, a display equation is drawn inline. **Stated limit:** a list in a cell has no hanging indent, and a picture in a cell is dropped. The plan said "same text rules as a text block"; real lists inside a cell would have meant four renderers each drawing blocks inside a cell. | Agent |
+| 5 | **Colours** go through Phase 72: `colour_word_problem` at save (a scheme name is checked where the organisation's names are known), `resolve_colour` at run, so a renderer only ever sees `#rrggbb`; `border_color` may not be `none`. Each renderer checks the pattern again before writing a colour. | Agent |
+| 6 | **Text view.** `@grid columns=N [headerrows=N] [borders=...] [bordercolor=...] [style words]`, `@col N [width=...] [style]`, an optional `@row [height=2cm\|15mm\|2] [style]` then one line of cells `\| a \| b \|`; a cell may start with `{colspan=2 rowspan=2 align=right ...}`. The plan's example wrote `{colspan=3}` at the end of a cell; a **leading** settings block is used instead so cell text can never be mistaken for it (a text starting with a single brace is written `\{`). Escapes: `\\`, `\|`, `\n`, `\r`, `\{`; `\|\|` is a row with no cells (a row fully covered from above). One space of padding each side is not part of the text. A bar-led line outside a `@grid` is ordinary text. A property-style test (150 random valid grids) and 17 special texts prove the exact round trip. | Agent (grammar settled by the round-trip test, as the plan said) |
+| 7 | **Drawings** (`services/report_grid_render.py`): each takes the renderer's own inline-text writer as a callback, so bold, italic, code, links and equations in a cell are drawn by the code that draws a paragraph, and the module imports no renderer. Rows stay whole and merged groups stay together (Word `keepNext`); a header repeats unless the layout turns it off; borders are table-level in Word, per-edge in ODT (cell styles shared by look-alike cells) and classes in HTML; widths use the Phase 55 resolver. **PDF: a paragraph taller than 90% of a page is cut** and splitting inside rows is allowed only for a grid with a row taller than a page, so such a row can no longer raise `LayoutError` and fail the run (the spike's "catch it as a last resort" is not needed: nothing is left that can). | Agent |
+| 8 | **Contrast** is a run warning, never an error: one line naming how many cells have text and fill below 4.5:1 (text colour taken as black when only a fill is set, so a black fill with default text is flagged). | Agent (the plan's and the spike's choice) |
+| 9 | **Family:** document layouts only; a table layout refuses the block at save, as for images and shapes. A grid inside `each` fills `{{record.field}}` for each record. | Agent (as the spike decided) |
+| 10 | **Designer:** the server block schema is registered once, with two new field kinds `grid_columns` and `grid_rows`; until Phase 70 builds their editor the block form shows them as JSON (the designer's existing fallback), and the Text view is the way to author. The Add block menu and the text toolbar offer **Table (custom)**; the record table's schema label became **Table (records)**. | Agent |
+| 11 | **Not built here, stated:** a grid-wide or per-column font and size (Phase 78), italic on a whole cell (use Markdown in the text), images in a cell, and **Word itself was not run** (Word and ODT are checked in LibreOffice and by reading the XML back; the User is asked to open a Word file of a grid with merged, shaded and tall cells). The spike's prototype and its 29 tests are replaced by `test_report_grid.py` against the real code. | Agent |
+| 12 | **Not applicable:** a project-scoped vocabulary table (none; no nested-project fallback, no hide or restore of defaults); users and groups; human codes and search (a table is a block, not a record); time shapes (none); a migration (the block lives in the layout tree, so it travels in the layout's bundle with the tree and needs no table or column); the seed scripts (no model change; the demo grid is Phase 71). | Agent |
+
+### Security review (identify → verify → remediate)
+
+Identify: cell text or a style value reaching XML (Word, ODF), CSS or a class (HTML) or ReportLab mini-markup; a colour word used as an injection route; resource use from a huge table, span or cell; a merge that corrupts a Word file; text-view parsing of hostile input (unbounded columns, backslash tricks). Verify: cell text reaches output only through each renderer's own escaping text writer (tests put `<w:p/>&amp;`, `<script>` and attribute-breaking colours through all four); colours are `#rrggbb` from the resolver and re-checked by pattern, alignment and borders are closed words (classes or table lookups), heights are numbers; limits (20 columns, 200 rows, 2,000 characters, 8 nesting levels) are checked at save and the parser bounds `columns=N` before it allocates; the span check runs before any drawing and a drawing of a grid that fails it raises rather than writing a broken table. Remediate: none needed; the `\{` and `\|` escapes were added because the first grammar let a cell that started with a brace read as settings.
+
+### Verification
+
+`backend/tests/test_report_grid.py` (122 tests): the span check (7 bad merges with their row and cell), border edges, the cell's text (line breaks, lists, headings, display equations), the tree (a valid grid, 30 bad cases with their paths, scheme names, a table layout, a grid in a loop), the text view (a worked example, 17 texts that must read back exactly, a 150-grid property test, 18 syntax errors at their line, a merge problem at its row's line, a bar line outside a grid), the four drawings read back (PDF spans, fills, heights, header, a 80-row grid over pages, a row taller than a page, one paragraph longer than a page; Word `gridSpan`/`vMerge`, shading, alignment, height, header, borders, keep-together; ODT spans, covered cells, shared styles, borders; HTML spans, classes, escaped text, validated colours) and the evaluator (cascade, a column across a merge, colour words and the scheme, the contrast warning, Markdown and placeholders, a grid per record, the header switch, millimetres). 716 tests passed across the report test files that touch trees, text, the evaluator and the designer. `scripts/check_mypy.py` passes, ruff is clean, `tsc -b` and eslint pass, and `tests/playwright/tests/e2e-workflows/report-custom-table.spec.ts` covers the Add block menu, the text view, the toolbar, the preview's merges and colours, and the refusals. The Word and ODT files of the case set were converted by LibreOffice (`lo-check:local`) and the PDF, Word and ODT pages looked at: the title merged across four columns, the label merged down two rows, black bold columns, right and justified text, the 2 cm blank row.
+
+## Custom reports Phase 70: the custom table editor in the designer (2026-11-02)
+
+The **Table (custom)** block's panel no longer shows its columns and rows as JSON. It shows a read-only summary ("3 columns · 4 rows · 1 merged") and an **Edit table** button that opens the editor in a dialog: cells are selected on a drawn grid, merged, aligned and coloured, rows and columns are added and removed, and a cell's text is typed in a field under the grid. Frontend only: the tree, the checks and the four drawings are Phase 69's, unchanged.
+
+```mermaid
+flowchart LR
+    P["Block panel<br/>summary + Edit table"] --> D["Dialog: ReportGridField<br/>draft + undo/redo, Save / Cancel"]
+    D --> E["ReportGridEditor<br/>selection, toolbar, text field"]
+    E --> U["utils/reportGrid<br/>matrix: merge, style, add/remove"]
+    D -->|"Save: columns, rows, header_rows<br/>in one tree change"| T["Layout tree"]
+    T --> S["Server validate_tree<br/>(the judge)"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Panel summary plus a dialog**, not the grid in the side panel (a wide grid does not fit it). The plan asked to confirm this split against the shape block's SVG dialog; it holds. Cancel discards every change, Save hands the result back; the designer's dirty state follows the tree change as for any block edit. | Agent |
+| 2 | **One control owns three keys.** `grid_columns` draws the summary and button and its save sets `columns`, `rows` and `header_rows` together; `grid_rows` draws nothing of its own (its problems still show). `ReportLayoutBlockField` gained an optional `onChangeMany(patch)` so one Save is one tree change (two `onChange` calls would each start from the same stale tree and lose the first). Generic: any block editor that changes several keys at once can use it. | Agent |
+| 3 | **The model is a matrix** (`utils/reportGrid.ts`): cells placed as the server places them, every operation returns a new `{columns, rows, header_rows}` and a refusal returns a problem key. A column operation is the row operation on the transposed matrix, so the hard case (a merge spanning the point of insertion or removal) is written once. A short or overflowing tree is normalised on its first edit. | Agent |
+| 4 | **Style scope: Selected cells, Whole columns, Whole rows** (an "Apply to" choice). Styling a column sets it on the column **and removes that key from the single-column cells in it**, because a cell's own value beats its column's; without that, "black first column" would do nothing on a cell that was once set. A row-level value on the same key is left alone. | Agent |
+| 5 | **Merge** joins the other cells' text onto the top-left cell, line by line; **Unmerge** makes single cells that copy the merged cell's style and start blank. Merge is off only for a single cell; a range over the header stays enabled so a click can say why it is refused (a disabled button cannot). Header rows are set in the dialog and the panel (the same key), refused where a merge crosses the boundary. | Agent |
+| 6 | **Borders, border colour and the grid-wide style stay in the panel's ordinary fields**, not in the dialog. The plan listed borders with the toolbar; they are one setting each and already have fields, so a second control would be a second place to edit them. | Agent |
+| 7 | **Undo and redo** over the dialog's draft (buttons and Ctrl+Z / Ctrl+Y outside a text field, which keeps its own undo). No unsaved-changes prompt: Cancel is the stated discard. | Agent |
+| 8 | **Selection** is anchor and focus, widened so a merged cell is never cut; mouse (drag, Shift+click) and keyboard (arrows, Shift+arrows, Enter or F2 moves to the cell's text). One tab stop with `aria-activedescendant`, as a spreadsheet; each cell is named "Row r, column c" and carries `aria-colspan` / `aria-rowspan`; header rows are `columnheader`. | Agent |
+| 9 | **Cells are drawn as the page prints them:** an unset fill and text colour are paper white and black in both themes; colours come only from `resolveColourWord` (a validated hex), set through a style property, never from the cell's text. | Agent |
+| 10 | **The contrast warning** is shown for the selection, with the run warning's reading: a text colour left unset counts as black on a fill. It warns, never blocks. | Agent (Phase 69 decision 8 carried over) |
+| 11 | **Not built, stated:** per-cell font (Phase 78); dragging to resize columns (a Width field instead); a screenshot on the website (left to the docs phase); the PDF in the Playwright spec is checked as a real PDF only (the backend tests read it back), Word by its XML and HTML by its markup. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: cell text reaching the DOM as markup; a colour word as an injection route; a client-side tree the server would trust; a huge table exhausting the browser. Verify: cell text is rendered as a React text node (never `dangerouslySetInnerHTML`); a colour is the output of `resolveColourWord` (a hex) applied through `style`; the editor edits the same tree the server validates on every preview, save and run, so nothing here is trusted; the limits (20 columns, 200 rows) are enforced by `addColumn` / `addRow` and by the server. Remediate: none needed.
+
+### Verification
+
+`frontend/src/utils/reportGrid.stories.tsx` (17: merge, unmerge, selection widening, header refusal, add and remove inside, at the edge of and starting a merge, columns, the limits, the cascade, clearing, heights, normalising), `ReportGridEditor.stories.tsx` (17: selection by mouse and keyboard, merge, alignment pressed state, whole column and row, contrast, cell text, add and remove, sizes, header refusal, long text, read-only), `ReportGridField.stories.tsx` (8: summary, dialog header, Save, Cancel, undo and redo, Ctrl+Z, read-only), the 255 existing report-designer stories, `tsc`, `eslint`, the field-help, required-marker, textarea and list-layout checks, and `tests/playwright/tests/e2e-workflows/report-custom-table-editor.spec.ts` (builds a 3 x 4 table, merges two cells, makes columns 1 and 3 black with white bold text, right-aligns a cell, saves, then reads the Word XML, the HTML and the PDF header back and reopens the editor to check Cancel discards).
+
+## Custom reports Phase 71: custom table snippets and demo data (2026-11-02)
+
+Three built-in snippets are now custom tables (`grid` blocks); see `services/report_snippets_core.py`.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Document details** is new: a two-column grid, the label column black with white bold text (a column style, so a merged title row across both columns takes it too), rows for document, project (`{{project_name}} ({{project_code}})`), organisation, version and date, all placeholders so it fills itself in on every run. | Agent (the plan's content list) |
+| 2 | **Document review and control** and **Approvals** replace the list versions in place and keep their keys (`document-control`, `approvals`), so MCP callers and saved references still resolve. Each is a heading (so the contents list and Word navigation see it) plus a grid with a merged black title row (`{{report_title}}, version {{layout_version}}` and `Approval of {{report_title}}`), a bold column-heading row, and blank rows of 1.2 cm (review) and 1.5 cm (approvals) to write in. Two header rows repeat. | Agent |
+| 3 | **No "Prepared by" placeholder.** Nothing in a run names who runs the report, so the people boxes are blank rather than inventing a placeholder in this phase. | Agent |
+| 4 | **Colours are `black` and `white` only**, never a hex value or a scheme name, so a snippet applies cleanly into a layout with no colour scheme (the Phase 72 rule recorded for snippets). | Agent |
+| 5 | **Starters are unchanged.** The plan said to ask the User before putting the details table at the top of the built-in starters; asked in the hand-back, not done. | Agent (default) |
+| 6 | **Demo data:** `seed_demo_data.py` builds "Project overview with logo" by calling the snippet apply endpoint (details after the intro text, review and control at the end), so the demo cannot drift from the snippets and shows the Insert snippet path. `seed_e2e_dataset.py` needs nothing (the spec makes its own organisation). | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: snippet text reaching a renderer as markup; a colour word a layout lacks; a snippet storing or logging values. Verify: the snippets are static dicts through the same validated `grid` path (no author text in HTML `style`, Phase 69); only reserved colour words are used (tested); apply still stores and audits nothing (existing test). Remediate: none needed.
+
+### Verification
+
+`backend/tests/test_report_snippets.py` (45): the seven built-ins apply and round-trip through the text view, the three tables use only reserved colour words, details fill from the run, blank cells keep their height, all four formats print them. Playwright `report-snippets.spec.ts` inserts the three from the menu and checks the preview. The PDF was rendered and read by eye; the User opened the Word file on 2026-11-02 and it looked right (black title rows and label column, merges, blank row heights, filled placeholders; one page only, so a page-break split was not seen). The full demo seed was not run against the shared test database; the same sequence is covered by the tests.
+
+## Custom reports Phase 73: fonts spike, what prints the same in PDF, Word, OpenDocument and HTML (2026-11-02)
+
+A spike with no user-visible change. It measured whether a font choice can promise the same line breaks in four formats, and left behind the family table every renderer will read (`services/report_fonts.py`: `FAMILIES`, `get_family`, `register_family`, `pdf_face`, `covers`). Nothing draws from it yet; Phases 74 to 78 adopt it.
+
+```mermaid
+flowchart LR
+    K["family key<br/>sans / serif / mono / unicode"] --> P["PDF: embedded Liberation or DejaVu face"]
+    K --> W["Word: w:rFonts = Arial / Times New Roman / Courier New"]
+    K --> O["ODT: style:font-face + generic (swiss / roman / modern)"]
+    K --> H["HTML: font-family name, generic"]
+    P -. "same advance widths" .- W
+```
+
+| # | Finding or decision | Decided by |
+|---|---|---|
+| 1 | **Metrics.** Liberation Sans, Serif and Mono against the PDF standard fonts that Arial, Times New Roman and Courier New share (191 Latin-1 characters, 4 styles each): Mono is exact (0.1 per 1000 em); Sans and Serif match everywhere except five characters (`¯ ± µ · ÷`), where the Adobe core tables and Microsoft's differ, so they are not a fair reference and the test leaves them out. Real Arial and Times New Roman were not available; the claim is Liberation's design intent plus this check. | Agent |
+| 2 | **Wrapping.** 60 paragraphs (6 to 90 words, bold and italic runs) at 9, 11 and 14 pt, left aligned, A4 with 25 mm margins, per family: ReportLab PDF with the Liberation faces against LibreOffice 25.2 (`lo-check:local`) converting the same text as DOCX (named `Arial` etc.) and ODT, with Liberation present. Paragraphs whose line count differs: 0 to 2 of 60 for Sans and Serif, 2 of 60 for Mono except 14 pt (7 of 60); total lines within 1.5%. Every Mono difference is a line of exactly 54 characters whose width exceeds the measure by 0.06 pt (ReportLab accepts it, LibreOffice does not): rounding at the edge, not a font fault. DOCX and ODT agree with each other in every case. LibreOffice's page count is one higher than the PDF's in most cases because its 115% line spacing is of the font's own line height, not of the size, so page counts are not comparable across engines and must not be promised. | Agent |
+| 3 | **A reader without a matching font.** The same files converted with no Liberation installed (LibreOffice substitutes DejaVu): 32 to 51 of 60 paragraphs reflow. Sans prints about 16% more lines, Serif about 28% more; Mono in a DOCX prints about 11% fewer (a proportional face replaces a fixed one) while an ODT that names the generic `modern` family keeps a fixed-pitch face and matches. So naming the font with a generic fallback helps (it is what keeps Mono right) but does not make Sans and Serif reflow-proof: the picker must say that Word and OpenDocument need the font or a metric-compatible one (Arial and Times New Roman exist on every Windows and Mac Word install; Liberation is the stand-in on Linux). Word itself was not run. | Agent |
+| 4 | **The generic fallback character set.** Liberation prints all Latin-1, Latin Extended (Polish, Czech, Turkish, Vietnamese), Cyrillic, Greek and general punctuation (`€ – — “ ” …`) in every family. It lacks tick and ballot symbols (`✓ ✔ ✗ ☐ ☑ ★`) and a few mathematical signs (`∈ ∀`), all of which DejaVu Sans has; neither draws CJK. The Unicode fallback therefore stays, but now fires on `covers(family, char)` (the family's own glyph table) rather than on "Helvetica cannot encode it", so a Polish letter in Sans stays in Sans. Arabic and Indic scripts are still unsupported in PDF (ReportLab does not shape). | Agent |
+| 5 | **A fallback run does not inherit weight or slant.** In ReportLab a `<font name="...">` inside `<b>` or `<i>` drew the upright regular DejaVu face (checked in the PDF's font list), so a fallback run must name the face for the surrounding style. DejaVu Sans Oblique and Bold Oblique are now bundled for that; wiring it into `mark_fallback` belongs to Phase 74, which knows the inline marks. | Agent |
+| 6 | **Embedding.** Four Liberation Serif faces written into a DOCX (obfuscated `.odttf`, `w:embedTrueTypeFonts`) and into an ODT (`Fonts/`, `svg:font-face-src`), converted by LibreOffice with Liberation not installed: both formats used the embedded faces (the PDF lists all four). Full faces add about 835 KB to the DOCX and 800 KB to the ODT for one family; subsetting to the used glyphs adds 53 KB and 17 KB, but a subset must hold every character the document uses (a test subset missing letters made LibreOffice use DejaVu Serif for them). All bundled faces have `OS/2 fsType` 0 (installable), so embedding is allowed. Word, Word for Mac and Word Online were not run; Word on the web and older Word for Mac are reported not to use embedded fonts (from general knowledge, not tested here), so the setting is best effort and says so. Phase 73b: embed only the faces used, subset them to the document's characters (the font then cannot be edited in Word, as with Word's own "embed only the characters used"), skip any font whose `fsType` forbids embedding. | Agent |
+| 7 | **Closed list.** Sans (Liberation Sans, Word name Arial), Serif (Liberation Serif, Times New Roman), Mono (Liberation Mono, Courier New) and Unicode Sans (DejaVu Sans, its own name), keys `sans`, `serif`, `mono`, `unicode`; extra families from the server administrator will be `x-<slug>` (Phase 73b). No uploaded fonts. | User (2026-11-01) |
+| 8 | **Sizes.** Points, 6 to 72, in half points. A size on a block applies to that block only; the layout's body size sets text, lists and the base for headings; table cells, lists inside tables and running bands keep their own size unless their block says otherwise. | Agent (the plan's suggestion, confirmed by the numbers: a body size that reflowed tables would move columns the author sized) |
+| 9 | **Assets.** Liberation 2.1.5 (SIL OFL 1.1, with its licence) in `app/assets/report_fonts/`, 12 files, about 4.3 MB. DejaVu Sans moved from 2.35 to 2.37 and gained Oblique and Bold Oblique (`app/assets/fonts/`): 2.37 loses no character and every shared advance width is identical, so existing PDF layout is unchanged; the SVG renderer reads that directory, so italic DejaVu text in an SVG now uses the real oblique. Liberation is kept out of that directory so the SVG renderer's fonts do not change. | Agent |
+| 10 | **No new dependency.** `fontTools` was used for the measuring and is not added to `requirements.txt`: glyph coverage and the embedding check come from ReportLab's own font reader (it refuses to load a face whose licence forbids embedding). | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: font bytes parsed by ReportLab; a licence obligation on bundled assets; a family key from a stored layout reaching a file path. Verify: the faces are fixed files in the image, read-only and chosen from the closed `FAMILIES` table, so no request supplies a path or bytes; `get_family` raises `KeyError` for anything else, and no uploaded font is parsed (the reason uploaded fonts stay out). Liberation's OFL 1.1 permits redistribution with its licence, which is shipped beside the files, and the files are unmodified, so the Reserved Font Name clause is not engaged. They are not a subprocessor (nothing leaves the deployment); the vendor policy's dependency point applies, and the versions are pinned by the files themselves. Remediate: nothing needed. The mounted-directory case, where a person other than the maintainers supplies font files, is the subject of Phase 73b and its own review.
+
+### Verification
+
+`backend/tests/test_report_fonts.py` gained 17 cases: the closed family list; four real faces per family with the right bold and italic flags, a licence file beside each and ReportLab accepting the embedding permission; Liberation's widths against the named font's for every Latin-1 character in all 12 faces; the Word, CSS and OpenDocument names; face names for weight and slant; Latin, Cyrillic, Greek and Polish covered without the fallback and tick symbols covered only by Unicode Sans; the DejaVu oblique faces. The 349 report rendering tests (SVG, render, grid, math, images) pass after the DejaVu change; ruff and the mypy ratchet are clean. The spike's measuring scripts were run from the scratchpad and are not kept; the numbers above are the record. **Not done:** Word and Excel were not run; a browser was not used to check the HTML stack.
+
+## Custom reports Phase 73b: server-administrator fonts (2026-11-02)
+
+The server administrator can add font families from a read-only mounted directory, see them on **Server management → Report fonts**, and choose which authors are offered. The pieces that need a layout to hold a font choice (the renderers writing the name, the layout's `embed_fonts` setting, the save warning) are built as services and wait for the first phase that stores a font in a layout; see row 11.
+
+```mermaid
+flowchart LR
+    DIR["REPORT_FONTS_DIR<br/>(read-only mount)"] --> SCAN["report_font_directory<br/>scan, refuse, group"]
+    SCAN --> CAT["report_font_catalogue<br/>per worker, refreshed within 30 s"]
+    DB[("server_report_fonts<br/>name, generic, offered")] --> CAT
+    CAT --> ADM["admin API + Report fonts page"]
+    CAT --> CH["author picker list"]
+    CAT --> RF["report_fonts.get_family"]
+    RF --> PARTS["report_font_parts<br/>declare / embed in .docx .odt"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **A font whose `OS/2 fsType` forbids embedding (0x0002) or subsetting/bitmap-only (0x0100, 0x0200) is refused outright**, not merely never embedded in Word. ReportLab subsets every face it draws and itself refuses such a font, so the PDF could not use it either; one rule covers all four formats and the page shows the reason. The plan's "never embedded, with a note" therefore reduces to "never usable". | Agent |
+| 2 | **No subsetting when embedding.** A subset needs a font library the project does not ship; the spike also showed a subset missing a used character falls back to another face. Whole faces are embedded, only the ones the document uses and the family really has (a missing italic is never faked), so the file grows by their size (about 0.3 to 0.4 MB a face), which the layout setting's help will say. Bundled families are not embedded (the spike found no gain). | Agent |
+| 3 | **Default is offered.** A family found in the directory with no settings row is offered with its own name and `sans-serif`; the administrator hides it. A row is written only on the first change (explicit-override-only, like the server module defaults). Hidden means "not in the picker": a layout already using it still renders. | Agent (the plan said "a switch to hide") |
+| 4 | **Several workers and replicas.** Each worker scans its own mount, rescans when the directory's file names, sizes and modification times change (checked at most every 30 s), and **Rescan** forces it on the worker that handles the request. The others follow within 30 s, so no restart is needed; every replica must mount the same files (stated in the deployment docs). | Agent |
+| 5 | **Keys and names.** The key is `x-<slug of the family name>`; two different names that give one slug keep the first and skip the second with a reason. The administrator's name for Word and OpenDocument is limited to letters, digits, space and `. _ ( ) + -`, so it can be written into CSS, XML attributes and a Word font table without escaping. | Agent |
+| 6 | **Checked against LibreOffice.** `embed_in_docx` and `embed_in_odt` output (a document naming "Courier Prime", four faces embedded, LibreOffice with no such font installed) printed with the embedded faces in both formats. Declared but not embedded, LibreOffice ignores `w:altName` and the generic family and chose DejaVu Serif, so those hints help Word (untested here) and not LibreOffice. | Agent |
+| 7 | **Server-level setting, not in a project or organisation bundle.** `server_report_fonts` is deployment configuration for font files that only exist on the server, so it does not travel in a bundle (a bundle moved to another server keeps the font key, and the layout falls back there with a note). It is in the database backup with the rest. The font directory is not; the deployment docs say to back it up with the configuration. | Agent |
+| 8 | **Dev and test stack** mounts `tests/container/report-fonts` (a renamed copy of Liberation Mono with its licence) so the page has a provided family to show; the production compose mounts `REPORT_FONTS_HOST_DIR` (default `./report-fonts`, git-ignored apart from its README). | Agent |
+| 9 | **API.** `GET /system/report-fonts`, `PUT /system/report-fonts/{key}`, `POST /system/report-fonts/rescan` (server administrator; a Personal Access Token cannot satisfy it), and `GET /system/report-fonts/choices` (any signed-in user, bundled then offered extras). Responses carry file names and reasons, never the directory path. Audit: `report_font.updated` (key, offered, generic, whether a name is set) and `report_font.rescanned` (counts). | Agent |
+| 10 | **No new migration risk.** Migration 0127 creates `server_report_fonts` guarded with `IF NOT EXISTS`. | Agent |
+| 11 | **Not built here, and why.** (d) the renderers writing the family name, (e) the `embed_fonts` layout setting with its Layout settings control and `@layout embedfonts`, and (f) the warning when a layout names an absent family: there is no layout field that holds a font key until the document styles phase, so there is nothing to render, embed or warn about, and a setting that did nothing would be a control with no effect. What exists and is tested: `report_font_parts.embed_in_docx` / `embed_in_odt` (the `embed_fonts` switch is their `embed` argument), `report_font_catalogue.family_or_fallback` and `font_problems` (the fallback and its note). The Playwright step "hide a family and see it leave the author's picker" is covered at the API (`/choices`) and waits for the picker. **Flagged to the User.** | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: administrator-supplied font files parsed by ReportLab; a path or file name reaching a response or a log; a font name written into CSS, XML and a Word font table; an authorisation gap on the admin routes; symbolic links or huge files in the mount; licence handling. Verify: the directory comes from `REPORT_FONTS_DIR` only; each file is checked for size (10 MB), TrueType magic, symbolic link and `fsType` before ReportLab parses it, parse failures are caught and skipped, at most 500 entries are read and subdirectories are not entered; responses and logs carry file names, reasons, keys and counts, never the directory path or content; the name is validated to a character set with no quote, angle bracket, semicolon or backslash (tests refuse each), and the XML parts are written through lxml, which escapes; the admin routes need `require_server_admin` (tests: an organisation administrator gets 403 on all three), and the picker route needs a signed-in user; the lxml parser used on our own generated parts resolves no entities and fetches nothing. Remediate: nothing outstanding. Residual: a malicious `.ttf` placed by someone who can already write to the mounted directory could target the font parser, which is the same trust as the deployment's own files; the directory is read-only to the container. The vendor policy gained a font-files point (SOC 2 package).
+
+### Verification
+
+Backend: `test_report_font_directory.py` (20: slug, unset/missing directory, a valid family with its real faces, nine kinds of unusable file with their reasons, no regular face, duplicate style, drawing names and coverage, a changed directory noticed, settings laid over the scan, missing files and the fallback with its note, the routes: list, update, rescan, audit rows, hiding leaves the picker list, administrator-only access, six unsafe names refused, unknown and bundled keys refused) and `test_report_font_parts.py` (9: declaration without embedding, embedding only used real faces in schema order, the key mask round trip, determinism, refusing a file that is not Word, the ODT declaration and `Fonts/` entries, no embedding, refusing a non-ODT). The schema-matches-models test passes with migration 0127; ruff and the mypy ratchet are clean. Storybook `ServerReportFontsTab.stories.tsx` (6) and Playwright `report-fonts.spec.ts` (hide, rename, reload, restore, rescan, against the rebuilt test stack). **Not done:** Word was not run; the seed scripts need no change (a server setting, no demo data); the full backend suite was not run, only the font, schema, DR-stats, module-RBAC and doc-link tests and the 349 rendering tests earlier.
+
+
+## Custom reports Phase 74: document styles, a layout's fonts set once (2026-11-02)
+
+A document layout sets its **body font and size** and its **headings' font, weight, slant and colour** once, in Layout settings under **Fonts** (plus **Embed fonts**). Every block, table, list, note and the header and footer follow. This phase also finishes the pieces of the server-administrator fonts phase that needed a layout to hold a font key (the renderers writing the family name, the `embed_fonts` setting, the warning for a missing family, the author's picker).
+
+```mermaid
+flowchart LR
+    T["tree: styles, embed_fonts"] --> V["document_styles_problems<br/>save, validate, run"]
+    T --> R["resolve_styles"]
+    CAT["font catalogue<br/>family_or_fallback"] --> R
+    COL["colour scheme"] --> R
+    R --> D["ReportDocument.styles"]
+    R --> N["run notes: missing family<br/>provenance: heading colour name"]
+    D --> P["PDF: real font files"]
+    D --> W["Word: docDefaults + heading styles"]
+    D --> O["ODT: default + heading styles"]
+    D --> H["HTML: validated CSS"]
+    W --> E["embed_in_docx / embed_in_odt<br/>(extra families, when embed_fonts)"]
+    O --> E
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Tree keys `styles` and `embed_fonts`** (document layouts only), `styles = {body: {font, size}, headings: {font, bold, italic, colour}}`. An empty `styles`, `body` or `headings` is refused ("leave the key out"), so every valid tree has exactly one text form and the text round trip is exact. No migration; the tree travels whole in bundles, copy and duplicate. | Agent (the plan's shape) |
+| 2 | **A font key's form is checked, its availability is not.** `sans`, `serif`, `mono`, `unicode` or `x-<slug>` is valid; a layout moved to a server without the family still saves (the key is kept) and prints in the bundled family of the same generic kind, with a run note. `GET .../report-layouts/{id}` and `POST .../validate` carry `warnings` for it, and the Fonts field says so inline. | Agent (the plan said "saves with a warning") |
+| 3 | **A heading with no font of its own follows the body font** (the plan said "none means today's look", which would leave sans headings in a serif document). With no font at all the headings keep each format's own look, whatever bold, italic and colour say. | Agent |
+| 4 | **Sizes.** The body size is the size of text and lists. Headings scale by the same ratio they have to the body in each format's own look (PDF from ReportLab's 10 pt, Word from its 11 pt, OpenDocument from 10 pt, HTML by `em` from the body), so a 12 pt body in Word gives a 15.3 pt Heading 1. Table text, captions, notes and the header and footer keep their own sizes but take the body family (the plan's two readings of this were reconciled this way). Word and OpenDocument sizes are rounded to half points. **Each heading level is a step smaller than the one above in every format** (Word's own Heading 3 and 4 are both body size, so a styled Word document sets 14, 13, 12 and 11 pt at an 11 pt body); a test pins it. | Agent |
+| 5 | **Word is styled in its styles, not per run:** the document defaults (`w:docDefaults`) for the body, and Title and Heading 1 to 4 for headings, with the theme font references replaced, run properties kept in schema order. Someone who restyles in Word therefore gets the whole document. The linked "Heading N Char" character styles are not changed (they apply only to a partly styled heading in Word). | Agent |
+| 6 | **PDF reads the family through a context variable** (`report_fonts.using_family`) set once around a render, because `safe`, `mark_fallback`, `text_width` and the page band drawing are called from places that cannot be handed the layout. Column widths, the footer and the running bands therefore measure and draw in the family, and the Unicode fallback tests the family's own glyph table. Derived paragraph styles are built once per distinct setting (`_look_for`) and cached, because the toned-cell cache keeps styles by identity. | Agent |
+| 7 | **Fallback text now keeps its slant.** The bundled DejaVu italic faces were present but unused; `safe`/`mark_fallback` take `italic`, so an italic run of Greek or Cyrillic in a Helvetica document is italic too (a small visible change to existing PDFs with italic non-Latin text). | Agent |
+| 8 | **The heading colour is a colour word** (`none` refused), resolved on the server to `#rrggbb` before any renderer sees it, and a scheme name used is added to the run's `stats.colours` like any other. | Agent |
+| 9 | **Embedding is a post-step.** After a Word or ODT file is built, `embed_in_docx` / `embed_in_odt` run with the administrator-provided families the document uses and only the faces it uses (`used_extra_families`: regular always; bold for headings, table headings and bold runs; italic for italic headings, notes and italic runs). It declares the family even when `embed_fonts` is off. The four standard families are never embedded. A font whose licence forbids embedding is refused when the directory is scanned, so there is no per-run "cannot be embedded" note. | Agent |
+| 10 | **Designer.** The font choice is a drop-down of the fonts the server has; an "Other…" entry for a typed name was considered and dropped (**Decided by: User**: PDF could not draw it, so offer only fonts the server has). One new generic field kind, `document_styles`, drawn by `ReportDocumentStylesField` from `GET /system/report-fonts/choices` (the four standard fonts first, then the provided ones, labelled as provided); the heading colour is the shared `ColourChoiceField` and offers the layout's scheme. `embed_fonts` is an ordinary boolean field. The sample line under the controls is drawn in the browser's own serif, sans-serif or monospace face and is labelled approximate: the report's font files are not on the page, and the plan allowed this. | Agent |
+| 11 | **The Page setup dialog keeps `embedfonts`.** It rewrites the whole `@layout` line from the words it knows, which would have dropped the new word every time the paper size changed; it now reads and writes it (found while checking the text view, fixed in the same change). | Agent |
+| 12 | **Not applicable:** a project-scoped vocabulary table (so no nested-project fallback and no hide or restore of organisation defaults), users and groups, human codes and search (a font is not a record), time shapes, a module-specific edit to a core file (the field kind is generic). **Not built, and why:** per-level heading sizes (the plan said none in this phase); a sample in the real typeface; the starters get no `styles` (the later demo and starters phase decides). | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a font name or colour reaching CSS, XML or a Word font table; a font key from a stored layout reaching a file path; a size or colour that is not a number or a colour; an unbounded or malformed `styles` value; a font file the administrator removed. Verify: a key is matched against a closed pattern and only ever looked up in the catalogue (`get_family` raises `KeyError`, which `family_or_fallback` turns into a bundled family), so no layout value becomes a path; the Word and OpenDocument name is the administrator's, restricted when set to letters, digits, space and `. _ ( ) + -`; CSS is built from that name, a number and a `#rrggbb` colour only; XML attributes are escaped (`xml_attr`) or written through lxml; the size must be a number from 6 to 72 in half points (booleans refused); the shape of `styles` is closed (unknown keys, empty objects and non-objects refused with a path); the unavailable-family path is a note, never an error. Tests put a path, markup-like text and a wrong type through each rule. Remediate: nothing outstanding. Residual: the `x-<slug>` key a layout holds is not secret and names a family on the server; no font bytes or paths appear in any response.
+
+### Verification
+
+Backend `test_report_styles.py`: the tree rules (a valid object, 16 bad values with their paths, a scheme name checked only where the organisation's names are known, a key the server lacks still valid, table layouts refused), the text view (read, write, switches that are off, 8 mistakes on their line, tree rules reaching a line), PDF (no styles unchanged, body family on text, lists, tables and notes, heading font, body size and the ratio, heading colour, Helvetica faces for italic and not-bold headings, fallback inside a serif document and italic fallback, columns measured in the active family), Word (defaults and heading styles, schema order, no run-level font, no styles unchanged, only the settings given), ODT (default style, declared faces, heading styles, none unchanged), HTML (validated rules, none when unset), resolving (families, size, colour, scheme name recorded, missing family falls back with a note), extra families (real face in the PDF, faces found per document, Word declares and embeds only when asked, bundled never embedded, ODT embeds under the same switch) and API runs in all four formats with the provenance row, the preview, the validate and detail warnings and the text endpoints; `test_report_duplicate.py` (the fonts travel). Storybook: `ReportDocumentStylesField` (8), `ReportLayoutSettings` (3 more), `ReportLayoutPageSetup` (1 more). Playwright `report-document-fonts.spec.ts` (set fonts in the designer, preview, text view, PDF and web page; a bad size refused with its path and a missing family warned) and a step in `report-fonts.spec.ts` (hiding a provided family removes it from an author's Body font picker and showing it brings it back). Ruff and the mypy ratchet are clean. **Not done:** Word itself was not run; the seed scripts need no change (no demo layout uses fonts until the later demo phase).
+
+
+## Custom reports Phase 75: a text or heading block's own font and size, and marks in headings (2026-11-02)
+
+A **text** block takes its own `font` and `size`; a **heading** block its own `font`, `size` and `colour`; and a heading's words take `*italic*`, `**bold**` and `` `code` `` as a text block's do. An empty setting means the layout's (Phase 74), which means each format's own look.
+
+```mermaid
+flowchart LR
+    N["node: font, size, colour"] --> V["tree rules<br/>(same as styles)"]
+    N --> E["_Run.block_look<br/>family_or_fallback, once per key"]
+    HT["heading text"] --> M["inline_markdown<br/>marks, equations set aside"] --> E
+    E --> B["Heading / Paragraph / lists<br/>font, size, colour"]
+    B --> P["PDF: derived style per look"]
+    B --> W["Word: run properties on that block"]
+    B --> O["ODT: P_Own<n> over the parent style"]
+    B --> H["HTML: inline style, validated values"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Tree keys.** `text`: optional `font`, `size`. `heading`: optional `font`, `size`, `colour`. The rules are `report_styles.font_key_form_problem`, `size_problem` and `colour_word_problem` (`none` refused), the same as `styles`, so one rule per setting. A text block takes no colour (the plan gave a heading one only). No migration. | Agent (the plan's shape) |
+| 2 | **Whole block, not a selection** (the plan's T3). On a text block the font and size go on the paragraphs and lists it writes; a Markdown `#` heading written inside it keeps the layout's heading style, and equations, tables and images are untouched. A table cell, list item and caption keep their block's or the layout's setting. | User (whole block); Agent (Markdown heading inside a text block) |
+| 3 | **A heading's size replaces its level's size, and never changes the level.** PDF `heading_for` derives the style from the level's; Word keeps the `Heading N` style and sets the size on the runs; ODT keeps `Heading_20_N` as the parent of an automatic style (so the outline level and the contents list are unchanged); HTML keeps `<hN>` with an inline style. A heading's font keeps the layout's weight and slant (a `font` replaces the family only). | Agent |
+| 4 | **Marks in headings use the same reader as text** (`report_model.inline_markdown`: the inline half of the Markdown reader, equations and escapes set aside, placeholders filled afterwards run by run), so `**{{report_title}}**` is bold and a value holding `*` is never read for marks. Block syntax is not read (`1. x`, `# x`, `- x` stay as written) and a lone `*` stays literal. Anchors and the contents list use the words without the marks. A heading that used to hold a literal `*word*` now prints `word` in italic: the one visible change to existing layouts. Closes the heading limitation of the Phase 13 view decision. | Agent (the plan asked for it) |
+| 5 | **The evaluator resolves the look once.** `_Run.block_look` turns a font key into a `FontFamily` through `family_or_fallback`, caches it per key for the run, and adds the fallback note to the run notes; the heading colour is resolved with the run's scheme and its name recorded in `stats.colours` like any colour. The neutral model carries the resolved family, not the key, so a renderer never queries the catalogue. | Agent |
+| 6 | **Embedding includes block fonts.** `used_extra_families` adds an administrator-provided family named only by a block, with regular plus the bold and italic faces its marks and heading style need. `font_keys` (the save and validate warning) walks the tree at any depth. | Agent |
+| 7 | **Text view.** `@heading level=2 font=sans size=18 colour=primary Title` (attributes in that order on write, any order on read, each once) and `@text font=serif size=11` … `@end` or `@text font=serif "quoted"`. A text block with a font or size is always written in the explicit form so the attributes have a line; one without stays plain prose. A heading whose words start like an attribute is still quoted. | Agent |
+| 8 | **Designer.** One new generic field kind, `font`, drawn by the shared `FontChoiceField`, which the Fonts group of Phase 74 now uses too (its select was the first copy of this pattern; extracted and both call sites moved). An empty select reads "Document font" and the size "Document size" from the schema's `empty_label`. The heading colour is the shared colour control with no "No colour" choice (empty means the document's). **The Document (rich-text) view the plan names no longer exists** (removed with TipTap), so its toolbar item is not applicable; the Blocks and Text views carry it. | Agent |
+| 9 | **Not applicable / not built:** a project-scoped vocabulary table (no nested-project fallback or hide and restore), users and groups, human codes and search (a font is not a record), time shapes, a module edit to a core file (the field kind is generic; nothing per module). Not built: font and size on a table or sheet cell, a list item or a caption (the plan); a selection-level font; a sample in the real typeface. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a block's font, size or colour reaching CSS, XML or a Word font table; a mark reader fed hostile heading text (markup, a very long line, nested marks); a heading value read for marks after placeholders are filled; a font key reaching a file path. Verify: the font key, size and colour are checked at save by the rules `styles` already uses and only ever resolved through the catalogue (no key becomes a path); the Word name and the CSS stack come from the administrator-restricted family name, the size is a number from 6 to 72 and the colour is `#rrggbb`, built into XML through lxml or escaped attributes and into CSS inside an escaped `style` attribute; the mark reader is the existing Markdown reader with block, link, image, HTML and entity rules off, and the heading line is capped at 500 characters; placeholders are filled run by run after the read, so a record value is never parsed. Tests put a path, a wrong type and a bad colour through each rule. Remediate: nothing outstanding. Residual: as Phase 74, the key names a family on the server and no font bytes or paths appear in a response.
+
+### Verification
+
+Backend `test_report_block_fonts.py` (39): the tree rules (valid, 9 bad values with their paths, a text block takes no colour, block fonts found at any depth), the text view (exact read and write, plain prose stays plain, 6 mistakes on their line, an attribute-like heading quoted), the marks (bold, italic and code read, block syntax left alone, equations kept unread, four formats, anchors without marks), the model (a look survives `finalize_links`), PDF (derived styles, the real faces, block over layout over default, size alone keeps the font), Word (run properties on that block only, the level kept), ODT (one style per distinct look, parents, outline level, declared fonts, none when nothing is set), HTML (inline validated CSS only), embedding, and API runs (all four formats, a missing family a note and a warning, a placeholder inside a mark). `test_report_styles.py`, `test_report_layout_text.py` and `test_report_layout_blocks.py` still pass (350 together). Storybook: `FontChoiceField` (3), `ReportLayoutBlockField` (3 more), `ReportDocumentStylesField` unchanged and passing. Playwright `report-block-fonts.spec.ts` (text view to blocks to saved version to PDF and web page, and the refused values), run with `report-document-fonts.spec.ts` and `report-fonts.spec.ts` against the rebuilt stack (all pass). Ruff, the mypy ratchet and the field-help check are clean. **Not done:** Word itself was not opened; the seed scripts and starters are for the later demo phase.
+
+## Custom reports migrations renumbered after a rebase onto main (2026-11-02)
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **The custom reports migrations moved from 0107-0123 to 0111-0127.** Main had meanwhile merged four index migrations as 0107-0110, so the same revision ids existed twice and Alembic would have failed with several heads. The merged ones are already applied elsewhere, so the unmerged branch renumbered; `0111_report_layouts` now follows `0110`. | Agent |
+| 2 | **A database already upgraded from the old numbers must be re-stamped.** A development database whose `alembic_version` reads one of the old ids (for example the `tests/container` stack at 0123) has no matching revision: recreate it, or `alembic stamp` the new id of the last report migration it had applied. The test database is built from the models and is unaffected. | Agent |
+
+## Backend test suite runtime: 85 minutes to 18 (2026-11-02)
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **The per-test cleanup deletes only the tables that hold rows, with foreign-key triggers off for that transaction** (`_clean_tables` in `tests/conftest.py`). `TRUNCATE ... CASCADE` of every table cost about 1.4 s per test, because the cascade also truncates every table that references a populated one; the delete takes about 0.05 s. A role that is not a superuser falls back to the truncate. The empty database each test starts from is unchanged. | Agent |
+| 2 | **Tests hash passwords at bcrypt's minimum cost.** Every test creates users and logs in, and 12 rounds cost about a quarter of a second each time (setup median 0.64 s to 0.14 s). Production keeps the library default; hashes carry their own cost, so verification is unaffected. | Agent |
+| 3 | **Result.** The full suite (6,554 tests) ran in 17m48s with `-n 8` on a 12-core laptop, against 84 minutes before. CI keeps `-n 4` to match its 4-vCPU runners. | Agent |
+
+## Custom reports Phase 76: font, size, colour and marks in the page header and footer (2026-11-02)
+
+A header or footer band (the layout's, and each page style's) takes optional `font`, `size` and `colour` for the whole band, and its cells read `**bold**` and `*italic*`. The bands are the "headers" reading of the User's request that Phase 75 did not cover.
+
+```mermaid
+flowchart LR
+    T["band: left/centre/right + font, size, colour"] --> R["read_marks per cell<br/>then fill placeholders per stretch"]
+    R --> M["RunningBand: cells of str / PageField / Marked<br/>font family, size, #rrggbb"]
+    M --> P["PDF: draw_run per run, family-aware width"]
+    M --> W["Word: run properties on each run and field"]
+    M --> O["ODT: BandLook styles + Band_b/i/bi spans"]
+    M --> H["HTML: strong/em on screen, box look in print"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **One setting for the band, not per cell** (the plan's suggestion): `font` (a Phase 73 key), `size` (6 to 72, same rule as a block) and `colour` (a colour word, `none` refused) sit beside `left`/`centre`/`right` in the `header`/`footer` object, at the root and in each page style. The page style's band replaces the layout's whole, as before, so its look is independent. Absent means: the document's body font, 8 pt, black. No migration. | Agent |
+| 2 | **Marks are `**bold**`, `*italic*` and `***both***` only** (no code, links or equations, as the plan says), read by a small reader of its own (`report_running.read_marks`) rather than the Markdown reader, because a band must not read `_` (placeholders such as `{{org.footer_text}}` contain it) and must read a mark across a page field (`**Page {{page}}**`). A mark opens before a word and closes after one, so `2 * 3` and an unclosed mark stay literal; `\*` is a literal asterisk. Marks are read **before** placeholders are filled, stretch by stretch, so a value holding `*` is never read for marks. A band that held a literal `*word*` now prints `word` in italic: the one visible change to existing layouts. | Agent |
+| 3 | **Model:** `RunningBand` gains `font` (a resolved `FontFamily`), `size` and `colour` (`#rrggbb`); `SlotPart` gains `Marked(part, bold, italic)`, which wraps text or a page field. The evaluator resolves the font through `block_look` (the fallback family and run note of Phase 75) and the colour through `resolve_colour` with the run's scheme, noting scheme names in the run provenance. | Agent |
+| 4 | **PDF.** The band is drawn in the family active for the whole render (the body font) unless it names one; text is measured and drawn run by run in the bold, italic or bold-italic face (`report_fonts.draw_run`, `text_width(bold=, italic=)`), including the Unicode fallback face, so a long or marked cell still aligns. **Word:** the size is always written on the runs (as before), the font and colour only when set, bold and italic on the run, and the same on the `PAGE`/`NUMPAGES` field runs. **ODT:** a band with its own look gets automatic paragraph styles (`BandLook<n>_<slot>`) over `Band_<slot>`, and a mark is a `text:span` of one of three shared automatic text styles (`Band_b`, `Band_i`, `Band_bi`); the writer collects the styles and families and `styles.xml` declares them. **HTML:** on screen the band carries the look as validated inline CSS and marks are `<strong>`/`<em>`; the print margin boxes carry the size, font and colour, and bold or italic only when every word of the cell is marked, because a CSS `content` string cannot style part of itself (stated in the website page). | Agent |
+| 5 | **Margin fit follows the size.** The line height is `max(0.4 cm, size x 1.25)` (`band_line_cm`, replacing the fixed `BAND_LINE_CM`), used by the server's fit check, the PDF, Word's page-bottom offset and the editor's arithmetic, so a 24 pt footer is refused where its margin is too small, not clipped. | Agent |
+| 6 | **Embedding includes band fonts.** `font_keys` (the save and validate warning) and `used_extra_families` count an administrator-provided family named only by a band, with the bold and italic faces its marks need; a band marked bold or italic with no font of its own adds those faces to the body family. | Agent |
+| 7 | **Text view.** `@header … font serif size 9.5 colour primary` (clauses after the cells and logo, each once, written in that order). The cells keep their quoted text, so the marks round trip as typed. | Agent |
+| 8 | **Designer.** `RunningBandEditor` (used by the Page setup dialog, each page style and the Blocks view's layout settings) gets the shared `FontChoiceField`, a size field and the shared `ColourChoiceField` (no "No colour"), a **B** and **I** pair that wraps the selection of the cell last edited (with nothing selected it writes the pair and leaves the caret between), and the sample line under a cell now shows its marks, in the band's size, colour and typeface kind. The text view's dialog reads the layout's palette from its `@palette` line. All three call sites pass the fonts and colours. | Agent |
+| 9 | **Not applicable / not built:** a project-scoped vocabulary table (no nested-project fallback or hide and restore), users and groups, human codes and search (a band is not a record), time shapes, a module edit to a core file (nothing per module). Not built: a font per cell, marks across a line break in the print margin boxes, a real-typeface sample. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a band font, size or colour reaching CSS, XML or a Word font table; the new mark reader fed hostile cell text (a very long run of asterisks, nesting, an unterminated mark); a placeholder value read for marks after it is filled; a band colour name resolving outside the layout's scheme. Verify: the font key, size and colour are checked at save by the rules text and heading blocks use (`font_key_form_problem`, `size_problem`, `colour_word_problem` against the layout and organisation scheme) and only ever resolved through the catalogue; the CSS and XML come from the family's restricted name, a number and `#rrggbb`, in escaped attributes or lxml; the mark reader is one linear pass over a cell capped at 300 characters and three lines, runs of four or more asterisks stay literal, and marks are read before any value is filled in. Remediate: nothing outstanding. Residual: as Phase 74, a font key names a family on the server and no font bytes or paths appear in a response.
+
+### Verification
+
+Backend `test_report_band_fonts.py` (41): the mark reader (10 shapes, a line break, line height), the tree rules (valid on both levels, 7 bad values with their paths, fit at a larger size, a scheme name), the text view (exact round trip, 4 mistakes), PDF (family, bold and italic faces, colour operator, 8 pt and 14 pt, body font followed, band font beating it), Word (size, font, colour, marks and the page fields), ODT (look styles, spans, well-formed XML, none when plain), HTML (marks on screen, the print boxes, whole-cell rule), embedding, and an API run in all four formats. The existing `test_report_running.py` (two cases that used `colour` as an unknown word changed to another), `test_report_bottom.py`, `test_report_styles.py` and `test_report_block_fonts.py` pass. Storybook `RunningBandEditor` (14, six new). Playwright `report-band-fonts.spec.ts`. The field-help and required-marker checks are clean. **Not done:** Word itself was not opened; the seed scripts and starters are for the next phase.
+
+## Custom reports Phase 77: fonts and colours in the snippets, the starters and the demo data (2026-11-02)
+
+Closes the fonts-and-colours run (Phases 72 to 76) by making the things people copy from use it, and by pinning that the built-ins do not depend on a scheme the layout lacks.
+
+```mermaid
+flowchart LR
+    S["Starter tree: styles.headings.colour = primary"] --> R{"Colour name primary"}
+    R -->|"organisation scheme has it"| O["Organisation's colour"]
+    R -->|"no"| B["Built-in Branding set: the report accent"]
+    D["Demo layout: own palette plate, highlight"] --> L["Layout's scheme wins over the organisation's"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Starters:** each document starter's tree gains `styles: {"headings": {"colour": "primary"}}` and nothing else (no `palette`, no `font`). `primary` is a built-in name, so the starter prints in the report accent with no scheme anywhere and follows the organisation's scheme live. The workbook (a table layout) gets no styles. The plan also listed table header fill and rules: a table block already paints its header row in the accent and has no fill or rule setting, so there is nothing to name there; adding one would be a new feature, not asked for. Existing organisation copies are not rewritten (the Phase 55 precedent); an organisation gets the new look by removing a copy and using Add missing starters. This is a visible change to the four starters and **needs the User's review in PDF and Word** before the checkpoint. | User (the wish); Agent (the reading, as the plan) |
+| 2 | **Snippets:** read and found already correct (the table snippets use `black` and `white`; the cover, logo, record-images and landscape snippets set no colour or font). A test now walks every built-in snippet and fails on a hex colour, a scheme name outside the reserved and standard words, a font outside the Phase 73 keys, or a `palette`/`styles` key in its root; a second test applies each snippet into a layout that has a scheme and fonts and checks both survive untouched. | Agent |
+| 3 | **Demo data:** "Project overview with logo" gets its own scheme (`plate` = `accent_dark`, `highlight` = `#b45309`; the shape's fill is now `plate`), a serif body at 11 pt, sans headings in `plate`, and an italic footer (`*project*` left, `*Page {{page}} of {{pages}}*` right, in `plate`). The organisation scheme (`alert`, `success`) was already seeded in Phase 72. `seed_e2e_dataset.py` is unchanged (no spec reads these). | Agent |
+
+Not applicable: a project-scoped vocabulary table, users and groups, human codes and search, time shapes, module boundary (nothing per module), a bundle (no new stored field).
+
+### Security review (identify, verify, remediate)
+
+Identify: a starter or snippet carrying a colour or font name that a receiving layout cannot resolve (a validation error or a silent wrong colour). Verify: the tests above; the starter tree validates with no organisation colours. Remediate: nothing outstanding.
+
+### Verification
+
+`test_report_starters.py` (heading colour in every document starter and none in the workbook; the heading colour in HTML follows the Branding set and then an organisation `primary`; PDF, Word and ODT runs), `test_report_snippets.py` (colour and font vocabulary of every built-in; each snippet into a layout with a scheme), `test_seed_demo_report_layout.py` (the demo layout validates with the organisation's names, keeps its own scheme, and runs in HTML, PDF, Word and ODT, with the serif body, the sans bold headings and the plate colour read back). **Not done:** the seed was not run against a fresh database (the shared test database) and Word itself was not opened; the User reviews the starters' look.
+
+## Custom reports Phase 78: a custom table's font and size, at grid and column level (2026-11-02)
+
+A custom table (`grid`) takes optional `font` and `size` on the grid and on each column. A column's setting wins over the grid's; a grid that sets neither prints as before (the document's font, the table's own 9 pt). A row and a cell never set either.
+
+```mermaid
+flowchart LR
+    C["column font, size"] -->|"wins"| R["_eval_grid: one look per column<br/>(block_look, once per key per run)"]
+    G["grid font, size"] -->|"else"| R
+    R --> K["GridCell.font, size"]
+    K --> P["PDF: face + size per cell style"]
+    K --> W["Word: run properties"]
+    K --> O["ODT: cell paragraph style"]
+    K --> H["HTML: validated inline CSS on td"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **Tree keys.** `grid` and `columns[]` accept `font` and `size`, checked by the same rules as a text block (`font_key_form_problem`, `size_problem`) so one rule serves every font setting. They are not in the cascading style keys that rows and cells share, so a row or cell naming either is an "Unknown key" at its path. No migration. | User (grid and column level, not per cell); Agent (the shape) |
+| 2 | **Resolved onto each cell.** The evaluator resolves one look per column (the column's key, else the grid's) with `_Run.block_look`, so a missing family falls back with the run note of Phase 75, and `GridCell` carries `font` and `size`. The renderers read the cell, not the tree. | Agent |
+| 3 | **Renderers.** PDF: the cell style's face and size follow the cell (bold uses that family's bold face; fallback characters follow the family through `using_family`); leading is size + 2 as before. Word: the existing run callback sets size and, through the renderer's own `_block_look` passed in as a callback (an import would be circular), the family. ODT: the cell paragraph style carries `style:font-name` and `fo:font-size` and the family is declared with the other block fonts. HTML: `font-family` / `font-size` on the `td`, built from a validated family and a number, attribute-escaped. Cells that look alike still share one style. | Agent |
+| 4 | **Embedding and the fonts warning include grids.** `font_keys` finds a grid's and its columns' fonts at any depth; `used_extra_families` adds an administrator-provided family a cell uses, with the faces its bold and italic text need. | Agent |
+| 5 | **Text view.** `@grid columns=2 font=serif size=9` and `@col 2 font=mono size=10.5`, each once; `size` must be a number of points. Rows and cells do not accept them. | Agent |
+| 6 | **Designer.** The grid-level Font and Size are two more schema fields, drawn by the generic `font` and `number` kinds in the block panel. A column's are in the table editor beside its width (Font of column N, Size of column N), using the shared `FontChoiceField`; the editor had no gear popover to put them in. An empty font reads "Table font" and an empty size "Table size". | Agent |
+| 7 | **Not applicable / not built:** a project-scoped vocabulary table, users and groups, human codes and search, time shapes, a module edit to a core file (nothing per module), a bundle field (the tree travels whole). Not built: a font or size per row, cell or selection (the User asked for grid and column level only). Stored layouts and bundles need no change; a tree without the keys is valid as before. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a font key or size reaching CSS, ODT XML, Word's font table or a file path from a grid or column. Verify: both are checked at save by the rules text blocks use and only ever resolved through the font catalogue (a key never becomes a path); HTML builds the style from the administrator-restricted family name and a number and escapes the attribute; ODT quotes the family name as an attribute; Word writes the name through lxml. Remediate: nothing outstanding.
+
+### Verification
+
+`backend/tests/test_report_grid_fonts.py` (28): the tree rules and paths, a row or cell naming either refused, the fonts found at any depth, the text view (exact round trip, three mistakes, no font on a row), the cascade through the evaluator, an unchanged grid, a missing family's run note, the PDF faces and sizes, Word runs of that column only, ODT shared and declared styles, HTML, embedding, and a run through the API in all four formats. Storybook story for the column fields; Playwright `report-grid-fonts.spec.ts` (set a column to Mono in the table editor, read it in the Word XML, PDF and HTML).
+
+## Custom reports Phase 79: dialogs no longer close on an outside click, and closing with unsaved changes asks (2026-11-02)
+
+**Decided by: User** for the behaviour (a click outside does nothing; the only ways out are Close or Save; no separate Cancel; ask before discarding unsaved work; close at once when nothing is unsaved) and for the scope (every form dialog, not only the table editor). Everything marked Agent below is the implementing session's judgement and can be revisited.
+
+The cause was the shared `Modal`: every backdrop click closed it, and a form's draft state died with it. The fix is in the shared dialogs, so every form dialog behaves the same.
+
+```mermaid
+flowchart LR
+    M["Modal, SidePanel"] --> G["useDialogGuard<br/>requestClose, dirty, backdrop rule"]
+    G --> P["DiscardChangesDialog<br/>(on ModalBase, never guarded)"]
+    F["FormActions (in a dialog)"] -->|"registers: this dialog holds a form"| G
+    F -->|"Save only, no Cancel"| H["DialogFrame header"]
+```
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | **One guard for `Modal` and `SidePanel`.** `useDialogGuard` owns the close request: Escape and the header Close go through it; clean closes at once, unsaved opens `DiscardChangesDialog` (Keep editing is the first control, so it has focus). The prompt is built on `ModalBase` (the old `Modal` chrome, now unguarded), so it cannot itself ask. | User (behaviour); Agent (structure) |
+| 2 | **Backdrop.** A dialog that holds a form (it renders `FormActions`) or is given `dirty` ignores a backdrop click; a dialog with neither (a viewer, picker, `ConfirmDialog`) keeps closing on it. `dismissOnBackdrop` overrides. | User (form dialogs); Agent (viewers keep it) |
+| 3 | **Unsaved is by value.** A caller passes `dirty` when it can compare (the table editor compares its draft with the opened table, so an edit then undo is clean). A form that passes none is measured from the DOM: input, textarea, select and rich-text values are recorded at the first focus, pointer or key event inside the body and compared at close. Recording at the first interaction, not at mount, keeps a form that loads its values asynchronously from reading as edited. | Agent |
+| 4 | **Known limit of the measured form.** It sees only controls inside the dialog body: state a control does not show (a drawn table), or controls in a `Popover` portal, is invisible to it, so such a form passes `dirty`. An edit made with no preceding focus, pointer or key event (only a scripted one) is not seen. A step-by-step dialog replaces its own fields, so the measured values would always differ: `CsvImportWizard` passes `dirty={false}` (its file and mapping are re-derived on reopening). | Agent |
+| 5 | **No Cancel in a dialog.** `FormActions` renders Save (and Save and activate) only when it is inside a `Modal`/`SidePanel`; outside one (an inline form, a `Popover`) it keeps Cancel. A dialog with nothing but a Cancel (a read-only viewer built on `FormActions`) shows no button row; its Close is the header. `cancelLabel`/`cancelDisabled` apply to the inline case only. | User (no Cancel); Agent (inline keeps it) |
+| 6 | **Tab close or reload while unsaved** is warned about (`beforeunload`), the way the designer's own leave already is; the handler asks at event time, so it is never stale. | User (asked for); Agent (mechanism) |
+| 7 | **Found and fixed on the way: a dialog opened from a popover sat under it.** `Popover` was layer 1150 and `Modal`/`SidePanel` 1100, so the delete-folder confirm (opened from the folder popover) was covered by the popover and its Delete button could not be pressed (`report-picker-and-folders.spec.ts` failed on the unchanged code too). All three now share layer 1100, so DOM order decides: whatever opened last is on top, which keeps a popover over the dialog it was opened in. The field-help tooltip (1175) still sits above all of them. | Agent |
+| 8 | **Found and fixed on the way: a spec that predates the Reports list.** `custom-report-variables.spec.ts` looked for a layout link on the Reports page, which now lists layouts inside collapsed folders; it uses `openSetupReport` like the other report specs. | Agent |
+| 9 | **Not applicable:** a project-scoped vocabulary table, users and groups, human codes and search, time shapes, a bundle or export field, MCP tools, a per-module edit to a core file (the guard is generic and reads nothing about a module). | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a change to what dialogs do on close, with no change to authorisation, secrets, logging, retention or tenant isolation; the one data-handling point is that the measured form reads the dialog's own field values in the browser. Verify: the values are compared in memory and never stored, logged, sent or put in a URL (a typed secret in a form is not retained after the dialog closes; `beforeunload` carries no value, only the browser's own generic prompt). Remediate: nothing needed.
+
+### Verification
+
+Storybook: `Modal` (form ignores the backdrop, no Cancel, unchanged closes at once, changed asks and Keep editing keeps the change, Escape asks and Discard closes, edit-then-undo is clean, explicit `dirty` guards a dialog with no form), `SidePanel` (the same for a panel), `FormActions` (no Cancel in a dialog), `ReportGridField` (closing with changes asks, an outside click does nothing, undo back to the opened table closes at once); the 18 stories that clicked Cancel or typed then closed now click Close and answer the prompt. Playwright: the custom table editor spec covers a click outside, Keep editing, an undone edit closing at once and Discard; the 15 specs that clicked a form dialog's Cancel use `closeDialogWithoutSaving` (`e2e-workflows/helpers.ts`), and the Pain Point form spec covers Escape asking. Full Storybook suite and the affected Playwright specs pass.
+
+## Custom reports Phase 80: the preview prints only the layout's own title, and shows a page-anchored logo (2026-11-02)
+
+**Decided by: User** for the rule (a title prints only when the layout contains something that prints it; the layout's name stays the file's metadata title; confirmed 2026-11-02); **Decided by: Agent** for the mechanism and the HTML placement.
+
+**Reproduced** on the User's layout (project `b36758b7…`, layout `5c2fef61…`, version 4): a document layout with no title block, a header (`{{report_title}}` left, `{{project_name}}` right), one `heading` (`{{project_name}} - {{report_title}}`), an empty `grid`, a one-column requirement `table`, and an `image` block (SVG from the project library, 2.25 cm × 12 mm, `placement front`, `anchor page`, `offset_x 17.25`, `offset_y 0.5`).
+
+| Finding | Cause | Fix |
+|---|---|---|
+| A report title at the top of the first page that the layout does not contain | `report_html.py`, `report_pdf.py`, `report_docx.py` and `report_odt.py` each printed `document.title` (the layout's name) as a title line for every document, whatever its blocks; a starter's own `{{report_title}}` heading therefore appeared twice | `ReportDocument.show_title` (default on, for built-in reports); a layout's evaluated document sets it off (`report_layout_eval.py`, and the merged project fallback in `custom_report_run.py`). The four renderers print no title or cover when it is off; the name stays in `<title>`, the PDF information dictionary, Word core properties and ODT `meta.xml`. A layout never had a cover (its branding carries the accent colour only), so nothing else changes. |
+| The logo missing from the preview (PDF, Word and ODT drew it) | The HTML view has no pages; it put a `page` or `margin` anchored picture at `left: <offset> cm` from the block's own left edge. 17.25 cm across a pane narrower than about 21 cm put the picture past the right edge (clipped, and a horizontal scrollbar). The SVG itself was read and sanitised correctly | `_layer_left` in `report_html.py`: a `margin` or `page` anchor is placed across the page as a share of the page's width (the HTML page is as wide as the view, never wider): `(offset + left margin and gutter for a margin anchor) / page width`. A `paragraph` anchor keeps its cm offset; the offset down stays in cm from the block (the HTML has no page tops). Rendered in a 700 px window the logo is now at x 565 to 650, no overflow. |
+
+**Also removed (User, 2026-11-02):** a downloaded layout file opened with a line the layout did not contain (`<scope> · generated <date> UTC`, from `document_for`) and with the run's remarks (for example "N project(s) were left out because they have hidden this report"). A layout prints only what it contains, so `document_for` now returns the evaluated blocks only. The remarks are still in the run result, which the screen shows. Built-in module reports keep their scope line (`report_framework.py`). Vertical placement of a page-anchored picture in the preview is still approximate (it follows the block, not the page top).
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | A flag on the neutral `ReportDocument`, not a per-renderer rule, so the preview and the three downloads cannot disagree. Built-in reports keep their title and cover. | Agent |
+| 2 | HTML places margin and page anchors as a percentage of the page width. A parity test renders one fixture (header logo, body picture, page-anchored picture, no title) in all four formats and counts the pictures. | Agent |
+| 3 | The scope line and run remarks are dropped from a layout's file, not moved. | User |
+| 4 | **Not applicable:** a project-scoped vocabulary table, users and groups, human codes and search, time shapes, a bundle or export field (no stored field changes), MCP tools, a per-module edit to a core file. | Agent |
+
+### Security review (identify, verify, remediate)
+
+Identify: a rendering change with no change to authorisation, secrets, logging, retention or tenant isolation. Verify: the title was already escaped by every renderer and still is; the new `left` value is built from numbers only (never from text) and the picture is still sanitised before it is inlined. Remediate: nothing needed.
+
+### Verification
+
+Backend: `test_report_layout_title_and_logos.py` (the title prints only when asked in HTML, PDF, Word and ODT; the name stays the metadata title; the four formats draw the same three pictures; the percentage placement for page, margin and paragraph anchors); `test_report_images.py` (the preview of a layout with a page-anchored logo and no title block prints no `<h1>`, and the heading block prints once) and the four older tests that pinned the centimetre placement now pin the percentage. The report suite passes (one unrelated `test_report_run_jobs` case failed once under `-n 4` and passes alone and on re-run). Playwright: `report-layout-images.spec.ts` checks the preview's placement and that no `<h1>` is printed.
+
+## Custom reports Phase 81: the designer's Save is pinned at the top (2026-11-02)
+
+**Decided by: User** for the behaviour (Save always at the top; a second one at the foot is optional); **Decided by: Agent** for pinning it, measuring "long" and the problem count.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The view tabs, the Save button, a "Fix N problems to save" count and the problems the server returned on save are one bar (`.designer-bar`), sticky under the app header, so Save is reachable on a layout of any length and a disabled Save says why without scrolling. The count has its own wording ("Fix 1 problem to save") so it never duplicates the view's own "1 problem to fix" heading. | Agent |
+| 2 | A second Save appears at the foot only when the view's content is taller than the window (`useTallerThanViewport`, a `ResizeObserver` on the content, not on the foot, so the answer cannot flip around the threshold). Both are the same `SaveVersionButton` over one `saving` state. The Blocks canvas is tall by design, so in a normal window the Blocks view shows both; the Text view shows one until it is long. | Agent |
+| 3 | Specs that find Save by role take `.first()` (the pinned one); `saveNewVersion` does too. | Agent |
+| 4 | **Not applicable:** the report pack editor keeps its single Save (a short form); a project-scoped vocabulary table, users and groups, human codes and search, time shapes, bundles and exports (no stored field changes), MCP tools, a per-module edit to a core file. | Agent |
+
+Security review (identify, verify, remediate): a layout change only; no authorisation, secrets, logging, retention or tenant isolation is touched, and the save path (version check, server validation) is unchanged.
+
+Verification: Storybook `ReportLayoutDesigner` (pinned bar with a single Save for a short layout, two for a long one with both enabled together, the problem count beside Save); Playwright `report-designer-save-bar.spec.ts` (one Save when short, two when long, both in view after scrolling to the bottom, the top one saves, the count explains a disabled Save), and the existing designer, images and spacer specs updated to the pinned button.
+
+## Custom reports Phase 82: the designer's how-to paragraphs are behind a (?) (2026-11-02)
+
+**Decided by: User** for the Blocks hint behind a (?); **Decided by: Agent** for the sweep and the reuse of `FieldHelp`.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `FieldHelp` (label + text) is already a standalone pinnable tooltip button, so it is used directly beside a control; no second help component was written. The Blocks hint (`outline.blocksHint`) is the (?) beside **Add block** ("Help: Using the block editor"); the text is unchanged. | User (hint); Agent (reuse) |
+| 2 | **Moved:** Blocks `blocksHint`; the grid editor's `selectionHint` (a (?) at the end of the structure toolbar, "Help: Selecting cells"); the table field's `summaryHint` (a (?) after the "2 columns · 1 row" summary, "Help: Editing the table"). | Agent |
+| 3 | **Kept visible (state, not teaching):** `blocksReadOnlyHint` (why editing is off), the read-only and conflict notices, the checking / no-problems line, problem lists, and the "adding at the end of the layout" target line (it changes with the selection). In a read-only grid there is no toolbar, so the selection hint is not offered (selecting does nothing there). | Agent |
+| 4 | **Not applicable:** the Text view has no permanent teaching paragraph, so nothing moved there. Not applicable: vocabulary tables, human codes, search, time shapes, bundles, exports, MCP tools, a per-module edit to a core file. | Agent |
+
+Security review (identify, verify, remediate): copy and layout only; no authorisation, secrets, logging, retention or tenant isolation is touched.
+
+Verification: Storybook `ReportLayoutBlocks` (paragraph absent, (?) shows it on focus, Escape closes), `ReportGridEditor` (selection hint behind (?)); Playwright `report-layout-designer.spec.ts` block-editor test (paragraph not in the page, (?) opens it, Escape closes it); `scripts/check_field_help.py` passes.
+
+## Custom reports Phase 83: the designer's views are Blocks, Text and JSON (2026-11-03)
+
+**Decided by: User** for the tab order, opening on Blocks, the raw-tree content, the single note and that the JSON is editable; **Decided by: Agent** for the validation design and the state handling.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `EditView` is `"blocks" \| "text" \| "json"`, tabs in that order; a layout (and a reload after a conflict) opens on Blocks. No per-person memory of the last view yet. | User |
+| 2 | The JSON view is the editable raw tree: pretty-printed JSON in the shared auto-growing textarea (`aria-label` "Layout JSON"), one note ("For advanced use only. …"), no toolbar, snippets, pickers or side panel (the grid collapses to one column through `layout-designer--single`). The page's single Save (with the foot copy for a long tree) is the only action. | User (content, note, editable) |
+| 3 | Every path to Save goes through the existing `validate` endpoint after the text is parsed with `JSON.parse` (`parseTreeJson`); the parser's own message (with its position), a wrong `family`, and the server's problems by path are listed; Save stays disabled while any exist. The client checks only that the text is a JSON object; the server stays the only judge of content (depth and node caps, field names, no raw HTML block), so a pasted tree is never trusted. | Agent |
+| 4 | Switching **away** from the JSON needs valid JSON of the layout's kind that passes `validate`, else the switch is refused with the reason and the view stays (as Text does). Switching with valid JSON adopts the tree: Blocks takes it as its tree, and the text view's text is regenerated from it (`formatTree`), so the three forms cannot drift. Blocks → JSON shows the tree whatever its problems (it is a raw view); Text → JSON needs text that reads cleanly. | Agent |
+| 5 | The author's own wording is kept when the tree has not changed: Text → JSON → Text with the same tree leaves the text alone (`enteredTree` compared with `stableJson`). | Agent |
+| 6 | Dirty is by value: the parsed JSON against the saved tree (invalid JSON counts as changed). After a save from the JSON, the draft text, the block tree and the entered tree are set from the saved tree. | Agent |
+| 7 | `ReportLayoutJsonField` (JSON for a tree-valued block parameter) is unrelated and untouched; the new view is built into the designer (`jsonView` strings), not a second field component. | Agent |
+| 8 | Two defects the new default exposed were fixed in the same change: the Text view did not check its text on arrival when it was unchanged (Preview stayed disabled), and a Blocks check still in flight could write over text typed in the Text view in the first moments after a layout opened. Each view's check now stops writing once the view is left (`left` flag in its effect), and the Text check depends on the view. | Agent |
+| 9 | **Not applicable:** no new field or record type (nothing for help text, required markers, codes, search, bundles, export/import, perf probes), no new module setting, no time or user/group reference. Only the designer's default view changes: the Playwright specs that edit the layout as text now switch to it first (`openDesignerTextView`). | Agent |
+
+Security review (identify, verify, remediate): no authorisation, secrets, logging or tenant isolation is touched. The JSON a person pastes is untrusted input and goes through the same server-side `validate` and save as every other view, with the version lock; the text is held in the browser only and is not logged or put in a URL.
+
+Verification: Storybook `ReportLayoutDesigner` (tab order and Blocks default, JSON shows the raw tree and only a note, edit then save sends that tree and Text shows it, unsaved JSON carries into Blocks, invalid JSON and server problems block Save and the switch, read-only JSON); Playwright `report-designer-views.spec.ts` and the existing designer specs (updated for the new default view, and for two stale selectors: the *Table (records)* block title and the h2 a level-1 heading prints as), 104 + 29 passing across `report-*` and `custom-report-*`.
+
+
+## Custom reports Phase 84: tables with the same columns, measured and the mechanism chosen (2026-11-03)
+
+Investigation only: no product code changed. **Decided by: User** for the mechanism (alignment by rule, plus usual widths declared by module reports) and for Q1; **Decided by: Agent** for the findings and the reading of the cause.
+
+**Cause, measured** with the Review Package's Open Questions pair (nine identical headings; the *Open* table has three rows, *Overdue* one), as a width-less compact `Table` (what `report_widget_run.part_blocks` emits):
+
+| Format | Today | Lines up? |
+|---|---|---|
+| PDF | each table sized from its own cells (`_content_widths`): column 2 is 2.30 cm in one, 1.75 cm in the other | no |
+| HTML preview | no `colgroup`; the browser lays out each table from its cells | no |
+| Word | `Table.relative_widths` gives equal columns (2.00 cm × 9) | yes, but ignores the content |
+| OpenDocument | the same equal columns | yes, but ignores the content |
+| XLSX / ODS | a widget is a document-layout block; a sheet layout stacks same-named sheets under a Project column (`_merge_sheets`), so one sheet | not applicable |
+
+- **The nested merge is not a cause.** A merged project tree gives the widget collector several projects and one table with a Project column; an organisation-wide run evaluates the layout once per project and concatenates the documents under one heading per project (`custom_report_run`), so it prints one pair per project. Every one of these reaches the renderers as the same width-less `Table`, which is why one rule covers all three.
+- **The plan misread `ReportSection.gap`.** It means "this table lists problems to fix" (`report_framework.ReportSection`), not spacing. The tables touch in the **PDF** only: its story adds nothing after a table. Word (an empty paragraph), OpenDocument (0.2 cm after the table) and the preview (0.8 rem margin) already separate them.
+- **All four renderers already honour `weights`** on a width-less table (PDF `weights` branch, HTML `colgroup`, Word and ODT through `Table.relative_widths`), so the rule is computed once in the evaluator and needs no per-renderer alignment code. Word and ODT will change from equal to content-based columns.
+- **Same-heading pairs on the starters:** the Review Package's Open/Overdue widgets (same report, same columns) are the only adjacent pair with identical headings; its other adjacent widgets (review schedule, treatment coverage) are different reports and the Business Requirements Document's adjacent record tables differ in their columns. Module reports with several sections sharing one column list (Open Questions open/overdue/unowned, Decisions, Risks, Stakeholders, Strategy cascade gaps) are what an author can place together, so Phase 87 reads each as rendered.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | Alignment by rule: same-heading tables in a document share one set of widths from the evaluator (Phase 85), an off switch per layout and usual widths declared by module reports (Phase 86). No per-widget width control. | User |
+| 2 | The Review Package's first Open Questions table shows only the not-yet-overdue questions, so no row prints twice. The register's `open` section is unchanged; a new `not_overdue` section feeds the starter (Phase 85e). | User |
+| 3 | The PDF gets a fixed gap after a table that is followed by another table; the other formats already separate them (Phase 85c). | Agent |
+| 4 | A skipped target test per format (`tests/test_report_table_alignment.py`) holds the pair; Phase 85 removes the skips. One test passes now and records today's per-table sizing. | Agent |
+
+**Not applicable:** no field, record type, setting, user/group reference, time value, bundle, export/import, perf probe or MCP tool changed (Phase 85e will touch the module's MCP reference). The scaling probes are unaffected.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched; only reading and a test file.
+
+Verification: `tests/test_report_table_alignment.py` (1 passed, 4 skipped by design). Widths measured by rendering the pair through the four renderers.
+
+## Custom reports Phase 85: tables with the same headings share one set of column widths (2026-11-03)
+
+Built to the mechanism the User chose in Phase 84. **Decided by: User** for the rule and for the Open Questions change (Q1); **Decided by: Agent** for the details below.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | `services/report_table_alignment.align_tables` runs on the finished document: tables with identical headings and the same usable page width (tracked through `PageStyleChange`) form a group; each column takes the largest `column_needs` in the group, resolved by `resolve_table_widths_cm` (8 mm floor) and written to `Table.weights` with `aligned=True`. No renderer has alignment code. | User (rule), Agent (details) |
+| 2 | The author wins: a table with `widths`, `col_widths_cm` or an engine `weights` (image column) is never regrouped. An empty table, a one-column table and a lone table are left as they are. `aligned` marks the rule's own weights so it can recompute them. | Agent |
+| 3 | An organisation-wide run applies the rule again after joining the projects' documents, so the per-project tables line up across projects. | Agent |
+| 4 | The HTML preview adds `table-layout: fixed` to an aligned table; `<col>` percentages alone are a hint the browser overrides with the content. | Agent |
+| 5 | The PDF puts `TABLE_GAP_CM` (0.4 cm) after a table that is followed by a table. The PDF's lone-table sizing (`_content_widths`) now uses the shared `column_needs`. | Agent |
+| 6 | The register report gains a section `not_overdue` ("Open, not yet overdue", the same nine columns); the Review Package prints *Overdue* then that, so no question prints twice. The register's own `open` section is unchanged, but the standalone report now also lists the new section. | User (Q1), Agent (placement) |
+
+**Measured:** the Open/Overdue pair now has equal column widths in the PDF, Word, OpenDocument and the preview (`tests/test_report_table_alignment.py`; the Phase 84 skips are removed). Word and OpenDocument change from equal columns to content-based ones.
+
+**On-screen run view (added after the User agreed, 2026-11-03; Decided by: User):** `ReportSection` and `ReportSectionOut` gain optional `weights`; a layout run sets them from an aligned `Table` (`_sections_of_document`), and a module report leaves them `None`. `ReportSectionTable` lays a section with weights out with a `<colgroup>` in percentages and the `report-table-aligned` class (`table-layout: fixed`, long words break in their column), so the on-screen sections line up like the documents. Only the rule's own weights are carried (an author's forced widths and image-column weights are not shown on screen, as before).
+
+**Not applicable:** no field, record type, setting, user/group reference, time value, bundle, export/import or perf probe changed. The MCP module-tools reference is generated from the report definitions and did not change (the part list is not in it). The change is in memory after collection (no queries, no per-row calls), so no T2 re-run of the report-run scenario is needed.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched.
+
+Verification: `test_report_table_alignment.py`, the report/starter/run test files (2911 passed; one `test_report_run_jobs` test failed under `-n 4` and passed alone), mypy ratchet, ruff, and the Playwright spec `report-table-alignment.spec.ts` (preview and on-screen columns measured from the rendered boxes), plus the `ReportViewer` story `AlignedSectionsShareColumnWidths`.
+
+
+## Custom reports Phase 86: an alignment switch per layout and usual widths from module reports (2026-11-03)
+
+Adds the off switch and the module-declared widths the Phase 84 decision called for. **Decided by: User** for the existence of both (Phase 84 answer); **Decided by: Agent** for the details.
+
+| # | Decision | Decided by |
+|---|---|---|
+| 1 | The layout root gains `align_tables` (boolean, default on, document layouts only), next to `repeat_table_header`: text words `align`/`noalign` on the `@layout` line, a **Line up tables with the same columns** checkbox in Page setup, the generic Blocks layout-settings field from the block schema, `ReportDocument.align_tables`. It is part of the tree, so it travels in bundles and copies with no bundle code. | Agent |
+| 2 | `align_tables` returns the document unchanged when the switch is off, and the usual widths are then not applied either: off means the sizing from before the rule existed. | Agent |
+| 3 | `ReportDefinition.usual_widths` (column heading to `30%`/`4 cm`/`40 mm`, in every table of the report, the `cell_tones` precedent) is the registry extension point; no core file names a module. `collect_widget` copies it onto each section (`ReportSection.usual_widths`) and `part_blocks` onto `Table.usual_widths`. | Agent |
+| 4 | The rule fixes the named columns at their width and the others share the rest by content (`resolve_table_widths_cm`), for a group and for a lone table with usual widths. An author's forced width still wins. | Agent |
+| 5 | Declared only for short, predictable columns (status, priority, dates, counts, code) on Open Question register, Decision register and Approval ageing; long-text columns are left to share by content. Requirements are not a module report (the starters' record tables already use `USUAL_WIDTHS`). Only widgets use usual widths; a module report's own PDF is unchanged. | Agent |
+| 6 | The plan allowed dropping the usual widths if Phase 85 read well; they were kept because the User chose them in Phase 84. | User |
+
+**Tests:** `test_report_table_alignment.py` (switch off, usual widths for a lone table and a group, off ignores them, the author wins, tree validation and text round trip), each declaring module's report tests (`unknown_usual_widths` names no heading the report lacks and every spec is a width), the layout-settings field list, the `ReportLayoutPageSetup` story `TheAlignTablesSwitchIsWrittenAsAWordAndKept`, and the Playwright spec (a layout with `align_tables: false` leaves the two tables differently sized).
+
+**Not applicable:** no table, column, record type, user/group reference, time value, export/import or perf probe changed. The MCP tools are unchanged; the skill's prose mentions the new layout key (`mcp-server/skill/reqtrack-mcp/SKILL.md`), and the module-tools reference did not change. The rule still runs in memory after collection, so no T2 re-run is needed.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched; the new tree key is validated as a boolean and refused on a table layout.
+
+Verification: the files above plus the report, starter, run, widget and skill-reference suites (244 passed with `-n 4`), the layout tree/text/image-column tests (393 passed), ruff, the mypy ratchet (no new errors), `tsc`, eslint, the two Storybook files and `report-table-alignment.spec.ts` (3 passed against a rebuilt stack). Not run: the full backend suite (Phase 87 runs it once, alone) and `mcp-server/tests/test_skill.py`, whose `fastmcp` import is not installed in this virtualenv (it errors before and after this change).
+
+## Custom reports Phase 87: the starters read as rendered, and the aligned tables checked across formats (2026-11-03)
+
+Closes the twelfth review. **Decided by: Agent** throughout (no new choice was needed).
+
+**Read as rendered.** The Review Package (on a merged project tree, a parent and a child with open questions, two overdue) and the Business Requirements Document were run to PDF, Word, OpenDocument and HTML and read: the PDF as page images, the Word and OpenDocument files by their table grids (no LibreOffice or Word is installed on the host, so they were not opened in an application), the preview by its `<col>` widths.
+
+| Check | Result |
+|---|---|
+| Review Package, Overdue and *Open, not yet overdue* tables | Same nine widths in every format; content-based (question 6.5 cm, project 3.0 cm, priority 2.1 cm on A4 landscape in Word), not the equal columns Word and OpenDocument used before the rule |
+| A question printing twice | None: OQ-001 and OQ-003 (and the child's copies) are under *Overdue* only, *Keep Q2 pricing* under the second table only |
+| Gap between consecutive tables in the PDF | 0.4 cm, as the page image shows |
+| Merged project tree | One Project column, the pair aligned; the child's questions are rows in the same table |
+| Business Requirements Document | Its adjacent tables have different headings and are left alone, as Phase 84 found; the three *Measure / Value* tables are identical in width |
+| Other starters | Covered by the parametrised test below (they hold no same-heading pair today) |
+| `{{generated_on}}` | The caller's day, as before (the test client sends no `X-Client-Date`, so it prints the UTC day there) |
+
+No defect was found. XLSX and ODS were not re-read: Phase 84 recorded that a sheet layout stacks same-named sheets under one Project column, so alignment does not apply.
+
+**Tests.** `tests/test_report_starter_alignment.py`: every document starter runs on a project holding open questions, a requirement, a pain point and a decision, in the preview, Word and OpenDocument, and every group of tables with identical headings must have one set of widths (grouped by the headings found, so a later starter or module report is covered without an edit); the Review Package pair must exist in each format and Word/OpenDocument must follow content, not equal columns (so the check fails if the rule is removed, which was verified by disabling `align_tables`); the same for a parent with a child merged and for an organisation-wide run over two projects. The preview alone cannot tell the rule is off in a way that fails the grouping (an unaligned table has no `<col>`), so the Review Package test also requires a compared group.
+
+**Seeds.** No new field, setting or record type: `seed_demo_data.py` and `seed_e2e_dataset.py` are unchanged. The seeded Review Package still has the *Overdue* and *Open, not yet overdue* pair, since both start from the Open Question register. Neither script was run (the test database is shared).
+
+**Performance pages reviewed:** `sizing-and-performance.mdx` and `performance-testing-method.md` need no change. The alignment rule runs in memory after collection (no queries, no per-row calls), so no measured number moves and no T2 re-run is needed.
+
+**Docs.** The designer page and `docs/modules.md` already describe the rule and the switch (Phases 85 and 86). This phase adds the Review Package's wording and the *Open, not yet overdue* section to the Custom reports overview and the Context & Strategy report reference.
+
+**Not applicable:** no field, record type, user/group reference, time value, bundle, export/import, perf probe or MCP tool changed.
+
+Security review (identify, verify, remediate): none of authentication, authorisation, secrets, logging, retention or tenant isolation is touched; a test file and documentation only.
+
+## Security audit of the custom-reports branch: a limited token cannot widen itself through reports (2026-11-03)
+
+*Scope:* the diff from the last `main` commit to the branch head (reports, images, converter, fonts, MCP tools, hardening commit). **Decided by: Agent** for the token-scope fix; **Decided by: User** for the SVG storage change (asked; chose the sanitised copy).
+
+*Identify / Verify:* a Personal Access Token limited to some projects (`allowed_project_ids`) is a restriction layered on RBAC. `rbac.session_may_reach_project` applies it to code that reads a project other than the path project (the link graph, search). The report paths did not: `report_framework.readable_projects` (organisation-wide layout and pack runs, `include_children`, the module reports' default scope), the `all_org_projects` scope, the report-copy target list, and the background-run queue. A job runs in the worker with no request, so its token limit was lost, and a finished run's file could be fetched with any token of its owner. Reproduced by tests that failed before the change (organisation-wide run and `include_children` with a one-project token returned the other projects' rows).
+
+*Remediate:* `readable_projects` and the `all_org_projects` branch drop projects the session cannot reach; the copy-target list does the same; `report_run_jobs.token_allows_run` lets a limited token queue only a one-project run without child projects (403 otherwise) and `token_allows_row` hides any other run of its user from the run list, status, download, run-again and delete (404). Tests: `test_custom_report_run.py`, `test_report_run_jobs.py`, `test_report_copy.py`.
+
+*Also:* an uploaded SVG is stored as its allow-listed copy (`report_images.upload_library_image`), so a script or `foreignObject` never rests in the library (it was already refused at use and served as an attachment with `nosniff`). `tests/test_report_images.py` pins it.
+
+*Reviewed, no defect:* the converter service and its Compose confinement, the SVG sanitiser (a nested `<use>` file costs `svglib` about 4 s before its 10 000-expansion cap; `resvg` refuses it; bounded by the run deadline), HTML/Word/ODF/spreadsheet escaping and formula guards, report links (http, https, mailto only), file-name templates, run download ownership, image-library tenancy and the confidential flag, MCP path building, the body-size limit, the media token and PAT-session separation. *Left as is (**Decided by: Agent**; the User agreed to remove it, but CI runs `docker compose exec converter python -m unittest`, which needs the tests in the image, so removing the copy would break the pipeline; raised with the User):* the converter image keeps `tests/`. The container is unprivileged with a read-only filesystem, so the file adds no reachable surface.
+
+## Custom reports Phase 88: the Organisation Admin group is called Reports (2026-11-03)
+
+"Templates" has not described the group since report templates were folded into the organisation's report look. **Decided by: User** (the name *Reports*; the inner list is renamed *Report layouts* so the group and its first section do not read the same, asked interactively).
+
+- The group key and route are `reports` (`/orgs/:orgId/admin/reports`); the old `/orgs/:orgId/admin/templates-reports` is a route that redirects to it (`OldOrgReportsRedirect`, **Decided by: Agent**), so bookmarks and old links still land. `reports` collides with no core or module group key.
+- Strings: `orgAdmin.groupReports` ("Reports") and `orgAdmin.reportLayoutsSection` ("Report layouts"). Project Admin keeps its **Reports** tab and its own `admin.reportSetup` heading.
+- Updated: the stories and Playwright specs that find the link or the section by name, code comments, the website pages, `docs/modules.md`, `docs/ux-style-guide.md`, the README. The file names `org-templates-and-reports-page.spec.ts` and `project-admin-templates-and-reports.spec.ts` are kept (the e2e document names them).
+- Tests: `OrgAdminPage.stories.tsx` (90 stories pass), and a Playwright step pinning the redirect. The Playwright specs were not run in this session (the Docker stack was not up).
+
+## Custom reports Phase 89: one Run preview, plus Download preview; no preview dialog (2026-11-03)
+
+**Decided by: User** (remove *Open in dialog*; put a *Download preview* beside *Run preview* so the author can see another format). Details below are **Decided by: Agent** unless stated.
+
+- **Purpose, read first.** *Run preview* renders the unsaved draft for the chosen project(s) in the right-hand panel as the signed-in person; *Open in dialog* showed the same panel larger and nothing more. The specs read the preview's content in the panel (they pass), but the panel was not inspected by eye at its narrowest width; the real page width is what the download gives, so the dialog is removed rather than the panel widened. If the panel proves too narrow in use, the fix is a wider or resizable panel, not the dialog back (the User is asked to look at it at the checkpoint).
+- **Removed:** the button, the `preview` dialog, `previewInDialog` and `previewDialogTitle`, and the "read the remembered choice on every render because the panel is shown twice" reasoning (the read stays: it also re-checks the choice against the projects on offer, which can arrive after the panel opens).
+- **Download preview** (`ReportLayoutPreviewPanel`, the shared `ReportExportButton`, formats from `FAMILY_FORMATS`): `POST /orgs/{id}/report-layouts/preview/download` and `POST /projects/{id}/report-layouts/preview/download` take the preview request plus `format`. The same gate as the preview (layout manager, the runner's own read access), the same run (`report_layout_designer._draft_*_run`), then `custom_report_run.render_file`, so the organisation's accent colour is applied as in a real run.
+- **A preview download is not a run.** It writes no `GeneratedReport`, no provenance and no audit event; it logs no draft text. The name is `Preview - <layout name>` (`PREVIEW_FILE_PREFIX`), never the layout's file name template or the organisation's default, so it cannot be mistaken for a saved run. No "Preview" mark is drawn in the file: no format has a place for one today and none was invented.
+- **Limits.** The run's limits apply. A draft over the synchronous limits answers 409 `async_required` (as a file run does) and the panel says it is too big to produce while the author waits; a draft cannot be queued (the background path runs saved, pinned versions), so unlike the Reports page there is no hand-off. A format the draft's family cannot produce is 400; text problems are 422 with the positioned errors (the button is disabled while the text has problems, a required variable or project is missing).
+- **Tests.** Backend (`test_report_layout_designer.py`): every document and table format at both tiers, the file name, no run/audit/log, the file name template ignored, the wrong-family 400, text problems 422, permission, a project outside the organisation 404, and the 409. Storybook: the formats offered for a document and a table, the request sent, the disabled state, the too-big message, and the designer story now pins that the dialog is gone. Playwright: the designer spec runs the preview in the panel, checks there is no dialog, and downloads a Word preview named `Preview - …docx`. The specs that read the preview through the dialog now read the panel (`designerPreviewPanel`, `openDesignerPreview`, `closeDesignerPreview` in `helpers.ts`); all 15 affected specs were run and pass.
+- **Found and fixed in passing:** three specs (`report-layout-designer`, `report-layout-images`, `report-starter-layouts`) still expanded an Org Admin section called "Reports" after Phase 88 renamed it *Report layouts*; they now use the new name, and the Phase 88 Playwright specs have been run.
+
+## Custom reports Phase 90: header and footer cells, widths and vertical alignment (2026-11-03)
+
+**Decided by: User** (cells fit their content by default and can have a set width; a width is a percentage of the band or a length; the default vertical alignment is top; the band-level and per-cell alignment). The rest is **Decided by: Agent**.
+
+- **Measured, not assumed (how it is built today).** PDF (`report_pdf_running.draw_band`), Word (`_band_table`) and ODT (`running_styles`) draw three **equal** thirds of the text width, and the HTML preview a `repeat(3, 1fr)` grid. Vertically the PDF centres each cell's block in the row, Word and ODT use `vAlign`/`vertical-align` **middle**, the HTML grid `align-items: center`. So a long centre title wrapped in a third while the sides were mostly empty, and a one-line cell floated to the middle of a two-line row. The fixture is the "Project overview with logo" layout.
+- **Model.** A cell is a string, so its options are flat keys beside it: `left_width`/`centre_width`/`right_width` (`"25%"`, `"4 cm"`, `"40 mm"`, the table-column width grammar of `report_column_width`) and `valign` (the band) with `left_valign`/`centre_valign`/`right_valign` (`top|middle|bottom`, a cell's own wins). They sit on the root's and every page style's `header`/`footer` (one `band_problems` walks both). `RunningBand` carries `widths`, `valigns` and `valign`; `mirrored()` swaps the left/right widths and alignments with the cells.
+- **One resolver.** `report_band_cells.resolve_band_cells(band, usable_cm)` returns the three widths (they add up to the band) and alignments; the four renderers read it and nothing else (Phase 91). Unset cells take their content (widest line at the band's size, a page field measured as `88`/`888`, plus a logo placed in the cell, plus 3 mm), an empty cell the 8 mm floor. The room left goes to the centre cell when it has content, else to the other filled cells in proportion to what they need. When the cells need more than the band has, the **widest gives way first** (a long centre wraps; short sides keep their width), never below the floor.
+- **Refused at save.** A bad width or alignment, a fixed length wider than the page, and fixed widths that, with the floor for every unset cell, fill or pass the band (`fixed_widths_problem`, checked at each page style's own text width, and for a style that inherits the document's band at the style's width). The resolver itself squeezes the fixed cells rather than overflow, for a band that reaches it unchecked.
+- **Default alignment is top, for every layout.** Layouts that never set a width or alignment change look when Phase 91 lands (content-sized, top aligned); this is the point of the request. Phase 92 re-reads every starter as rendered.
+- **Text view.** `@header left "x" leftwidth 25% leftvalign bottom valign middle`: per-cell clauses `<cell>width` and `<cell>valign` (a length is `4 cm`), band-wide `valign`; `leftwidth auto` is no width. A cell may have a width and no text. The designer's page setup reads and writes the same clauses (`reportPageSetup.ts`) and `RunningBandEditor` has a **Width** field and a **Vertical alignment** choice per cell plus one for the band, each with `help`.
+- **Not yet visible.** Phase 90 stops at the model, validation, text view and designer; no renderer reads the widths and alignments until Phase 91, so a saved width has no effect on a file yet. The website page is updated in Phase 92 with the renderers, so the docs never describe behaviour a file does not have.
+- **Tests.** `test_report_band_cells.py` (the resolver: sums, shrinking sides, wrapping centre, floors, fixed percent/length, squeeze, mirror; the tree rules and their paths; the text view round trip and its mistakes). `RunningBandEditor.stories.tsx` (width, alignment). Playwright `report-layout-designer.spec.ts` has a step that writes the clauses, a refused over-wide set and the saved read-back; it was written but not run (needs the rebuilt stack).
+
+## Custom reports Phase 91: header and footer cells in the preview, PDF, Word and ODT (2026-11-03)
+
+**Decided by: Agent** (the User's requirements are in Phase 90's entry; this entry is the renderer pass and what reading the files showed).
+
+- **One resolver, four readers.** `report_band_cells.resolve_band_cells(band, usable_cm)` is called by `report_pdf_running.draw_band` (cell x-ranges, wrapping, vertical anchor), `report_docx._band_table` (`w:tcW`, `w:gridCol`, `w:vAlign`), `report_odt_running.RunningWriter.table` (a table-column style per width and a table-cell style per alignment, written once each into the automatic styles) and `report_html._band_html` (`grid-template-columns` as `minmax(0, <cm>fr)` and each cell's `align-items`). Nothing else decides a width or an alignment. The ODT's per-page-style `C_bandcol<n>` and `C_band` styles are gone: a band's widths depend on the band (header and footer differ), so the column styles follow the band.
+- **PDF now wraps.** The PDF drew each line unwrapped, so a long centre text ran into its neighbours; with content-sized cells it would have been worse. `_wrap` breaks a line at spaces to the cell's room (cell width less the 3 mm padding, the logo and its gap) and keeps one run per stretch, so the text objects read as written. A word wider than the room stays whole. A 1 pt slack stops a cell wrapping its own text, which the resolver measured to a hair, in another font context.
+- **Vertical alignment.** The cell's logo and text block are each placed top, middle or bottom of the row, and the row is as tall as the tallest wrapped cell. Word `vAlign` and ODT `style:vertical-align` use the same three values; the HTML cell is a flex box whose `align-items` is `flex-start`, `center` or `flex-end`.
+- **Print boxes unchanged.** The HTML `@page` margin boxes (`@top-left` …) are sized by the browser and take no widths; only the on-screen band does. Stated so no one expects print to follow.
+- **Wrapped bands reserve their own room (PDF).** The layout check measures a band's height from its explicit lines and cannot know what a placeholder will print, so a cell that wraps to more lines than the margin was checked for would have grown over the body (a rendered fixture, a 4 cm logo with two-line organisation text and a long centre, did exactly this by one line). `report_pdf_running.grow_margins_for_bands` runs before the pages are laid out: for each page style (the document's and every section's) it lays the header and footer out as they will print, with the page number measured as `888`, and raises the style's top and bottom margins to the band edge plus the tallest wrapped row. A margin the author made large enough is kept, a mirrored style holds the larger of its two sides, and a layout that already fits is untouched. The text area of that style is shorter, so page counts can shift; that is the intended trade against overlap. The first-page-hidden variant is not measured separately (it only removes a band, so the reservation is conservative). Word and OpenDocument headers grow the body down natively (OpenDocument's header uses a minimum height); this was not checked in an application here, so Phase 92's cross-format read stays the check. The resolver now measures a cell in the band's own font, as the PDF draws it, in every format.
+- **Read as rendered.** A band with a left logo, a two-line organisation cell, a long centre and a page number was rendered to PDF with `valign top` and `bottom` and read as page images: the centre wraps in the centre only, the page number keeps its width, and the logo and both text blocks start on one line (top) or end on one line (bottom). The "Project overview with logo" demo layout itself is re-read in Phase 92 with the starters.
+- **Tests.** `test_report_band_renderers.py`: PDF text positions against the resolver (25 % left cell, wrap inside the centre with the sides on one line, top, middle and bottom for a one-line cell beside a wrapped one, a cell's own alignment over the band's), Word `tcW`/`gridCol`/`vAlign`, ODT column widths and cell alignments, HTML columns and `align-items`. Margin growth is tested too (a wrapping header pushes the body down, a footer grows the bottom margin, an author's large margin is kept, a section's own band grows only its own style). The existing 2,934 report tests pass. Playwright `report-layout-designer.spec.ts` measures the preview's header cells from their boxes; written, not run (the stack was down).
+
+## Custom reports Phase 92: header and footer cells, starters, demo data and the cross-format check (2026-11-03)
+
+**Decided by: Agent** (the User's requirements are in Phase 90's entry).
+
+- **No starter sets a band, on purpose.** None of the four document starters writes a header or footer, so each prints the default footer (the page number, centred). With content-sized cells that footer has one filled cell and two empty ones at the same 8 mm floor, so the number stays centred on every paper size and orientation; a fixed width or other alignment in a starter would add nothing. `test_report_starter_bands.py` pins this: no starter has a `header`, `footer` or page style (a starter that adds one fails it until it is read as rendered), the default footer resolves symmetrically and top aligned on A4, Letter and A3, and each starter, run in a project with every module on, draws that footer in the preview (columns equal the resolver's), Word (`w:tcW`, a `PAGE` field), OpenDocument (`text:page-number`) and PDF (the number starts at the page centre).
+- **Demo.** "Project overview with logo" gains a header (organisation name in a fixed 30 % cell, the title and generated date fitting their content, top aligned except the date at the bottom, in the `plate` colour) so a settable width and a non-default alignment are on show. The tree validates; the header was rendered to PDF and read as an image. `seed_e2e_dataset.py` writes no bands and is unchanged.
+- **Docs.** The website designer page gains the cell width and alignment paragraph and the text-view clauses; `docs/modules.md` notes that starters print the default centred page number.
+- **Not done here.** The Word and OpenDocument files were checked by XML and the library reader, not opened in Word or LibreOffice: the User's check from the plan remains open. The seeded demo layout was not run against the live stack (needs the rebuilt stack).
+
+## Custom reports Phase 93: block names allow hyphens and 128 characters; blocks get a display label (2026-11-03)
+
+**Decided by: User** (the two-field design, hyphen and the 128 limit, lower-case only, the label shown in the designer only: asked 2026-11-03). **Decided by: Agent** (the details below).
+
+- **Name rule.** A block's name (`as` on `each`, `group`, `table`, `sheet`, a join) is now lower-case letters, digits, underscores and single hyphens, starting with a letter, 1 to 128 characters (`report_layout_tree._ALIAS`, `MAX_NAME_CHARS`). **Agent:** a hyphen must be followed by a letter, digit or underscore, so `a--b` and `a-` are refused; the plan also named a trailing underscore, but `req_` is valid today and every name valid today must stay valid, so only the hyphen is restricted. Sheet names (31, a spreadsheet limit) and variable names (`NAME_RE`) are unchanged.
+- **Grammar.** `PLACEHOLDER_RE` takes a hyphen in the name part only (`{{open-reqs.code}}`); a field never has one, so `{{r.ti-tle}}` is still plain text. The text view needed no change for names: its words already allow hyphens and the validator is the judge. The file-name templates share the pattern, so a hyphenated name there is reported as an unknown placeholder, as any unknown name is.
+- **Label.** An optional `label` on any block: 1 to 128 characters of any kind but control characters, never empty or blank, stored in the tree so it travels in bundles, copies, duplicates and saved snippets unchanged. No renderer, file name or placeholder reads it. The validator allows the key on a block's own path (`TreeValidator._labelled`), so no block type lists it and a module block gets it for free; other objects (a column, a variable) keep their own `label` meanings and still reject unknown keys.
+- **Text view: a `@label "…"` line before the block, not a clause on its line (Agent, deviating from the plan).** A trailing clause cannot work for a heading (the rest of its line is its words), a prose text block (no directive line at all), `[[widget …]]` or a custom table. One line before the block works for every type and keeps the quoted-string style. It is read into the next block; a label with no block after it, a second label, or one inside a table or grid is a positioned error. A problem with the label's value is reported at the `@label` line. A label is written by `format_tree` for every block that has one, and the random round-trip test now labels a third of the blocks.
+- **Designer.** The server adds a **Label** field (kind `text`, 128, with help saying it is never printed) to the end of every described block's form in `block_catalogue()`, so the existing field order is unchanged. On a Blockly block the label replaces the start of its text in the summary line, followed by `as <name>` (**Agent:** the type title stays, so a block is still recognisable by its kind; the plan said the label replaces "the type-and-summary line"). The pickers that list names in scope (*Linked from*, the group source, condition references, a column's *From*, the Fields tab and its From filter) show `Label (name)` and always store the name; the text view's Fields tab reads the label from the `@label` line.
+- **Compatibility.** A layout without labels is unchanged byte for byte (its text view and hash are the same); a layout using the new alphabet or a label is refused by an older server, which its stored schema version already guards.
+- **Tests.** Tree: names at 1, 128, 129, leading digit or hyphen, trailing or doubled hyphen, upper case, reserved words; labels at 128, 129, empty, blank, control characters, non-text. Text: labelled blocks of every form round trip, hostile labels (quotes, `@end`, a literal `@label`, non-ASCII), misplaced labels at their line, hyphenated names in `in`, `from` and `as`. Evaluator: a hyphenated name resolves and the label never reaches the document. Catalogue: every described block ends with the Label field and every name field allows 128. Storybook: the Label field in the block editor, label plus name in the pickers, the text-view scan.
+- **Not run.** Playwright (the stack was down); the specs for this phase are listed in the plan.
+
+## Custom reports Phase 94: "Records come from" renamed, explained and defaulted to the surrounding group (2026-11-03)
+
+**Decided by: User** (the wording "Records of the surrounding group", chosen from three alternatives; the default applies to every record block: asked 2026-11-03). **Decided by: Agent** (the details below).
+
+- **Name and set.** The three choices now read "All records of a type", "Records linked to a surrounding record" and "Records of the surrounding group". **Agent:** the middle one changed from "enclosing" to "surrounding" so the set uses one word; the stored shape (`record_type`, `linked_from`, `group`) is unchanged. The server's help on the Records field says the same.
+- **Help.** A `(?)` on the picker (`strings.help.reportSourceMode`) says what each choice does and that the group choice shows the records the group has already found instead of searching again.
+- **Default.** `withSurroundingGroupSource` (`utils/reportLayoutTree.ts`) is applied once, in the Blocks view's Add block menu, to a template for `table`, `each` or `sheet` with no source yet: its source becomes `{group: <nearest enclosing group>}`. It does nothing with no group around, with a group that has no record type yet (so a half-built group never yields a source the validator would refuse), or for a block that already has a source. Snippets, loaded layouts, the text view and moved blocks do not go through it, so a saved layout's meaning never depends on where a block was made; the evaluator and validator are untouched. **Agent:** `record_images` was named in the plan but has no source of its own (it reads the enclosing record), so there is nothing to default; `group` itself is not defaulted (a group over its enclosing group's members is a deliberate choice).
+- **Tests.** Storybook: the helper (nearest of two nested groups, no group, group without a record set, own source kept, `record_images`, template not mutated), the picker's labels and help, Add block inside and outside a group. Playwright: a table added inside a group starts on the group, one at the end does not, and the text view shows `@table in by-status`.
+- **Not run.** Playwright (the stack was down).
+
+## Custom reports Phase 95: a drag moves only the grabbed block (2026-11-03)
+
+**Decided by: User** (a plain drag moves only the selected block; the blocks after it stay). **Decided by: Agent** (the mechanism and details below).
+
+- **The surprise.** The Blocks view draws blocks as statement stacks, and Blockly's default pointer drag takes the grabbed block *and every block below it*; moving one block out of a long list dragged the tail with it. Blockly's own way to move one block is a Ctrl/Cmd modifier, which nobody finds.
+- **Mechanism.** Blockly 13.4 has a supported hook: `BlockDragStrategy.shouldHealStack` (protected, meant to be overridden), set per block with `setDragStrategy`. `SingleBlockDragStrategy` (`utils/reportLayoutBlocklyBlocks.ts`) returns true for every pointer drag, so the grabbed block is unplugged on its own and the stack closes up. No Blockly internals are patched. `installSingleBlockDrag` applies it to the blocks present and, from their create event, to later ones (added, pasted, undone); `applySingleBlockDrag` is called again after the workspace is rebuilt with events paused (a change of shape), which creates blocks without that event. Keyboard moves keep Blockly's own rule (they already move a single block).
+- **What moves.** The block with its own contents (a group's children are inside it); the blocks after it stay and close up. The drop is one undo group, so one Ctrl+Z restores the order.
+- **No hidden modifier for the old behaviour.** Moving a tail of a long list is now several drags until Phase 96 (Shift-select) is decided; flagged to the User.
+- **Not changed.** Dropping in empty space still leaves a loose block, which the editor counts and the layout excludes, as before.
+- **Tests.** Storybook (real Blockly `Dragger`, plain pointer events): middle block moves alone, one undo restores, last block, a group takes its contents, a drop inside a container; the five fail with the strategy removed. Playwright `report-block-drag.spec.ts` (real mouse drag, save, reload).
+- **Not run.** Playwright (the stack was down).
+
+## Custom reports Phase 96: Shift-select multi-move decided not to build (2026-11-03)
+
+**Decided by: User** (chose "don't build" from the spike's three options, with the Agent recommending it). **Decided by: Agent** (the spike findings).
+
+- **Spike.** The only maintained Blockly multiselect plugin, `@mit-app-inventor/blockly-plugin-workspace-multiselect` 1.0.2 (Apache-2.0, last release 2025-09, pulls in `dragselect`), declares peer `blockly >=11 <12`; the editor runs Blockly 13.4. Blockly 13 has a single-selection model (`common.getSelected` returns one block) and no multi-drag.
+- **Options weighed.** Plugin with a Blockly downgrade or ignored peer range (untested on 13, would fight the Phase 95 drag strategy, undoes earlier work); own selection code (about a phase, medium-high risk: it overrides Blockly's selection, drag and undo behaviour and has to survive Blockly upgrades); not building.
+- **Outcome.** Not built. Blocks move one at a time (Phase 95), which the original request named as the accepted alternative. No dependency was added.
+- **What the author loses.** Moving a tail of a long list takes several drags. Revisit only if Blockly gains multi-select or this proves a real cost.
+
+## Custom reports Phase 96a: Project report name (2026-11-03)
+
+**Decided by: User** (the setting, its name "Project report name", that reports *may* use it, and the tooltip substance). **Decided by: Agent** (the rest below).
+
+- **What it is.** `Project.report_name`: optional, at most 255 characters (`MAX_REPORT_NAME_LENGTH`, the same as the project name; first built as 60 on the Agent's own judgment, raised after the User questioned it), plain text, trimmed, blank stored as `NULL`, no control characters (a 422 otherwise). A display name for reports only; the project `code` stays the identifier. Migration 0128.
+- **Opt-in placeholder.** `{{project_report_name}}` prints the root project's report name when set, else the label `{{project_name}}` prints (`report_model.project_report_label`). `{{project_name}}` is unchanged, so no existing layout, pack or file name changes. It is in `PLACEHOLDER_NAMES` (layout check, Fields tab, text view), the header/footer placeholder list, and `FILE_NAME_PLACEHOLDERS` / `ORG_FILE_NAME_PLACEHOLDERS` (layout, pack, entry and organisation file-name templates; their built-in `<scope>-<report>` names still use the project name). In a run over a project and its children it prints the label of the project the run was made for, as `{{project_name}}` does.
+- **Starters.** No starter writes a header or footer (they print the default page number, pinned by `test_report_starter_bands.py`), so none switched. The demo "Project overview with logo" footer uses the placeholder and the demo Falcon-3 project sets "Falcon-3". Module `ReportDefinition`s were left on the project name: none puts it in a running header, and a title that names the project keeps the full name.
+- **Nested projects check.** Not a definition table, so no ancestor fallback: a name identifies one project and a child never reads its parent's (test: `test_a_child_project_does_not_inherit_the_report_name`). A template clone does not copy the template's report name either (a name identifies one project).
+- **Audit.** A change writes a `report_name_changed` event (from and to; the name is not Restricted) beside the usual `settings_updated`; an unchanged value writes none. `PATCH` uses `model_fields_set`: absent leaves it, null or blank clears it.
+- **Bundles.** `project.json` carries `report_name` (project and organisation bundles share `new_project_from_bundle_data`); a bundle without the key imports as unset. Round-trip tested.
+- **Forms.** Added to the project settings (Overview) and to the New project form (hidden when importing a bundle, which brings its own), both through `TextField` with `help`. The two forms are separate surfaces, not one shared field group, so the field is repeated in each with the same string; consolidating them is not part of this change. Not a required field, no "(optional)".
+- **Security.** The value is free text reaching four renderers and file names. It goes through the same escaping as the project name (HTML test `&lt;b&gt;&amp;Co`) and `render_stem`'s cleaning for file names (test with `../../etc/"x"`); no new endpoint and no new permission (project manage).
+- **MCP.** No project write tool exists, so no skill change; `get_project` returns the field with the rest of the project JSON. Its docstring was not edited: the generated reference needs `fastmcp`, which the host venv lacks.
+- **Time shape.** None involved.
+- **Tests.** `backend/tests/test_project_report_name.py` (22), Storybook (`OverviewTabProjectReportName`, `CreateProjectTakesAReportName`), Playwright `project-report-name.spec.ts` (written, not run; stack down).
+
+## Custom reports Phase 97: thirteenth review close-out (2026-11-03)
+
+**Decided by: Agent** (no User decision; this is the review, docs and verification pass for Phases 88 to 96a).
+
+- **Docs.** Read against each phase: the website designer, blocks and naming pages and `docs/user-guide.md` and `docs/modules.md` already describe the new behaviour only (Download preview, header and footer cell widths and alignment, block names and labels, the source option, one-block drags, the project report name). No page names the old Org Admin group "Templates & reports" or the removed *Open in dialog*. `scripts/check_doc_links.py` passes. Screenshots stay with the docs-website phase.
+- **Performance pages reviewed, no change.** The preview download runs the existing run and render path once per request and stores nothing; the band cell resolver is a few arithmetic steps per page style; `Project.report_name` is one nullable column read with the project row. No list, report, export or search path changed shape, no migration touches a large table (0128 adds a nullable column to `projects`), no worker or pool setting moved. So no number in `docs/performance.md` moves and neither performance page changes.
+- **Security pass (identify, verify, remediate).**
+  - *Draft download* (`POST .../report-layouts/preview/download`, both tiers): gated by the same layout-manager dependency as the preview; the run reads with the caller's own access; no `GeneratedReport`, provenance, audit event or draft text in a log; the name goes through `filename_safe` after the `Preview - ` prefix. Verified in code; pinned by the Phase 89 tests. No finding.
+  - *Block names and labels* (free text into the text view): a label is one line with no control characters and at most 128 characters; the text view writes it as an escaped quoted string, so a label holding quotes, a backslash or `@heading 1 injected` round-trips as a label and is never read as a directive (probed). A label is never printed by a renderer (the only `label` reads in the renderers are column labels). No finding.
+  - *Project report name* (free text into four renderers and file names): escaped like the project name and cleaned by `render_stem`; tested in Phase 96a. No finding.
+  - *Width and alignment values* (untrusted input to four renderers): a width is parsed by a numeric-only grammar and rendered with `{:.3f}`; an alignment is looked up in a fixed map (HTML, Word) or reduced to `VALIGN_CHOICES` by the resolver before the ODT style name and attribute are written, so no author string reaches XML or CSS. **Finding (fixed):** the resolver trusted a stored fixed width that the layout check would have refused (a bundle or an older tree is not re-checked at render), so `0 cm` produced a zero-width cell and a 400-digit number parsed to infinity. Fixed values are now floored at `MIN_COLUMN_CM` in `resolve_band_cells`; `test_a_stored_width_the_check_would_refuse_never_reaches_a_renderer_as_zero_or_infinite` covers `0 cm`, `0%`, `0.01 mm` and a 400-digit width.
+- **Time shape.** None involved in this phase.
+- **Full backend suite (`-n 4`, once, alone): 6,835 passed, 12 skipped, 16 failed.** 14 are the known host-level mail failures (the SMTP host name does not resolve outside the compose network: `test_invites_and_external_users`, `test_oidc_provisioning`, `test_org_export_import`). **Two were a real defect in the test setup, found and fixed:** `test_a_queued_run_can_be_cancelled` (the cancel answered 409 because the run had been claimed) and `test_user_access_query_count_is_flat` (15 against 16 statements). Both passed alone. Cause: the session-scoped test app ran the leader's polling loops (report-run queue, disk monitor, storage health, digest) inside each test process, so a loop claimed a test's queued run before the test acted on it and put its own statements into an engine-wide query count. No test relies on a loop (each calls `run_next` or the check function directly), so `tests/conftest.py` now replaces the four loops with an idle coroutine for the test app. The loop-related suites, the two tests and the scaling shapes pass (95 tests).
+- **Seeds, on a fresh database (never done before).** `seed_e2e_dataset.py` and `seed_demo_data.py` ran clean against a throwaway database migrated with `app.migrations.run_migrations` (the bare `alembic` command misses the module migration directories). **Found and fixed:** the demo seed filed the Decision register under a folder before it enabled the Decisions module, so a fresh install answered 422 (unknown report); it only ever worked on a database that already had the module on. The placement now follows `enable_module(..., "decisions")`.
+- **Storybook (3,167 tests) and Playwright.** One designer story timed out in the full parallel run and passes alone (a load flake of the editor mounting). The 122 report and custom-report Playwright specs pass. Five specs written in earlier phases and never run had drifted and were fixed: an accent-colour label matched twice (`exact`), a heading selector that read the title and summary as one text, a drag aimed at where the Heading was before it closed up, a block label long enough to be truncated in the block summary, and a final step that switched to the Text view while two new tables still had problems.
+
+## Custom reports Phase 98: shared layout drafts, backend and API (2026-11-03)
+
+**Decided by: User** (one shared draft per layout; autosave on by default and switchable off, then a Save draft button; only Save new version makes a numbered version; placed after the thirteenth review). **Decided by: Agent** (everything below).
+
+- **Model.** `report_layout_drafts` (migration 0129): `layout_id` unique with `ON DELETE CASCADE`, `tree`, `tree_hash`, `base_version`, `revision`, `updated_by`, `updated_at`. Mutable, unlike `report_layout_versions`, whose ORM guard is untouched (a test pins that a version is still never rewritten).
+- **API (both tiers).** `GET|PUT|DELETE .../{id}/draft`; `PUT .../{id}/tree` takes `from_draft` (and `draft_revision`) instead of a tree. Same manage permission as saving a version. At the project tier a project reaches only its own layouts' drafts (403 for an inherited layout, whose draft summary is also left out of the detail): an ancestor's unfinished work is not another scope's business.
+- **Invalid drafts are stored.** A draft exists so work in progress is not lost, so it may fail validation. It is checked on publish exactly as a version save is, and the draft endpoints return the problems. Only its size is bounded (the version cap, 512,000 bytes). A tree equal to the saved version is deleted instead of stored, so no identical draft lingers.
+- **Concurrency.** The layout row is locked for every draft write and publish. A write names the `revision` it saw (0 for none); a mismatch is a 409 `draft_conflict` carrying who changed it and when (`null` when it was published or discarded). A new draft must be based on the layout's current version (409 otherwise, as a save is); a write to an existing draft may name a newer `base_version`, which is how an editor that has looked at a version published meanwhile moves the draft forward. Publishing uses the draft's own `base_version` (409 when the layout moved on) and keeps the draft when anything fails. Publishing another person's draft is allowed; the publisher is the new version's author.
+- **A direct save leaves the draft alone.** `create_report_layout`/`save_report_layout_version` (MCP, scripts) publish a tree as before and do not touch a draft. The layout detail (and so `get_report_layout`) shows `draft` (who, when, `base_version`, `revision`, never the tree) so an agent can warn before saving over unfinished work; the skill says so.
+- **Audit (a departure, flagged).** An autosave is not audited event by event: it is high-frequency working state that changes no run or output, and one event every few seconds would bury the trail. This departs from "every mutating action is audited"; recorded in the system operations and logging policy. What matters is audited: publishing is the usual `version_saved` (with `from_draft`), discarding is `draft_discarded` (base version, revision, hash). The tree is customer content and is never logged.
+- **Bundles and copies (a departure, flagged).** Bundles carry versions, not drafts: a draft is unfinished and may be invalid, so exporting it would import a layout in a state nobody agreed to publish (the bundle rule asks for this reason). A duplicate or copy takes the latest published version. No run, pack or picker reads a draft.
+- **Retention.** A draft stays until published or discarded; no expiry (a long-running draft is legitimate). The detail shows its age. Revisit only if stale drafts become a problem.
+- **Old versions.** Deleting or squashing saved versions is deliberately not offered: a run records the version it used, so removing one breaks provenance. A "hide versions without a note" filter in History is the cheap safe alternative if the pile still annoys.
+- **Layouts only.** Report packs and saved snippets have no version history, so they get no draft.
+- **Time shape.** A past instant in UTC (`updated_at`); none scheduled or date-only.
+- **Security (identify, verify, remediate).** Draft access is the version-save permission and scope check (another owner's layout, an inherited one and a plain member are refused: tested); the tree is stored as JSONB and never logged or audited; the 409 body reveals only the other editor's display name and time, to a caller who can already manage that layout; autosave size is capped; the list endpoint reads no drafts (tested). No finding.
+- **Perf.** Layouts are not an artefact type (no probe or generator); the list endpoint is unchanged and a test pins that it reads no drafts. The detail adds one indexed read.
+- **Tests.** `backend/tests/test_report_layout_drafts.py` (28). The MCP docstring and skill updated; `mcp-server` skill tests pass.
+
+
+## Custom reports Phase 99: layout drafts in the designer (2026-11-03)
+
+**Decided by: User** (autosave on by default and switchable off, then a Save draft button so a layout can be tried and left behind; the draft is shared; History stays short). **Decided by: Agent** (everything below).
+
+- **One session over the draft (`useLayoutDraft`).** It holds what the server last confirmed (the draft's tree, else the saved version's) and its `revision`, writes the active view's tree after a pause (3 s, `DRAFT_AUTOSAVE_DELAY_MS`) or on demand, and publishes by writing what is pending and then `PUT .../tree` with `from_draft` and the revision just written. Writes run one after another, each with the revision the last returned, so the editor cannot conflict with itself. The tree stored is the Blocks tree, the JSON when it is valid JSON, or the Text view's parsed tree; text that does not parse is never stored ("Not saved: line 7"), as Phase 98 specified.
+- **Looking is not editing.** The text view, opened and not typed in, is never written back: the server's parser may normalise a tree it was just given, and a write for that would create a draft by merely opening the layout. The designer tells the hook the editor "stands for" the tree it opened on (`unchangedFrom`) and a test pins that opening the Text view writes nothing.
+- **"Unsaved" now means "not in the draft".** The Unsaved badge and the leave prompt follow `pending` (edits the server does not hold, unreadable content or a failed write), so with autosave on leaving asks only while a write is pending or failed, and with it off asks while edits are not in a draft. Save new version is enabled when the content is valid and differs from the latest published version.
+- **Autosave switch.** A per-person preference (`report_designer_autosave`, `useUiPreference`), with the `(?)` help (`strings.help.layoutAutosave`). Turning it on writes what is pending at once. Save draft and Discard changes appear only with it off; Discard changes (Tier 1) reloads from the server, which is the draft if there is one, else the latest version.
+- **Opening a layout that has a draft.** The designer fetches the draft and opens on it with the notice (author, time, base version, and "Version N was saved since this draft began"). The notice stays until the draft is published or discarded and is not shown for a draft the person only just started. **Discard draft** is a Tier 1 confirm, not Tier 2: it destroys one layout's working copy, not something with a wide blast radius, and the confirmation says published versions are untouched. **Show saved version** compares the server's draft with the latest version in a read-only dialog (a draft may lag the editor by the autosave pause).
+- **Conflicts.** A draft moved by someone else shows the banner (who, when) and pauses autosave until **Load their changes** (reloads whatever the server holds) or **Keep mine** (adopts their revision and writes). A version published since the draft began keeps the existing banner, now with two ways forward: **Reload latest** (confirms; it discards the draft, because a draft begun on an older version cannot be shown "as the latest") and **Keep my text on version N** (the explicit choice to publish over theirs: the draft is rewritten with the new base version, which the server allows for an existing draft). Without the second, a draft begun before a colleague saved could never be published, so Phase 98(e)'s "offer to see the differences" was extended with it. Their version stays in History.
+- **Shared components.** `LayoutDraftStatus` (status line, Autosave switch, Save draft, Discard changes), `LayoutDraftNotice` (also the History Draft row), `LayoutDraftConflict`, `LayoutDraftCompare` and `LayoutDiff` (extracted from History, which now uses it), used by all three views. The status line is the feedback for autosave; Save draft and Discard give a toast.
+- **Style guide.** The text designer pattern said "no autosave"; it now describes the draft and these components.
+- **Deliberate non-changes.** No audit event per autosave (Phase 98); bundles carry versions, not drafts (Phase 98); no per-person drafts; no version deletion. Layouts are not an artefact type, so no scaling probe or dataset generator, and the list endpoint is unchanged.
+- **Time shape.** The draft's `updated_at` is a past instant in UTC, shown in the browser's local time.
+- **Seeds.** `seed_demo_data.py` leaves the organisation's "Design formulae" layout with a draft so the notice is visible; `seed_e2e_dataset.py` is unchanged (no draft).
+- **Security (identify, verify, remediate).** No new endpoint or permission: the UI uses Phase 98's. The tree is sent only to the draft/publish endpoints for a layout the person can manage and is never logged or put in a URL; a read-only (inherited) layout shows no draft controls and fetches no draft (tested). The 409 banner shows a colleague's display name and time, which the server already returned to someone who can manage the layout. No finding.
+- **Tests.** Storybook: the designer's draft stories (autosave status, nothing written on opening Text, not-saved reasons, offline retry, autosave off with Save draft and Discard changes, turning it on, both leave prompts, notice, stale draft, compare, discard, History row, publish, both conflicts, read-only layout), `LayoutDraftStatus`, `LayoutDraftNotice`, `LayoutDraftConflict` and the History draft row; the three existing save stories now assert the draft writes and the publish. Playwright `report-layout-drafts.spec.ts` (autosave across a reload and exactly one version on publish; autosave off, Save draft, Discard draft; a draft changed by someone else).
+
+## Custom reports Phase 100: UX review of the layout's options (2026-11-03)
+
+Review only; nothing built. A general-purpose agent briefed as a UX reviewer read `docs/ux-style-guide.md`, `ReportLayoutSettings`, `ReportLayoutPageSetup`, `RunningBandEditor` and the shared collapsible, popover and menu components. Usage figures are estimates from the starters, demo and e2e layouts (no telemetry). The Agent running the phase checked the two findings below against the code before relying on them.
+
+- **Findings that correct the request's premises (Decided by: Agent).** (1) The header and footer each have **one** `Insert placeholder` select (about 11 entries) that inserts into the last-focused cell, remembered in hidden state (`RunningBandEditor` `lastCell`); the bold/italic pair shares that coupling. (2) Separately, every `text`/`longtext` block field with placeholders has an **Insert a field** disclosure under it (`ReportLayoutBlockField`); this is probably the "button for each, below the field" the User saw. (3) The three cells are already responsive (one column in the Blocks side panel), so stacking changes mainly the Page setup dialog. (4) "Too many options" is true only in "Its own text" mode (about 22 controls per band) and the whole band editor repeats inside every page style; the Blocks view also lists 15 layout fields flat. (5) Font, size, colour and logo cannot live in a popover (the colour field opens its own popover and popovers do not nest), so the band-level "More" is an inline collapsible; only per-cell width and vertical alignment go in a popover.
+- **Choices (Decided by: User, asked 2026-11-03, all four took the recommendation).**
+  1. **Basic set always visible:** page size, orientation, margins (one compact row, mirror and gutter inside it), header and footer. Everything else is in closed collapsible groups.
+  2. **Closed-group marker:** a count pill ("2 changed"; a noun count for lists such as page styles) plus an accent border; the group stays closed. A group holding a server problem, or a band that does not fit its margin, opens itself and shows a danger pill. The band-fit message sits outside "More".
+  3. **Placeholder [+] covers both** the header/footer cells and the block text fields' "Insert a field" disclosure.
+  4. **Bold/italic per cell**, beside [+], removing the last-focused-cell state.
+- **Specification for Phases 102 to 104 (Decided by: Agent, from the review; revisable).**
+  - *Groups (102).* Page (always open, not collapsible), Header and footer (open), Look (colour scheme, fonts, embed fonts), Variables and running (variables, projects it runs for, file name), Tables (repeat header, line up tables; stays flat inside), Page styles; the last four closed. One frontend constant `LAYOUT_SETTING_GROUPS` keyed by field key, with an "Other" fallback so a field added later is never lost; the dialog renders Page, Header and footer, Page styles, the Blocks view renders all. No backend schema change (no MCP skill regeneration). Built on `CollapsibleSection variant="plain"` (state remembered per person, `sectionKey="layoutSettings:<group>"`), extended with an optional summary pill, `marked`, an open-on-problem prop, `aria-controls` and `aria-describedby`; one `layoutGroupSummary()` replaces the ad hoc `marked` in `ReportLayoutPageSetup`. The pill is text plus a border, never colour alone.
+  - *Band (103).* Left, centre and right cells stacked, each full width, autogrow from one line; on each title row, right-aligned: [+], bold, italic and a settings gear (`SettingsPopoverButton`, name "Left cell settings: width 30%, bottom", marked when set) holding **width** and **vertical alignment** only, with a muted summary beside the title when set. Under the cells, the fit message and an inline "More header options" collapsible with font, size, colour, logo (height, cell, remove), band vertical alignment and first-page choice, its closed bar showing "N changed". Existing control names stay (`Header: print`, `Header, left cell`, `Header: font` and so on); the width and alignment names exist only while the popover is open.
+  - *Placeholders (104).* Band: `ActionMenu` (gains a `size="sm"`), grouped Page / Report / Project / Organisation / Variables (hidden when none) / Other, readable labels with the sample in `hint`, **not searchable** (about 13 entries fit one screen; **Agent** departure from the plan's "searchable", the Agent running the phase agreed). Block fields: `AddPopoverButton` beside the title wrapping the existing searchable `ReportLayoutFieldPicker`, replacing the `<details>`. Choosing inserts at that cell's caret and returns focus to it; Escape returns focus to the [+]. The offered set stays the layout's allowed set; unknown names go to "Other".
+- **Deliberate changes to existing tests.** The `Insert placeholder` combobox and shared bold/italic pair disappear in Phase 104, and specs touching `Left width`/`Left vertical alignment` (`report-band-fonts.spec.ts`, `report-layout-designer.spec.ts`, three stories files) open the popover or "More" first.
+- **Style guide.** Its note that Escape also closes the enclosing Modal is stale (`dialogA11y.ts` closes only the dialog that holds focus); to be corrected when Phase 102 touches the guide.
+
+## Custom reports Phase 101: a footer aligns to the bottom by default (2026-11-03)
+
+**Decided by: User** (a footer's vertical alignment defaults to the bottom, a header stays at the top). The mechanism is **Decided by: Agent**. Time shape: not involved.
+
+- **Rule.** A cell's own alignment, then the band's, then the kind's default (`DEFAULT_BAND_VALIGN`: header `top`, footer `bottom`). `RunningBand` now carries its `kind` (`header` or `footer`) and its `valign` is `None` when unset (it was the string `top`, which could not be told from a stored choice). `resolve_band_cells` is still the one reader; the PDF, Word, OpenDocument and HTML/preview renderers needed no change. The kind is set where the evaluator builds a band (the layout's and each page style's) and on the default page-number footer; mirroring keeps it.
+- **Editor.** The band's vertical alignment select marks the kind's default ("Bottom (default)" in a footer, "Top (default)" in a header) and stores `undefined` only for that default, so choosing "Top" in a footer is written (`valign top`). Before this, the editor never stored `top`, so a footer author who wanted top would have been silently moved.
+- **Existing layouts.** Nothing is migrated. A footer that stored no alignment prints at the bottom the next time it is rendered; one that stored `top` (text view only, the editor never wrote it) keeps it. The visible effect is only where cells differ in height (a wrapped centre beside a one-line side, a logo cell); a one-line footer looks the same. Starters write no bands; the demo and e2e seeds' footers are single-line, so no seed changed. Stated on the website's designing-a-layout page.
+- **Challenge to the request.** None of substance. The one hazard was the editor's "default means unset" shortcut, which would have made "Top" in a footer impossible to keep; fixed as above.
+- **Security (identify, verify, remediate).** Arrangement of print output only; no endpoint, permission, secret or logging change. No finding.
+- **Tests.** Backend: kind defaults, explicit top kept, cell over band over kind, mirroring keeps the kind (`test_report_band_cells.py`); an unset footer sits at the bottom, and a footer saying top keeps it, in PDF (wrapped centre against the side cell's baseline), Word, OpenDocument and HTML (`test_report_band_renderers.py`); the default page-number footer resolves to bottom (`test_report_starter_bands.py`). Storybook: `FooterCellsAreBottomAlignedUnlessChosen`. Found and fixed on the way: `test_pdf_face_registers_the_right_weight_and_slant` failed when run alone (it read a font face it had not registered). Playwright: no new spec (no new flow; the existing designer spec selects alignment by value, which the "(default)" label does not change); not run, stack down.
+
+## Custom reports Phase 102: the layout's settings, organised (2026-11-03)
+
+Implements the specification recorded in "Custom reports Phase 100"; the arrangement is **Decided by: User** (basic set, count-pill marker), the mechanism **Decided by: Agent**. Time shape: not involved. No backend, schema, stored-layout or text-view change, so no MCP skill regeneration.
+
+- **One arrangement, two screens.** `utils/reportLayoutSettingGroups.ts` holds `LAYOUT_SETTING_GROUPS` (page, band, look, variables, tables, styles, other), `groupOfField` (a field key to its group; an unlisted key goes to *Other settings*, so a field added on the server is never lost, pinned by a story) and the counts of non-default settings (`treeSettingChanges` for the Blocks view, `pageSetupChanges` for the text view). `LayoutSettingGroup` draws a group in both `ReportLayoutSettings` and `ReportLayoutPageSetup`. *Page* is a plain heading that is always open; *Header and footer* starts open; the other four start closed. Tables is the one group that also sits in the dialog (its two switches were loose checkboxes beside the paper fields); Look and Variables and running exist only in the Blocks view, as before, because the text view states them on the first line, not in this dialog.
+- **Closed groups say what they hold.** `CollapsibleSection` gains `summary` (a `Badge` the bar is described by), `marked` (an accent edge, `.collapsible-bar--marked`; text plus edge, never colour alone), `forceOpen` (stays open, the toggle is inert and `aria-disabled`, the pill takes the danger tone) and `aria-controls` on an open bar. A noun count for the page-style list ("3 page styles"), "N changed" for the rest. A group holding a server problem opens itself ("N problems"). The page setup button's mark (`btn-marked`) is now `anySettingChanged`, one definition replacing the ad hoc list in `ReportLayoutPageSetup`.
+- **State.** Per person, `section_collapsed:layoutSettings:<group>` in `ui_preferences` (the existing `CollapsibleSection` mechanism: a bounded boolean, no secret), shared by the panel and the dialog.
+- **Departures from the specification (Agent).** (1) The specification put "the band-fit message outside More" and the band's More group in Phase 103; this phase leaves the band editor untouched inside its group, so those arrive there. (2) The margins row is unchanged (five fields in one row already; mirror sits beside size and orientation), so only the grouping moved.
+- **Challenge.** A closed group is exactly the "plain-looking layout hides behaviour" hazard the plan names; the pill is what answers it, and the Blocks view and dialog compute it from the same rule, so it cannot say different things in each place. `CollapsibleSection` now wraps its content in one `div.stack`, which changes nothing visually (the gap between header and content is the outer stack's) and keeps `aria-controls` valid; its 14 story files (256 stories) pass.
+- **Security (identify, verify, remediate).** Presentation only: no endpoint, permission, secret, log or stored value changes. The only persisted value is the existing bounded collapse flag. No finding.
+- **Tests.** Storybook: only the basic set and the band start open, closed groups mark what they hold (page setup and Blocks view), a group opens and closes from the keyboard and stays open when the dialog is reopened, a problem holds its group open with a danger pill and cannot be closed on it, an unknown field lands in *Other settings*, plus the two new `CollapsibleSection` behaviours. Existing stories open the group a control now sits in. Playwright: `report-layout-designer.spec.ts` gains "a closed settings group holding a changed setting says so on its bar"; the specs for fonts, colours, projects-it-runs-for, page styles and repeat-header open the group first (`ensureExpanded`).
+- **Docs.** Website designing-a-layout (the group table and the mark), style guide text-designer pattern (the grouping rule), and its stale Escape note corrected (`dialogA11y` closes only the layer that holds focus).
+
+## Custom reports Phase 103: header and footer cells stacked, options in a popover (2026-11-03)
+
+Implements the band part of the specification in "Custom reports Phase 100" (**Decided by: User**: options behind a popover or group, count-pill marker); the mechanism is **Decided by: Agent**. Time shape: not involved. Presentation only: the stored band, the text view's `@header`/`@footer` syntax and the server are unchanged, so no schema, migration, MCP skill or bundle change.
+
+- **Layout.** `RunningBandEditor` stacks the left, centre and right cells at full width. Each cell's title row carries a muted summary ("width 6 cm, bottom") and a `SettingsPopoverButton` gear (name "Left cell settings: width 6 cm, bottom", marked when set) holding that cell's **width** and **vertical alignment** only. Existing control names are unchanged (`Header, left cell`, `Header: font`); `Left width` and `Left vertical alignment` exist only while the popover is open.
+- **More group.** Logo (and its height, cell, remove), font, size, colour, the band's vertical alignment and first-page choice are in an inline `CollapsibleSection` ("More header options", closed by default, state per person under `layoutSettings:band<Header|Footer>More`), its bar showing "N changed" and an accent edge (`bandMoreChanges`). It cannot be a popover: the colour field opens its own popover and popovers do not nest. The fit message sits outside it, so a band that does not fit is seen with everything closed (departure 1 from Phase 102 closed).
+- **Not done here (Phase 104).** The `Insert placeholder` select and the shared Bold/Italic pair under the cells, and the last-focused-cell state behind them, are untouched; they become a per-cell [+] and per-cell Bold/Italic in Phase 104.
+- **Found on the way.** A popover opens with focus on its first field's help (?), whose tip takes the first Escape and the popover the second (the shared `Tooltip` behaviour, by design); the story presses Escape twice and says why. Choosing in a control outside a popover closes it (outside press), so a story that edits the band's own select reopens the cell's popover.
+- **Challenge.** A width problem the server reports for a cell is now behind a gear; the gear is marked whenever a width or alignment is set, and the band-level fit message still shows, so a refused width is findable. Mirrored margins still swap the left and right settings with the cells (unchanged).
+- **Security (identify, verify, remediate).** No endpoint, permission, secret or log change; the width is still free text that the server bounds. No finding.
+- **Tests.** Storybook (`RunningBandEditor`): the cells are stacked in order; a gear opens a popover, Escape closes it and returns focus, the summary and mark show; a width and an alignment set in the popover reach the band; More starts closed, counts what is set and leaves the fit message visible; existing logo, font, first-page and footer-default stories open More first; the page setup story opens More for the first-page choice. Playwright `report-layout-designer.spec.ts` and `report-band-fonts.spec.ts` set widths, alignments, font and size through the popover and More; not run (stack down).
+
+## Custom reports Phase 104: placeholders insert from a [+] beside the title (2026-11-03)
+
+Implements the placeholder part of the specification in "Custom reports Phase 100" (**Decided by: User**: [+] for the band's cells and the block fields, Bold/Italic per cell); the mechanism is **Decided by: Agent**. Presentation only: the stored band, the `{{placeholder}}` syntax and the server are unchanged, so no schema, migration, MCP skill or bundle change. Time shape: not involved.
+
+- **Band.** The shared `Insert placeholder` select and the Bold/Italic pair under the cells, and the last-focused-cell state behind them (`lastCell`), are gone. Each cell's title row now has, right-aligned: a [+] (`ActionMenu` with a new `size="sm"`, name "Insert placeholder into footer, left cell"), **B** and **I** for that cell ("Footer, left cell: Bold"), then the gear. The menu is grouped Page / Report / Project / Organisation / Other with a sample in each entry's hint, not searchable (about a dozen entries; **Decided by: Agent**, the departure from the plan's "searchable" recorded in Phase 100). A name outside the known groups (a layout's own) lands in Other as `{{name}}`. Choosing writes at that cell's remembered caret (its end when never clicked in) and puts the caret back after the insertion; Escape closes the menu with focus on the [+].
+- **Block fields.** A text or long text field with the `placeholders` feature gets an `AddPopoverButton` in its title row ("Insert a field into Heading") wrapping the existing searchable `ReportLayoutFieldPicker`; a choice appends the field (as before) and closes the popover. The `<details>` "Insert a field" disclosure and its string are removed.
+- **Not covered.** The layout's own variables are not offered in the band menu: the band editor is not given them (only the server's global placeholder list), so a "Variables" group would always be empty today. A name passed in lands in Other. The Text view's pickers and the file-name field's `Insert placeholder` select (`FileNameField`, a different control) are unchanged.
+- **Deliberate changes to tests.** Stories and the two Playwright specs that used the `Insert placeholder` combobox or `Footer: Italic` use the cell's [+] and "Footer, right cell: Italic". The `help.bandPlaceholder` text (it described the last-edited-cell behaviour) is removed; the menu has a one-line footer instead.
+- **Security (identify, verify, remediate).** No endpoint, permission, secret, log or audit change; the sample values are fixed illustrative strings, not data. No finding.
+- **Tests.** Storybook: a cell's [+] writes into that cell only and leaves the others, the menu closes and focus returns to the cell; the menu is grouped with samples and has no old drop-down; Escape returns focus to the [+]; the page fields are offered whatever the catalogue holds; insertion honours the caret; Bold applies to its own cell; the block field's [+] opens the field list, inserts and closes, and is absent when read-only. Playwright `report-layout-designer.spec.ts` and `report-band-fonts.spec.ts` updated; not run (stack down).
+
+## Custom reports Phase 105: table of contents, spike across the four formats (2026-11-03)
+
+Spike only: throwaway prototypes outside the repository, nothing merged, no code, schema, MCP or bundle change. Answers the plan's Phase 105 (b) to (d); the build is Phase 106. Time shape: not involved.
+
+**What the prototypes did.** Each ran on the real renderers' output for a 12-chapter, 36-heading document with a running header and footer; a 60-chapter, 180-heading one stressed the PDF.
+- **PDF (ReportLab).** Two builds: the first records the page of every heading (`afterFlowable` on heading paragraphs, keyed by the anchor `finalize_links` already gives), the second prints the contents with those numbers. The entry draws its title wrapped inside a reserved number column, so the contents' length cannot depend on how many digits a number has: it was stable after the second build in both runs, including a contents that itself ran over four pages (the headings moved down by the contents' pages, and the second build already had them). The running header and footer, mirrored margins and page styles are untouched (they hang on the page template, not the story). Cost: one extra build, 0.17 s to about 0.31 s at 36 headings, 0.73 s to about 1.8 s at 180; memory peaks the same, because the builds do not overlap. A link over each entry works (`linkRect` to the heading's anchor). The contents page counts as a page, so a footer's "Page 1 / 22" matches the physical page, the same as the cover today.
+- **Word (python-docx plus XML).** The headings already use Word's real Heading styles, so a `TOC \o "1-3" \h \z \u` field reads them. LibreOffice does not fill a TOC field when it opens or converts a file (with or without `w:updateFields`), so a viewer that does not update fields shows only what the file cached: nothing, or a placeholder sentence. Entries written into the field (hyperlink to the heading's bookmark, a right tab with dot leader, a `PAGEREF`) render correctly. **The page numbers cached from our own layout are wrong in a real word processor:** Word's and LibreOffice's pagination put "Chapter 5" on page 11 where the PDF layout said 8 (different fonts and metrics, 27 pages against 22). The ODT came out the same by luck only because its fonts match the PDF's.
+- **OpenDocument.** A `text:table-of-content` with a pre-written `text:index-body` renders as written; LibreOffice never refreshes it on opening, only on Tools, Update. Without a styled right tab and leader the entries are crude; the build needs a "Contents 1 to 3" paragraph style with a right tab and dot leader.
+- **HTML and the preview.** A list of links to the heading `id`s; there are no pages, so no numbers.
+- **Not verified.** Word itself was not driven (no automation here); its behaviour comes from the file format and LibreOffice's rendering. LibreOffice's scripting bridge could not be started on this host (the process is killed), so a refreshed index was not rendered; the User checks a downloaded Word and ODT file in the applications when 106 is built.
+
+**Facts that shape the build.**
+- The evaluator emits every heading as one flat `Heading` block, whatever section, group or `each` it came from (`report_layout_eval._eval_heading`), so "headings inside sections and groups" needs no tree walk; a record heading inside a table is not a `Heading` and is never listed.
+- An organisation-wide run builds each project's document separately and joins them (`custom_report_run`: `Heading(project.name, 1)` and every other heading one level deeper). A contents evaluated inside each part would see only that part, so the contents must be a document-model block resolved by each renderer from the finished, joined document, not evaluated in the layout.
+- `finalize_links` already makes anchors unique; the contents' own title is not a `Heading`, so it is not listed.
+
+**Decisions.**
+- **Page numbers by format** (**Decided by: User**): PDF exact; HTML and the preview links only; Word and OpenDocument get a real contents field with every entry written in and linked and **no cached page numbers**, which a person adds by updating the field (Word: right-click, Update field; LibreOffice: Tools, Update). No "update fields?" prompt on opening and no estimated numbers (a wrong number is worse than none). The website says so plainly.
+- **Multi-project run** (**Decided by: User**): one contents for the joined report, where the block sits, listing every project's headings.
+- **Built-in module reports** (**Decided by: User**): no contents; custom layouts (the document family) only.
+- **Agent proposals for 106, to be confirmed in its build:** one `contents` block per layout (the checker names a second); settings: title (default "Contents"), levels 1 to 3 (default 3), "start on a new page after it" (default on); an empty contents (no headings at that depth) prints nothing, not a title with no entries; a table layout (a sheet) cannot hold the block; entries are bounded (at most 500) and heading text is escaped as any heading is; Word entries use `TOC 1 to 3` styles so Word's own update keeps the look; the first Heading-style paragraph of the contents is not itself a heading; the PDF build runs twice only when the layout has a contents; page style changes, floating pictures and bottom-anchored runs are re-checked in the second build by the cross-format test.
+- **Security (identify, verify, remediate).** Nothing shipped. For 106: heading text is customer content written into four formats and into link targets; anchors and Word bookmark names come only from the model's own ids (`_bookmark_name` hash, `heading_anchor`), never from text; the PDF entry text goes through the same `_markup` escaping as a heading; no field instruction takes user text (the `TOC` and `PAGEREF` instructions are fixed strings plus a derived bookmark name).
+
+## Custom reports Phase 106: the table of contents block (2026-11-03)
+
+Built to Phase 105's outcome. Time shape: not involved. Perf: measured (below).
+
+**What was built.**
+- **Block.** `contents` (label "Table of contents"), document family only, declared through `BlockSchema`/`BlockSpec` so the Blocks form, the text view's `@contents ["Title"] [levels N] [newpage|nonewpage]`, the field help and the checker come from the one declaration. Settings **Decided by: Agent** (105's proposals, confirmed in the build): `title` (default "Contents"; placeholders; `""` prints no title), `levels` 1 to 3 (default 3; level 4 is too fine), `new_page` (default on, a break after the list).
+- **Model.** `report_model.Contents` + `ContentsEntry`. The evaluator emits the settings only; `finalize_links` fills `entries` from the finished document's `Heading`s (anchor, level, plain words), at most `MAX_CONTENTS_ENTRIES` (500). So a joined multi-project run lists every project's headings, and a heading from a section, group, `each` or a text block's Markdown is listed whatever it came from; headings above the block are listed too; a record heading inside a table is not a `Heading` and is not.
+- **Rules (validator).** One per layout (the second is named, with the first's path); not inside `each`/`group` (it would print once per record: **Decided by: Agent**, checked through the validator's scope); not inside an At page bottom block; not in a table layout (it has the Contents sheet). Inside `if` and `section` is allowed. An empty contents (no headings at that depth) prints nothing, not even its title or break.
+- **Joined run.** `merge_evaluations` keeps the first part's `Contents` and drops the others (each project's evaluation holds its own copy; the block must stand once, where the layout put it). Found while building, not in 105.
+- **PDF.** Two builds only when entries exist: the first records each heading's page (`afterFlowable` on `_HeadingParagraph`, keyed by anchor), the second prints them. The number column is reserved at four digits' width, so the contents is the same length in both and the pages found are the pages printed. A line wraps its words, draws dot leaders on a multiple of the dot pitch (one string, not one operator per dot) and the number on the last line's baseline; each entry links to the heading. A heading not found (inside a wrapped-picture group) prints without a number.
+- **Word.** A real `TOC \o "1-N" \h \z \u` complex field, every entry written in as a hyperlink to the heading's bookmark (`_bookmark_name`, from the anchor), `toc 1` to `toc 3` styles (the default template has none; added with a right tab and dot leader at the page's text width for when the field is updated) and a `TOC Heading` title style with outline level 9 so the field never lists it. **No cached page numbers** (**Decided by: User**, 105).
+- **OpenDocument.** A `text:table-of-content` with entry templates (link start, text, right tab with dot leader, page number) and a written-in, linked `index-body`; `Contents Heading` and `Contents 1` to `3` named styles. No numbers until Tools, Update.
+- **HTML and the preview.** `<nav class="contents">` with a list of links to the heading ids.
+- **Designer.** Icon, label, text snippet (`@contents`), fixture, Storybook stories (the field form; Add block offers it), Playwright `report-contents.spec.ts` (Add block, text view, one-per-layout refusal, preview links, PDF/Word/HTML download). It sits under "Other blocks" in Add block: the common set stays Heading, Text, Table (**Decided by: Agent**).
+
+**Not done, stated.** No "Cover page with contents" snippet and no change to the starter layouts: 105 did not decide either, and a starter that gains a contents changes every run of it. The demo layout with a contents is Phase 107's seed task. The heading block's `level` help said "Levels 1 to 4 appear in the contents list" (a stale promise); it now says a contents lists 1 to 3.
+
+**Performance.** One extra PDF build and the contents' own page(s), only when a contents with entries exists: a 500-heading document renders in 0.95 s against 0.29 s without (134 KB against 24 KB, 0.66 s extra); memory does not add (the builds do not overlap). No other format has an extra pass. The report run's budgets are unchanged for layouts without the block (no code path changes for them: `finalize_links` adds one `isinstance` check per block).
+
+**Security (identify, verify, remediate).**
+- *Identify:* heading text is customer content written into four formats and into link targets; the title is customer text too.
+- *Verify (tests):* PDF text goes through `safe` (a title `<b>Index</b>` and a heading `<img src='file:///...'/>` print as written, never as markup); Word entry text is an XML text node, the field instruction is a fixed string plus the level count (no user text) and the bookmark names are hashes of the anchor; the ODT entry and title go through `xml_text`, the link target through `xml_attr` of the anchor `heading_anchor` made; the HTML escapes the title, the text and the anchor. The entry count is bounded at 500 and the title at 200 characters. The validator refuses a bad `levels`, `new_page` or `title` with its path.
+- *Remediate:* nothing found; no new permission, endpoint, secret or logged value.
+
+**Tests.** `backend/tests/test_report_contents.py` (54): validation, text round trip and errors, the entries by level and order, the cap, the evaluator, the joined run, PDF page numbers (including a contents longer than a page) read from the file, Word field/styles/bookmarks, ODT index, HTML links, escaping in all four.
+
+## Custom reports Phase 107: fourteenth review close-out (2026-11-03)
+
+Time shape: not involved. Checks and one seed addition; no schema, endpoint or permission change.
+
+- **Docs (Decided by: Agent).** The website designer pages, the style guide and the entries for Phases 100 to 106 already describe the built behaviour; `docs/user-guide.md` gained one bullet on the grouped layout settings, the per-cell [+] and gear, the footer default and the contents block. Screenshots stay with the docs website phase. Performance pages reviewed: no number moves (the contents adds one PDF build only when a layout has the block, measured in Phase 106).
+- **Seed.** `seed_demo_data.py` adds the organisation layout "Requirements handbook (with contents)" (a contents to level 2 on its own page, a header, and a footer that takes the bottom default); the server's layout check passes it. The existing demo footers are unchanged.
+- **Security pass (identify, verify, remediate).**
+  - *Stored band alignment and widths (untrusted input to four renderers):* alignment is a closed set checked by the layout validator; a stored width is parsed by `parse_width` and floored at `MIN_COLUMN_CM` in `resolve_band_cells` (Phase 97 fix), with the fixed cells giving way when they overfill the row. No finding.
+  - *Placeholders:* the [+] menu offers only known names and the server's check still rejects an unknown one. No finding.
+  - *Per-person group state:* kept in `ui_preferences` (`layoutSettings:<group>`), which holds booleans only and is bounded by `services/ui_preferences` (200 keys, 100-character keys, 32 KiB). No secret stored. No finding.
+  - *Contents block:* verified in Phase 106 (escaping in all four formats, anchors from the model's ids, 500 entries). No finding.
+- **Test results.** Full backend `pytest -n 4`, run once and alone: 6,927 passed, 12 skipped, 14 failed. The 14 are the known host mail-server DNS failures (invites, OIDC provisioning, organisation-import invite), not a regression. Typecheck, lint, `check_doc_links.py` and the field-help, required-marker and list-layout checks pass.
+
+## Storage: SeaweedFS no longer preallocates volume space (2026-11-03)
+
+**Decided by: User** (asked to fix the development stack and to apply the same to the production compose file). Time shape: not involved.
+
+- **Finding.** The development stack's storage volume held 35 volume files that each reserved 1 GB on disk, 35 GB in all, for about 5 MB of stored data (`docker system df` showed 5.6 MB because it counts file length, not allocated blocks). The Docker VM disk reached 97% and the backend and storage failed with "No space left on device". The restore-test override already passed `-master.volumePreallocate=false` for the same reason; the main and development compose files did not.
+- **Change.** `docker-compose.yml` (production) and `tests/container/docker-compose.yml` now pass `-master.volumePreallocate=false` to the `storage` service. It only stops the reservation: stored objects, volume size limits and the S3 behaviour are unchanged, and an existing deployment keeps its files across the restart. An existing production volume keeps whatever it has already reserved; to release it, stop the storage service and `truncate -s <current size>` each `.dat` file in the volume (this frees blocks past the end of the file and leaves the data alone).
+- **Development stack.** Trimmed in place the same way: 36.7 GB to 6 MB, 462 objects still readable, a new write works.
+- **Security.** No endpoint, credential or exposure change. No finding.
+
+## Custom reports Phase 108: header and footer separate, Page and Margins collapsible, "Custom" (2026-11-03)
+
+Changes the Phase 102 arrangement at the User's request (fifteenth review, request 1). Time shape: not involved. Arrangement and wording only: no stored-layout, text-view, endpoint or schema change, so no migration, MCP skill regeneration or bundle change.
+
+- **Header and Footer are two groups (Decided by: User).** `LAYOUT_SETTING_GROUPS` replaces `band` with `header` and `footer`; each has its own bar, "1 changed" mark and remembered state (`layoutSettings:header`, `layoutSettings:footer`). Both start closed. The old combined group's remembered state is not carried over (Decided by: Agent; the default applies once). In the dialog the band explanation sits inside the Header group.
+- **Page and Margins are two collapsible groups (Decided by: User, Q1).** `page` is size, orientation and mirror; `margins` is the margins and gutter. Their bars show the effective value ("A4 portrait", "A3 landscape, mirrored"; "1.5 cm", or each side when they differ) through `pageGroupSummary` / `marginsGroupSummary`, with the accent edge only when a value is not the default.
+- **Open state (Decided by: Agent).** Closed on a layout that has been published beyond its first version, open on a new one (`current_version <= 1`) so its first setup is not hidden. A new `opensOnNewLayout` flag in the group table and a `newLayout` prop on `ReportLayoutBlocks` / `ReportLayoutSettings` / `ReportLayoutPageSetup` carry it; a person's own toggle is remembered and wins. Challenge: version 1 is the creation version, so "unsaved" is read as "never published a second version"; a designer who never publishes keeps those two groups open by default, which is harmless.
+- **"Its own text" is "Custom" (Decided by: User).** `pageSetup.band.modeCustom`; the stored value (`custom`) and the text view are unchanged. Website page and Playwright step names updated.
+- **Security (identify, verify, remediate).** Presentation only: no endpoint, permission, secret, log or stored value changes; the only persisted value remains the bounded collapse flag. No finding.
+- **Tests.** Storybook: Header and Footer open and mark independently; Page and Margins bars say and mark their value; a new layout opens Page and Margins and nothing else; every group starts closed on a saved layout; a group opens from the keyboard; the band mode reads "Custom". Existing stories open the group a control now sits in. Playwright `report-layout-designer.spec.ts`: a new layout opens Page and Margins, the footer opens and closes on its own with the header unaffected and the state kept after a reload; header, footer, margin specs use `ensureExpanded`. All 127 report and custom-report specs and 181 report Storybook tests pass.
+- **Docs.** Website designing-a-layout (group table, summary bars, "Custom") and the style guide's grouping rule.
+
+## Custom reports Phase 109: UX review of the block controls (2026-11-03)
+
+Review only; nothing built. The Agent running the phase read `docs/ux-style-guide.md`, the block schemas (`report_layout_tree._CORE_SCHEMAS`, the vocabulary in `report_layout_block_schema.py`), `ReportLayoutBlocks` / `ReportLayoutBlockField`, `RunningBandEditor`, `ReportGridEditor`, `LayoutSettingGroup` and `CollapsibleSection`, and counted which keys the five starters and the demo seed set (no telemetry; snippets read by hand). It did the review inline rather than briefing a separate agent: the input is one schema file and four components, and the findings below were each checked against the code. Module-contributed blocks: none exist today (`backend/app/modules/*` register no block types), so the mechanism is specified for them but untested by a real one.
+
+- **Findings that correct the request's premises (Decided by: Agent).**
+  1. **A heading has no weight, slant or alignment setting.** Its fields are `text`, `level`, `font`, `size`, `colour`; bold and italic are `**` and `*` marks inside the text (Phase 75) and the document's Fonts setting sets heading weight and slant for every heading. Phase 111's "a button writes exactly what the select wrote" has no select to replace.
+  2. **The band's Bold and Italic are not toggles.** They are action buttons that wrap the selected words in `**` / `*` (`RunningBandEditor` `mark()`), with no pressed state. The only `aria-pressed` toggle in the report UI is `IconToggle`, private to `ReportGridEditor`; there is no shared toggle or choice-button component.
+  3. **Only four block types have a long form:** image 15 fields, shape 15, record images 16, custom table (`grid`) 12. Heading 5, sheet 5, text 3, table 3, contents 3, each 3, group 3, spacer 2, widget 4 and the rest 0 to 2 are short. The table and sheet blocks are already arranged by Phase 67 (columns behind a gear popover), so Phase 110's "tables, sheets and custom tables first" is in practice the custom table.
+  4. **Within the long forms the cost is pairs and dependents, not count.** Width and unit, height and unit sit as four separate rows; `anchor`, `offset_x` and `offset_y` mean nothing when `placement` is `inline`; `caption`, `caption_position` and `numbering` mean nothing without a caption.
+- **Block types covered:** heading, text, page_break, contents, spacer, bottom, section, image, shape, record_images, equation, grid, table, each, group, if, widget, sheet (all 18 in the registry). The layout's own block is Phase 102 to 108's.
+- **Evidence for the basic set.** In the five starters and the demo seed, a block sets only its required keys plus `level` on headings and `empty_text` on tables and widgets (heading 41 uses, `level` 37, no other key; table 21, `empty_text` 21; text 39, only `text`). The snippets set the grid's `align`, `bold`, `fill`, `color`, `header_rows` and per-cell heights, and the image's `width`, `offset_x`, `offset_y`. Nothing sets `font`, `size`, `colour` on a heading, or any image caption key. So font, size and colour are set-and-forget; size, position and caption on a picture are set once per picture.
+
+**Specification for Phases 110 to 112 (basic set, groups, controls: Decided by: Agent, from the review; the four choices below Decided by: User, asked 2026-11-03, all took the recommendation).**
+
+| Block | Basic (always visible) | Groups (closed, in this order) |
+|---|---|---|
+| heading | text, level (button group 1 to 4) | Look: font, size, colour |
+| text | text | Look: font, size |
+| image | file, alt, decorative, align (buttons) | Size: width, height (each value with its unit on one row); Position: placement, anchor, offset x, offset y; Caption: caption, position, numbering |
+| shape | shape, fill | Outline: outline, outline width; Size; Position; SVG: svg, alt |
+| record_images | (none) | Which pictures (open): names, types, max count, order, max size, empty text; Caption; Size; Position |
+| grid | columns, rows, header rows | Borders: borders, border colour; Cell style: align (buttons), valign (buttons), fill, colour, bold (toggle); Look: font, size |
+| table, sheet, each, group, widget, if, contents, spacer, section, equation, bottom, page_break | all fields | none: a form of 5 or fewer fields stays flat |
+
+```mermaid
+flowchart TD
+    S["BlockSchema declares groups: key, label, open"] --> F["BlockField: group, basic, control"]
+    F --> R["One renderer: basic fields, then CollapsibleSection per group"]
+    R --> P["Closed bar: 'N changed' pill + accent edge, state per person and per block type"]
+    M["Module block schema"] --> S
+    U["Field with no group, more than 5 fields"] --> O["Other group (never lost); backend test fails"]
+```
+
+1. **Basic set and set-and-forget.** As the table. A field with no declared `group` and `basic` unset is drawn in the form's basic part when the form has 5 fields or fewer, else it lands in an "Other" group, so a field added on the server is never lost (the `groupOfField` rule of the layout settings).
+2. **Controls as buttons (Decided by: User: buttons replace the select for simple choices).** An exclusive choice of up to four short values becomes a button group (radio-group role, one button pressed): heading level, image and grid alignment, grid vertical alignment, caption position. Selects stay for the longer or consequence-bearing lists: placement and anchor (they show and hide other fields), borders, units, order, numbering. A boolean stays a labelled checkbox, except the grid's `bold`, which is a toggle button (`aria-pressed`) like the table editor's. The stored values are exactly what the select wrote.
+3. **Bold and italic on the text (Decided by: User: mark buttons).** Phase 111 puts the band's Bold and Italic on the heading's and text block's text field (wrap the selection in `**` / `*`); it adds no stored field. A whole-heading style stays in the document's Fonts setting. A new block-level `bold`/`italic` toggle on a heading would be a model change (validator, evaluator, text view, four renderers, bundles) and is not part of this arrangement; revisit only if asked.
+4. **Group names and the bar.** Shared names across types where a setting recurs: Look (font, size, colour), Size, Position, Caption, Borders. The same group key on two types shares nothing but its label and order; state is remembered per person and per block *type* (`blockSettings:<type>:<group>`, `useUiPreference`). A closed bar shows the Phase 102 count pill ("2 changed") with an accent edge for non-default values; a group holding a server problem opens itself with a danger pill. "Non-default" is a value that differs from the field's `default`, or any value where the field has none.
+5. **Open by default (Decided by: User).** Every group starts closed, except one where the block has no basic set: record images' "Which pictures" starts open. A person's own toggle is remembered and wins.
+6. **The shared mechanism (Phase 110).** `BlockField` gains `group: str = ""`, `basic: bool = False`, `control: str = ""` (`toggle`, `choice-buttons`); `BlockSchema` gains `groups: tuple[BlockGroup, ...] = ()` (`key`, `label`, `open`), served by the existing block-types endpoint so a module block is arranged with no core edit. A backend test fails for a declared group key not in the schema's `groups`, a `basic` field inside a group, and (Phase 112) a long form with an undeclared field. No change to the stored tree, text view, validator or renderers, so no migration, bundle change or MCP skill regeneration (checked by regenerating the reference and seeing no diff in Phase 112).
+7. **Narrow side panel and dialog.** The block form lives only in the Blocks view's right-hand panel (Phase 54); the custom table's dialog is unchanged. A value and its unit share one row; a button group wraps its buttons rather than overflowing; a group's controls stack one per row at panel width.
+8. **Accessibility.** A button group is `role="radiogroup"` with an accessible name (the field's label) and each button `role="radio"` / `aria-checked`, arrow keys moving the choice, one tab stop; a toggle is a `<button aria-pressed>`; a mark button is a plain named button (as the band's). Existing control names are unchanged where the meaning is: the form still has "Level", "Alignment", "Width" by name, and a Playwright or Storybook query by role and name continues to find them (a radio per value, named by the value). A group bar is a `button aria-expanded` with its pill described by `aria-describedby`, as `CollapsibleSection` already does.
+9. **Shared components (the rule: extract, then switch the first call site).** `CollapsibleSection` and `LayoutSettingGroup`'s bar logic are reused: `LayoutSettingGroup` is generalised to a `SettingGroup` taking its title, summary and key, and the layout settings are switched onto it in the same change (not left as a second copy). The private `IconToggle` in `ReportGridEditor` is extracted to a shared `ToggleButton` and `ChoiceButtons`; the grid editor switches onto them. The band's `mark()` buttons become a shared `MarkButtons` used by the band and by the heading and text fields.
+- **Challenges recorded.** To the request: (a) "headers ... buttons like we have for header controls (bold italic)" assumed stored toggles; they are text marks, which the User accepted. (b) Grouping tables and sheets would add a bar over a 3 to 5 field form for no gain; they stay flat. (c) The plan listed the heading's "weight, slant and alignment first"; none exists. To the review (self-challenge): button groups could crowd a 20 rem side panel with long labels (three-value groups fit; placement, with four labels, stays a select for that reason), and counting a value as "changed" with no declared default over-counts a field a starter always sets (the grid's `header_rows`); Phase 110 declares defaults wherever the evaluator has one.
+- **Plan adjustments.** Phase 110: also builds `ChoiceButtons`/`ToggleButton` extraction and `SettingGroup` generalisation (it needs them for the grid); Phase 111: mark buttons, not stored toggles, and heading level moves to 110's button group; Phase 112: image, shape and record images (the other long forms), then a completeness test. Time shape: not involved.
+- **Security (identify, verify, remediate).** Review only; no code, endpoint, permission or log change. No finding.
+
+## Custom reports Phase 110: block forms from one grouped arrangement; the custom table first (2026-11-03)
+
+Built Phase 109's specification for the mechanism and the custom table. Heading level moved to a button group; the other block types follow in 112.
+
+- **Mechanism (Decided by: Agent, from the Phase 109 specification).** `BlockSchema.groups` (`BlockGroup`: key, label, open), `BlockField.group` / `basic` / `control` (`services/report_layout_block_schema.py`), served by the existing block-catalogue endpoint (`ReportBlockOut.groups`, `ReportBlockFieldOut.group/basic/control`), so a module's block type is arranged by its own schema with no core edit. Frontend: `ReportLayoutBlockForm` + `utils/reportBlockForm.arrangeBlockFields` draw the basic fields, then each non-empty group through the shared `SettingGroup`. `LayoutSettingGroup` now wraps `SettingGroup` (layout settings switched onto it in this change, not left as a copy). `ChoiceButtons` and `ToggleButton` are new shared components; the table editor's private `IconToggle` became `ToggleButton` and the grid editor uses it.
+- **`arrangement_problems(schema)`** (tested for every core block and with bad declarations): duplicate group, field naming an undeclared group, a basic field in a group, an empty group, **in an arranged form a field that is neither in a group nor `basic`** (the author decides each field; this replaces Phase 109's "more than 5 fields lands in Other" for the backend, where an undecided field is a test failure), unknown control, a toggle that is not a boolean, choice-buttons on a kind or count that does not fit (two to four values; an integer needs a minimum and maximum). The frontend still sends a field with an undeclared group to an *Other* group, so a server newer than the client loses nothing.
+- **Custom table (`grid`).** Basic: columns, rows, header rows, label. Borders: borders, border colour. Cell style: alignment and vertical alignment (choice-buttons), fill, text colour, bold (toggle). Look: font, size. All groups start closed. `label` (appended to every block) is `basic`. The text view, stored tree, validator, renderers, bundles and MCP are unchanged, so no migration or skill regeneration (the MCP skill reference test passes).
+- **Heading level** is `control="choice-buttons"` on its integer field (values 1 to 4). The heading form otherwise stays flat: Phase 109's table lists a *Look* group for the heading and text blocks, but those forms have five and three fields, which the same table says stay flat; kept flat (**Decided by: Agent**; revisit in 112 if the User wants it).
+- **Stored value.** A button writes the same value the select wrote, except that choosing a field's default removes the key (a button group has no empty state to clear with). A value the buttons do not offer (a level of 9 set through the text view) leaves every button unchecked and is kept until a button is pressed.
+- **Labels.** Alignment gained "Justify", and vertical alignment and borders gained label maps (`strings.reportOutline.choiceLabels`), so no raw enum word is shown (Principle 12).
+- **Existing checks changed.** The heading-level Storybook stories use the button group; the number-field story uses the contents block's *Levels*; `report-grid-fonts.spec.ts` opens the Look group first (and asserts its "1 changed" bar). New: stories for `ChoiceButtons`, `ToggleButton`, `SettingGroup`, `ReportLayoutBlockForm` (closed groups, count, per-type memory, problem opens the group, Other, a module block, flat type) and the field-level controls; Playwright `report-block-groups.spec.ts`; backend `test_report_layout_blocks.py`.
+- **Not changed.** The custom table's editor dialog; table and sheet forms (three to five fields, already arranged by the columns popover); every other block type (112); the heading and text mark buttons (111).
+- **Time shape:** not involved. **Security (identify, verify, remediate):** presentation and schema metadata only; no endpoint, permission, stored field or log change; the new fields carry fixed vocabulary text, no user data. No finding.
+
+
+## Custom reports Phase 111: Bold and Italic buttons on heading and text (2026-11-04)
+
+Built as Phase 109 specified: mark buttons that wrap the selected words, no stored field.
+
+- **Shared pieces (Decided by: Agent, per the Phase 109 specification).** `MarkButtons` (`components/MarkButtons.tsx`: the two buttons, named by the caller) over `ToggleButton` in its action form, and `useTextSelections` (`hooks/useTextSelections.ts`: remembers each input's selection on select and blur, then `mark` wraps it in `**` / `*` and `insert` writes a placeholder, putting the selection back on the next frame). The header and footer editor was switched onto both in the same change; its private caret and element refs and its `mark` / `insert` bodies are gone. Its buttons keep their names ("Footer, centre cell: Bold").
+- **Which texts get the buttons.** A field whose schema `features` list `marks` or `markdown`. The text block's text already declared `markdown`; the heading's words now declare the new `marks` feature (only bold, italic and code marks work there), so a module block gets the buttons by declaring a feature, not by a core edit. The custom table's cell text declares `markdown` and so gets them too (a consequence of the generic rule, wanted). Each button is named "<field label>: Bold" (`strings.reportOutline.markField`).
+- **Nothing selected marks the whole box (Decided by: User, 2026-11-04).** `wrapWholeText` wraps each non-blank line's words, keeping a list bullet, number, heading hash or quote mark and the line's outer spaces outside the mark (so `** a **` is never written, and a bulleted list stays a list); an empty box still gets a `****` pair with the caret inside. This is the shared behaviour, so the header and footer cells changed too: a collapsed caret there used to write an empty pair. A second press on already-marked text marks it again (no toggle off); a toggle would need reading marks back and is not built.
+- **No stored change.** The mark characters are the stored text, so nothing is added to the tree, the text view, the validator, the renderers, bundles or the MCP skill (reference regenerated test passes unchanged).
+- **Not built (Decided by: Agent).** A pressed state: a mark lives inside the text, so the same words can be bold in one place and not in another, and a `**` pair cannot be read back from a caret reliably enough to light a button. The buttons are actions, as the band's always were.
+- **Checks.** Backend: `test_the_heading_and_text_words_declare_the_marks_the_form_offers_buttons_for`. Storybook: heading Bold then Italic over a selection stores only `text`; the text block; no buttons on fields that read no marks or when read-only; the band stories pass on the shared pieces. Playwright `report-heading-marks.spec.ts`: select a word, press Bold and Italic, run the preview and see `strong` and `em` in the heading.
+- **Time shape:** not involved. **Security (identify, verify, remediate):** presentation only; the buttons edit text the author could type. No endpoint, permission, stored field or log change. No finding.
+
+
+## Custom reports Phase 112: the picture blocks follow the arrangement; a completeness test (2026-11-04)
+
+Declared the Phase 109 groups on the three remaining long forms. Schema declarations only: the renderer, stored tree, text view, validator, bundles and MCP skill are unchanged (the skill reference test passes without regeneration).
+
+- **Image (15 fields).** Basic: picture, alternative text, decorative, alignment (`choice-buttons`). Groups, all closed: *Size* (width, width unit, height, height unit), *Position* (placement, position from, across, down), *Caption* (caption, caption position as `choice-buttons`, numbering).
+- **Shape (15).** Basic: kind, fill, alternative text. Groups, all closed: *Outline* (outline, outline width), *Size*, *Position* (alignment as `choice-buttons`, placement, position from, across, down), *SVG* (the custom markup). **Deviation (Decided by: Agent):** Phase 109 put the alternative text in the *SVG* group; it applies to every shape, so it stays in the basic part and *SVG* holds only the markup.
+- **Record images (16).** *Which pictures* (file names, file types, most per record, order, largest file, text for none) starts open; *Caption* (source, text, position as `choice-buttons`, numbering), *Size*, *Position* (alignment as `choice-buttons`, placement) are closed. The block's Label is its only basic field.
+- **Completeness (Decided by: Agent).** `test_a_long_block_form_is_arranged_in_groups` fails for a registered block type with more than five fields and no declared groups, so a new or module block ships arranged; `test_a_block_form_with_no_basic_part_opens_its_first_group` covers the no-basic-part rule; `arrangement_problems` (Phase 110) already forces every field of an arranged form to be in a group or basic. Blocks of five fields or fewer (heading, sheet, text, table, contents, each, group, spacer, widget and the rest) stay flat.
+- **Behaviour change.** Choosing a button's default value removes the key (Phase 110's rule), so choosing *Centre* on a picture no longer stores an explicit `align: center`; an explicit alignment on a layered picture is still refused. `report-layout-images.spec.ts` now keeps the earlier *Right* to show the refusal.
+- **A value and its unit share a row (Decided by: User, 2026-11-04: "units don't need to be their own row").** `BlockField.inline` (schema, served in the block catalogue) draws a field on the same row as the field before it; `arrangement_problems` fails an inline field that is first or follows a field of another group or an inline field. `ReportLayoutBlockForm` wraps such a pair in `.block-field-row` (a two-column grid that stacks below about 18 rem). Set on `width_unit` and `height_unit` of image, shape and record images; names, stored values and the text view are unchanged. A module block uses it by declaring the flag, with no core edit.
+- **Checks.** Backend `test_report_layout_blocks.py` (long forms arranged, no-basic-part opens, the picture blocks' groups and inline units, the inline rule); Storybook `ReportLayoutBlockForm` (image, shape and record images arranged, counts on closed bars, caption position buttons store the same value); Playwright `report-block-groups.spec.ts` (a shape's Position group, its count and the preview) and `report-layout-images`, `-shapes`, `-record-images`, `report-colours`, `report-snippets` adjusted to open the group first. The block fixture mirrors the server's three arrangements.
+- **Time shape:** not involved. **Security (identify, verify, remediate):** presentation and schema metadata only; no endpoint, permission, stored field or log change. No finding.
+
+
+## Custom reports Phase 113: formats as a radio list, then Download (2026-11-04)
+
+The download step of a catalogue or custom report now shows its formats as a radio list with one **Download** button, in place of the Export drop-down.
+
+- **One shared component (Decided by: Agent).** `ReportFormatDownload` (list, button, blocked reason) is used by `ReportRunner`, so the record list's Download report dialog and the Reports dialog's run view agree. The rule for the starting choice is `utils/reportFormatChoice.ts`.
+- **Radio, last format downloaded, PDF with no history (Decided by: User, 2026-11-03).** The choice is recorded in the person's `ui_preferences` (`report_download_format`, one short string, across reports) only after a download has gone through (a run queued in the background counts: the file will arrive in that format); selecting an option, or a failed download, remembers nothing. When the report does not offer the remembered format (or PDF, with no history), its first format is chosen (Decided by: User). One run and one file per download; no zip or multi-run design.
+- **Blocked reports (Decided by: Agent).** A report that cannot run yet (a required variable without a value, a single-project report with no project chosen) used to hide the Export button and print the reason below. The button now stays, disabled, with the reason beside it and linked as its description, so it is read with the control. The two separate status lines are gone.
+- **One format.** Shows `Format: <name>` and the button, not a one-item list.
+- **Left as menus (Decided by: Agent).** `ReportExportButton` stays where it is a toolbar item with no step to configure: the compliance panels, the requirement report's *More formats* beside *Generate PDF*, and the layout designer's preview panel. The pack runner has one output (a zip) and was already a single button.
+- **The attached screenshot** was not visible when the phase was planned; the step was read from the code and checked on screen through the Playwright runs.
+- **Checks.** Storybook `ReportFormatDownload` (starts on PDF, the last format, first-format fallback, no PDF and no history, only a successful download remembered, shared across lists, blocked, one format, keyboard) and the `ReportRunner` / `ReportDownloadDialog` stories moved onto the list; Playwright specs that used the Export menu on a report now use the list through `tests/reportDownload.ts` (22 + 30 specs pass), and `list-download-report.spec.ts` downloads Word, checks the file type and that Word is chosen next time while a mere selection of ODT is not.
+- **Time shape:** not involved. **Security (identify, verify, remediate):** presentation only; the preference is a bounded string matched against the formats the report offers before use, so a stale or hand-edited value cannot request a format the server does not list. No endpoint, permission, stored field or log change. No finding.
+
+
+## Custom reports Phase 114: default table heading colours for a layout, model and renderers (2026-11-04)
+
+A document layout can now set the heading-row colours of all its tables once. The control that sets them is the next phase; until then the two fields appear in the layout settings' "Other" group and in the text view.
+
+- **How a heading row is coloured, before this change.** A document `Table` (a record table, and the requirement and module reports) fills its heading row with the organisation's report accent in all four formats (PDF `styled_table`, Word `_shade`, OpenDocument `C_hdr`, HTML `th`), with black or white text by WCAG contrast (`text_on`). A custom table (`grid`) header row has no fill of its own: only a cell's own fill and text colour apply. A sheet (Excel, OpenDocument, CSV) heading is bold with no fill. A table block has no colour setting of its own, so there is nothing for the layout default to lose to.
+- **Precedence (Decided by: Agent).** For a document table: the layout's `table_header_fill`, else the accent. For a custom table's header rows: the cell, row, column or grid's own fill, else the layout's fill, else none (unchanged). The layout's pair applies as a unit to a header cell that sets no fill of its own, so a cell with its own fill keeps its own text colour rule too and never receives a default text colour chosen for a different background. A fill word of `none` on a cell is a deliberate "no fill" and is respected.
+- **The setting (Decided by: Agent).** Two root keys, `table_header_fill` and `table_header_text` (a hex colour, a reserved word other than `none`, or a scheme name; document layouts only), checked by the shared `colour_word_problem`, resolved by `report_styles.resolve_styles` into `DocumentStyles.table_header_fill/text` (`#rrggbb`), and a scheme name used is recorded in the run's colours like the heading colour. Chosen over a `styles.tables` part so the settings are plain layout fields the grouped settings form places without a special field kind. Text view: `@tableheadings fill=<colour> text=<colour>` before the first block, once, round-trips exactly. The tree is stored whole, so project and organisation bundles carry the keys with no change (round-trip test added).
+- **Text colour is automatic when not set (Decided by: User, Q4).** Unset, `DocumentStyles.table_head_colours` returns black or white by `text_on` against the fill actually used, including when only the fill is set. Only a text colour set: the accent remains the fill. The contrast boundary is pinned by a test on either side of the crossover.
+- **Renderers.** PDF, Word, OpenDocument and the HTML preview read `table_head_colours` once per document; `styled_table` takes the header text colour. The custom table's header row gets the colours in the evaluator, so all four formats and the preview draw it through the cell fill they already honour. `DocumentStyles.is_default` ignores the two new fields so setting only a heading colour does not switch on the font-styling path.
+- **Not changed (Decided by: Agent).** Spreadsheet headings (bold, no fill today) and built-in module reports rendered without a layout (their `DocumentStyles` is the default): unchanged output, pinned by a test that an unset layout draws accent with contrasting text in each format.
+- **Agent skill.** `mcp-server/skill/reqtrack-mcp/SKILL.md` documents the two root keys; the tool signatures are untouched so the generated reference has nothing to regenerate (the generator needs `fastmcp`, which the host lacks).
+- **Also fixed on the way:** seven over-long lines that the linter flagged in earlier uncommitted work (`report_band_cells`, the block schema, the tree's image fields, a band renderer test).
+- **Checks.** `tests/test_report_table_heading_colours.py` (contrast, precedence, tree rules, text view, Word, PDF, HTML, OpenDocument, custom table through a run and the preview, scheme-name provenance); bundle round trip in `test_report_layout_tiers.py`; the layout-field catalogue test.
+- **Time shape:** not involved. **Security (identify, verify, remediate):** the colour words are validated against a closed grammar before storage and the renderers write only the `#rrggbb` the resolver returns (never the typed word) into XML, CSS and PDF operators, the same guarantee the heading colour has. No endpoint, permission or log change. No finding.
+
+## Custom reports Phase 115: the table heading colours control, demo and docs (2026-11-04)
+
+A person sets the default table heading colours where the other document colours are set: the **Look** group of the layout's settings.
+
+- **One control, two places (Decided by: Agent).** `TableHeadingColours` (fill and text colour as two `ColourChoiceField`s, so the layout's scheme names are offered, plus a sample heading row) is drawn by the Blocks view's layout panel in place of the two generic colour fields, and by the Page setup dialog in a new *Look* group, so the two agree. The two fields were already in the block catalogue; `GROUP_OF_FIELD` now places them in *Look* (they had fallen into *Other*), and the group's pill counts each colour set. "No colour" is not offered (the server refuses `none` here); the first line of each list is the reset (*Default (the organisation's accent)*, *Automatic (black or white)*).
+- **The sample follows the renderers (Decided by: Agent).** `utils/tableHeadingColours` mirrors `DocumentStyles.table_head_colours` (fill, else the accent; text, else black or white by contrast with the fill actually used) only so the sample and the custom-table editor can show the result before a run; the server stays the judge.
+- **Text view.** `readPageSetup`/`writePageSetup` read and rewrite the `@tableheadings` line like the page lines (kept when the rest is rewritten, dropped when both words are cleared); a hand-written line elsewhere before the first block is moved up with the other page lines on a change, which the server accepts.
+- **A table's own field says what it overrides.** A custom table has colour fields only at cell, row, column and grid level (the document `Table` block and sheets have none, as Phase 114 recorded). The custom-table editor draws a heading cell without a fill with the layout's pair (`BlockEnv.tableHeadings`, from the root keys) and its Fill and Text colour fields read *Layout default* when the selection is only heading cells and the layout sets a colour; elsewhere they still read *Table default*.
+- **Starters and demo.** No starter or snippet sets the same heading colour on every table (the snippets colour label cells black and white on purpose), so nothing moved; the "Project overview with logo" demo layout sets `table_header_fill` to its `plate` colour so the feature shows in the seeded data.
+- **Also fixed on the way:** `report-custom-table-editor.spec.ts` clicked "Bold" and, since the cell text gained its own Bold mark button (Phase 111), matched two buttons; it now names the toolbar's button exactly.
+- **Checks.** Storybook: `TableHeadingColours` (unset, light fill gets black text, text only, no "No colour", read-only with a problem, both themes), the settings panel (set, reset, sample, group pill; none on a table layout), the Page setup dialog (written and kept, reset removes the line), the grid editor (heading cells take the default, own fill wins, "Layout default" label). Playwright `report-table-heading-colours.spec.ts` (fill set in the Look group, sample, preview colours a plain heading cell and leaves a cell with its own fill, saved text view, reset in Page setup). Rebuilt the backend and frontend containers first: the running backend predated Phase 114 and did not serve the fields.
+- **Time shape:** not involved. **Security (identify, verify, remediate):** frontend only; the colour words go to the server unchanged and are validated there against the closed grammar (Phase 114), and the sample uses colours resolved to `#rrggbb` by the existing resolver. No endpoint, permission, log or storage change. No finding.
+
+## Custom reports Phase 116: the Files page lists report library pictures, previews them, and can be searched and filtered (2026-11-04)
+
+**Reproduced first.** A picture uploaded to a project's report image library (`FileAsset.project_id`) was absent from the Files page altogether: the list joined only the three record link tables (requirement, action and comment attachments), and the library row has no record. Pictures that were listed (a record's image attachment) had no preview, only a name. Both are fixed.
+
+- **Library as a fourth source (Decided by: Agent).** `source: "report_image"` lists the project's own pictures (`project_id` is the project and the file is not an organisation resource), once each, with no record. Its origin link is the project's *Report setup* page (`/projects/{id}/admin/reportSetup`): the library has no page of its own (it is a dialog in the layout designer), so that is the nearest stable address. A viewer who cannot manage the project sees that page's own refusal; the label states the source in either case. The organisation's library belongs to no project and stays out (**Decided by: User**, Q5). A confidential picture stays listed for the project's members: the mark only keeps a report from printing it, as the library itself already applies (`models.file`); the download gate is unchanged.
+- **One service, two reads (Decided by: Agent).** The row building moved from `routers/projects/core.py` to `services/project_files.py` (`project_file_rows`, `FileFilters`), which pushes every filter into the SQL of each source query, so a narrowed list never loads the rest. Nested-project scope is still `ProjectScope.collect` with the endpoint's own `requirement` view gate, over that one function, so a related project's pictures and files carry the same `from_project_*` labels and a stranger project's never appear.
+- **The file name search is a POST (Decided by: Agent).** `POST /projects/{id}/files/search` carries the filters in its body so the text is in no URL the access log records; the read writes no audit event, logs nothing and uses the text only as a bound `ILIKE` pattern with `%`, `_` and `\` escaped. `GET /files` stays for callers with no filters. The page's own address does hold the typed text (`?q=`), as every list's search does; a reload sends that address to the web server's log. That residue is the same on every list page and is not new here.
+- **The upload window is two UTC instants (Decided by: Agent, differs from the plan).** The plan said a calendar date sent with `X-Client-Date`; that header carries only the person's *today*, from which the server cannot recover the person's UTC offset for another day. The page keeps plain `YYYY-MM-DD` days in the URL (the person's own days) and the browser sends `uploaded_from` (first moment of the first local day, inclusive) and `uploaded_before` (first moment of the day after the last, exclusive) as UTC instants (`localDayWindow`); the API refuses a time without a zone. Time shape: a past instant in UTC, filtered by a window of the person's calendar days. Tested at the boundary hours (23:00 UTC on 3 Nov = 09:00 on 4 Nov at UTC+10; 07:00 UTC on 5 Nov = 23:00 on 4 Nov at UTC-8) and at the exact edge instants.
+- **Filters (Decided by: Agent).** File name, Source, File type (image, document, other, by content type), Uploaded by and the upload window, with the project scope filter kept; all in the URL (`useUrlFilter`), the list keeps its position (`ListPageLayout`, `useRestoredRowCount`), and "Uploaded by" lists the project's uploaders (`GET /files/uploaders`, scoped like the list). A superseded response is dropped so fast typing cannot show stale rows. Users and groups parity: an uploader is always a person (a group cannot upload), so the filter is users only, by nature of the field, not a gap.
+- **Previews (Decided by: Agent).** `FileThumbnail` draws a raster or SVG picture through `PictureImage` (alt = the file name, lazy) from the existing file URL, so the server's own read check decides; an SVG is displayed by an `<img>`, never inlined, and library SVGs are the sanitised copy stored at upload. A picture that cannot be read, and every non-picture, shows an icon (only pictures make a request).
+- **No export or import (Decided by: Agent).** The Files page is not a registered artefact type, so the list export/import rule does not apply; a files export would be a new request. The overview's "Files" tile still counts requirement attachments only (its documented scope); it does not count library pictures.
+- **Documentation.** The website Files article, `docs/user-guide.md` and the style guide's files-list note are written with the fifteenth review close-out, with the other pages that review changes.
+- **Checks.** Backend `tests/test_project_files_page.py` (library source and its absence for another project, the organisation and strangers; confidential; membership gate for list, search and uploaders; file name search ignoring case and wildcards; source, type and uploader filters; the window at UTC+10 and UTC-8 and its edges; refusal of a zone-less time; combined filters with paging and count; nested scope; the text absent from logs, audit and URL), plus `test_files.py` and `test_project_scope.py` still green. Storybook: the page (all sources with previews, EXIF details, an unreadable picture, a long name, paging, empty, filters sent in the body and kept in the URL, whole-local-day window, widened scope, both themes) and `FileThumbnail`. Playwright `project-files-filters.spec.ts` (own library picture: preview and origin, panel level with the title, search without the text in a request URL, Source and File type filters, origin and back keep the filters) and the existing `project-files.spec.ts`. Seeds: the e2e dataset gains a library picture on Alpha-1; the demo data gains the logo in the drone project's library. `scripts/check_mypy.py` baseline refreshed (the moved code had three baselined findings; the new code adds none).
+- **Security (identify, verify, remediate).** *Identified:* the new source widens what a project's members can list; the filter text is customer text; the uploader list names people; previews load file bytes. *Verified:* every query filters on the request project's own id and the view gate is `require_project_view` on all three routes (a person with no role gets 403, tested); related projects only through `ProjectScope.collect`'s per-project view and module checks; the search text reaches SQL only as a bound parameter, nothing logs or audits it (tested), and the body is the sole carrier; uploader names are the display names the rows already show; a preview is the file's own download URL under its own read check, an SVG never leaves an `<img>`. *Remediated:* none needed. No finding.
+
+## Custom reports Phase 117: fifteenth review close-out (2026-11-04)
+
+Time shape: not involved. Docs, one schema rule, checks; no endpoint, column or permission change.
+
+- **Docs (Decided by: Agent).** The website designer page (header and footer groups, "Custom", Page and Margins, block groups, table heading colours), the Reports article (format list and Download) and the entries for Phases 108 to 116 already describe the built behaviour. Written in this phase: the website Files article (sources, previews, the filter panel, the report image library; the workflows page points to it), one `docs/user-guide.md` bullet for the Files page, and the style guide's files-list note (search and filter panel, `FileThumbnail`, the upload window as two UTC instants). Screenshots stay with the docs website phase. Performance pages reviewed: no number moves; the files list is not a `perf/` scenario (`perf/loadgen/scenarios.py` only uploads a file), so there was nothing to re-run.
+- **Seeds.** `seed_demo_data.py` and `seed_e2e_dataset.py` each ran clean on a fresh, migrated database (throwaway databases, since dropped). The demo layout sets `table_header_fill`, the demo project has a library picture, and the E2E project has `e2e-library-picture.png`, so the Files page shows a library row in both.
+- **Security pass (identify, verify, remediate).**
+  - *Files source and filters:* verified in the Phase 116 entry (project and nested scope, view gate, confidential files, bound search text, nothing logged). No finding.
+  - *Layout colour fields (untrusted input to five renderers):* `table_header_fill` / `table_header_text` pass `colour_word_problem` and are resolved by `resolve_colour` to a full-matched `#rrggbb` (an unknown name falls back to the accent), so only six hex digits reach PDF, Word, ODT and HTML. No finding.
+  - *Schema-declared groups:* **finding.** `arrangement_problems` stopped a field naming an undeclared group but not a module hiding a *required* field in a group that starts closed (it would show only after a failed save). Remediated: a required field must be basic or in a group that starts open, with a test; no built-in block was affected.
+  - *Per-person collapse state and last format:* `ui_preferences` (booleans and a short format word), bounded at 200 keys, 100-character keys and 32 KiB. No secret. No finding.
+  - *Radio format list (113):* one format per download, no zip, so the multi-file size/count/permission concern does not arise. No finding.
+- **Test results.** Full backend `pytest -n 4`, once and alone: 6,986 passed, 12 skipped, 14 failed (the known host mail-server DNS failures: invites, OIDC provisioning, organisation-import invite); `test_report_layout_blocks.py` re-run after the rule: 30 passed. mypy ratchet clean. Full Storybook: 398 files, 3,298 tests passed (about 4.5 minutes). Playwright with `--no-deps` over `report-`, `custom-report` and `project-files` specs: 133 passed. Typecheck and `check_doc_links.py` pass.
+
+## Custom reports Phase 118: export and import layouts and packs as a file (2026-11-04)
+
+A person exports layouts and packs as one `.zip` report file and imports it into a project or the organisation, of any organisation. Time shape: version times in the file are past instants in UTC, information only; the import stamps its own times. No scheduled time, no calendar date.
+
+- **Questions answered by the User (Decided by: User, 2026-11-04).** Q6: **always a `.zip`**, in and out (not a bare `.json`). Q7: the **current version only**, with an *Include earlier versions* switch. Q8: **any organisation** (organisation pictures become the target's own). Q9: **packs and sets are included**, not layouts only (differs from the plan's suggestion).
+- **One serialiser (Decided by: Agent).** `services/report_exchange.py` wraps the project bundle's own entries (`layout_entry`, `pack_entry`, `image_entries`) in a small envelope (`manifest.json`, `reports.json`, `files/<n>_<name>`) and imports through `import_layout_entry` / `import_pack_entry`. A field added to a layout reaches the file with no change; nothing re-implements how a layout is read or written. The file is a first-class format, but the bundles stay the full-fidelity backup.
+- **One request body, not a GET per layout (Decided by: Agent, differs from the plan).** A file holds several layouts and packs, so export is `POST .../report-file/export` with the selection in the body (a long selection never travels in a URL); import is `POST .../report-file/import?dry_run=` (multipart: `file`, `on_conflict`, `folder`), a preview by default. Project and organisation have the same pair. The plan's per-layout `GET` and "multi-select Export" collapse into one endpoint.
+- **Packs bring their layouts (Decided by: Agent).** A pack export includes the layouts it names that the source scope can reach (switch *Include the layouts the packs use*, on by default; names it cannot reach are listed in the manifest as `left_out` and the import warns). Saved sets travel as the source scope sees them (`effective_sets`). Import creates layouts first, renames a taken layout and re-points the pack's entries at the new name; a pack naming a layout neither in the file nor in the target is warned about, not refused.
+- **No people in the file (Decided by: Agent).** The bundle's `created_by_email` is dropped on export: a file leaves the organisation. The importer is the author; the version comment travels (a current-version-only file notes "Imported from file: <name>, version n").
+- **The file is untrusted (Decided by: Agent).** Whole file ≤ 60 MB; ≤ 600 entries; only the names `manifest.json`, `reports.json` and `files/<n>_<name>` (a name is never used as a path; `..`, a leading `/`, a backslash or any other name is refused); ≤ 200 MB uncompressed in total and each entry read with a cap, so a lying header cannot inflate more; a compression-ratio limit for large entries; ≤ 100 layouts, 100 packs, 200 pictures, 200 versions each; format version newer than this installation is refused. Every layout tree is validated again against the target (`check_tree` in the preview; the create path on apply, which also checks pictures). A layout with no valid version is `left_out` with the first problem; nothing partial is stored. Each picture is re-sniffed from its bytes (the declared type is ignored) and an SVG re-sanitised exactly as a library upload is; an EPS or PDF is never converted from a file (an export holds only raster and SVG). A picture that fails is reported and its layout version is dropped like any invalid one.
+- **Pictures are the target's own (Decided by: Agent).** Each picture lands in the target tier's library (a project's for a project import, the organisation's for an organisation import). An organisation picture the importing organisation already owns is reused by reference. A cross-organisation organisation picture imported into a *project* goes into the project's library, never published to the whole organisation as a side effect.
+- **Names (Decided by: Agent).** As the copy: rename "<name> (copy)" or skip, never replace; a name that matches an inherited report is allowed and warned about (it shadows it). A `{{org.*}}` reference resolves against the target; a colour name missing from the target's scheme fails that version's validation and is shown in the preview (not silently substituted). An optional `folder` files everything created in one folder (API and MCP; the dialog keeps each report's own folder).
+- **Gates (Decided by: Agent).** Export and import both need the tier's layout-management permission (`manage_project_report_layouts` / `manage_org_report_layouts`, groups included, no server-administrator bypass), since reading a layout's definition is itself a manage action. A report the tier cannot reach (or has hidden) is a 404; nothing chosen is 422; an archived project refuses an import (409). The organisation tier needs the organisation permission (403 otherwise).
+- **Audit and logs (Decided by: Agent).** One `report_file_exported` and one `report_file_imported` event with counts and keys (layouts, packs, pictures, skipped, history, on_conflict), never layout text or names; the uploaded text is not logged. Test pinned.
+- **Nesting, parity, bundles (Decided by: Agent).** No new project-scoped config table, so no inheritance decision; a child project's import makes the layout its own (shadowing an inherited one of the same name, as the existing rule says). A layout carries no person (the importer is the author), so no group case. No new table or column, so no bundle hook or migration. Not a registered artefact type: no code, search or list export applies. Perf: not a list or heavy path (a file is at most 100 layouts and 100 packs; export reads each layout's versions once); `perf/` is untouched.
+- **MCP (Decided by: Agent).** `export_report_file` (read: base64 `.zip`) and `import_report_file` (write, `dry_run` default true, base64 in), core skill and reference updated. `_call_backend` gained `data`/`files` for the one multipart call.
+- **UI (Decided by: Agent).** The report setup list: a row menu **Export as file…** (layouts and packs), **Export several as file…** (the existing tick boxes, now with a purpose; module reports are not tickable for export) and **New → Import from file…**; the designer's menu has **Export as file…**. Shared `ReportFileExportDialog` / `ReportFileImportDialog` (preview then apply, `FormActions` in the header, `FileField`, help on the name rule). Not offered: drag-and-drop (the file chooser is the standard `FileField`), a folder chooser in the dialog.
+- **Security (identify, verify, remediate).** *Identified:* an upload parsed into layouts (zip bomb, path names, huge JSON, hostile SVG or image, a tree that crashes a renderer later), data leaving the organisation (emails, ids), cross-organisation reference (a file naming another organisation's picture id), and a file used to publish a project picture organisation-wide. *Verified:* each is covered in the bullets above and by `tests/test_report_exchange.py` (non-zip, wrong kind, newer format, `..`/absolute/backslash/unknown names, too many items, an inflating entry, a non-image picture, an SVG with a script, audit has no text, gates). *Remediated:* nothing outstanding. A picture id in the file that names an organisation picture is trusted only when it is an organisation resource of the importing organisation; any other id is never dereferenced, its bytes come from the file.
+- **Checks.** Backend `tests/test_report_exchange.py` (30 tests); MCP `test_skill.py`; Storybook for both dialogs, the setup list (row export, export mode, import) and the designer's menu; Playwright `report-file-export-import.spec.ts`; website article "Sharing reports as a file"; the style guide's tick-box note.
+
+## Custom reports Phase 119: a finished import closes cleanly and ends with OK (2026-11-04)
+
+Request (User, sixteenth review): after importing a layout file, closing the dialog asked "Discard unsaved changes?" and the dialog had no OK button. Time shape: none (no date or time involved).
+
+- **Cause (reproduced by reading the guard).** The result view was the same `Modal` instance as the file-choice step (same element type at the same place), so `useDialogGuard`'s measured baseline, taken when the file was chosen, survived. The result view has no file input or select, so the comparison at close differed and read as dirty. The result view's Cancel button never showed either: inside a dialog `FormActions` renders no Cancel, so the view had no button at all. `ReportCopyDialog` had the same two faults; `CsvImportWizard` avoided the prompt with `dirty={false}` but its done step had no OK either. **Decided by: Agent.**
+- **Fix in the shared code, not at the call site (Decided by: Agent).** `ResultActions` renders the one primary **OK** (plus optional extra controls) and registers the dialog as settled through the dialog slots; `useDialogGuard.isDirty` returns false while a settled marker is mounted, before it looks at `dirty` or the DOM. A new dialog that ends in a result gets the behaviour by using the component. The unfinished steps keep the guard (a story and a Playwright test pin that a chosen file still asks). The Q2 default stands: OK, not Done or Close.
+- **Other dialogs checked (fix-don't-defer).** Dialogs that swap to a result after an apply: `ReportFileImportDialog`, `ReportCopyDialog`, `CsvImportWizard` (all fixed). The rest do not: `ReportFileExportDialog` and `ReportDuplicateDialog` close when done, `BulkTagDialog` and the tag reclassify dialog show a forecast before the apply (a preview, not a result), `ReportRunDialog` is a status viewer with no form.
+- **Security.** The change only suppresses a discard prompt for a view that holds no editable input; a settled dialog cannot hold unsaved work. No data path, permission or log changed.
+- **Checks.** Storybook: `Modal` (form, then a result view with OK and no prompt), the import dialog (OK, close mark, and a chosen file still asking), the copy dialog and the CSV wizard; Playwright `report-file-export-import.spec.ts` and `csv-import-wizard.spec.ts`. Style guide: "Pattern: result dialog". The `close` strings of the import and copy dialogs were removed (unused).
+
+## Custom reports Phase 120: the group's name in headings and text (2026-11-04)
+
+Request (User, sixteenth review): a heading inside a group of records has no way to reach the category name, so it cannot sit above the group's table; also, with nested groups, how to write a heading of both names. Time shape: none (a text value and a count). A spike: no product code changed.
+
+- **Reproduced on the User's layout** (project `fe79d478…`, layout `45a0b85d…`, its saved draft: a `group` `as: category` `by: category` holding a heading "Heading" and a table whose source is the group). Of the three readings in the plan, it is **(a)**, with a labelling gap: the engine and validator already give a group `value` and `count`, so `{{category.value}} ({{category.count}})` printed `Functional (4)`, `Performance (3)`, `Regulatory (2)`, `Safety (2)` above each group's table. Not (b): the heading was inside the group. Not (c): labels print.
+- **Nested groups already work** by naming each group: `{{comp.value}} - {{cat.value}}` printed `Airframe - Functional`, `Avionics - Functional`, and so on. The member is `value`; `{{comp.name}}` is refused with "A group has "value" and "count", not "name"".
+- **What the editors offer.** The [+] beside a heading's text and the Fields tab list the group's two entries as "Value" and "Count" from "`category` (group)" (`ReportLayoutFieldPicker`, `GROUP_FIELD_LABEL`): nothing says it is the Category, and the [+] is an icon only. That is why the User could not find it.
+- **Printing checked** on the User's data, grouping requirements by status (`Approved`), owner (`Jordan Alvarez`, `Architecture Board (Org group)`), target stage, component, category and tags: user-facing labels, never raw values; an empty value reads `(none)`. **Finding:** a multi-valued field (tags) groups by the joined text (`Regulatory, Release 1` is its own group), not once per tag. Not changed here; Phase 121 asks (Q3).
+- **Decided by: User (Q1):** option A. Offer the group's name and count in the [+] menu and Fields tab of every text field inside a group, labelled by what the group is by ("Group: Category", "Group: count"), with help text; no new syntax; no nearest-group reference (B declined). **Also Decided by: User:** make the [+] more obvious, "maybe [+ Field]": the button shows the word Field beside the plus. **Decided by: Agent:** also accept `{{alias.name}}` as a synonym of `.value`, since it is the natural guess and the User tried it; revisitable.
+
+## Custom reports Phase 121: the group's name offered in the editors, one group per tag (2026-11-04)
+
+Built what Phase 120 chose (option A). Time shape: none (text and a count). Core/module boundary: nothing per-module; the picker reads the group's `by` field from the block tree and the field catalogue.
+
+- **Editors (Decided by: User, Phase 120).** Inside a group, the field list (the **+ Field** button beside a text field in the Blocks view, and the Fields tab in the Text view) lists the group's entries as "Group: <label of the field it is grouped by>" and "Group: count", each with a line saying what it prints. `NameInScope` / `AliasInScope` carry `by` (`namesInScope`, `aliasesInScope` reading `@group … by <field>`). The button reads a plus and the word **Field** (`AddPopoverButton text`, `ActionMenu triggerText`, shared); the header/footer cell's button got the same (its group menus never hold a group: a band sits outside every group). Its accessible name now contains the visible word ("Insert field into footer, left cell"; was "placeholder"), so the specs and stories that named it were updated.
+- **`{{alias.name}}` means `.value` (Decided by: Agent, revisitable).** `GROUP_MEMBER_SYNONYMS` / `group_member` in `report_layout_tree.py`, used by the validator and both evaluator sites (placeholders and `if` references); the catalogue's `group_fields` stays `value` and `count`, so the picker lists one entry, and the error message says `"value" (also written "name") and "count"`. Text view, bundles and renderers need nothing: the tree keeps what was written and the expansion happens before the renderers.
+- **Grouping by tags is one group per tag (Decided by: User, Q3).** `_Run.group_labels`: a record with two tags is in both groups, an untagged record in `(none)` (last); groups are ordered by tag name. Counts can therefore add up to more than the records, which the help and the website say. Tag names forbid commas, so the joined text splits back safely. No other field is multi-valued.
+- **Nested groups need nothing new** (each has its own `as`): the Phase 120 reproduction printed `{{comp.value}} - {{cat.value}}`; a backend test, the website and the help (`_PLACEHOLDER_HELP`) now say so. The demo organisation gains "Requirements by component and category" (a heading naming both groups above each table); the existing demo and e2e layouts already put `{{comp.value}} ({{comp.count}})` above each table.
+- **Security pass.** Identify: a group label comes from a user-typed field (a component, category or tag name) and is printed in headings, text and conditions in five renderers. Verify: the existing single-pass substitution never rescans a value, and a new test puts `# Boom {{project_name}} <b>x</b> - item` in a tag and checks the heading and paragraph print it literally. Remediate: none needed. Group counts and labels add no data the runner could not already read (the records come through the same resolver).
+- **Checks.** Backend: `test_report_layout_eval.py` (nested heading, `name` synonym, per-tag groups and `(none)` last, hostile label), `test_report_layout_tree.py`. Storybook: picker, `AddPopoverButton`, block field, tree and text alias helpers, full run 3,319 passed. Playwright: new `report-group-name.spec.ts` (+ Field offers "Group: Category", preview prints a heading per category above its table) and `report-layout-designer.spec.ts` pass. Docs: `docs/modules.md` §4g, website *Blocks, widgets and variables*, user guide, style guide, the core MCP skill (prose only, no tool changed). The core MCP skill tests could not run on this host (`fastmcp` missing).
+
+## Custom reports Phase 122: sixteenth review close-out (2026-11-04)
+
+Closes Phases 119 to 121. No product code changed here beyond one test fix. Time shape: none.
+
+- **Docs.** Website (*Sharing a report as a file*, *Blocks, widgets and variables*, *Designing a layout*), user guide, style guide (result-dialog pattern) and `docs/modules.md` §4g describe the new behaviour only; `check_doc_links.py` passes. Screenshots stay deferred to the docs phase. **Performance pages reviewed: no change** (no list, export, search or migration path moved; the per-tag grouping runs inside the existing report run). **Decided by: Agent.**
+- **Seeds.** `seed_demo_data.py` and `seed_e2e_dataset.py` ran clean on fresh databases; the demo organisation holds "Requirements by component and category".
+- **Security pass (identify, verify, remediate).** *Identified:* the dialog guard could stop protecting real unsaved work; group labels from user-typed fields printed in five renderers. *Verified:* the guard is suppressed only while a `ResultActions` view is mounted (that view holds no input), and a chosen-but-unapplied file still asks (story and Playwright); a hostile tag (`# Boom {{project_name}} <b>x</b>`) prints literally in heading and paragraph. *Remediated:* nothing outstanding.
+- **Test fix (found by the full run).** Storybook `Discard Draft Asks Then Opens The Latest Version` read the editor text once and failed under the concurrent backend suite; the editor follows the discard a render after the notice goes, so the check now waits for the value. It passed alone (74 of 74 in the file) before and after.
+- **Results.** Full backend suite (`-n 4`): 7,022 passed, 12 skipped, 14 failed, all the known host mailhog-DNS invite/OIDC tests. Storybook: 3,318 of 3,319 before the fix, the file 74 of 74 after. Playwright (`--no-deps`): export/import, CSV wizard, group name, designer and drafts specs, 30 passed. Core MCP skill tests (7) pass inside the mcp-server container (`fastmcp` is not on the host).
+
+## Custom reports Phase 15: final slice, screenshots (2026-11-04)
+
+The nine Custom reports pages already described the final behaviour; this slice replaced and added the pictures after the User signed off the review checkpoint. Time shape: none.
+
+| # | Decision | By |
+|---|---|---|
+| 1 | **A throwaway second stack, not the dev data.** A separate database (`reqtrack_docshots`), a backend on 8001 and a frontend on 3005 from the test compose images, seeded with `seed_demo_data.py` so the Phase 100 to 121 demo layouts exist; Falcon-3's terminology cleared for the capture; torn down afterwards. The User's dev data was not touched. | Agent |
+| 2 | **35 screenshots at 1440x900**: the 11 stale ones were retaken on the same file names (picker, variables, designer text, fields, widgets and history, pack editor and preview, report picker, Reports dialog, Files page) and 20 added (Blocks view and block editor, page setup in three groups, layout look, preview with logo, drafts, table of contents, grid editor, snippet picker, `+ Field` in a group, setup list, file export and import, duplicate, starter, copy, file name default, organisation run, background run queued and ready). The unreferenced `report-folders.png` was removed. | Agent |
+| 3 | **One background run was real, one step mocked**: the 409 `async_required` that sends a run to the queue is answered by the capture script, as the Playwright spec does; the queue, file, notification and Ready dialog are the product's own. | Agent |
+
+*Security (identify, verify, remediate).* Identify: a screenshot showing real people or another organisation's data. Verify: every image is of the fictional Solstice Robotics demo organisation and its demo users; no secret, token or email address is visible. Remediate: none needed. The build caught a wrong relative image path in `reports-and-export.md` (fixed).
+
+*Not applicable:* no code, migration, endpoint, bundle, search, MCP tool, audit event or time field.
+
+## Custom reports: 11b moved to Module 6 and the Module 10 plan closed (2026-11-04)
+
+- **Decided by: User.** Phase 11b (Executive Gap Analysis, requirements §47.5, and Engineering Change Impact, §47.6, as report widgets) moves from Module 10 to Module 6 (Engineering Design) as its Phase 9, because it was waiting on Engineering Design. The Module 10 plan is then complete in full and moved to `docs/plans/completed/`.
+- **Decided by: Agent.** Module 6 Phase 9 is written as a goal, risk, outcome and checklist (collectors with `ReportDefinition`, access-respecting traversal, MCP guidance and reference, docs, seeds, tests) and sits after the docs phase because it depends on Phases 3 and 6. Verification Actions and Baselines already exist (the index records that Verification lives in `RequirementAction`), so Design is the one missing piece. Module 10's acceptance criteria 2 and 3 are marked as moved, not met. The Module 6 status table reads 0 / 9.
+- *Not applicable:* no code, migration, endpoint, bundle, search, audit event or time field.
+
+
+## CodeQL and Dependabot sweep on the custom-reports PR (2026-11-04)
+
+- **Decided by: User** (asked for every open code-scanning and Dependabot alert to be fixed). **Fixed in code:** `py/polynomial-redos` in the layout text tokenizer (the new alert failing the PR gate) is closed by replacing the quoted-text regex with a one-pass scanner, `_quoted_end`, at all four call sites, with a 200,000-escape regression test. `py/overly-large-range` in `report_docx.clean_text` is closed by checking code point ranges in code instead of a regex class. `py/clear-text-logging-sensitive-data` in the load generator no longer passes the password variable's name through a log call. `py/clear-text-storage-sensitive-data` in the profiling runner now creates its env file with mode 0600 atomically (`O_EXCL`), not write-then-`chmod`.
+- **Dependabot:** `joi`, `follow-redirects` and `qs` raised to their patched versions in the docs site lockfile. Frontend `minimatch` forced to `^11.0.1` through `overrides` (ESLint 10 and glob 13 only ask for `^10`); lint and build pass on it.
+- **Decided by: Agent. Not fixable by a change here:** `deepmerge` (no patched release exists, low severity, docs site only) and docs-site `minimatch` 3.x (pinned exactly by `serve-handler`, which uses the v3 CommonJS API; forcing v11 would break it). `py/bind-socket-all-network-interfaces` in `serve.py` is intentional: the IPv6 rule requires the `::` listener inside the container.
+- *Security (identify, verify, remediate).* Identify: the alerts above. Verify: layout text (253), docx (21) tests, frontend lint and build pass. Remediate: as listed. *Not applicable:* no migration, endpoint, bundle, audit event or time field.
+
+- **Frontend CI test step timeout (2026-11-04).** **Decided by: Agent.** The "Run frontend tests with coverage" step was killed by its own `timeout 600` with no report written (lint and build passed): the story suite has grown to 400 files and about 3.3k tests, which all pass locally in 7 minutes on 5 cores. Step timeout raised to 1500s and job timeout to 35 minutes. The cause was suite size, not a hang or a failing test; sharding (`vitest --shard`) is the next step if it is outgrown again.
+
+- **Backend CI failures on the custom-reports PR (2026-11-04).** **Decided by: Agent.** Two tests failed in the CI container only. (1) `test_report_math_allowlist.py` read `frontend/src/utils/mathTexCases.json` at import, which the backend image does not contain; it now skips when the frontend sources are absent, like the other tests that read frontend files. (2) `test_org_test_email_will_not_connect_to_an_internal_address` passed or failed by test order: `test_module_registry` clears the `get_settings` cache, leaving routers holding the earlier `Settings` while the autouse fixture that pins the private-network opt-ins off patched only the new one, so CI's `ORG_SMTP_ALLOW_PRIVATE_NETWORK_TARGETS=true` leaked into the test. The fixture now pins every `Settings` instance held by an `app.*` module. Reproduced locally by running the two files in order with the variable set. No product code changed; the guard itself was never bypassed.
+
+- **E2E CI failures on the custom-reports PR (2026-11-04).** **Decided by: Agent.** (1) The job hit its 30-minute ceiling mid-suite (~9 minutes of setup plus ~30 for about 510 tests on 2 workers); raised to 60 minutes, with sharding named as the next step. (2) `report-grid-fonts` and `report-custom-table-editor` read the printed Word file with the `unzip` binary, which the Playwright image does not ship; both now use `wordXml` (`tests/e2e-workflows/wordXml.ts`, Node's zlib). (3) `report-block-drag` aimed its drop a fixed 37 px below the grab point, but a block is 48 px tall with the Linux fonts, so the Spacer missed the Heading's connection and was left outside the layout; it now aims at the Heading's original title position, which is one block below the Spacer's own place whatever the font. Reproduced and fixed by running the specs in the CI Playwright image against the local stack. The "Build ${{ matrix.image }}" check name is the skipped job's unexpanded template (its `needs` failed), not an expansion fault.

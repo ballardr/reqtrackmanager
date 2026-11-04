@@ -43,6 +43,7 @@ Reading this top to bottom: `db` and `storage` must be healthy before `backend` 
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
 | `storage` | Bundled S3-compatible file storage (SeaweedFS) | Yes | Yes |
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants | Yes | Yes |
+| `converter` | Converts uploaded EPS and PDF logos to SVG in an isolated container | Opt-in (see [production deployment](production-deployment.md#optional-eps-and-pdf-logos)) | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | No — a real SMTP provider is configured via `SMTP_HOST` instead | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO end-to-end | No — a real deployment points each org at its own IdP instead | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |

@@ -16,13 +16,13 @@ Responsibilities:
 - Naming records: `ReportContext.code` / `org_code` give a record's code by the one rule
   (`services.codes.display_code`) and `tag_text` its tags, so a collector never formats a code or
   queries tags itself; `ReportDefinition.record_types` declares what a report names.
-- Output: `render_csv` (first section only, formula-neutralised) and
-  `render_pdf` and `render_docx` (every section). Both render one neutral
-  `ReportDocument` from `build_result_document` (`services.report_model`), so a
-  template's cover, accent colour and footer apply to each and the formats
-  cannot drift.
+- Output: `render_result` is the one place a module report's file formats are decided: `csv` (first
+  section only, formula-neutralised), the documents `pdf`, `docx`, `html` and `odt` (every section; one
+  neutral `ReportDocument` from `build_result_document`, so the organisation's cover, accent colour and footer
+  apply to each and the formats cannot drift) and the spreadsheets `xlsx` and `ods` (every section as a
+  tab, through the `report_render` registry the custom reports use).
 - HTTP: `build_report_routers` turns `ReportDefinition`s into a project router
-  and an organisation router (`GET .../reports/<slug>?format=json|pdf|csv|docx`) for
+  and an organisation router (`GET .../reports/<slug>?format=json|pdf|docx|html|odt|csv|xlsx|ods`) for
   the module to include under its own prefixes, so routes stay inside the
   module's mount and MCP path verification keeps working.
 - MCP: `report_mcp_tools` derives read-only tools from the same declarations.
@@ -44,12 +44,12 @@ Design decisions:
 - Parameters are declared, not hand-written: the generated route signature
   carries typed `Query` parameters (so FastAPI validates types and bounds, 422)
   and `choices` are checked here (400). Unknown query parameters are ignored.
-- The CSV is the first section only (the flat export); the PDF and DOCX carry the
-  full layout. Every CSV cell goes through `csv_safe`; PDF and DOCX cells are
+- The CSV is the first section only (the flat export); the documents carry the
+  full layout and the spreadsheets one tab per table. Every CSV cell goes through `csv_safe`; PDF and DOCX cells are
   escaped by their renderers (`report_document.safe`, `report_docx.clean_text`),
   since cells hold user-entered text.
 
-Dependencies: FastAPI/Pydantic, ReportLab and python-docx (via `report_pdf`/`report_docx`),
+Dependencies: FastAPI/Pydantic, `services.report_render` (and through it the PDF, Word, HTML, ODF and spreadsheet writers),
 `modules.registry`, `services.rbac`.
 """
 
@@ -73,7 +73,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import (
@@ -83,10 +83,9 @@ from app.modules.registry import (
     get_all_reports,
     get_module,
     get_module_reports,
-    is_module_enabled,
-    is_module_enabled_for_project,
     is_module_subcomponent_enabled,
-    is_org_module_subcomponent_enabled,
+    report_enabled_for_organization,
+    report_enabled_for_project,
     validate_report_definitions,
 )
 from app.services.codes import display_code
@@ -98,19 +97,37 @@ from app.services.rbac import (
     memoize_user_lookups,
     prefetch_project_roles,
     require_org_module_enabled,
+    require_project_any_subcomponent_enabled,
     require_project_module_enabled,
-    require_project_subcomponent_enabled,
+    session_may_reach_project,
     user_satisfies_module_role,
 )
-from app.services.report_content import build_placeholders, content_blocks, report_key_for, resolve_report_content
-from app.services.report_document import ReportBranding, load_report_template, resolve_branding
+from app.services.report_column_width import parse_width
+from app.services.report_document import ReportBranding, resolve_branding
 from app.services.report_docx import render_docx_document
-from app.services.report_model import TONE_FILL, Block, Gap, Heading, Note, ReportDocument, Table
+from app.services.report_file_names import org_default_stem
+from app.services.report_model import (
+    TONE_FILL,
+    Block,
+    Gap,
+    Heading,
+    Note,
+    ReportDocument,
+    Sheet,
+    Table,
+    project_report_label,
+)
 from app.services.report_pdf import render_pdf_document
+from app.services.report_render import RenderedFile, RenderInput, sheet_title, unique_names
+from app.services.report_render import render as render_registered
 from app.services.tags import tag_names_for_records
 
-ReportFormat = Literal["json", "pdf", "csv", "docx"]
-REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "csv", "docx")
+ReportFormat = Literal["json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods"]
+#: Every format a module report offers: documents (the whole report), then spreadsheets (`csv` is the main table
+#: only; `xlsx` and `ods` hold every table as a tab). Order is the order the Download menu lists them in.
+REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "docx", "html", "odt", "csv", "xlsx", "ods")
+#: The formats that lay the report out as a document, so a very long table is refused for them.
+DOCUMENT_FORMATS: tuple[str, ...] = ("pdf", "docx", "html", "odt")
 
 # --- Result shapes -------------------------------------------------------------
 
@@ -130,6 +147,8 @@ class ReportSection:
         screen: Whether the on-screen view shows this table. `False` keeps a
             table that only exists for the exports (a flat form of figures the
             screen already shows as tiles); PDF and CSV always include it.
+        weights: Relative column widths already decided (the on-screen view of an aligned custom report).
+        usual_widths: A usual width per column from `ReportDefinition.usual_widths` (`None` = none), one per column.
         tones: Optional tone per cell, shaped exactly like `rows` (`None` = no
             tone), for a cell the screen colours (a rating band, a matrix
             cell). PDF and Word fill the cell; CSV and JSON carry the text
@@ -149,8 +168,14 @@ class ReportSection:
     gap: bool = False
     screen: bool = True
     tones: list[list[str | None]] | None = None
+    weights: list[float] | None = None
+    usual_widths: list[str | None] | None = None
 
     def __post_init__(self) -> None:
+        if self.weights is not None and len(self.weights) != len(self.columns):
+            raise ValueError(f"Report section '{self.key}': weights must have one value per column.")
+        if self.usual_widths is not None and len(self.usual_widths) != len(self.columns):
+            raise ValueError(f"Report section '{self.key}': usual_widths must have one value per column.")
         if self.tones is None:
             return
         if len(self.tones) != len(self.rows) or any(len(t) != len(r) for t, r in zip(self.tones, self.rows, strict=True)):
@@ -276,6 +301,11 @@ class ReportContext:
         return self.root_project.name if self.root_project is not None else self.organization.name
 
     @property
+    def scope_report_label(self) -> str:
+        """The label `{{project_report_name}}` prints: the root project's report name when set, else `scope_label`."""
+        return project_report_label(self.root_project, self.scope_label)
+
+    @property
     def scope_note(self) -> str:
         """A caveat describing which projects are covered."""
         if self.root_project is None:
@@ -346,7 +376,11 @@ def readable_projects(
 
     Only projects on which the user holds an effective project role are
     returned (an org admin without a project role is not), so an aggregate
-    report never exposes a project its reader cannot open. For a project
+    report never exposes a project its reader cannot open. A project outside
+    the request credential's own limit (a Personal Access Token restricted to
+    some projects, a module-frame token) is left out too
+    (`rbac.session_may_reach_project`), so a limited token cannot widen itself
+    through an organisation-wide or include-children run. For a project
     report the root is always included (the caller's route dependency has
     already authorised it); child projects are added only when requested and
     only if readable.
@@ -375,7 +409,8 @@ def readable_projects(
         prefetch_project_roles(db, user.id, [p.id for p in candidates])
         readable = [
             p for p in candidates
-            if (root_project is not None and p.id == root_project.id) or get_effective_project_roles(db, user.id, p.id)
+            if session_may_reach_project(db, p.id)
+            and ((root_project is not None and p.id == root_project.id) or get_effective_project_roles(db, user.id, p.id))
         ]
     return sorted(readable, key=lambda p: (p.name.lower(), str(p.id)))
 
@@ -404,7 +439,10 @@ def scope_projects(
         The in-scope projects, ordered by name.
     """
     if root_project is None and definition.org_scope == "all_org_projects":
-        projects = db.scalars(select(Project).where(Project.organization_id == organization.id)).all()
+        projects = [
+            p for p in db.scalars(select(Project).where(Project.organization_id == organization.id)).all()
+            if session_may_reach_project(db, p.id)  # a token limited to some projects does not cover the others
+        ]
         return sorted(projects, key=lambda p: (p.name.lower(), str(p.id)))
     return readable_projects(
         db, user, organization=organization, root_project=root_project, include_children=include_children,
@@ -490,27 +528,55 @@ def apply_cell_tones(result: ReportResult, cell_tones: Mapping[str, Mapping[str,
     return result
 
 
-def build_result_document(
-    result: ReportResult, *, branding: ReportBranding | None = None,
-    before: Sequence[Block] = (), after: Sequence[Block] = (),
-) -> ReportDocument:
+def apply_usual_widths(result: ReportResult, usual_widths: Mapping[str, str]) -> ReportResult:
+    """Gives each section the usual width of every column whose heading the report declared one for.
+
+    Args:
+        result: The collected report; its sections are replaced, never mutated in place.
+        usual_widths: `ReportDefinition.usual_widths`.
+
+    Returns:
+        `result`, with `usual_widths` filled in on each section that has a declared heading.
+    """
+    if not usual_widths:
+        return result
+    result.sections = [
+        replace(section, usual_widths=[usual_widths.get(heading) for heading in section.columns])
+        if any(heading in usual_widths for heading in section.columns) else section
+        for section in result.sections
+    ]
+    return result
+
+
+def unknown_usual_widths(sections: Sequence[Sequence[str]], usual_widths: Mapping[str, str]) -> list[str]:
+    """The declared headings that no section of a collected report has, and the declared widths that are not widths.
+
+    Args:
+        sections: The column headings of each section of a collected report (a section has its columns even with no rows).
+        usual_widths: `ReportDefinition.usual_widths`.
+
+    Returns:
+        One message per problem; empty when every declaration is sound.
+    """
+    present = {heading for columns in sections for heading in columns}
+    problems = [f'No section has a column "{heading}".' for heading in usual_widths if heading not in present]
+    problems += [f'"{heading}": "{spec}" is not a width.' for heading, spec in usual_widths.items() if parse_width(spec) is None]
+    return problems
+
+
+def build_result_document(result: ReportResult, *, branding: ReportBranding | None = None) -> ReportDocument:
     """Builds the neutral landscape document for a collected report, which the
     PDF and DOCX renderers both consume.
 
     Args:
         result: The collected report.
-        branding: Optional organisation template branding (accent colour,
+        branding: Optional organisation report look (accent colour,
             cover page, logo, footer); `None` renders the plain default style.
-        before: Blocks placed ahead of the report (its introduction and
-            chapters, from `services.report_content`).
-        after: Blocks placed after the last section (its appendices).
 
     Returns:
-        The document: the introduction and chapters, a scope line, the notes,
-        each section's heading, note and table (or "None."), then the appendices.
+        The document: a scope line, the notes, then each section's heading, note and table (or "None.").
     """
     blocks: list[Block] = [
-        *before,
         Note(f"{result.scope_label} · generated {result.generated_at.strftime('%Y-%m-%d %H:%M')} UTC"),
         Gap(0.2),
         *[Note(n) for n in result.notes],
@@ -523,44 +589,70 @@ def build_result_document(
             blocks.append(Table(section.columns, section.rows, compact=True, tones=section.tones))
         else:
             blocks.append(Note("None."))
-    blocks += after
     return ReportDocument(title=result.title, blocks=blocks, branding=branding, landscape=True)
 
 
-def render_pdf(
-    result: ReportResult, *, branding: ReportBranding | None = None,
-    before: Sequence[Block] = (), after: Sequence[Block] = (),
-) -> bytes:
+def render_pdf(result: ReportResult, *, branding: ReportBranding | None = None) -> bytes:
     """Renders the whole report (every section) as a landscape A4 PDF.
 
     Args:
         result: The collected report.
-        branding: Optional organisation template branding; see `build_result_document`.
-        before: Blocks ahead of the report; see `build_result_document`.
-        after: Blocks after the report; see `build_result_document`.
+        branding: Optional organisation report look; see `build_result_document`.
 
     Returns:
         PDF bytes.
     """
-    return render_pdf_document(build_result_document(result, branding=branding, before=before, after=after))
+    return render_pdf_document(build_result_document(result, branding=branding))
 
 
-def render_docx(
-    result: ReportResult, *, branding: ReportBranding | None = None,
-    before: Sequence[Block] = (), after: Sequence[Block] = (),
-) -> bytes:
+def render_docx(result: ReportResult, *, branding: ReportBranding | None = None) -> bytes:
     """Renders the whole report (every section) as an editable landscape DOCX.
 
     Args:
         result: The collected report.
-        branding: Optional organisation template branding; see `build_result_document`.
-        before: Blocks ahead of the report; see `build_result_document`.
-        after: Blocks after the report; see `build_result_document`.
+        branding: Optional organisation report look; see `build_result_document`.
 
     Returns:
         DOCX bytes.
     """
-    return render_docx_document(build_result_document(result, branding=branding, before=before, after=after))
+    return render_docx_document(build_result_document(result, branding=branding))
+
+
+def result_sheets(result: ReportResult) -> list[Sheet]:
+    """The report's tables as spreadsheet tabs: one per section that has columns, named by its title.
+
+    Args:
+        result: The collected report.
+
+    Returns:
+        The sheets, in section order; a section with no columns (a note only) is left out.
+    """
+    sections = [s for s in result.sections if s.columns]
+    names = unique_names([s.title or s.key for s in sections], clean=sheet_title, limit=31)
+    return [Sheet(name=n, columns=s.columns, rows=s.rows) for n, s in zip(names, sections, strict=True)]
+
+
+def render_result(result: ReportResult, fmt: str, *, branding: ReportBranding | None = None) -> RenderedFile:
+    """Renders a collected report as `fmt`, the one place a module report's formats are decided.
+
+    Args:
+        result: The collected report.
+        fmt: One of `REPORT_FORMATS` other than `json`.
+        branding: Organisation report look for the document formats; spreadsheets carry none.
+
+    Returns:
+        The file bytes and extension.
+
+    Raises:
+        ValueError: `fmt` is not a file format of a module report.
+    """
+    if fmt == "csv":
+        return RenderedFile(render_csv(result), "csv")
+    if fmt in ("xlsx", "ods"):
+        return render_registered(fmt, "table", RenderInput(title=result.title, sheets=result_sheets(result)))
+    if fmt not in DOCUMENT_FORMATS:
+        raise ValueError(f"A module report cannot be produced as {fmt!r}.")
+    return render_registered(fmt, "document", RenderInput(title=result.title, document=build_result_document(result, branding=branding)))
 
 
 # --- JSON schema --------------------------------------------------------------------
@@ -576,6 +668,7 @@ class ReportSectionOut(BaseModel):
     note: str = ""
     gap: bool = False
     screen: bool = True
+    weights: list[float] | None = None
 
 
 _LINK_TARGET = re.compile(r"^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
@@ -741,56 +834,25 @@ def _live_definition(module_key: str, definition: ReportDefinition) -> ReportDef
 
 def _respond(
     result: ReportResult, definition: ReportDefinition, fmt: str, scope_name: str, branding: ReportBranding | None,
-    before: Sequence[Block] = (), after: Sequence[Block] = (),
+    organization: Organization, project: Project | None,
 ) -> Response | ReportOut:
-    """Serialises `result` as `fmt`; `before`/`after` (the report's content
-    blocks) only reach the PDF and DOCX."""
+    """Serialises `result` as `fmt`; branding only reaches the document formats.
+
+    The file is named by the organisation's default file name template when it sets one, else `<scope>-<slug>`.
+    """
     if fmt == "json":
         return to_out(result)
-    stem = f"{filename_safe(scope_name, fallback='report')}-{definition.slug}"
-    if fmt == "csv":
-        return file_response(render_csv(result), stem, "csv")
-    if fmt == "docx":
-        return file_response(render_docx(result, branding=branding, before=before, after=after), stem, "docx")
-    return file_response(render_pdf(result, branding=branding, before=before, after=after), stem, "pdf")
-
-
-def _template_for(db: Session, organization: Organization, template_id: UUID | None) -> ReportTemplate | None:
-    """The requested template, `None` when none was requested.
-
-    Raises:
-        HTTPException: 400 when the template is not one of the organisation's.
-    """
-    if template_id is None:
-        return None
-    template = load_report_template(db, organization.id, template_id)
-    if template is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this organisation.")
-    return template
-
-
-def _content_blocks_for(
-    db: Session, fmt: str, module_key: str, definition: ReportDefinition, result: ReportResult,
-    organization: Organization, project: Project | None, template: ReportTemplate | None,
-) -> tuple[list[Block], list[Block]]:
-    """The report's introduction/chapters and appendices as blocks for the PDF
-    and DOCX (empty for JSON and CSV, which carry no authored content).
-    Resolution is `report_content.resolve_report_content`; an organisation-wide
-    run passes `project=None`, so only the template and organisation tiers apply.
-    """
-    if fmt not in ("pdf", "docx"):
-        return [], []
-    content = resolve_report_content(db, report_key_for(module_key, definition.key), organization, project, template)
-    placeholders = build_placeholders(
-        project_name=result.scope_label, report_title=result.title, generated_on=result.generated_at.date(),
-        organisation=organization.name,
+    rendered = render_result(result, fmt, branding=branding)
+    stem = org_default_stem(
+        organization, project, title=definition.title, extension=rendered.extension,
+        fallback=f"{filename_safe(scope_name, fallback='report')}-{definition.slug}",
     )
-    return content_blocks(db, organization.id, content, placeholders)
+    return file_response(rendered.content, stem, rendered.extension)
 
 
 def _route_signature(path_param: str, definition: ReportDefinition, *, project_level: bool, dependency: Callable) -> inspect.Signature:
     """The generated endpoint's signature: path id, `format`, optional
-    `include_children`, `report_template_id`, the declared parameters as typed
+    `include_children`, the declared parameters as typed
     `Query` values, then the user/session dependencies."""
     P = inspect.Parameter
     params = [
@@ -804,7 +866,6 @@ def _route_signature(path_param: str, definition: ReportDefinition, *, project_l
             "project_id", P.POSITIONAL_OR_KEYWORD, annotation=UUID | None,
             default=Query(None, description="Narrow the report to this one project (must be in its scope)."),
         ))
-    params.append(P("report_template_id", P.POSITIONAL_OR_KEYWORD, annotation=UUID | None, default=Query(None)))
     for param in definition.params:
         bounds = {"ge": param.minimum, "le": param.maximum} if param.type == "integer" else {}
         params.append(P(
@@ -818,8 +879,9 @@ def _route_signature(path_param: str, definition: ReportDefinition, *, project_l
 
 def _build_project_route(module_key: str, definition: ReportDefinition) -> Callable[..., Any]:
     dependency = (
-        require_project_subcomponent_enabled(module_key, definition.subcomponent)
-        if definition.subcomponent else require_project_module_enabled(module_key)
+        require_project_any_subcomponent_enabled(module_key, (definition.subcomponent,))
+        if definition.subcomponent else require_project_any_subcomponent_enabled(module_key, definition.any_subcomponents)
+        if definition.any_subcomponents else require_project_module_enabled(module_key)
     )
 
     def endpoint(**kw: Any):
@@ -827,8 +889,8 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         db: Session = kw["db"]
         project = db.get(Project, kw["project_id"])
         organization = db.get(Organization, project.organization_id)
+        assert organization is not None  # the project's own organisation
         params = validated_params(live, kw)
-        template = _template_for(db, organization, kw["report_template_id"])
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=project, params=params,
             projects=readable_projects(
@@ -837,16 +899,14 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
             ),
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
-        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, project, template)
         return _respond(
-            result, live, kw["format"], project.name, resolve_branding(db, organization, template), before, after,
+            result, live, kw["format"], project.name, resolve_branding(db, organization), organization, project,
         )
 
     endpoint.__signature__ = _route_signature("project_id", definition, project_level=True, dependency=dependency)  # type: ignore[attr-defined]
     endpoint.__doc__ = (
-        f"{definition.title} for this project: {definition.description} `format` is json (default), pdf, csv or docx; "
-        "`include_children` adds readable child projects; `report_template_id` applies an organisation report "
-        "template's branding to the PDF and DOCX."
+        f"{definition.title} for this project: {definition.description} `format` is json (default), pdf, docx, html, odt, csv, xlsx or ods; "
+        "`include_children` adds readable child projects. The document formats carry the organisation's report look."
     )
     return endpoint
 
@@ -864,8 +924,8 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         ):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not hold the role required for organisation-wide reports.")
         organization = db.get(Organization, organization_id)
+        assert organization is not None  # the route dependency has checked the organisation
         params = validated_params(live, kw)
-        template = _template_for(db, organization, kw["report_template_id"])
         projects = scope_projects(
             db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
         )
@@ -880,9 +940,8 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             projects=projects,
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
-        before, after = _content_blocks_for(db, kw["format"], module_key, live, result, organization, None, template)
         return _respond(
-            result, live, kw["format"], organization.name, resolve_branding(db, organization, template), before, after,
+            result, live, kw["format"], organization.name, resolve_branding(db, organization), organization, None,
         )
 
     endpoint.__signature__ = _route_signature("organization_id", definition, project_level=False, dependency=dependency)  # type: ignore[attr-defined]
@@ -938,7 +997,7 @@ def _build_org_breakdown_route(module_key: str, definition: ReportDefinition) ->
 
     full = _route_signature("organization_id", definition, project_level=False, dependency=dependency)
     endpoint.__signature__ = full.replace(  # type: ignore[attr-defined]
-        parameters=[p for p in full.parameters.values() if p.name not in ("format", "project_id", "report_template_id")],
+        parameters=[p for p in full.parameters.values() if p.name not in ("format", "project_id")],
     )
     endpoint.__doc__ = (
         f"{definition.title} headline figures per project: the organisation report's figures evaluated for each "
@@ -1055,6 +1114,27 @@ class ReportParamOut(BaseModel):
     choice_labels: dict[str, str] | None = None
 
 
+class ReportVariableOut(BaseModel):
+    """A run-time variable as the run form shows it.
+
+    Attributes:
+        name / type / label / multiple: As declared (`label` falls back to the name).
+        default: The value the form starts with (a date's `today` is the person's own day), `None` when the layout
+            sets none, so the person must choose.
+        options: The values on offer (the variable's own list, or its source field's current values), `None` for
+            free input.
+        source: `{record_type, field}` when the options come from a record field.
+    """
+
+    name: str
+    type: str
+    label: str
+    multiple: bool = False
+    default: Any = None
+    options: list[str] | None = None
+    source: dict[str, str] | None = None
+
+
 class ReportProjectOut(BaseModel):
     """A project an organisation-wide report can be narrowed to."""
 
@@ -1069,10 +1149,23 @@ class ReportCatalogueEntryOut(BaseModel):
     substituted; `supports_include_children` is true for project-level
     entries and `supports_project_filter` for organisation-level ones, which also carry
     `breakdown_path` (the per-project figures; see `ReportBreakdownOut`) (the
-    optional `project_id` query narrows the run to one project in scope).
+    optional `project_id` query narrows the run to one project in scope; an entry with
+    `supports_project_multi_filter` instead takes a comma-separated `project_ids` selection, an
+    organisation-wide custom report that is run once per selected project).
     For those, `projects` lists exactly the projects the caller may pick: in
     the report's scope for this caller, with the module (and declared
     sub-component) enabled, so the picker never offers one the route would 404.
+    A custom report's run-time variables are `variables` (the run form: default and current options each);
+    a module report declares `params` instead.
+    `kind` is what the Reports picker filters on (`sheet` is a table layout) and `folder` is the author's folder for a
+    custom report (`""` for none: the picker then files a module report under its module and a custom one under
+    "Custom reports").
+    `record_types` are the registered record types the report names or reads (a record list offers the reports that
+    list its type under "Download report").
+    `view_only` marks a report meant to be read on screen, which a record list's "Download report" does not offer.
+    `run_scope` is which projects a custom report may run for: `any` (an organisation-wide run takes a selection), `one`
+    (exactly one id in `project_ids`, single-choice picker, no child projects) or `one_and_children` (one project, and
+    `include_children` merges its readable child projects into the same report).
     """
 
     module_key: str
@@ -1086,12 +1179,21 @@ class ReportCatalogueEntryOut(BaseModel):
     formats: list[str]
     supports_include_children: bool
     supports_project_filter: bool
+    supports_project_multi_filter: bool = False
     breakdown_path: str | None = None
     projects: list[ReportProjectOut] = []
     params: list[ReportParamOut]
+    variables: list[ReportVariableOut] = []
+    kind: Literal["report", "sheet"] = "report"
+    folder: str = ""
+    placement_key: str = ""
+    record_types: list[str] = []
+    view_only: bool = False
+    run_scope: Literal["any", "one", "one_and_children"] = "any"
 
 
-def _param_out(param: ReportParamDefinition) -> ReportParamOut:
+def param_out(param: ReportParamDefinition) -> ReportParamOut:
+    """A declared parameter in the shape the catalogue (and the layout designer's widget list) returns."""
     return ReportParamOut(
         name=param.name, type=param.type, default=param.default,
         choices=list(param.choices) if param.choices is not None else None,
@@ -1111,7 +1213,8 @@ def _entry(
         formats=list(REPORT_FORMATS), supports_include_children=scope == "project", supports_project_filter=scope == "organization",
         breakdown_path=f"{path}/by-project" if scope == "organization" else None,
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects],
-        params=[_param_out(p) for p in definition.params],
+        params=[param_out(p) for p in definition.params],
+        record_types=list(definition.record_types), view_only=definition.view_only,
     )
 
 
@@ -1143,9 +1246,7 @@ def project_catalogue(db: Session, project: Project) -> list[ReportCatalogueEntr
     for module_key, definition in get_all_reports():
         module = get_module(module_key)
         router = module.get_project_router() if module is not None and module.get_project_router is not None else None
-        if router is None or not is_module_enabled_for_project(db, project.id, module_key):
-            continue
-        if definition.subcomponent and not is_module_subcomponent_enabled(db, project.id, module_key, definition.subcomponent):
+        if router is None or not report_enabled_for_project(db, project.id, module_key, definition):
             continue
         path = _mounted_path(
             router, f"project_report_{definition.key}", f"{router.prefix}/reports/{definition.slug}",
@@ -1172,11 +1273,7 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
     scoped: dict[str, list[Project]] = {}  # per `org_scope`: the scope does not depend on the report
     for module_key, definition in get_all_reports():
         module = get_module(module_key)
-        if not definition.org_level or module is None or not is_module_enabled(db, organization_id, module_key):
-            continue
-        if definition.subcomponent and not is_org_module_subcomponent_enabled(
-            db, organization_id, module_key, definition.subcomponent,
-        ):
+        if not definition.org_level or module is None or not report_enabled_for_organization(db, organization_id, module_key, definition):
             continue
         if not user_satisfies_module_role(
             db, user, module_key, definition.org_role_key, organization_id=organization_id, project_id=None,
@@ -1194,14 +1291,14 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
             )
         pickable = [
             p for p in scoped[definition.org_scope]
-            if is_module_enabled_for_project(db, p.id, module_key)
-            and (not definition.subcomponent or is_module_subcomponent_enabled(db, p.id, module_key, definition.subcomponent))
+            if report_enabled_for_project(db, p.id, module_key, definition)
         ]
         entries.append(_entry(module_key, definition, scope="organization", path=path, projects=pickable))
     return entries
 
 
 __all__ = [
+    "DOCUMENT_FORMATS",
     "REPORT_FORMATS",
     "ReportBreakdownOut",
     "ReportBreakdownProjectOut",
@@ -1225,7 +1322,9 @@ __all__ = [
     "render_csv",
     "render_docx",
     "render_pdf",
+    "render_result",
     "report_mcp_tools",
+    "result_sheets",
     "scope_projects",
     "to_out",
     "validated_params",

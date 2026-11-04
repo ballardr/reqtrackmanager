@@ -6,7 +6,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildProject, withRouter, withToast } from "../../testing/storybook-helpers";
 import { ProjectFutureStatesPage } from "./ProjectFutureStatesPage";
 import type { FutureState } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const daysFromNow = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
@@ -103,7 +103,7 @@ export const ExportCarriesThePageFilters: Story = {
     await waitFor(() => expect(canvas.getByText("Missed target")).toBeInTheDocument());
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/future_state/export?roadmap_only=true&target_passed_only=true"));
   },
 };

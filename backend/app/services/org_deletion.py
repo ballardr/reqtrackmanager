@@ -5,6 +5,8 @@ Application-level cleanup required before an organisation row can be hard-
 deleted (`routers/orgs.py::delete_organization`) — everything a database
 foreign-key cascade can't do on its own:
 
+- Removing the stored output of every background custom report run (`GeneratedReport.output_key`), whose
+  rows a database cascade deletes but whose objects it would leave behind.
 - Removing every uploaded file's actual bytes from storage, not just its
   `FileAsset` row (a DB-only cascade would silently orphan the object in
   S3/local storage — see docs/soc2/policies/data-retention-and-disposal-
@@ -28,9 +30,6 @@ foreign-key cascade can't do on its own:
   link types: an entry's foreign key to a link type has no cascade (a deleted
   type must never dangle in a rule), so the database cannot order the two
   itself.
-- Deleting the org's report content rows (`ReportContent`): their owner is a
-  polymorphic id (template, project or the organisation) with no foreign key
-  to cascade through.
 - Deleting the org's projects explicitly, before the org row, so project-
   scoped rows never outlive the org-level definitions they reference
   (cascade order between the two isn't otherwise fixed).
@@ -59,11 +58,11 @@ from sqlalchemy.orm import Session
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.engagement import Subscription
 from app.models.file import FileAsset
-from app.models.organization import Organization, ReportTemplate
+from app.models.generated_report import GeneratedReport
+from app.models.organization import Organization
 from app.models.pat import PersonalAccessToken
 from app.models.project import Project
 from app.models.relationship import ArtefactLink
-from app.models.report_content import SCOPE_ORGANIZATION, SCOPE_PROJECT, SCOPE_TEMPLATE
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.requirement_link_type import (
@@ -72,8 +71,7 @@ from app.models.requirement_link_type import (
     RequirementLinkTypeDefinition,
 )
 from app.modules.registry import get_module_artefact_ids_in_organization
-from app.services.files import delete_file
-from app.services.report_content import delete_content_for_scopes
+from app.services.files import delete_file, get_storage_backend
 
 
 def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
@@ -114,12 +112,6 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
     db.execute(ArtefactTypeLinkRuleEntry.__table__.delete().where(ArtefactTypeLinkRuleEntry.rule_id.in_(rule_ids)))
     db.execute(ArtefactTypeLinkRule.__table__.delete().where(ArtefactTypeLinkRule.organization_id == organization_id))
 
-    # Report content has no FK to its owner (a template, project or the org).
-    template_ids = list(db.scalars(select(ReportTemplate.id).where(ReportTemplate.organization_id == organization_id)).all())
-    delete_content_for_scopes(db, SCOPE_TEMPLATE, template_ids)
-    delete_content_for_scopes(db, SCOPE_PROJECT, project_ids)
-    delete_content_for_scopes(db, SCOPE_ORGANIZATION, [organization_id])
-
     # Organization.logo_file_id/login_background_file_id are self-referential
     # FKs to file_assets with no ondelete action (models/organization.py) —
     # deleting a FileAsset row still referenced there raises a raw
@@ -140,6 +132,16 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
         .where(Organization.id == organization_id)
         .values(logo_file_id=None, login_background_file_id=None)
     )
+
+    # Stored report output is not a FileAsset: its object is named on the provenance row the cascade deletes.
+    storage = get_storage_backend()
+    for output_key in db.scalars(
+        select(GeneratedReport.output_key).where(
+            GeneratedReport.organization_id == organization_id, GeneratedReport.output_key.is_not(None)
+        )
+    ).all():
+        if output_key is not None:  # the query excludes rows without one
+            storage.delete(output_key)
 
     file_assets = list(db.scalars(select(FileAsset).where(FileAsset.organization_id == organization_id)).all())
     for file_asset in file_assets:

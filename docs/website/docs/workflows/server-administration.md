@@ -23,7 +23,7 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 | Server management |
 | --- |
-| Access review, platform branding, public sign-up, email, module and data policy settings |
+| Access review, platform branding, public sign-up, email, module, report font and data policy settings |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
 - **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators. **Add user** creates a person from here (see [Adding a user](#adding-a-user)).
@@ -33,6 +33,7 @@ Opening any one org's admin page from here as a server admin (rather than an org
 - **Email** — deployment-wide outbound email configuration.
 - **Data policy** — the deployment default for personal data in record exports and imports (see [below](#personal-data-in-exports-and-imports)).
 - **Modules** — which [modules](../modules/overview.md) exist for whom: the default entitlement policy (open or closed), what an organisation gets for a module it has not chosen itself (available, and on for new projects), an **Apply to all organisations** action that writes those defaults into existing organisations (type the word shown to confirm), and a per-organisation list to grant or withdraw a module. A module withdrawn from an organisation disappears from its administrators' and projects' module lists. A fresh install starts with every module available; an upgraded one changes only when you choose.
+- **Report fonts** — the fonts report authors can choose. The four bundled fonts are always offered. A house typeface is added by putting its `.ttf` files in the font directory the deployment mounts (see [Extra report fonts](../installation-deployment/production-deployment.md#extra-report-fonts)) and pressing **Rescan**. For each provided family you can switch **Offered to authors** off (layouts already using it keep working), set the **Name in Word and OpenDocument** and a **Generic fallback** (sans-serif, serif or monospace) for readers who lack the font. The page lists the faces found with each font's licence permission, and every file that was skipped with the reason (for example, a font whose licence forbids embedding). You are responsible for the licence of every font you provide. PDF reports always carry the real font; Word and OpenDocument files name it.
 
 ## Personal data in exports and imports
 

@@ -22,6 +22,8 @@ import { Popover } from "./Popover";
  * @param children The add form; called with `close`, which dismisses the popover.
  * @param disabled Disables the button, e.g. while there is nothing left to add.
  * @param icon Replaces the (+) icon, e.g. a pencil when the control changes an existing value.
+ * @param text A word shown beside the icon ("+ Field"), for a button that must say what it adds; the accessible
+ *   name stays `label`.
  * @param size `sm` (default) beside a heading or value in a page's body; `md` when it sits in a group
  *   of default-size buttons (a panel header), so neighbours match (style guide, "Pattern: button sizes").
  */
@@ -31,12 +33,14 @@ export function AddPopoverButton({
   disabled,
   icon: Icon = Plus,
   size = "sm",
+  text,
 }: {
   label: string;
   children: (close: () => void) => ReactNode;
   disabled?: boolean;
   icon?: typeof Plus;
   size?: "sm" | "md";
+  text?: string;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -45,7 +49,7 @@ export function AddPopoverButton({
       <button
         ref={triggerRef}
         type="button"
-        className={size === "sm" ? "btn btn-sm btn-icon" : "btn btn-icon"}
+        className={`btn${size === "sm" ? " btn-sm" : ""}${text ? "" : " btn-icon"}`}
         aria-label={label}
         title={label}
         aria-haspopup="dialog"
@@ -54,6 +58,7 @@ export function AddPopoverButton({
         onClick={() => setOpen((o) => !o)}
       >
         <Icon size={14} aria-hidden="true" />
+        {text && <span style={{ marginLeft: "var(--space-1)" }}>{text}</span>}
       </button>
       {open && (
         <Popover anchorRef={triggerRef} title={label} onClose={() => setOpen(false)}>

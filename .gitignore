@@ -210,3 +210,9 @@ mcp-server/.ruff_cache/*
 perf/results/*
 !perf/results/README.md
 
+# macOS
+.DS_Store
+
+# Extra report fonts the server administrator provides (see report-fonts/README.md)
+/report-fonts/*
+!/report-fonts/README.md

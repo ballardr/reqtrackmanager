@@ -8,7 +8,6 @@ import type {
   Component,
   CustomFieldDefinition,
   EffectiveMember,
-  EffectiveReportContent,
   ModuleRoleDefinition,
   OrgGroup,
   OrgGroupProjectRoleSummary,
@@ -19,7 +18,6 @@ import type {
   ProjectMemberSource,
   ProjectModuleEnablement,
   ProjectModuleSubComponent,
-  ProjectReportConfig,
   ProjectStage,
   ProjectStatusDefinition,
 } from "../api/types";
@@ -35,6 +33,7 @@ import {
   withTerminology,
   withToast,
 } from "../testing/storybook-helpers";
+import { buildLayoutSummary } from "../testing/reportLayoutFixtures";
 import { buildUsage, buildVocabulary } from "../testing/tagsFixtures";
 import { ProjectAdminPage } from "./ProjectAdminPage";
 
@@ -71,8 +70,6 @@ function mockProjectAdminApis(
     groupRoles?: OrgGroupProjectRoleSummary[];
     groups?: ProjectGroup[];
     pendingInvites?: PendingInvite[];
-    reportConfig?: ProjectReportConfig;
-    effectiveReportContent?: EffectiveReportContent;
     moduleRoles?: ModuleRoleDefinition[];
     // The Modules tab's own
     // bulk module list and, per module, its declared sub-components (keyed
@@ -98,7 +95,7 @@ function mockProjectAdminApis(
   const organization: Organization = overrides.organization ?? {
     id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-    disabled_at: null, accent_color_hex: null, header_title: null,
+    disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
     code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: false,
@@ -134,16 +131,9 @@ function mockProjectAdminApis(
     // `limit`) would return everything.
     if (path.includes("/groups")) return groupsForThisStory;
     if (path.includes("/custom-fields")) return customFields;
-    if (path.includes("/report-content/effective")) return overrides.effectiveReportContent ?? {
-      report_key: "requirements", intro: "", chapters: [], appendices: [],
-      intro_source: null, chapters_source: null, appendices_source: null,
-    };
-    if (path.includes("/report-types")) return [
-      { key: "requirements", title: "Requirements report", module_name: null },
-      { key: "context_strategy.r1", title: "Pain point register", module_name: "Context & Strategy" },
-    ];
-    if (path.includes("/report-config")) return overrides.reportConfig ?? { default_report_template_id: null, content: [] };
-    if (path.includes("/report-templates")) return [];
+    if (path.endsWith("/report-layouts")) return [buildLayoutSummary({ project_id: PROJECT_ID })];
+    // Report Setup merges these three lists with the layouts: empty is a valid answer for each.
+    if (path.endsWith("/report-packs") || path.endsWith("/report-placements") || path.endsWith("/report-folders")) return [];
     // Hierarchical projects (docs/decisions.md). Checked before the plain
     // "/users" check below — /orgs/{id}/users also matches that.
     if (path.includes("/member-sources")) return overrides.memberSources ?? [];
@@ -222,6 +212,37 @@ export const OverviewTabSaveSettings: Story = {
         `/api/v1/projects/${PROJECT_ID}`,
         expect.objectContaining({ name: "Atlas Platform" })
       )
+    );
+  },
+};
+
+/** The Project report name is a short, optional name: it is sent trimmed on save, a blank one clears it, and its help explains it. */
+export const OverviewTabProjectReportName: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", report_name: "Atlas", status_id: "st1" }),
+    });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const field = await waitFor(() => {
+      const input = canvas.getByLabelText("Project report name");
+      expect(input).toHaveValue("Atlas");
+      return input;
+    });
+    await expect(field).toHaveAttribute("maxlength", "255");
+    await expect(canvas.getByRole("button", { name: "Help: Project report name" })).toBeInTheDocument();
+    await userEvent.clear(field);
+    await userEvent.type(field, "  Atlas 2  ");
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ report_name: "Atlas 2" })),
+    );
+    await userEvent.clear(field);
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenLastCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ report_name: null })),
     );
   },
 };
@@ -387,7 +408,7 @@ function buildForcedOrg(): Organization {
   return {
     id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-    disabled_at: null, accent_color_hex: null, header_title: null,
+    disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
     code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: true,
@@ -944,7 +965,7 @@ export const MembersTabAddMemberModalOpen: Story = {
     // The table underneath stays visible — a layer, not a page reflow.
     await expect(canvas.getByText("Priya Shah")).toBeInTheDocument();
 
-    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await expect(body.queryByRole("dialog")).not.toBeInTheDocument();
     expect(api.post).not.toHaveBeenCalled();
   },
@@ -1142,60 +1163,32 @@ export const MembersTabPendingInviteResend: Story = {
   },
 };
 
+/** Reports holds layouts, packs and placements only: no report-content editor or default template. */
 export const ReportSetupTab: Story = {
   beforeEach: () => {
     mockProjectAdminApis();
-    spyOn(api, "put").mockResolvedValue(undefined);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
-    const typeSelect = await canvas.findByLabelText("Report type");
-    // One option per report type, led by "All reports".
-    await expect(within(typeSelect).getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "All reports", "Requirements report", "Pain point register",
-    ]);
-    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
-    await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, { content: [], default_report_template_id: null })
-    );
-    // Principle 7 — every mutation ends with feedback.
-    await expect(within(document.body).getByText("Report setup saved.")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
+    await canvas.findByRole("treegrid", { name: "Reports, packs and tables" });
+    await expect(canvas.queryByLabelText("Report type")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Default report template")).not.toBeInTheDocument();
   },
 };
 
-/** A report type names where a blank field's content comes from (here an ancestor project's and the
- * organisation's), and "Use inherited" clears the project's own value so the next save falls back to it. */
-export const ReportSetupShowsInheritedContent: Story = {
+/** Reports lists the project's report layouts in one folder list, each opening in the designer. */
+export const ReportSetupListsTheReportLayouts: Story = {
   beforeEach: () => {
-    mockProjectAdminApis({
-      reportConfig: {
-        default_report_template_id: null,
-        content: [{ report_key: "requirements", intro: "Our own introduction.", chapters: [], appendices: [] }],
-      },
-      effectiveReportContent: {
-        report_key: "requirements", intro: "Our own introduction.",
-        chapters: [{ title: "Parent chapter", body: "x" }], appendices: [{ title: "Org appendix", body: "y" }],
-        intro_source: { scope_type: "project", scope_id: PROJECT_ID, scope_name: "Atlas", report_key: "requirements" },
-        chapters_source: { scope_type: "project", scope_id: "parent-1", scope_name: "Parent Programme", report_key: "*" },
-        appendices_source: { scope_type: "organization", scope_id: "org-1", scope_name: "Acme Corp", report_key: "requirements" },
-      },
-    });
-    spyOn(api, "put").mockResolvedValue(undefined);
+    mockProjectAdminApis();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Report Setup" }));
-    await userEvent.selectOptions(await canvas.findByLabelText("Report type"), "requirements");
-    await expect(await canvas.findByText("Inherited from Parent Programme")).toBeInTheDocument();
-    await expect(canvas.getByText("Organisation default (Acme Corp)")).toBeInTheDocument();
-    await expect(canvas.getByText("Parent chapter")).toBeInTheDocument();
-    // The introduction is the project's own, so it offers the way back to the inherited value.
-    await userEvent.click(canvas.getByRole("button", { name: "Use inherited" }));
-    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
-    await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/report-config`, { content: [], default_report_template_id: null })
-    );
+    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
+    const grid = within(await canvas.findByRole("treegrid", { name: "Reports, packs and tables" }));
+    await userEvent.click(grid.getByRole("button", { name: "Expand Custom reports" }));
+    await expect(grid.getByRole("button", { name: /^Requirements by component/ })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "New" })).toBeInTheDocument();
   },
 };
 

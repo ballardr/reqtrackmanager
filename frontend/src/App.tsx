@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { Layout } from "./components/Layout";
 import { Spinner } from "./components/Spinner";
@@ -21,6 +21,7 @@ import { OrgLoginPage } from "./pages/OrgLoginPage";
 import { OrgOverviewPage } from "./pages/OrgOverviewPage";
 import { PreferencesPage } from "./pages/PreferencesPage";
 import { HelpRedirectPage } from "./pages/HelpRedirectPage";
+import { ReportRunPage } from "./pages/ReportRunPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
 import { ProjectFilesPage } from "./pages/ProjectFilesPage";
@@ -28,7 +29,8 @@ import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectReviewsDuePage } from "./pages/ProjectReviewsDuePage";
-import { ReportsPage } from "./pages/ReportsPage";
+import { ReportLayoutDesignerPage } from "./pages/ReportLayoutDesignerPage";
+import { ReportPackPage } from "./pages/ReportPackPage";
 import { SearchPage } from "./pages/SearchPage";
 import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
@@ -37,6 +39,15 @@ import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
+
+/**
+ * Sends the old Org Admin "Templates & reports" address (`/orgs/:orgId/admin/templates-reports`) to its renamed
+ * group, so a bookmark or a link in older documentation still lands on the reports.
+ */
+function OldOrgReportsRedirect() {
+  const { orgId } = useParams<{ orgId: string }>();
+  return <Navigate to={`/orgs/${orgId}/admin/reports`} replace />;
+}
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth();
@@ -83,8 +94,12 @@ function ProtectedRoutes() {
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
+        <Route path="/orgs/:orgId/admin/templates-reports" element={<OldOrgReportsRedirect />} />
         <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
+        <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
+        <Route path="/orgs/:orgId/report-packs/:packId" element={<ReportPackPage />} />
         {/* "Organisation Overview" —
             reuses `OrgListPage`'s single-org/multi-org auto-redirect
             convention (`target="overview"`) as its own entry point, the
@@ -119,7 +134,8 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/files" element={<ProjectFilesPage />} />
         <Route path="/projects/:projectId/admin/:group?" element={<ProjectAdminPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
-        <Route path="/projects/:projectId/reports" element={<ReportsPage />} />
+        <Route path="/projects/:projectId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
+        <Route path="/projects/:projectId/report-packs/:packId" element={<ReportPackPage />} />
         <Route path="/projects/:projectId/reviews-due" element={<ProjectReviewsDuePage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/preferences/:group?" element={<PreferencesPage />} />

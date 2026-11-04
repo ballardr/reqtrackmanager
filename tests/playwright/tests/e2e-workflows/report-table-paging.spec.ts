@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API_BASE_URL = "http://localhost:8000";
 const DECISIONS = 55;
@@ -62,7 +63,7 @@ async function setup(page: Page, request: APIRequestContext) {
 test.describe("Report table paging", () => {
   test("a long table shows a page at a time and the CSV export keeps every row", async ({ page, request }) => {
     const { project, suffix } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports?report=decision-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=decision-register`);
 
     const register = page.getByRole("region", { name: "Decisions", exact: true });
     await expect(register.getByRole("row")).toHaveCount(PAGE_SIZE + 1); // header + first page
@@ -73,10 +74,10 @@ test.describe("Report table paging", () => {
     await expect(register.getByRole("button", { name: /Load more/ })).toHaveCount(0);
     await expect(register.getByText(/Showing \d+ of/)).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await pickReportFormat(page, "CSV");
     const [download] = await Promise.all([
       page.waitForEvent("download"),
-      page.getByRole("button", { name: "Download CSV report" }).click(),
+      reportDownloadButton(page).click(),
     ]);
     const csv = await readFile((await download.path())!, "utf8");
     expect(csv.split("\n").filter((line) => line.includes(`Paged ${suffix}`))).toHaveLength(DECISIONS);
@@ -84,7 +85,7 @@ test.describe("Report table paging", () => {
 
   test("the count and button are back after reloading the report", async ({ page, request }) => {
     const { project } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports?report=decision-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=decision-register`);
     const register = page.getByRole("region", { name: "Decisions", exact: true });
     await register.getByRole("button", { name: /Load more/ }).click();
     await page.reload();

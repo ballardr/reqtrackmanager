@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { clickAndAwaitSave, selectProjectAdminGroup } from "./e2e-workflows/helpers";
-import { chooseListAction } from "./listActions";
+import { chooseListAction, chooseExport } from "./listActions";
 
 /**
  * End-to-end golden path against the running tests/container/docker-compose.yml stack:
@@ -180,7 +180,8 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
   });
 
   await test.step("generate a PDF report", async () => {
-    await page.getByText("Reports").click();
+    await page.getByRole("link", { name: "Overview", exact: true }).click();
+    await page.getByRole("button", { name: "Reports", exact: true }).click();
     const downloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Generate PDF" }).click();
     const download = await downloadPromise;
@@ -201,6 +202,8 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
     await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download CSV report" }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain("requirements.csv");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Reports" })).toHaveCount(0);
   });
 
   await test.step("download the CSV import template", async () => {
@@ -213,7 +216,7 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("export requirements as a full-fidelity CSV", async () => {
     const downloadPromise = page.waitForEvent("download");
-    await chooseListAction(page, "Export as CSV");
+    await chooseExport(page, "CSV");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("requirements-export.csv");
   });

@@ -79,7 +79,10 @@ from app.modules.risk_management.alerts import NOTIFICATION_TYPES
 from app.modules.risk_management.mcp_tools import build_mcp_tools
 from app.modules.risk_management.models import RiskVersion
 from app.modules.risk_management.perf_dataset import generate_risks
+from app.modules.risk_management.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.risk_management.record_tables import RECORD_TABLES
+from app.modules.risk_management.report_fields import REPORT_FIELDS
+from app.modules.risk_management.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.risk_management.reports import REPORT_DEFINITIONS
 from app.modules.risk_management.scaling_probes import SCALING_PROBES
 from app.modules.risk_management.scoring import RISK_SCORING_SCHEME
@@ -210,6 +213,10 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={RISK_ARTEFACT_TYPE: RISK_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
+    report_fields=REPORT_FIELDS,
+    record_attachments=RECORD_ATTACHMENTS,
+    no_record_attachments=NO_RECORD_ATTACHMENTS,
+    report_starter_sections=REPORT_STARTER_SECTIONS,
     record_tables=RECORD_TABLES,
     scaling_probes=SCALING_PROBES,
     perf_generators={RISK_ARTEFACT_TYPE: PerfDatasetGenerator(generate=generate_risks, order=100)},

@@ -1396,6 +1396,8 @@ class SearchColumns:
         organization_id: The owning organisation, for a type that can be organisation-owned.
         owner_id: The id of the record to open instead, for a type without a page of its own
             (see `ArtefactSearchProvider.open_owner_type`).
+        version: The current version number, for a versioned type (`None` for one with no versions). A
+            generated report records it so the report names the exact version of each record it shows.
     """
 
     id: Any
@@ -1407,6 +1409,7 @@ class SearchColumns:
     updated_at: Any
     organization_id: Any | None = None
     owner_id: Any | None = None
+    version: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -1472,6 +1475,90 @@ class ArtefactSearchProvider:
     open_owner_type: str | None = None
     organization_subcomponent: str | None = None
     comments: SearchComments | None = None
+
+
+#: The value kinds a report field may have; the renderer formats each (`services.report_fields.format_value`).
+REPORT_FIELD_KINDS = ("text", "number", "date", "instant", "bool", "enum", "principal")
+
+
+@dataclass(frozen=True)
+class ReportField:
+    """One field of a record type that a custom report layout may print, filter or group by.
+
+    Report fields are opt-in, like search fields: a column not declared is never reachable from a
+    layout, so a Restricted-classified or consent-sensitive column is excluded by omission.
+
+    Attributes:
+        key: Stable identifier a layout names (`{{record.description}}`); a field shared by several
+            types reuses one key and label. `"code"`, `"title"`, `"status"` and `"tags"` are reserved
+            for what the engine builds itself from the provider's `SearchColumns`.
+        label: User-facing name for the field picker.
+        column: A SQL expression over `ReportFieldProvider.from_clause`. For a `principal` field, the
+            `<name>_type` column.
+        kind: One of `REPORT_FIELD_KINDS`. `date` is a calendar date, `instant` a past UTC time.
+        labels: For an `enum`, `{stored value: display label}`; a value is never shown raw.
+        id_column: For a `principal` field, the `<name>_id` column (a user or a group).
+        math: For a `text` field, whether people write equations in it (`\\( x \\)`, `$$ x $$`), so a layout's
+            text block that prints it draws them. Opt-in per field; any other text stays literal.
+        domain: For a field whose values come from a closed list a project defines (a component's name, a type
+            definition's name), `(db, project ids) -> the values on offer`, so a run-time variable can offer them as
+            options. An `enum` needs none (its `labels` are the domain); a field with neither takes free input.
+            `project ids` are the projects the report is for (one, or the readable projects of an organisation run).
+        core: Whether the field is part of the type's core detail: the few fields that say what a record is and who
+            answers for it (the person responsible, the main descriptive text). The default workbook starter prints
+            code, title, status and tags plus every core field of each type, so a new type's sheet is never empty.
+    """
+
+    key: str
+    label: str
+    column: Any
+    kind: str = "text"
+    labels: Mapping[str, str] = field(default_factory=dict)
+    id_column: Any | None = None
+    math: bool = False
+    domain: Callable[[Session, Sequence[uuid.UUID]], list[str]] | None = None
+    core: bool = False
+
+
+@dataclass(frozen=True)
+class RecordAttachmentProvider:
+    """How a record type's directly attached files are found, so a report's record-images block can print them.
+
+    The files are those a person attaches to the record itself (the type's own file-link table), never those on a comment
+    thread. The report engine reads only for records the layout's traversal already showed the caller, so a file prints
+    only when the caller could open it from the record's page.
+
+    Attributes:
+        link: The file-link table's model: it has a `file_id` column (a `FileAsset`) and the column below.
+        record_column: The link table's column holding the record's id (`PainPointFile.pain_point_id`).
+    """
+
+    link: Any
+    record_column: Any
+
+
+@dataclass(frozen=True)
+class ReportFieldProvider:
+    """How a module makes one of its `artefact_types` reportable by a custom report layout.
+
+    The provider describes the SQL (what the records are, which fields exist); the engine
+    (`services.report_fields`) owns batching, formatting and the rule that it is only ever asked
+    for records the caller was already shown by the link graph's authorisation.
+
+    Attributes:
+        from_clause: The table or join the records are read from (a version table joined in
+            for a versioned type, restricted to the current version by `where`).
+        columns: The record's identity and display columns (the shape the search uses).
+        fields: The fields a layout may use beyond code, title, status and tags.
+        where: Conditions that always apply (`valid_to IS NULL` for a versioned type).
+        status_labels: `{status value: display label}`.
+    """
+
+    from_clause: Any
+    columns: SearchColumns
+    fields: tuple[ReportField, ...] = ()
+    where: tuple[Any, ...] = ()
+    status_labels: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -1895,11 +1982,33 @@ REPORT_PARAM_TYPES: frozenset[str] = frozenset({"string", "integer", "boolean", 
 REPORT_ORG_SCOPES: frozenset[str] = frozenset({"readable_projects", "all_org_projects"})
 # Query names the framework owns; a declared parameter may not shadow one.
 RESERVED_REPORT_PARAM_NAMES: frozenset[str] = frozenset({
-    "format", "include_children", "report_template_id", "project_id", "organization_id", "current_user", "db",
+    "format", "include_children", "project_id", "organization_id", "current_user", "db",
     "request",
 })
 _REPORT_SLUG_PATTERN = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 _REPORT_PARAM_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_REPORT_PART_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+# Parts every report offers without declaring them: its headline figures and its caveat notes.
+BUILT_IN_REPORT_PARTS: tuple[str, ...] = ("figures", "notes")
+
+
+@dataclass(frozen=True)
+class ReportPartDefinition:
+    """One table of a report that a custom report layout can embed on its own (a widget).
+
+    A widget is a component, not a whole report: the layout supplies the headings and prose around it.
+
+    Attributes:
+        key: The `ReportSection.key` the collector gives the table (`[a-z][a-z0-9_]*`, unique within the report,
+            not `figures` or `notes`, which every report offers).
+        title: Short name shown in the layout designer's widget list.
+        description: Optional one line about what the table holds.
+    """
+
+    key: str
+    title: str
+    description: str = ""
+
 
 
 @dataclass(frozen=True)
@@ -1940,6 +2049,88 @@ class ReportParamDefinition:
 
 
 @dataclass(frozen=True)
+class ReportStarterSection:
+    """A part of a starter report layout (Business Requirements Document, Engineering Specification, Review
+    Package) that a module contributes for its own records.
+
+    Attributes:
+        starter: The starter's key (`services.report_starters`, e.g. `business-requirements-document`).
+        order: Where the part sits among the starter's parts (ascending; the core's own parts leave gaps).
+        nodes: The layout blocks of the part (headings, text, tables, widgets), written against the report
+            field registry and widget catalogue. The core wraps them in an `if` on this module, so a project
+            where the module is off leaves them out; the nodes do not test for that.
+    """
+
+    starter: str
+    order: int
+    nodes: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class ReportSnippetParameter:
+    """One choice a person makes when inserting a report snippet (`ReportSnippet.parameters`).
+
+    A parameter names where its value goes as **paths into the fragment** (`nodes[0].file`), never as a token parsed
+    out of text, so the fragment is always a valid tree, a value cannot land in the wrong field, and a snippet is
+    checked whole when it is defined.
+
+    Attributes:
+        key: Stable key, unique within the snippet.
+        label: What the form calls it.
+        kind: `image` (a picture from the layout's library; required), `record_type` (a reportable record type the scope
+            can use; required) or `text` (a short text; `default` is used when the person leaves it empty).
+        targets: Paths in the fragment that receive the value, `nodes[...]` or `page_styles[...]` style
+            (`nodes[0].children[1].source.record_type`).
+        help: One or two sentences: what it is and what it affects.
+        default: The value used when none is given (`text` only; an image and a record type are never defaulted).
+        record_types: For `record_type`: `reportable` (any type the scope can report) or `attachments` (only types whose
+            attached files a report can print).
+        max_length: Longest text accepted (`text`).
+    """
+
+    key: str
+    label: str
+    kind: str
+    targets: tuple[str, ...]
+    help: str
+    default: str | None = None
+    record_types: Literal["reportable", "attachments"] = "reportable"
+    max_length: int = 200
+
+
+@dataclass(frozen=True)
+class ReportSnippet:
+    """A named fragment of a report layout that the designer inserts by copying its blocks (nothing links back).
+
+    Attributes:
+        key: Stable key, unique across core and modules.
+        name: Display name.
+        description: One sentence about what it adds.
+        category: Group the picker lists it under.
+        blocks: The blocks inserted (a tree fragment, valid against the block schemas when applied).
+        family: `document` or `table`, the layout family it belongs to.
+        root: Root-level things the blocks depend on, added to the layout: `page_styles` (a list of page styles) and
+            `variables` (a list of variable definitions). A name the layout already uses is reused when identical, and
+            otherwise a page style is renamed (the blocks' references follow) and a variable refused.
+        parameters: What the person chooses on insert.
+        formats: The output formats the result is true in (`html`, `pdf`, `docx`, `odt`), shown in the picker.
+        layout_aware: Optional hook `(fragment, values, tree, image_aspect) -> None` that adjusts the fragment to the layout
+            it goes into (the page's width, a picture's shape) before the value targets are filled. Built-in snippets only.
+    """
+
+    key: str
+    name: str
+    description: str
+    category: str
+    blocks: tuple[dict[str, Any], ...]
+    family: str = "document"
+    root: Mapping[str, Any] = field(default_factory=dict)
+    parameters: tuple[ReportSnippetParameter, ...] = ()
+    formats: tuple[str, ...] = ("html", "pdf", "docx", "odt")
+    layout_aware: Callable[..., None] | None = None
+
+
+@dataclass(frozen=True)
 class ReportDefinition:
     """Declares one report a module contributes (see docs/modules.md,
     "Reports"). Core generates the routes (`?format=json|pdf|csv`), access
@@ -1956,6 +2147,9 @@ class ReportDefinition:
             enabled for the report to be offered, or `None` when only the
             module itself must be enabled (the collector then reports
             `eligible_projects` itself).
+        any_subcomponents: Keys of the module's own `sub_components` for a report that spans several of them (a
+            summary of Strategy, Future State and Guiding Principles): it is offered while at least one is enabled and
+            hidden once every one is off. Exclusive with `subcomponent`.
         org_level: Whether an organisation-wide variant exists.
         org_role_key: The org-scoped `ModuleRoleDefinition.role_key` of this
             module a caller must hold to run the organisation-wide variant.
@@ -1975,11 +2169,24 @@ class ReportDefinition:
             `ReportContext.code` / `ReportContext.org_code` and the row's tags
             through `ReportContext.tag_text`, never a hand-formatted code; the
             declaration lets a test prove each type is registered and coded.
+        view_only: True for a report meant to be read on screen and not downloaded as a file (a summary pack). A record
+            list's "Download report" does not offer it; the Reports dialog still shows it, and its `parts` stay
+            available as widgets.
         cell_tones: Badge colours for the PDF and Word output, by column heading: `{"Status": {"Approved": "accent"}}`
             tones every cell under a column headed "Status" whose text is a listed label, in every section of the
             report, as the screen's badge does. Build the inner maps with `report_framework.tones_by_label` from the
             module's label and tone maps. A cell whose text is not listed is left plain. Ratings are toned by the
             collector (`ReportSection.tones`), which wins over this.
+        usual_widths: A usual width by column heading (`{"Priority": "8%", "Due": "9%"}`: `30%`, `4 cm` or `40 mm`) for
+            a column whose content has a predictable size, in every table of the report. It sizes the report's tables
+            when a custom report layout embeds them (a widget): those columns take the width, the others share the
+            rest by content, and tables with the same headings still line up. A heading a table lacks is ignored.
+            Only headings that a section of the report really has may be declared (`report_framework.unknown_usual_widths`
+            checks a collected report in the module's tests).
+        parts: The report's tables a custom report layout can embed one at a time (widgets), by the
+            `ReportSection.key` the collector gives them. Declare every table whose key is fixed; a table whose
+            key depends on the data is not embeddable. Every report also offers `figures` (its headline figures)
+            and `notes` (its caveats) without declaring them.
     """
 
     key: str
@@ -1988,12 +2195,16 @@ class ReportDefinition:
     description: str
     collector: Callable[[Session, ReportContext], ReportResult]
     subcomponent: str | None = None
+    any_subcomponents: tuple[str, ...] = field(default=())
     org_level: bool = False
     org_role_key: str | None = None
     org_scope: Literal["readable_projects", "all_org_projects"] = "readable_projects"
     params: tuple[ReportParamDefinition, ...] = field(default=())
     record_types: tuple[str, ...] = field(default=())
+    view_only: bool = False
     cell_tones: Mapping[str, Mapping[str, str]] = field(default_factory=dict, compare=False)
+    usual_widths: Mapping[str, str] = field(default_factory=dict, compare=False)
+    parts: tuple[ReportPartDefinition, ...] = field(default=())
 
 
 @dataclass(frozen=True)
@@ -2468,6 +2679,23 @@ class ModuleDefinition:
             Scope filter (Compliance: one standard). Addressed in a request as
             `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
             caller's project is neither offered nor accepted.
+        report_fields: Maps one of this module's own `artefact_types` to a `ReportFieldProvider`, making
+            its records usable by custom report layouts (selectable as a source, traversable by link,
+            printable by field). Read via `get_report_field_providers`. Registration is required of
+            every artefact type: one that cannot be reported says why in `not_reportable`.
+        not_reportable: `{artefact type: reason}` for a type deliberately left out of custom reports. A
+            backend test fails for a type that has neither.
+        record_attachments: Maps one of this module's own `artefact_types` to a `RecordAttachmentProvider`, making the
+            files attached to its records printable by a custom report's record-images block. Read via
+            `get_record_attachment_providers`. A reportable type that cannot be given one (no attachments, or attachments
+            that may hold personal data) says why in `no_record_attachments`; a backend test fails for a type with neither.
+        no_record_attachments: `{artefact type: reason}` for a reportable type whose attachments a report never prints.
+        report_starter_sections: The parts of the platform's starter report layouts this module supplies for its
+            own records (`ReportStarterSection`), so a starter names no module in a core file. Read via
+            `get_report_starter_sections`; each is validated as part of its starter by a backend test.
+        report_snippets: Fragments of a report layout the designer can insert (`ReportSnippet`) about this module's
+            own records, so a snippet names no module in a core file. Offered only where this module is on. Read via
+            `get_report_snippets`; a backend test applies each to an empty layout.
         record_tables: Maps one of this module's own `artefact_types` to a `RecordTableProvider`, making its
             list exportable (CSV, PDF, Word) and, where the provider has `create`/`update`, importable from the
             list itself. Read via `get_record_table_providers`. Registration is required of every artefact
@@ -2578,6 +2806,12 @@ class ModuleDefinition:
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
+    report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
+    not_reportable: dict[str, str] = field(default_factory=dict)
+    record_attachments: dict[str, RecordAttachmentProvider] = field(default_factory=dict)
+    no_record_attachments: dict[str, str] = field(default_factory=dict)
+    report_starter_sections: tuple[ReportStarterSection, ...] = field(default=())
+    report_snippets: tuple[ReportSnippet, ...] = field(default=())
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
@@ -3203,6 +3437,29 @@ def is_org_module_subcomponent_enabled(
         return False
     org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
     return org_state is not None and org_state[0]
+
+
+def report_enabled_for_project(db: Session, project_id: uuid.UUID, module_key: str, report: ReportDefinition) -> bool:
+    """Whether `report` is offered on a project: its module is enabled and, when it declares a sub-component, that one
+    is (`subcomponent`) or at least one of those it spans is (`any_subcomponents`)."""
+    if not is_module_enabled_for_project(db, project_id, module_key):
+        return False
+    if report.subcomponent:
+        return is_module_subcomponent_enabled(db, project_id, module_key, report.subcomponent)
+    if report.any_subcomponents:
+        return any(is_module_subcomponent_enabled(db, project_id, module_key, key) for key in report.any_subcomponents)
+    return True
+
+
+def report_enabled_for_organization(db: Session, organization_id: uuid.UUID, module_key: str, report: ReportDefinition) -> bool:
+    """Organisation-level twin of `report_enabled_for_project`."""
+    if not is_module_enabled(db, organization_id, module_key):
+        return False
+    if report.subcomponent:
+        return is_org_module_subcomponent_enabled(db, organization_id, module_key, report.subcomponent)
+    if report.any_subcomponents:
+        return any(is_org_module_subcomponent_enabled(db, organization_id, module_key, key) for key in report.any_subcomponents)
+    return True
 
 
 def _project_ids_without_row(db: Session, organization_id: uuid.UUID, row_model, **row_filters) -> list[uuid.UUID]:
@@ -4001,7 +4258,7 @@ def validate_report_definitions(
     """Splits report declarations into the valid ones and a list of problems.
 
     A report is excluded (never partially served) when its key or slug repeats
-    an earlier one, its slug or parameters are malformed, `org_level` has no
+    an earlier one, its slug, parameters or parts are malformed, `org_level` has no
     `org_role_key`, or `org_scope` is unknown. When the registry facts are
     supplied it is also excluded for naming a sub-component the module does not
     declare, or an `org_role_key` that is not one of the module's org-scoped
@@ -4036,12 +4293,23 @@ def validate_report_definitions(
             problem = "org_role_key on a report with no organisation-wide variant"
         elif subcomponent_keys is not None and report.subcomponent and report.subcomponent not in subcomponent_keys:
             problem = f"unknown sub-component '{report.subcomponent}'"
+        elif report.any_subcomponents and report.subcomponent:
+            problem = "subcomponent and any_subcomponents are exclusive"
+        elif subcomponent_keys is not None and any(k not in subcomponent_keys for k in report.any_subcomponents):
+            problem = "unknown sub-component in any_subcomponents"
         elif org_role_keys is not None and report.org_role_key and report.org_role_key not in org_role_keys:
             problem = f"'{report.org_role_key}' is not an org-scoped role of this module"
         else:
             names = [p.name for p in report.params]
+            part_keys = [p.key for p in report.parts]
             if len(set(names)) != len(names):
                 problem = "duplicate parameter name"
+            elif len(set(part_keys)) != len(part_keys):
+                problem = "duplicate part key"
+            elif any(not _REPORT_PART_KEY_PATTERN.match(k) or k in BUILT_IN_REPORT_PARTS for k in part_keys):
+                problem = f"invalid part key (lower-case words joined by _, not {' or '.join(BUILT_IN_REPORT_PARTS)})"
+            elif any(not p.title.strip() for p in report.parts):
+                problem = "a part has no title"
             else:
                 problem = next((m for m in (_report_param_problem(p) for p in report.params) if m), None)
         if problem is not None:
@@ -4212,6 +4480,77 @@ def get_not_searchable_types() -> dict[str, str]:
     reasons: dict[str, str] = {}
     for definition in get_module_registry().values():
         reasons.update(definition.not_searchable)
+    return reasons
+
+
+def get_report_starter_sections(starter: str) -> list[tuple[str, ReportStarterSection]]:
+    """The parts modules contribute to the starter layout `starter`, as `(module_key, section)` in `order`
+    (registry order breaks a tie)."""
+    found = [
+        (key, section)
+        for key, definition in get_module_registry().items()
+        for section in definition.report_starter_sections
+        if section.starter == starter
+    ]
+    return sorted(found, key=lambda pair: pair[1].order)
+
+
+def get_report_snippets() -> list[tuple[str | None, ReportSnippet]]:
+    """Every report snippet as `(module_key, snippet)`: the core set first (`module_key` is `None`;
+    `services.report_snippets_core`), then each module's `report_snippets`. A key claimed twice keeps the first."""
+    from app.services.report_snippets_core import CORE_REPORT_SNIPPETS
+
+    found: list[tuple[str | None, ReportSnippet]] = [(None, snippet) for snippet in CORE_REPORT_SNIPPETS]
+    seen = {snippet.key for _module, snippet in found}
+    for key, definition in get_module_registry().items():
+        for snippet in definition.report_snippets:
+            if snippet.key not in seen:
+                seen.add(snippet.key)
+                found.append((key, snippet))
+    return found
+
+
+def get_report_field_providers() -> dict[str, ReportFieldProvider]:
+    """Every registered artefact type's `ReportFieldProvider`: the core types'
+    (`services.report_fields_core`) plus each module's `report_fields`. A type claimed twice keeps
+    the first registration."""
+    from app.services.report_fields_core import CORE_REPORT_FIELDS
+
+    merged: dict[str, ReportFieldProvider] = dict(CORE_REPORT_FIELDS)
+    for definition in get_module_registry().values():
+        for artefact_type, provider in definition.report_fields.items():
+            merged.setdefault(artefact_type, provider)
+    return merged
+
+
+def get_record_attachment_providers() -> dict[str, RecordAttachmentProvider]:
+    """Every registered artefact type's `RecordAttachmentProvider`: the core types'
+    (`services.record_attachments_core`) plus each module's `record_attachments`. A type claimed twice keeps the
+    first registration."""
+    from app.services.record_attachments_core import CORE_RECORD_ATTACHMENTS
+
+    merged: dict[str, RecordAttachmentProvider] = dict(CORE_RECORD_ATTACHMENTS)
+    for definition in get_module_registry().values():
+        for artefact_type, provider in definition.record_attachments.items():
+            merged.setdefault(artefact_type, provider)
+    return merged
+
+
+def get_no_record_attachment_reasons() -> dict[str, str]:
+    """`{artefact type: reason}` for every reportable type whose attachments a report never prints."""
+    from app.services.record_attachments_core import CORE_NO_RECORD_ATTACHMENTS
+
+    reasons: dict[str, str] = dict(CORE_NO_RECORD_ATTACHMENTS)
+    for definition in get_module_registry().values():
+        reasons.update(definition.no_record_attachments)
+    return reasons
+
+
+def get_not_reportable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared not reportable."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_reportable)
     return reasons
 
 

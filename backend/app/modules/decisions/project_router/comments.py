@@ -7,6 +7,7 @@ Comment CRUD/edit and comment-file attach/detach. See the package's own
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -30,7 +31,7 @@ from app.services.module_attachments import comments_out
 router = APIRouter(tags=["decisions-comments"])
 
 
-def _comments_to_out(db: Session, comments: list[DecisionComment]) -> list[DecisionCommentOut]:
+def _comments_to_out(db: Session, comments: Sequence[DecisionComment]) -> list[DecisionCommentOut]:
     return comments_out(db, comments, out=DecisionCommentOut, fk="decision_id", file_model=DecisionCommentFile)
 
 

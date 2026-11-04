@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { installCleanupHook, selectOrgOverviewGroup } from "../../e2e-workflows/helpers";
+import { installCleanupHook, selectOrgOverviewGroup, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -73,7 +73,7 @@ test.describe("Stakeholders & Personas: Stakeholder groups", () => {
     await dialog.getByLabel("Group name").fill(acme.toUpperCase());
     await dialog.getByRole("button", { name: "Save" }).click();
     await expect(dialog.getByText(/already exists here/)).toBeVisible();
-    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await closeDialogWithoutSaving(dialog, { unsaved: true });
 
     // --- Rename it, and add a stakeholder to it from the members section.
     await page.getByRole("button", { name: `Edit ${acme}` }).click();

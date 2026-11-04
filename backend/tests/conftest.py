@@ -33,7 +33,9 @@ each worker additionally gets its own database, `reqtrack_pytest_test_gw0`,
 below creates its database on first use.
 """
 
+import asyncio
 import os
+import sys
 
 # `dedicated_pytest_database_url`/`PYTEST_DB_NAME` live in the tiny sibling
 # module `tests/_pytest_database.py`, not here, purely so this can be a
@@ -64,8 +66,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 
 import app.models  # noqa: F401  (populates Base.metadata)
+import app.security as app_security
 from alembic.config import Config
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.database import Base, SessionLocal
 from app.database import engine as app_engine
 from app.migrations import _BACKEND_DIR, run_migrations
@@ -73,6 +76,11 @@ from app.modules.registry import configure_alembic_version_locations, import_all
 from app.services.bootstrap import run_bootstrap
 
 import_all_module_models()  # populates Base.metadata for every registered module's own models
+
+# Every test creates users and logs in, and bcrypt at the production cost (12 rounds, about a quarter of a second
+# per hash or check) was a large share of the suite's runtime. The minimum cost is enough to exercise the same code
+# path; hashes carry their own cost, so verification is unaffected. Production keeps the library default.
+app_security._pwd_context.update(bcrypt__default_rounds=4)
 
 
 def build_alembic_config() -> Config:
@@ -162,22 +170,70 @@ def _default_security_posture(monkeypatch):
     The CI container shares its environment with the Playwright stack, which turns these on so an organisation's
     relay or IdP can sit on the stack's private network. A test that needs the opt-in sets it itself.
     """
-    settings = get_settings()
-    for name in ("org_smtp_allow_private_network_targets", "oidc_allow_private_network_targets"):
-        monkeypatch.setattr(settings, name, False)
+    # A test that clears the `get_settings` cache leaves modules holding the earlier instance (`settings =
+    # get_settings()` at import) beside a fresh one, so every instance in use is pinned, not just the cached one.
+    instances = {id(get_settings()): get_settings()}
+    for name, module in list(sys.modules.items()):
+        held = getattr(module, "settings", None) if name.startswith("app.") else None
+        if isinstance(held, Settings):
+            instances[id(held)] = held
+    for settings in instances.values():
+        for name in ("org_smtp_allow_private_network_targets", "oidc_allow_private_network_targets"):
+            monkeypatch.setattr(settings, name, False)
+
+
+_NON_EMPTY_PROBE: str | None = None
+_CAN_SKIP_FK_TRIGGERS: bool | None = None
+
+
+def _non_empty_tables(conn) -> list[str]:
+    """The names of the model tables that currently hold at least one row, in one statement.
+
+    Args:
+        conn: An open connection to the test database.
+
+    Returns:
+        The tables with a row. The rest are left alone: a test touches a few dozen of the schema's well over a
+        hundred tables.
+    """
+    global _NON_EMPTY_PROBE
+    if _NON_EMPTY_PROBE is None:
+        _NON_EMPTY_PROBE = " UNION ALL ".join(
+            f"SELECT '{t.name}' WHERE EXISTS (SELECT 1 FROM \"{t.name}\")" for t in Base.metadata.sorted_tables
+        )
+    return [row[0] for row in conn.execute(text(_NON_EMPTY_PROBE))]
+
+
+def _can_skip_fk_triggers(conn) -> bool:
+    """Whether the test role may set `session_replication_role` (a superuser may). Cached for the process."""
+    global _CAN_SKIP_FK_TRIGGERS
+    if _CAN_SKIP_FK_TRIGGERS is None:
+        _CAN_SKIP_FK_TRIGGERS = bool(conn.scalar(text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")))
+    return _CAN_SKIP_FK_TRIGGERS
 
 
 @pytest.fixture(autouse=True)
 def _clean_tables():
+    """Empties every table the test wrote to, so the next test starts from an empty database.
+
+    Deleting only the populated tables with foreign-key triggers off takes milliseconds. `TRUNCATE ... CASCADE`
+    took about a second per test because it also truncates every table that references a populated one, which is
+    most of the schema; it remains the fallback when the role cannot switch the triggers off. Both leave the same
+    empty tables (the FK cycles some tables have via use_alter columns, e.g. users.avatar_file_id -> file_assets
+    and file_assets.uploaded_by -> users, rule out deleting in dependency order with the triggers on).
+    """
     yield
     with app_engine.begin() as conn:
-        # A single TRUNCATE ... CASCADE (rather than per-table DELETE in
-        # dependency order) sidesteps the FK cycles some tables have via
-        # use_alter columns (e.g. users.avatar_file_id -> file_assets,
-        # file_assets.uploaded_by -> users), which `sorted_tables` ordering
-        # cannot fully resolve for deletion purposes.
-        table_names = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
-        conn.execute(text(f"TRUNCATE TABLE {table_names} CASCADE"))
+        touched = _non_empty_tables(conn)
+        if not touched:
+            return
+        if _can_skip_fk_triggers(conn):
+            conn.execute(text("SET LOCAL session_replication_role = replica"))
+            for name in touched:
+                conn.execute(text(f'DELETE FROM "{name}"'))
+        else:
+            all_tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
+            conn.execute(text(f"TRUNCATE TABLE {all_tables} CASCADE"))
 
 
 @pytest.fixture(scope="session")
@@ -194,10 +250,23 @@ def _app_client():
     # lifespan-managed background loop's timing, and no test mutates
     # persistent TestClient state (headers/cookies) that would leak across
     # tests. Per-test isolation still comes from `_clean_tables` below.
+    import app.main as app_main
     from app.main import app
 
-    with TestClient(app) as c:
-        yield c
+    # The leader's polling loops would otherwise run inside the test process, racing the tests for shared rows (a
+    # queued report run claimed before a test cancels it) and adding their own statements to a query count. Tests
+    # that exercise a loop's work call it directly (`report_run_jobs.run_next`, the disk and storage checks).
+    async def _idle() -> None:
+        await asyncio.Event().wait()
+
+    patch = pytest.MonkeyPatch()
+    for loop_name in ("run_disk_monitor_loop", "run_storage_health_loop", "run_digest_loop", "run_job_loop"):
+        patch.setattr(app_main, loop_name, _idle)
+    try:
+        with TestClient(app) as c:
+            yield c
+    finally:
+        patch.undo()
 
 
 @pytest.fixture
@@ -331,8 +400,26 @@ def direct_project_roles(project_id: str) -> dict[str, set[str]]:
     return result
 
 
-def create_org_admin_in(client, admin_token, org_name) -> tuple[dict, str]:
+def remove_starter_layouts(organization_id) -> None:
+    """Deletes the starter report layouts a new organisation is created with, so a test that lists or counts an
+    organisation's layouts starts from an empty set (`tests/test_report_starters.py` covers the starters themselves)."""
+    from app.models.report_layout import ReportLayout
+
+    db = SessionLocal()
+    try:
+        db.query(ReportLayout).filter(
+            ReportLayout.organization_id == organization_id, ReportLayout.project_id.is_(None)
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+def create_org_admin_in(client, admin_token, org_name, *, keep_starter_layouts: bool = False) -> tuple[dict, str]:
     """Creates a new organisation, then a genuine org_admin user within it.
+
+    The starter report layouts a new organisation is created with are deleted unless `keep_starter_layouts`, so
+    tests that list an organisation's layouts need not know about them.
 
     Since I-M-05 removed the server-admin bypass from `require_org_role`,
     the bootstrap server admin can no longer act directly on an org it
@@ -345,6 +432,8 @@ def create_org_admin_in(client, admin_token, org_name) -> tuple[dict, str]:
         A tuple of (organization dict, bearer token for the new org_admin).
     """
     org = client.post("/api/v1/orgs", json={"name": org_name}, headers=auth_headers(admin_token)).json()
+    if not keep_starter_layouts:
+        remove_starter_layouts(org["id"])
     email = f"{org_name.lower().replace(' ', '_')}_admin@example.com"
     client.post(
         f"/api/v1/orgs/{org['id']}/users",

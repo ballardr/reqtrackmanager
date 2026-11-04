@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { expect, type APIRequestContext, type Download, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -66,25 +67,50 @@ async function expectWordFile(download: Download, filenameEnd: string) {
 test.describe("Word (DOCX) report export", () => {
   test("the requirement report downloads as Word from the More formats menu", async ({ page, request }) => {
     const { project } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports`);
+    await page.goto(`/projects/${project.id}?reports=choose`);
 
     await page.getByRole("button", { name: "More formats" }).click();
     const menu = page.getByRole("dialog", { name: "Export" });
     await expect(menu.getByRole("button", { name: "Download PDF report" })).toHaveCount(0); // PDF has its own primary button
+    for (const name of ["ODT", "HTML", "CSV", "Excel", "ODS"]) {
+      await expect(menu.getByRole("button", { name: `Download ${name} report` })).toBeVisible();
+    }
     const downloadPromise = page.waitForEvent("download");
     await menu.getByRole("button", { name: "Download Word report" }).click();
     await expectWordFile(await downloadPromise, "-requirements.docx");
   });
 
-  test("a catalogue report downloads as Word from its Export menu and confirms with a toast", async ({ page, request }) => {
+  test("a catalogue report downloads as Word from its format list and confirms with a toast", async ({ page, request }) => {
     const { project } = await setup(page, request);
-    await page.goto(`/projects/${project.id}/reports?report=decision-register`);
+    await page.goto(`/projects/${project.id}?reports=choose&report=decision-register`);
     await expect(page.getByRole("region", { name: "Decisions", exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Export", exact: true }).click();
+    await pickReportFormat(page, "Word");
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("dialog", { name: "Export" }).getByRole("button", { name: "Download Word report" }).click();
+    await reportDownloadButton(page).click();
     await expectWordFile(await downloadPromise, "decision-register.docx");
-    await expect(page.getByText("Downloaded Decision register (Word file).")).toBeVisible();
+    await expect(page.getByText("Downloaded Decision register (Word).")).toBeVisible();
+  });
+
+  test("a module report is also offered as HTML, OpenDocument text, Excel and OpenDocument spreadsheet", async ({ page, request }) => {
+    const { project } = await setup(page, request);
+    await page.goto(`/projects/${project.id}?reports=choose&report=decision-register`);
+    await expect(page.getByRole("region", { name: "Decisions", exact: true })).toBeVisible();
+
+    const files: [string, string, string][] = [
+      ["HTML", "decision-register.html", "<"],
+      ["ODT", "decision-register.odt", "PK"],
+      ["Excel", "decision-register.xlsx", "PK"],
+      ["ODS", "decision-register.ods", "PK"],
+    ];
+    for (const [label, filename, magic] of files) {
+      await pickReportFormat(page, label);
+      const downloadPromise = page.waitForEvent("download");
+      await reportDownloadButton(page).click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toMatch(new RegExp(`${filename.replace(".", "\\.")}$`));
+      const bytes = await readFile((await download.path()) as string);
+      expect(bytes.subarray(0, magic.length).toString()).toBe(magic);
+    }
   });
 });

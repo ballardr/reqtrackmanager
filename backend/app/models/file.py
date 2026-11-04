@@ -40,6 +40,11 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
         is_org_resource: True for files uploaded as an organisation shared
             resource (C-M-03); False for files uploaded directly as a
             requirement attachment, avatar, or organisation logo.
+        project_id: Set only for a file in a project's own report-image library (a picture a project's report
+            layouts may embed); `None` for every other file. Such a file is readable by the project's members and
+            is never an organisation resource.
+        confidential: True when the file's owner marked it confidential: a report never prints it, whatever its record-image
+            rules match. Affects nothing else (the file stays as visible to the record's readers as any other).
     """
 
     __tablename__ = "file_assets"
@@ -52,6 +57,10 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
     size_bytes: Mapped[int] = mapped_column(Integer)
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_org_resource: Mapped[bool] = mapped_column(Boolean, default=False)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True,
+    )
+    confidential: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class RequirementFile(UUIDPKMixin, Base):

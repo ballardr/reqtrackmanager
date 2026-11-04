@@ -80,6 +80,7 @@ export function buildProject(overrides: Partial<Project> = {}): Project {
     name: "Atlas Platform",
     code: "ATLAS",
     summary: "Core platform requirements for the Atlas programme.",
+    report_name: null,
     created_at: "2026-01-05T09:00:00Z",
     updated_at: "2026-03-01T14:30:00Z",
     is_archived: false,
@@ -300,7 +301,7 @@ export function buildRequirementAction(overrides: Partial<RequirementAction> = {
 export function buildFileAsset(overrides: Partial<FileAsset> = {}): FileAsset {
   return {
     id: nextId("file"), organization_id: "org-1", filename: "spec.pdf", content_type: "application/pdf",
-    size_bytes: 10240, uploaded_by: "user-1", is_org_resource: false, created_at: "2026-01-10T09:00:00Z",
+    size_bytes: 10240, uploaded_by: "user-1", is_org_resource: false, confidential: false, created_at: "2026-01-10T09:00:00Z",
     ...overrides,
   };
 }

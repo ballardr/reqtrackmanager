@@ -1,15 +1,17 @@
 /**
  * Module: components/FormActions
  *
- * The actions of every create/edit form: the save error (if any), then Cancel and the primary
- * Save button on the right. One component so the error colour, button order and spacing stay the same
+ * The actions of every create/edit form: the save error (if any), then the primary Save button on
+ * the right (and Cancel, when the form is not in a dialog). One component so the error colour, button order and spacing stay the same
  * in every form (docs/ux-style-guide.md, "Pattern: form header").
  *
  * Inside a `Modal` or `SidePanel` it renders into the dialog's pinned header (error under the title,
  * buttons beside it) through a portal, so Save is reachable however long the form is; the form's
- * handlers and state are untouched. Outside a dialog, or inside a `Popover`, it renders inline.
+ * handlers and state are untouched. In a dialog the header's close button is the only way out, so
+ * there is no Cancel (closing with unsaved changes asks first; see `useDialogGuard.tsx`). Outside a
+ * dialog, or inside a `Popover`, it renders inline with Cancel.
  */
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { t } from "../i18n/strings";
@@ -19,12 +21,12 @@ const strings = t();
 
 /**
  * @param error A save error to show above the buttons.
- * @param onCancel Called by Cancel.
+ * @param onCancel Called by Cancel (shown only outside a dialog; in a dialog the close button leaves).
  * @param onSave Called by the primary button; omit it for a Cancel-only form (no primary button).
  * @param saveLabel The primary button's text (default "Save"; callers with a verb such as "Create" pass it).
  * @param saveTone "danger" styles the primary button as destructive (a reject or delete that needs a note).
- * @param cancelDisabled Disables Cancel, normally while a request is in flight.
- * @param cancelLabel Cancel's text (default "Cancel"); a step that has already written something passes "Close".
+ * @param cancelDisabled Disables Cancel, normally while a request is in flight (outside a dialog).
+ * @param cancelLabel Cancel's text (default "Cancel"); a step that has already written something passes "Close" (outside a dialog).
  * @param saveDisabled Disables the primary button, normally while the form is invalid.
  * @param onSaveAndActivate Offers "Save and activate" beside Save: creates the record already active. Pass it only
  *   on a create form for a type whose activation has no gate beyond creating it (docs/ux-style-guide.md, "Pattern:
@@ -49,13 +51,17 @@ export function FormActions({
   children?: ReactNode;
 }) {
   const slots = useDialogSlots();
+  const registerForm = slots?.registerForm;
+  useEffect(() => registerForm?.(), [registerForm]);
   const errorNode = error ? <div style={{ color: "var(--color-danger)" }}>{error}</div> : null;
+  const inDialog = !!slots;
+  const hasButtons = !inDialog || !!(leading || children || onSave);
   const buttons = (
     <div className="row" style={{ justifyContent: leading ? "space-between" : "flex-end" }}>
       {leading}
       <div className="row">
         {children}
-        <button className="btn" disabled={cancelDisabled} onClick={onCancel}>{cancelLabel}</button>
+        {!inDialog && <button className="btn" disabled={cancelDisabled} onClick={onCancel}>{cancelLabel}</button>}
         {onSave && onSaveAndActivate && (
           <button className="btn" disabled={saveDisabled} onClick={onSaveAndActivate}>{strings.common.saveAndActivate}</button>
         )}
@@ -78,7 +84,7 @@ export function FormActions({
   return (
     <>
       {slots.error && errorNode && createPortal(errorNode, slots.error)}
-      {slots.actions && createPortal(buttons, slots.actions)}
+      {slots.actions && hasButtons && createPortal(buttons, slots.actions)}
     </>
   );
 }

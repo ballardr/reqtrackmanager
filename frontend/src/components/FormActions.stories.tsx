@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, within } from "storybook/test";
 
 import { FormActions } from "./FormActions";
+import { Modal } from "./Modal";
 
 const meta: Meta<typeof FormActions> = { title: "Components/FormActions", component: FormActions };
 export default meta;
@@ -69,6 +70,20 @@ export const DangerToneAndDisabledCancelWhileBusy: Story = {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("button", { name: "Reject" })).toHaveClass("btn-danger");
     await expect(canvas.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  },
+};
+
+/** In a dialog the header's close button is the way out, so FormActions shows Save but no Cancel. */
+export const InADialogThereIsNoCancel: Story = {
+  render: () => (
+    <Modal title="New thing" onClose={fn()}>
+      <FormActions onCancel={fn()} onSave={fn()} />
+    </Modal>
+  ),
+  play: async () => {
+    const dialog = within(document.body).getByRole("dialog", { name: "New thing" });
+    await expect(within(dialog).getByRole("button", { name: "Save" })).toBeInTheDocument();
+    await expect(within(dialog).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   },
 };
 

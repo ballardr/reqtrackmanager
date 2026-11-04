@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installCleanupHook } from "../../e2e-workflows/helpers";
+import { installCleanupHook, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "../stakeholders/helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -14,7 +14,7 @@ installCleanupHook();
  * Disposable org, created through the API and removed afterwards, so the spec depends on no seeded
  * state and can be repeated against the same database.
  */
-test("Save and Cancel stay in the pinned header of the Pain Point create and edit forms", async ({ page }) => {
+test("Save and Close stay in the pinned header of the Pain Point create and edit forms", async ({ page }) => {
   const { suffix, org, project, adminHeaders } = await setUpOrg(page, "FormHeader");
   const enable = await page.request.put(`${API_BASE_URL}/api/v1/orgs/${org.id}/modules/context_strategy`, {
     headers: adminHeaders, data: { enabled: true },
@@ -52,8 +52,9 @@ test("Save and Cancel stay in the pinned header of the Pain Point create and edi
   await dialog.getByLabel("Pain Point title").fill(title);
   await expect(save).toBeEnabled();
 
-  await test.step("Escape closes the form without saving", async () => {
+  await test.step("Escape asks before closing a form with changes, and Discard closes it without saving", async () => {
     await dialog.getByLabel("Pain Point title").press("Escape");
+    await page.getByRole("dialog", { name: "Discard unsaved changes?" }).getByRole("button", { name: "Discard changes" }).click();
     await expect(dialog).not.toBeVisible();
     await expect(page.getByText(title)).toHaveCount(0);
     await page.getByRole("button", { name: "New Pain Point" }).click();
@@ -77,7 +78,7 @@ test("Save and Cancel stay in the pinned header of the Pain Point create and edi
     const saveBox = (await editSave.boundingBox())!;
     const bodyBox = (await editBody.boundingBox())!;
     expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(bodyBox.y + 1);
-    await editDialog.getByRole("button", { name: "Cancel" }).click();
+    await closeDialogWithoutSaving(editDialog, { unsaved: false });
     await expect(editDialog).not.toBeVisible();
   });
 });

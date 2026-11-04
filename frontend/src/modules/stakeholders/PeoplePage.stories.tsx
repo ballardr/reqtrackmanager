@@ -8,7 +8,7 @@ import { buildProject, withRouter, withToast } from "../../testing/storybook-hel
 import { buildPersona, buildStakeholder, buildStakeholderGroup, buildStakeholderScheme } from "./fixtures";
 import { PeoplePage } from "./PeoplePage";
 import type { EffectivePersonaType, Persona, Stakeholder, StakeholderGroup } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 const BASE = `/api/v1/projects/${PROJECT_ID}/modules/stakeholders`;
@@ -394,7 +394,7 @@ export const PersonasOnlyOffersTheirOwnExportWithTheFilters: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Field Technician")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Status"), "draft");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/persona/export?status=draft`));
   },
 };
@@ -413,7 +413,7 @@ export const SeveralKindsOfferAnExportEach: Story = {
       await expect(await menu.findByText(heading)).toBeInTheDocument();
     }
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV", "Stakeholders");
+    await chooseExport(canvas, "CSV", "Stakeholders");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/records/stakeholder/export`));
   },
 };

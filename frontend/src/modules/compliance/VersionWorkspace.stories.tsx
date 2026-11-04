@@ -6,7 +6,7 @@ import { buildRecordColumns } from "../../testing/recordTablesFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { VersionWorkspace } from "./VersionWorkspace";
 import type { ComplianceActionType, ComplianceStandard, ComplianceStandardVersion, StandardVersionDiff } from "./types";
-import { chooseListAction, openListMenu } from "../../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const ORG_ID = "org-1";
 const ACTION_TYPES: ComplianceActionType[] = [{ id: "at-1", organization_id: ORG_ID, name: "Review", sort_order: 0 }];
@@ -228,7 +228,7 @@ export const RequirementsExportForThisVersion: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await chooseListAction(canvas, "Export as CSV", "Requirements");
+    await chooseExport(canvas, "CSV", "Requirements");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
       `/api/v1/orgs/${ORG_ID}/records/compliance_requirement/export?standard=std-1&version=ver-1`
     ));

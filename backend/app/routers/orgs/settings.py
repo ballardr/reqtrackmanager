@@ -62,6 +62,7 @@ from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_email
 from app.services.net_guard import assert_public_host
 from app.services.rbac import require_org_module_enabled_dynamic, require_org_role
+from app.services.report_file_names import ORG_FILE_NAME_PLACEHOLDERS, template_problems
 
 router = APIRouter(tags=["organizations-settings"])
 settings = get_settings()
@@ -87,7 +88,13 @@ def get_advanced_settings(
     return OrgAdvancedSettingsOut(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
-        pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
+        pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
+        report_include_cover_page=org.report_include_cover_page,
+        report_chapters_per_component=org.report_chapters_per_component,
+        report_output_default_retention_days=settings.report_output_default_retention_days,
+        report_output_max_retention_days=settings.report_output_max_retention_days,
+        require_2fa=org.require_2fa,
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
@@ -124,6 +131,21 @@ def update_advanced_settings(
         org.smtp_password = payload.smtp_password
     org.smtp_use_tls = payload.smtp_use_tls
     org.pat_max_lifetime_days = payload.pat_max_lifetime_days
+    # Stored output of background custom reports; capped by the platform ceiling when read
+    # (`services.report_run_jobs.effective_retention_days`), so a larger value is accepted but not honoured.
+    org.report_output_retention_days = payload.report_output_retention_days
+    file_name = (payload.report_file_name or "").strip() or None
+    if file_name is not None:
+        problems = template_problems(file_name, allowed=ORG_FILE_NAME_PLACEHOLDERS, variables=None)
+        if problems:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problems[0])
+    org.report_file_name = file_name
+    if "report_footer_text" in payload.model_fields_set:
+        org.report_footer_text = (payload.report_footer_text or "").strip() or None
+    if payload.report_include_cover_page is not None:
+        org.report_include_cover_page = payload.report_include_cover_page
+    if payload.report_chapters_per_component is not None:
+        org.report_chapters_per_component = payload.report_chapters_per_component
     org.require_2fa = payload.require_2fa
     org.allow_self_signup = payload.allow_self_signup
     org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
@@ -155,7 +177,13 @@ def update_advanced_settings(
     return OrgAdvancedSettingsOut(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
-        pat_max_lifetime_days=org.pat_max_lifetime_days, require_2fa=org.require_2fa,
+        pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
+        report_include_cover_page=org.report_include_cover_page,
+        report_chapters_per_component=org.report_chapters_per_component,
+        report_output_default_retention_days=settings.report_output_default_retention_days,
+        report_output_max_retention_days=settings.report_output_max_retention_days,
+        require_2fa=org.require_2fa,
         allow_self_signup=org.allow_self_signup, auto_accept_email_domain=org.auto_accept_email_domain,
         external_user_policy=org.external_user_policy,
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,

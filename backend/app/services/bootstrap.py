@@ -20,6 +20,7 @@ from app.modules.registry import run_on_org_created_hooks
 from app.security import hash_password
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
+from app.services.report_starters import add_starter_layouts
 
 settings = get_settings()
 
@@ -58,6 +59,7 @@ def run_bootstrap(db: Session) -> None:
             # reasoning/mechanism as `routers.orgs.create_organization`
             # (`ModuleDefinition.on_org_created`'s own docstring).
             run_on_org_created_hooks(db, org.id)
+            add_starter_layouts(db, org.id, actor_id=None)
             db.add(UserOrgRole(user_id=admin.id, organization_id=org.id, role=OrgRole.ORG_ADMIN))
 
     db.commit()

@@ -5,8 +5,8 @@ The document-level layer every generated report shares, whatever it reports
 on (requirements in `services.reports`, any module's report in
 `services.report_framework`):
 
-- `ReportBranding` and `resolve_branding`: an organisation `ReportTemplate`'s
-  accent colour, cover page, logo and footer.
+- `ReportBranding`, `resolve_branding` and `layout_branding`: the organisation's report accent colour, cover page, logo
+  and footer for a built-in report, and the accent alone for a custom layout.
 - `title_flowables`, `build_pdf`: the cover/title block, footer and A4 document
   build, parameterised by page size so tall requirement tables and wide module
   tables use the same shell.
@@ -14,8 +14,9 @@ on (requirements in `services.reports`, any module's report in
   tenant-checked image lookup every renderer's images come through. The
   neutral document model and its Markdown reader live in `services.report_model`;
   the renderers are `report_pdf` and `report_docx`.
-- `safe`, `styled_table`: ReportLab-markup escaping and the accent-coloured
-  table builder.
+- `safe`, `styled_table`: ReportLab-markup escaping (which also switches characters
+  Helvetica cannot print to the bundled Unicode font, `report_fonts`) and the
+  accent-coloured table builder.
 
 Design decisions:
 - ReportLab's `Paragraph` parses markup, so every user-supplied string must go
@@ -26,10 +27,9 @@ Design decisions:
   `attachment:<id>` references to bytes beforehand, restricted to the
   organisation's own shared resources, so the renderer never reasons about
   tenant isolation.
-- A template's intro, chapters and appendices are requirement-report content
-  and are not part of this shell; only its branding is shared.
+- The organisation has one report look; authored text belongs to a report layout.
 
-Dependencies: ReportLab, markdown-it-py, `services.files`, `services.branding`.
+Dependencies: ReportLab, markdown-it-py, `services.files`, `services.branding`, `services.report_fonts`.
 """
 
 from __future__ import annotations
@@ -56,22 +56,24 @@ from reportlab.platypus import (
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
 from app.services.files import read_file
+from app.services.report_fonts import active_face, draw_centred, mark_fallback, needs_fallback
 from app.services.report_model import TONE_FILL, text_on
+from app.services.report_org_values import report_accent_hex
 
 STYLES = getSampleStyleSheet()
 _MAX_IMAGE_WIDTH = A4[0] - 4 * cm  # matches SimpleDocTemplate's leftMargin+rightMargin default (2cm each)
 _ATTACHMENT_REF = re.compile(r"attachment:([0-9a-fA-F-]{36})")
 
 
-def safe(text: str) -> str:
+def safe(text: str, *, bold: bool = False, italic: bool = False) -> str:
     """Escapes `&`/`<`/`>` before handing text to a ReportLab `Paragraph`.
 
     ReportLab's `Paragraph` does not treat its `text` argument as plain
     text — it parses a restricted markup language supporting tags such as
-    `<b>`, `<font>`, and `<img src="...">`. Since report content (Markdown
+    `<b>`, `<font>`, and `<img src="...">`. Since report text (Markdown
     sections, requirement names/reasoning, module record titles) is
     user-supplied, passing it to `Paragraph` unescaped would let a
     `<img src="http://internal-host/...">` (or a `file:`-scheme source,
@@ -80,19 +82,23 @@ def safe(text: str) -> str:
     member generating a report. Escaping neutralises this: the text renders
     literally instead of being interpreted as markup.
 
+    Characters Helvetica cannot print (Cyrillic, Polish letters, Greek, ...) are wrapped in a
+    Unicode `<font>` tag, the only markup this adds (`report_fonts.mark_fallback`).
+
     Args:
         text: Untrusted text.
+        bold: `True` when the paragraph's style is bold, so those characters are bold too.
+        italic: `True` when the text is italic, so those characters are too.
 
     Returns:
         The text with markup characters escaped.
     """
-    return _xml_escape(text)
+    return mark_fallback(_xml_escape(text), bold=bold, italic=italic)
 
 
 @dataclass
 class ReportBranding:
-    """Optional per-report branding, sourced from an org's `ReportTemplate`
-    (R-G-05). Builders fall back to plain, unbranded styling when this is
+    """The organisation's report look (R-G-05). Builders fall back to plain, unbranded styling when this is
     omitted entirely."""
 
     accent_color_hex: str = DEFAULT_ACCENT_COLOR_HEX
@@ -101,51 +107,51 @@ class ReportBranding:
     logo_bytes: bytes | None = None
 
 
-def load_report_template(db: Session, organization_id: UUID, template_id: UUID) -> ReportTemplate | None:
-    """Loads a report template, enforcing that it belongs to `organization_id`.
+def resolve_branding(db: Session, organization: Organization | None) -> ReportBranding | None:
+    """The branding a built-in report applies: the organisation's one report look.
 
     Args:
         db: Database session.
-        organization_id: The organisation the report is generated for.
-        template_id: The requested template.
+        organization: The owning organisation (source of the look and the logo).
 
     Returns:
-        The template, or `None` when it does not exist or belongs to another
-        organisation (the caller turns that into its own 400).
+        `None` when there is no organisation; otherwise the report accent colour, cover page flag, footer and (when the
+        organisation wants its logo on reports and has one) logo bytes.
     """
-    template = db.get(ReportTemplate, template_id)
-    if template is None or template.organization_id != organization_id:
-        return None
-    return template
-
-
-def resolve_branding(db: Session, organization: Organization | None, template: ReportTemplate | None) -> ReportBranding | None:
-    """Builds the branding a template selects.
-
-    Args:
-        db: Database session.
-        organization: The owning organisation (source of the logo).
-        template: The selected template, or `None` for an unbranded report.
-
-    Returns:
-        `None` when no template is selected; otherwise the template's accent
-        colour, cover page flag, footer and (when it asks for one and the
-        organisation has one) logo bytes.
-    """
-    if template is None:
+    if organization is None:
         return None
     logo_bytes = None
-    if template.include_logo:
-        logo_asset = db.get(FileAsset, organization.logo_file_id) if organization and organization.logo_file_id else None
+    if organization.report_include_logo:
+        logo_asset = db.get(FileAsset, organization.logo_file_id) if organization.logo_file_id else None
         if logo_asset is not None:
             logo_bytes = read_file(logo_asset)
     return ReportBranding(
-        accent_color_hex=template.accent_color_hex, include_cover_page=template.include_cover_page,
-        footer_text=template.footer_text, logo_bytes=logo_bytes,
+        accent_color_hex=report_accent_hex(db, organization), include_cover_page=organization.report_include_cover_page,
+        footer_text=organization.report_footer_text, logo_bytes=logo_bytes,
     )
 
 
-def title_flowables(title: str, branding: ReportBranding | None) -> list:
+def layout_branding(db: Session, organization: Organization | None) -> ReportBranding | None:
+    """The branding a custom layout's document gets: the accent colour only.
+
+    A custom layout prints a cover page, footer text and logo only where it reads them (`services.report_org_values`),
+    so the renderers are given none of those.
+
+    Args:
+        db: Database session.
+        organization: The owning organisation.
+
+    Returns:
+        `None` when there is no organisation; otherwise a branding with the report accent colour and nothing else.
+    """
+    if organization is None:
+        return None
+    return ReportBranding(accent_color_hex=report_accent_hex(db, organization))
+
+
+def title_flowables(
+    title: str, branding: ReportBranding | None, *, face: str | None = None, colour: colors.Color | None = None,
+) -> list:
     """The opening block of a report: a branded cover page when the branding
     asks for one (logo, accent-coloured title, page break), otherwise a plain
     title.
@@ -153,14 +159,24 @@ def title_flowables(title: str, branding: ReportBranding | None) -> list:
     Args:
         title: The report title (escaped here).
         branding: Optional branding.
+        face: A ReportLab font name for the title (the document's heading font); the default title font when `None`.
+        colour: The title colour of a plain title (a cover title keeps the accent); the default when `None`.
 
     Returns:
         Flowables to start the story with.
     """
     story: list = []
+    title_style = STYLES["Title"]
+    if face is not None or colour is not None:
+        title_style = ParagraphStyle("document_title", parent=title_style)
+        if face is not None:
+            title_style.fontName = face
+        if colour is not None:
+            title_style.textColor = colour
     if branding and branding.include_cover_page:
         accent_color = colors.HexColor(readable_on_white(branding.accent_color_hex))  # text on white paper
-        cover_style = ParagraphStyle("cover_title", parent=STYLES["Title"], textColor=accent_color, fontSize=28)
+        cover_style = ParagraphStyle(
+            "cover_title", parent=title_style, textColor=accent_color, fontSize=28)
         story.append(Spacer(1, 6 * cm))
         if branding.logo_bytes:
             try:
@@ -168,11 +184,11 @@ def title_flowables(title: str, branding: ReportBranding | None) -> list:
                 story.append(Spacer(1, 1 * cm))
             except Exception:  # noqa: BLE001 - a malformed/unsupported logo image must never break report generation
                 pass
-        story.append(Paragraph(safe(title), cover_style))
+        story.append(Paragraph(safe(title, bold=True), cover_style))
         story.append(PageBreak())
         story.append(Spacer(1, 0.5 * cm))
     else:
-        story.append(Paragraph(safe(title), STYLES["Title"]))
+        story.append(Paragraph(safe(title, bold=True), title_style))
         story.append(Spacer(1, 0.5 * cm))
     return story
 
@@ -196,8 +212,7 @@ def build_pdf(story: list, *, footer_text: str | None = None, pagesize=A4, **doc
         if not footer_text:
             return
         canvas.saveState()
-        canvas.setFont("Helvetica", 7)
-        canvas.drawCentredString(doc_.pagesize[0] / 2, 1 * cm, footer_text)
+        draw_centred(canvas, doc_.pagesize[0] / 2, 1 * cm, footer_text, 7)
         canvas.restoreState()
 
     doc.build(story, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
@@ -207,7 +222,7 @@ def build_pdf(story: list, *, footer_text: str | None = None, pagesize=A4, **doc
 _TONED_STYLES: dict[tuple[int, str], tuple[ParagraphStyle, ParagraphStyle]] = {}
 
 
-def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None) -> Paragraph:
+def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None, markup: str | None = None) -> Paragraph:
     """A table-cell paragraph whose cell `styled_table` fills with the tone's colour.
 
     The text colour is chosen by contrast with the fill (`report_model.text_on`). A cell with no (or an
@@ -217,17 +232,20 @@ def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None) -> Parag
         text: Untrusted cell text (escaped here).
         style: The cell's normal style.
         tone: A key of `report_model.TONE_FILL`, or `None`.
+        markup: Ready Paragraph markup to use instead of the escaped `text` (a cell with equations in it, built by
+            `report_pdf`, which escapes its own text).
 
     Returns:
         The paragraph; a toned one carries `tone_fill` (a ReportLab colour) for `styled_table`.
     """
+    body = safe(text) if markup is None else markup
     if tone not in TONE_FILL:
-        return Paragraph(safe(text), style)
+        return Paragraph(body, style)
     cached = _TONED_STYLES.get((id(style), tone))
     if cached is None:
         toned = ParagraphStyle(f"{style.name}_{tone}", parent=style, textColor=colors.HexColor(f"#{text_on(TONE_FILL[tone])}"))
         cached = _TONED_STYLES[(id(style), tone)] = (style, toned)  # holds `style` so its id is never reused
-    paragraph = Paragraph(safe(text), cached[1])
+    paragraph = Paragraph(body, cached[1])
     paragraph.tone_fill = colors.HexColor(f"#{TONE_FILL[tone]}")  # type: ignore[attr-defined]
     return paragraph
 
@@ -246,8 +264,37 @@ def header_text_color(accent_color):
     return colors.HexColor(f"#{text_on(f'{r:02X}{g:02X}{b:02X}')}")
 
 
-def styled_table(data: list[list], *, col_widths: list[float], accent_color, compact: bool = False) -> Table:
-    """An accent-headed table with a repeating header row.
+def _unicode_cell(cell, header: bool, accent_color, header_text=None):
+    """A plain string cell holding characters Helvetica cannot print, as a Paragraph that can.
+
+    A table draws a string cell in Helvetica, which prints those characters as black boxes. Any other
+    cell (a flowable, or a string Helvetica can print) is returned as it was, so existing tables look
+    the same.
+
+    Args:
+        cell: The cell.
+        header: Whether it is in the header row (in the header text colour; the table draws its other
+            header strings in regular weight, so this stays regular too).
+        accent_color: The header fill, for the header text colour.
+        header_text: The header text colour (a ReportLab colour), or `None` to choose it by contrast with the fill.
+
+    Returns:
+        The cell, or a Paragraph standing in for it.
+    """
+    if not isinstance(cell, str) or not needs_fallback(cell):
+        return cell
+    style = ParagraphStyle(
+        "unicode_cell", parent=STYLES["BodyText"], fontSize=10, leading=12,
+        fontName=active_face(), textColor=(header_text or header_text_color(accent_color)) if header else colors.black,
+    )
+    return Paragraph(safe(cell), style)
+
+
+def styled_table(
+    data: list[list], *, col_widths: list[float], accent_color, compact: bool = False, repeat_header: bool = True,
+    header_text=None,
+) -> Table:
+    """An accent-headed table, its header row repeated on each page it runs onto unless `repeat_header` is off.
 
     Args:
         data: Rows including the header row; cells are strings or flowables (a `toned_paragraph` cell is filled).
@@ -257,11 +304,17 @@ def styled_table(data: list[list], *, col_widths: list[float], accent_color, com
             use (header cells are expected to be Paragraphs coloured with
             `header_text_color`); `False` for the requirement report's heavier
             grid, whose header text takes that colour here.
+        repeat_header: Whether the header row is drawn again at the top of every page the table continues onto.
+        header_text: The header text colour (a ReportLab colour) for the non-compact table and string header cells;
+            `None` chooses it by contrast with `accent_color`.
 
     Returns:
         The table flowable.
     """
-    table = Table(data, repeatRows=1, colWidths=col_widths)
+    data = [[_unicode_cell(cell, r == 0, accent_color, header_text) for cell in row] for r, row in enumerate(data)]
+    table = Table(data, repeatRows=1 if repeat_header else 0, colWidths=col_widths)
+    if active_face() != "Helvetica":  # a document font is active: a plain string cell is drawn in it too
+        table.setStyle(TableStyle([("FONTNAME", (0, 0), (-1, -1), active_face())]))
     if compact:
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), accent_color),
@@ -272,7 +325,7 @@ def styled_table(data: list[list], *, col_widths: list[float], accent_color, com
     else:
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), accent_color),
-            ("TEXTCOLOR", (0, 0), (-1, 0), header_text_color(accent_color)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), header_text or header_text_color(accent_color)),
             ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))
@@ -303,8 +356,7 @@ def image_flowable(image_bytes: bytes):
 
 def resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: str) -> dict[str, bytes]:
     """Scans one or more Markdown strings for `attachment:<uuid>` image
-    references (inserted via the report content editor's attachment panel,
-    `RichTextEditor`'s "Insert image") and resolves each to its bytes.
+    references (written in an organisation shared resource file) and resolves each to its bytes.
 
     Every resolved reference is checked against `organization_id` *and*
     restricted to `is_org_resource=True` assets before its bytes are read.
@@ -312,7 +364,7 @@ def resolve_report_images(db: Session, organization_id: UUID, *markdown_texts: s
     (non-shared) `FileAsset` — most importantly a requirement attachment —
     is gated by *project*-level access in its own right
     (`routers/files.py::download_file` requires `get_effective_project_roles`
-    for exactly that reason), which report content is never itself scoped
+    for exactly that reason), which a shared resource file is never itself scoped
     to check. Without this restriction, a user with report-edit rights on
     Project A could hand-type `attachment:<id>` for a requirement
     attachment belonging to Project B in the same org — one they may have

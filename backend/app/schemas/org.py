@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
-from app.schemas.report import ReportContentEntry
+from app.services.report_colours import palette_problems
 
 
 class OrganizationCreate(BaseModel):
@@ -116,6 +116,22 @@ class CodedRecordOut(BaseModel):
     label: str
 
 
+class ReportColourOut(BaseModel):
+    """One named colour of a report colour scheme."""
+
+    name: str
+    colour: str
+
+
+class ReportColourIn(BaseModel):
+    """One named colour of a report colour scheme, as sent (checked as a whole by `palette_problems`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=24)
+    colour: str = Field(max_length=12)
+
+
 class OrganizationOut(BaseModel):
     model_config = {"from_attributes": True}
 
@@ -134,6 +150,11 @@ class OrganizationOut(BaseModel):
     is_active: bool = True
     disabled_at: datetime | None = None
     accent_color_hex: str | None = None
+    #: The organisation's report accent colour (`None` = follow the UI accent) and whether its logo is on reports.
+    report_accent_color_hex: str | None = None
+    report_include_logo: bool = True
+    #: The organisation's named report colours (`None` = none set); see `services.report_colours`.
+    report_colour_scheme: list[ReportColourOut] | None = None
     header_title: str | None = None
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
@@ -208,8 +229,6 @@ class OrgMergeResult(BaseModel):
     warnings: list[str] = []
     projects_imported: int
     projects_skipped: int
-    report_templates_imported: int
-    report_templates_overwritten: int
 
 
 _HEX_COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
@@ -226,6 +245,20 @@ class OrgBrandingUpdate(BaseModel):
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
     email_footer_address: str | None = Field(default=None, max_length=2000)
+    #: Sent only when set: a client that does not know these leaves the report look as it is.
+    report_accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    report_include_logo: bool | None = None
+    #: Sent only when set: the organisation's named report colours (`[]` clears them).
+    report_colour_scheme: list[ReportColourIn] | None = None
+
+    @field_validator("report_colour_scheme")
+    @classmethod
+    def _valid_scheme(cls, value: list[ReportColourIn] | None) -> list[ReportColourIn] | None:
+        if value is not None:
+            problems = palette_problems([e.model_dump() for e in value], "report_colour_scheme")
+            if problems:
+                raise ValueError(problems[0][1])
+        return value
 
     @field_validator("header_title", "email_footer_company_name", "email_footer_website", "email_footer_address")
     @classmethod
@@ -255,6 +288,15 @@ class OrgAdvancedSettingsOut(BaseModel):
     smtp_username: str | None = None
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = None
+    report_output_retention_days: int | None = None
+    report_file_name: str | None = None
+    #: The report look the Configuration section sets (the accent and logo are on the Branding page).
+    report_footer_text: str | None = None
+    report_include_cover_page: bool = False
+    report_chapters_per_component: bool = True
+    #: Read-only: the platform default and ceiling the organisation's own value sits between.
+    report_output_default_retention_days: int = 7
+    report_output_max_retention_days: int = 30
     require_2fa: bool = False
     allow_self_signup: bool = False
     auto_accept_email_domain: str | None = None
@@ -271,6 +313,12 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     smtp_password: str | None = None
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
+    report_output_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    report_file_name: str | None = Field(default=None, max_length=200)
+    #: Sent only when set: a client that does not know these leaves the report look as it is.
+    report_footer_text: str | None = Field(default=None, max_length=500)
+    report_include_cover_page: bool | None = None
+    report_chapters_per_component: bool | None = None
     require_2fa: bool = False
     allow_self_signup: bool = False
     auto_accept_email_domain: str | None = Field(default=None, max_length=255)
@@ -852,28 +900,6 @@ class OrgLoginInfoOut(BaseModel):
     login_background_file_id: UUID | None = None
     sso_enabled: bool
     sso_only: bool
-
-
-class ReportTemplateCreate(BaseModel):
-    name: str
-    accent_color_hex: str = Field(default="#475569", pattern=_HEX_COLOR_PATTERN)
-    include_cover_page: bool = True
-    include_logo: bool = True
-    footer_text: str | None = None
-    content: list[ReportContentEntry] = Field(default_factory=list, max_length=100)
-    chapters_per_component: bool = True
-
-
-class ReportTemplateOut(BaseModel):
-    id: UUID
-    organization_id: UUID
-    name: str
-    accent_color_hex: str
-    include_cover_page: bool
-    include_logo: bool
-    footer_text: str | None = None
-    content: list[ReportContentEntry] = []
-    chapters_per_component: bool = True
 
 
 class OrgProjectSummaryOut(BaseModel):

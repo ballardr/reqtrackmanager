@@ -16,12 +16,19 @@
  * Dependencies: lucide-react (close icon), i18n strings.
  */
 import { X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode, type RefObject } from "react";
 
 import { t } from "../i18n/strings";
 import { DialogSlotContext } from "./dialogSlots";
 
 const strings = t();
+
+/** What `useDialogGuard` hands the frame: the body to watch for edits, the form-presence hook and the settled hook. */
+export interface DialogGuardFrame {
+  bodyRef: RefObject<HTMLDivElement | null>;
+  registerForm: () => () => void;
+  registerSettled: () => () => void;
+}
 
 /**
  * The inside of a dialog card: pinned header (title, actions, close, save error) over a scrolling body.
@@ -29,14 +36,20 @@ const strings = t();
  *
  * @param title The dialog title, shown as the heading.
  * @param onClose Called by the close (x) button.
+ * @param guard The unsaved-changes guard's wiring (`useDialogGuard`); omit it for an unguarded dialog.
  * @param children The dialog body; it scrolls, the header does not.
  */
-export function DialogFrame({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function DialogFrame({
+  title, onClose, guard, children,
+}: { title: string; onClose: () => void; guard?: DialogGuardFrame; children: ReactNode }) {
   const [actions, setActions] = useState<HTMLElement | null>(null);
   const [error, setError] = useState<HTMLElement | null>(null);
+  const registerForm = guard?.registerForm;
+  const registerSettled = guard?.registerSettled;
+  const slots = useMemo(() => ({ actions, error, registerForm, registerSettled }), [actions, error, registerForm, registerSettled]);
 
   return (
-    <DialogSlotContext.Provider value={{ actions, error }}>
+    <DialogSlotContext.Provider value={slots}>
       <div className="dialog-header">
         <div className="dialog-header-row">
           <h2 className="dialog-title">{title}</h2>
@@ -49,7 +62,7 @@ export function DialogFrame({ title, onClose, children }: { title: string; onClo
         </div>
         <div ref={setError} />
       </div>
-      <div className="dialog-body stack">{children}</div>
+      <div ref={guard?.bodyRef} className="dialog-body stack">{children}</div>
     </DialogSlotContext.Provider>
   );
 }

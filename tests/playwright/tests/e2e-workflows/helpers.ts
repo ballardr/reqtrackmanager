@@ -290,6 +290,23 @@ export async function selectProjectAdminGroup(page: Page, groupLabel: string): P
 }
 
 /**
+ * Narrows Report setup's folder list to a report by searching for it (a search opens every folder holding a match, so
+ * the report is visible whichever folder it is filed in) and returns the list.
+ */
+export async function searchReportSetup(page: Page, text: string) {
+  await page.getByRole("textbox", { name: "Search reports" }).fill(text);
+  const grid = page.getByRole("treegrid", { name: "Reports, packs and tables" });
+  await expect(grid).toBeVisible();
+  return grid;
+}
+
+/** Opens a layout or pack from Report setup by its name (the designer or the pack editor). */
+export async function openSetupReport(page: Page, name: string): Promise<void> {
+  const grid = await searchReportSetup(page, name);
+  await grid.getByRole("button", { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) }).click();
+}
+
+/**
  * Matches a record code as the UI may show it: bare (`DEC-001`) or with the project code in
  * front (`ACME-DEC-001`). The display rule depends on the organisation's switch and the
  * person's preference, so a spec must not depend on which form it gets. Use with
@@ -706,4 +723,102 @@ export async function recordActionNames(page: Page, recordLabel: string): Promis
 export async function selectOptionContaining(select: Locator, text: string): Promise<void> {
   const label = await select.locator("option", { hasText: text }).first().innerText();
   await select.selectOption({ label });
+}
+
+/**
+ * Saves an editor that keeps versions (the report layout designer, the report pack editor): presses Save new version,
+ * which opens a popover asking for an optional note, then saves from it.
+ *
+ * @param note A note on the change to type first; omit it to save without one.
+ */
+export async function saveNewVersion(page: Page, note?: string): Promise<void> {
+  // A long layout also has a Save at the foot; the first is the pinned one at the top.
+  await page.getByRole("button", { name: "Save new version" }).first().click();
+  const popover = page.getByRole("dialog", { name: "Save new version" });
+  if (note !== undefined) await popover.getByRole("textbox", { name: "Note on this change" }).fill(note);
+  await popover.getByRole("button", { name: "Save", exact: true }).click();
+}
+
+/**
+ * Opens the report designer's Text view. A layout opens on Blocks, so a spec that edits the layout as text (or uses the
+ * Fields and Widgets tabs, which belong to it) switches first; switching to the open view does nothing.
+ */
+export async function openDesignerTextView(page: Page): Promise<void> {
+  await page.getByRole("tab", { name: "Text", exact: true }).click();
+}
+
+/**
+ * The designer's right-hand panel, which holds the preview: run it with `Run preview`, read the result in the frame
+ * titled "Report preview". Use after {@link openDesignerPreview}.
+ */
+export function designerPreviewPanel(page: Page): Locator {
+  return page.getByRole("complementary", { name: "Designer tools" });
+}
+
+/**
+ * Brings the Preview tab of the designer's right-hand panel forward (works from either view). Selecting a block or closing
+ * a popover can bring the Block tab back just after the click, so the click is retried until Preview holds.
+ */
+export async function openDesignerPreview(page: Page): Promise<void> {
+  const tab = designerPreviewPanel(page).getByRole("tab", { name: "Preview", exact: true });
+  await expect(async () => {
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 1500 });
+  }).toPass();
+}
+
+/** Brings the Block tab of the panel back in the Blocks view (the Text view has no such tab), leaving the editor as it was before the preview. */
+export async function closeDesignerPreview(page: Page): Promise<void> {
+  const block = designerPreviewPanel(page).getByRole("tab", { name: "Block", exact: true });
+  if (await block.count() > 0) await block.click();
+}
+
+/**
+ * A disposable organisation with an organisation admin, a project and one saved document layout (a heading and a text
+ * block), for a spec that needs a layout to open in the designer. The organisation is deleted on cleanup.
+ *
+ * @returns The admin's email and auth headers, the project and the layout (both as the API returns them).
+ */
+export async function createDocumentLayoutWorld(request: APIRequestContext, label: string) {
+  const api = "http://localhost:8000/api/v1";
+  const login = async (email: string, password: string) => {
+    const resp = await request.post(`${api}/auth/login`, { data: { email, password } });
+    return { Authorization: `Bearer ${(await resp.json()).access_token}` };
+  };
+  const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+  const adminEmail = `e2e-${label}-${suffix}@example.com`;
+  const serverHeaders = await login(SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
+  const org = await (await request.post(`${api}/orgs`, { headers: serverHeaders, data: { name: `E2E ${label} ${suffix}` } })).json();
+  deleteOrgOnCleanup({ id: org.id });
+  await request.post(`${api}/orgs/${org.id}/users`, {
+    headers: serverHeaders, data: { email: adminEmail, display_name: `E2E ${label} Admin`, password: PASSWORD, role: "org_admin" },
+  });
+  const headers = await login(adminEmail, PASSWORD);
+  const project = await (await request.post(`${api}/projects`, { headers, data: { organization_id: org.id, name: `${label} project ${suffix}`, summary: "" } })).json();
+  const tree = {
+    schema_version: 1, family: "document",
+    nodes: [{ type: "heading", text: "A report", level: 1 }, { type: "text", text: "Some body text." }],
+  };
+  const layout = await (await request.post(`${api}/projects/${project.id}/report-layouts`, {
+    headers, data: { name: `E2E ${label} ${suffix}`, description: "", family: "document", tree },
+  })).json();
+  return { adminEmail, headers, project, layout };
+}
+
+/**
+ * Leave a form dialog without saving. A dialog has no Cancel: the header's Close button is the only way out, and
+ * with unsaved changes it asks first, so this answers "Discard changes" when the prompt appears.
+ *
+ * @param dialog The dialog to close.
+ * @param options.unsaved True when the test changed something, so the discard prompt is expected (and asserted).
+ */
+export async function closeDialogWithoutSaving(dialog: Locator, options: { unsaved: boolean }): Promise<void> {
+  const page = dialog.page();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  if (options.unsaved) {
+    const prompt = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole("button", { name: "Discard changes" }).click();
+  }
+  await expect(dialog).toHaveCount(0);
 }

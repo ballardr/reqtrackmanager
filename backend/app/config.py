@@ -100,6 +100,12 @@ class Settings(BaseSettings):
             hasn't set its own `Organization.pat_max_lifetime_days` —
             guarantees no PAT is ever unboundedly long-lived even if no org
             admin ever touches that per-org setting.
+        report_output_default_retention_days: How long the stored output of a background custom report is kept
+            when the organisation has not set `Organization.report_output_retention_days`.
+        report_output_max_retention_days: Platform ceiling on that retention; an organisation's own value is capped
+            by it (`services.report_run_jobs.effective_retention_days`).
+        report_run_record_retention_days: How long the provenance row of a custom report run is kept
+            (`services.report_run_jobs.expire`); the row holds identifiers and counts, never report content.
         oidc_internal_base_url_override: Dev/test-only escape hatch for a
             common containerized-IdP problem: an org's `oidc_issuer_url`
             must be the identity provider's browser-reachable public URL
@@ -190,6 +196,20 @@ class Settings(BaseSettings):
             and `max_request_body_bytes` are what bound a worker against a signed-in user with the lowest
             upload right. Bundle and spreadsheet imports have their own, larger ceiling
             (`services.bundle_common.MAX_IMPORT_UPLOAD_BYTES`).
+        report_image_max_bytes: Largest picture the report-image library accepts (`services.report_images`), in bytes.
+            The file is also bound by `max_upload_bytes`, so the effective limit is the smaller of the two; raise both
+            (and a reverse proxy's `client_max_body_size`) for larger photographs.
+        report_image_max_pixels: Most pixels (width x height) of one raster picture. A decoded picture takes about
+            four bytes a pixel in a worker, so this, not the file size, bounds the memory one embed needs; the
+            header is read before the picture is decoded.
+        report_image_max_total_bytes: Most bytes of pictures one report run may embed (after metadata removal), times
+            the background run multiplier; a larger run is refused with the narrow-or-download message.
+        report_converter_url: Base URL of the picture converter service (`converter/`) that turns an uploaded EPS or
+            PDF logo into an SVG, such as `http://converter:8300`. Empty means EPS and PDF uploads are refused as
+            not available; the backend never runs the converter tools itself.
+        report_fonts_dir: A directory of extra `.ttf` fonts the server administrator provides (mounted read-only into the
+            container) for report authors to use, such as `/app/report-fonts`. Empty means only the four bundled
+            families; the path is never user-supplied (`services.report_font_directory`).
         max_request_body_bytes: Largest request body of any other endpoint (`body_limit`); above
             `max_upload_bytes` by the multipart framing. A reverse proxy's `client_max_body_size` should be
             set to the same order of magnitude.
@@ -315,6 +335,9 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     mcp_server_public_url: str = "http://localhost:8100"
     pat_default_max_lifetime_days: int = 90
+    report_output_default_retention_days: int = 7
+    report_output_max_retention_days: int = 30
+    report_run_record_retention_days: int = 400
     two_factor_max_failed_attempts: int = 5
     two_factor_lockout_minutes: int = 15
     oidc_internal_base_url_override: str | None = None
@@ -334,6 +357,11 @@ class Settings(BaseSettings):
     credential_reset_send_rate_limit_per_minute: int = 30
     require_strong_secrets: bool = False
     max_upload_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
+    report_image_max_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
+    report_image_max_pixels: int = Field(default=100_000_000, ge=1)
+    report_image_max_total_bytes: int = Field(default=200 * 1024 * 1024, ge=1)
+    report_converter_url: str = ""
+    report_fonts_dir: str = ""
     max_request_body_bytes: int = Field(default=52 * 1024 * 1024, ge=1)
     allow_external_modules: bool = False
     extra_modules_path: str | None = None

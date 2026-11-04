@@ -26,6 +26,7 @@ from app.models.custom_role import (
 from app.models.definition_suppression import ProjectDefinitionSuppression
 from app.models.engagement import CommentReaction, Subscription
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
+from app.models.generated_report import GeneratedReport
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
@@ -34,7 +35,6 @@ from app.models.organization import (
     OrgGroup,
     OrgGroupMember,
     PendingInvite,
-    ReportTemplate,
     ServerSettings,
     UserOrgRole,
 )
@@ -56,7 +56,12 @@ from app.models.project import (
 from app.models.project_status import ProjectStatusDefinition
 from app.models.record_policy import OrganizationRecordSensitivityOverride, ServerRecordSensitivityDefault
 from app.models.relationship import ArtefactLink
-from app.models.report_content import ReportContent
+from app.models.report_folder import ReportFolder
+from app.models.report_font import ServerReportFont
+from app.models.report_layout import ReportLayout, ReportLayoutDraft, ReportLayoutVersion
+from app.models.report_pack import ReportPack, ReportPackSetOverride, ReportPackVariableSet, ReportPackVersion
+from app.models.report_placement import ReportPlacement
+from app.models.report_snippet import SavedReportSnippet
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -98,6 +103,7 @@ __all__ = [
     "CommentReaction",
     "Subscription",
     "FileAsset",
+    "GeneratedReport",
     "RequirementFile",
     "RequirementActionFile",
     "CommentFile",
@@ -107,8 +113,16 @@ __all__ = [
     "OrgGroup",
     "OrgGroupMember",
     "PendingInvite",
-    "ReportContent",
-    "ReportTemplate",
+    "ReportLayout",
+    "ReportLayoutDraft",
+    "ReportLayoutVersion",
+    "ReportPack",
+    "SavedReportSnippet",
+    "ReportPackSetOverride",
+    "ReportPackVariableSet",
+    "ReportPackVersion",
+    "ReportFolder",
+    "ReportPlacement",
     "ServerSettings",
     "UserOrgRole",
     "PersonalAccessToken",
@@ -149,6 +163,7 @@ __all__ = [
     "OrganizationModuleEntitlement",
     "OrganizationModuleEnablement",
     "ServerModuleDefault",
+    "ServerReportFont",
     "GroupModuleRole",
     "ModuleRoleDefinitionRow",
     "UserModuleRole",

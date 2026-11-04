@@ -22,7 +22,7 @@ SMOKE_SCRIPT = ROOT / "scripts" / "smoke_test_image.sh"
 
 pytestmark = pytest.mark.skipif(not WORKFLOW.is_file(), reason="repository root not available")
 
-IMAGES = {"backend", "backup", "frontend", "mcp-server", "docs"}
+IMAGES = {"backend", "backup", "frontend", "mcp-server", "converter", "docs"}
 
 
 @pytest.fixture(scope="module")
@@ -43,7 +43,7 @@ def _includes(matrix: dict) -> dict[str, dict]:
 
 
 def test_every_image_is_built_for_both_architectures(matrix):
-    """The matrix is exactly the five production images times amd64 and arm64."""
+    """The matrix is exactly the six production images times amd64 and arm64."""
     assert set(matrix["image"]) == IMAGES
     assert set(matrix["arch"]) == {"amd64", "arm64"}
 

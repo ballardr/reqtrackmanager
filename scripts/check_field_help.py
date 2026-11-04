@@ -30,7 +30,7 @@ BASELINE = Path(__file__).resolve().parent / "field_help_baseline.json"
 
 FIELD_COMPONENTS = (
     "TextField", "TextAreaField", "DateField", "CheckboxField", "ToggleField", "ColorField", "FileField",
-    "UploadField", "LabeledSelect", "PrincipalFormField", "RecordFieldGroup",
+    "UploadField", "LabeledSelect", "PrincipalFormField", "RecordFieldGroup", "ColourChoiceField",
 )
 OPEN_TAG = re.compile(r"<(" + "|".join(FIELD_COMPONENTS) + r")(?=[\s/>])")
 HELP = re.compile(r"(?<![\w-])help=")

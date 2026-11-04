@@ -179,8 +179,11 @@ test.describe("list scope filter across nested projects", () => {
       const button = await page.getByRole("link", { name: /^New requirement$/i }).boundingBox();
       expect(select!.x + select!.width).toBeLessThanOrEqual(button!.x + 1);
       expect(Math.abs((select!.y + select!.height / 2) - (button!.y + button!.height / 2))).toBeLessThan(button!.height);
-      // Nothing is added between the title and the metric tiles by the scope control.
-      expect(select!.y).toBeLessThan(title!.y + title!.height + button!.height);
+      // Nothing is added between the title and the metric tiles by the scope control: it sits within one control's height
+      // of whatever ends the heading block (the title, or the "Child of" line a nested project shows under it).
+      const parentLine = await page.getByText(/^Child of:/).boundingBox();
+      const headingEnd = Math.max(title!.y + title!.height, parentLine ? parentLine.y + parentLine.height : 0);
+      expect(select!.y).toBeLessThan(headingEnd + button!.height);
     });
 
     await test.step("the overview counts only this project until widened, then says how many projects they cover", async () => {

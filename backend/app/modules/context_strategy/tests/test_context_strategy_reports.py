@@ -22,7 +22,9 @@ from sqlalchemy import update
 from app.database import SessionLocal
 from app.modules.context_strategy.enums import GuidingPrincipleStatus, StrategyStatus
 from app.modules.context_strategy.models import GuidingPrincipleVersion, StrategyVersion
+from app.modules.context_strategy.reports import REPORT_DEFINITIONS
 from app.services.codes import label_title
+from app.services.report_framework import unknown_usual_widths
 from app.services.report_model import TONE_FILL
 from tests.conftest import (
     auth_headers,
@@ -227,6 +229,13 @@ def test_r1_group_data_carries_cell_ratings_by_level_name_for_a_severity_x_frequ
     assert other["cell_ratings"] == []
 
 
+def _fill(cell) -> str | None:
+    """The `w:fill` colour of a Word table cell's shading, or `None` when it has none."""
+    tc_pr = cell._tc.tcPr
+    shading = tc_pr.find(qn("w:shd")) if tc_pr is not None else None
+    return shading.get(qn("w:fill")) if shading is not None else None
+
+
 def test_r1_word_export_keeps_the_band_colours_of_the_screen(client, admin_token):
     """Band cells in the ranking and the Severity x Frequency matrix are filled with the band's tone, pinned cells included."""
     org, project, token = _setup(client, admin_token, "R1 Tone Co")
@@ -256,11 +265,11 @@ def test_r1_word_export_keeps_the_band_colours_of_the_screen(client, admin_token
     columns = [c.text for c in matrix.rows[0].cells]
     pinned = next(r for r in matrix.rows[1:] if r.cells[1].text == "Major").cells[columns.index("Constant")]
     assert pinned.text == "1 (High ×1) · Critical"  # count, confidence, then the band that colours it
-    assert pinned._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) == TONE_FILL[bands["Critical"]]
+    assert _fill(pinned) == TONE_FILL[bands["Critical"]]
     for row in matrix.rows[1:]:
         for cell in row.cells[2:]:
             assert cell.text.split(" · ")[-1] in bands  # every cell, empty ones too, names its band
-            assert cell._tc.tcPr.find(qn("w:shd")).get(qn("w:fill")) in set(TONE_FILL.values())
+            assert _fill(cell) in set(TONE_FILL.values())
 
 
 def test_r1_ranks_and_segregates_blockers_unscored_and_intentional(client, admin_token):
@@ -451,6 +460,8 @@ def test_r4_overdue_unowned_and_resolved_excluded(client, admin_token):
     assert _titles(_section(report, "open"), "Question") == ["Late?", "Owned?"]  # high priority first; withdrawn omitted
     assert _titles(_section(report, "overdue"), "Question") == ["Late?"]
     assert _titles(_section(report, "unowned"), "Question") == ["Late?"]
+    assert _titles(_section(report, "not_overdue"), "Question") == ["Owned?"]  # the open ones the overdue table does not list
+    assert _section(report, "not_overdue")["columns"] == _section(report, "overdue")["columns"]  # so the two tables line up
     by_owner = dict(_section(report, "by_owner")["rows"])
     assert by_owner["Unowned"] == "1" and sum(int(v) for v in by_owner.values()) == 2
     assert [i["is_overdue"] for i in report["data"]["items"]] == [True, False]
@@ -848,3 +859,13 @@ def test_report_codes_and_tags_follow_the_shared_rule(client, admin_token):
     body = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": True}
     assert client.put(f"/api/v1/orgs/{org['id']}/code-policy", json=body, headers=auth_headers(admin)).status_code == 200
     assert {code for code, _ in ranking().values()} == {f"{parent['code']}-PP-001", f"{child['code']}-PP-001"}
+
+
+def test_every_declared_usual_width_names_a_column_of_its_report(client, admin_token):
+    """A usual width for a heading no table of the report has would be dead; a spec that is not a width is a typo."""
+    _, project, token = _setup(client, admin_token, "Usual Widths")
+    declared = {d.slug: d.usual_widths for d in REPORT_DEFINITIONS if d.usual_widths}
+    assert "open-question-register" in declared
+    for slug, widths in declared.items():
+        report = _report(client, token, project["id"], slug)
+        assert unknown_usual_widths([s["columns"] for s in report["sections"]], widths) == [], slug

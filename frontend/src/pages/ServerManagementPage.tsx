@@ -27,9 +27,11 @@ import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { AddUserModal, type AddUserMode } from "./AddUserModal";
 import { ServerModulesTab } from "./ServerModulesTab";
+import { ServerReportFontsTab } from "./ServerReportFontsTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { PictureImage } from "../components/PictureImage";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const strings = t();
@@ -681,7 +683,7 @@ function PlatformBrandingTab() {
       {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
       {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.logoUploaded}</div>}
       {settings.default_logo_file_id && (
-        <img src={fileUrl(settings.default_logo_file_id)} alt="" style={{ height: 40 }} />
+        <PictureImage src={fileUrl(settings.default_logo_file_id)} style={{ height: 40 }} />
       )}
       <FormGrid minColumn="18rem">
         <TextField helpNotNeeded
@@ -892,9 +894,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules" | "dataPolicy";
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules" | "reportFonts" | "dataPolicy";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules", "dataPolicy"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules", "reportFonts", "dataPolicy"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -920,6 +922,7 @@ export function ServerManagementPage() {
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
     { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
     { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
+    { key: "reportFonts", label: strings.reportFonts.title, href: "/server/management/reportFonts" },
     { key: "dataPolicy", label: strings.personalDataPolicy.groupTitle, href: "/server/management/dataPolicy" },
   ];
 
@@ -936,6 +939,7 @@ export function ServerManagementPage() {
         {activeGroup === "signup" && <SignupModeTab />}
         {activeGroup === "email" && <TestEmailTab />}
         {activeGroup === "modules" && <ServerModulesTab />}
+        {activeGroup === "reportFonts" && <ServerReportFontsTab />}
         {activeGroup === "dataPolicy" && (
           <CollapsibleSection sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.title}>
             <PersonalDataPolicyPanel scope={{ kind: "server" }} />

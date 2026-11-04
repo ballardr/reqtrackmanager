@@ -30,7 +30,7 @@ from app.models.enums import (
     ReviewTargetType,
 )
 from app.models.organization import Organization
-from app.models.project import Project, ProjectCategory, ProjectComponent
+from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.modules.registry import ArtefactChange
@@ -410,6 +410,9 @@ class RequirementFilters:
     """The requirement list's filters (the query parameters of `GET .../requirements`, minus paging and sort).
 
     Attributes mirror those parameters; `status` is the version status, `search` matches the name or code.
+    `target_stage_from_id`/`target_stage_to_id` bound the target stage by the stages' order (a stage's
+    position in the project, never its name); either end may be left open, and a stage that is not one of
+    the project's matches nothing.
     """
 
     include_archived: bool = False
@@ -422,6 +425,8 @@ class RequirementFilters:
     search: str | None = None
     status: RequirementStatus | None = None
     target_stage_id: UUID | None = None
+    target_stage_from_id: UUID | None = None
+    target_stage_to_id: UUID | None = None
     has_comments: bool | None = None
     only_watched: bool | None = None
 
@@ -483,6 +488,33 @@ class FilteredRequirements:
     unfiltered: int
 
 
+def _stage_range(db: Session, project_id: UUID, filters: RequirementFilters) -> set[UUID] | None:
+    """The ids of the project's stages between the filter's two ends, or `None` when no range is asked for.
+
+    Args:
+        db: Active session (read only).
+        project_id: The project whose stages are ordered.
+        filters: The filters; only the two stage range ends are read.
+
+    Returns:
+        The stage ids from the first end to the last by `sort_order` (inclusive; an open end reaches the
+        first or last stage). An end that is not one of the project's stages gives the empty set, so a
+        related project's rows never match a stage of another project.
+    """
+    if filters.target_stage_from_id is None and filters.target_stage_to_id is None:
+        return None
+    stages = db.scalars(select(ProjectStage).where(ProjectStage.project_id == project_id)).all()
+    # Order by position with the id as a tie-break so the range never depends on row order.
+    ordered = sorted(stages, key=lambda s: (s.sort_order, str(s.id)))
+    index = {s.id: i for i, s in enumerate(ordered)}
+    ends = [e for e in (filters.target_stage_from_id, filters.target_stage_to_id) if e is not None]
+    if any(e not in index for e in ends):
+        return set()
+    low = index[filters.target_stage_from_id] if filters.target_stage_from_id is not None else 0
+    high = index[filters.target_stage_to_id] if filters.target_stage_to_id is not None else len(ordered) - 1
+    return {s.id for s in ordered[low:high + 1]}
+
+
 LIST_SORT_COLUMNS = ("unique_code", "name", "status", "created_at")
 """The columns `GET .../requirements?sort=` accepts."""
 
@@ -492,6 +524,7 @@ def _sql_order(sort: str | None, descending: bool) -> list:
     column. Text is ordered by its lower-cased bytes (`COLLATE "C"`, the same order as Python's `str.lower()`
     comparison), never the database's locale, so the order does not depend on the server's collation. The
     creation time and id break ties so a page is stable."""
+    keys: list[Any]
     if sort is None:
         keys = [ProjectComponent.sort_order, ProjectCategory.sort_order, RequirementVersion.sort_order]
     else:
@@ -554,6 +587,9 @@ def filter_requirement_rows(
         ))
     if filters.target_stage_id:
         conditions.append(RequirementVersion.target_stage_id == filters.target_stage_id)
+    stage_range = _stage_range(db, project_id, filters)
+    if stage_range is not None:
+        conditions.append(RequirementVersion.target_stage_id.in_(stage_range))
     if filters.status:
         conditions.append(RequirementVersion.status == filters.status)
     if filters.search:
@@ -586,7 +622,7 @@ def filter_requirement_rows(
         """How many requirements match, counted from the requirement table alone unless a filter reads the version
         (status, stage, text): the version and the component and category joins only order and label the page."""
         query = select(func.count()).select_from(Requirement)
-        if filters.status or filters.target_stage_id or filters.search:
+        if filters.status or filters.target_stage_id or stage_range is not None or filters.search:
             query = query.outerjoin(RequirementVersion, and_(
                 RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
             ))
@@ -615,7 +651,7 @@ def filter_requirement_rows(
 
     if not paged_in_sql:
         keywords = tag_service.keywords_for_requirements(db, [row.id for row in rows]) if rows else {}
-        wanted = filters.keyword.casefold()
+        wanted = (filters.keyword or "").casefold()  # not paged in SQL means a keyword was given
         rows = [row for row in rows if wanted in {k.casefold() for k in keywords.get(row.id, [])}]
         total = len(rows)
         if limit is not None:

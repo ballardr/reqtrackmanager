@@ -3,7 +3,8 @@ import fs from "node:fs";
 import { expect, test } from "@playwright/test";
 
 import { createDisposableProject, installCleanupHook, loginAs, PERSONAS } from "./helpers";
-import { chooseListAction } from "../listActions";
+import { chooseExport } from "../listActions";
+import { pickReportFormat, reportDownloadButton } from "../reportDownload";
 
 /**
  * Job to be done: get a plain table of a kind of record — as a screen, a PDF or a Word file — from the Reports page
@@ -29,7 +30,7 @@ test.describe("Record list report", () => {
 
   test("the Reports page lists a type as a table, switches type and downloads Word", async ({ page }) => {
     const project = await projectWithRequirement(page, "E2E Record List Page");
-    await page.goto(`/projects/${project.projectId}/reports?report=record-list`);
+    await page.goto(`/projects/${project.projectId}?reports=choose&report=record-list`);
 
     await test.step("the first type is run and its rows are shown, code first", async () => {
       await expect(page.getByLabel("Record type")).toHaveValue("requirement");
@@ -45,9 +46,9 @@ test.describe("Record list report", () => {
     });
 
     await test.step("Word download is a real document", async () => {
-      await page.getByRole("button", { name: "Export", exact: true }).click();
+      await pickReportFormat(page, "Word");
       const download = page.waitForEvent("download");
-      await page.getByRole("button", { name: "Download Word report" }).click();
+      await reportDownloadButton(page).click();
       const file = await download;
       expect(file.suggestedFilename()).toBe("record-list.docx");
       const bytes = fs.readFileSync((await file.path())!);
@@ -63,7 +64,7 @@ test.describe("Record list report", () => {
 
     const request = page.waitForRequest((r) => r.url().includes("/reports/record-list"));
     const download = page.waitForEvent("download");
-    await chooseListAction(page, "Export as PDF");
+    await chooseExport(page, "PDF");
     const sent = new URL((await request).url());
     expect(sent.searchParams.get("record_type")).toBe("requirement");
     expect(sent.searchParams.get("format")).toBe("pdf");

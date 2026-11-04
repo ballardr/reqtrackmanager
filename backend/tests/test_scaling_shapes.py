@@ -68,12 +68,17 @@ class _Api(ScalingProbeApi):
 
 
 class _Statements:
-    """Counts the SQL statements executed while active."""
+    """Counts the SQL statements executed while active, other than the report-run job loop's own polling.
+
+    The app lifespan runs that loop in the test process, and it reads `generated_reports` every few seconds on the
+    same engine, so a poll landing inside a measurement would otherwise add a statement at random."""
 
     def __init__(self) -> None:
         self.count = 0
 
-    def __call__(self, *_args, **_kwargs) -> None:
+    def __call__(self, _conn, _cursor, statement, *_args, **_kwargs) -> None:
+        if "generated_reports" in statement and ("SKIP LOCKED" in statement or "expires_at" in statement):
+            return
         self.count += 1
 
     def __enter__(self):

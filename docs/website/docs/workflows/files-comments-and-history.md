@@ -26,7 +26,7 @@ Steps that move a record through its lifecycle (Approve, Activate, Retire, Submi
 
 ## Browsing every file in a project
 
-A project's **Files** page lists every file attached anywhere within it — requirements, change requests, and actions — in one combined list, since a file has no single natural home of its own otherwise.
+A project's **Files** page lists every file the project holds — attached to requirements, change requests and actions, on discussion comments, and in the report image library — in one combined list with previews, since a file has no single natural home of its own otherwise. Its filter panel narrows the list by file name, source, type, uploader and upload day; see [File attachments](../core-features/file-attachments-and-shared-resources.md#project-files).
 
 | Project files |
 | --- |

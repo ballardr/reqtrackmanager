@@ -479,6 +479,7 @@ def import_project_data(
             asset = import_bundled_file(
                 db, organization_id=organization_id, uploaded_by=uploader_id, filename=att["filename"],
                 content_type=att.get("content_type") or "application/octet-stream", data=att_bytes,
+                confidential=bool(att.get("confidential")),
             )
             db.add(StakeholderFile(stakeholder_id=stakeholder.id, file_id=asset.id, linked_by=uploader_id, created_at=datetime.now(UTC)))
     db.flush()

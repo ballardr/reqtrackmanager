@@ -1,8 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { withToast } from "../testing/storybook-helpers";
 import { useToast } from "./ToastContext";
+
+const onUndo = fn();
 
 function Harness() {
   const { showToast } = useToast();
@@ -13,6 +15,15 @@ function Harness() {
       </button>
       <button className="btn" onClick={() => showToast("Could not save changes.", "error")}>
         Trigger error
+      </button>
+      <button className="btn" onClick={() => showToast("Inserted Cover", "success", { action: { label: "Undo insertion", onClick: onUndo } })}>
+        Trigger undo
+      </button>
+      <button
+        className="btn"
+        onClick={() => showToast("Inserted Logo", "success", { details: ['Added page style "Cover".', "The layout already had 1 problem."] })}
+      >
+        Trigger details
       </button>
     </div>
   );
@@ -66,6 +77,31 @@ export const DismissesManually: Story = {
     await expect(body.getByText("Requirement archived")).toBeInTheDocument();
     await userEvent.click(body.getByRole("button", { name: "Dismiss notification" }));
     await waitFor(() => expect(body.queryByText("Requirement archived")).not.toBeInTheDocument());
+  },
+};
+
+/** The action runs its handler and dismisses the toast. */
+export const ActionRunsAndDismisses: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Trigger undo" }));
+    const body = within(document.body);
+    await userEvent.click(await body.findByRole("button", { name: "Undo insertion" }));
+    await expect(onUndo).toHaveBeenCalled();
+    await waitFor(() => expect(body.queryByText("Inserted Cover")).not.toBeInTheDocument());
+  },
+};
+
+/** A toast with details lists them and stays past the usual timeout. */
+export const DetailsAreListedAndStayUntilDismissed: Story = {
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Trigger details" }));
+    const body = within(document.body);
+    await expect(await body.findByText('Added page style "Cover".')).toBeInTheDocument();
+    await expect(body.getByText("The layout already had 1 problem.")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 4500));
+    await expect(body.getByText("Inserted Logo")).toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "Dismiss notification" }));
+    await waitFor(() => expect(body.queryByText("Inserted Logo")).not.toBeInTheDocument());
   },
 };
 

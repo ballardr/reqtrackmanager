@@ -216,7 +216,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     });
   }
 
-  async function downloadReport(kind: "pdf" | "csv") {
+  async function downloadReport(kind: complianceApi.ComplianceReportKind) {
     try {
       // Scoped to this panel's own current filters — "Export"
       // means "export what I'm looking at," not the whole organisation.
@@ -240,7 +240,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
     <div className="side-grid">
       <div className="stack">
         <div className="row" style={{ justifyContent: "flex-end" }}>
-          <ReportExportButton onDownload={downloadReport} />
+          <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
         </div>
         {groups.length === 0 ? (
           <p className="text-muted">No compliance assignments match these filters.</p>

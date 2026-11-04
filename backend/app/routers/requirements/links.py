@@ -71,7 +71,7 @@ def _links_to_out(db: Session, links: list[ArtefactLink], viewpoint_requirement_
     } if other_ids else {}
     out = []
     for link in links:
-        link_type = link_types.get(link.link_type_id)
+        link_type = link_types.get(link.link_type_id) if link.link_type_id is not None else None
         if link.source_id == viewpoint_requirement_id:
             direction = "outgoing"
             display_name = link_type.forward_name if link_type is not None else ""

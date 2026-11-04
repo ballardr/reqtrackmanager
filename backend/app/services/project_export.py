@@ -83,7 +83,7 @@ from app.models.enums import (
     StageStatus,
 )
 from app.models.file import CommentFile, FileAsset, RequirementFile
-from app.models.organization import Organization, ReportTemplate
+from app.models.organization import Organization
 from app.models.project import (
     Project,
     ProjectCategory,
@@ -95,7 +95,6 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.relationship import ArtefactLink
-from app.models.report_content import SCOPE_PROJECT
 from app.models.requirement import (
     Baseline,
     BaselineItem,
@@ -108,6 +107,7 @@ from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks
 from app.services.audit import log_event
 from app.services.bundle_common import (
+    LEGACY_REPORT_CONTENT_KEYS,
     BundleImportWarnings,
     UserResolver,
     enforce_upload_size_limit,
@@ -124,8 +124,11 @@ from app.services.link_type_scope import resolve_link_type_scope
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
-from app.services.report_content import bundle_entries, content_entries, replace_scope_content
-from app.services.report_content_bundle import ContentImageImporter, collect_content_images
+from app.services.report_folder_bundle import export_project_folders, import_project_folders
+from app.services.report_layout_bundle import export_project_layouts, import_project_layouts
+from app.services.report_pack_bundle import export_project_packs, import_project_packs
+from app.services.report_placement_bundle import export_project_placements, import_project_placements
+from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
 from app.services.sequences import generate_unique_code
 from app.services.tags import export_vocabulary, import_vocabulary, keywords_for_requirements, set_keywords
 
@@ -256,7 +259,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             file_assets_by_id[asset.id] = asset
             attachments_by_req.setdefault(req_file.requirement_id, []).append({
                 "file_ref": f"{asset.id}_{asset.filename}", "filename": asset.filename,
-                "content_type": asset.content_type, "linked_by_email": uploader.email,
+                "content_type": asset.content_type, "confidential": asset.confidential,
+                "linked_by_email": uploader.email,
             })
 
     requirement_comments_raw = list(
@@ -489,29 +493,22 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "member_emails": [email(m.user_id) for m in members if m.user_id and email(m.user_id)],
         })
 
-    default_report_template_name = None
-    if project.default_report_template_id:
-        template = db.get(ReportTemplate, project.default_report_template_id)
-        default_report_template_name = template.name if template else None
-
-    content = content_entries(db, SCOPE_PROJECT, project.id)
-    content_images, report_images = collect_content_images(db, project.organization_id, content)
-    file_assets_by_id.update(content_images)
-
-    module_bundle_json: dict[str, Any] = {}
+    module_bundle_json: dict[str, Any] = {
+        **export_project_layouts(db, project, file_assets_by_id), **export_project_packs(db, project), **export_project_placements(db, project),
+        **export_project_snippets(db, project, file_assets_by_id),
+        **export_project_folders(db, project),
+    }
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         module_json, module_file_assets = hooks.export(db, project)
         module_bundle_json.update(module_json)
         file_assets_by_id.update(module_file_assets)
 
     project_json = {
-        "source_name": project.name, "summary": project.summary,
+        "source_name": project.name, "summary": project.summary, "report_name": project.report_name,
         "allow_member_change_requests": project.allow_member_change_requests,
         "require_change_request_for_approved_links": project.require_change_request_for_approved_links,
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
-        "report_content": [e.model_dump() for e in content], "report_images": report_images,
-        "default_report_template_name": default_report_template_name,
         "tags": export_vocabulary(db, project),
         "stages": [{"name": s.name, "sort_order": s.sort_order} for s in stages],
         "components": [
@@ -634,6 +631,7 @@ def new_project_from_bundle_data(
     return Project(
         organization_id=organization_id, name=name, code=generate_project_code(db, organization_id, name),
         summary=summary if summary is not None else data.get("summary", ""),
+        report_name=data.get("report_name") or None,
         allow_member_change_requests=data.get("allow_member_change_requests", True),
         require_change_request_for_approved_links=data.get("require_change_request_for_approved_links", False),
         exempt_from_org_link_lock=data.get("exempt_from_org_link_lock", False),
@@ -681,27 +679,13 @@ def apply_project_data(
     # `routers/projects.py::create_project`'s own default-seeding call for
     # a manually-created (non-template) project.
     seed_action_types(db, project.id)
-    skipped_report_types = replace_scope_content(
-        db, SCOPE_PROJECT, project.id,
-        ContentImageImporter(
-            db, organization_id, current_user.id, file_bytes_by_ref, data.get("report_images"),
-        ).remap(bundle_entries(data, "report_content", ("report_intro", "report_chapters", "report_appendices"))),
-        skip_unknown=True,
-    )
-    if skipped_report_types:
-        warnings.add(
-            f"Report content for unknown report types was not imported: {', '.join(sorted(set(skipped_report_types)))}."
-        )
-    template_name = data.get("default_report_template_name")
-    if template_name:
-        template = db.scalar(
-            select(ReportTemplate).where(ReportTemplate.organization_id == organization_id, ReportTemplate.name == template_name)
-        )
-        if template is None:
-            template = ReportTemplate(organization_id=organization_id, name=template_name, created_by=current_user.id)
-            db.add(template)
-            db.flush()
-        project.default_report_template_id = template.id
+    import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
+    import_project_packs(db, project, data, current_user, warnings)
+    import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)
+    import_project_placements(db, project, data, current_user, warnings)
+    import_project_folders(db, project, data, current_user, warnings)
+    if any(data.get(key) for key in LEGACY_REPORT_CONTENT_KEYS):
+        warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
 
     import_vocabulary(db, project, data.get("tags"), current_user.id)
 
@@ -791,6 +775,7 @@ def apply_project_data(
         return import_bundled_file(
             db, organization_id=organization_id, uploaded_by=uploader_id,
             filename=att["filename"], content_type=att.get("content_type") or "application/octet-stream", data=data_bytes,
+            confidential=bool(att.get("confidential")),
         )
 
     requirement_id_by_code: dict[str, UUID] = {}

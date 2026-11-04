@@ -89,6 +89,22 @@ export const REQUIREMENT_ACTION_OUTCOME_LABEL: Record<RequirementActionOutcome, 
 // badge should have a *_TONE map here alongside its *_LABEL map, never an
 // inline colour at the call site.
 export type BadgeTone = "muted" | "info" | "accent" | "warning" | "danger";
+/** Where a background custom report run is (`GeneratedReport.status`). */
+export type ReportRunStatus = "queued" | "running" | "ready" | "failed" | "expired";
+export const REPORT_RUN_STATUS_LABEL: Record<ReportRunStatus, string> = {
+  queued: "Waiting",
+  running: "Preparing",
+  ready: "Ready",
+  failed: "Failed",
+  expired: "Expired",
+};
+export const REPORT_RUN_STATUS_TONE: Record<ReportRunStatus, BadgeTone> = {
+  queued: "muted",
+  running: "info",
+  ready: "accent",
+  failed: "danger",
+  expired: "muted",
+};
 export const REQUIREMENT_STATUS_TONE: Record<RequirementStatus, BadgeTone> = {
   draft: "muted",
   reviewed: "info",
@@ -316,6 +332,7 @@ export type CoreNotificationType =
   | "stage_review_auto_approved"
   | "project_members_changed_by_org"
   | "system_storage_alert"
+  | "report_run_finished"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
   | "compliance_target_date_approaching"
@@ -433,6 +450,12 @@ export interface Organization {
   is_active: boolean;
   disabled_at: string | null;
   accent_color_hex: string | null;
+  /** The accent colour of reports; `null` follows `accent_color_hex`. */
+  report_accent_color_hex: string | null;
+  /** Whether reports carry the organisation's logo. */
+  report_include_logo: boolean;
+  /** The organisation's named report colours (`null` = none set). */
+  report_colour_scheme?: { name: string; colour: string }[] | null;
   header_title: string | null;
   email_footer_company_name: string | null;
   email_footer_website: string | null;
@@ -469,7 +492,8 @@ export interface OrgCreationChoice {
 
 export interface MergeConflict {
   id: string;
-  kind: "project" | "report_template";
+  /** `project`, or a module's own kind (for example `compliance_standard`). */
+  kind: string;
   name: string;
   existing_id: string;
 }
@@ -482,8 +506,6 @@ export interface OrgMergeResult {
   warnings: string[];
   projects_imported: number;
   projects_skipped: number;
-  report_templates_imported: number;
-  report_templates_overwritten: number;
 }
 
 export interface ServerSettings {
@@ -518,7 +540,26 @@ export interface FileAsset {
   size_bytes: number;
   uploaded_by: string;
   is_org_resource: boolean;
+  /** Marked confidential by its owner: a report never prints it (it changes nothing else). */
+  confidential: boolean;
   created_at: string;
+}
+
+/** Where a project's file hangs from (`ProjectFile.source`); labelled by `strings.files.sources` (the labels carry the organisation's terminology). */
+export type ProjectFileSource = "requirement_attachment" | "action_attachment" | "comment_attachment" | "report_image";
+
+/** The sources in the order the Files page's filter offers them. */
+export const PROJECT_FILE_SOURCES: readonly ProjectFileSource[] = [
+  "requirement_attachment", "action_attachment", "comment_attachment", "report_image",
+];
+
+/** The coarse file types the Files page filters by (`ProjectFileFilter.kind`). */
+export type ProjectFileKind = "image" | "document" | "other";
+
+/** One person who uploaded a file in a project (`GET /projects/{id}/files/uploaders`). */
+export interface ProjectFileUploader extends ProjectScopedRow {
+  id: string;
+  display_name: string;
 }
 
 /** One row of `GET /projects/{id}/files` (ProjectFilesPage) — a file
@@ -532,7 +573,7 @@ export interface FileAsset {
 export interface ProjectFile extends ProjectScopedRow {
   file: FileAsset;
   uploaded_by_display_name: string;
-  source: "requirement_attachment" | "action_attachment" | "comment_attachment";
+  source: ProjectFileSource;
   requirement_id: string | null;
   requirement_unique_code: string | null;
   requirement_name: string | null;
@@ -826,6 +867,9 @@ export interface UserAccess {
   projects: UserAccessProject[];
 }
 
+/** Longest Project report name (the same limit as the project name). */
+export const MAX_PROJECT_REPORT_NAME_LENGTH = 255;
+
 export interface Project {
   id: string;
   organization_id: string;
@@ -833,6 +877,8 @@ export interface Project {
   // Short upper-case code that qualifies this project's record codes (`ACME-REQ-001`).
   code: string;
   summary: string;
+  /** A short name some reports print in headers and titles instead of `name`; null when unset. */
+  report_name: string | null;
   created_at: string;
   updated_at: string;
   is_archived: boolean;
@@ -1759,6 +1805,8 @@ export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: 
  * project X" carries no specific entity, just the project itself).
  */
 export function notificationLink(n: Notification): string | null {
+  // A background report: its page offers the download, or a fresh run once the file has been removed.
+  if (n.entity_type === "generated_report" && n.entity_id) return `/report-runs/${n.entity_id}`;
   if (n.project_id && n.entity_type && n.entity_id) {
     if (n.entity_type === "requirement") return `/projects/${n.project_id}/requirements/${n.entity_id}`;
     if (n.entity_type === "change_request") return `/projects/${n.project_id}/change-requests/${n.entity_id}`;
@@ -1766,60 +1814,6 @@ export function notificationLink(n: Notification): string | null {
   }
   if (n.project_id) return `/projects/${n.project_id}`;
   return null;
-}
-
-export interface ReportChapter {
-  title: string;
-  body: string;
-}
-
-/** The sentinel report key for "every report without an entry of its own". */
-export const ALL_REPORTS_KEY = "*";
-/** The key of the requirements report (a module report is `<module_key>.<report_key>`). */
-export const REQUIREMENTS_REPORT_KEY = "requirements";
-
-/** The introduction, chapters and appendices one scope holds for one report type. */
-export interface ReportContentEntry {
-  report_key: string;
-  intro: string;
-  chapters: ReportChapter[];
-  appendices: ReportChapter[];
-}
-
-/** A report type content can be written for (`GET .../report-types`). */
-export interface ReportTypeOption {
-  key: string;
-  title: string;
-  module_name: string | null;
-}
-
-/** A project's own report setup: its default template and the content it owns. */
-export interface ProjectReportConfig {
-  default_report_template_id: string | null;
-  content: ReportContentEntry[];
-}
-
-export interface OrgReportDefaults {
-  content: ReportContentEntry[];
-}
-
-/** Where an effective report-content value came from. */
-export interface ReportContentSource {
-  scope_type: "template" | "project" | "organization" | "project_summary";
-  scope_id: string;
-  scope_name: string;
-  report_key: string;
-}
-
-/** The content a report of one type would use, with each field's source (`null` = nothing set it). */
-export interface EffectiveReportContent {
-  report_key: string;
-  intro: string;
-  chapters: ReportChapter[];
-  appendices: ReportChapter[];
-  intro_source: ReportContentSource | null;
-  chapters_source: ReportContentSource | null;
-  appendices_source: ReportContentSource | null;
 }
 
 export type ExternalUserPolicy = "disabled" | "org_domain_only" | "anyone";
@@ -1833,6 +1827,17 @@ export interface OrgAdvancedSettings {
   smtp_username: string | null;
   smtp_use_tls: boolean;
   pat_max_lifetime_days: number | null;
+  /** Days a background report's file is kept; `null` uses the platform default. */
+  report_output_retention_days: number | null;
+  /** Default file name template for a report that sets none of its own; `null` keeps each report's built-in name. */
+  report_file_name: string | null;
+  /** The organisation's report look, set under Configuration (the accent colour and logo are on the Branding page). */
+  report_footer_text: string | null;
+  report_include_cover_page: boolean;
+  report_chapters_per_component: boolean;
+  /** Read-only: the platform default and ceiling for `report_output_retention_days`. */
+  report_output_default_retention_days: number;
+  report_output_max_retention_days: number;
   require_2fa: boolean;
   allow_self_signup: boolean;
   auto_accept_email_domain: string | null;
@@ -1976,6 +1981,48 @@ export interface ServerModuleDefault {
   project_default_enabled: boolean;
   has_override: boolean;
 }
+
+/** One font family on the report fonts page — `GET /system/report-fonts`. */
+export interface ReportFont {
+  key: string;
+  label: string;
+  bundled: boolean;
+  enabled: boolean;
+  missing: boolean;
+  word_name: string;
+  generic: ReportFontGeneric;
+  faces: { style: ReportFontStyle; permission: string }[];
+}
+
+/** A file the font scan did not use, with the reason. */
+export interface ReportFontSkipped {
+  file_name: string;
+  reason: string;
+}
+
+/** `GET /system/report-fonts` and the answer to its changes and rescan. */
+export interface ReportFontsPage {
+  directory_configured: boolean;
+  max_file_mb: number;
+  families: ReportFont[];
+  skipped: ReportFontSkipped[];
+}
+
+export type ReportFontGeneric = "sans-serif" | "serif" | "monospace";
+export type ReportFontStyle = "regular" | "bold" | "italic" | "bolditalic";
+
+export const REPORT_FONT_GENERIC_LABEL: Record<ReportFontGeneric, string> = {
+  "sans-serif": "Sans-serif",
+  serif: "Serif",
+  monospace: "Monospace",
+};
+
+export const REPORT_FONT_STYLE_LABEL: Record<ReportFontStyle, string> = {
+  regular: "Regular",
+  bold: "Bold",
+  italic: "Italic",
+  bolditalic: "Bold italic",
+};
 
 /** Which tier decides whether a module is enabled for an organisation. */
 export type ModuleEnabledSource = "organization" | "server_default" | "registry";
@@ -2157,18 +2204,6 @@ export interface ForceResetResult {
 
 export interface BulkRevokeResult {
   revoked_count: number;
-}
-
-export interface ReportTemplate {
-  id: string;
-  organization_id: string;
-  name: string;
-  accent_color_hex: string;
-  include_cover_page: boolean;
-  include_logo: boolean;
-  footer_text: string | null;
-  content: ReportContentEntry[];
-  chapters_per_component: boolean;
 }
 
 export interface OrgSsoConfig {

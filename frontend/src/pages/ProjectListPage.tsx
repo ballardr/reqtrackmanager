@@ -13,7 +13,7 @@ import type {
   ProjectTreeNode,
   StageStatus,
 } from "../api/types";
-import { collapseProjectRoles, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
@@ -86,6 +86,7 @@ export function ProjectListPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSummary, setNewSummary] = useState("");
+  const [newReportName, setNewReportName] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newOrgId, setNewOrgId] = useState("");
   const [templateProjectId, setTemplateProjectId] = useState("");
@@ -264,6 +265,7 @@ export function ProjectListPage() {
         organization_id: newOrgId,
         name: newName,
         summary: newSummary,
+        report_name: newReportName.trim() || null,
         code: newOrg?.project_code_policy.assignment === "manual" ? normaliseProjectCode(newCode) : null,
         template_project_id: templateProjectId || null,
         visibility: newVisibility,
@@ -413,6 +415,14 @@ export function ProjectListPage() {
                   <FormGridFull>
                     <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
                   </FormGridFull>
+                )}
+                {!importFile && (
+                  <TextField help={strings.help.projectReportName}
+                    label={strings.projects.reportName}
+                    value={newReportName}
+                    onChange={setNewReportName}
+                    inputProps={{ maxLength: MAX_PROJECT_REPORT_NAME_LENGTH }}
+                  />
                 )}
                 <FormGridFull>
                   <TextAreaField helpNotNeeded label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />

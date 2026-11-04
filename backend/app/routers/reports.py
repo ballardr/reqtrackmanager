@@ -7,8 +7,7 @@ project's requirements, selected via `ReportRequest.format` — merged from
 two separate `/reports/pdf`/`/reports/csv` endpoints on 2026-09-22 (see
 docs/decisions.md) since they differed only in output format, not in data
 collection, and a single parameterized endpoint leaves one place for a
-future report-type/template parameter to land. Supports custom Markdown
-sections (R-G-01, R-G-02), requirement filters (R-G-03), organisation
+future report-type/template parameter to land. Supports requirement filters (R-G-03), organisation
 shared resource files rendered as additional report sections (R-G-04), and
 images embedded in those Markdown sections via `report_document.resolve_report_images`
 (see its docstring for the tenant-isolation check it performs before any
@@ -17,7 +16,6 @@ image reaches the PDF).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -36,19 +34,16 @@ from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
 from app.services.rbac import require_project_view
-from app.services.report_content import (
-    REQUIREMENTS_REPORT_KEY,
-    build_placeholders,
-    content_markdown,
-    resolve_report_content,
-)
-from app.services.report_document import load_report_template, resolve_branding, resolve_report_images
+from app.services.report_document import resolve_branding, resolve_report_images
+from app.services.report_file_names import org_default_stem
 from app.services.reports import (
     ReportRequirementRow,
-    default_chapters_per_component,
     generate_csv_report,
     generate_docx_report,
+    generate_html_report,
+    generate_odt_report,
     generate_pdf_report,
+    generate_sheet_report,
 )
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/reports", tags=["reports"])
@@ -128,62 +123,47 @@ def generate_report(
     current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """Generates a requirements report in `payload.format` — PDF (R-F-01),
-    DOCX or CSV (R-F-02). Requirement collection/filtering (R-G-03) is
+    DOCX, ODT, HTML, or the flat table as CSV, XLSX or ODS (R-F-02). Requirement collection/filtering (R-G-03) is
     identical for every format; only CSV's branching below is genuinely
     format-specific (no branding/markdown/chapters concept for a flat
-    export). PDF and DOCX are rendered from the same neutral document
+    export). The document formats are rendered from the same neutral document
     (`services.report_model`).
 
-    For PDF and DOCX, falls back to the *effective* requirements-report content
-    (intro/chapters/appendices) when the request doesn't override it with
-    ad-hoc pre_markdown/post_markdown: per field, the selected template's, the
-    project's own, the nearest ancestor project's, then the organisation's
-    (`services.report_content.resolve_report_content`). `{{project_name}}`-style
-    placeholders in either the resolved or the ad-hoc text are filled in."""
+    The selected resource files (R-G-04) follow the requirement tables. An
+    introduction, chapters or appendices belong to a report layout, not here."""
     project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     rows = _collect_rows(db, project_id, payload)
 
-    if payload.format == "csv":
-        csv_bytes = generate_csv_report(rows, terminology=project.terminology)
-        return file_response(csv_bytes, f"{filename_safe(project.name, fallback='project')}-requirements", "csv")
-
     org = db.get(Organization, project.organization_id)
+    stem = org_default_stem(
+        org, project, title="Requirements report", extension=payload.format,
+        fallback=f"{filename_safe(project.name, fallback='project')}-requirements",
+    )
+    if payload.format == "csv":
+        return file_response(generate_csv_report(rows, terminology=project.terminology), stem, "csv")
+    if payload.format in ("xlsx", "ods"):
+        return file_response(
+            generate_sheet_report(payload.format, rows, project.name, terminology=project.terminology), stem, payload.format,
+        )
+
     resource_markdown = _resource_sections_markdown(db, project, payload.resource_file_ids)
 
-    template = None
-    if payload.report_template_id is not None:
-        template = load_report_template(db, project.organization_id, payload.report_template_id)
-        if template is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid report_template_id for this project's organisation.")
+    assert org is not None  # the project's own organisation
+    branding = resolve_branding(db, org)
 
-    resolved_pre, resolved_post = content_markdown(
-        resolve_report_content(db, REQUIREMENTS_REPORT_KEY, org, project, template)
-    )
-    pre_markdown = payload.pre_markdown or resolved_pre
-    post_markdown = payload.post_markdown or resolved_post
-    post_markdown = f"{post_markdown}\n\n{resource_markdown}".strip()
-    placeholders = build_placeholders(
-        project_name=project.name, report_title=project.name, generated_on=datetime.now(UTC).date(),
-        organisation=org.name,
+    # Precedence: an explicit per-generation choice wins, else the organisation's setting.
+    chapters_per_component = (
+        payload.chapters_per_component if payload.chapters_per_component is not None else org.report_chapters_per_component
     )
 
-    branding = resolve_branding(db, org, template)
-
-    # Precedence: an explicit per-generation choice always wins; failing
-    # that, a selected template's own setting; failing that (no template),
-    # the sparse-chapter heuristic. See ReportRequest.chapters_per_component
-    # and default_chapters_per_component's docstrings.
-    if payload.chapters_per_component is not None:
-        chapters_per_component = payload.chapters_per_component
-    elif template is not None:
-        chapters_per_component = template.chapters_per_component
-    else:
-        chapters_per_component = default_chapters_per_component(rows)
-
-    images = resolve_report_images(db, project.organization_id, pre_markdown, post_markdown)
-    generate = generate_docx_report if payload.format == "docx" else generate_pdf_report
+    images = resolve_report_images(db, project.organization_id, resource_markdown)
+    generate = {
+        "pdf": generate_pdf_report, "docx": generate_docx_report, "odt": generate_odt_report, "html": generate_html_report,
+    }[payload.format]
     document_bytes = generate(
-        project_name=project.name, pre_markdown=pre_markdown, rows=rows, post_markdown=post_markdown,
-        branding=branding, images=images, chapters_per_component=chapters_per_component, placeholders=placeholders,
+        project_name=project.name, rows=rows, post_markdown=resource_markdown,
+        branding=branding, images=images, chapters_per_component=chapters_per_component,
     )
-    return file_response(document_bytes, f"{filename_safe(project.name, fallback='project')}-requirements", payload.format)
+    return file_response(document_bytes, stem, payload.format)

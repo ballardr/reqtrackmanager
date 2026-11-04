@@ -12,7 +12,7 @@ import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
 import { buildRecordColumns } from "../testing/recordTablesFixtures";
 import { buildVocabulary } from "../testing/tagsFixtures";
 import { RequirementsPage } from "./RequirementsPage";
-import { chooseListAction, openListMenu } from "../testing/listActionsMenu";
+import { openListMenu, chooseExport } from "../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
 
@@ -133,7 +133,7 @@ export const ExportAndImportAreOnTheTitleRow: Story = {
     await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
     await expect((await openListMenu(canvas)).getByRole("menuitem", { name: "Import from CSV" })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    await chooseListAction(canvas, "Export as CSV");
+    await chooseExport(canvas, "CSV");
     await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith("/api/v1/projects/project-1/records/requirement/export"));
   },
 };
@@ -194,6 +194,30 @@ export const FilterByStatusBadge: Story = {
     await userEvent.click(draftBadge);
     const statusSelect = canvas.getByLabelText("Status");
     await expect(statusSelect).toHaveValue("draft");
+  },
+};
+
+/** The component filter and the target version range are what narrow the list (and so its Export and Download
+ * report): choosing them sends `component_id` and the two range ends, and clearing an end drops its parameter. */
+export const ComponentAndTargetVersionRangeFiltersAreSent: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Reset password")).toBeInTheDocument());
+    const lastPath = () => {
+      const calls = (api.getPage as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      return String(calls[calls.length - 1][0]);
+    };
+    await userEvent.selectOptions(canvas.getByLabelText("Component"), "c2");
+    await waitFor(() => expect(lastPath()).toContain("component_id=c2"));
+    await userEvent.selectOptions(canvas.getByLabelText("Target version from"), "s2");
+    await waitFor(() => expect(lastPath()).toContain("target_stage_from_id=s2"));
+    await expect(lastPath()).not.toContain("target_stage_to_id");
+    await userEvent.selectOptions(canvas.getByLabelText("Target version to"), "s2");
+    await waitFor(() => expect(lastPath()).toContain("target_stage_to_id=s2"));
+    await userEvent.selectOptions(canvas.getByLabelText("Target version from"), "");
+    await waitFor(() => expect(lastPath()).not.toContain("target_stage_from_id"));
+    await expect(lastPath()).toContain("target_stage_to_id=s2");
   },
 };
 

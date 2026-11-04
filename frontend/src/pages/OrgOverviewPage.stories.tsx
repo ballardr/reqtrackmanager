@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, screen, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ReportCatalogueEntry } from "../api/reports";
@@ -14,7 +14,7 @@ const ORG_ID = "org-1";
 const org: Organization = {
   id: ORG_ID, name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-  disabled_at: null, accent_color_hex: null, header_title: null,
+  disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
@@ -32,14 +32,14 @@ const scopedStats: OrgOverviewStats = {
 function mockOrgOverviewApis(
   overrides: {
     org?: Organization; stats?: OrgOverviewStats; modules?: OrgModule[]; myOrgs?: Organization[];
-    /** Organisation-wide reports the caller can run (the core "Reports" group's catalogue). */
+    /** Organisation-wide reports the caller can run (the Reports menu's catalogue). */
     reports?: ReportCatalogueEntry[];
   } = {}
 ) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/orgs/${ORG_ID}/report-catalogue`) return overrides.reports ?? [];
     if (path.includes("/reports/")) return buildReportResult({ title: "Org fixture report", scope_label: "Acme Corp" });
-    if (path.includes("/report-templates")) return [];
+    if (path.startsWith("/api/v1/report-runs")) return [];
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path.includes("/overview-stats")) return overrides.stats ?? fullTotalStats;
     if (path.includes("/modules")) return overrides.modules ?? [];
@@ -186,27 +186,25 @@ const orgReport = buildReportCatalogueEntry({
   path: `/api/v1/orgs/${ORG_ID}/modules/fixture_report_module/reports/fixture-report`,
 });
 
-/** The core "Reports" group appears only when the
- * organisation catalogue lists a report the caller can run, and lists it
- * generically (no module is named here). */
-export const ReportsGroupListsOrganisationReports: Story = {
+/** The "Reports" button beside the title appears only when the organisation catalogue lists a report the caller can
+ * run, and opens a dialog that lists it generically (no module is named here). */
+export const ReportsButtonOpensTheReportsDialog: Story = {
   beforeEach: () => mockOrgOverviewApis({ reports: [orgReport] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByRole("link", { name: "Reports" })).toHaveAttribute("href", `/orgs/${ORG_ID}/overview/reports`));
-    await userEvent.click(canvas.getByRole("link", { name: "Reports" }));
-    await waitFor(() => expect(canvas.getByRole("region", { name: "Items" })).toBeInTheDocument());
-    await expect(canvas.getByText(/Acme Corp · generated/)).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Reports" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Reports" }));
+    await expect(await dialog.findByText(/Acme Corp · generated/)).toBeInTheDocument();
   },
 };
 
-/** No runnable org report (module off, or no org report role): no Reports group at all. */
-export const ReportsGroupHiddenWithoutOrganisationReports: Story = {
+/** No runnable org report (module off, or no org report role): no Reports menu at all. */
+export const ReportsMenuHiddenWithoutOrganisationReports: Story = {
   beforeEach: () => mockOrgOverviewApis({ reports: [] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument();
-    await expect(canvas.queryByRole("link", { name: "Reports" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
   },
 };
 

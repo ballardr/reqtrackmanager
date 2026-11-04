@@ -56,6 +56,11 @@ _MEDIA_TYPES = {
     "pdf": "application/pdf",
     "csv": "text/csv",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "odt": "application/vnd.oasis.opendocument.text",
+    "ods": "application/vnd.oasis.opendocument.spreadsheet",
+    "html": "text/html; charset=utf-8",
+    "zip": "application/zip",
 }
 
 
@@ -64,9 +69,9 @@ def file_response(content: bytes, stem: str, ext: str) -> Response:
 
     Args:
         content: The file bytes.
-        stem: The filename without extension; the caller passes it through
-            `filename_safe`.
-        ext: One of `pdf`, `csv`, `docx`; selects the content type.
+        stem: The filename without extension. It goes through `content_disposition`, so a quote, a line break or a
+            character outside printable ASCII can never reach the header unencoded.
+        ext: One of `pdf`, `csv`, `docx`, `xlsx`, `odt`, `ods`, `html`, `zip`; selects the content type.
 
     Returns:
         A response with the content type and an `attachment` disposition.
@@ -76,5 +81,5 @@ def file_response(content: bytes, stem: str, ext: str) -> Response:
     """
     return Response(
         content=content, media_type=_MEDIA_TYPES[ext],
-        headers={"Content-Disposition": f'attachment; filename="{stem}.{ext}"'},
+        headers={"Content-Disposition": content_disposition("attachment", f"{stem}.{ext}")},
     )

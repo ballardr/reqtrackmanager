@@ -29,10 +29,12 @@ from app.services.report_model import (
     Gap,
     Heading,
     Image,
+    MathText,
     Note,
     PageBreak,
     Paragraph,
     ReportDocument,
+    Styled,
     Table,
     markdown_to_blocks,
 )
@@ -69,10 +71,12 @@ def _row(code="R-1", name="Boot fast", reasoning="UX", status="draft", component
 
 
 def test_markdown_to_blocks_reads_headings_paragraphs_lists_and_own_line_images():
-    source = "# One\n\n### Three\n\n###### Six\n\ntext *kept literal*\n\n- a\n- b\n\n![alt](attachment:x)\n"
+    source = "# One\n\n### Three\n\n###### Six\n\ntext *styled* and ~~literal~~\n\n- a\n- b\n\n![alt](attachment:x)\n"
     blocks = markdown_to_blocks(source, {"attachment:x": b"png"})
     assert [b for b in blocks if isinstance(b, Heading)] == [Heading("One", 1), Heading("Three", 3), Heading("Six", 4)]
-    assert Paragraph("text *kept literal*") in blocks  # inline Markdown is deliberately not interpreted
+    # Emphasis is a style (the words read without markers); the rest of the inline syntax stays as written.
+    styled = next(b for b in blocks if isinstance(b, Paragraph) and isinstance(b.text, MathText))
+    assert styled.text.parts == ("text ", Styled("styled", italic=True), " and ~~literal~~")
     assert BulletList(["a", "b"]) in blocks
     assert Image(b"png") in blocks
 
@@ -90,13 +94,13 @@ def test_markdown_to_blocks_skips_unresolved_images_and_blank_input():
 
 def test_requirement_document_groups_chapters_and_tables():
     rows = [_row("R-2", component="B", c=2), _row("R-1", component="A", c=1)]
-    chaptered = build_requirement_document(project_name="P", pre_markdown="# Intro", rows=rows, post_markdown="# End", chapters_per_component=True)
+    chaptered = build_requirement_document(project_name="P", rows=rows, post_markdown="# End", chapters_per_component=True)
     assert chaptered.title == "P" and chaptered.landscape is False
-    assert [b.text for b in chaptered.blocks if isinstance(b, Heading) and b.level == 1] == ["Intro", "A", "B", "End"]
+    assert [b.text for b in chaptered.blocks if isinstance(b, Heading) and b.level == 1] == ["A", "B", "End"]
     assert sum(isinstance(b, PageBreak) for b in chaptered.blocks) == 2
     table = next(b for b in chaptered.blocks if isinstance(b, Table))
     assert table.columns == ["ID", "Name", "Reasoning", "Status", "Tags"] and table.rows == [["R-1", "Boot fast", "UX", "Draft", ""]]
-    flowing = build_requirement_document(project_name="P", pre_markdown="", rows=rows, post_markdown="", chapters_per_component=False)
+    flowing = build_requirement_document(project_name="P", rows=rows, post_markdown="", chapters_per_component=False)
     assert not [b for b in flowing.blocks if isinstance(b, PageBreak)]
 
 
@@ -104,7 +108,7 @@ def test_requirement_document_tones_the_status_cell_like_the_screen_badge():
     from app.services.report_model import TONE_FILL
 
     rows = [_row("R-1", status="approved"), _row("R-2", status="draft")]
-    document = build_requirement_document(project_name="P", pre_markdown="", rows=rows, post_markdown="", chapters_per_component=False)
+    document = build_requirement_document(project_name="P", rows=rows, post_markdown="", chapters_per_component=False)
     table = next(b for b in document.blocks if isinstance(b, Table))
     assert [table.tone_at(i, 3) for i in range(2)] == ["accent", "muted"]
     assert all(table.tone_at(i, c) is None for i in range(2) for c in (0, 1, 2, 4))
@@ -190,6 +194,12 @@ def test_docx_invalid_accent_colour_falls_back_instead_of_reaching_the_xml():
 
 def test_clean_text_drops_only_xml_invalid_characters():
     assert clean_text("a\x00b\x08c\x0bd\x1fe\ud800f") == "abcdef"
+
+
+def test_clean_text_keeps_valid_xml_characters():
+    kept = "tab\there\nline\rend é 漢字 \ud7ff\ue000\ufffd 😀"
+    assert clean_text(kept) == kept
+    assert clean_text("x\ufffey\uffffz") == "xyz"
     assert clean_text("tab\tnew\nline é 漢 😀") == "tab\tnew\nline é 漢 😀"
 
 
@@ -259,42 +269,31 @@ def test_requirement_report_docx_download(client, admin_token):
     org, token = create_org_admin_in(client, admin_token, "DocxReqOrg")
     project = _seed_requirement(client, token, org["id"], STORED_HOSTILE)
     resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx", "pre_markdown": "# Intro\n\nHello"},
+        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx"},
         headers=auth_headers(token),
     )
     assert resp.status_code == 200, resp.text
     assert resp.headers["content-type"] == DOCX_TYPE
     assert resp.headers["content-disposition"] == 'attachment; filename="Demo Project-requirements.docx"'
     doc = _open(resp.content)
-    assert ("Heading 1", "Intro") in [(p.style.name, p.text) for p in doc.paragraphs]
     assert doc.tables[0].rows[1].cells[1].text == clean_text(STORED_HOSTILE)
     assert doc.tables[0].rows[1].cells[3].text == "Draft"  # label map, not the raw enum
 
 
-def test_requirement_report_docx_applies_template_branding_and_rejects_a_foreign_template(client, admin_token):
+def test_requirement_report_docx_applies_the_organisations_report_look(client, admin_token):
     org, token = create_org_admin_in(client, admin_token, "DocxBrandOrg")
     project = _seed_requirement(client, token, org["id"])
-    created = client.post(
-        f"/api/v1/orgs/{org['id']}/report-templates",
-        json={"name": "Branded", "accent_color_hex": "#ff0000", "footer_text": "Confidential", "include_cover_page": True},
-        headers=auth_headers(token),
-    )
-    assert created.status_code == 201, created.text
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx", "report_template_id": created.json()["id"]},
-        headers=auth_headers(token),
-    )
+    assert client.put(
+        f"/api/v1/orgs/{org['id']}/branding", json={"report_accent_color_hex": "#ff0000"}, headers=auth_headers(token),
+    ).status_code == 200
+    assert client.put(
+        f"/api/v1/orgs/{org['id']}/advanced-settings",
+        json={"report_footer_text": "Confidential", "report_include_cover_page": True}, headers=auth_headers(token),
+    ).status_code == 200
+    resp = client.post(f"/api/v1/projects/{project['id']}/reports", json={"format": "docx"}, headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
     doc = _open(resp.content)
     assert _header_fill(doc.tables[0]) == "FF0000" and "Confidential" in doc.sections[0].footer.paragraphs[0].text
-
-    other, other_token = create_org_admin_in(client, admin_token, "DocxForeignOrg")
-    foreign = client.post(f"/api/v1/orgs/{other['id']}/report-templates", json={"name": "Theirs"}, headers=auth_headers(other_token))
-    bad = client.post(
-        f"/api/v1/projects/{project['id']}/reports", json={"format": "docx", "report_template_id": foreign.json()["id"]},
-        headers=auth_headers(token),
-    )
-    assert bad.status_code == 400
 
 
 def test_requirement_report_docx_needs_project_access(client, admin_token):
@@ -317,9 +316,13 @@ def test_requirement_report_docx_embeds_own_org_images_and_never_another_orgs(cl
     ).json()["id"]
 
     def run(file_id):
+        notes = client.post(
+            f"/api/v1/orgs/{org['id']}/resources",
+            files={"file": ("notes.md", f"![x](attachment:{file_id})\n".encode(), "text/markdown")}, headers=auth_headers(token),
+        ).json()["id"]
         resp = client.post(
             f"/api/v1/projects/{project['id']}/reports",
-            json={"format": "docx", "pre_markdown": f"![x](attachment:{file_id})\n"}, headers=auth_headers(token),
+            json={"format": "docx", "resource_file_ids": [notes]}, headers=auth_headers(token),
         )
         assert resp.status_code == 200, resp.text
         return _open(resp.content)

@@ -1,0 +1,237 @@
+/**
+ * Module: components/ReportLayoutPreviewPanel
+ *
+ * The designer's live preview: runs the draft text on the real records, as the signed-in person, and shows the
+ * result without storing anything (`ReportLayoutApi.preview`).
+ *
+ * Responsibilities:
+ * - Run on demand (a button), never on every keystroke: a run reads real data and has caps.
+ * - Offer "Download preview" beside the run button: the draft as a real file in any format of its family
+ *   (`ReportLayoutApi.downloadPreview`), named as a preview, with nothing stored. A draft too big to produce while the
+ *   author waits says so; a preview is never queued.
+ * - Show a document as the server's standalone HTML page in a fully sandboxed frame (no scripts, no same-origin
+ *   access, a restrictive CSP inside the page), and a table layout as capped sheets with the real row counts.
+ * - Offer the scope's options with the Reports page's own form: "include child projects" for a project, the
+ *   projects to include for an organisation (`ReportParamsForm`).
+ * - Show the draft's run-time variables as a form (`ReportVariablesForm`, options from the server) and send the chosen
+ *   values; the form follows the draft's `@var` lines, so it is refreshed only when those change, and a variable with
+ *   no default and no value holds the preview back.
+ * - A draft that runs for one project (`oneproject` or `projecttree` on its `@layout` line) gets a single-choice, required
+ *   project picker; the child-projects switch is offered unless it is `oneproject` (and, in an organisation, only for
+ *   `projecttree`). The server enforces the same rule on every run.
+ * - Surface the run's warnings, its counters and any refusal (over a limit, no projects) in words.
+ * - Remember the chosen projects (and the child-projects switch) per viewer and layout, so the next preview opens on
+ *   them (`utils/reportPreviewMemory`); a remembered project the caller can no longer choose is dropped.
+ *
+ * Design decisions: the frame's `sandbox` attribute is deliberately empty; the preview never receives a token,
+ * cookie or script. The result is dropped when the text changes (`stale`) rather than shown against text it was
+ * not produced from.
+ */
+import { useEffect, useMemo, useState } from "react";
+
+import type { LayoutFamily, PreviewResult, ReportLayoutApi } from "../api/reportLayouts";
+import { REPORT_FORMAT } from "../api/reportFormats";
+import {
+  isAsyncRequired,
+  missingVariables,
+  type ReportFileKind,
+  type ReportRunValues,
+  type ReportVariable,
+  type VariableValue,
+  type VariableValues,
+  variableDefaults,
+} from "../api/reports";
+import { useStrings } from "../context/TerminologyContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
+import { downloadBlob } from "../utils/download";
+import { FAMILY_FORMATS } from "../utils/reportPackDraft";
+import { readPreviewScope, writePreviewScope } from "../utils/reportPreviewMemory";
+import { readRunScope } from "../utils/runScope";
+import { ReportExportButton } from "./ReportExportButton";
+import { ReportParamsForm } from "./ReportParamsForm";
+import { ReportVariablesForm } from "./ReportVariablesForm";
+import { ReportSectionTable } from "./ReportViewer";
+import { Spinner } from "./Spinner";
+
+/**
+ * @param api The calls, bound to the layout's scope.
+ * @param layoutId The layout being previewed; the remembered project choice is kept per layout.
+ * @param family The layout's family, which decides the formats Download preview offers.
+ * @param text The draft text view to preview.
+ * @param name The title to print on the report.
+ * @param disabled True while the text has problems; the button is then disabled with the reason.
+ * @param projectOptions Organisation scope: the projects a run can be narrowed to.
+ */
+export function ReportLayoutPreviewPanel({
+  api, layoutId, family, text: draft, name, disabled, projectOptions,
+}: {
+  api: ReportLayoutApi;
+  layoutId: string;
+  family: LayoutFamily;
+  text: string;
+  name: string;
+  disabled: boolean;
+  projectOptions?: { value: string; label: string }[];
+}) {
+  const strings = useStrings();
+  const text = strings.reportLayouts;
+  const variableText = strings.reportVariables;
+  const { showToast } = useToast();
+  // The remembered choice is re-checked against the projects on offer, which may arrive after the panel opens.
+  const [, setTick] = useState(0);
+  const organisationScope = api.scope.kind === "organization";
+  // A draft that runs for one project previews for exactly one: a single-choice picker.
+  const runScope = readRunScope(draft);
+  const singleProject = runScope !== "any";
+  const childrenAllowed = organisationScope ? runScope === "one_and_children" : runScope !== "one";
+  const offered = useMemo(() => new Set((projectOptions ?? []).map((project) => project.value)), [projectOptions]);
+  const stored = readPreviewScope(api.scope, layoutId, organisationScope ? offered : new Set());
+  const values: ReportRunValues = {
+    include_children: stored.includeChildren && childrenAllowed,
+    // The remembered choice may hold several from before the draft was limited; the first is the one kept.
+    project_ids: (singleProject ? stored.projectIds.slice(0, 1) : stored.projectIds).join(","),
+  };
+  const needsProject = singleProject && organisationScope && values.project_ids === "";
+  function changeValue(key: string, value: ReportRunValues[string]) {
+    const next = { ...values, [key]: value };
+    writePreviewScope(api.scope, layoutId, {
+      projectIds: typeof next.project_ids === "string" && next.project_ids !== "" ? next.project_ids.split(",") : [],
+      includeChildren: next.include_children === true,
+    });
+    setTick((tick) => tick + 1);
+  }
+  const [form, setForm] = useState<ReportVariable[]>([]);
+  const [variableValues, setVariableValues] = useState<VariableValues>({});
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [produced, setProduced] = useState<{ draft: string; result: PreviewResult } | null>(null);
+
+  // The form follows the variable declarations only: other edits to the draft need no new options.
+  const declarations = useMemo(() => draft.split("\n").filter((line) => line.trimStart().startsWith("@var")).join("\n"), [draft]);
+  useEffect(() => {
+    if (disabled || declarations === "") return undefined;
+    let cancelled = false;
+    // The declarations alone are enough to build the form (a variable's options do not depend on the blocks).
+    api
+      .draftVariables(`@layout document\n${declarations}\n`)
+      .then((found) => {
+        if (cancelled || !found.ok) return;
+        setForm(found.variables);
+        // Keep what was already chosen for a variable that is still declared; start new ones from their default.
+        setVariableValues((current) => ({
+          ...variableDefaults(found.variables),
+          ...Object.fromEntries(found.variables.filter((v) => v.name in current && current[v.name] !== null).map((v) => [v.name, current[v.name]])),
+        }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, declarations, disabled]);
+
+  // A draft with no declarations shows no form, whatever an earlier draft had.
+  const shown = declarations === "" ? [] : form;
+  const missing = missingVariables(shown, variableValues);
+
+  /** The request both Run preview and Download preview send: the draft, the chosen projects and the variable values. */
+  function request() {
+    const ids = typeof values.project_ids === "string" && values.project_ids !== "" ? values.project_ids.split(",") : undefined;
+    const chosen = Object.fromEntries(shown.map((v) => [v.name, variableValues[v.name]]).filter(([, value]) => value !== null && value !== undefined));
+    return {
+      text: draft, name, include_children: values.include_children === true, project_ids: ids,
+      ...(shown.length > 0 ? { variables: chosen } : {}),
+    };
+  }
+
+  async function download(kind: ReportFileKind) {
+    const format = REPORT_FORMAT[kind].label;
+    try {
+      const blob = await api.downloadPreview(request(), kind);
+      // A table preview of several sheets comes back as a zip of CSV files, whatever `csv` was asked for.
+      const extension = blob.type === "application/zip" ? "zip" : kind;
+      downloadBlob(blob, blob instanceof File && blob.name !== "" ? blob.name : `${text.previewFileName(name)}.${extension}`);
+      showToast(text.previewDownloaded(format), "success");
+    } catch (err) {
+      showToast(isAsyncRequired(err) ? text.previewTooBig : toErrorMessage(err, text.previewDownloadFailed(format)), "error");
+    }
+  }
+
+  async function run() {
+    setRunning(true);
+    setError(null);
+    try {
+      const result = await api.preview(request());
+      setProduced({ draft, result });
+    } catch (err) {
+      setProduced(null);
+      setError(toErrorMessage(err, text.previewFailed));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const current = produced && produced.draft === draft && produced.result.ok ? produced.result : null;
+
+  return (
+    <div className="stack">
+      <p className="text-muted" style={{ margin: 0 }}>{text.previewHint}</p>
+      <ReportParamsForm
+        params={[]}
+        values={values}
+        onChange={changeValue}
+        supportsIncludeChildren={childrenAllowed}
+        projectMultiOptions={organisationScope && !singleProject ? projectOptions : undefined}
+        projectSingleOptions={organisationScope && singleProject ? projectOptions : undefined}
+      />
+      <ReportVariablesForm
+        variables={shown}
+        values={variableValues}
+        onChange={(name: string, value: VariableValue | null) => setVariableValues((previous) => ({ ...previous, [name]: value }))}
+      />
+      <div className="row">
+        <button type="button" className="btn btn-primary" disabled={disabled || running || missing.length > 0 || needsProject} onClick={() => void run()}>
+          {text.refreshPreview}
+        </button>
+        <ReportExportButton<ReportFileKind>
+          kinds={FAMILY_FORMATS[family]} label={text.downloadPreview} onDownload={download}
+          disabled={disabled || missing.length > 0 || needsProject}
+        />
+        {disabled && <span className="text-muted">{text.previewFixFirst}</span>}
+        {!disabled && needsProject && <span className="text-muted">{strings.reportRuns.needProject}</span>}
+        {!disabled && missing.length > 0 && (
+          <span className="text-muted">{variableText.needValues(shown.filter((v) => missing.includes(v.name)).map((v) => v.label))}</span>
+        )}
+      </div>
+      {running && <Spinner />}
+      {error && <div role="alert" style={{ color: "var(--color-danger)" }}>{error}</div>}
+      {current && <PreviewResultView result={current} />}
+    </div>
+  );
+}
+
+function PreviewResultView({ result }: { result: PreviewResult }) {
+  const text = useStrings().reportLayouts;
+  return (
+    <div className="stack">
+      <span className="text-muted" role="status">{text.previewSummary(result.records_read, result.projects, result.duration_ms)}</span>
+      {result.warnings.length > 0 && (
+        <ul style={{ margin: 0, paddingLeft: "1.2rem" }} aria-label="Warnings">
+          {result.warnings.map((warning, index) => <li key={index} className="text-muted">{warning}</li>)}
+        </ul>
+      )}
+      {result.html !== null && (
+        <iframe className="layout-preview-frame" title={text.previewFrameTitle} sandbox="" srcDoc={result.html} />
+      )}
+      {result.html === null && result.sheets.length === 0 && <p className="text-muted">{text.previewNothing}</p>}
+      {result.sheets.map((sheet) => (
+        <ReportSectionTable
+          key={sheet.name}
+          section={{
+            key: sheet.name, title: sheet.name, columns: sheet.columns, rows: sheet.rows, gap: false,
+            note: sheet.total_rows > sheet.rows.length ? text.sheetTruncated(sheet.rows.length, sheet.total_rows) : "",
+          }}
+        />
+      ))}
+    </div>
+  );
+}

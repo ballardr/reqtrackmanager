@@ -33,7 +33,7 @@ export const ProductDefaultOrder: Story = {
   decorators: [withRouter(`/projects/${NAV_PROJECT_ID}/requirements`), withStatefulAuth(buildUser())],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(links(canvas)).toEqual(["Overview", "Requirements", "Actions", "Reports", "Project admin", "Decisions"]);
+    await expect(links(canvas)).toEqual(["Overview", "Requirements", "Actions", "Files", "Project admin", "Decisions"]);
     await expect(canvas.queryByRole("button", { name: "More" })).not.toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: "Requirements" })).toHaveClass("active");
   },
@@ -45,7 +45,7 @@ export const UserOrderAndMoreApplied: Story = {
     withStatefulAuth(buildUser({
       ui_preferences: {
         project_nav: {
-          order: ["overview", "reports", "requirements", "admin", "decisions:/projects/project-1/decisions", "actions"],
+          order: ["overview", "files", "requirements", "admin", "decisions:/projects/project-1/decisions", "actions"],
           more: ["actions"],
         },
       },
@@ -53,7 +53,7 @@ export const UserOrderAndMoreApplied: Story = {
   ],
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(links(canvas)).toEqual(["Overview", "Reports", "Requirements", "Project admin", "Decisions"]);
+    await expect(links(canvas)).toEqual(["Overview", "Files", "Requirements", "Project admin", "Decisions"]);
     const more = canvas.getByRole("button", { name: "More" });
     await expect(more).toHaveAttribute("aria-expanded", "false");
     await expect(canvas.queryByRole("link", { name: "Actions" })).not.toBeInTheDocument();
@@ -69,8 +69,8 @@ export const ProjectOverrideBeatsUserDefault: Story = {
     withRouter(`/projects/${NAV_PROJECT_ID}`),
     withStatefulAuth(buildUser({
       ui_preferences: {
-        project_nav: { order: ["overview", "reports", "requirements", "actions", "admin"], more: [] },
-        [`project_nav:${NAV_PROJECT_ID}`]: { order: ["overview", "actions", "requirements", "reports", "admin"], more: ["reports"] },
+        project_nav: { order: ["overview", "files", "requirements", "actions", "admin"], more: [] },
+        [`project_nav:${NAV_PROJECT_ID}`]: { order: ["overview", "actions", "requirements", "files", "admin"], more: ["files"] },
       },
     })),
   ],
@@ -101,8 +101,8 @@ export const ActiveItemInMoreStaysVisible: Story = {
     withStatefulAuth(buildUser({
       ui_preferences: {
         project_nav: {
-          order: ["overview", "requirements", "reports", "admin", "decisions:/projects/project-1/decisions", "actions"],
-          more: ["actions", "reports"],
+          order: ["overview", "requirements", "files", "admin", "decisions:/projects/project-1/decisions", "actions"],
+          more: ["actions", "files"],
         },
       },
     })),
@@ -111,7 +111,7 @@ export const ActiveItemInMoreStaysVisible: Story = {
     const canvas = within(canvasElement);
     // The current page's link is shown without opening More; the other hidden item is not.
     await expect(canvas.getByRole("link", { name: "Actions" })).toHaveClass("active");
-    await expect(canvas.queryByRole("link", { name: "Reports" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Files" })).not.toBeInTheDocument();
   },
 };
 
@@ -141,7 +141,7 @@ export const CollapsedRailUsesPopoverForMore: Story = {
     withStatefulAuth(buildUser({
       ui_preferences: {
         project_nav: {
-          order: ["overview", "requirements", "reports", "admin", "decisions:/projects/project-1/decisions", "actions"],
+          order: ["overview", "requirements", "files", "admin", "decisions:/projects/project-1/decisions", "actions"],
           more: ["actions"],
         },
       },

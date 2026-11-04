@@ -9,57 +9,308 @@ Design decisions:
 - Every string goes through `report_document.safe` before reaching a
   `Paragraph` (ReportLab parses markup, so unescaped user text is an SSRF /
   local-file-read primitive; see that function's docstring).
-- Page setup follows orientation: portrait is A4 with 2 cm top and bottom
-  margins, landscape is A4 with 1.5 cm all round.
+- Equations: a display `Equation` is the `report_math` SVG drawn as vector (centred); an inline one is a PNG of the
+  same drawing placed in the paragraph with an `<img>` tag on the text baseline, because ReportLab reads an inline
+  image only from a file path, so the PNGs live in a temporary directory that exists for one render. The `<img>`
+  tags are built here from numbers and a path this module made, never from text; one that cannot be drawn is
+  printed as its source.
+- A page style's header and footer are drawn by `report_pdf_running` after the body, in the margin, with the page total known.
+- Page setup follows the document's page style (paper, orientation, margins, gutter): one ReportLab page template per
+  style, switched where a `PageStyleChange` falls. Mirrored margins give each style a right-hand and a left-hand
+  template that alternate, and a style change picks the one that matches the parity of the page it starts on.
 
-Dependencies: ReportLab, `services.report_document`, `services.report_model`.
+Dependencies: ReportLab, `services.report_document`, `services.report_fonts`, `services.report_math`,
+`services.report_model`, `services.report_svg` (a figure given as SVG is drawn as vector).
 """
 
 from __future__ import annotations
 
+import html
+import io
+import math
+import tempfile
+from contextlib import nullcontext
+from pathlib import Path
+from typing import Any, cast
+
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from reportlab.platypus import ListFlowable, ListItem, Spacer
+from reportlab.platypus import (
+    ActionFlowable,
+    BaseDocTemplate,
+    CondPageBreak,
+    Frame,
+    KeepTogether,
+    ListFlowable,
+    ListItem,
+    PageTemplate,
+    Spacer,
+    TableStyle,
+)
 from reportlab.platypus import PageBreak as RlPageBreak
 from reportlab.platypus import Paragraph as RlParagraph
+from reportlab.platypus import Table as RlTable
+from reportlab.platypus.flowables import Flowable, ImageAndFlowables
 
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
+from app.services.report_column_width import resolve_table_widths_cm
 from app.services.report_document import (
     STYLES,
     ReportBranding,
-    build_pdf,
-    header_text_color,
     image_flowable,
     safe,
     styled_table,
     title_flowables,
     toned_paragraph,
 )
+from app.services.report_fonts import FontFamily, draw_centred, pdf_face, using_family
+from app.services.report_grid_render import pdf_grid
+from app.services.report_image_layout import CELL_GAP_CM, PlacedPicture, place_cell_pictures, placed_size_cm
+from app.services.report_math import png_of, typeset
 from app.services.report_model import (
+    BottomEnd,
+    BottomStart,
     BulletList,
+    Contents,
+    DocumentStyles,
+    Equation,
     Gap,
+    Grid,
     Heading,
     Image,
+    ImageCell,
     Note,
+    NumberedList,
     PageBreak,
+    PageStyle,
+    PageStyleChange,
     Paragraph,
     ReportDocument,
+    Styled,
     Table,
+    VerticalSpace,
+    finalize_links,
+    text_runs,
 )
+from app.services.report_pdf_floating import FloatingPicture
+from app.services.report_pdf_running import PageNote, RunningCanvas, grow_margins_for_bands
+from app.services.report_svg import svg_flowable
+from app.services.report_table_alignment import column_needs
 
+_CAPTION_ALIGN: dict[str, Any] = {"left": TA_LEFT, "center": TA_CENTER, "right": TA_RIGHT}
+_CAPTIONS = {
+    align: ParagraphStyle(f"report_caption_{align}", parent=STYLES["BodyText"], fontSize=9, leading=12, alignment=value,
+                          textColor=colors.HexColor("#444444"))
+    for align, value in _CAPTION_ALIGN.items()
+}
 _NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#555555"))
 _CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5)
 _HEAD = ParagraphStyle("report_head", parent=_CELL, fontName="Helvetica-Bold")
 _PLAIN_CELL = ParagraphStyle("cell", parent=STYLES["BodyText"], fontSize=8, leading=10)
-_CELL_FONT_SIZE = 7.5
-_MAX_CELL_POINTS = 70.0
-_MAX_WORD_POINTS = 100.0  # a pasted unbroken string must not claim the page; ReportLab breaks it
-_CELL_PADDING_POINTS = 14.0
-_PORTRAIT_MARGINS = {"topMargin": 2 * cm, "bottomMargin": 2 * cm}
-_LANDSCAPE_MARGINS = {"leftMargin": 1.5 * cm, "rightMargin": 1.5 * cm, "topMargin": 1.5 * cm, "bottomMargin": 1.5 * cm}
+#: Space after a table that is followed by another table, in cm (the gap Word gives between them).
+TABLE_GAP_CM = 0.4
+_FOOTER_SIZE = 7
+
+
+_BODY_POINTS = 10.0  # the size of ReportLab's BodyText, which headings scale with
+
+
+def _helvetica(bold: bool, italic: bool) -> str:
+    """The built-in Helvetica face for a weight and slant."""
+    if bold and italic:
+        return "Helvetica-BoldOblique"
+    return "Helvetica-Bold" if bold else "Helvetica-Oblique" if italic else "Helvetica"
+
+
+def _derive(name: str, parent: ParagraphStyle, **changes: Any) -> ParagraphStyle:
+    """A paragraph style that is `parent` with `changes` (ReportLab style attributes by name)."""
+    return ParagraphStyle(name, parent=parent, **changes)
+
+
+class _Look:
+    """The paragraph styles of one render: ReportLab's own, or those a layout's document styles derive from them.
+
+    With nothing set every attribute is the module constant, so a layout without `styles` renders exactly as before.
+    A family's text size is the layout's body size; table, caption and note sizes stay their own (their fonts follow
+    the family), and headings keep their usual ratio to the body size.
+    """
+
+    def __init__(self, styles: DocumentStyles) -> None:
+        self.body = cast(ParagraphStyle, STYLES["BodyText"])
+        self.note, self.cell, self.head, self.plain_cell = _NOTE, _CELL, _HEAD, _PLAIN_CELL
+        self.captions = _CAPTIONS
+        self.heading_bold = styles.heading_bold is not False
+        self.heading_italic = styles.heading_italic
+        self.body_key = styles.body_font.key if styles.body_font else None
+        self.heading_key = styles.text_font.key if styles.text_font else None
+        self.heading_colour = colors.HexColor(styles.heading_colour) if styles.heading_colour else None
+        self.title_face: str | None = None
+        self.headings = {level: cast(ParagraphStyle, STYLES[f"Heading{level}"]) for level in range(1, 5)}
+        self.bullet_font = "Helvetica"
+        self._blocks: dict[tuple, ParagraphStyle] = {}
+        if styles.is_default:
+            return
+        regular = pdf_face(self.body_key) if self.body_key else None
+        bold = pdf_face(self.body_key, bold=True) if self.body_key else None
+        scale = (styles.body_size or _BODY_POINTS) / _BODY_POINTS
+        if regular and bold:
+            self.bullet_font = regular
+            self.cell = _derive("report_cell_f", _CELL, fontName=regular)
+            self.head = _derive("report_head_f", self.cell, fontName=bold)
+            self.plain_cell = _derive("cell_f", _PLAIN_CELL, fontName=regular)
+            self.note = _derive("report_note_f", _NOTE, fontName=regular)
+            self.captions = {a: _derive(f"{c.name}_f", c, fontName=regular) for a, c in _CAPTIONS.items()}
+        if regular or styles.body_size:
+            changes: dict[str, Any] = {}
+            if regular:
+                changes["fontName"] = regular
+            if styles.body_size:
+                changes.update(fontSize=styles.body_size, leading=styles.body_size * 1.2)
+            self.body = _derive("body_f", self.body, **changes)
+        heading_face = (
+            pdf_face(self.heading_key, bold=self.heading_bold, italic=self.heading_italic) if self.heading_key
+            else _helvetica(self.heading_bold, self.heading_italic)
+        )
+        self.title_face = heading_face
+        for level, base in list(self.headings.items()):
+            self.headings[level] = _derive(
+                f"heading{level}_f", base, fontName=heading_face, fontSize=base.fontSize * scale, leading=base.leading * scale,
+                **({"textColor": self.heading_colour} if self.heading_colour else {}),
+            )
+
+    def body_for(self, font: FontFamily | None, size: float | None) -> ParagraphStyle:
+        """The body style for a block that sets its own font or size (the document's body style when it sets neither)."""
+        if font is None and size is None:
+            return self.body
+        key = ("body", font.key if font else None, size)
+        if key not in self._blocks:
+            changes: dict[str, Any] = {}
+            if font is not None:
+                changes["fontName"] = pdf_face(font.key)
+            if size is not None:
+                changes.update(fontSize=size, leading=size * 1.2)
+            self._blocks[key] = _derive(f"body_{font.key if font else 'doc'}_{size}", self.body, **changes)
+        return self._blocks[key]
+
+    def contents_for(self, level: int) -> ParagraphStyle:
+        """The style of a contents entry of heading `level`: the body's, indented a level at a time, chapters in bold."""
+        key = ("contents", level)
+        if key not in self._blocks:
+            self._blocks[key] = _derive(
+                f"contents{level}", self.body, leftIndent=(level - 1) * 0.6 * cm, spaceBefore=4 if level == 1 else 0, spaceAfter=2,
+                fontName=pdf_face(self.body_key, bold=True) if level == 1 and self.body_key else
+                "Helvetica-Bold" if level == 1 else self.body.fontName,
+            )
+        return self._blocks[key]
+
+    def heading_for(self, block: Heading) -> ParagraphStyle:
+        """The style of a heading: its level's, with the heading's own font, size and colour over it."""
+        level = self.headings[min(max(block.level, 1), 4)]
+        if block.font is None and block.size is None and block.colour is None:
+            return level
+        key = ("heading", block.level, block.font.key if block.font else None, block.size, block.colour)
+        if key not in self._blocks:
+            changes: dict[str, Any] = {}
+            if block.font is not None:
+                changes["fontName"] = pdf_face(block.font.key, bold=self.heading_bold, italic=self.heading_italic)
+            if block.size is not None:
+                changes.update(fontSize=block.size, leading=block.size * 1.2)
+            if block.colour is not None:
+                changes["textColor"] = colors.HexColor(block.colour)
+            self._blocks[key] = _derive(f"heading{block.level}_{len(self._blocks)}", level, **changes)
+        return self._blocks[key]
+
+
+#: Where the footer text sits above the bottom edge, in points; kept inside a small bottom margin.
+_FOOTER_BASELINE = 1 * cm
+
+
+class _InlineImages:
+    """The temporary directory that holds the PNGs of inline equations for one render (see the module docstring)."""
+
+    def __init__(self) -> None:
+        self._directory: tempfile.TemporaryDirectory[str] | None = None
+        self._count = 0
+
+    def add(self, png: bytes) -> str:
+        """Writes `png` and returns the path to give an `<img>` tag."""
+        if self._directory is None:
+            self._directory = tempfile.TemporaryDirectory(prefix="report-math-")
+        self._count += 1
+        path = Path(self._directory.name) / f"eq{self._count}.png"
+        path.write_bytes(png)
+        return str(path)
+
+    def close(self) -> None:
+        """Deletes the directory and everything in it."""
+        if self._directory is not None:
+            self._directory.cleanup()
+            self._directory = None
+
+
+def _inline_equation(equation: Equation, images: _InlineImages) -> str:
+    """Paragraph markup for an inline equation: an `<img>` on the baseline, or the escaped source."""
+    drawn = typeset(equation.tex, False)
+    png = png_of(drawn) if drawn is not None else None
+    if drawn is None or png is None:
+        return safe(equation.text)
+    path = html.escape(images.add(png), quote=True)
+    return f'<img src="{path}" width="{drawn.width:.2f}" height="{drawn.height:.2f}" valign="{-drawn.descent:.2f}"/>'
+
+
+def _styled_markup(run: Styled, *, bold: bool, italic: bool = False) -> str:
+    """Paragraph markup for a bold / italic / code run: the escaped words inside the matching tags."""
+    inner = safe(run.text, bold=bold or run.bold, italic=run.italic or italic)
+    if run.code:
+        inner = f'<font face="Courier">{inner}</font>'
+    if run.italic:
+        inner = f"<i>{inner}</i>"
+    if run.bold and not bold:
+        inner = f"<b>{inner}</b>"
+    if run.href:
+        # A link was checked by `finalize_links`; its address is an escaped attribute value, never markup.
+        inner = f'<a href="{html.escape(run.href, quote=True)}" color="#0563C1"><u>{inner}</u></a>'
+    return inner
+
+
+def _markup(value: str, images: _InlineImages, *, bold: bool = False, italic: bool = False) -> str:
+    """Paragraph markup for model text: its runs escaped, its styles applied and its equations drawn inline.
+
+    `bold` and `italic` say the paragraph's own style already is, so fallback characters take the same weight and slant.
+    """
+    return "".join(
+        safe(run, bold=bold, italic=italic) if isinstance(run, str)
+        else _styled_markup(run, bold=bold, italic=italic) if isinstance(run, Styled)
+        else _inline_equation(run, images)
+        for run in text_runs(value)
+    )
+
+
+def _list(
+    items: list[str], images: _InlineImages, bullet_type: str, look: _Look, font: FontFamily | None = None, size: float | None = None,
+) -> ListFlowable:
+    """A bulleted (`"bullet"`) or numbered (`"1"`) list of marked-up items, in the list's own font and size when it sets them."""
+    style = look.body_for(font, size)
+    with using_family(font.key) if font else nullcontext():
+        flowables: list[Any] = [ListItem(RlParagraph(_markup(item, images), style)) for item in items]
+    bullet_font = pdf_face(font.key) if font else look.bullet_font
+    options: dict[str, Any] = {} if bullet_font == "Helvetica" else {"bulletFontName": bullet_font}
+    if size is not None:
+        options["bulletFontSize"] = size
+    return ListFlowable(flowables, bulletType=bullet_type, bulletFormat="%s." if bullet_type == "1" else None, **options)
+
+
+def _display_equation(block: Equation, usable_width: float, look: _Look) -> list:
+    """Flowables for a display equation: the centred vector drawing between small gaps, or its source."""
+    drawn = typeset(block.tex, True)
+    drawing = svg_flowable(drawn.svg, usable_width) if drawn is not None else None
+    if drawing is None:
+        return [RlParagraph(safe(block.text), look.body)]
+    drawing.hAlign = "CENTER"
+    return [Spacer(1, 4), drawing, Spacer(1, 6)]
 
 
 def _content_widths(block: Table, usable_width: float) -> list[float]:
@@ -79,41 +330,374 @@ def _content_widths(block: Table, usable_width: float) -> list[float]:
     Returns:
         One width per column, summing to `usable_width`.
     """
-    needs = []
-    for index, heading in enumerate(block.columns):
-        cells = [str(row[index]) for row in block.rows if index < len(row)]
-        words = max(
-            (stringWidth(word, "Helvetica-Bold", _CELL_FONT_SIZE) for word in heading.split()), default=0.0,
-        )
-        words = max([words, *(stringWidth(word, "Helvetica", _CELL_FONT_SIZE) for cell in cells for word in cell.split())])
-        whole = max((stringWidth(cell, "Helvetica", _CELL_FONT_SIZE) for cell in cells), default=0.0)
-        needs.append(max(min(words, _MAX_WORD_POINTS), min(whole, _MAX_CELL_POINTS)) + _CELL_PADDING_POINTS)
+    needs = column_needs(block.columns, block.rows)
     if sum(needs) >= usable_width:
         return [usable_width * need / sum(needs) for need in needs]
     spare = usable_width - sum(needs)
     return [need + spare * need / sum(needs) for need in needs]
 
 
-def _table(block: Table, accent, usable_width: float):
-    """A block table as a styled ReportLab table (compact or plain grid)."""
-    if block.col_widths_cm:
+def _sized_picture(block: Image, usable_width: float) -> Any:
+    """The picture as a flowable at its placed size, or `None` when it cannot be drawn."""
+    size = placed_size_cm(block, usable_width / cm)
+    if size is None:
+        return None
+    width, height = size[0] * cm, size[1] * cm
+    flowable: Any = svg_flowable(block.svg, width) if block.svg is not None else image_flowable(block.data)
+    if flowable is None:
+        return None
+    if block.svg is not None and hasattr(flowable, "scale"):  # a vector drawing is scaled to the placed size
+        flowable.scale(width / flowable.width, height / flowable.height)
+        flowable.width, flowable.height = width, height
+    else:
+        flowable.drawWidth, flowable.drawHeight = width, height
+    flowable.hAlign = block.align.upper()
+    return flowable
+
+
+def _image_flowables(block: Image, usable_width: float, look: _Look) -> list:
+    """An image block as flowables: the picture at its placed size and alignment, with its caption kept beside it.
+
+    Returns `[]` when the picture cannot be drawn, so a bad image never breaks the report.
+    """
+    flowable = _sized_picture(block, usable_width)
+    if flowable is None:
+        return []
+    if not block.caption:
+        return [flowable]
+    caption = RlParagraph(safe(block.caption), look.captions.get(block.align, look.captions["center"]))
+    return [KeepTogether([caption, flowable] if block.caption_above else [flowable, caption])]
+
+
+#: Slack kept under blocks anchored to the page foot, so a measuring error moves nothing onto the next page.
+_BOTTOM_SLACK = 3.0
+#: A page-bottom run at least this share of the text height is not anchored (it would not leave room for anything above).
+_BOTTOM_MAX_SHARE = 0.95
+
+
+class _FillToBottom(Flowable):
+    """Takes all the height left in the frame except `below`, so the flowables that follow end at the frame's foot."""
+
+    def __init__(self, below: float) -> None:
+        super().__init__()
+        self.below = below
+
+    def wrap(self, available_width: float, available_height: float) -> tuple[float, float]:
+        """The whole width and the frame's remaining height less `below` (nothing when there is less than that)."""
+        return available_width, max(available_height - self.below, 0.0)
+
+    def draw(self) -> None:
+        """Draws nothing: it is only space."""
+
+
+def _anchored_to_bottom(flowables: list, usable_width: float, usable_height: float) -> list:
+    """The flowables of a page-bottom run, preceded by what puts them at the foot of the page they land on.
+
+    A conditional page break moves them to a fresh page when they do not fit in the room left, and `_FillToBottom` then
+    uses up the rest of the page above them. A run too tall to leave room for anything above it (or that cannot be
+    measured) is returned unchanged and flows as ordinary content.
+    """
+    total = 0.0
+    for flowable in flowables:
+        try:
+            total += flowable.wrap(usable_width, 100 * usable_height)[1] + flowable.getSpaceBefore() + flowable.getSpaceAfter()
+        except Exception:  # noqa: BLE001 - a flowable that cannot be measured is not anchored; the report must still render
+            return flowables
+    total += _BOTTOM_SLACK
+    if total <= _BOTTOM_SLACK or total >= usable_height * _BOTTOM_MAX_SHARE:
+        return flowables
+    return [CondPageBreak(total), _FillToBottom(total), *flowables]
+
+
+# Blocks the text of a wrapped picture can run through: anything that is a run of text. A table, an equation, another
+# picture or a page or style change ends the wrap, as the text cannot flow around it.
+_WRAPPABLE = (Heading, Paragraph, Note, BulletList, NumberedList, Gap)
+
+
+def _wrapped(block: Image, following: list, usable_width: float) -> list:
+    """A picture with the text flowables that follow it laid out beside it, on the side its alignment names.
+
+    The text runs beside the picture for the picture's height and then across the full width, and may continue onto the
+    next page; with no text after it the picture stands alone.
+    """
+    flowable = _sized_picture(block, usable_width)
+    if flowable is None:
+        return list(following)
+    if not following:
+        return [flowable]
+    side = "left" if block.align == "left" else "right"
+    return [ImageAndFlowables(
+        flowable, following, imageSide=side, imageLeftPadding=0 if side == "left" else 8, imageRightPadding=8 if side == "left" else 0,
+        imageBottomPadding=6,
+    )]
+
+
+def _placed_flowable(placed: PlacedPicture) -> Any:
+    """A table-cell picture as a flowable at its placed size, or `None` when it cannot be drawn."""
+    width, height = placed.width_cm * cm, placed.height_cm * cm
+    image = placed.image
+    flowable: Any = svg_flowable(image.svg, width) if image.svg is not None else image_flowable(image.data)
+    if flowable is None:
+        return None
+    if image.svg is not None and hasattr(flowable, "scale"):
+        flowable.scale(width / flowable.width, height / flowable.height)
+        flowable.width, flowable.height = width, height
+    else:
+        flowable.drawWidth, flowable.drawHeight = width, height
+    flowable.hAlign = "LEFT"
+    return flowable
+
+
+#: A cell may be at most this share of the page's text height, so a row always fits a page.
+_CELL_HEIGHT_SHARE = 0.9
+
+
+def _image_cell(cell: ImageCell, column_width: float, usable_height: float) -> list | str:
+    """The flowables of an image cell: the pictures stacked, or in lines of side-by-side pictures (an inner table per line).
+
+    Returns `""` when the cell has no picture that can be drawn.
+    """
+    placed = place_cell_pictures(cell, column_width / cm, usable_height / cm * _CELL_HEIGHT_SHARE)
+    flowables: list = []
+    for line in range(max((p.line for p in placed), default=-1) + 1):
+        drawn = [(p, f) for p in placed if p.line == line and (f := _placed_flowable(p)) is not None]
+        if not drawn:
+            continue
+        if flowables:
+            flowables.append(Spacer(1, CELL_GAP_CM * cm))
+        if len(drawn) == 1:
+            flowables.append(drawn[0][1])
+            continue
+        gap = CELL_GAP_CM * cm
+        widths = [p.width_cm * cm + (gap if i < len(drawn) - 1 else 0) for i, (p, _) in enumerate(drawn)]
+        row = RlTable([[f for _, f in drawn]], colWidths=widths, hAlign="LEFT")
+        row.setStyle(TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                 ("BOTTOMPADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+        flowables.append(row)
+    return flowables or ""
+
+
+def _table(block: Table, head_fill, head_text, usable_width: float, usable_height: float, images: _InlineImages, look: _Look):
+    """A block table as a styled ReportLab table (compact or plain grid), its heading row filled `head_fill` with `head_text`."""
+    if block.widths:
+        widths = [w * cm for w in resolve_table_widths_cm(block.widths, usable_width / cm, block.weights)]
+    elif block.col_widths_cm:
         widths = [w * cm for w in block.col_widths_cm]
+    elif block.weights:
+        widths = [usable_width * w / sum(block.weights) for w in block.weights]
     elif block.compact:
         widths = _content_widths(block, usable_width)
     else:
         widths = [usable_width / len(block.columns)] * len(block.columns)
-    body_style = _CELL if block.compact else _PLAIN_CELL
-    head_style = ParagraphStyle("report_head_text", parent=_HEAD, textColor=header_text_color(accent))
-    data = [[RlParagraph(safe(c), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
+    body_style = look.cell if block.compact else look.plain_cell
+    head_style = ParagraphStyle("report_head_text", parent=look.head, textColor=head_text)
+    data: list[list[Any]] = [[RlParagraph(safe(c, bold=True), head_style) for c in block.columns]] if block.compact else [list(block.columns)]
     data += [
-        [toned_paragraph(cell, body_style, block.tone_at(r, c)) for c, cell in enumerate(row)]
+        [
+            _image_cell(cell, widths[c], usable_height) if isinstance(cell, ImageCell)
+            else toned_paragraph(cell, body_style, block.tone_at(r, c), _markup(cell, images))
+            for c, cell in enumerate(row)
+        ]
         for r, row in enumerate(block.rows)
     ]
-    return styled_table(data, col_widths=widths, accent_color=accent, compact=block.compact)
+    return styled_table(
+        data, col_widths=widths, accent_color=head_fill, compact=block.compact, repeat_header=block.repeat_header, header_text=head_text,
+    )
+
+
+class _Doc(BaseDocTemplate):
+    """A document that remembers which pages start a section (their header and footer may differ on the first page) and the
+    page each heading landed on (for a table of contents)."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.section_starts: set[int] = {1}
+        self.anchor_pages: dict[str, int] = {}
+
+    def afterFlowable(self, flowable) -> None:
+        """Notes the page of a heading (the page its last line is on) under its anchor."""
+        anchor = getattr(flowable, "heading_anchor", None)
+        if anchor:
+            self.anchor_pages[anchor] = self.page
+
+
+class _HeadingParagraph(RlParagraph):
+    """A heading paragraph that knows its anchor, so the document can record the page it falls on."""
+
+    def __init__(self, *args: Any, heading_anchor: str | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.heading_anchor = heading_anchor
+
+
+#: Width reserved for a table-of-contents entry's page number, as the width of this many digits, so the entry wraps the same
+#: whatever number it ends up with and the contents' own length never depends on the numbers (the second build is exact).
+_CONTENTS_NUMBER_DIGITS = "9999"
+#: Gap between an entry's words (or its dots) and its page number, in points.
+_CONTENTS_GAP = 6.0
+
+
+class _ContentsLine(Flowable):
+    """One table-of-contents entry: the heading's words as a link, dot leaders and the page number on the right of the last line.
+
+    Attributes:
+        paragraph: The entry's words, wrapped inside the width left of the number column.
+        number: The page number as text, or `""` when it is not known (the first build, or a heading not found).
+    """
+
+    def __init__(self, paragraph: RlParagraph, number: str) -> None:
+        super().__init__()
+        self.paragraph, self.number = paragraph, number
+        self._number_width = 0.0
+
+    def wrap(self, avail_width: float, avail_height: float) -> tuple[float, float]:
+        """Lays the words out left of the reserved number column."""
+        style = self.paragraph.style
+        self._number_width = stringWidth(_CONTENTS_NUMBER_DIGITS, style.fontName, style.fontSize) + _CONTENTS_GAP
+        self.width = avail_width
+        _, self.height = self.paragraph.wrap(avail_width - self._number_width, avail_height)
+        return avail_width, self.height
+
+    def draw(self) -> None:
+        """Draws the words, then the leader dots and the number on the last line's baseline."""
+        self.paragraph.drawOn(self.canv, 0, 0)
+        if not self.number:
+            return
+        style = self.paragraph.style
+        laid_out = cast(Any, self.paragraph).blPara  # set by `wrap`
+        lines = laid_out.lines
+        last = lines[-1]
+        unused = last.extraSpace if hasattr(last, "extraSpace") else last[0]
+        baseline = self.height - getattr(laid_out, "ascent", style.fontSize) - (len(lines) - 1) * style.leading
+        text_end = self.width - self._number_width - unused
+        canvas = self.canv
+        canvas.saveState()
+        canvas.setFillColor(style.textColor)
+        canvas.setFont(style.fontName, style.fontSize)
+        canvas.drawRightString(self.width, baseline, self.number)
+        number_start = self.width - stringWidth(self.number, style.fontName, style.fontSize) - _CONTENTS_GAP
+        dot = stringWidth(". ", style.fontName, style.fontSize)
+        start = math.ceil((text_end + _CONTENTS_GAP) / dot) * dot  # on a multiple of the dot pitch, so the dots line up down the page
+        count = int((number_start - start) // dot)
+        if count > 0:
+            canvas.drawString(start, baseline, ". " * count)
+        canvas.restoreState()
+
+
+class _UseStyle(ActionFlowable):
+    """Selects the page templates for the pages that follow: one template, or the right- and left-hand pair of a mirrored
+    style in turn, starting with the side that matches the parity of the next page (odd pages are right-hand)."""
+
+    def __init__(self, recto: str, verso: str, section_start: bool = False) -> None:
+        super().__init__(("nextPageTemplate", recto))
+        self.recto, self.verso, self.section_start = recto, verso, section_start
+
+    def apply(self, doc) -> None:
+        """Queues the template (or the alternating pair) for the page after the current one."""
+        if self.section_start:
+            doc.section_starts.add(doc.page + 1)
+        if self.recto == self.verso:
+            doc.handle_nextPageTemplate(self.recto)
+        else:
+            doc.handle_nextPageTemplate([self.recto, self.verso] if (doc.page + 1) % 2 else [self.verso, self.recto])
+
+
+def _template_ids(index: int, style: PageStyle) -> tuple[str, str]:
+    """The (right-hand, left-hand) page template ids of style number `index`; both the same when margins do not mirror."""
+    return (f"s{index}r", f"s{index}v" if style.mirror else f"s{index}r")
+
+
+def _page_templates(styles: list[PageStyle], footer_text: str | None) -> list[PageTemplate]:
+    """One page template per style (two when margins mirror), each with a frame inside its margins.
+
+    A page notes its style, side and position for the canvas to draw the style's header and footer; a style with no footer
+    (a plain report) gets the branding's footer text centred.
+    """
+
+    def page_callback(style: PageStyle, verso: bool):
+        def on_page(canvas, doc_) -> None:
+            canvas._note = PageNote(style, verso, doc_.page in doc_.section_starts, doc_.page)
+            if style.footer is None and footer_text:
+                canvas.saveState()
+                draw_centred(canvas, canvas._pagesize[0] / 2, _FOOTER_BASELINE, footer_text, _FOOTER_SIZE)
+                canvas.restoreState()
+
+        return on_page
+
+    templates: list[PageTemplate] = []
+    for index, style in enumerate(styles):
+        width, height = (side * cm for side in style.dimensions_cm)
+        recto, verso = _template_ids(index, style)
+        for template_id, is_verso in ((recto, False), (verso, True)):
+            if is_verso and recto == verso:
+                continue
+            left, right = (edge * cm for edge in style.edges_cm(verso=is_verso))
+            bottom = style.margins.bottom * cm
+            frame = Frame(left, bottom, width - left - right, height - bottom - style.margins.top * cm, id=f"frame-{template_id}")
+            templates.append(PageTemplate(id=template_id, frames=[frame], onPage=page_callback(style, is_verso), pagesize=(width, height)))
+    return templates
+
+
+def _build_pdf(story: list, styles: list[PageStyle], footer_text: str | None, title: str, found: dict[str, int] | None = None) -> bytes:
+    """Builds the PDF: the first style's first page template starts the document.
+
+    Args:
+        story: The flowables.
+        styles: Every page style the story uses; the document's own first.
+        footer_text: Centred footer text, or `None`.
+        title: The PDF's title.
+        found: When given, filled with the page each heading (by anchor) landed on.
+
+    Returns:
+        The PDF file content.
+    """
+    buffer = io.BytesIO()
+    first = tuple(side * cm for side in styles[0].dimensions_cm)
+    doc = _Doc(buffer, pagesize=first, title=title)
+    doc.addPageTemplates(_page_templates(styles, footer_text))
+    doc.build(story, canvasmaker=RunningCanvas)
+    if found is not None:
+        found.update(doc.anchor_pages)
+    return buffer.getvalue()
+
+
+def _contents_flowables(block: Contents, pages: dict[str, int], look: _Look) -> list:
+    """The flowables of a table of contents: its title, one linked line per heading, then a page break if it asks for one.
+
+    A heading whose page is not known (not found by the first build) is listed without a number. A contents with no
+    entries prints nothing, not even the break.
+    """
+    if not block.entries:
+        return []
+    out: list = []
+    if block.title.strip():
+        out.append(RlParagraph(safe(block.title), look.headings[1]))
+    for entry in block.entries:
+        words = f'<a href="#{html.escape(entry.anchor, quote=True)}">{safe(entry.text)}</a>'
+        number = str(pages[entry.anchor]) if entry.anchor in pages else ""
+        out.append(_ContentsLine(RlParagraph(words, look.contents_for(min(max(entry.level, 1), 3))), number))
+    if block.new_page:
+        out.append(RlPageBreak())
+    return out
+
+
+_LOOKS: dict[tuple, _Look] = {}
+
+
+def _look_for(styles: DocumentStyles) -> _Look:
+    """The paragraph styles for `styles`, built once per distinct setting (the style objects are cached by identity downstream)."""
+    key = (
+        styles.body_font.key if styles.body_font else None, styles.body_size, styles.text_font.key if styles.text_font else None,
+        styles.heading_bold, styles.heading_italic, styles.heading_colour,
+    )
+    if key not in _LOOKS:
+        if len(_LOOKS) >= 64:
+            _LOOKS.clear()
+        _LOOKS[key] = _Look(styles)
+    return _LOOKS[key]
 
 
 def render_pdf_document(document: ReportDocument) -> bytes:
-    """Renders `document` as a PDF.
+    """Renders `document` as a PDF, in the fonts its styles name (Helvetica and ReportLab's own sizes when none).
 
     Args:
         document: The neutral report.
@@ -121,32 +705,116 @@ def render_pdf_document(document: ReportDocument) -> bytes:
     Returns:
         PDF bytes.
     """
-    branding = document.branding
-    accent = colors.HexColor((branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex)
-    pagesize = landscape(A4) if document.landscape else A4
-    margins = _LANDSCAPE_MARGINS if document.landscape else _PORTRAIT_MARGINS
-    usable_width = pagesize[0] - margins.get("leftMargin", 72) - margins.get("rightMargin", 72)
+    look = _look_for(document.styles)
+    with using_family(look.body_key):
+        return _render_pdf(document, look)
 
-    story: list = title_flowables(document.title, branding)
-    for block in document.blocks:
+
+def _render_pdf(document: ReportDocument, look: _Look) -> bytes:
+    """`render_pdf_document` with the font family already active.
+
+    A document with a table of contents is built twice: the first build only finds the page each heading lands on, the
+    second prints them. The number column is reserved, so the contents is the same length in both and the pages found
+    are the pages the second build produces.
+    """
+    document = grow_margins_for_bands(finalize_links(document))
+    pages: dict[str, int] = {}
+    if any(isinstance(block, Contents) and block.entries for block in document.blocks):
+        found: dict[str, int] = {}
+        _pdf_bytes(document, look, {}, found)
+        pages = found
+    return _pdf_bytes(document, look, pages, None)
+
+
+def _pdf_bytes(document: ReportDocument, look: _Look, pages: dict[str, int], found: dict[str, int] | None) -> bytes:
+    """Builds the PDF of a finalized `document`.
+
+    Args:
+        document: The finalized document.
+        look: The paragraph styles.
+        pages: Page of each heading anchor, as printed in a table of contents (empty: no numbers).
+        found: When given, filled with the page each heading landed on in this build.
+
+    Returns:
+        The PDF bytes.
+    """
+    branding = document.branding
+    fill_hex, text_hex = document.styles.table_head_colours(
+        (branding or ReportBranding(accent_color_hex=DEFAULT_ACCENT_COLOR_HEX)).accent_color_hex,
+    )
+    head_fill, head_text = colors.HexColor(f"#{fill_hex}"), colors.HexColor(f"#{text_hex}")
+    styles = [document.style]
+    usable_width = document.style.usable_width_cm * cm
+    usable_height = document.style.usable_height_cm * cm
+
+    title = title_flowables(document.title, branding, face=look.title_face, colour=look.heading_colour) if document.show_title else []
+    story: list = [_UseStyle(*_template_ids(0, document.style)), *title]
+    images = _InlineImages()
+    wrap: tuple[Image, list] | None = None  # a wrapped picture and the flowables that run beside it so far
+    bottom_from = 0  # where the story stood when the open page-bottom run began
+
+    def flush_wrap() -> None:
+        nonlocal wrap
+        if wrap is not None:
+            story.extend(_wrapped(wrap[0], wrap[1], usable_width))
+            wrap = None
+
+    for position, block in enumerate(document.blocks):
+        if not isinstance(block, _WRAPPABLE):
+            flush_wrap()
+        out = wrap[1] if wrap is not None else story
         if isinstance(block, Heading):
-            story.append(RlParagraph(safe(block.text), STYLES[f"Heading{min(max(block.level, 1), 4)}"]))
+            target = f'<a name="{html.escape(block.anchor, quote=True)}"/>' if block.anchor else ""
+            with using_family(block.font.key if block.font else look.heading_key or look.body_key):
+                heading = _markup(block.text, images, bold=look.heading_bold, italic=look.heading_italic)
+            out.append(_HeadingParagraph(target + heading, look.heading_for(block), heading_anchor=block.anchor))
         elif isinstance(block, Paragraph):
-            story.append(RlParagraph(safe(block.text), STYLES["BodyText"]))
+            with using_family(block.font.key) if block.font else nullcontext():
+                paragraph = _markup(block.text, images)
+            out.append(RlParagraph(paragraph, look.body_for(block.font, block.size)))
+        elif isinstance(block, Equation):
+            story.extend(_display_equation(block, usable_width, look))
         elif isinstance(block, Note):
-            story.append(RlParagraph(safe(block.text), _NOTE))
+            out.append(RlParagraph(safe(block.text), look.note))
+        elif isinstance(block, NumberedList):
+            out.append(_list(block.items, images, "1", look, block.font, block.size))
         elif isinstance(block, BulletList):
-            story.append(ListFlowable([ListItem(RlParagraph(safe(i), STYLES["BodyText"])) for i in block.items], bulletType="bullet"))
+            out.append(_list(block.items, images, "bullet", look, block.font, block.size))
         elif isinstance(block, Image):
-            flowable = image_flowable(block.data)
-            if flowable is not None:
-                story.append(flowable)
+            if block.placement == "wrap":
+                wrap = (block, [])
+            elif block.floats:
+                story.append(FloatingPicture(block, usable_width / cm))
+            else:
+                story.extend(_image_flowables(block, usable_width, look))
         elif isinstance(block, Table):
-            story.append(_table(block, accent, usable_width))
+            story.append(_table(block, head_fill, head_text, usable_width, usable_height, images, look))
+            if any(isinstance(following, Table) for following in document.blocks[position + 1:position + 2]):
+                story.append(Spacer(1, TABLE_GAP_CM * cm))  # tables that follow one another must not touch
+        elif isinstance(block, Grid):
+            story.append(pdf_grid(block, usable_width, usable_height, lambda text, bold: _markup(text, images, bold=bold)))
         elif isinstance(block, Gap):
-            story.append(Spacer(1, block.cm * cm))
+            out.append(Spacer(1, block.cm * cm))
+        elif isinstance(block, BottomStart):
+            bottom_from = len(story)
+        elif isinstance(block, BottomEnd):
+            story[bottom_from:] = _anchored_to_bottom(story[bottom_from:], usable_width, usable_height)
+        elif isinstance(block, VerticalSpace):
+            # Kept at the top of a page; one taller than the room left moves to the next page, and the page's own text
+            # height caps it so it can never overflow a frame.
+            story.append(Spacer(1, min(block.cm * cm, usable_height * 0.98)))
         elif isinstance(block, PageBreak):
             story.append(RlPageBreak())
-    return build_pdf(
-        story, footer_text=branding.footer_text if branding else None, pagesize=pagesize, title=document.title, **margins,
-    )
+        elif isinstance(block, Contents):
+            story.extend(_contents_flowables(block, pages, look))
+        elif isinstance(block, PageStyleChange):
+            if block.style not in styles:
+                styles.append(block.style)
+            story += [_UseStyle(*_template_ids(styles.index(block.style), block.style), block.section_start), RlPageBreak()]
+            usable_width = block.style.usable_width_cm * cm
+            usable_height = block.style.usable_height_cm * cm
+    flush_wrap()
+    try:
+        return _build_pdf(story, styles, branding.footer_text if branding else None, document.title, found)
+    finally:
+        images.close()

@@ -29,6 +29,7 @@ flowchart TD
     BE --> FE[frontend]
     BE --> MCP[mcp-server]
     SMTP[external SMTP provider] -.->|outgoing mail| BE
+    CV["converter (optional)"] -.->|EPS and PDF logos| BE
 ```
 
 | Service | Purpose | In root (prod) stack? | In tests/container stack? |
@@ -38,6 +39,7 @@ flowchart TD
 | `frontend` | Static React SPA served by nginx | Yes | Yes |
 | `storage` | Bundled S3-compatible file storage (SeaweedFS) | Yes | Yes |
 | `mcp-server` | Read-only MCP server exposing requirements to AI assistants (see [mcp-server.md](mcp-server.md)) | Yes | Yes |
+| `converter` | Converts uploaded EPS and PDF logos to SVG in an isolated container (see [below](#optional-eps-and-pdf-logos-the-converter)) | Opt-in (`--profile converter`) | Yes |
 | `mailhog` | Local SMTP catcher with a web UI | **No** — replace with a real SMTP provider via `SMTP_HOST` | Yes |
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO login end-to-end (E-U-01) | **No** — a real deployment points `oidc_issuer_url` at each org's own IdP instead, never at this test container | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy`, `cadvisor` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
@@ -86,7 +88,7 @@ The full list of backend environment variables, with defaults, is documented in 
 
 ### Obtaining container images
 
-CI (`.github/workflows/ci.yml`) builds the production `backend`, `backup`, `frontend`, `mcp-server`, and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once the `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan` and `restore-test` jobs pass on a push to `main`, publishes all five to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
+CI (`.github/workflows/ci.yml`) builds the production `backend`, `backup`, `frontend`, `mcp-server`, `converter` and `docs` images on every change, for both `linux/amd64` and `linux/arm64`, and, once the `frontend`, `backend-tests`, `e2e-tests`, `dependency-scan`, `image-scan` and `restore-test` jobs pass on a push to `main`, publishes all six to `ghcr.io/<owner>/<repo>-{backend,backup,frontend,mcp-server,converter,docs}` (see [development.md's Continuous integration](development.md#continuous-integration) section). Pull requests still build every image on both architectures, proving the Dockerfiles work, but never push — only a merge to `main` publishes.
 
 Each image is tagged three ways:
 
@@ -111,6 +113,44 @@ If your images live in a different registry/namespace (e.g. a private mirror), o
 | Apple silicon, arm64 Linux servers, Raspberry Pi 4/5 | `linux/arm64` | Built natively and smoke tested in CI (the backend starts, migrates and answers authenticated requests); the full test suites are not run on arm. A Raspberry Pi needs a **64-bit** OS (64-bit Raspberry Pi OS or Ubuntu); 32-bit images are not published. A Raspberry Pi 5 (8 GiB, NVMe) ran one worker up to 20,000 requirements in 1.4 GiB of backend memory; boards with less RAM are unmeasured (see [Sizing and memory limits](#sizing-and-memory-limits)). |
 
 CI runners use 4 KB memory pages while a Raspberry Pi 5 uses 16 KB, which some native libraries mishandle; CI cannot catch that, so check a first run on a Pi with `docker compose ps` and the backend logs. The optional MailHog mail catcher in the development stack ([tests/container/](../tests/container/docker-compose.yml)) is amd64-only upstream and is not part of the production stack.
+
+### Optional: EPS and PDF logos (the converter)
+
+The report image library accepts PNG, JPEG, GIF, WebP and SVG out of the box. EPS and PDF logos (what Illustrator and Affinity users often hold) are converted to SVG by a separate container, because reading them means running Ghostscript and poppler on uploaded files. It is **off by default**: if you do not want the extra container, do nothing and the upload dialog does not offer EPS or PDF.
+
+To turn it on, add to `.env`:
+
+```bash
+COMPOSE_PROFILES=converter
+REPORT_CONVERTER_URL=http://converter:8300
+```
+
+then `docker compose up -d`. The backend waits for the converter to be healthy when the profile is on, and starts without it when it is not.
+
+- The service has no route to the network outside Compose (the `converter` network is `internal` and shared only with the backend), no secrets, a read-only filesystem, no Linux capabilities and a non-root user. Do not attach it to another network or publish its port.
+- Running the image another way (Kubernetes, say)? Reproduce that isolation: deny all egress from the pod, drop all capabilities, read-only root with a small scratch volume, and reach it only from the backend.
+- A PDF contributes its first page; an EPS is cropped to its bounding box. Both are stored as `<name>.eps.svg` / `<name>.pdf.svg`. Text becomes shapes, so no font is needed when a report is run.
+- The image is published with the others (`ghcr.io/<owner>/<repo>-converter`).
+
+### Extra report fonts
+
+Reports offer four fonts out of the box: Sans, Serif and Mono (Liberation, which Word and OpenDocument show as Arial, Times New Roman and Courier New) and Unicode Sans (DejaVu Sans). A house typeface is added by putting its `.ttf` files in a directory the backend can read; nothing is uploaded through the application, because a font is parsed code-like data and a licence the organisation cannot vouch for.
+
+```mermaid
+flowchart LR
+    DIR["host directory<br/>REPORT_FONTS_HOST_DIR<br/>(default ./report-fonts)"] -->|"read-only mount"| BE["backend<br/>/app/report-fonts"]
+    BE -->|"scan at start,<br/>Rescan, or within 30 s of a change"| CAT["font families"]
+    CAT --> ADM["Server management ><br/>Report fonts"]
+    CAT --> PICK["authors' font picker"]
+```
+
+1. Copy the `.ttf` files into `report-fonts/` (or point `REPORT_FONTS_HOST_DIR` in `.env` at another host directory, such as a shared volume). The compose file mounts it read-only at `/app/report-fonts` and sets `REPORT_FONTS_DIR` to match; the image is not rebuilt.
+2. Open **Server management > Report fonts** and press **Rescan** (each backend worker also notices a changed directory within 30 seconds, so a multi-worker or multi-replica deployment follows without a restart; every replica must see the same files).
+3. Set each family's **Name in Word and OpenDocument** (default: the family's own name) and its **Generic fallback**, and hide a family from authors with **Offered to authors** off. A hidden family keeps working in layouts already using it.
+
+What is read: top-level `.ttf` files up to 10 MB each, grouped into a family by the font's own family name (`x-<name>` is its key). A family needs a regular face; a missing bold or italic face reuses the nearest one. Files that are skipped (with the reason on the page): `.otf`/`.ttc`, symbolic links, anything that is not TrueType, and **any font whose licence forbids embedding or subsetting** (`OS/2 fsType`), because the PDF drawing and the Word/OpenDocument embedding both copy font data. The licence of each font is your responsibility.
+
+PDF reports always carry the real face. Word and OpenDocument files only **name** the font (with the fallback you set), so a reader without it sees a similar font and the text may reflow; a layout can embed the fonts it uses (a layout setting, off by default) at the cost of the faces' file size. Docker-less installs set `REPORT_FONTS_DIR` to any readable directory.
 
 ### Hosting the documentation internally
 

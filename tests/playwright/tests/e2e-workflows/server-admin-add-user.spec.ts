@@ -1,8 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import {
-  apiHeaders, deleteOrgOnCleanup, installCleanupHook, loginAs, onCleanup, PASSWORD, PERSONAS, SERVER_ADMIN_LOGIN,
-} from "./helpers";
+  apiHeaders, deleteOrgOnCleanup, installCleanupHook, loginAs, onCleanup, PASSWORD, PERSONAS, SERVER_ADMIN_LOGIN, closeDialogWithoutSaving } from "./helpers";
 
 const API = "http://localhost:8000/api/v1";
 const MAILHOG = "http://localhost:8025";
@@ -91,7 +90,7 @@ test("a server admin adds users with a password (with and without an organisatio
     await dialog.getByLabel("Password", { exact: true }).fill("short");
     await dialog.getByRole("button", { name: "Create" }).click();
     await expect(dialog.getByText(/at least 8 characters/i).first()).toBeVisible();
-    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await closeDialogWithoutSaving(dialog, { unsaved: true });
     await expect(dialog).toHaveCount(0);
   });
 

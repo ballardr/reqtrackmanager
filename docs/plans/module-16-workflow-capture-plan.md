@@ -207,7 +207,7 @@ flowchart LR
 
 ### 3.10 Fit with the report library (Module 10) and framework
 
-[Module 10](module-10-reporting-and-analysis-plan.md) is re-planning the report library (Phase 0 bake-off of the PDF engine: ReportLab, WeasyPrint on HTML, headless Chromium on HTML; renderer interface in Phase 7). What that means for this module:
+[Module 10](completed/module-10-reporting-and-analysis-plan.md) is re-planning the report library (Phase 0 bake-off of the PDF engine: ReportLab, WeasyPrint on HTML, headless Chromium on HTML; renderer interface in Phase 7). What that means for this module:
 
 - **Today's framework carries raster images only.** The neutral `Image` block (`services/report_model.py`) holds already-decoded bytes; `python-docx` cannot embed SVG; the current ReportLab path has no SVG step. So a diagram SVG cannot simply be handed over today.
 - **Division of responsibility (**Decided by: Agent**).** This module renders a diagram to SVG (it owns BPMN geometry and blueprint layout). The framework owns what happens to an SVG per format: inline in HTML, vector or raster in PDF depending on the engine Module 10 picks, PNG in DOCX, native or PNG in ODT. This module imports no PDF engine and no rasteriser. The core change is one generic extension point (an `Image` that may carry SVG source, converted by each renderer), not a diagram-specific path.

@@ -5,7 +5,7 @@ Seeds a realistic, presentable demo dataset — a fictional engineering
 company ("Solstice Robotics") with three projects (one a sub-project of
 another, demonstrating hierarchical projects), requirements at varied
 lifecycle stages, an in-review and an approved change request, discussion
-comments, custom fields, and a report branding template. Intended for
+comments, custom fields, and a report look. Intended for
 screenshots, demos, and (eventually) a public demo instance.
 
 Design notes:
@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import httpx
 
@@ -79,8 +80,11 @@ def create_org_user(headers: dict, org_id: str, email: str, display_name: str, r
 def create_project(
     headers: dict, org_id: str, name: str, summary: str,
     *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None, can_be_parent: bool = False,
+    report_name: str | None = None,
 ) -> dict:
     payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
+    if report_name is not None:
+        payload["report_name"] = report_name
     if parent_project_id is not None:
         payload["parent_project_id"] = parent_project_id
     if role_inheritance_mode is not None:
@@ -492,6 +496,280 @@ def create_artefact_link(
     return r.json()
 
 
+REQUIREMENTS_BY_COMPONENT_AND_CATEGORY_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+            "children": [
+                {
+                    "type": "group", "source": {"group": "comp"}, "by": "category", "as": "cat",
+                    "children": [
+                        {"type": "heading", "level": 2, "text": "{{comp.value}} - {{cat.value}} ({{cat.count}})"},
+                        {
+                            "type": "table", "source": {"group": "cat", "sort": [{"field": "title"}]},
+                            "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}
+"""Nested groups: a heading above each category's table that names both groups (`{{comp.value}} - {{cat.value}}`)."""
+
+
+REQUIREMENTS_BY_COMPONENT_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** by component, generated {{generated_on}}."},
+        {
+            "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+            "children": [
+                {"type": "heading", "level": 2, "text": "{{comp.value}} ({{comp.count}})"},
+                {
+                    "type": "table", "source": {"group": "comp", "sort": [{"field": "title"}]},
+                    "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}],
+                    "empty_text": "No requirements.",
+                },
+            ],
+        },
+    ],
+}
+"""A small custom report layout: the project's requirements grouped by component."""
+
+
+REQUIREMENTS_HANDBOOK_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "header": {"left": "{{organisation}}", "right": "{{generated_on}}"},
+    "footer": {"left": "{{report_title}}", "right": "Page {{page}} of {{pages}}"},
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** by component, generated {{generated_on}}."},
+        {"type": "contents", "title": "Contents", "levels": 2, "new_page": True},
+        {
+            "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+            "children": [
+                {"type": "heading", "level": 2, "text": "{{comp.value}} ({{comp.count}})"},
+                {
+                    "type": "table", "source": {"group": "comp", "sort": [{"field": "title"}]},
+                    "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}],
+                    "empty_text": "No requirements.",
+                },
+            ],
+        },
+    ],
+}
+"""A custom report layout with a table of contents (headings to level 2, on a page of its own) and a footer, which sits at the
+foot of the page by default."""
+
+
+REQUIREMENTS_BY_CATEGORY_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "variables": [
+        {
+            "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+            "source": {"record_type": "requirement", "field": "category"},
+        },
+    ],
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Requirements of **{{project_name}}** in the chosen categories: {{var.categories}}."},
+        {
+            "type": "table",
+            "source": {
+                "record_type": "requirement", "sort": [{"field": "title"}],
+                "where": [{"field": "category", "op": "in", "value": {"var": "categories"}}],
+            },
+            "columns": [{"field": "code", "label": "Code"}, {"field": "category", "label": "Category"}, {"field": "title", "label": "Requirement"}],
+            "empty_text": "No requirements in these categories.",
+        },
+    ],
+}
+"""A custom report layout with a run-time variable: the person chooses which categories to show when running it."""
+
+
+CONTEXT_OVERVIEW_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "landscape",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Context & Strategy for **{{project_name}}**, built from report widgets."},
+        {"type": "heading", "level": 2, "text": "Headline figures"},
+        {"type": "widget", "key": "context_strategy.summary.figures", "params": {"stale_months": 12}},
+        {"type": "heading", "level": 2, "text": "Pain Points by type and status"},
+        {"type": "text", "text": "Open and closed Pain Points, as counted by the Pain Point coverage report."},
+        {"type": "widget", "key": "context_strategy.pain-point-coverage.matrix", "empty_text": "No Pain Points yet."},
+    ],
+}
+"""A custom report layout that embeds Context & Strategy report tables as widgets; its headings and prose are its own."""
+
+
+DESIGN_FORMULAE_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {"type": "text", "text": "Design formulae for **{{project_name}}**. The stress \\(\\sigma = F / A\\) must stay below the yield strength."},
+        {"type": "equation", "tex": "\\sigma = \\frac{F}{A}"},
+        {"type": "text", "text": "Fatigue life follows $$N = \\left(\\frac{S_f}{\\sigma_a}\\right)^{1/b}$$"},
+        {"type": "equation", "tex": "\\sum_{i=1}^{n} w_i x_i \\leq \\sqrt{\\frac{m}{k}}"},
+    ],
+}
+"""A custom report layout with an equation block and equations written inside text, as the designer's Equation shortcut and text view produce."""
+
+
+PAIN_POINTS_WITH_PICTURES_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "table", "source": {"record_type": "pain_point", "sort": [{"field": "title"}]},
+            "columns": [{"field": "code"}, {"field": "title"}, {"images": {"types": ["png", "jpg"], "max_count": 3}, "label": "Pictures"}],
+            "empty_text": "No pain points.",
+        },
+    ],
+}
+"""A custom report layout with an images column: each Pain Point's attached pictures beside its code and title (a share of the column wide)."""
+
+
+def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict, folder: str = "") -> dict:
+    """Creates a custom report layout at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-layouts`), filed
+    under `folder` in the Reports picker (up to three levels, `A/B`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-layouts",
+        json={"name": name, "description": description, "folder": folder, "family": "document", "tree": tree},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def save_report_layout_draft(headers: dict, path: str, layout: dict, tree: dict) -> None:
+    """Leaves unpublished work on a layout: writes `tree` into its shared draft (based on the layout's current version), so the
+    designer opens on the draft with its notice. `path` is `/orgs/{id}` or `/projects/{id}`."""
+    r = httpx.put(
+        f"{BASE}{path}/report-layouts/{layout['id']}/draft",
+        json={"tree": tree, "base_version": layout["current_version"], "revision": 0}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+#: The product mark: white on transparent, so a report places it on a coloured shape. Kept beside this script (not read from the
+#: repository root) so a container build, which copies only `backend/`, finds it.
+LOGO_PATH = Path(__file__).parent / "data" / "logo.svg"
+
+
+def upload_report_image(headers: dict, path: str, file_path: Path, content_type: str) -> dict:
+    """Adds a picture to a report image library at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-images`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-images", files={"file": (file_path.name, file_path.read_bytes(), content_type)}, headers=headers,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def project_overview_with_logo_layout(logo_file_id: str) -> dict:
+    """A cover banner (the product logo, white on transparent, in front of a plate in the layout's own `plate` colour, a shade of
+    the report accent) over the project name and a short requirements table. Both pictures are laid over the page beside the
+    title, measured from the title's paragraph, so the title stays readable.
+
+    It also shows the fonts and colours settings: its own colour scheme (`plate`, `highlight`; the organisation's `alert` and
+    `success` stay available), a serif body, sans headings in the plate colour, an italic footer with the page numbers, and
+    a header showing the cell settings: the organisation name in a fixed 30 % cell, the others fitting their content, all top
+    aligned but the date at the bottom. Its table headings take the plate colour once, from the layout (`table_header_fill`), with the
+    text colour left automatic.
+    """
+    return {
+        "schema_version": 1, "family": "document", "orientation": "portrait",
+        "palette": [{"name": "plate", "colour": "accent_dark"}, {"name": "highlight", "colour": "#b45309"}],
+        "styles": {"body": {"font": "serif", "size": 11}, "headings": {"font": "sans", "colour": "plate"}},
+        "table_header_fill": "plate",
+        "header": {
+            "left": "{{organisation}}", "centre": "{{report_title}}", "right": "{{generated_on}}",
+            "left_width": "30%", "valign": "top", "right_valign": "bottom", "colour": "plate",
+        },
+        "footer": {"left": "*{{project_report_name}}*", "right": "*Page {{page}} of {{pages}}*", "colour": "plate"},
+        "nodes": [
+            {
+                "type": "shape", "shape": "rounded", "fill": "plate", "width": 5, "height": 2.5, "alt": "",
+                "placement": "behind", "anchor": "paragraph", "offset_x": 12, "offset_y": 0,
+            },
+            {
+                "type": "image", "file": logo_file_id, "alt": "Solstice Robotics logo", "height": 1.75, "height_unit": "cm",
+                "placement": "front", "anchor": "paragraph", "offset_x": 12.75, "offset_y": 0.375,
+            },
+            {"type": "heading", "text": "{{project_name}}"},
+            {"type": "text", "text": "Requirements overview, generated {{generated_on}}."},
+            {"type": "heading", "level": 2, "text": "Requirements"},
+            {
+                "type": "table", "source": {"record_type": "requirement", "sort": [{"field": "code"}]},
+                "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}, {"field": "status", "label": "Status"}],
+                "empty_text": "No requirements.",
+            },
+        ],
+    }
+
+
+def with_snippets(headers: dict, path: str, tree: dict, snippets: list[tuple[str, int | None]]) -> dict:
+    """The layout tree with built-in report snippets inserted, as the designer's Insert snippet does: each `(key, index)` goes at
+    that position in the layout's blocks (`None`: the end). `path` is `/orgs/{id}` or `/projects/{id}`."""
+    for key, index in snippets:
+        target = {"container": "nodes"} | ({} if index is None else {"index": index})
+        r = httpx.post(
+            f"{BASE}{path}/report-layouts/snippets/{key}/apply", json={"tree": tree, "target": target}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+        body = r.json()
+        if not body["ok"]:
+            raise RuntimeError(f"Snippet {key} was refused: {body['errors']}")
+        tree = body["tree"]
+    return tree
+
+
+def hide_report_layout(headers: dict, project_id: str, layout_id: str) -> None:
+    """Hides an inherited report layout in one project."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/report-layouts/{layout_id}/visibility", json={"hidden": True}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def create_report_snippet(
+    headers: dict, path: str, name: str, description: str, tree: dict, *, start: int, count: int = 1, category: str = "House style",
+) -> dict:
+    """Saves blocks `start` to `start + count` of a layout tree as a report snippet at one tier: `/orgs/{id}` or `/projects/{id}`
+    (followed by `/report-snippets`)."""
+    r = httpx.post(
+        f"{BASE}{path}/report-snippets",
+        json={
+            "name": name, "description": description, "category": category, "tree": tree,
+            "selection": {"container": "nodes", "start": start, "count": count},
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_report_pack(headers: dict, path: str, name: str, description: str, definition: dict, folder: str = "") -> dict:
+    """Creates a report pack at one tier: `/orgs/{id}` or `/projects/{id}` (followed by `/report-packs`), filed under `folder`."""
+    r = httpx.post(
+        f"{BASE}{path}/report-packs", json={"name": name, "description": description, "folder": folder, "definition": definition},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_report_pack_set(headers: dict, path: str, pack_id: str, name: str, values: dict) -> dict:
+    """Saves a variable set with a report pack (`/orgs/{id}` or `/projects/{id}` followed by `/report-packs/{id}/sets`)."""
+    r = httpx.post(f"{BASE}{path}/report-packs/{pack_id}/sets", json={"name": name, "values": values}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def create_project_link_type(
     headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
 ) -> dict:
@@ -575,26 +853,30 @@ def archive_action(headers: dict, project_id: str, action_id: str) -> None:
     r.raise_for_status()
 
 
-def create_report_template(
-    headers: dict, org_id: str, *, name: str, accent_color_hex: str, footer_text: str, content: list[dict] | None = None,
-) -> dict:
-    """Creates a report template; `content` is its per-report-type intro/chapters/appendices entries."""
-    r = httpx.post(
-        f"{BASE}/orgs/{org_id}/report-templates",
+def set_report_look(
+    headers: dict, org_id: str, *, accent_color_hex: str, footer_text: str, include_cover_page: bool = True,
+) -> None:
+    """Sets the organisation's one report look: accent colour and logo (Branding), footer and cover page (Configuration).
+
+    The advanced-settings endpoint replaces the settings it is given, so the current ones are read and sent back.
+    """
+    r = httpx.put(
+        f"{BASE}/orgs/{org_id}/branding",
         json={
-            "name": name, "accent_color_hex": accent_color_hex, "include_cover_page": True,
-            "include_logo": False, "footer_text": footer_text, "content": content or [],
+            "report_accent_color_hex": accent_color_hex, "report_include_logo": False,
+            # The organisation's named report colours: layouts with no scheme of their own resolve a colour name by them.
+            "report_colour_scheme": [{"name": "alert", "colour": "#B42318"}, {"name": "success", "colour": "#067647"}],
         },
         headers=headers, timeout=30,
     )
     r.raise_for_status()
-    return r.json()
-
-
-def put_report_content(headers: dict, path: str, content: list[dict]) -> None:
-    """Saves per-report-type content at one tier: `/orgs/{id}/report-defaults` or `/projects/{id}/report-config`."""
-    r = httpx.put(f"{BASE}{path}", json={"content": content}, headers=headers, timeout=30)
+    r = httpx.get(f"{BASE}/orgs/{org_id}/advanced-settings", headers=headers, timeout=30)
     r.raise_for_status()
+    current = r.json()
+    for read_only in ("report_output_default_retention_days", "report_output_max_retention_days"):
+        current.pop(read_only, None)
+    current.update(report_footer_text=footer_text, report_include_cover_page=include_cover_page)
+    httpx.put(f"{BASE}/orgs/{org_id}/advanced-settings", json=current, headers=headers, timeout=30).raise_for_status()
 
 
 # --- Compliance Module helpers -
@@ -1777,24 +2059,8 @@ def main() -> None:
 
     h_pm = h(login("demo.admin@example.com", PASSWORD))
 
-    print("Branding a report template...")
-    create_report_template(
-        h_pm, org["id"], name="Solstice Standard Report", accent_color_hex="#0F62FE",
-        footer_text="Solstice Robotics — Confidential",
-        content=[
-            {"report_key": "requirements", "intro": "{{report_title}} — requirements baseline for {{organisation}}, "
-             "generated {{generated_on}}.", "chapters": [], "appendices": []},
-            {"report_key": "decisions.d3", "intro": "The decisions below were made for {{project_name}}.",
-             "chapters": [{"title": "How to read this log", "body": "Each decision records its context, the option chosen and why."}],
-             "appendices": []},
-        ],
-    )
-    # Organisation defaults, per report type: what any project (and its child projects) uses unless it sets its own.
-    put_report_content(h_pm, f"/orgs/{org['id']}/report-defaults", [
-        {"report_key": "*", "intro": "Prepared by {{organisation}} for {{project_name}}.", "chapters": [], "appendices": []},
-        {"report_key": "requirements", "intro": "", "chapters": [],
-         "appendices": [{"title": "Document control", "body": "Controlled by the {{organisation}} engineering office."}]},
-    ])
+    print("Setting the organisation's report look...")
+    set_report_look(h_pm, org["id"], accent_color_hex="#0F62FE", footer_text="Solstice Robotics — Confidential")
 
     print("Setting organisation outgoing-email branding...")
     httpx.put(
@@ -1833,6 +2099,8 @@ def main() -> None:
         # Subsystem' below is created as its child — a project must opt in
         # to this before another project can be attached under it.
         can_be_parent=True,
+        # The short name the 'Project overview with logo' report prints in its footer.
+        report_name="Falcon-3",
     )
     set_project_status(h_pm, drone["id"], project_statuses["Active"]["id"])
     # Demonstrates C-C-03's terminology overrides with aerospace-engineering
@@ -1936,6 +2204,8 @@ def main() -> None:
         h_pm, drone["id"], firmware_review["id"], "firmware-2.3.1-compliance-signoff.pdf",
         b"%PDF-fake Compliance sign-off for firmware rev 2.3.1.",
     )
+    # A picture in the project's own report image library, so the Files page shows a preview beside it.
+    upload_report_image(h_pm, f"/projects/{drone['id']}", LOGO_PATH, "image/svg+xml")
 
     wind_test = create_and_link_action(
         h_pm, drone["id"], drone_reqs["Withstand sustained wind gusts of up to 45 km/h without loss of stability"]["id"],
@@ -2052,12 +2322,82 @@ def main() -> None:
     )
     add_member_source(h_pm, drone["id"], avionics["id"])
     assign_project_role(h_pm, avionics["id"], demo_engineer["user_id"], "project_manager")
-    # Falcon-3's own report content; its Avionics child sets none, so its reports inherit this (then the organisation's).
-    put_report_content(h_pm, f"/projects/{drone['id']}/report-config", [
-        {"report_key": "requirements", "intro": "Requirements for the Falcon-3 inspection drone programme.",
-         "chapters": [{"title": "Scope", "body": "Covers the airframe, avionics, ground station and fleet backend."}],
-         "appendices": []},
-    ])
+    print("Seeding custom report layouts: an organisation layout every project inherits, Falcon-3's own, and Avionics hiding the organisation's...")
+    org_layout = create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Handover requirements", "Every requirement, grouped by component.",
+        {**REQUIREMENTS_BY_COMPONENT_LAYOUT, "file_name": "{{project_code}}-{{report_title}}-{{generated_on}}"},
+        folder="Handover/Requirements",
+    )
+    create_report_layout(
+        h_pm, f"/projects/{drone['id']}", "Falcon-3 requirements", "Falcon-3's requirements by component.", REQUIREMENTS_BY_COMPONENT_LAYOUT,
+    )
+    hide_report_layout(h_pm, avionics["id"], org_layout["id"])
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Context overview", "Context & Strategy figures and tables, embedded as widgets.", CONTEXT_OVERVIEW_LAYOUT,
+        folder="Handover",
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Requirements by category (choose)",
+        "Pick the categories when running it: one layout for any selection.", REQUIREMENTS_BY_CATEGORY_LAYOUT,
+        folder="Handover/Requirements",
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Pain points with pictures", "A table of Pain Points with the pictures attached to each.",
+        PAIN_POINTS_WITH_PICTURES_LAYOUT,
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Requirements handbook (with contents)",
+        "Requirements by component, with a table of contents that links to each component.", REQUIREMENTS_HANDBOOK_LAYOUT,
+        folder="Handover/Requirements",
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Requirements by component and category",
+        "A heading above each category's table that names its component and category.",
+        REQUIREMENTS_BY_COMPONENT_AND_CATEGORY_LAYOUT, folder="Handover/Requirements",
+    )
+    design_formulae = create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,
+    )
+    print("Leaving the Design formulae layout with a draft: unpublished work the designer opens on, with its notice...")
+    save_report_layout_draft(
+        h_pm, f"/orgs/{org['id']}", design_formulae,
+        {**DESIGN_FORMULAE_LAYOUT, "nodes": [*DESIGN_FORMULAE_LAYOUT["nodes"], {"type": "heading", "text": "Margins of safety"}]},
+    )
+    print("Seeding a report with the logo on a shape (the white mark over an accent plate), and making sure the Project Workbook starter is there...")
+    httpx.post(f"{BASE}/orgs/{org['id']}/report-layouts/starters", headers=h_pm, timeout=30).raise_for_status()
+    logo = upload_report_image(h_pm, f"/orgs/{org['id']}", LOGO_PATH, "image/svg+xml")
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Project overview with logo",
+        "A cover banner (the logo on a plate in the report accent colour), the project name, a document-details table, "
+        "its requirements and a review and control table.",
+        with_snippets(
+            h_pm, f"/orgs/{org['id']}", project_overview_with_logo_layout(logo["id"]),
+            [("document-details", 4), ("document-control", None)],
+        ),
+        folder="Handover",
+    )
+    print("Seeding a saved report snippet: the by-component grouping, kept for the organisation to insert into other layouts...")
+    create_report_snippet(
+        h_pm, f"/orgs/{org['id']}", "Requirements by component", "A group of the requirements by component, each with a table.",
+        REQUIREMENTS_BY_COMPONENT_LAYOUT, start=2,
+    )
+    print("Seeding a report pack: the requirements by category and by component handed over together, with a saved set...")
+    handover = create_report_pack(
+        h_pm, f"/orgs/{org['id']}", "Programme handover", "The requirements for an external team, as one zip.",
+        {
+            "schema_version": 1,
+            "variables": [{
+                "name": "categories", "type": "enum", "multiple": True, "label": "Categories",
+                "source": {"record_type": "requirement", "field": "category"},
+            }],
+            "entries": [
+                {"kind": "layout", "name": "Requirements by category (choose)", "format": "pdf", "filename": "requirements-by-category"},
+                {"kind": "layout", "name": "Requirements by component", "format": "docx", "filename": "requirements-by-component"},
+            ],
+        },
+        folder="Handover",
+    )
+    create_report_pack_set(h_pm, f"/orgs/{org['id']}", handover["id"], "Safety only", {"categories": ["Safety"]})
     avionics_components = {"SN": create_component(h_pm, avionics["id"], "Sensors", "SN")}
     avionics_categories = create_categories_for_components(h_pm, avionics["id"], avionics_components, {"SN": ["PERF", "SAF", "FN"]})
     avionics_reqs = seed_project(
@@ -2441,6 +2781,13 @@ def main() -> None:
     # default_enabled=False — an org must opt in explicitly, same as a real admin would
     # from Org Admin's Modules tab.
     enable_module(h_pm, org["id"], "decisions")
+    # The Decision register is only a known report once the module is on for the organisation.
+    print("Arranging the Reports list: the organisation files the Decision register under Governance/Decisions...")
+    r = httpx.put(
+        f"{BASE}/orgs/{org['id']}/report-placements", json={"report_key": "report:decisions.d1", "folder": "Governance/Decisions"},
+        headers=h_pm, timeout=30,
+    )
+    r.raise_for_status()
     drone_decision_types = list_decision_types(h_pm, drone["id"])
     set_action_outcome(h_pm, drone["id"], {**wind_test, "assignee": {"type": "project_group", "id": verification_squad.json()["id"]}}, "failed")
     httpx.patch(

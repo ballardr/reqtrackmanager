@@ -2,14 +2,13 @@ import type { MergeConflict } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 
 /**
- * Lets the caller resolve every project/report-template name collision an
- * org-merge preview (`POST /orgs/{id}/import/preview`) reported, before
- * committing via `POST /orgs/{id}/import/merge`. A project conflict can
- * only be skipped or imported as a renamed copy — never overwritten in
- * place, since a project carries real requirement/change-request history a
- * silent overwrite would destroy (see `services.org_export.
- * _import_projects`'s docstring). A report template conflict has no such
- * history, so it can be kept or overwritten directly.
+ * Lets the caller resolve every name collision an org-merge preview
+ * (`POST /orgs/{id}/import/preview`) reported, before committing via
+ * `POST /orgs/{id}/import/merge`. A project conflict (and a module's own, such as a
+ * Compliance standard) can only be skipped or imported as a renamed copy — never
+ * overwritten in place, since a project carries real requirement/change-request
+ * history a silent overwrite would destroy (see `services.org_export._import_projects`'s
+ * docstring).
  */
 export function ImportConflictPanel({
   conflicts,
@@ -22,7 +21,7 @@ export function ImportConflictPanel({
 }) {
   const strings = useStrings();
   const projectConflicts = conflicts.filter((c) => c.kind === "project");
-  const templateConflicts = conflicts.filter((c) => c.kind === "report_template");
+  const otherConflicts = conflicts.filter((c) => c.kind !== "project");
 
   return (
     <div className="stack">
@@ -51,25 +50,25 @@ export function ImportConflictPanel({
           ))}
         </div>
       )}
-      {templateConflicts.length > 0 && (
+      {otherConflicts.length > 0 && (
         <div className="stack" style={{ gap: "var(--space-3)" }}>
-          <span className="text-muted">{strings.importMerge.reportTemplatesSection}</span>
-          {templateConflicts.map((c) => (
+          <span className="text-muted">{strings.importMerge.otherSection}</span>
+          {otherConflicts.map((c) => (
             <div key={c.id} className="card stack" style={{ gap: "var(--space-1)" }}>
               <strong>{c.name}</strong>
               <label>
                 <input
-                  type="radio" name={c.id} checked={resolutions[c.id] === "keep_existing"}
-                  onChange={() => onResolutionChange(c.id, "keep_existing")}
+                  type="radio" name={c.id} checked={resolutions[c.id] === "skip"}
+                  onChange={() => onResolutionChange(c.id, "skip")}
                 />{" "}
-                {strings.importMerge.templateKeepExisting}
+                {strings.importMerge.otherSkip}
               </label>
               <label>
                 <input
-                  type="radio" name={c.id} checked={resolutions[c.id] === "use_import"}
-                  onChange={() => onResolutionChange(c.id, "use_import")}
+                  type="radio" name={c.id} checked={resolutions[c.id] === "import_as_copy"}
+                  onChange={() => onResolutionChange(c.id, "import_as_copy")}
                 />{" "}
-                {strings.importMerge.templateUseImport}
+                {strings.importMerge.projectImportAsCopy}
               </label>
             </div>
           ))}

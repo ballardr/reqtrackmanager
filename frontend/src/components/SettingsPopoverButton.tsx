@@ -7,7 +7,8 @@
  *
  * Design decisions: the settings are hidden until opened, so the current choice must still show. The
  * `label` (accessible name and tooltip) states it, and `marked` draws an accent border when the choice
- * is not the default. Changes apply as they are made; there is no Save, so the popover has none.
+ * is not the default. Changes apply as they are made; there is no Save, so the popover has none. `defaultOpen`
+ * opens it on first render (a row the person has just added, whose settings they must fill in).
  */
 import { Settings } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
@@ -19,12 +20,13 @@ import { Tooltip } from "./Tooltip";
  * @param label Accessible name and tooltip; should state the current settings, e.g. "Score settings: Impact x Likelihood".
  * @param title Title of the popover.
  * @param marked True when a setting differs from its default.
+ * @param defaultOpen Open on first render.
  * @param children The settings controls.
  */
 export function SettingsPopoverButton({
-  label, title, marked = false, children,
-}: { label: string; title: string; marked?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+  label, title, marked = false, defaultOpen = false, children,
+}: { label: string; title: string; marked?: boolean; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
   const triggerRef = useRef<HTMLButtonElement>(null);
   return (
     <>

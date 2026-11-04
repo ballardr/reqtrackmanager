@@ -1,7 +1,8 @@
 """
 Module: routers.files
 
-A single generic download endpoint for uploaded files (I-M-10). Upload and
+A single generic download endpoint for uploaded files (I-M-10), and `GET /{file_id}/details` (a picture's size and EXIF),
+which follows exactly the same read rule. Upload and
 delete are handled by context-specific endpoints elsewhere (org shared
 resources and org logo in routers/orgs.py, requirement attachments in
 routers/requirements.py, avatars in routers/auth.py) since each has a
@@ -28,6 +29,7 @@ file id, so it is unified here with context-sensitive authorization:
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -40,19 +42,25 @@ from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.enums import ReviewTargetType
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
 from app.models.organization import Organization, ServerSettings
+from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import resolve_module_file_project_id
+from app.schemas.file import FileAssetOut, FileConfidentialIn, FileDetailsOut
+from app.services.audit import log_event
 from app.services.downloads import content_disposition
 from app.services.files import read_file
+from app.services.image_details import image_details
 from app.services.rbac import (
     _project_organization_id,
     _require_org_active,
+    can_manage_project_settings,
     check_pat_scope,
     check_pat_scope_for_project,
     get_effective_org_roles,
     get_effective_project_roles,
+    is_org_admin,
 )
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
@@ -74,17 +82,16 @@ _INLINE_SAFE_CONTENT_TYPES = {
 }
 
 
-@router.get("/{file_id}")
-def download_file(
-    file_id: UUID,
-    request: Request,
-    current_user: User | None = Depends(get_current_user_header_or_query_optional),
-    db: Session = Depends(get_db),
-):
-    file_asset = db.get(FileAsset, file_id)
-    if file_asset is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+def _authorise_read(request: Request, db: Session, file_asset: FileAsset, current_user: User | None) -> UUID | None:
+    """Raises unless the caller may read `file_asset`: the one access rule for downloading a file and for reading its details.
 
+    Returns:
+        The project that owns the file when it is a project attachment, else `None` (branding, avatar, organisation resource).
+
+    Raises:
+        HTTPException: 401 with no credential (anything but public branding), 403 without a role that reaches the file.
+    """
+    file_id = file_asset.id
     # No server-admin bypass (I-M-05): uploaded files are "data within
     # organisations". Logos and login-page background images are public,
     # served with no authentication at all, since they're rendered on the
@@ -105,6 +112,7 @@ def download_file(
         or db.scalar(select(ServerSettings).where(ServerSettings.default_logo_file_id == file_id)) is not None
         or db.scalar(select(ServerSettings).where(ServerSettings.default_login_background_file_id == file_id)) is not None
     )
+    project_id: UUID | None = None
     if not is_public_branding:
         if current_user is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
@@ -127,12 +135,13 @@ def download_file(
                 if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
                     raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
             else:
-                project_id = None
-                link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id))
+                # A picture in a project's report-image library belongs to that project directly.
+                project_id = file_asset.project_id
+                link = db.scalar(select(RequirementFile).where(RequirementFile.file_id == file_id)) if project_id is None else None
                 if link is not None:
                     requirement = db.get(Requirement, link.requirement_id)
                     project_id = requirement.project_id if requirement is not None else None
-                else:
+                elif project_id is None:
                     # Not a requirement attachment — check whether it's a
                     # requirement action attachment instead
                     # (routers/actions.py::upload_action_attachment).
@@ -182,6 +191,20 @@ def download_file(
                 has_access = project_id is not None and get_effective_project_roles(db, current_user.id, project_id)
                 if not has_access:
                     raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to this file.")
+    return project_id
+
+
+@router.get("/{file_id}")
+def download_file(
+    file_id: UUID,
+    request: Request,
+    current_user: User | None = Depends(get_current_user_header_or_query_optional),
+    db: Session = Depends(get_db),
+):
+    file_asset = db.get(FileAsset, file_id)
+    if file_asset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+    _authorise_read(request, db, file_asset, current_user)
 
     data = read_file(file_asset)
     disposition = "inline" if file_asset.content_type in _INLINE_SAFE_CONTENT_TYPES else "attachment"
@@ -192,3 +215,69 @@ def download_file(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get("/{file_id}/details", response_model=FileDetailsOut)
+def file_details(
+    file_id: UUID,
+    request: Request,
+    current_user: User | None = Depends(get_current_user_header_or_query_optional),
+    db: Session = Depends(get_db),
+) -> FileDetailsOut:
+    """What a picture file says about itself (pixel size and any EXIF: when taken, camera, description, position).
+
+    Open to exactly the people who may download the file (`_authorise_read`), and never to an anonymous caller even for a
+    public logo. A file that is not a raster picture answers with every field empty. The text is the file's own, shown as
+    text only; nothing is logged.
+    """
+    file_asset = db.get(FileAsset, file_id)
+    if file_asset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+    if current_user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+    _authorise_read(request, db, file_asset, current_user)
+    return FileDetailsOut(**asdict(image_details(read_file(file_asset))))
+
+
+@router.patch("/{file_id}/confidential", response_model=FileAssetOut)
+def set_file_confidential(
+    file_id: UUID,
+    body: FileConfidentialIn,
+    request: Request,
+    current_user: User | None = Depends(get_current_user_header_or_query_optional),
+    db: Session = Depends(get_db),
+) -> FileAsset:
+    """Marks a file confidential (or clears the mark): a confidential file is never printed by a report.
+
+    The mark affects only reports' record-image rules; who may open the file is unchanged. Allowed to the person who
+    uploaded the file and to those who manage its project (an organisation resource: the organisation's admins). Anyone
+    else who can read the file gets 403, so the mark cannot be removed by a reader. Audited with the file id and the new
+    value, never the file name.
+
+    Raises:
+        HTTPException: 401 without a credential, 404 for an unknown file, 403 when the caller may not change the mark.
+    """
+    file_asset = db.get(FileAsset, file_id)
+    if file_asset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+    if current_user is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+    project_id = _authorise_read(request, db, file_asset, current_user)
+    project = db.get(Project, project_id) if project_id is not None else None
+    allowed = file_asset.uploaded_by == current_user.id
+    if not allowed and project is not None:
+        allowed = can_manage_project_settings(db, current_user, project)
+    if not allowed and file_asset.is_org_resource:
+        allowed = is_org_admin(db, current_user.id, file_asset.organization_id)
+    if not allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the uploader or a project manager can change this.")
+    if file_asset.confidential != body.confidential:
+        file_asset.confidential = body.confidential
+        log_event(
+            db, entity_type="file", entity_id=file_asset.id, action="confidential_set" if body.confidential else "confidential_cleared",
+            actor_id=current_user.id, organization_id=file_asset.organization_id, project_id=project_id,
+            detail={"confidential": body.confidential},
+        )
+        db.commit()
+        db.refresh(file_asset)
+    return file_asset

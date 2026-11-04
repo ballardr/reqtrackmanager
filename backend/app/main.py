@@ -39,6 +39,7 @@ from app.routers import (
     auth_oidc,
     change_requests,
     custom_fields,
+    custom_reports,
     files,
     health,
     notifications,
@@ -50,6 +51,16 @@ from app.routers import (
     record_list_report,
     record_tables,
     report_catalogue,
+    report_copy,
+    report_duplicate,
+    report_exchange,
+    report_file_names,
+    report_folders,
+    report_images,
+    report_layouts,
+    report_packs,
+    report_placements,
+    report_snippets,
     reports,
     requirements,
     reviews,
@@ -59,13 +70,14 @@ from app.routers import (
     tags,
     ws,
 )
-from app.services import pubsub
+from app.services import pubsub, report_font_catalogue
 from app.services.bootstrap import run_bootstrap
 from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
 from app.services.module_defaults import seed_fresh_install_defaults
 from app.services.notifications import run_digest_loop
 from app.services.process_coordination import run_leadership_loop, startup_lock
+from app.services.report_run_jobs import run_job_loop
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.scoring import sync_scoring_levels
 from app.services.storage_health import run_storage_health_loop
@@ -133,6 +145,7 @@ async def lifespan(_: FastAPI):
             asyncio.create_task(run_disk_monitor_loop()),
             asyncio.create_task(run_storage_health_loop()),
             asyncio.create_task(run_digest_loop()),
+            asyncio.create_task(run_job_loop()),
         ])
         start_scheduler()
 
@@ -142,6 +155,10 @@ async def lifespan(_: FastAPI):
         singleton_tasks.clear()
         stop_scheduler()
 
+    try:  # a bad font directory must never stop the server: the scan itself skips what it cannot read
+        report_font_catalogue.rescan()
+    except Exception:  # noqa: BLE001
+        logger.exception("report font scan failed")
     leadership_task = asyncio.create_task(run_leadership_loop(start_singletons, stop_singletons))
     # Per worker (not leader-only): each process reports its own memory and pool usage.
     worker_gauge_task = asyncio.create_task(run_worker_gauge_loop(engine))
@@ -191,7 +208,10 @@ app.add_middleware(
     # was caught only by a live Playwright run against a real browser
     # (`fetch().headers.get()` silently returning null) — curl and pytest's
     # TestClient both bypass CORS entirely, so neither could have caught it.
-    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count"],
+    # `Content-Disposition` carries the server's chosen name for a generated file (a pack's zip is named by its
+    # file-name template); a cross-origin browser hides it from JS unless exposed, and the download would fall back
+    # to a client-side guess.
+    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count", "Content-Disposition"],
 )
 
 
@@ -324,6 +344,27 @@ app.include_router(requirements.router)
 app.include_router(change_requests.router)
 app.include_router(reports.router)
 app.include_router(report_catalogue.router)
+app.include_router(report_images.org_router)
+app.include_router(report_images.project_router)
+app.include_router(report_layouts.org_router)
+app.include_router(report_layouts.project_router)
+app.include_router(report_packs.org_router)
+app.include_router(report_packs.project_router)
+app.include_router(report_snippets.org_router)
+app.include_router(report_snippets.project_router)
+app.include_router(report_file_names.router)
+app.include_router(report_copy.router)
+app.include_router(report_duplicate.project_router)
+app.include_router(report_duplicate.org_router)
+app.include_router(report_exchange.project_router)
+app.include_router(report_exchange.org_router)
+app.include_router(report_folders.org_router)
+app.include_router(report_folders.project_router)
+app.include_router(report_placements.org_router)
+app.include_router(report_placements.project_router)
+app.include_router(custom_reports.org_router)
+app.include_router(custom_reports.project_router)
+app.include_router(custom_reports.runs_router)
 app.include_router(search.router)
 app.include_router(record_tables.router)
 app.include_router(org_record_tables.router)
