@@ -1735,6 +1735,8 @@ Write workflow: `create_request` (only a title is needed) -> `update_request` (o
 
 Demand: record who asked by linking the request to a Stakeholder, a Persona or an Engagement with the core link tools (link type `Requested by`). `product_feedback_get_request_demand` returns the distinct requesters (an Engagement counts its participants and covered personas; someone reached twice counts once), the count and the weighted demand (a Stakeholder's Influence level, a Persona's weight; unweighted counts 1). `get_request` and `list_requests` carry `requester_count` and `weighted_demand`. Duplicates: `merge_request` marks a request a duplicate of another (same project, still open) and adds its requesters to the canonical request's demand; `unmerge_request` restores it. A request in a merge cannot be moved out of the inbox.
 
+Scoring: a request holds an optional level per axis in `levels` (`{"impact": <level id>, "effort": null}`: an axis set to `null` is cleared, one not mentioned is kept). Axes: **Reach, Impact, Confidence, Ease** (higher is easier), **Effort** (a higher level lowers a RICE score) and **Demand** (derived from the requesters; set a level by hand only to override it, `derived_levels` shows what it resolved to). Find the ids with `product_feedback_get_request_scoring_scheme` (or `get_inbox_scoring_scheme`). Scores are derived, never written: **ICE** is Impact x Confidence x Ease, **RICE** is Reach x Impact x Confidence / Effort, **rice_demand** replaces Reach with Demand. `get_request` and `list_requests` return `scores` (model key to `raw`, `normalised`, band `label`) for the project's enabled models, or those named by `scoring_model` (comma-separated, the first is the primary shown as `score`); a score is null until every manual axis the model needs has a level. To find work to do, filter `list_requests` with `scored=unscored` (or `missing_axis=ease`). Reach is a manual level, separate from the derived demand; compare the two, do not substitute one for the other. Scores of different models are not comparable. The organisation and each project may add their own axes (keys `c_...`) and models (keys `m_...`: a product with divisors and exponents, or a weighted sum), and hide the built-in ones: the scheme tools return exactly what this project can use, with each criterion's `origin`, so read it before choosing an axis or model; a request cannot take a level on an axis its project cannot see. Defining or hiding criteria is done in the app by an administrator, not through these tools.
+
 Rules and gotchas:
 - Submitting is open to project members unless the project restricted it to triagers; every other write needs the Feedback Triager role. A 403 means the caller lacks it.
 - `transition_request` to `declined` needs a `comment`: it is stored as the decline reason. Moving to `delivered` is a person's judgement; do it only when asked.
@@ -1750,13 +1752,19 @@ Rules and gotchas:
 
 Lists a project's enhancement requests with status, owner and external reference.
 
-Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query)
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query), `scored` (string, in query), `missing_axis` (string, in query), `scoring_model` (string, in query)
 
 #### `product_feedback_get_request` (read)
 
-Fetches one enhancement request with its current content and legal next statuses.
+Fetches one enhancement request with its current content, legal next statuses, scoring levels and derived ICE or RICE score.
 
-Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `scoring_model` (string, in query)
+
+#### `product_feedback_get_request_scoring_scheme` (read)
+
+Reads the Reach, Impact, Confidence and Effort levels (ids and weights), the ICE and RICE models and their rating bands that apply to the project. Use it to find the level ids a request takes.
+
+Parameters: `project_id*` (uuid, in path)
 
 #### `product_feedback_list_request_versions` (read)
 
@@ -1792,13 +1800,13 @@ Parameters: `project_id*` (uuid, in path)
 
 Submits an enhancement request in the New status. Any project member may unless the project restricted submission to triagers; only the title is required.
 
-Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body)
+Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `levels` (object, in body)
 
 #### `product_feedback_update_request` (write)
 
 Updates a request as a new version; only the fields supplied change. Needs the Feedback Triager role.
 
-Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `title` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `title` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `levels` (object, in body), `change_note` (string, in body)
 
 #### `product_feedback_transition_request` (write)
 
@@ -1828,7 +1836,13 @@ Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `body*
 
 Lists the organisation's inbox requests (answers 404 when the organisation switched the inbox off).
 
-Parameters: `organization_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query)
+Parameters: `organization_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query), `scored` (string, in query), `missing_axis` (string, in query), `scoring_model` (string, in query)
+
+#### `product_feedback_get_inbox_scoring_scheme` (read)
+
+Reads the request scoring levels and models that apply to the organisation's inbox.
+
+Parameters: `organization_id*` (uuid, in path)
 
 #### `product_feedback_move_inbox_request_to_project` (write)
 
@@ -1840,4 +1854,4 @@ Parameters: `organization_id*` (uuid, in path), `request_id*` (uuid, in path), `
 
 Submits an enhancement request to the organisation's inbox. Any organisation member may.
 
-Parameters: `organization_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body)
+Parameters: `organization_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `levels` (object, in body)

@@ -9,6 +9,8 @@ Product Feedback's data model:
   field lives on the version.
 - `EnhancementRequestVersion` — one point-in-time content snapshot (temporal shape copied from
   `RiskVersion`). `status` lives here, so a lifecycle move is versioned like any other change.
+- `EnhancementRequestVersionScore` — one scoring level a version holds on one axis of the `enhancement_request`
+  scoring scheme (one row per axis, so a scheme axis added later needs no schema change).
 - `EnhancementRequestComment` / `EnhancementRequestCommentFile` / `EnhancementRequestFile` —
   module-local comment-thread and attachment tables (the shared `services.module_attachments`
   kit works over them).
@@ -93,6 +95,9 @@ class EnhancementRequestVersion(UUIDPKMixin, Base):
         external_ref_url / external_ref_key: A pointer to the same item in a delivery tool (a URL
             and its key, e.g. a Jira issue); both optional.
         decline_reason: Why the request was declined (mandatory when the status is `DECLINED`).
+        A version's scoring levels are `EnhancementRequestVersionScore` rows, one per axis it has a level on
+            (`scoring.py`); an axis with no row is unscored. A score is derived from them on every read under
+            the model chosen when viewing, never stored.
         change_note: Free-text reason for the change.
         created_by / created_at: Who made this snapshot, and when.
     """
@@ -130,6 +135,29 @@ class EnhancementRequestVersion(UUIDPKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     request: Mapped[EnhancementRequest] = relationship(back_populates="versions")
+
+
+class EnhancementRequestVersionScore(UUIDPKMixin, Base):
+    """The level a request version holds on one axis of the `enhancement_request` scoring scheme.
+
+    Attributes:
+        version_id: The version it belongs to (removed with it).
+        axis_key: The scheme axis (`scoring.py`); unique per version.
+        level_id: The organisation's level on that axis. Deleting a level removes the row (core makes an in-use
+            level be reassigned first, so only history loses it).
+    """
+
+    __tablename__ = "enhancement_request_version_scores"
+    __table_args__ = (
+        UniqueConstraint("version_id", "axis_key", name="uq_enhancement_request_version_scores_axis"),
+        Index("ix_enhancement_request_version_scores_level", "level_id"),
+    )
+
+    version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enhancement_request_versions.id", ondelete="CASCADE")
+    )
+    axis_key: Mapped[str] = mapped_column(String(64))
+    level_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="CASCADE"))
 
 
 class EnhancementRequestComment(UUIDPKMixin, TimestampMixin, Base):

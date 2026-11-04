@@ -10,6 +10,10 @@ rather than those core files importing this module.
   evidence attachments, their "Requested by" links and the active merge of a duplicate).
 
 Design decisions (all Decided by: Agent):
+- A request's scoring levels (one per axis) travel by *axis and name* and are matched to the target organisation's
+  `enhancement_request` levels; one the target lacks is left unset with a warning, so the request is "not
+  scored" on that axis rather than silently re-scored. The score is derived and never exported; scoring
+  configuration (levels, bands) is not part of a bundle.
 - A request travels as its *current* content and status only. Version history, comments and comment
   attachments are not carried: a bundle is a migration artefact, and the imported request starts at version 1
   attributed to the importer where the author cannot be matched.
@@ -51,20 +55,25 @@ from app.modules.product_feedback.models import (
     EnhancementRequestFile,
     EnhancementRequestMerge,
     EnhancementRequestVersion,
+    EnhancementRequestVersionScore,
     ProjectFeedbackSettings,
 )
+from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.service import (
     REQUEST_ARTEFACT_TYPE,
     REQUEST_CODE_PREFIX,
     RecordOwner,
     set_submission_policy,
+    version_levels,
 )
-from app.modules.registry import get_artefact_summaries_in_project
+from app.modules.registry import ScoringSchemeDefinition, get_artefact_summaries_in_project
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.codes import label_title
 from app.services.link_types import ensure_org_link_type
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.relationships import create_link
+from app.services.scoring import list_levels, seed_missing_scoring_levels
+from app.services.scoring_custom import effective_scheme, export_definitions, import_definitions
 from app.services.sequences import code_owner, generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
@@ -84,11 +93,32 @@ def _emails(db: Session, user_ids: set[UUID | None]) -> dict[UUID, str]:
     return {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(ids)))} if ids else {}
 
 
+def _level_refs(db: Session, organization_id: UUID) -> dict[UUID, dict[str, str]]:
+    """`{level id: {"axis", "name"}}` for the organisation's `enhancement_request` scoring levels."""
+    return {
+        level.id: {"axis": axis, "name": level.name}
+        for axis, levels in list_levels(db, organization_id, REQUEST_SCORING_SCHEME_KEY).items() for level in levels
+    }
+
+
+def _level_ids(db: Session, organization_id: UUID) -> dict[tuple[str, str], UUID]:
+    """`{(axis, level name): level id}` for the organisation's `enhancement_request` scoring levels, seeding any
+    the organisation is still missing."""
+    seed_missing_scoring_levels(db, organization_id)
+    return {
+        (axis, level.name): level.id
+        for axis, levels in list_levels(db, organization_id, REQUEST_SCORING_SCHEME_KEY).items() for level in levels
+    }
+
+
 def _export_requests(
-    db: Session, pairs: list[tuple[EnhancementRequest, EnhancementRequestVersion]], assets: dict[UUID, FileAsset] | None,
+    db: Session, organization_id: UUID, pairs: list[tuple[EnhancementRequest, EnhancementRequestVersion]],
+    assets: dict[UUID, FileAsset] | None,
 ) -> list[dict[str, Any]]:
     """The bundle rows of `(request, current version)` pairs; attachments only when `assets` is given."""
     ids = [r.id for r, _ in pairs]
+    levels = _level_refs(db, organization_id)
+    stored = version_levels(db, [v.id for _, v in pairs])
     prime_record_tag_names(db, REQUEST_ARTEFACT_TYPE, ids)
     if assets is not None:
         prime_file_links(db, EnhancementRequestFile, "request_id", ids)
@@ -100,6 +130,7 @@ def _export_requests(
             "status": version.status.value, "decline_reason": version.decline_reason,
             "external_ref_url": version.external_ref_url, "external_ref_key": version.external_ref_key,
             "owner": principal_to_bundle(db, version.owner_type, version.owner_id),
+            "levels": {axis: levels[level_id] for axis, level_id in stored[version.id].items() if level_id in levels},
             "created_by_email": emails.get(request.creator_id), "created_at": _j(request.created_at),
             "is_archived": request.is_archived, "archived_at": _j(request.archived_at),
             "archived_by_email": emails.get(request.archived_by) if request.archived_by else None,
@@ -109,6 +140,25 @@ def _export_requests(
             entry["attachments"] = export_file_links(db, EnhancementRequestFile, "request_id", request.id, assets)
         out.append(entry)
     return out
+
+
+def _import_scoring_definitions(
+    db: Session, organization_id: UUID, project_id: UUID | None, data: dict[str, Any], warnings: BundleImportWarnings,
+    current_user: User | None = None,
+) -> dict[str, str]:
+    """Recreates the bundle's custom scoring axes, models and hidden criteria for the tier before any request, so
+    their levels exist when the requests are matched. Returns the exported-to-local axis key map."""
+    definitions = data.get("scoring_definitions")
+    if not definitions:
+        return {}
+    actor_id = current_user.id if current_user is not None else None  # an organisation import has no actor
+    messages: list[str] = []
+    mapping = import_definitions(
+        db, organization_id, REQUEST_SCORING_SCHEME, project_id, definitions, actor_id, messages,
+    )
+    for message in messages:
+        warnings.add(message)
+    return mapping
 
 
 def _imported_status(entry: dict[str, Any]) -> EnhancementRequestStatus:
@@ -121,9 +171,12 @@ def _imported_status(entry: dict[str, Any]) -> EnhancementRequestStatus:
 
 def _import_request(
     db: Session, holder: RecordOwner, entry: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
-    current_user: User | None, file_bytes_by_ref: dict[str, bytes] | None,
+    current_user: User | None, file_bytes_by_ref: dict[str, bytes] | None, level_ids: dict[tuple[str, str], UUID],
+    scheme: ScoringSchemeDefinition, axis_map: dict[str, str],
 ) -> EnhancementRequest:
-    """Creates one request (numbered afresh) with its version 1, tags and attachments."""
+    """Creates one request (numbered afresh) with its version 1, scoring levels, tags and attachments; a level
+    `level_ids` (`_level_ids`) cannot match is left unset with a warning. `axis_map` re-points an exported custom
+    axis key at the key it was given in this organisation."""
     context = entry.get("unique_code", "request")
     creator_id = users.resolve(entry.get("created_by_email"), required=True, context=f"Request {context} creator")
     archived = bool(entry.get("is_archived"))
@@ -140,7 +193,17 @@ def _import_request(
     db.add(request)
     db.flush()
     now = datetime.now(UTC)
-    db.add(EnhancementRequestVersion(
+    levels: dict[str, UUID] = {}
+    for exported_key, ref in (entry.get("levels") or {}).items():
+        axis_key = axis_map.get(exported_key, exported_key)
+        if scheme.axis(axis_key) is None or not ref:
+            continue
+        found = level_ids.get((axis_map.get(ref["axis"], ref["axis"]), ref["name"]))
+        if found is None or axis_map.get(ref["axis"], ref["axis"]) != axis_key:
+            warnings.add(f"Request {context}: scoring level {ref['name']!r} ({ref['axis']}) not found — left unset.")
+        else:
+            levels[axis_key] = found
+    version = EnhancementRequestVersion(
         request_id=request.id, version_number=1, valid_from=now, valid_to=None, title=entry["title"],
         description=entry.get("description", ""), status=_imported_status(entry),
         external_ref_url=entry.get("external_ref_url"), external_ref_key=entry.get("external_ref_key"),
@@ -150,7 +213,11 @@ def _import_request(
             warnings=warnings, context=f"Request {context} owner", required=False,
         ),
         change_note="Imported from bundle.", created_by=creator_id, created_at=now,
-    ))
+    )
+    db.add(version)
+    db.flush()
+    for axis_key, level_id in levels.items():
+        db.add(EnhancementRequestVersionScore(version_id=version.id, axis_key=axis_key, level_id=level_id))
     db.flush()
     restore_record_tags(
         db, organization_id=holder.organization_id, record_project_id=holder.project_id, actor_id=creator_id,
@@ -188,9 +255,9 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             EnhancementRequestVersion.valid_to.is_(None),
         ).order_by(EnhancementRequest.unique_code)
     ).all()
-    entries = _export_requests(db, [tuple(p) for p in pairs], None)
+    entries = _export_requests(db, org.id, [tuple(p) for p in pairs], None)
     _add_merges(db, [r for r, _ in pairs], entries)
-    return {"enhancement_requests": entries}
+    return {"enhancement_requests": entries, "scoring_definitions": export_definitions(db, org.id, REQUEST_SCORING_SCHEME, None)}
 
 
 def import_org_data(
@@ -209,13 +276,16 @@ def import_org_data(
     }
     imported: dict[str, UUID] = {}
     entries = data.get("enhancement_requests", [])
+    axis_map = _import_scoring_definitions(db, org.id, None, data, warnings)
+    level_ids = _level_ids(db, org.id) if entries else {}
+    scheme = effective_scheme(db, org.id, REQUEST_SCORING_SCHEME, None)
     for entry in entries:
         key = (entry["title"], entry.get("description", ""))
         if key in existing:
             warnings.add(f"Inbox request {entry['title']!r} skipped — the organisation already has one like it.")
             continue
         existing.add(key)
-        request = _import_request(db, RecordOwner(org.id), entry, users, warnings, None, None)
+        request = _import_request(db, RecordOwner(org.id), entry, users, warnings, None, None, level_ids, scheme, axis_map)
         if entry.get("unique_code"):
             imported[entry["unique_code"]] = request.id
     _replay_merges(db, entries, imported, users, warnings, None)
@@ -235,11 +305,12 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         .order_by(EnhancementRequest.unique_code)
     ).all()
     settings = db.scalar(select(ProjectFeedbackSettings).where(ProjectFeedbackSettings.project_id == project.id))
-    entries = _export_requests(db, [tuple(p) for p in pairs], assets)
+    entries = _export_requests(db, project.organization_id, [tuple(p) for p in pairs], assets)
     _add_requesters_and_merges(db, project, [r for r, _ in pairs], entries)
     return {
         "feedback_settings": {"submission_policy": settings.submission_policy.value} if settings else None,
         "enhancement_requests": entries,
+        "scoring_definitions": export_definitions(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id),
     }, assets
 
 
@@ -312,8 +383,14 @@ def import_project_data(
         set_submission_policy(db, project.id, SubmissionPolicy(settings["submission_policy"]))
     holder = RecordOwner.of_project(project)
     imported: dict[str, UUID] = {}
-    for entry in data.get("enhancement_requests", []):
-        request = _import_request(db, holder, entry, users, warnings, current_user, file_bytes_by_ref)
+    requests = data.get("enhancement_requests", [])
+    axis_map = _import_scoring_definitions(db, project.organization_id, project.id, data, warnings, current_user)
+    level_ids = _level_ids(db, project.organization_id) if requests else {}
+    scheme = effective_scheme(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id)
+    for entry in requests:
+        request = _import_request(
+            db, holder, entry, users, warnings, current_user, file_bytes_by_ref, level_ids, scheme, axis_map,
+        )
         if entry.get("unique_code"):
             imported[entry["unique_code"]] = request.id
     db.info[(_PENDING_CODES, project.id)] = imported

@@ -6,6 +6,7 @@ The dataset generator for the `enhancement_request` artefact type: project reque
 Engagements, and a share of duplicates merged into an earlier request.
 
 Responsibilities:
+- Score a share of requests with the organisation's real `enhancement_request` scoring levels.
 - Write `enhancement_requests`, `enhancement_request_versions`, `enhancement_request_comments`,
   `enhancement_request_merges`, tags, cross-type `artefact_links` and audit events, and the project's
   `enhancement_request` sequence counter.
@@ -30,7 +31,9 @@ from app.modules.product_feedback.models import (
     EnhancementRequestComment,
     EnhancementRequestMerge,
     EnhancementRequestVersion,
+    EnhancementRequestVersionScore,
 )
+from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.service import REQUEST_ARTEFACT_TYPE, REQUEST_CODE_PREFIX
 from app.services.perf_dataset import textgen
 from app.services.perf_dataset.context import PerfProjectContext
@@ -44,6 +47,7 @@ from app.services.perf_dataset.records import (
     link_to_earlier,
     pick_weighted,
 )
+from app.services.scoring import list_levels
 
 _S = EnhancementRequestStatus
 _STATUS_MIX = (
@@ -65,6 +69,10 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
     if count == 0:
         return {}
     start = dict(ctx.counts)
+    levels = {
+        axis: [lv.id for lv in rows]
+        for axis, rows in list_levels(ctx.db, ctx.organization_uuid, REQUEST_SCORING_SCHEME_KEY).items()
+    }
     batch = RecordBatch.start(ctx, REQUEST_ARTEFACT_TYPE, REQUEST_CODE_PREFIX, EnhancementRequest)
     canonicals: list = []
     for _ in range(count):
@@ -92,6 +100,12 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
             creator=creator, at=created, title=title,
         )
         owner = rng.choice(ctx.user_ids) if rng.random() < 0.6 else None
+        # Manual axes only: a derived axis (Demand) is read from the requesters, as the create path leaves it.
+        chosen = {
+            axis.key: rng.choice(levels[axis.key])
+            for axis in REQUEST_SCORING_SCHEME.axes
+            if axis.derived_source is None and levels.get(axis.key) and rng.random() < 0.85
+        }
         extra = extra_versions(rng, ctx.spec.ratios.versions_per_requirement)
         valid_from = created
         for number in range(1, extra + 2):
@@ -100,8 +114,9 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
             next_from = valid_from + timedelta(hours=rng.uniform(1, 24 * 30))
             if number > 1:
                 batch.audit_event(record_id, "updated", author, valid_from, {"change_note": "Reworded."})
+            version_id = batch.new_id()
             batch.satellite(EnhancementRequestVersion, {
-                "id": batch.new_id(), "request_id": record_id, "version_number": number, "valid_from": valid_from,
+                "id": version_id, "request_id": record_id, "version_number": number, "valid_from": valid_from,
                 "valid_to": None if last else next_from, "title": title,
                 "description": textgen.paragraphs(rng, empty_chance=0.1, short_max=3),
                 "status": final if last else _S.NEW, "owner_type": "user" if owner else None, "owner_id": owner,
@@ -110,6 +125,10 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
                 "change_note": "Initial creation." if number == 1 else "Reworded.", "created_by": author,
                 "created_at": valid_from,
             })
+            for axis_key, level_id in chosen.items():
+                batch.satellite(EnhancementRequestVersionScore, {
+                    "id": batch.new_id(), "version_id": version_id, "axis_key": axis_key, "level_id": level_id,
+                })
             valid_from = next_from
     batch.write()
     add_comments(ctx, batch, EnhancementRequestComment, "request_id")

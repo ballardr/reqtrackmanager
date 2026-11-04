@@ -24,10 +24,17 @@ Responsibilities:
   the threshold bands for that cell, resolved and written like bands. Only a
   single cell's own score uses it; a blended score (a roll-up of several
   cells) has no cell, so it keeps the threshold bands.
-- Score maths: a model's score is the product of its axes' level weights;
-  it is "not scored under this model" if any of those inputs is missing.
-  Bands use the normalised score (score ÷ the model's maximum possible
-  score) so they survive re-weighting.
+- Derived axes (`ScoringAxisDefinition.derived_source`): a module computes a number (e.g. a weighted demand) and
+  `derived_level` buckets it into the axis's levels by each level's `threshold`, so the score keeps a defined best
+  case and bands still normalise. The thresholds are org-editable like weights.
+- Enabled models (`resolve_enabled_models`): the set of models a scheme shows side by side, resolved project →
+  nearest ancestor → org → every registered model; the effective default is always in it.
+- Score maths: a model's score is the product of its axes' level weights
+  (each optionally raised to an importance exponent), divided by the weights of its divisor axes (RICE's Effort), or
+  a weighted sum of the axes scaled to their best level; it is "not
+  scored under this model" if any of those inputs is missing. Bands use the
+  normalised score (score ÷ the model's best possible score) so they survive
+  re-weighting.
 
 Design decisions:
 - Levels are org-only (module rows reference them by id), whereas the
@@ -58,7 +65,7 @@ from sqlalchemy.orm import Session
 
 from app.models.organization import Organization
 from app.models.project import Project
-from app.models.scoring import ScoringBand, ScoringCellRating, ScoringLevel, ScoringModelDefault
+from app.models.scoring import ScoringBand, ScoringCellRating, ScoringEnabledModel, ScoringLevel, ScoringModelDefault
 from app.modules.registry import (
     RegisteredScoringScheme,
     ScoringModelDefinition,
@@ -136,7 +143,7 @@ class CellRatings:
         """Returns the band explicitly set for the cell `level_ids` names, or
         `None` if the model isn't two-axis, an input is missing, the cell has
         no override, or its band label is no longer in `bands`."""
-        if len(model.axis_keys) != 2:
+        if not model.supports_cell_ratings:
             return None
         first, second = (level_ids.get(key) for key in model.axis_keys)
         if first is None or second is None:
@@ -150,7 +157,7 @@ class ScoreResult:
     """A computed score under one model.
 
     Attributes:
-        raw: Product of the model's axis level weights.
+        raw: Product of the model's axis level weights, divided by its divisor axes' weights.
         normalised: `raw` ÷ the model's maximum possible score, in (0, 1].
         band: The matching rating band, or `None` if the model has none.
     """
@@ -220,6 +227,7 @@ def seed_missing_scoring_levels(db: Session, organization_id: UUID) -> int:
                 db.add(ScoringLevel(
                     organization_id=organization_id, scheme_key=scheme_key, axis_key=axis.key,
                     name=level.name, description=level.description or None, weight=Decimal(str(level.weight)),
+                    threshold=None if level.threshold is None else Decimal(str(level.threshold)),
                 ))
             seeded += 1
     return seeded
@@ -266,6 +274,61 @@ def get_level(db: Session, organization_id: UUID, scheme_key: str, level_id: UUI
     return level
 
 
+def _derived_threshold(scheme: ScoringSchemeDefinition, axis_key: str, threshold: Decimal | None) -> Decimal | None:
+    """Validates a level's threshold against its axis: required (and not negative) on a derived axis, refused on an
+    ordinary one. Returns the quantised value.
+
+    Raises:
+        HTTPException: 400 when the axis and the threshold disagree.
+    """
+    axis = scheme.axis(axis_key)
+    derived = axis is not None and axis.derived_source is not None
+    if not derived:
+        if threshold is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only a derived axis takes a level threshold.")
+        return None
+    if threshold is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A level of a derived axis needs a threshold.")
+    quantised = _quantise(threshold)
+    if quantised < 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A threshold cannot be negative.")
+    return quantised
+
+
+def _check_thresholds(db: Session, organization_id: UUID, scheme_key: str, axis_key: str, *, exclude_id: UUID | None,
+                      threshold: Decimal | None) -> None:
+    """Raises 400 when `threshold` repeats another level's on the axis."""
+    if threshold is None:
+        return
+    query = select(ScoringLevel.id).where(
+        ScoringLevel.organization_id == organization_id, ScoringLevel.scheme_key == scheme_key,
+        ScoringLevel.axis_key == axis_key, ScoringLevel.threshold == threshold,
+    )
+    if exclude_id is not None:
+        query = query.where(ScoringLevel.id != exclude_id)
+    if db.scalar(query) is not None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A level with this threshold already exists on this axis.")
+
+
+def derived_level(levels: list[ScoringLevel], value: Decimal | float) -> ScoringLevel | None:
+    """The level of a derived axis `value` falls in: the one with the highest threshold not above it, or the
+    lowest-threshold level when `value` is below every threshold (so a value always lands in a level).
+
+    Args:
+        levels: The axis's levels (any order).
+        value: The module's derived number.
+
+    Returns:
+        The level, or `None` for an axis with no thresholded levels.
+    """
+    number = Decimal(str(value))
+    thresholded = [(lvl.threshold, lvl) for lvl in levels if lvl.threshold is not None]
+    if not thresholded:
+        return None
+    reached = [pair for pair in thresholded if pair[0] <= number]
+    return max(reached, key=lambda pair: pair[0])[1] if reached else min(thresholded, key=lambda pair: pair[0])[1]
+
+
 def _check_level_unique(
     db: Session, organization_id: UUID, scheme_key: str, axis_key: str, *,
     name: str | None, weight: Decimal | None, exclude_id: UUID | None,
@@ -286,47 +349,58 @@ def _check_level_unique(
 
 def create_level(
     db: Session, organization_id: UUID, registered: RegisteredScoringScheme, axis_key: str, *,
-    name: str, weight: Decimal, description: str | None, actor_id: UUID,
+    name: str, weight: Decimal, description: str | None, actor_id: UUID, threshold: Decimal | None = None,
+    project_id: UUID | None = None,
 ) -> ScoringLevel:
-    """Adds a level to an axis (flushed, not committed) and audit-logs it.
+    """Adds a level to an axis (flushed, not committed) and audit-logs it. `project_id` is the project that owns
+    the axis when it is a project's own custom axis.
 
     Raises:
-        HTTPException: 404 for an unknown axis; 400 for a duplicate name or
-            weight.
+        HTTPException: 404 for an unknown axis; 400 for a duplicate name,
+            weight or threshold, or a threshold that does not suit the axis.
     """
     scheme = registered.scheme
     if scheme.axis(axis_key) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Scoring axis not found.")
     weight = _positive_weight(weight)
+    threshold = _derived_threshold(scheme, axis_key, threshold)
     _check_level_unique(db, organization_id, scheme.key, axis_key, name=name, weight=weight, exclude_id=None)
+    _check_thresholds(db, organization_id, scheme.key, axis_key, exclude_id=None, threshold=threshold)
     level = ScoringLevel(
         organization_id=organization_id, scheme_key=scheme.key, axis_key=axis_key,
-        name=name, weight=weight, description=description or None,
+        name=name, weight=weight, description=description or None, threshold=threshold, project_id=project_id,
     )
     db.add(level)
     _flush_or_conflict(db)
+    detail = {"scheme": scheme.key, "axis": axis_key, "name": name, "weight": str(weight)}
+    if threshold is not None:
+        detail["threshold"] = str(threshold)
     log_event(db, entity_type="scoring_level", entity_id=level.id, action="created", actor_id=actor_id,
-              organization_id=organization_id,
-              detail={"scheme": scheme.key, "axis": axis_key, "name": name, "weight": str(weight)})
+              organization_id=organization_id, detail=detail)
     return level
 
 
 def update_level(
     db: Session, level: ScoringLevel, *, name: str | None, weight: Decimal | None,
-    description: str | None, set_description: bool, actor_id: UUID,
+    description: str | None, set_description: bool, actor_id: UUID, threshold: Decimal | None = None,
+    scheme: ScoringSchemeDefinition | None = None,
 ) -> ScoringLevel:
-    """Renames/re-weights/re-describes a level and audit-logs the change.
+    """Renames/re-weights/re-describes a level (and, on a derived axis, moves its threshold) and audit-logs the change.
     References point at the level's id, so this never cascades; re-weighting
     changes every score computed from it, which is the intended effect.
 
     Raises:
-        HTTPException: 400 for a duplicate name or weight (or a weight
-            that rounds to ≤ 0); 409 on a concurrent conflicting save.
+        HTTPException: 400 for a duplicate name, weight or threshold (or a weight
+            that rounds to ≤ 0, or a threshold on an ordinary axis); 409 on a concurrent conflicting save.
     """
     if weight is not None:
         weight = _positive_weight(weight)
+    if threshold is not None:
+        assert scheme is not None  # a threshold is only ever sent with the scheme that validates it
+        threshold = _derived_threshold(scheme, level.axis_key, threshold)
     _check_level_unique(db, level.organization_id, level.scheme_key, level.axis_key,
                         name=name, weight=weight, exclude_id=level.id)
+    _check_thresholds(db, level.organization_id, level.scheme_key, level.axis_key, exclude_id=level.id, threshold=threshold)
     changes: dict[str, str | None] = {}
     if name is not None and name != level.name:
         changes["name"] = name
@@ -334,6 +408,9 @@ def update_level(
     if weight is not None and weight != level.weight:
         changes["weight"] = str(weight)
         level.weight = weight
+    if threshold is not None and threshold != level.threshold:
+        changes["threshold"] = str(threshold)
+        level.threshold = threshold
     if set_description and (description or None) != level.description:
         changes["description"] = "updated"
         level.description = description or None
@@ -435,6 +512,75 @@ def resolve_effective_model(
     if org_key is not None and scheme.model(org_key) is not None:
         return org_key, "org"
     return scheme.default_model_key, "system"
+
+
+# --- Enabled models ------------------------------------------------------------
+
+
+def resolve_enabled_models(
+    db: Session, organization_id: UUID, scheme: ScoringSchemeDefinition, project_id: UUID | None = None,
+) -> tuple[list[str], str]:
+    """Resolves the models a scheme shows side by side along project → nearest ancestor → org → every registered
+    model (a set is all-or-nothing: the first scope with any row wins whole). The effective default model is
+    always included, and comes first.
+
+    Returns:
+        `(model keys, source)`, `source` being "project", "ancestor", "org" or "system".
+    """
+    chain = _project_lookup_chain(db, project_id) if project_id is not None else []
+    scopes: list[tuple[UUID | None, str]] = [(pid, "project" if i == 0 else "ancestor") for i, pid in enumerate(chain)]
+    scopes.append((None, "org"))
+    rows = db.execute(
+        select(ScoringEnabledModel.project_id, ScoringEnabledModel.model_key).where(
+            ScoringEnabledModel.organization_id == organization_id, ScoringEnabledModel.scheme_key == scheme.key,
+            (ScoringEnabledModel.project_id.in_(chain) | ScoringEnabledModel.project_id.is_(None)) if chain
+            else ScoringEnabledModel.project_id.is_(None),
+        )
+    ).all()
+    by_scope: dict[UUID | None, set[str]] = {}
+    for scope_id, model_key in rows:
+        if scheme.model(model_key) is not None:
+            by_scope.setdefault(scope_id, set()).add(model_key)
+    keys, source = {m.key for m in scheme.models}, "system"
+    for scope_id, scope_source in scopes:
+        if by_scope.get(scope_id):
+            keys, source = by_scope[scope_id], scope_source
+            break
+    default_key, _ = resolve_effective_model(db, organization_id, scheme, project_id)
+    ordered = [default_key] + [m.key for m in scheme.models if m.key in keys and m.key != default_key]
+    return ordered, source
+
+
+def set_enabled_models(
+    db: Session, organization_id: UUID, scheme: ScoringSchemeDefinition, model_keys: list[str] | None, *,
+    project_id: UUID | None, actor_id: UUID,
+) -> None:
+    """Replaces (or, with `model_keys=None`, clears so it inherits) the org's or a project's set of enabled
+    models, and audit-logs it.
+
+    Raises:
+        HTTPException: 400 for an empty set, a duplicate or an unknown model.
+    """
+    if model_keys is not None:
+        if not model_keys or len(set(model_keys)) != len(model_keys):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enable at least one model, each once.")
+        for key in model_keys:
+            _require_model(scheme, key)
+    project_clause = (
+        ScoringEnabledModel.project_id.is_(None) if project_id is None else ScoringEnabledModel.project_id == project_id
+    )
+    db.execute(delete(ScoringEnabledModel).where(
+        ScoringEnabledModel.organization_id == organization_id, project_clause,
+        ScoringEnabledModel.scheme_key == scheme.key,
+    ))
+    for key in model_keys or []:
+        db.add(ScoringEnabledModel(organization_id=organization_id, project_id=project_id,
+                                   scheme_key=scheme.key, model_key=key))
+    _flush_or_conflict(db)
+    log_event(db, entity_type="scoring_enabled_models", entity_id=project_id or organization_id,
+              action="reset" if model_keys is None else "set", actor_id=actor_id,
+              organization_id=organization_id, project_id=project_id,
+              detail={"scheme": scheme.key, "models": model_keys})
 
 
 def _band_rows(db: Session, organization_id: UUID, project_id: UUID | None, scheme_key: str, model_key: str) -> list[ScoringBand]:
@@ -618,7 +764,7 @@ def resolve_effective_cell_ratings(
         HTTPException: 400 for an unknown model.
     """
     model = _require_model(scheme, model_key)
-    if len(model.axis_keys) != 2:
+    if not model.supports_cell_ratings:
         return [], "none"
     scopes: list[tuple[UUID | None, str]] = []
     if project_id is not None:
@@ -651,8 +797,8 @@ def set_cell_ratings(
             band set.
     """
     model = _require_model(scheme, model_key)
-    if len(model.axis_keys) != 2:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cell ratings need a model with exactly two axes.")
+    if not model.supports_cell_ratings:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cell ratings need a model with exactly two axes and no divisor.")
     if cells:
         first_axis, second_axis = model.axis_keys
         by_id = {
@@ -712,10 +858,16 @@ def max_axis_weights(levels_by_axis: Mapping[str, list[ScoringLevel]]) -> dict[s
     return {axis: max(level.weight for level in levels) for axis, levels in levels_by_axis.items() if levels}
 
 
+def min_axis_weights(levels_by_axis: Mapping[str, list[ScoringLevel]]) -> dict[str, Decimal]:
+    """Returns each axis's lowest level weight (the best case of a divisor axis)."""
+    return {axis: min(level.weight for level in levels) for axis, levels in levels_by_axis.items() if levels}
+
+
 def compute_score(
     model: ScoringModelDefinition, weights: Mapping[str, Decimal | None],
     max_weights: Mapping[str, Decimal], bands: list[BandValue],
     *, level_ids: Mapping[str, UUID | None] | None = None, cell_ratings: CellRatings | None = None,
+    min_weights: Mapping[str, Decimal] | None = None,
 ) -> ScoreResult | None:
     """Scores one set of inputs under `model`.
 
@@ -729,20 +881,44 @@ def compute_score(
             lets an explicit cell rating decide the band.
         cell_ratings: The model's resolved cell-rating set, if any. An
             override wins over the thresholds for its cell only.
+        min_weights: Each axis's lowest weight (`min_axis_weights`); needed
+            only by a model with divisor axes.
 
     Returns:
         The score, or `None` ("not scored under this model") if any of the
-        model's axes has no input or no levels.
+        model's axes (multiplied or divisor) has no input or no levels.
     """
-    raw = Decimal(1)
-    maximum = Decimal(1)
-    for axis_key in model.axis_keys:
-        weight = weights.get(axis_key)
-        top = max_weights.get(axis_key)
-        if weight is None or top is None:
-            return None
-        raw *= weight
-        maximum *= top
+    if model.combination == "weighted_sum":
+        raw, maximum = Decimal(0), Decimal(0)
+        for axis_key in model.axis_keys:
+            weight = weights.get(axis_key)
+            top = max_weights.get(axis_key)
+            lowest = (min_weights or {}).get(axis_key)
+            if weight is None or top is None or lowest is None:
+                return None
+            share = Decimal(str(model.importance_of(axis_key)))
+            # Each axis is scaled so its best level is 1: the top weight, or (an inverted axis) the lowest.
+            raw += share * ((lowest / weight) if axis_key in model.inverted_axis_keys else (weight / top))
+            maximum += share
+    else:
+        raw = Decimal(1)
+        maximum = Decimal(1)
+        for axis_key in model.axis_keys:
+            weight = weights.get(axis_key)
+            top = max_weights.get(axis_key)
+            if weight is None or top is None:
+                return None
+            exponent = Decimal(str(model.exponent(axis_key)))
+            raw *= weight**exponent
+            maximum *= top**exponent
+        for axis_key in model.divisor_axis_keys:
+            weight = weights.get(axis_key)
+            lowest = (min_weights or {}).get(axis_key)
+            if weight is None or lowest is None:
+                return None
+            exponent = Decimal(str(model.exponent(axis_key)))
+            raw /= weight**exponent
+            maximum /= lowest**exponent
     normalised = float(raw / maximum)
     band = cell_ratings.band(model, level_ids or {}, bands) if cell_ratings is not None else None
     return ScoreResult(raw=raw, normalised=normalised, band=band or band_for(normalised, bands))
@@ -760,16 +936,25 @@ def build_scheme_config(
     Returns:
         A dict matching `schemas.scoring.ScoringSchemeOut`.
     """
-    scheme = registered.scheme
+    from app.services.scoring_custom import resolve_criteria
+
     project_id = project.id if project is not None else None
+    criteria = resolve_criteria(db, organization_id, registered.scheme, project_id)
+    scheme = criteria.scheme
     levels = list_levels(db, organization_id, scheme.key)
     model_key, model_source = resolve_effective_model(db, organization_id, scheme, project_id)
+    enabled_keys, enabled_source = resolve_enabled_models(db, organization_id, scheme, project_id)
     models = []
     for model in scheme.models:
         bands, source = resolve_effective_bands(db, organization_id, scheme, model.key, project_id)
         cells, cells_source = resolve_effective_cell_ratings(db, organization_id, scheme, model.key, project_id)
         models.append({
             "key": model.key, "label": model.label, "axis_keys": list(model.axis_keys),
+            "divisor_axis_keys": list(model.divisor_axis_keys),
+            "combination": model.combination, "exponents": dict(model.exponents),
+            "importance": dict(model.importance), "inverted_axis_keys": list(model.inverted_axis_keys),
+            "origin": criteria.model_origin.get(model.key, ("built_in", None))[0],
+            "owner_project_id": criteria.model_origin.get(model.key, ("built_in", None))[1],
             "bands": [b.__dict__ for b in bands], "bands_source": source,
             "cell_ratings": [c.__dict__ for c in cells], "cell_ratings_source": cells_source,
         })
@@ -778,8 +963,14 @@ def build_scheme_config(
         "axes": [
             {
                 "key": axis.key, "label": axis.label, "description": axis.description or None,
+                "derived_source": axis.derived_source,
+                "origin": criteria.axis_origin.get(axis.key, ("built_in", None))[0],
+                "owner_project_id": criteria.axis_origin.get(axis.key, ("built_in", None))[1],
                 "levels": [
-                    {"id": lvl.id, "name": lvl.name, "description": lvl.description, "weight": float(lvl.weight)}
+                    {
+                        "id": lvl.id, "name": lvl.name, "description": lvl.description, "weight": float(lvl.weight),
+                        "threshold": None if lvl.threshold is None else float(lvl.threshold),
+                    }
                     for lvl in levels.get(axis.key, [])
                 ],
             }
@@ -789,4 +980,8 @@ def build_scheme_config(
         "system_default_model_key": scheme.default_model_key,
         "default_model_key": model_key,
         "default_model_source": model_source,
+        "enabled_model_keys": enabled_keys,
+        "enabled_models_source": enabled_source,
+        "allow_custom_criteria": scheme.allow_custom_criteria,
+        "hidden_criteria": criteria.hidden,
     }

@@ -11,6 +11,7 @@ import json
 import uuid
 import zipfile
 
+import pytest
 from sqlalchemy import select
 
 from app.database import SessionLocal
@@ -178,3 +179,28 @@ def test_an_inbox_merge_round_trips_through_the_organisation_bundle(client, admi
             .where(EnhancementRequest.organization_id == new_org_id, EnhancementRequestVersion.valid_to.is_(None))
         )}
         assert titles[merges[0].canonical_id] == "Keep this" and titles[merges[0].duplicate_id] == "Same again"
+
+
+def test_scoring_levels_round_trip_by_axis_and_name(client, admin_token):
+    org, project, token = setup(client, admin_token, "Feedback Bundle Score Co")
+    pid = project["id"]
+    scheme = client.get(project_base(pid) + "/scoring-scheme", headers=auth_headers(token)).json()
+    levels = {a["key"]: {lv["name"]: lv["id"] for lv in a["levels"]} for a in scheme["axes"]}
+    create_request(
+        client, token, pid, title="Scored", levels={
+            "reach": levels["reach"]["Most"], "impact": levels["impact"]["Massive"],
+            "confidence": levels["confidence"]["Medium"], "effort": levels["effort"]["Small"],
+            "ease": levels["ease"]["Easy"],
+        },
+    )
+    bundle = _export(client, token, f"/api/v1/projects/{pid}/export")
+    with zipfile.ZipFile(io.BytesIO(bundle)) as archive:
+        document = json.dumps(json.loads(archive.read("project.json")))
+    assert '"effort": {"axis": "effort", "name": "Small"}' in document and '"ease": {"axis": "ease", "name": "Easy"}' in document
+    assert '"score"' not in document and '"derived_levels"' not in document  # derived, never exported
+
+    imported = _import_project(client, token, org["id"], bundle, "Restored Scores")
+    copy = _requests(client, token, imported["id"])["Scored"]
+    assert copy["levels"]["effort"] == levels["effort"]["Small"] and copy["levels"]["reach"] == levels["reach"]["Most"]
+    assert copy["levels"]["ease"] == levels["ease"]["Easy"]
+    assert copy["score"] is not None and copy["score"]["raw"] == pytest.approx(4 * 3 * 0.8 / 1)

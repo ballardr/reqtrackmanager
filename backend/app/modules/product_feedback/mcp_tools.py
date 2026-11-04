@@ -7,7 +7,8 @@ grants nothing.
 
 Responsibilities:
 - `build_mcp_tools`: read tools (requests, versions, comments, demand, merges, settings) and write tools (create,
-  update, lifecycle move, comment, merge, unmerge) for a project, plus list, create and move-into-a-project for the organisation's inbox.
+  update, lifecycle move, comment, merge, unmerge, scoring scheme) for a project, plus list, create, scoring scheme and
+  move-into-a-project for the organisation's inbox.
 
 Design decisions:
 - Write-enabled (**Decided by: User**, as for every module's MCP tools). Writes still need `MCP_WRITES_ENABLED`
@@ -46,12 +47,31 @@ _REQUEST_FIELDS = [
     _body("owner", "object", 'Who looks after it: {"type": "user" | "org_group" | "project_group", "id": uuid}; null clears it.'),
     _body("external_ref_url", "string", "URL of the same item in a delivery tool (e.g. a Jira issue); null clears it."),
     _body("external_ref_key", "string", "Key of that item (e.g. PROJ-123); null clears it."),
+    _body(
+        "levels", "object",
+        'Scoring levels by axis key, e.g. {"impact": <level id>, "effort": null}: the ids come from '
+        "get_request_scoring_scheme; an axis set to null is cleared, one not mentioned is kept. Axes: reach, impact, "
+        "confidence, ease (higher is easier), effort (a higher level lowers a RICE score) and demand (derived from "
+        "the requesters unless a level is chosen), plus any axis (key c_...) the organisation or project defined: the "
+        "scheme lists the ones this project can use.",
+    ),
 ]
+_SCORING_MODEL = _query(
+    "scoring_model", "string",
+    "Score under these models, comma-separated, the first being the primary: ice, rice, rice_demand or a model "
+    "(key m_...) the organisation or project defined (default: the project's enabled models).",
+)
 _LIST_FILTERS = [
     _query("include_archived", "boolean", "Also list archived requests."),
     _query("status", "string", "Only this status: new, under_review, accepted, delivered, declined or duplicate."),
     _query("open_only", "boolean", "Only new, under review or accepted requests."),
     _query("search", "string", "Case-insensitive match on code, title or description."),
+    _query(
+        "scored", "string",
+        "unscored: only requests missing a level on the first model's manual axes (the ones still to score); "
+        "scored: only the fully scored.",
+    ),
+    _query("missing_axis", "string", "Only requests with no level on this axis (reach, impact, confidence, ease, effort)."),
 ]
 
 
@@ -60,12 +80,23 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     return (
         McpToolDefinition(
             name="list_requests", description="Lists a project's enhancement requests with status, owner and external reference.",
-            method="GET", path_template=_REQUESTS, params=[_PROJECT_ID, *_LIST_FILTERS],
+            method="GET", path_template=_REQUESTS, params=[_PROJECT_ID, *_LIST_FILTERS, _SCORING_MODEL],
         ),
         McpToolDefinition(
             name="get_request",
-            description="Fetches one enhancement request with its current content and legal next statuses.",
-            method="GET", path_template=_REQUEST, params=[_PROJECT_ID, _REQUEST_ID],
+            description=(
+                "Fetches one enhancement request with its current content, legal next statuses, scoring levels and "
+                "derived ICE or RICE score."
+            ),
+            method="GET", path_template=_REQUEST, params=[_PROJECT_ID, _REQUEST_ID, _SCORING_MODEL],
+        ),
+        McpToolDefinition(
+            name="get_request_scoring_scheme",
+            description=(
+                "Reads the Reach, Impact, Confidence and Effort levels (ids and weights), the ICE and RICE models and "
+                "their rating bands that apply to the project. Use it to find the level ids a request takes."
+            ),
+            method="GET", path_template=f"{_PREFIX}/scoring-scheme", params=[_PROJECT_ID],
         ),
         McpToolDefinition(
             name="list_request_versions", description="Lists a request's full version history, oldest first.",
@@ -144,7 +175,12 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
         McpToolDefinition(
             name="list_inbox_requests",
             description="Lists the organisation's inbox requests (answers 404 when the organisation switched the inbox off).",
-            method="GET", path_template=f"{_ORG_PREFIX}/requests", params=[_ORG_ID, *_LIST_FILTERS],
+            method="GET", path_template=f"{_ORG_PREFIX}/requests", params=[_ORG_ID, *_LIST_FILTERS, _SCORING_MODEL],
+        ),
+        McpToolDefinition(
+            name="get_inbox_scoring_scheme",
+            description="Reads the request scoring levels and models that apply to the organisation's inbox.",
+            method="GET", path_template=f"{_ORG_PREFIX}/scoring-scheme", params=[_ORG_ID],
         ),
         McpToolDefinition(
             name="move_inbox_request_to_project",

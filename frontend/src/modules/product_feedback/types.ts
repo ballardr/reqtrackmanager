@@ -58,9 +58,27 @@ export interface EnhancementRequest extends ProjectScopedRow {
   external_ref_url: string | null;
   external_ref_key: string | null;
   decline_reason: string;
+  /** Levels chosen on the organisation's `enhancement_request` scoring scheme, by axis key; an axis with no level is absent. */
+  levels: Record<string, string>;
+  /** The level each derived axis (Demand) resolves to where none is chosen, by axis key. */
+  derived_levels: Record<string, string>;
+  /** The primary score, derived under `scoring_model_key`; null until every manual axis that model needs has a level. */
+  score: RequestScore | null;
+  scoring_model_key: string;
+  /** The score under each model scored (the enabled ones, or those asked for), by model key. */
+  scores: Record<string, RequestScore | null>;
   version_number: number;
   created_at: string;
   updated_at: string;
+}
+
+/** A request's derived score; `normalised` is the share of the model's best possible score. */
+export interface RequestScore {
+  scoring_model_key: string;
+  raw: number;
+  normalised: number;
+  label: string | null;
+  tone: string | null;
 }
 
 export interface EnhancementRequestCreate {
@@ -69,6 +87,8 @@ export interface EnhancementRequestCreate {
   owner?: PrincipalRef | null;
   external_ref_url?: string | null;
   external_ref_key?: string | null;
+  /** Level ids by axis key; null clears an axis on an update, and an axis not mentioned is kept. */
+  levels?: Record<string, string | null>;
 }
 
 export interface FeedbackSettings {

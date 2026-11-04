@@ -135,3 +135,52 @@ def test_the_inbox_exports_and_imports_at_organisation_level(client, admin_token
     assert set(titles) == {"Inbox idea", "Second idea"}
     assert titles["Inbox idea"]["description"] == "Edited" and titles["Second idea"]["status"] == "new"
     assert len(client.get(project_base(project["id"]) + "/requests", headers=auth_headers(token)).json()) == 1
+
+
+def test_scoring_levels_export_by_name_with_the_derived_score_and_import_by_name(client, admin_token):
+    _, project, token = setup(client, admin_token, "Feedback Tables Score Co")
+    pid = project["id"]
+    request = create_request(client, token, pid)
+    rows = _rows(client.get(f"{_project_tier(project)}/export", headers=auth_headers(token)))
+    assert rows[0]["score"] == "" and rows[0]["reach"] == ""  # unscored
+
+    text = _csv(
+        ["code", "reach", "impact", "confidence", "effort"], [request["unique_code"], "Many", "High", "High", "Medium"],
+    )
+    applied = _import(client, token, _project_tier(project), text, apply=True)
+    assert applied.status_code == 200, applied.text
+    shown = client.get(f"{project_base(pid)}/requests/{request['id']}", headers=auth_headers(token)).json()
+    assert shown["score"]["raw"] == 3 and shown["version_number"] == 2
+    row = _rows(client.get(f"{_project_tier(project)}/export", headers=auth_headers(token)))[0]
+    assert (row["reach"], row["effort"], row["score"], row["score_band"]) == ("Many", "Medium", "3", "High")
+
+    cleared = _import(client, token, _project_tier(project), _csv(["code", "effort"], [request["unique_code"], ""]), apply=True)
+    assert cleared.status_code == 200, cleared.text
+    assert client.get(f"{project_base(pid)}/requests/{request['id']}", headers=auth_headers(token)).json()["score"] is None
+
+
+def test_an_unknown_level_name_is_a_row_error_and_changes_nothing(client, admin_token):
+    _, project, token = setup(client, admin_token, "Feedback Tables Bad Level Co")
+    request = create_request(client, token, project["id"])
+    preview = _import(client, token, _project_tier(project), _csv(["code", "effort"], [request["unique_code"], "Gigantic"]))
+    assert preview.status_code == 200, preview.text
+    assert "Gigantic" in preview.text
+    _import(client, token, _project_tier(project), _csv(["code", "effort"], [request["unique_code"], "Gigantic"]), apply=True)
+    current = client.get(f"{project_base(project['id'])}/requests/{request['id']}", headers=auth_headers(token)).json()
+    assert current["version_number"] == 1 and "effort" not in current["levels"]
+
+
+def test_ease_is_an_editable_level_column_and_demand_a_read_only_derived_one(client, admin_token):
+    _, project, token = setup(client, admin_token, "Feedback Tables Ease Demand Co")
+    pid = project["id"]
+    request = create_request(client, token, pid)
+    row = _rows(client.get(f"{_project_tier(project)}/export", headers=auth_headers(token)))[0]
+    assert row["ease"] == "" and row["demand"] == "Single voice"  # derived: the lowest level with no requesters
+
+    text = _csv(["code", "ease", "demand"], [request["unique_code"], "Easy", "Widespread"])
+    applied = _import(client, token, _project_tier(project), text, apply=True)
+    assert applied.status_code == 200, applied.text
+    shown = client.get(f"{project_base(pid)}/requests/{request['id']}", headers=auth_headers(token)).json()
+    assert set(shown["levels"]) == {"ease"}  # the demand cell is not an editable column: it set nothing
+    row = _rows(client.get(f"{_project_tier(project)}/export", headers=auth_headers(token)))[0]
+    assert row["ease"] == "Easy" and row["demand"] == "Single voice"

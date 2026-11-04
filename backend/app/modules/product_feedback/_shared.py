@@ -44,6 +44,14 @@ from app.modules.product_feedback.models import (
     EnhancementRequestMerge,
     EnhancementRequestVersion,
 )
+from app.modules.product_feedback.ratings import (
+    RatingContext,
+    RequestScore,
+    derived_levels,
+    load_rating_context,
+    parse_model_keys,
+    score_levels,
+)
 from app.modules.product_feedback.schemas import (
     DemandEngagementOut,
     DemandOut,
@@ -53,6 +61,7 @@ from app.modules.product_feedback.schemas import (
     RequestMergeOut,
     RequestOut,
     RequestRefOut,
+    RequestScoreOut,
     RequestUpdate,
     RequestVersionOut,
 )
@@ -69,6 +78,8 @@ from app.modules.product_feedback.service import (
     get_submission_policy,
     transition_request,
     unarchive_request,
+    validate_levels,
+    version_levels,
 )
 from app.schemas.principal import PrincipalOut
 from app.services import module_attachments as att
@@ -165,15 +176,46 @@ def request_extras(db: Session, requests: Sequence[EnhancementRequest]) -> Reque
     return extras
 
 
+def _score_out(score: RequestScore | None) -> RequestScoreOut | None:
+    return RequestScoreOut(**score.__dict__) if score is not None else None
+
+
+def rating_context_for(
+    db: Session, request: EnhancementRequest, scoring_model: Sequence[str] | None = None,
+    cache: dict[tuple[uuid.UUID, uuid.UUID | None], RatingContext] | None = None,
+) -> RatingContext:
+    """The scoring configuration that applies to `request`: its project's overrides, or the organisation's own
+    for an inbox request. `cache` (keyed by owner) lets a list load each project's configuration once."""
+    if request.project_id is not None:
+        project = db.get(Project, request.project_id)
+        assert project is not None  # the FK guarantees it
+        organization_id = project.organization_id
+    else:
+        assert request.organization_id is not None  # the scope CHECK guarantees one owner
+        organization_id = request.organization_id
+    key = (organization_id, request.project_id)
+    if cache is not None and key in cache:
+        return cache[key]
+    ctx = load_rating_context(db, organization_id, request.project_id, parse_model_keys(scoring_model))
+    if cache is not None:
+        cache[key] = ctx
+    return ctx
+
+
 def request_to_out(
     db: Session, request: EnhancementRequest, version: EnhancementRequestVersion, labels: OwnerLabels | None = None,
-    extras: RequestExtras | None = None,
+    extras: RequestExtras | None = None, ctx: RatingContext | None = None,
+    scoring_model: Sequence[str] | None = None, levels: dict[str, uuid.UUID] | None = None,
 ) -> RequestOut:
-    """Merges a request with its current version. `labels` (owner data) and `extras` (merge status and demand)
-    are pre-resolved when building many, resolved here when omitted."""
+    """Merges a request with its current version. `labels` (owner data), `extras` (merge status and demand),
+    `ctx` (scoring configuration) and `levels` (the version's scoring levels) are pre-resolved when building
+    many, resolved here when omitted; `scoring_model` picks the models scored (default: the enabled ones)."""
     labels = labels if labels is not None else owner_labels(db, [version])
     extras = extras if extras is not None else request_extras(db, [request])
+    ctx = ctx if ctx is not None else rating_context_for(db, request, scoring_model)
+    levels = levels if levels is not None else version_levels(db, [version.id])[version.id]
     demand = extras.demand.get(request.id, EMPTY_DEMAND)
+    scores = score_levels(ctx, levels, demand.weighted)
     return RequestOut(
         id=request.id, scope=request.scope, organization_id=request.organization_id, project_id=request.project_id,
         unique_code=request.unique_code, creator_id=request.creator_id, is_archived=request.is_archived,
@@ -185,37 +227,54 @@ def request_to_out(
         ),
         owner=_owner_of(labels, version), external_ref_url=version.external_ref_url,
         external_ref_key=version.external_ref_key, decline_reason=version.decline_reason,
+        levels=levels, derived_levels=derived_levels(ctx, levels, demand.weighted),
+        score=_score_out(scores[ctx.model.key]), scoring_model_key=ctx.model.key,
+        scores={key: _score_out(score) for key, score in scores.items()},
         version_number=version.version_number, created_at=request.created_at, updated_at=request.updated_at,
         merged_into=extras.merged_into.get(request.id), merged_count=extras.merged_count.get(request.id, 0),
         requester_count=demand.count, weighted_demand=demand.weighted,
     )
 
 
-def requests_to_out(db: Session, requests: Sequence[EnhancementRequest]) -> list[RequestOut]:
-    """The list response: each current version loaded, every owner resolved and the merge and demand data read in
-    a fixed number of statements."""
+def requests_to_out(
+    db: Session, requests: Sequence[EnhancementRequest], scoring_model: Sequence[str] | None = None,
+) -> list[RequestOut]:
+    """The list response: each current version loaded, every owner resolved, the merge and demand data read and
+    the scores derived (under `scoring_model`, else each owner's enabled models) in a fixed number of statements
+    per project."""
     by_id = current_versions(db, EnhancementRequestVersion, "request_id", [r.id for r in requests])
     versions = [by_id[r.id] for r in requests]
     labels = owner_labels(db, versions)
     extras = request_extras(db, requests)
-    return [request_to_out(db, r, v, labels, extras) for r, v in zip(requests, versions, strict=True)]
+    levels = version_levels(db, [v.id for v in versions])
+    contexts: dict[tuple[uuid.UUID, uuid.UUID | None], RatingContext] = {}
+    return [
+        request_to_out(
+            db, r, v, labels, extras, rating_context_for(db, r, scoring_model, contexts), levels=levels[v.id],
+        )
+        for r, v in zip(requests, versions, strict=True)
+    ]
 
 
-def current_request_out(db: Session, request: EnhancementRequest) -> RequestOut:
-    """The API shape of one request, loading its current version."""
-    return request_to_out(db, request, get_current_version(db, request.id))
+def current_request_out(
+    db: Session, request: EnhancementRequest, scoring_model: Sequence[str] | None = None,
+) -> RequestOut:
+    """The API shape of one request, loading its current version; the scores are derived under `scoring_model`
+    (default: the enabled models)."""
+    return request_to_out(db, request, get_current_version(db, request.id), scoring_model=scoring_model)
 
 
 def request_versions_out(db: Session, versions: Sequence[EnhancementRequestVersion]) -> list[RequestVersionOut]:
     """The API shape of a request's version history, resolving every owner in one batch."""
     labels = owner_labels(db, versions)
+    levels = version_levels(db, [v.id for v in versions])
     return [
         RequestVersionOut(
             id=v.id, request_id=v.request_id, version_number=v.version_number, valid_from=v.valid_from,
             valid_to=v.valid_to, title=v.title, description=v.description, status=v.status, owner=_owner_of(labels, v),
             external_ref_url=v.external_ref_url, external_ref_key=v.external_ref_key,
-            decline_reason=v.decline_reason, change_note=v.change_note, created_by=v.created_by,
-            created_at=v.created_at,
+            decline_reason=v.decline_reason, levels=levels[v.id],
+            change_note=v.change_note, created_by=v.created_by, created_at=v.created_at,
         )
         for v in versions
     ]
@@ -303,14 +362,27 @@ def _owner_columns(db: Session, holder: RecordOwner, payload: RequestCreate | Re
     return principal_columns("owner", payload.owner)
 
 
+def _check_levels(db: Session, holder: RecordOwner, sent: dict) -> None:
+    """Validates the scoring levels present in `sent["levels"]`.
+
+    Raises:
+        HTTPException: 400 for an unknown axis, or a level of another organisation, scheme or axis.
+    """
+    try:
+        validate_levels(db, holder.organization_id, holder.project_id, sent.get("levels") or {})
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+
+
 def stage_request(db: Session, holder: RecordOwner, payload: RequestCreate, creator: User) -> EnhancementRequest:
     """Validates a create payload, creates the request (`NEW`) and audit-logs it. Does not commit: the endpoint and
     the record-table import each own their transaction. The caller has checked `require_request_submit`.
 
     Raises:
-        HTTPException: 400 for an unusable owner.
+        HTTPException: 400 for an unusable owner or scoring level.
     """
     content = payload.model_dump(exclude={"owner"})
+    _check_levels(db, holder, content)
     content.update(_owner_columns(db, holder, payload))
     request = create_request(db, holder, creator, **content)
     audit_request(db, holder, request, "created", creator, {"title": payload.title, "unique_code": request.unique_code})
@@ -332,13 +404,14 @@ def stage_request_update(
     it. Does not commit. The caller has checked `require_request_manage`.
 
     Raises:
-        HTTPException: 422 for a null title, 400 for an unusable owner.
+        HTTPException: 422 for a null title, 400 for an unusable owner or scoring level.
     """
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note", "owner"})
     if "title" in sent and sent["title"] is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "An enhancement request title cannot be null.")
     if "description" in sent and sent["description"] is None:
         sent["description"] = ""
+    _check_levels(db, holder, sent)
     sent.update(_owner_columns(db, holder, payload))
     lock_row_for_update(db, EnhancementRequest, request.id)
     current = get_current_version(db, request.id)

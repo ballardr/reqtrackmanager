@@ -2027,6 +2027,28 @@ def create_risk(
     return r.json()
 
 
+def get_request_levels(headers: dict, project_id: str) -> dict[str, dict[str, str]]:
+    """Returns the org's enhancement-request scoring levels as `{axis_key: {level_name: level_id}}`."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/scoring-schemes/enhancement_request", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {axis["key"]: {lvl["name"]: lvl["id"] for lvl in axis["levels"]} for axis in r.json()["axes"]}
+
+
+def request_score_fields(
+    levels: dict[str, dict[str, str]], reach: str, impact: str, confidence: str, effort: str, ease: str | None = None,
+    safety: str | None = None,
+) -> dict:
+    """The `levels` payload of a scored request, by level name (Demand is derived from the requesters, so it is
+    never set here; leaving `ease` out leaves the request unscored under ICE; `safety` is the Falcon-3 project's own
+    "Safety relevance" axis)."""
+    chosen = {"reach": reach, "impact": impact, "confidence": confidence, "effort": effort}
+    if ease is not None:
+        chosen["ease"] = ease
+    if safety is not None:
+        chosen["c_safety_relevance"] = safety
+    return {"levels": {axis: levels[axis][name] for axis, name in chosen.items()}}
+
+
 def create_enhancement_request(headers: dict, base: str, *, title: str, description: str = "", **fields) -> dict:
     """Submits a Product Feedback enhancement request (it starts New). `base` is the project's or organisation's
     `.../modules/product_feedback` URL, so the same helper fills a project list and the organisation inbox."""
@@ -3513,12 +3535,27 @@ def main() -> None:
 
     print("Seeding Product Feedback — enabling the module, then enhancement requests on Falcon-3 across the"
           " lifecycle (one owned by the avionics engineer, one declined with a reason, one linked to its delivery"
-          " tool) and two in the organisation's inbox...")
+          " tool; two scored with Reach, Impact, Confidence and Effort) and two in the organisation's inbox...")
     enable_module(h_pm, org["id"], "product_feedback")
     feedback_url = f"{BASE}/projects/{drone['id']}/modules/product_feedback"
     inbox_url = f"{BASE}/orgs/{org['id']}/modules/product_feedback"
+    # Falcon-3's own scoring criteria, added to the built-in ones: a "Safety relevance" axis and a weighted-sum model
+    # that trades impact against it (the project layer of the scoring scheme).
+    scoring_url = f"{BASE}/projects/{drone['id']}/scoring-schemes/enhancement_request"
+    httpx.post(f"{scoring_url}/axes", json={
+        "label": "Safety relevance", "description": "How much the request matters for safe operation.",
+        "levels": [{"name": "None", "weight": 1}, {"name": "Supports safe operation", "weight": 2},
+                   {"name": "Safety critical", "weight": 4}],
+    }, headers=h_pm, timeout=30).raise_for_status()
+    httpx.post(f"{scoring_url}/models", json={
+        "label": "Impact and safety", "combination": "weighted_sum", "axes": [
+            {"axis_key": "impact", "role": "sum", "importance": 60},
+            {"axis_key": "c_safety_relevance", "role": "sum", "importance": 40}],
+    }, headers=h_pm, timeout=30).raise_for_status()
+    request_levels = get_request_levels(h_pm, drone["id"])
     export_request = create_enhancement_request(
         h_pm, feedback_url, title="Export the inspection log as a spreadsheet",
+        **request_score_fields(request_levels, "Many", "High", "High", "Small", "Easy", safety="Supports safe operation"),
         description="Inspectors want to pull a day's inspection log into a spreadsheet for the weekly review.",
         owner={"type": "user", "id": demo_engineer["user_id"]},
         external_ref_url="https://tracker.example.com/browse/FAL-214", external_ref_key="FAL-214",
@@ -3528,6 +3565,7 @@ def main() -> None:
     create_enhancement_request(
         h_pm, feedback_url, title="Offline map tiles for remote sites",
         description="Field teams lose the map when they work outside coverage.",
+        **request_score_fields(request_levels, "Some", "Massive", "Medium", "Large", "Hard"),
     )
     declined_request = create_enhancement_request(
         h_pm, feedback_url, title="Add a built-in video editor",

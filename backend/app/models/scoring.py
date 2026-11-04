@@ -15,6 +15,15 @@ never a closed core enum a module would need a value added to.
   one shared vocabulary per org. Seeded from registry defaults.
 - `ScoringModelDefault` — the default model for a scheme: one org row
   (`project_id IS NULL`) and/or per-project override rows.
+- `ScoringCustomAxis` / `ScoringCustomModel` — an axis or a model an organisation (`project_id IS NULL`) or a project
+  defines itself, beside the registered ones, for a scheme that allows it. Keys are unique per organisation and
+  scheme across every tier, so a level, band or score can name one without saying which project owns it. The
+  levels of a custom axis are ordinary `ScoringLevel` rows (carrying the owning project, so a project's go with it).
+- `ScoringHiddenCriterion` — a registered axis or model an organisation hides for itself (a project hides with a
+  `ProjectDefinitionSuppression` tombstone instead).
+- `ScoringEnabledModel` — the models a scheme offers at once (one org set with `project_id IS NULL` and/or
+  per-project override sets, all-or-nothing like bands). No rows means "inherit", ending at every model the
+  scheme registers.
 - `ScoringBand` — rating bands for one (scheme, model): an org set
   (`project_id IS NULL`) and/or per-project override sets. A set is
   all-or-nothing; no rows means "inherit".
@@ -33,7 +42,7 @@ import uuid
 from decimal import Decimal
 
 from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -51,6 +60,10 @@ class ScoringLevel(UUIDPKMixin, TimestampMixin, Base):
         description: Optional scorer guidance.
         weight: Positive weight, unique within (org, scheme, axis); levels
             are ordered by weight, so the highest is the axis's top level.
+        threshold: Only on a derived axis: the lowest derived value that falls in this level (unique within the
+            axis). `None` on an ordinary axis.
+        project_id: The project that owns the level's axis when it is a project's own custom axis (the levels go
+            with the project); `None` for a registered or organisation axis.
     """
 
     __tablename__ = "scoring_levels"
@@ -67,6 +80,10 @@ class ScoringLevel(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     weight: Mapped[Decimal] = mapped_column(Numeric(10, 4))
+    threshold: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
 
 
 class ScoringModelDefault(UUIDPKMixin, TimestampMixin, Base):
@@ -88,6 +105,38 @@ class ScoringModelDefault(UUIDPKMixin, TimestampMixin, Base):
         ),
         Index(
             "uq_scoring_model_defaults_project", "project_id", "scheme_key",
+            unique=True, postgresql_where=text("project_id IS NOT NULL"),
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    scheme_key: Mapped[str] = mapped_column(String(64))
+    model_key: Mapped[str] = mapped_column(String(64))
+
+
+class ScoringEnabledModel(UUIDPKMixin, TimestampMixin, Base):
+    """One model of an org-level (`project_id` NULL) or project-level set of enabled models for a scheme.
+
+    Attributes:
+        organization_id: The owning organisation.
+        project_id: The overriding project, or `None` for the org set.
+        scheme_key: Registered scoring scheme key.
+        model_key: Registered model key within the scheme.
+    """
+
+    __tablename__ = "scoring_enabled_models"
+    __table_args__ = (
+        Index(
+            "uq_scoring_enabled_models_org", "organization_id", "scheme_key", "model_key",
+            unique=True, postgresql_where=text("project_id IS NULL"),
+        ),
+        Index(
+            "uq_scoring_enabled_models_project", "project_id", "scheme_key", "model_key",
             unique=True, postgresql_where=text("project_id IS NOT NULL"),
         ),
     )
@@ -184,3 +233,80 @@ class ScoringCellRating(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="CASCADE")
     )
     band_label: Mapped[str] = mapped_column(String(100))
+
+
+class ScoringCustomAxis(UUIDPKMixin, TimestampMixin, Base):
+    """An axis an organisation or project defined for a scheme.
+
+    Attributes:
+        organization_id: The owning organisation.
+        project_id: The owning project, or `None` for an organisation axis.
+        scheme_key: Registered scoring scheme key (one that allows custom criteria).
+        key: Generated machine key (`c_` + a slug of the label), unique per (organisation, scheme).
+        label: Display name.
+        description: Optional guidance for scorers.
+    """
+
+    __tablename__ = "scoring_custom_axes"
+    __table_args__ = (UniqueConstraint("organization_id", "scheme_key", "key", name="uq_scoring_custom_axes_key"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    scheme_key: Mapped[str] = mapped_column(String(64))
+    key: Mapped[str] = mapped_column(String(64))
+    label: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ScoringCustomModel(UUIDPKMixin, TimestampMixin, Base):
+    """A model an organisation or project defined for a scheme.
+
+    Attributes:
+        organization_id: The owning organisation.
+        project_id: The owning project, or `None` for an organisation model.
+        scheme_key: Registered scoring scheme key (one that allows custom criteria).
+        key: Generated machine key (`m_` + a slug of the label), unique per (organisation, scheme).
+        label: Display name.
+        definition: `{"combination": "product" | "weighted_sum", "axes": [{"axis_key", "role": "multiply" |
+            "divide" | "sum", "exponent", "importance", "lower_is_better"}]}`, validated by
+            `services.scoring_custom` against the axes visible to its owner.
+    """
+
+    __tablename__ = "scoring_custom_models"
+    __table_args__ = (UniqueConstraint("organization_id", "scheme_key", "key", name="uq_scoring_custom_models_key"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    scheme_key: Mapped[str] = mapped_column(String(64))
+    key: Mapped[str] = mapped_column(String(64))
+    label: Mapped[str] = mapped_column(String(100))
+    definition: Mapped[dict] = mapped_column(JSONB)
+
+
+class ScoringHiddenCriterion(UUIDPKMixin, TimestampMixin, Base):
+    """A registered axis or model an organisation hides for itself.
+
+    Attributes:
+        organization_id: The organisation that hid it.
+        scheme_key: Registered scoring scheme key.
+        kind: `"axis"` or `"model"`.
+        key: The registered axis or model key.
+    """
+
+    __tablename__ = "scoring_hidden_criteria"
+    __table_args__ = (UniqueConstraint("organization_id", "scheme_key", "kind", "key", name="uq_scoring_hidden_criteria"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
+    scheme_key: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(10))
+    key: Mapped[str] = mapped_column(String(64))

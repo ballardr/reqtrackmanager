@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -25,6 +25,7 @@ from app.models.user import User
 from app.modules.product_feedback import _shared as sh
 from app.modules.product_feedback.enums import EnhancementRequestStatus
 from app.modules.product_feedback.models import EnhancementRequest
+from app.modules.product_feedback.ratings import parse_model_keys
 from app.modules.product_feedback.schemas import (
     DemandOut,
     FeedbackSettingsOut,
@@ -40,6 +41,8 @@ from app.modules.product_feedback.schemas import (
     RequestUpdate,
     RequestVersionOut,
 )
+from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME_KEY
+from app.modules.product_feedback.scoring_filter import ScoredFilter
 from app.modules.product_feedback.service import (
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
@@ -51,7 +54,9 @@ from app.modules.product_feedback.service import (
     set_submission_policy,
 )
 from app.schemas.file import FileAssetOut
+from app.schemas.scoring import ScoringSchemeOut
 from app.services import module_attachments as att
+from app.services import scoring
 from app.services.audit import log_event
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_manage, require_project_subcomponent_enabled
@@ -123,20 +128,28 @@ def create_request(
 @router.get("/requests", response_model=list[RequestOut])
 def list_requests(
     project_id: UUID, include_archived: bool = False, status: EnhancementRequestStatus | None = None,
-    open_only: bool = False, search: str | None = None, tag_filter: TagFilter = Depends(),
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    open_only: bool = False, search: str | None = None, scoring_model: list[str] | None = Query(None),
+    scored: ScoredFilter | None = None, missing_axis: str | None = None,
+    tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
     project_scope: ProjectScope = Depends(),
 ):
     """The project's requests; archived ones only with `include_archived`, narrowed by `status`, `open_only`
-    (new, under review or accepted) and a case-insensitive `search` of code, title and description."""
+    (new, under review or accepted) and a case-insensitive `search` of code, title and description.
+    `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
+    being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis."""
 
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
+        holder = _holder(db, pid)
         requests = tag_filter.keep(
             db, pid, REQUEST_ARTEFACT_TYPE, list_project_requests(db, pid, include_archived=include_archived),
         )
         return sh.requests_to_out(
-            db, filter_requests(db, requests, status=status, open_only=open_only, search=search),
+            db, filter_requests(
+                db, holder, requests, status=status, open_only=open_only,
+                search=search, scored=scored, missing_axis=missing_axis, scoring_model=parse_model_keys(scoring_model),
+            ), scoring_model,
         )
 
     return project_scope.collect(
@@ -146,9 +159,27 @@ def list_requests(
 
 
 @router.get("/requests/{request_id}", response_model=RequestOut)
-def get_request(project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
-    """One request with its current version."""
-    return sh.current_request_out(db, _get(db, _holder(db, project_id), request_id))
+def get_request(
+    project_id: UUID, request_id: UUID, scoring_model: list[str] | None = Query(None),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """One request with its current version.
+    `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
+    being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis."""
+    return sh.current_request_out(db, _get(db, _holder(db, project_id), request_id), scoring_model)
+
+
+@router.get("/scoring-scheme", response_model=ScoringSchemeOut)
+def get_project_scoring_scheme(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """The `enhancement_request` scoring scheme as it applies to this project: each axis's level ids and weights
+    (what a request's `levels` map takes), the default model and its rating bands. A read-only mirror of the
+    core scoring endpoint under this module's prefix, so a client confined to the module (the MCP server) can
+    discover the level ids."""
+    project = _project(db, project_id)
+    return scoring.build_scheme_config(
+        db, project.organization_id, scoring.get_registered_scheme(REQUEST_SCORING_SCHEME_KEY), project,
+    )
 
 
 @router.put("/requests/{request_id}", response_model=RequestOut)

@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b and 2 (backend) built 2026-11-04; Phase 3 next. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b and 3c (backend) built 2026-11-05; Phase 4 next. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
@@ -15,8 +15,8 @@ artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-4 / 9 phases complete. Phases 0, 1, 1b and 2 done 2026-11-04 (Module 2 Phase 1.2 and
-Module 1 Phase 13 had shipped). Phase 3 (ICE/RICE scoring on the core scoring matrix) is next.
+7 / 11 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension) done 2026-11-05. Phase 4 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -24,7 +24,9 @@ Module 1 Phase 13 had shipped). Phase 3 (ICE/RICE scoring on the core scoring ma
 | 1 | Data model: Enhancement Request, lifecycle, RBAC | [x] Complete (2026-11-04) — see "Phase 1 notes" |
 | 1b | Triage an organisation inbox request into a project | [x] Complete (2026-11-04) — see "Phase 1b notes" |
 | 2 | Demand aggregation + duplicate merge | [x] Complete (2026-11-04) — see "Phase 2 notes" |
-| 3 | ICE/RICE scoring on the core scoring matrix | [ ] Not started |
+| 3 | ICE/RICE scoring on the core scoring matrix | [x] Complete (2026-11-04) — see "Phase 3 notes" |
+| 3b | Scoring: Ease, demand-derived axis, generic per-axis score storage | [x] Complete (2026-11-05) — see "Phase 3b notes" |
+| 3c | Scoring: organisation- and project-defined criteria and models (multiply or weighted sum) | [x] Complete (2026-11-05) — see "Phase 3c notes" |
 | 4 | Relationships + close-the-loop | [ ] Not started |
 | 5 | Frontend UI | [ ] Not started |
 | 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06, see `docs/modules.md` §4g |
@@ -163,7 +165,94 @@ flowchart LR
 - **Phase 4 must:** the informed checkbox per requester reads `compute_demand`'s requesters (merged ones included); the "Delivered" prompt and close-the-loop list use the same union.
 - **Phase 5 must add:** a Requesters panel (the quick-link/link finder restricted to `Requested by`), the demand breakdown with the merged-duplicates list, Merge and Unmerge actions (triager only; canonical picker limited to open non-duplicate requests of the same owner), the `duplicate` badge with "merged into ENH-nnn", and the demand columns on the list and its export.
 
+## Phase 3 notes (2026-11-04)
+
+Backend built; account and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 3").
+
+```mermaid
+flowchart LR
+    R["Request version<br/>reach · impact · confidence · effort levels"] --> S["score_version<br/>core compute_score"]
+    M["scoring_model query<br/>ice or rice, else effective default"] --> S
+    S --> O["RequestOut.score<br/>raw · normalised · band"]
+    D["Derived demand (Phase 2)"] -. shown beside, never mixed .-> O
+```
+
+- **Core extension:** `ScoringModelDefinition.divisor_axis_keys` (Effort divides the product; maximum uses each divisor's lowest weight). Documented in `docs/modules.md` §4d.
+- The `enhancement_request` scheme (`scoring.py`) has models `ice` and `rice` (Phase 3b changed ICE and replaced the four level columns with per-axis rows, see "Phase 3b notes"); `RequestOut` carries `score` and `scoring_model_key`.
+- `GET .../requests` and `.../requests/{id}` take `scoring_model` (a list since Phase 3b); `GET .../scoring-scheme` (both tiers) lists the level ids. Level and band editing uses the core scoring endpoints (gated by `org_feedback_triager`).
+- **Phase 5 must add:** a Reach/Impact/Confidence/Effort field group on the create and edit forms (the shared field group, with `help` text for each), a model switcher beside the score on the list and detail, the demand shown beside the score, the score and band columns on the list, and the scheme editor (`ScoringSchemeEditor`) in the module's org admin section. The band editor already hides cell ratings for a divisor model.
+- **Phase 6 must:** report F1 ranks by weighted demand and the chosen model's `normalised` score; a request that is not scored (a missing axis) is listed as unscored, not as zero.
+
+**Phase 5 also adds (2026-11-05):** a **Grid** view on the project request list (`ViewToggle showGridOption` and `<RecordGrid>`, see the style guide's "Pattern: bulk edit grid") with the scoring levels as cells, and an **Unscored** filter (`useUrlChoice`, in the `ListPageLayout` filter panel, with its count) that combines with the grid so a triager can filter to unscored requests and score them in bulk. The grid exists for the project tier only (a generic limit of the bulk edit grid); inbox requests are scored one at a time, or after triage into a project. **Decided by: Agent**; extending the grid to organisation-owned types is a generic change to `RecordGrid`, and is raised here for the User to decide.
+
 **Phase 5 must add:** the module's `frontend_manifest` (nav entry), routes for the paths already registered in `frontend/src/modules/product_feedback/module.ts`, the org inbox page, the submission-policy setting on Project admin and the org inbox switch's explanation, plus stories, Playwright and the docs website.
+
+## Phase 3b notes (2026-11-05)
+
+Backend built; account and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 3b").
+
+```mermaid
+flowchart LR
+    L["levels map<br/>axis key to level id"] --> S["version_scores rows<br/>one per axis"]
+    D["Weighted demand (Phase 2)"] -->|bucketed by level thresholds| DL["derived Demand level<br/>a chosen level wins"]
+    S --> C["score_levels<br/>per enabled model"]
+    DL --> C
+    C --> O["RequestOut.scores<br/>model key to score"]
+    F["scored / missing_axis"] -->|score rows of current versions| K["keep_by_scoring"]
+    K --> O
+```
+
+- **Storage:** `enhancement_request_version_scores (version_id, axis_key, level_id)` (migration `0134`, next `0135`) replaces the four level columns. The wire shape is `levels: {axis key: level id}` on create and update (a `null` clears an axis, an axis not mentioned is kept), `RequestOut.levels` and `RequestVersionOut.levels`; `RequestOut.derived_levels` is the level each derived axis resolves to where none is chosen.
+- **Axes and models:** Reach, Impact, Confidence, Ease, Effort and Demand; `ice` = Impact × Confidence × Ease, `rice` unchanged, `rice_demand` = Demand × Impact × Confidence ÷ Effort. Demand is a *derived* axis: core `ScoringAxisDefinition.derived_source` plus `ScoringLevel.threshold` (migration `0133`, core), bucketed by `services.scoring.derived_level`. A level chosen by hand wins.
+- **Several models:** `RequestOut.scores` (model key to score) for the enabled models, or the `scoring_model` list (repeat or comma-separate; first is primary and is also `score` / `scoring_model_key`). Core `scoring_enabled_models` and `PUT .../scoring-schemes/{key}/enabled-models` (org and project); `build_scheme_config` returns `enabled_model_keys` and `enabled_models_source`.
+- **Unscored filter:** `scored=unscored|scored` and `missing_axis=<key>` on both lists, the record-table export and the MCP list tools, through `service.filter_requests` and `scoring_filter.keep_by_scoring` (one statement over the current versions' score rows).
+- **Record tables:** one column per scheme axis (Ease is editable; Demand shows the effective level and is read-only).
+- **Phase 5 must add (beyond the list above):** the level field group built from the scheme's axes (the shared field group for create and edit; Demand shows its derived level with a "Set manually" override and a way to clear it); a models picker on the list and detail showing a score column per chosen model; the **Unscored** filter and its count (counted client-side from `scores` over the held rows) with `missing_axis` in the filter panel; the enabled-models control and the level threshold field in the scheme editor (`ScoringSchemeEditor`, derived axes only); the grid cells for Reach, Impact, Confidence, Ease and Effort.
+- **Phase 3c must:** project-scoped level and model rows with the nested-project fallback and tombstones, bundle carriage of the definitions (scoring configuration does not travel in a bundle today), and the weighted-sum combination. Per-axis storage, thresholds and enabled models are in place.
+
+## Phase 3c notes (2026-11-05)
+
+Backend built; account, the resolved design questions and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 3c").
+
+- **Resolved with the User:** a project's criteria are an *additive layer* (not a whole-set replacement); registered criteria can only be *hidden* (organisation or project), never deleted; all of 3c built in one change.
+- **Core:** `allow_custom_criteria`, `ScoringModelDefinition` gains `combination` (`product` | `weighted_sum`), `exponents`, `importance`, `inverted_axis_keys`; new `services/scoring_custom.py` (`effective_scheme`, axis and model writers, hide and restore, bundle carriage); tables `scoring_custom_axes`, `scoring_custom_models`, `scoring_hidden_criteria`, `scoring_levels.project_id` (migration `0135`, next `0136`). Endpoints on both tiers: axes, models, `hidden-criteria`, and the project's own level endpoints for axes it defined.
+- **Module:** reads the effective scheme everywhere (`ratings.py`, `validate_levels`, the unscored filter, record-table columns and import, bundle import); `scoring_definitions` travels in the project and organisation bundles.
+- **Phase 5 must add (beyond the lists above):** the axis and model editors with hide and restore on the organisation and project scoring settings, and level fields built from the effective scheme (an axis's `origin` as a quiet badge). The inbox shows only the organisation's models.
+- **Phase 6 must:** report F1 states the model it ranks on and ranks the inbox on an organisation model only.
+
+## Scoring extension (added 2026-11-05)
+
+**Decided by: User** (2026-11-05): ICE/RICE alone is not enough. Both Ease and demand must be usable in a score; an organisation can define its own criteria and how they combine; and a project can have its own criteria (a consulting firm with software, hardware and services product teams scores very differently). Do the small change first (3b), then custom criteria (3c). Each model chooses its combination: multiply (with exponents) or weighted sum.
+
+```mermaid
+flowchart LR
+    A["Axes<br/>manual levels or derived from demand"] --> S["Per-axis score rows<br/>version, axis, level"]
+    M["Model: product with divisors and exponents<br/>or weighted sum"] --> C["compute_score"]
+    S --> C
+    C --> O["raw, normalised, band"]
+    P["Project models and axes"] -->|else nearest ancestor| G["Organisation models and axes"]
+    G -->|else| R["Registry defaults"]
+    P --> M
+```
+
+**Phase 3b** (small, but built on the right storage):
+- **Per-axis score rows replace the four level columns** (`enhancement_request_version_scores(version_id, axis_key, level_id)`), because 3c adds axes the schema cannot know. Phase 3 is uncommitted, so this is a new migration (`0133`) that copies the four columns across and drops them. Doing Ease on four fixed columns first would only be rewritten in 3c.
+- **Ease** is a new manual axis (Hard to Easy). `ice` becomes classic Impact × Confidence × Ease. `rice` (with Effort as divisor) is unchanged, so an organisation uses whichever of Ease or Effort it already estimates.
+- **Demand** is a derived axis: the Phase 2 weighted demand is bucketed into levels by organisation-editable thresholds (a generic `ScoringAxisDefinition.derived_source` and a threshold on the level, in core, not a module hack). Bucketing, not the raw number, keeps the best case defined so bands and normalisation still work. A model `rice_demand` uses it in place of the manual Reach. A derived level can be overridden by hand on a request.
+- The demand figure stays shown beside any score, as in Phase 3.
+- **Unscored filter** (**Decided by: User**, 2026-11-05). The request lists (project and organisation inbox) take `scored=unscored|scored` against the first chosen model, and `missing_axis=<key>` to find who lacks one criterion. A request is unscored for a model when it has no level for one of the model's manual axes; a derived axis (demand) is never missing. It is a database condition on the per-axis score rows, not a filter applied after the page is read, so "Show more" and the total stay correct. The same filter applies to the CSV/PDF/Word export, the MCP list tool and the nested-project scope, and the unscored count is shown beside the filter. This is another reason to store per-axis rows: with four columns the filter would be a per-model condition on each column.
+- **Grid-ready columns** (**Decided by: User**, 2026-11-05). The level columns on the record-table provider are already editable closed-value columns, so the generic bulk edit grid can edit them; 3b/3c keep that true by building the level columns from the project's effective axes (custom axes appear as grid columns, a derived axis is a locked cell until overridden). The score columns stay export-only and show read-only in the grid. Status is not a grid column (transitions keep their own gate, as for the other approval-style types).
+- **Several models at once** (**Decided by: User**, 2026-11-05). Scores are derived on read, so any number of models can be computed for the same request without storing anything. A project has a set of *enabled* models (one marked default), not a single model. `RequestOut` gains `scores` (model key to score) for the enabled models, the list can show and sort by one column per chosen model (`scoring_model` becomes a list, the first is the sort key), and the detail page shows them side by side. A model that needs an axis the request has no level for shows as unscored in that column only. This replaces the single `score` / `scoring_model_key` pair, which stays for one release of the API.
+
+**Phase 3c** (design decisions to record at the start; the points below are the known constraints):
+- **Opt-in per scheme** (`ScoringSchemeDefinition.allow_custom_criteria`), so Pain Point and Risk scoring are untouched.
+- **Organisation-defined axes** (key, name, help text, weighted levels) and **organisation-defined models** (axes to multiply, axes to divide, an importance exponent per axis; or a weighted sum with an importance percentage per axis and a "lower is better" flag that inverts an axis). The registry models (`ice`, `rice`, `rice_demand`) are seeded defaults.
+- **Project-level axes and models.** Levels are organisation-only in core today, so this means a nullable project on the level and model rows. Resolution follows the nested-project rule: own rows if any, else the nearest ancestor's, else the organisation's, else the registry. A project hides an organisation default with a tombstone (`ProjectDefinitionSuppression`), per the standing rule on hideable defaults. Decisions to record: **Decided by: Agent** pending User sign-off.
+- **Enabled models per tier.** Enabling is a per-project (or organisation) list resolved with the same fallback as the models themselves; the organisation inbox offers only models enabled at the organisation level, since a project's own model is not meaningful across projects.
+- **Scores from different models are not comparable.** The organisation inbox ranks across projects, so it ranks on the organisation's model only; a project's own model scores its own list. Report F1 states the model used. A request whose model needs an axis it has no level for is unscored, not zero.
+- **A weighted sum normalises each axis** to its top level (level weight ÷ top weight) before applying the importance percentage, so the maximum is 100% and bands are comparable to the product models.
+- Definitions travel in the project and organisation bundles, and deleting a level, axis or model that records use needs a reassignment, as levels do today.
+- Core files: `services/scoring.py` stays the one place that computes a score. The model and axis definitions are generic data in core, with no feedback-specific code.
 
 ## Phases 1–7 (outline, refined at Phase 0)
 
@@ -181,6 +270,7 @@ flowchart LR
   combines by product only (Module 1 Phase 10 notes), so this needs a
   generic divisor or inverse-axis extension in core — design it
   generically, not for this module alone.
+- **Phases 3b and 3c — Scoring extension** (added 2026-11-05): see "Scoring extension".
 - **Phase 4 — Relationships and close-the-loop.** "Addresses" → Pain
   Point, "realised by" → Requirement, "evidence" ← Engagement, plus the
   informed checkbox per requester.

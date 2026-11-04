@@ -17,10 +17,12 @@ reference to it.
 - Link type: "Requested by" (request -> Stakeholder, Persona or Engagement), authored with the generic link tools;
   `demand.py` turns those links into demand through the registry's `demand_party_providers` hook.
 - Merging: a duplicate is merged into a canonical request, reversibly (`merge.py`); demand is the union.
+- Scoring: the `enhancement_request` scheme (`scoring.py`) scores a request on Reach, Impact, Confidence and
+  Effort (a divisor); ICE or RICE is chosen when viewing and the score is derived on every read (`ratings.py`).
 - MCP tools: write-enabled (`mcp_tools.py`).
 
 No `frontend_manifest` yet: the nav entry and pages arrive with the module's UI, so no nav item points at a page that
-does not exist. Reports, scoring and the remaining relationships arrive in later changes through the same
+does not exist. Reports and the remaining relationships arrive in later changes through the same
 registration.
 """
 
@@ -43,6 +45,7 @@ from app.modules.product_feedback.record_attachments import NO_RECORD_ATTACHMENT
 from app.modules.product_feedback.record_tables import RECORD_TABLES
 from app.modules.product_feedback.report_fields import REPORT_FIELDS
 from app.modules.product_feedback.scaling_probes import SCALING_PROBES
+from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME
 from app.modules.product_feedback.search import SEARCH_PROVIDERS
 from app.modules.product_feedback.service import (
     ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY,
@@ -134,6 +137,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={REQUEST_ARTEFACT_TYPE: REQUEST_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
+    scoring_schemes=(REQUEST_SCORING_SCHEME,),
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,

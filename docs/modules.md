@@ -859,6 +859,49 @@ flowchart LR
 - **Models** combine axes; score = product of the chosen levels' weights,
   "not scored" if any input is missing. **Bands** use the normalised score
   (score ÷ maximum), so they survive re-weighting.
+- **Divisor axes (Module 14 Phase 3).** A model may also name
+  `divisor_axis_keys` (an axis where a higher weight is worse, such as
+  Effort): score = product of `axis_keys` ÷ product of the divisors, and the
+  maximum is every multiplied axis at its top weight with every divisor at its
+  *lowest* (`services.scoring.min_axis_weights`, passed to `compute_score` as
+  `min_weights`), so the normalised score stays in (0, 1]. A divisor model has
+  no cell ratings (`ScoringModelDefinition.supports_cell_ratings`). RICE is
+  Reach × Impact × Confidence ÷ Effort.
+- **Derived axes (Module 14 Phase 3b).** An axis with
+  `ScoringAxisDefinition.derived_source` is read from a number the module
+  computes (a weighted demand) instead of being chosen: each of its levels
+  carries a `threshold` (`ScoringLevel.threshold`, unique per axis, required
+  on a derived axis and refused on an ordinary one, editable like a weight),
+  and `services.scoring.derived_level(levels, value)` returns the level with
+  the highest threshold not above the value (the lowest level takes anything
+  below every threshold). Bucketing, not the raw number, keeps the best case
+  defined so bands still normalise. The module decides which source it feeds
+  and whether a level chosen by hand overrides it; core only stores the name.
+- **Custom criteria (Module 14 Phase 3c).** A scheme with
+  `allow_custom_criteria` lets an organisation, and each project, define its
+  own axes (`scoring_custom_axes` + ordinary `scoring_levels`) and models
+  (`scoring_custom_models`: a *product* with divisors and importance
+  exponents, or a *weighted sum* with importance percentages totalling 100
+  and an optional "lower is better" per axis). The registered criteria can
+  only be hidden (the organisation: `scoring_hidden_criteria`; a project: a
+  `ProjectDefinitionSuppression` tombstone). The layer is additive and
+  inherited down the project chain. A module must read
+  `services.scoring_custom.effective_scheme(db, org_id, scheme, project_id)`
+  rather than its registered scheme, which returns a plain
+  `ScoringSchemeDefinition`, so every other `services.scoring` function works
+  on it unchanged. Custom keys are `c_…` (axes) and `m_…` (models), unique per
+  organisation and scheme. Endpoints on both tiers: `POST/PATCH/DELETE
+  …/axes[/{key}]`, `POST/PATCH/DELETE …/models[/{key}]`, `POST/DELETE
+  …/hidden-criteria`. A module carries a tier's definitions in its bundle with
+  `export_definitions` / `import_definitions`.
+- **Enabled models (Module 14 Phase 3b).** A scheme can show several models
+  at once. `scoring_enabled_models` holds the set per organisation or
+  project (all-or-nothing like bands); `resolve_enabled_models` resolves
+  project → nearest ancestor → org → every registered model, always includes
+  the effective default and puts it first; `PUT .../scoring-schemes/{key}/enabled-models`
+  on both tiers writes it (`null` inherits). A scheme config carries
+  `enabled_model_keys` and `enabled_models_source`. Nothing is stored per
+  model: a module derives every enabled model's score on read.
 - **Default model and bands** resolve project → nearest ancestor → org →
   module default (the nested-projects fallback rule). No rows = inherit.
 - **Cell ratings (Module 3 Phase 1a).** Thresholds on a product can't

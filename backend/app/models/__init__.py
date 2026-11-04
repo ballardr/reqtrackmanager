@@ -76,7 +76,16 @@ from app.models.requirement_link_type import (
     ProjectLinkTypeVisibility,
     RequirementLinkTypeDefinition,
 )
-from app.models.scoring import ScoringBand, ScoringCellRating, ScoringLevel, ScoringModelDefault
+from app.models.scoring import (
+    ScoringBand,
+    ScoringCellRating,
+    ScoringCustomAxis,
+    ScoringCustomModel,
+    ScoringEnabledModel,
+    ScoringHiddenCriterion,
+    ScoringLevel,
+    ScoringModelDefault,
+)
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
 from app.models.server_role import UserServerRole
 from app.models.tag import ArtefactTag, Tag
@@ -157,6 +166,10 @@ __all__ = [
     "ProjectSequenceCounter",
     "ScoringBand",
     "ScoringCellRating",
+    "ScoringCustomAxis",
+    "ScoringCustomModel",
+    "ScoringEnabledModel",
+    "ScoringHiddenCriterion",
     "ScoringLevel",
     "ScoringModelDefault",
     "UserServerRole",

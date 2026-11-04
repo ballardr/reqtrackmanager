@@ -38,17 +38,26 @@ export const SCORING_BAND_TONE_LABEL: Record<BadgeTone, string> = {
   danger: "Red",
 };
 
+export type ScoringCriterionOrigin = "built_in" | "org" | "project";
+
 export interface ScoringLevel {
   id: string;
   name: string;
   description: string | null;
   weight: number;
+  /** Only on a derived axis: the lowest derived value that falls in this level. */
+  threshold?: number | null;
 }
 
 export interface ScoringAxis {
   key: string;
   label: string;
   description: string | null;
+  /** Names the module-computed number a derived axis (e.g. Demand) is read from; null/absent for a manual axis. */
+  derived_source?: string | null;
+  /** Who defined it: the module (`built_in`), the organisation or a project (`owner_project_id`). */
+  origin?: ScoringCriterionOrigin;
+  owner_project_id?: string | null;
   /** Ascending weight order; the last is the axis's top level. */
   levels: ScoringLevel[];
 }
@@ -72,9 +81,21 @@ export interface ScoringModel {
   key: string;
   label: string;
   axis_keys: string[];
+  /** Axes the product is divided by (e.g. Effort); absent or empty for a plain product. */
+  divisor_axis_keys?: string[];
+  /** `product` (axes multiplied, divisors divided, optional exponents) or `weighted_sum` (axes scaled to 0..1 and summed by importance). */
+  combination?: "product" | "weighted_sum";
+  /** Product only: importance exponent by axis key (an axis not listed is 1). */
+  exponents?: Record<string, number>;
+  /** Weighted sum only: percentage by axis key, totalling 100. */
+  importance?: Record<string, number>;
+  /** Weighted sum only: axes where a lower level scores higher. */
+  inverted_axis_keys?: string[];
+  origin?: ScoringCriterionOrigin;
+  owner_project_id?: string | null;
   bands: ScoringBand[];
   bands_source: ScoringResolutionSource;
-  /** Always empty unless the model has exactly two axes. */
+  /** Always empty unless the model has exactly two axes and no divisor. */
   cell_ratings: ScoringCellRating[];
   cell_ratings_source: ScoringResolutionSource;
 }
@@ -88,12 +109,21 @@ export interface ScoringScheme {
   system_default_model_key: string;
   default_model_key: string;
   default_model_source: ScoringResolutionSource;
+  /** The models shown side by side, the default first; absent from an older server. */
+  enabled_model_keys?: string[];
+  enabled_models_source?: ScoringResolutionSource;
+  /** Whether the organisation and projects may define their own axes and models on this scheme. */
+  allow_custom_criteria?: boolean;
+  /** Registered or inherited criteria this tier hid, which it can restore. */
+  hidden_criteria?: { kind: "axis" | "model"; key: string; label: string }[];
 }
 
 export interface ScoringLevelInput {
   name: string;
   weight: number;
   description: string | null;
+  /** Required on a derived axis, refused on a manual one. */
+  threshold?: number | null;
 }
 
 /** Returns the band whose threshold `normalised` reaches last, or null. */

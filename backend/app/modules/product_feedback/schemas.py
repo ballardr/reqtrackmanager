@@ -8,6 +8,11 @@ version history, lifecycle transitions, comments and the project settings.
 (the owner, the external reference) can be cleared by sending an explicit `null`. `status` is not
 editable here (the transition endpoint owns it).
 
+Scoring levels are a map of axis key to level id (`levels`), optional and clearable per axis (an axis sent as `null`
+is cleared, one not mentioned is kept). A response carries them with the scores derived under each model scored
+(`scores`; `score` / `scoring_model_key` are the primary one; null while an axis the model needs is unset), and
+`derived_levels` for an axis read from the request's demand.
+
 A request also reports its place in a merge (`merged_into`, `merged_count`) and its demand
 (`requester_count`, `weighted_demand`; see `demand.py`). Both are derived, never written here.
 
@@ -36,6 +41,9 @@ class RequestCreate(BaseModel):
     owner: PrincipalRef | None = None
     external_ref_url: str | None = Field(default=None, max_length=500)
     external_ref_key: str | None = Field(default=None, max_length=100)
+    levels: dict[str, UUID | None] | None = Field(
+        default=None, description="Scoring level id by axis key (`get scoring-scheme` lists them); null clears an axis."
+    )
 
 
 class RequestUpdate(BaseModel):
@@ -46,6 +54,9 @@ class RequestUpdate(BaseModel):
     owner: PrincipalRef | None = None
     external_ref_url: str | None = Field(default=None, max_length=500)
     external_ref_key: str | None = Field(default=None, max_length=100)
+    levels: dict[str, UUID | None] | None = Field(
+        default=None, description="Scoring level id by axis key (`get scoring-scheme` lists them); null clears an axis."
+    )
     change_note: str = ""
 
 
@@ -78,6 +89,17 @@ class RequestRefOut(BaseModel):
     title: str
 
 
+class RequestScoreOut(BaseModel):
+    """A derived score (never stored). `label` / `tone` are the effective band; `normalised` is the raw score as a
+    share of the model's best possible score."""
+
+    scoring_model_key: str
+    raw: float
+    normalised: float
+    label: str | None = None
+    tone: str | None = None
+
+
 class RequestOut(ProjectScopedRow):
     """A request merged with its current version. Built explicitly (identity row plus version), never via
     `from_attributes`."""
@@ -99,6 +121,15 @@ class RequestOut(ProjectScopedRow):
     external_ref_url: str | None = None
     external_ref_key: str | None = None
     decline_reason: str
+    levels: dict[str, UUID] = Field(default_factory=dict, description="The scoring levels chosen, by axis key.")
+    derived_levels: dict[str, UUID] = Field(
+        default_factory=dict, description="The level each derived axis (Demand) resolves to where none is chosen."
+    )
+    score: RequestScoreOut | None = None
+    scoring_model_key: str
+    scores: dict[str, RequestScoreOut | None] = Field(
+        default_factory=dict, description="The score under each model scored (the enabled ones, or the chosen)."
+    )
     version_number: int
     created_at: datetime
     updated_at: datetime
@@ -123,6 +154,7 @@ class RequestVersionOut(BaseModel):
     external_ref_url: str | None = None
     external_ref_key: str | None = None
     decline_reason: str
+    levels: dict[str, UUID] = Field(default_factory=dict, description="The scoring levels chosen, by axis key.")
     change_note: str
     created_by: UUID
     created_at: datetime
