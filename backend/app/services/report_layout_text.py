@@ -167,7 +167,32 @@ PAGE_SIZE_WORDS = ("A3", "A4", "A5", "Letter", "Legal")
 SOURCE_CLAUSES = ("from", "via", "direction", "archived", "where", "sort")
 EXTRA_CLAUSES = ("as", "by", "empty")
 
-_STRING_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"')
+
+def _quoted_end(text: str, pos: int) -> int | None:
+    """
+    Finds the end of the quoted text opening at `text[pos]` (a `"`), in one pass.
+
+    Args:
+        text: The line being read.
+        pos: Index of the opening quote.
+
+    Returns:
+        The index just past the closing quote, or None if the text is never closed.
+        A hand-written scan, not a regular expression, so a long run of escapes can
+        never cost more than its length.
+    """
+    i, n = pos + 1, len(text)
+    while i < n:
+        char = text[i]
+        if char == "\\":
+            i += 2
+        elif char == '"':
+            return i + 1
+        else:
+            i += 1
+    return None
+
+
 _WORD_TOKEN = re.compile(r'[^\s,"()]+')
 _NUMBER = re.compile(r"-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?")
 _BARE = re.compile(r"[A-Za-z_][A-Za-z0-9_\-]*")
@@ -271,15 +296,15 @@ def _tokenize(rest: str, offset: int) -> list[_Token]:
             return tokens
         column = offset + pos + 1
         if rest[pos] == '"':
-            match = _STRING_TOKEN.match(rest, pos)
-            if match is None:
+            end = _quoted_end(rest, pos)
+            if end is None:
                 raise _Syntax("This quoted text is never closed.", column)
             try:
-                value = json.loads(match.group())
+                value = json.loads(rest[pos:end])
             except ValueError:
                 raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', column) from None
             tokens.append(_Token("str", value, column))
-            pos = match.end()
+            pos = end
         elif rest[pos] == ",":
             tokens.append(_Token("comma", ",", column))
             pos += 1
@@ -2370,14 +2395,14 @@ def _parse_widget(p: _Parser, d: _Directive) -> None:
         if empty is not None:
             if "empty_text" in node:
                 raise _Syntax('"empty" is given twice.', column)
-            quoted = _STRING_TOKEN.match(rest, empty.end())
-            if quoted is None:
+            quoted_end = _quoted_end(rest, empty.end())
+            if quoted_end is None:
                 raise _Syntax("This quoted text is never closed.", d.offset + empty.end() + 1)
             try:
-                node["empty_text"] = json.loads(quoted.group())
+                node["empty_text"] = json.loads(rest[empty.end():quoted_end])
             except ValueError:
                 raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', d.offset + empty.end() + 1) from None
-            pos = quoted.end()
+            pos = quoted_end
             continue
         sorting = _SORT_CLAUSE.match(rest, pos)
         if sorting is not None:
@@ -2392,14 +2417,14 @@ def _parse_widget(p: _Parser, d: _Directive) -> None:
         if pos >= n or rest[pos] in " \t":
             raise _Syntax(f'"{name.group(1)}=" needs a value.', d.offset + pos + 1)
         if rest[pos] == '"':
-            quoted = _STRING_TOKEN.match(rest, pos)
-            if quoted is None:
+            quoted_end = _quoted_end(rest, pos)
+            if quoted_end is None:
                 raise _Syntax("This quoted text is never closed.", d.offset + pos + 1)
             try:
-                value: Any = json.loads(quoted.group())
+                value: Any = json.loads(rest[pos:quoted_end])
             except ValueError:
                 raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', d.offset + pos + 1) from None
-            pos = quoted.end()
+            pos = quoted_end
         else:
             word = _BARE_VALUE.match(rest, pos)
             assert word is not None  # not whitespace or a quote, so at least one character
@@ -2420,14 +2445,14 @@ def _parse_widget_sort(node: dict[str, Any], rest: str, pos: int, offset: int) -
     if pos >= len(rest):
         raise _Syntax("Sort needs a column heading, for example sort Name or sort \"Next review\" desc.", offset + pos + 1)
     if rest[pos] == '"':
-        quoted = _STRING_TOKEN.match(rest, pos)
-        if quoted is None:
+        quoted_end = _quoted_end(rest, pos)
+        if quoted_end is None:
             raise _Syntax("This quoted text is never closed.", offset + pos + 1)
         try:
-            column = json.loads(quoted.group())
+            column = json.loads(rest[pos:quoted_end])
         except ValueError:
             raise _Syntax('Not valid quoted text (write \\" for a quote and \\\\ for a backslash).', offset + pos + 1) from None
-        pos = quoted.end()
+        pos = quoted_end
     else:
         word = _BARE_VALUE.match(rest, pos)
         assert word is not None  # not whitespace or a quote

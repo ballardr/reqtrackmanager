@@ -100,7 +100,8 @@ from app.services.report_styles import used_extra_families
 from app.services.report_svg import svg_png
 
 DOCX_AUTHOR = "ReqTrackManager"
-_XML_INVALID = re.compile("[^\x09\x0a\x0d\x20-퟿-�\U00010000-\U0010ffff]")
+#: Code point ranges XML 1.0 allows besides tab, newline and carriage return.
+_XML_VALID_RANGES = ((0x20, 0xD7FF), (0xE000, 0xFFFD), (0x10000, 0x10FFFF))
 _HEX_COLOUR = re.compile(r"^#?([0-9A-Fa-f]{6})$")
 _ZEBRA = "F5F5F5"
 _NOTE_GREY = RGBColor(0x55, 0x55, 0x55)
@@ -195,7 +196,9 @@ def clean_text(text: str) -> str:
     Returns:
         The text with every XML-invalid character dropped.
     """
-    return _XML_INVALID.sub("", text)
+    if text.isascii() and text.isprintable():
+        return text
+    return "".join(c for c in text if c in "\t\n\r" or any(lo <= ord(c) <= hi for lo, hi in _XML_VALID_RANGES))
 
 
 def _hex(colour: str | None) -> str:

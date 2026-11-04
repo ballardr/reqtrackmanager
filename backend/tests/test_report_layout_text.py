@@ -740,3 +740,14 @@ def test_hyphenated_names_are_words_in_every_clause():
     assert result.errors == [], result.errors
     assert result.tree["nodes"][0]["as"] == "by-comp"
     assert result.tree["nodes"][0]["children"][0]["source"] == {"group": "by-comp", "sort": [{"field": "title"}]}
+
+
+def test_unclosed_quote_with_many_escapes_is_rejected_in_linear_time():
+    # An unclosed quote followed by a long run of escaped quotes must not cost more than its length.
+    import time
+
+    hostile = '@each requirement where status eq "' + '\\"' * 200_000
+    started = time.perf_counter()
+    result = parse_text("@layout document\n" + hostile)
+    assert time.perf_counter() - started < 5
+    assert any("never closed" in error.message for error in result.errors)

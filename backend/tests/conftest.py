@@ -35,6 +35,7 @@ below creates its database on first use.
 
 import asyncio
 import os
+import sys
 
 # `dedicated_pytest_database_url`/`PYTEST_DB_NAME` live in the tiny sibling
 # module `tests/_pytest_database.py`, not here, purely so this can be a
@@ -67,7 +68,7 @@ from sqlalchemy import create_engine, text
 import app.models  # noqa: F401  (populates Base.metadata)
 import app.security as app_security
 from alembic.config import Config
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.database import Base, SessionLocal
 from app.database import engine as app_engine
 from app.migrations import _BACKEND_DIR, run_migrations
@@ -169,9 +170,16 @@ def _default_security_posture(monkeypatch):
     The CI container shares its environment with the Playwright stack, which turns these on so an organisation's
     relay or IdP can sit on the stack's private network. A test that needs the opt-in sets it itself.
     """
-    settings = get_settings()
-    for name in ("org_smtp_allow_private_network_targets", "oidc_allow_private_network_targets"):
-        monkeypatch.setattr(settings, name, False)
+    # A test that clears the `get_settings` cache leaves modules holding the earlier instance (`settings =
+    # get_settings()` at import) beside a fresh one, so every instance in use is pinned, not just the cached one.
+    instances = {id(get_settings()): get_settings()}
+    for name, module in list(sys.modules.items()):
+        held = getattr(module, "settings", None) if name.startswith("app.") else None
+        if isinstance(held, Settings):
+            instances[id(held)] = held
+    for settings in instances.values():
+        for name in ("org_smtp_allow_private_network_targets", "oidc_allow_private_network_targets"):
+            monkeypatch.setattr(settings, name, False)
 
 
 _NON_EMPTY_PROBE: str | None = None

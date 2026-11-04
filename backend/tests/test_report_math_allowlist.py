@@ -12,7 +12,9 @@ import pytest
 from app.services.report_math import tex_problem
 
 FRONTEND_UTILS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "utils"
-CASES = json.loads((FRONTEND_UTILS / "mathTexCases.json").read_text(encoding="utf-8"))
+CASES_FILE = FRONTEND_UTILS / "mathTexCases.json"
+CASES = json.loads(CASES_FILE.read_text(encoding="utf-8")) if CASES_FILE.exists() else []
+pytestmark = pytest.mark.skipif(not CASES_FILE.exists(), reason="frontend sources are not available (backend-only image)")
 
 
 def _generator():

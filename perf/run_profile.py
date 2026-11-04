@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import os
 import re
 import secrets
 import shutil
@@ -1091,8 +1092,8 @@ class ProfileRun:
         self.work.chmod(0o700)
         self.env = stack_environment(caps=caps, workers=caps.workers, backend_image=backend_image, loadgen_image="reqtrack-perf-loadgen:build", generate=self._generate, profiling=options.profiling, db_pool=(options.db_pool_size, options.db_max_overflow), pg=(options.pg_shared_buffers, options.pg_work_mem), memory=(options.malloc_arena_max, options.limit_max_requests))
         env_file = self.work / "perf.env"
-        env_file.write_text(render_env_file(self.env))
-        env_file.chmod(0o600)
+        with os.fdopen(os.open(env_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as handle:
+            handle.write(render_env_file(self.env))
         self.docker = compose.PerfDocker(self.compose_files(), env_file, REPO_ROOT, secrets=[self.env[k] for k in SECRET_KEYS], runner=self._runner)
         self.sampler = sampler.Sampler(self.docker)
         self.watchdog = resources.Watchdog(

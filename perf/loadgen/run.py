@@ -201,7 +201,7 @@ def main() -> int:
     """Reads the request from stdin, runs it and prints the summary; returns the process exit status."""
     password = os.environ.get(PASSWORD_ENV, "")
     if not password:
-        say(f"{PASSWORD_ENV} is not set")
+        say("PERF_USER_PASSWORD is not set")
         return 2
     request = json.load(sys.stdin)
     if request.get("scenario") not in SCENARIOS:

@@ -1,12 +1,9 @@
-import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 
 import { expect, type APIRequestContext, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, openSetupReport, PASSWORD, saveNewVersion, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
+import { wordXml } from "./wordXml";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -22,14 +19,6 @@ test.describe("Report layout custom table editor", () => {
   async function login(request: APIRequestContext, email: string, password: string) {
     const resp = await request.post(`${API}/auth/login`, { data: { email, password } });
     return { Authorization: `Bearer ${(await resp.json()).access_token}` };
-  }
-
-  /** The text of `word/document.xml` inside a Word file. */
-  function wordXml(bytes: Buffer): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "grid-docx-"));
-    const file = path.join(dir, "report.docx");
-    fs.writeFileSync(file, bytes);
-    return execFileSync("unzip", ["-p", file, "word/document.xml"], { encoding: "utf8" });
   }
 
   test("a 3 x 4 table is built, merged, coloured and aligned in the editor, then saved and printed in Word, PDF and HTML", async ({ page, request }) => {

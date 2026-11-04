@@ -1,11 +1,8 @@
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
 import { createDocumentLayoutWorld, ensureExpanded, installCleanupHook, loginAs, PASSWORD, saveNewVersion, openDesignerTextView } from "./helpers";
+import { wordXml } from "./wordXml";
 
 const API = "http://localhost:8000/api/v1";
 
@@ -17,14 +14,6 @@ const API = "http://localhost:8000/api/v1";
  */
 test.describe("Report custom table fonts", () => {
   installCleanupHook();
-
-  /** The text of `word/document.xml` inside a Word file. */
-  function wordXml(bytes: Buffer): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "grid-font-docx-"));
-    const file = path.join(dir, "report.docx");
-    fs.writeFileSync(file, bytes);
-    return execFileSync("unzip", ["-p", file, "word/document.xml"], { encoding: "utf8" });
-  }
 
   test("a Mono column and an 8 pt table print in Word, PDF and HTML", async ({ page, request }) => {
     const { adminEmail, headers, project, layout } = await createDocumentLayoutWorld(request, "grid-fonts");

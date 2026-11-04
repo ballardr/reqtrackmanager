@@ -194,6 +194,12 @@ def test_docx_invalid_accent_colour_falls_back_instead_of_reaching_the_xml():
 
 def test_clean_text_drops_only_xml_invalid_characters():
     assert clean_text("a\x00b\x08c\x0bd\x1fe\ud800f") == "abcdef"
+
+
+def test_clean_text_keeps_valid_xml_characters():
+    kept = "tab\there\nline\rend é 漢字 \ud7ff\ue000\ufffd 😀"
+    assert clean_text(kept) == kept
+    assert clean_text("x\ufffey\uffffz") == "xyz"
     assert clean_text("tab\tnew\nline é 漢 😀") == "tab\tnew\nline é 漢 😀"
 
 
