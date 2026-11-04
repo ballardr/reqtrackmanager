@@ -45,7 +45,7 @@ test("a server admin hides a provided report font from authors, renames it for W
   await page.goto("/server/management/reportFonts");
   const list = page.getByRole("list", { name: "Report fonts" });
   await expect(list.getByText("Unicode Sans")).toBeVisible();
-  const row = list.locator(".item-row", { hasText: "Liberation Mono" });
+  const row = list.locator(".item-list-row", { hasText: "Liberation Mono" });
   await expect(row).toContainText("Provided");
   await expect(row).toContainText("Regular (Installable)");
   expect(await choices()).toContain(FAMILY_KEY);
@@ -71,7 +71,7 @@ test("a server admin hides a provided report font from authors, renames it for W
 
   // A reload shows the saved state, and turning it back on offers it again.
   await page.reload();
-  const reloaded = page.getByRole("list", { name: "Report fonts" }).locator(".item-row", { hasText: "Liberation Mono" });
+  const reloaded = page.getByRole("list", { name: "Report fonts" }).locator(".item-list-row", { hasText: "Liberation Mono" });
   await expect(reloaded.getByRole("switch", { name: "Offered to authors: Liberation Mono" })).not.toBeChecked();
   await expect(reloaded).toContainText("Courier Prime");
   await reloaded.getByRole("switch", { name: "Offered to authors: Liberation Mono" }).click();
