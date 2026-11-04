@@ -25,6 +25,8 @@ export interface AliasInScope {
   kind: "record" | "group";
   /** The record type of the record, or of the group's members; `null` when it could not be told. */
   recordType: string | null;
+  /** For a group, the field it groups by (`category`), so the picker can say what its value is. */
+  by?: string;
   /** The display label written on the `@label` line before the block, if any. */
   label?: string;
 }
@@ -35,6 +37,7 @@ interface Frame {
 
 const BLOCK_OPENERS = new Set(["each", "group", "table", "sheet", "if", "section"]);
 const ALIAS_NAME = /(?:^|\s)as\s+([a-z][a-z0-9_-]*)(?=\s|$)/;
+const GROUP_BY = /(?:^|\s)by\s+([a-z][a-z0-9_]*)(?=\s|$)/;
 const DEFAULT_RECORD_ALIAS = "record";
 const DEFAULT_GROUP_ALIAS = "group";
 
@@ -93,10 +96,12 @@ export function aliasesInScope(text: string, lineIndex: number): AliasInScope[] 
       const visible = frames.flatMap((f) => (f.alias ? [f.alias] : []));
       let alias: AliasInScope | null = null;
       if (name === "each" || name === "group") {
+        const by = name === "group" ? GROUP_BY.exec(rest)?.[1] : undefined;
         alias = {
           name: ALIAS_NAME.exec(rest)?.[1] ?? (name === "each" ? DEFAULT_RECORD_ALIAS : DEFAULT_GROUP_ALIAS),
           kind: name === "each" ? "record" : "group",
           recordType: sourceOf(rest, visible),
+          ...(by ? { by } : {}),
           ...(label ? { label } : {}),
         };
       }

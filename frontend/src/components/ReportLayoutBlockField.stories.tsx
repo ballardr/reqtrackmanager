@@ -87,6 +87,20 @@ export const TextThatAllowsPlaceholdersOffersTheNamesInScope: Story = {
   },
 };
 
+/** Inside a group the button reads "+ Field" and offers the group's name by what it groups by, so a heading can name its group. */
+export const AHeadingInAGroupOffersTheGroupsName: Story = {
+  args: { names: [{ name: "category", kind: "group", recordType: "requirement", by: "status" }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Insert a field into Heading" })).toHaveTextContent("Field");
+    await userEvent.click(canvas.getByRole("button", { name: "Insert a field into Heading" }));
+    const entry = await within(document.body).findByRole("button", { name: "Insert {{category.value}}" });
+    await expect(entry).toHaveTextContent("Group: Status");
+    await userEvent.click(entry);
+    await waitFor(() => expect(nodeOf(canvasElement).text).toBe("Hello{{category.value}}"));
+  },
+};
+
 /** A heading's words offer Bold and Italic, which wrap the selected words in the marks the server reads and store nothing else. */
 export const AHeadingTextOffersBoldAndItalicOverTheSelection: Story = {
   args: { initial: { type: "heading", text: "Draft copy" } },

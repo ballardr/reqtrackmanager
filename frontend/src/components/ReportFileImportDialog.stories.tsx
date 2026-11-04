@@ -43,6 +43,46 @@ export const PreviewThenImport: Story = {
   },
 };
 
+/** A finished import ends with OK; the file chosen earlier is applied work, so closing never asks to discard it. */
+export const AFinishedImportClosesWithOkAndNoPrompt: Story = {
+  play: async ({ args }) => {
+    const d = await dialog();
+    await choose(d);
+    await userEvent.click(d.getByRole("button", { name: "Preview" }));
+    await userEvent.click(await d.findByRole("button", { name: "Import 3 items" }));
+    await expect(await d.findByRole("status")).toHaveTextContent("3 items imported.");
+    await expect(d.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    await userEvent.click(d.getByRole("button", { name: "OK" }));
+    await expect(screen.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+    await waitFor(() => expect(args.onClose).toHaveBeenCalled());
+  },
+};
+
+/** The window's own close mark on a finished import behaves the same as OK. */
+export const TheCloseMarkOnAFinishedImportDoesNotPrompt: Story = {
+  play: async ({ args }) => {
+    const d = await dialog();
+    await choose(d);
+    await userEvent.click(d.getByRole("button", { name: "Preview" }));
+    await userEvent.click(await d.findByRole("button", { name: "Import 3 items" }));
+    await d.findByRole("status");
+    await userEvent.click(d.getByRole("button", { name: "Close" }));
+    await expect(screen.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+    await waitFor(() => expect(args.onClose).toHaveBeenCalled());
+  },
+};
+
+/** Before the import is applied the guard is kept: a chosen file is work that closing would lose. */
+export const ClosingAfterChoosingAFileStillAsks: Story = {
+  play: async ({ args }) => {
+    const d = await dialog();
+    await choose(d);
+    await userEvent.click(d.getByRole("button", { name: "Close" }));
+    await expect(await screen.findByText("Discard unsaved changes?")).toBeInTheDocument();
+    await expect(args.onClose).not.toHaveBeenCalled();
+  },
+};
+
 export const SkippingATakenNameLeavesItOut: Story = {
   args: { api: buildFileApi({ taken: ["Monthly status"] }) },
   play: async ({ args }) => {

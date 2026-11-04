@@ -67,7 +67,7 @@ export const ScopeIsWhatTheEnclosingBlocksProvide: Story = {
       nodes: [{ type: "group", source: { record_type: "requirement" }, by: "status", children: [{ type: "each", source: { group: "group" }, as: "r", children: [{ type: "text", text: "x" }] }] }],
     };
     await expect(namesInScope(grouped, ["nodes", 0, "children", 0, "children", 0], types)).toEqual([
-      { name: "group", kind: "group", recordType: "requirement" },
+      { name: "group", kind: "group", recordType: "requirement", by: "status" },
       { name: "r", kind: "record", recordType: "requirement" },
     ]);
   },

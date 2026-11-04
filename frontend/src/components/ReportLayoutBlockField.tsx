@@ -112,7 +112,7 @@ export function ReportLayoutBlockField({
   const hasPlaceholders = field.features.includes("placeholders");
   /** A [+] beside the title of a text field that takes `{{placeholders}}`: it opens the searchable field list and a choice closes it. */
   const insertPlus = hasPlaceholders && !disabled ? (
-    <AddPopoverButton label={text.insertFieldInto(field.label)}>
+    <AddPopoverButton label={text.insertFieldInto(field.label)} text={text.insertFieldButton}>
       {(close) => (
         <ReportLayoutFieldPicker
           catalogue={env.catalogue} aliases={names} onInsert={(snippet) => { setText(`${asText}${snippet}`); close(); }}

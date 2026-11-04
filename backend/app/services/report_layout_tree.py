@@ -196,6 +196,13 @@ BOOLEAN_KEYS = ("all", "any", "not")
 
 #: What a group exposes to `{{alias.value}}`, `{{alias.count}}` and conditions.
 GROUP_FIELDS: dict[str, str] = {"value": "text", "count": "number"}
+#: Other words accepted for a group's member, read as the member they name (the natural guess for the group's name).
+GROUP_MEMBER_SYNONYMS: dict[str, str] = {"name": "value"}
+
+
+def group_member(member: str) -> str:
+    """The group member `member` names: a synonym (`name`) read as `value`, any other word unchanged."""
+    return GROUP_MEMBER_SYNONYMS.get(member, member)
 
 #: The longest block name or display label.
 MAX_NAME_CHARS = 128
@@ -1157,10 +1164,11 @@ class TreeValidator:
             self.error(path, f'"{alias}" is not the name of an enclosing block. In scope: {", ".join(self.scope) or "nothing"}.')
             return None
         if binding.kind == "group":
-            if member not in GROUP_FIELDS:
-                self.error(path, f'A group has "value" and "count", not "{member}".')
+            known = group_member(member)
+            if known not in GROUP_FIELDS:
+                self.error(path, f'A group has "value" (also written "name") and "count", not "{member}".')
                 return None
-            return GROUP_FIELDS[member]
+            return GROUP_FIELDS[known]
         info = self.record_field(binding.record_type, member, path)
         return info.kind if info else None
 
@@ -1882,7 +1890,10 @@ def _validate_sheet(v: TreeValidator, node: dict[str, Any], path: str) -> None:
         v.columns(node.get("columns"), f"{path}.columns", record_type, aliases=aliases)
 
 
-_PLACEHOLDER_HELP = "Use {{record.field}} for a value and {{project_name}} for the project."
+_PLACEHOLDER_HELP = (
+    "Use {{record.field}} for a value and {{project_name}} for the project. Inside a Group, {{group.value}} is the group's name "
+    "(what its records share) and {{group.count}} its size, using the Group block's own Name; a nested group has its own."
+)
 #: Offered on every described block type: a name for the designer only, never printed or used in a placeholder.
 LABEL_FIELD = BlockField(
     "label", "Label", "text", max_length=MAX_NAME_CHARS, basic=True,
@@ -2290,7 +2301,8 @@ for _spec in (
 
 __all__ = [
     "BLOCK_SPECS", "BOOLEAN_KEYS", "IMAGE_COLUMN_FIELDS", "DEFAULT_GROUP_ALIAS", "DEFAULT_JOIN_ALIAS", "DEFAULT_RECORD_ALIAS", "GROUP_FIELDS",
-    "LABEL_FIELD", "LIST_OPERATORS", "MAX_COLUMNS", "MAX_CONDITION_DEPTH", "MAX_DEPTH", "MAX_JOINS", "MAX_NAME_CHARS", "MAX_NODES", "MAX_TREE_BYTES",
+    "GROUP_MEMBER_SYNONYMS", "group_member", "LABEL_FIELD",
+    "LIST_OPERATORS", "MAX_COLUMNS", "MAX_CONDITION_DEPTH", "MAX_DEPTH", "MAX_JOINS", "MAX_NAME_CHARS", "MAX_NODES", "MAX_TREE_BYTES",
     "MAX_WIDGET_REPORTS", "OPERATORS_BY_KIND", "PLACEHOLDER_RE", "TREE_SCHEMA_VERSION", "Binding", "BlockSpec",
     "InvalidLayoutError", "Ref", "TreeAnalysis", "TreeError", "TreeValidator", "assert_valid", "empty_tree",
     "literal_problem", "record_types_of", "register_block_spec", "tree_hash", "validate_tree",

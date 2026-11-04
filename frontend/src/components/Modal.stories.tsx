@@ -5,6 +5,7 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import { FormActions } from "./FormActions";
 import { Modal } from "./Modal";
 import { Popover } from "./Popover";
+import { ResultActions } from "./ResultActions";
 
 const meta: Meta<typeof Modal> = {
   title: "Components/Modal",
@@ -97,6 +98,47 @@ export const ChangedFormAsksAndKeepEditingKeepsTheChange: Story = {
     await userEvent.click(body.getByRole("button", { name: "Keep editing" }));
     await expect(body.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
     await expect(field).toHaveValue("Original edited");
+  },
+};
+
+/** A step that edited a field and then moved to a result view is settled: OK closes, with no prompt. */
+function FormThenResult({ onClose }: { onClose: () => void }) {
+  const [done, setDone] = useState(false);
+  return (
+    <Modal title="Import" onClose={onClose}>
+      {done ? (
+        <>
+          <ResultActions onOk={onClose} />
+          <p role="status">Imported.</p>
+        </>
+      ) : (
+        <>
+          <label className="stack">
+            File
+            <input className="input" defaultValue="" />
+          </label>
+          <FormActions onCancel={fn()} onSave={() => setDone(true)} saveLabel="Import" />
+        </>
+      )}
+    </Modal>
+  );
+}
+
+/** A result view ends with one OK and never asks to discard the earlier step's edits; the unfinished step still asks. */
+export const ResultViewClosesWithOkAndNoPrompt: Story = {
+  render: (args) => <FormThenResult onClose={args.onClose} />,
+  play: async ({ args }) => {
+    const body = within(document.body);
+    await userEvent.type(body.getByLabelText("File"), "reports.zip");
+    await userEvent.click(body.getByLabelText("Close"));
+    await expect(await body.findByText("Discard unsaved changes?")).toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "Keep editing" }));
+    await userEvent.click(body.getByRole("button", { name: "Import" }));
+    await expect(await body.findByText("Imported.")).toBeInTheDocument();
+    await expect(body.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    await userEvent.click(body.getByRole("button", { name: "OK" }));
+    await expect(body.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+    await expect(args.onClose).toHaveBeenCalledOnce();
   },
 };
 

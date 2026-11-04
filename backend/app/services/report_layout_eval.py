@@ -37,7 +37,8 @@ Design decisions:
   one parent it fetches for every record of that type read so far (`_Run.pool`), so the number of
   link queries follows the number of nested blocks, not the number of records.
 - Group order is by the group field's typed value (so dates and numbers sort as such), the empty
-  group last as `(none)`; a record with no value for a sort key sorts last in both directions.
+  group last as `(none)`; a record with no value for a sort key sorts last in both directions. Grouping by tags
+  puts a record in one group per tag (groups by tag name, alphabetical).
 - **Math is switched on where it is written or declared.** `\\( \\)` and `$$ $$` are recognised in the author's own
   text and in the value of a record field its provider marks math-capable (`ReportField.math`); a delimiter inside
   any other substituted value stays literal text, so a record's title cannot turn into an equation. Headings,
@@ -101,6 +102,7 @@ from app.services.report_layout_tree import (
     PLACEHOLDER_RE,
     ROW_ALIAS,
     assert_valid,
+    group_member,
 )
 from app.services.report_math import MathSegment, source_of, split_math, tex_problem, typeset
 from app.services.report_model import (
@@ -824,6 +826,19 @@ class _Run:
             return value or ""
         return format_value(self.catalogue(record.artefact_type)[key].kind, value)
 
+    def group_labels(self, record: ReportRecord, key: str) -> list[str]:
+        """The group labels a record falls under when grouped by `key`.
+
+        A single-valued field gives one label (`(none)` when empty). Tags give one label per tag, so a record with two
+        tags is in both groups (group counts then add up to more than the records); an untagged record is in `(none)`.
+        A tag name cannot contain a comma, so the joined text splits back into the names.
+        """
+        text = self.text_of(record, key)
+        if key == "tags":
+            names = list(dict.fromkeys(n for n in text.split(", ") if n))
+            return names or [EMPTY_GROUP_LABEL]
+        return [text or EMPTY_GROUP_LABEL]
+
     def resolve_sheet_links(self, offset: int) -> None:
         """Turns each linked cell into a link to the row its record has on the target sheet.
 
@@ -882,7 +897,7 @@ class _Run:
         if bound is None:
             return match.group(0), True
         if bound.kind == "group":
-            return (bound.label if member == "value" else str(len(bound.members))), False
+            return (bound.label if group_member(member) == "value" else str(len(bound.members))), False
         assert bound.record is not None
         math = member not in RESERVED_FIELD_KEYS and self.catalogue(bound.record.artefact_type)[member].math
         return self.text_of(bound.record, member), math
@@ -1521,10 +1536,11 @@ def _eval_group(run: _Run, node: dict[str, Any], scope: Scope) -> None:
     groups: dict[str, list[ReportRecord]] = {}
     for record in found.records:
         run.tick()
-        groups.setdefault(run.text_of(record, key) or EMPTY_GROUP_LABEL, []).append(record)
+        for label in run.group_labels(record, key):
+            groups.setdefault(label, []).append(record)
 
     def order(label: str) -> tuple[bool, Any]:
-        typed = run.sort_key(groups[label][0], key)
+        typed = None if key == "tags" else run.sort_key(groups[label][0], key)
         return label == EMPTY_GROUP_LABEL, (label.casefold() if typed is None else typed)
 
     for label in sorted(groups, key=order):
@@ -1542,8 +1558,9 @@ def _eval_if(run: _Run, node: dict[str, Any], scope: Scope) -> None:
             return matches_value(run.org_values[member], org_value_kind(member) or "text", when["op"], when.get("value"))
         bound = scope[alias]
         if bound.kind == "group":
-            actual: Any = bound.label if member == "value" else len(bound.members)
-            kind = "text" if member == "value" else "number"
+            is_value = group_member(member) == "value"
+            actual: Any = bound.label if is_value else len(bound.members)
+            kind = "text" if is_value else "number"
         else:
             assert bound.record is not None
             actual = run.raw(bound.record, member)

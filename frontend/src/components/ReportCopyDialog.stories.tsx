@@ -50,6 +50,10 @@ export const PreviewThenCopy: Story = {
     await expect(d.getByRole("link", { name: "Open Apollo's report setup" })).toHaveAttribute("href", "/projects/project-2/admin/reportSetup");
     await expect(args.onCopied).toHaveBeenCalled();
     await expect(d.queryByRole("button", { name: /^Copy / })).not.toBeInTheDocument();
+    await expect(d.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    await userEvent.click(d.getByRole("button", { name: "OK" }));
+    await expect(screen.queryByText("Discard unsaved changes?")).not.toBeInTheDocument();
+    await expect(args.onClose).toHaveBeenCalled();
   },
 };
 

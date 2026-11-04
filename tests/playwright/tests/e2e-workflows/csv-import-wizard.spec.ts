@@ -67,7 +67,7 @@ test.describe("CSV import wizard", () => {
       await modal.getByRole("button", { name: "Download error file" }).click();
       const errorFile = fs.readFileSync((await (await downloadPromise).path())!, "utf-8");
       expect(errorFile).toContain("ZZZ-NO-SUCH");
-      await modal.getByRole("button", { name: "Close", exact: true }).click();
+      await modal.getByRole("button", { name: "OK", exact: true }).click();
       await expect(modal).toHaveCount(0);
       await expect(page.getByText(rowOneTitle, { exact: true })).toBeVisible();
     });

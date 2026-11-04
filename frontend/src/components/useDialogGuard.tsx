@@ -9,8 +9,10 @@
  * "Unsaved" is the caller's `dirty` value when it passes one (compared by value against what was
  * opened). A dialog that holds a form (it renders `FormActions`) but passes none is measured from the
  * DOM: the values of its inputs, textareas, selects and rich-text fields are recorded at the first
- * interaction and compared at close, so an edit that is undone reads as clean. Dialogs without a form
- * (viewers, pickers, confirms) are never dirty and keep closing on the backdrop.
+ * interaction and compared at close, so an edit that is undone reads as clean. A dialog that has finished
+ * its work (a result view with `ResultActions`) is settled: it holds nothing unsaved whatever the earlier steps
+ * edited, so it closes without asking. Dialogs without a form (viewers, pickers, confirms) are never dirty and
+ * keep closing on the backdrop.
  *
  * Dependencies: `DiscardChangesDialog`; used by `Modal` and `SidePanel`.
  */
@@ -53,6 +55,7 @@ export function useDialogGuard(onClose: () => void, dirty?: boolean, dismissOnBa
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const baseline = useRef<string | null>(null);
   const [formCount, setFormCount] = useState(0);
+  const settled = useRef(0);
   const [asking, setAsking] = useState(false);
   const hasForm = formCount > 0;
   const measured = dirty === undefined && hasForm;
@@ -74,7 +77,15 @@ export function useDialogGuard(onClose: () => void, dirty?: boolean, dismissOnBa
     return () => events.forEach((name) => body.removeEventListener(name, record, true));
   }, [measured]);
 
+  const registerSettled = useCallback(() => {
+    settled.current += 1;
+    return () => {
+      settled.current -= 1;
+    };
+  }, []);
+
   const isDirty = useCallback((): boolean => {
+    if (settled.current > 0) return false;
     if (dirty !== undefined) return dirty;
     const body = bodyRef.current;
     return !!body && baseline.current !== null && readValues(body) !== baseline.current;
@@ -98,7 +109,7 @@ export function useDialogGuard(onClose: () => void, dirty?: boolean, dismissOnBa
   return {
     requestClose,
     backdropCloses: dismissOnBackdrop ?? !guarded,
-    frame: { bodyRef, registerForm },
+    frame: { bodyRef, registerForm, registerSettled },
     prompt: asking ? <DiscardChangesDialog onKeepEditing={() => setAsking(false)} onDiscard={onClose} /> : null,
   };
 }

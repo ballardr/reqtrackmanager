@@ -43,6 +43,7 @@ import {
 } from "../utils/recordImport";
 import { RequiredMark } from "./FieldHelp";
 import { FormActions } from "./FormActions";
+import { ResultActions } from "./ResultActions";
 import { InlineSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 
@@ -320,10 +321,9 @@ export function CsvImportWizard({
               ))}
             </ul>
             <p className="text-muted" style={{ margin: 0 }}>{strings.recordTables.errorFileHint}</p>
-            <FormActions
-              onCancel={onClose}
-              onSave={downloadErrors} saveLabel={strings.recordTables.downloadErrors}
-            />
+            <ResultActions onOk={onClose}>
+              <button className="btn" onClick={downloadErrors}>{strings.recordTables.downloadErrors}</button>
+            </ResultActions>
           </>
         )}
       </div>

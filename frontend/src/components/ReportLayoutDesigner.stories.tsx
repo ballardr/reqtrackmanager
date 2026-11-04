@@ -1158,7 +1158,8 @@ export const DiscardDraftAsksThenOpensTheLatestVersion: Story = {
     await expect(await body().findByText("Draft discarded.")).toBeInTheDocument();
     await expect(args.api.discardDraft).toHaveBeenCalledWith("layout-1");
     await waitFor(() => expect(canvas.queryByRole("note", { name: "Draft" })).not.toBeInTheDocument(), { timeout: TEXT_CHECKED_MS });
-    await expect((await editorOf(canvasElement)).value).toBe(LAYOUT_TEXT);
+    // The editor text follows the discard a render later; under load it lags the notice.
+    await waitFor(async () => expect((await editorOf(canvasElement)).value).toBe(LAYOUT_TEXT), { timeout: TEXT_CHECKED_MS });
   },
 };
 

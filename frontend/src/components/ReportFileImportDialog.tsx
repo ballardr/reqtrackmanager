@@ -24,12 +24,13 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { Badge } from "./Badge";
 import { FileField } from "./FormFields";
 import { FormActions } from "./FormActions";
+import { ResultActions } from "./ResultActions";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 
 /**
  * @param api The calls, bound to the organisation or project the file is imported into.
- * @param onClose Called by Cancel and Close.
+ * @param onClose Called by the close mark and OK.
  * @param onImported Called once an import has been applied, so the list behind can reload.
  */
 export function ReportFileImportDialog({
@@ -80,7 +81,7 @@ export function ReportFileImportDialog({
     return (
       <Modal title={text.importTitle} onClose={onClose}>
         <div className="stack">
-          <FormActions onCancel={onClose} cancelLabel={text.close} />
+          <ResultActions onOk={onClose} />
           <p role="status" style={{ margin: 0 }}>{text.done(created)}{left > 0 && ` ${text.doneLeft(left)}`}</p>
           <ItemList items={result.items} />
           {result.warnings.map((warning) => <p key={warning} className="text-muted" style={{ margin: 0 }}>{warning}</p>)}

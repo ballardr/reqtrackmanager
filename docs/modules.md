@@ -1360,8 +1360,11 @@ flowchart LR
 - **Sources.** A block reads records from `{record_type}` (all of a type in the report's projects),
   `{record_type, linked_from: alias, link_types?, direction?}` (records linked to a surrounding record; link types are
   named, forward or reverse, so a layout moves between projects) or `{group: alias}` (a group's members), plus
-  `where`, `sort` and `include_archived`. `group` buckets records by a field; `{{group.value}}` and `{{group.count}}`
-  are its values.
+  `where`, `sort` and `include_archived`. `group` buckets records by a field; `{{group.value}}` (also written `{{group.name}}`) and `{{group.count}}`
+  are its values, and a nested group is reached by its own `as` name (`{{comp.value}} - {{cat.value}}`). A record
+  falls into one group, except when grouping by `tags`, where it falls into one group per tag (an untagged record
+  into `(none)`), so counts can add up to more than the records. The designer's [+ Field] menu and Fields tab list
+  the group's entries as "Group: <field grouped by>" and "Group: count".
 - **Sheets (table family).** A `sheet` is a root source plus up to five left `joins` along links
   (`{as, source: {record_type, linked_from}}`); a column names the record it reads with `from`. One row per
   combination, blank cells where nothing is linked, so nothing drops out of an export.

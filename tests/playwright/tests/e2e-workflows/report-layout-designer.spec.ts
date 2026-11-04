@@ -509,7 +509,7 @@ test.describe("Report layout designer", () => {
       await dialog.getByRole("textbox", { name: "Header, centre cell" }).fill("{{report_title}}");
       await dialog.getByRole("combobox", { name: "Footer: print" }).selectOption("custom");
       // The page fields come from the cell's [+] menu (the server's catalogue names none), in plain words, written into that cell.
-      await dialog.getByRole("button", { name: "Insert placeholder into footer, right cell" }).click();
+      await dialog.getByRole("button", { name: "Insert field into footer, right cell" }).click();
       await page.getByRole("menuitem", { name: /^Page X of Y/ }).click();
       await expect(dialog.getByRole("textbox", { name: "Footer, right cell" })).toHaveValue("Page {{page}} of {{pages}}");
       await expect(dialog.getByText("Prints as: Page 3 of 12")).toBeVisible();

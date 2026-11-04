@@ -17,7 +17,7 @@ export const AliasesComeFromTheOpenBlocksOnly: Story = {
   play: async () => {
     const text = "@group requirement by status as grp\n  @each in grp as req\n    x\n  @end\n  y\n@end\nz\n";
     await expect(aliasesInScope(text, 2)).toEqual([
-      { name: "grp", kind: "group", recordType: "requirement" },
+      { name: "grp", kind: "group", recordType: "requirement", by: "status" },
       { name: "req", kind: "record", recordType: "requirement" },
     ]);
     // After the inner @end only the group is open; after the last @end nothing is.
@@ -122,7 +122,7 @@ export const HyphenatedNamesAndLabelsAreReadFromTheText: Story = {
   play: async () => {
     const text = '@label "Per \\"item\\""\n@group requirement by status as by-status\n  @each in by-status as one-req\n    x\n  @end\n@end\n';
     await expect(aliasesInScope(text, 3)).toEqual([
-      { name: "by-status", kind: "group", recordType: "requirement", label: 'Per "item"' },
+      { name: "by-status", kind: "group", recordType: "requirement", by: "status", label: 'Per "item"' },
       { name: "one-req", kind: "record", recordType: "requirement" },
     ]);
     // A label belongs to the next block only; a malformed one is ignored.

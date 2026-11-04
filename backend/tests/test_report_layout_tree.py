@@ -381,7 +381,15 @@ def test_a_group_has_only_value_and_count():
         {"type": "text", "text": "{{g.value}} {{g.count}} {{g.title}}"},
     ]}
     found = errors(doc(group))
-    assert list(found) == ["nodes[0].children[0].text"] and 'has "value" and "count"' in found["nodes[0].children[0].text"]
+    assert list(found) == ["nodes[0].children[0].text"] and 'has "value" (also written "name") and "count"' in found["nodes[0].children[0].text"]
+
+
+def test_a_group_name_is_accepted_as_its_value():
+    group = {"type": "group", "source": {"record_type": REQ}, "by": "title", "as": "g", "children": [
+        {"type": "text", "text": "{{g.name}} {{g.value}} {{g.count}}"},
+        {"type": "if", "when": {"ref": "g.name", "op": "eq", "value": "x"}, "children": []},
+    ]}
+    assert errors(doc(group)) == {}
 
 
 def test_an_if_checks_its_reference_and_operator():

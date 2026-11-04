@@ -68,7 +68,7 @@ export const OwnTextFillsTheThreeCells: Story = {
 
 /** Opens a cell's [+] placeholder menu and returns it. */
 const openPlaceholders = async (view: ReturnType<typeof within>, kind: "Header" | "Footer", cell: "left" | "centre" | "right") => {
-  await userEvent.click(view.getByRole("button", { name: `Insert placeholder into ${kind.toLowerCase()}, ${cell} cell` }));
+  await userEvent.click(view.getByRole("button", { name: `Insert field into ${kind.toLowerCase()}, ${cell} cell` }));
   return within(await within(document.body).findByRole("menu"));
 };
 
@@ -110,7 +110,7 @@ export const EscapeClosesThePlaceholderMenuOnItsButton: Story = {
     await openPlaceholders(view, "Footer", "left");
     await userEvent.keyboard("{Escape}");
     await waitFor(() => expect(within(document.body).queryByRole("menu")).toBeNull());
-    await expect(view.getByRole("button", { name: "Insert placeholder into footer, left cell" })).toHaveFocus();
+    await expect(view.getByRole("button", { name: "Insert field into footer, left cell" })).toHaveFocus();
   },
 };
 

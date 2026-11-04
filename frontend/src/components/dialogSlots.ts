@@ -13,6 +13,8 @@ export interface DialogSlots {
   error: HTMLElement | null;
   /** Called (in an effect) by a `FormActions` mounted in the dialog; returns the cleanup. Marks the dialog as a form. */
   registerForm?: () => () => void;
+  /** Called by a `ResultActions` mounted in the dialog: while one is mounted the dialog holds nothing unsaved. */
+  registerSettled?: () => () => void;
 }
 
 export const DialogSlotContext = createContext<DialogSlots | null>(null);

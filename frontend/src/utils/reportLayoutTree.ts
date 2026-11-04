@@ -34,6 +34,8 @@ export interface NameInScope {
   kind: "record" | "group";
   /** The record type of the record, or of the group's members; `null` when it could not be told. */
   recordType: string | null;
+  /** For a group, the field it groups by, so the picker can say what the group's value is. */
+  by?: string;
   /** The block's display label, when it has one (designer only; the name is what a placeholder uses). */
   label?: string;
 }
@@ -156,7 +158,8 @@ export function namesInScope(tree: Tree, addr: NodeAddr, types: BlockType[]): Na
     const given = node[provides.key];
     const name = typeof given === "string" && given !== "" ? given : provides.default;
     const label = typeof node.label === "string" && node.label !== "" ? node.label : undefined;
-    names.push({ name, kind: provides.kind, recordType: sourceRecordType(node.source, names), ...(label ? { label } : {}) });
+    const by = provides.kind === "group" && typeof node.by === "string" && node.by !== "" ? node.by : undefined;
+    names.push({ name, kind: provides.kind, recordType: sourceRecordType(node.source, names), ...(by ? { by } : {}), ...(label ? { label } : {}) });
   }
   return names;
 }

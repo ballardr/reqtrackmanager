@@ -23,8 +23,6 @@ import { placeholder, type AliasInScope } from "../utils/reportLayoutText";
 import { nameText } from "../utils/reportLayoutTree";
 import { TextField } from "./FormFields";
 
-/** What a group exposes, labelled; kinds come from the catalogue's `group_fields`. */
-const GROUP_FIELD_LABEL: Record<string, string> = { value: "Value", count: "Count" };
 /** The source filter's value for the report and project placeholders. */
 const SOURCE_GLOBAL = "\u0000global";
 const SOURCE_ALL = "";
@@ -40,6 +38,8 @@ interface Entry {
   source: string;
   /** Where it comes from, in words. */
   from: string;
+  /** What it prints, for the entries whose label does not say (a group's value and count). */
+  note?: string;
 }
 
 /** A readable label for a global placeholder name (`project_description` becomes "Project description"). */
@@ -66,13 +66,19 @@ export function ReportLayoutFieldPicker({
     }));
     // Innermost name first: it is the one most likely wanted at the caret.
     for (const alias of [...aliases].reverse()) {
+      const type = catalogue.types.find((t) => t.type === alias.recordType);
       if (alias.kind === "group") {
+        // A group's value is the field it groups by, so the entry says which field (the group's own name is only an alias).
+        const byLabel = alias.by ? type?.fields.find((f) => f.key === alias.by)?.label ?? alias.by : undefined;
         for (const [key, kind] of Object.entries(catalogue.group_fields)) {
-          out.push({ text: placeholder(alias.name, key), label: GROUP_FIELD_LABEL[key] ?? key, kind, math: false, source: alias.name, from: `${nameText(alias)} (${text.fieldsGroup})` });
+          out.push({
+            text: placeholder(alias.name, key), label: key === "count" ? text.fieldsGroupCount : text.fieldsGroupValue(byLabel), kind, math: false,
+            source: alias.name, from: `${nameText(alias)} (${text.fieldsGroup})`,
+            note: key === "count" ? text.fieldsGroupCountNote : text.fieldsGroupValueNote,
+          });
         }
         continue;
       }
-      const type = catalogue.types.find((t) => t.type === alias.recordType);
       for (const field of type?.fields ?? []) {
         out.push({
           text: placeholder(alias.name, field.key), label: field.label, kind: field.kind, math: field.math === true, source: alias.name,
@@ -116,7 +122,7 @@ export function ReportLayoutFieldPicker({
                 <button type="button" className="btn btn-sm" aria-label={text.fieldInsert(entry.text)} onClick={() => onInsert(entry.text)}>
                   {entry.label}
                 </button>
-                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{entry.from}</span>
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{entry.note ? `${entry.from}. ${entry.note}` : entry.from}</span>
               </span>
               <span className="text-muted" style={{ fontSize: "0.8rem" }}>
                 {entry.kind === null ? entry.text : entry.math ? `${entry.kind}, ${text.fieldsMath}` : entry.kind}

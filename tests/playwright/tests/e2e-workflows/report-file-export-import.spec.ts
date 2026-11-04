@@ -108,7 +108,10 @@ test.describe("Export and import reports as a file", () => {
       await expect(dialog.getByRole("status")).toContainText("3 items imported.");
       expect(await ownNames(request, target.headers, target.project.id, "layouts")).toEqual([names.layout, names.taken, `${names.taken} (copy)`].sort());
       expect(await ownNames(request, target.headers, target.project.id, "packs")).toEqual([names.pack]);
-      await dialog.getByRole("button", { name: "Close" }).click();
+      await expect(dialog.getByRole("button", { name: "Cancel" })).toHaveCount(0);
+      await dialog.getByRole("button", { name: "OK", exact: true }).click();
+      await expect(page.getByText("Discard unsaved changes?")).toHaveCount(0);
+      await expect(dialog).toHaveCount(0);
       const grid = await searchReportSetup(page, suffix);
       await expect(grid.getByRole("button", { name: new RegExp(`^${names.layout}`) })).toBeVisible();
     });
@@ -139,5 +142,26 @@ test.describe("Export and import reports as a file", () => {
     await importer.getByRole("button", { name: "Preview" }).click();
     await expect(importer.getByText(/not a report file/i)).toBeVisible();
     expect(await ownNames(request, source.headers, source.project.id, "layouts")).toEqual([names.layout, names.taken].sort());
+  });
+
+  test("closing an import before it is applied asks to discard the chosen file", async ({ page, request }) => {
+    const { source } = await setup(request);
+    const chosen = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "report-file-")), "reports.zip");
+    fs.writeFileSync(chosen, "any file the person has picked");
+    await loginAs(page, source.email, PASSWORD);
+    await page.goto(`/projects/${source.project.id}/admin`);
+    await selectProjectAdminGroup(page, "Reports");
+    await page.getByRole("button", { name: "New", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Import from file…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Import reports from a file" });
+    await dialog.getByLabel("Report file").focus(); // a person reaches the field first; the guard measures from that moment
+    await dialog.getByLabel("Report file").setInputFiles(chosen);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByText("Discard unsaved changes?")).toBeVisible();
+    await page.getByRole("button", { name: "Keep editing" }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await page.getByRole("button", { name: "Discard changes" }).click();
+    await expect(dialog).toHaveCount(0);
   });
 });

@@ -53,3 +53,13 @@ export const DisabledWhenNothingToAdd: Story = {
 export const LightTheme: Story = { ...OpensAFormAndCloses, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...OpensAFormAndCloses, globals: { theme: "dark" } };
 
+
+/** With `text` the button says what it adds ("+ Field") and still has the same accessible name. */
+export const ShowsAWordBesideThePlus: Story = {
+  args: { label: "Insert a field into Text", text: "Field" },
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Insert a field into Text" });
+    await expect(trigger).toHaveTextContent("Field");
+    await expect(trigger).not.toHaveClass("btn-icon");
+  },
+};

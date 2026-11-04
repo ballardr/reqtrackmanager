@@ -88,6 +88,18 @@ export const NothingMatchingTheSearchSaysSo: Story = {
   },
 };
 
+/** A group's entries say what it is grouped by ("Group: Status"), not just "Value", with a line saying what it prints. */
+export const AGroupsEntriesNameWhatItIsGroupedBy: Story = {
+  args: { aliases: aliasesInScope("@group requirement by status as grp\n\n@end\n", 1) },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Insert {{grp.value}}" })).toHaveTextContent("Group: Status");
+    await expect(canvas.getByRole("button", { name: "Insert {{grp.count}}" })).toHaveTextContent("Group: count");
+    await userEvent.click(canvas.getByRole("button", { name: "Insert {{grp.value}}" }));
+    await expect(args.onInsert).toHaveBeenCalledWith("{{grp.value}}");
+  },
+};
+
 export const InsideAGroupOffersValueAndCount: Story = {
   args: { aliases: aliasesInScope("@group requirement by status as grp\n\n@end\n", 1) },
   play: async ({ canvasElement, args }) => {

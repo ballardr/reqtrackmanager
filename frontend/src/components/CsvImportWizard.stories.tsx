@@ -182,7 +182,7 @@ export const FailedRowsOfferAnErrorFile: Story = {
     await expect(await modal.findByText("Row 3: Unknown component 'ZZZ'.")).toBeInTheDocument();
     await expect(modal.getByRole("button", { name: "Download error file" })).toBeEnabled();
     await expect(args.onClose).not.toHaveBeenCalled();
-    await userEvent.click(modal.getByRole("button", { name: "Close" }));
+    await userEvent.click(modal.getByRole("button", { name: "OK" }));
     await expect(args.onClose).toHaveBeenCalledOnce();
   },
 };

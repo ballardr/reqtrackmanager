@@ -269,6 +269,17 @@ def test_a_record_value_never_becomes_markup_or_a_placeholder(world, db):
     assert not any(isinstance(b, Heading) and b.text != hostile for b in blocks)
 
 
+def test_a_group_value_from_a_user_typed_field_never_becomes_markup_or_a_placeholder(world, db):
+    project = world.project("Group Inject P")
+    hostile = "# Boom {{project_name}} <b>x</b> - item"
+    tag_record(world, project, requirement(world, project, "One"), hostile)
+    tree = doc({"type": "group", "source": {"record_type": REQ}, "by": "tags", "children": [
+        {"type": "heading", "text": "{{group.value}}"}, {"type": "text", "text": "{{group.name}}"},
+    ]})
+    blocks = [b for b in run(db, world, project, tree).document.blocks if not isinstance(b, Gap)]
+    assert blocks == [Heading(hostile, 1), Paragraph(hostile)]
+
+
 def test_a_title_that_looks_like_a_placeholder_is_not_substituted_again(world, db):
     project = world.project("Twice P")
     requirement(world, project, "{{project_name}}")
@@ -352,6 +363,58 @@ def test_groups_are_ordered_and_the_empty_group_comes_last(world, db):
         {"type": "text", "text": "{{group.value}}={{group.count}}"},
     ]})
     assert lines(run(db, world, project, by_component).document) == ["P Alpha=1", "P Software=1"]
+
+
+def tag_record(world: World, project: dict, req: uuid.UUID, *names: str) -> None:
+    for name in names:
+        resp = world.client.post(
+            f"/api/v1/projects/{project['id']}/artefacts/{REQ}/{req}/tags", json={"name": name}, headers=auth_headers(world.token),
+        )
+        assert resp.status_code == 201, resp.text
+
+
+def test_a_heading_inside_a_group_names_it_and_a_nested_heading_names_both(world, db):
+    project = world.project("Heading P")
+    hardware, reliability = component_and_category(world, project, "Hardware", "Reliability")
+    requirement(world, project, "Disk fails", hardware, reliability)
+    requirement(world, project, "Search is wrong")
+    tree = doc({"type": "group", "as": "comp", "by": "component", "source": {"record_type": REQ}, "children": [
+        {"type": "group", "as": "cat", "by": "category", "source": {"group": "comp"}, "children": [
+            {"type": "heading", "level": 3, "text": "{{comp.value}} - {{cat.value}} ({{cat.count}})"},
+            {"type": "table", "source": {"group": "cat"}, "columns": [{"field": "title"}]},
+        ]},
+    ]})
+    assert lines(run(db, world, project, tree).document) == [
+        "H3 Hardware - Reliability (1)", "T Title :: Disk fails", "H3 Software - Performance (1)", "T Title :: Search is wrong",
+    ]
+
+
+def test_a_groups_name_may_be_written_name_and_means_value(world, db):
+    project = world.project("Synonym P")
+    hardware, reliability = component_and_category(world, project, "Hardware", "Reliability")
+    requirement(world, project, "Disk fails", hardware, reliability)
+    tree = doc({"type": "group", "as": "comp", "by": "component", "source": {"record_type": REQ}, "children": [
+        {"type": "if", "when": {"ref": "comp.name", "op": "eq", "value": "Hardware"},
+         "children": [{"type": "text", "text": "{{comp.name}}={{comp.value}}={{comp.count}}"}]},
+    ]})
+    assert lines(run(db, world, project, tree).document) == ["P Hardware=Hardware=1"]
+    with pytest.raises(InvalidLayoutError, match='"value" \\(also written "name"\\) and "count"'):
+        run(db, world, project, doc({"type": "group", "as": "comp", "by": "component", "source": {"record_type": REQ}, "children": [
+            {"type": "text", "text": "{{comp.title}}"},
+        ]}))
+
+
+def test_grouping_by_tags_makes_one_group_per_tag_and_untagged_records_come_last(world, db):
+    project = world.project("Tag Group P")
+    both = requirement(world, project, "Both")
+    only = requirement(world, project, "Only beta")
+    requirement(world, project, "Neither")
+    tag_record(world, project, both, "alpha", "beta")
+    tag_record(world, project, only, "beta")
+    tree = doc({"type": "group", "source": {"record_type": REQ}, "by": "tags", "children": [
+        {"type": "text", "text": "{{group.value}}={{group.count}}"},
+    ]})
+    assert lines(run(db, world, project, tree).document) == ["P alpha=1", "P beta=2", f"P {EMPTY_GROUP_LABEL}=1"]
 
 
 def test_if_chooses_a_branch_on_a_field_and_on_a_groups_count(world, db):

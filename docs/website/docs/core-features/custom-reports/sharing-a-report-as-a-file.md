@@ -32,7 +32,7 @@ The file holds the layouts and packs, the pictures the layouts use and a pack's 
 1. In **Reports**, choose **New**, then **Import from file…**, and pick the file.
 2. Choose what happens when a report with the same name already exists: **import under a new name** ("Name (copy)") or **skip it**. Nothing is ever replaced.
 3. Choose **Preview**. Each layout and pack is listed with what will happen, its number of versions and warnings: a pack that names a layout neither in the file nor here, a module that is off in the project, pictures that will be added to the library. A layout with no version that is valid here (for example it names a colour your organisation's scheme does not have) is listed as **Cannot be imported**, with the first problem.
-4. Choose **Import**. The reports are new, owned by this project (or the organisation, when imported on the organisation's page) and authored by you; the dialog says how many were imported and how many left out.
+4. Choose **Import**. The reports are new, owned by this project (or the organisation, when imported on the organisation's page) and authored by you; the dialog says how many were imported and how many left out. Choose **OK** to close it.
 
 | Part | Behaviour |
 | --- | --- |

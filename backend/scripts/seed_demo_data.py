@@ -496,6 +496,30 @@ def create_artefact_link(
     return r.json()
 
 
+REQUIREMENTS_BY_COMPONENT_AND_CATEGORY_LAYOUT = {
+    "schema_version": 1, "family": "document", "orientation": "portrait",
+    "nodes": [
+        {"type": "heading", "text": "{{report_title}}"},
+        {
+            "type": "group", "source": {"record_type": "requirement"}, "by": "component", "as": "comp",
+            "children": [
+                {
+                    "type": "group", "source": {"group": "comp"}, "by": "category", "as": "cat",
+                    "children": [
+                        {"type": "heading", "level": 2, "text": "{{comp.value}} - {{cat.value}} ({{cat.count}})"},
+                        {
+                            "type": "table", "source": {"group": "cat", "sort": [{"field": "title"}]},
+                            "columns": [{"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"}],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}
+"""Nested groups: a heading above each category's table that names both groups (`{{comp.value}} - {{cat.value}}`)."""
+
+
 REQUIREMENTS_BY_COMPONENT_LAYOUT = {
     "schema_version": 1, "family": "document", "orientation": "portrait",
     "nodes": [
@@ -2325,6 +2349,11 @@ def main() -> None:
         h_pm, f"/orgs/{org['id']}", "Requirements handbook (with contents)",
         "Requirements by component, with a table of contents that links to each component.", REQUIREMENTS_HANDBOOK_LAYOUT,
         folder="Handover/Requirements",
+    )
+    create_report_layout(
+        h_pm, f"/orgs/{org['id']}", "Requirements by component and category",
+        "A heading above each category's table that names its component and category.",
+        REQUIREMENTS_BY_COMPONENT_AND_CATEGORY_LAYOUT, folder="Handover/Requirements",
     )
     design_formulae = create_report_layout(
         h_pm, f"/orgs/{org['id']}", "Design formulae", "Equations in a text block and as blocks of their own.", DESIGN_FORMULAE_LAYOUT,

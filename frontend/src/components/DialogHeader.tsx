@@ -23,10 +23,11 @@ import { DialogSlotContext } from "./dialogSlots";
 
 const strings = t();
 
-/** What `useDialogGuard` hands the frame: the body to watch for edits and the form-presence hook. */
+/** What `useDialogGuard` hands the frame: the body to watch for edits, the form-presence hook and the settled hook. */
 export interface DialogGuardFrame {
   bodyRef: RefObject<HTMLDivElement | null>;
   registerForm: () => () => void;
+  registerSettled: () => () => void;
 }
 
 /**
@@ -44,7 +45,8 @@ export function DialogFrame({
   const [actions, setActions] = useState<HTMLElement | null>(null);
   const [error, setError] = useState<HTMLElement | null>(null);
   const registerForm = guard?.registerForm;
-  const slots = useMemo(() => ({ actions, error, registerForm }), [actions, error, registerForm]);
+  const registerSettled = guard?.registerSettled;
+  const slots = useMemo(() => ({ actions, error, registerForm, registerSettled }), [actions, error, registerForm, registerSettled]);
 
   return (
     <DialogSlotContext.Provider value={slots}>

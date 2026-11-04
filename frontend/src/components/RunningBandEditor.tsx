@@ -188,7 +188,7 @@ export function RunningBandEditor({
                           <>
                             <ActionMenu
                               triggerLabel={text.insertInto(title, cell)} items={menuItems(slot)} icon={<Plus size={14} aria-hidden="true" />}
-                              size="sm" footer={text.insertFooter}
+                              size="sm" footer={text.insertFooter} triggerText={text.insertFieldButton}
                             />
                             <MarkButtons
                               nameOf={(name) => text.markCellAria(title, cell, name)}

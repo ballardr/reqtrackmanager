@@ -107,6 +107,7 @@ const itemKeyOf = (item: ActionMenuItem, index: number): string =>
  *   menu's own actions, such as an export, is already in flight).
  * @param footer - Muted text under the items.
  * @param icon - The trigger's picture in place of the kebab.
+ * @param triggerText - A word beside the icon, for a trigger that must say what it opens.
  * @param size - `sm` for a trigger that sits beside a field's title (the placeholder menu); `md` (default) otherwise.
  */
 export function ActionMenu({
@@ -116,6 +117,7 @@ export function ActionMenu({
   footer,
   icon,
   size = "md",
+  triggerText,
 }: {
   triggerLabel: string;
   items: ActionMenuItem[];
@@ -125,6 +127,8 @@ export function ActionMenu({
   /** The trigger's picture when the menu is about one thing (Snippets) and not "more actions"; the kebab when omitted. */
   icon?: ReactNode;
   size?: "sm" | "md";
+  /** A word shown beside the icon ("+ Field") for a trigger that must say what it opens; the accessible name stays `triggerLabel`. */
+  triggerText?: string;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -134,7 +138,7 @@ export function ActionMenu({
       <button
         ref={triggerRef}
         type="button"
-        className={size === "sm" ? "btn btn-sm btn-icon" : "btn btn-icon"}
+        className={`btn${size === "sm" ? " btn-sm" : ""}${triggerText ? "" : " btn-icon"}`}
         aria-label={triggerLabel}
         title={triggerLabel}
         aria-haspopup="menu"
@@ -143,6 +147,7 @@ export function ActionMenu({
         onClick={() => setOpen((o) => !o)}
       >
         {icon ?? <MoreVertical />}
+        {triggerText && <span style={{ marginLeft: "var(--space-1)" }}>{triggerText}</span>}
       </button>
       {open && (
         <Popover anchorRef={triggerRef} fit title={triggerLabel} onClose={() => setOpen(false)}>

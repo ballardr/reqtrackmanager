@@ -29,6 +29,7 @@ import { copyCount } from "../utils/reportCopySelection";
 import { Badge } from "./Badge";
 import { CheckboxField } from "./FormFields";
 import { FormActions } from "./FormActions";
+import { ResultActions } from "./ResultActions";
 import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 
@@ -106,7 +107,7 @@ export function ReportCopyDialog({
     return (
       <Modal title={text.title(total)} onClose={onClose}>
         <div className="stack">
-          <FormActions onCancel={onClose} cancelLabel={text.close} />
+          <ResultActions onOk={onClose} />
           <p role="status" style={{ margin: 0 }}>
             {text.done(created, targetName)}{left > 0 && ` ${text.doneSkipped(left)}`}
             {result.favourites_carried > 0 && ` ${text.favouritesCarried(result.favourites_carried)}`}
