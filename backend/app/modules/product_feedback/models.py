@@ -16,6 +16,8 @@ Product Feedback's data model:
   kit works over them).
 - `EnhancementRequestMerge` — the recorded history of merging a duplicate into a canonical request; what
   makes a merge reversible and what demand is unioned over.
+- `EnhancementRequestInformed` — a record that one requester (a Stakeholder or Persona) has been told the outcome
+  of a delivered or declined request; what the close-the-loop list is built from.
 - `ProjectFeedbackSettings` — one optional row per project holding who may submit. Absence
   means the default policy (`SubmissionPolicy.MEMBERS`).
 
@@ -247,6 +249,34 @@ class EnhancementRequestMerge(UUIDPKMixin, TimestampMixin, Base):
     merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     unmerged_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     unmerged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EnhancementRequestInformed(UUIDPKMixin, TimestampMixin, Base):
+    """A requester told the outcome of a request.
+
+    The party is a Stakeholder or Persona of another module, so it is a `(party_type, party_id)` pair with no
+    foreign key (as `ArtefactLink` does); it is matched against the request's current requesters on every read,
+    so a row for a party that has stopped being one (a link removed, a merge ended) is ignored, and returns to
+    counting if the party comes back.
+
+    Attributes:
+        request_id: The request (the canonical one when the party asked through a merged duplicate).
+        party_type / party_id: The requester record.
+        informed_by / informed_at: Who recorded it, and when (UTC).
+        note: Optional free text (how or by whom they were told).
+    """
+
+    __tablename__ = "enhancement_request_informed"
+    __table_args__ = (UniqueConstraint("request_id", "party_type", "party_id", name="uq_enhancement_request_informed_party"),)
+
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enhancement_requests.id", ondelete="CASCADE"), index=True
+    )
+    party_type: Mapped[str] = mapped_column(String(64))
+    party_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    informed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    informed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str] = mapped_column(Text, default="")
 
 
 class ProjectFeedbackSettings(UUIDPKMixin, TimestampMixin, Base):

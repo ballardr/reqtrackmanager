@@ -1731,9 +1731,11 @@ Model: a **request** is a *solution* someone wants; a Pain Point is the *problem
 
 Read workflow: `product_feedback_list_requests` (filter `status`, `open_only`, `search`), then `product_feedback_get_request` for detail and `allowed_next_statuses`; `product_feedback_list_request_versions` for history and `product_feedback_list_request_comments` for the discussion. `product_feedback_get_feedback_settings` says who may submit in the project.
 
-Write workflow: `create_request` (only a title is needed) -> `update_request` (owner, description, external reference) -> `transition_request`. Link a request to the Pain Point it addresses and the Requirement that realises it with the core link tools.
+Write workflow: `create_request` (only a title is needed) -> `update_request` (owner, description, external reference) -> `transition_request`. Link it to the Pain Point it addresses and the Requirement that realises it with the core link tools (see Problem and delivery).
 
 Demand: record who asked by linking the request to a Stakeholder, a Persona or an Engagement with the core link tools (link type `Requested by`). `product_feedback_get_request_demand` returns the distinct requesters (an Engagement counts its participants and covered personas; someone reached twice counts once), the count and the weighted demand (a Stakeholder's Influence level, a Persona's weight; unweighted counts 1). `get_request` and `list_requests` carry `requester_count` and `weighted_demand`. Duplicates: `merge_request` marks a request a duplicate of another (same project, still open) and adds its requesters to the canonical request's demand; `unmerge_request` restores it. A request in a merge cannot be moved out of the inbox.
+
+Problem and delivery: link a request to the Pain Point it answers (link type `Addresses`) and to the Requirement that delivers it (`Realised by`) with the core link tools; `get_request` carries `pain_point_count` and `requirement_count`, and a request with `pain_point_count` 0 is flagged as a solution with no stated problem (a warning, never a block). An Engagement that evidenced the request is a `Requested by` link to that Engagement. Closing the loop: when a request is `delivered` or `declined`, `product_feedback_get_request_close_the_loop` lists its requesters and whether each was told; `product_feedback_list_open_loops` lists every closed request with someone still to tell. Nothing is sent to anyone: tell the person by your usual means, then `mark_requesters_informed` (409 until the request is delivered or declined; `informed=false` withdraws). `suggest_delivered` is only a prompt that an accepted request's Requirements are all complete; moving it to `delivered` stays a person's decision.
 
 Scoring: a request holds an optional level per axis in `levels` (`{"impact": <level id>, "effort": null}`: an axis set to `null` is cleared, one not mentioned is kept). Axes: **Reach, Impact, Confidence, Ease** (higher is easier), **Effort** (a higher level lowers a RICE score) and **Demand** (derived from the requesters; set a level by hand only to override it, `derived_levels` shows what it resolved to). Find the ids with `product_feedback_get_request_scoring_scheme` (or `get_inbox_scoring_scheme`). Scores are derived, never written: **ICE** is Impact x Confidence x Ease, **RICE** is Reach x Impact x Confidence / Effort, **rice_demand** replaces Reach with Demand. `get_request` and `list_requests` return `scores` (model key to `raw`, `normalised`, band `label`) for the project's enabled models, or those named by `scoring_model` (comma-separated, the first is the primary shown as `score`); a score is null until every manual axis the model needs has a level. To find work to do, filter `list_requests` with `scored=unscored` (or `missing_axis=ease`). Reach is a manual level, separate from the derived demand; compare the two, do not substitute one for the other. Scores of different models are not comparable. The organisation and each project may add their own axes (keys `c_...`) and models (keys `m_...`: a product with divisors and exponents, or a weighted sum), and hide the built-in ones: the scheme tools return exactly what this project can use, with each criterion's `origin`, so read it before choosing an axis or model; a request cannot take a level on an axis its project cannot see. Defining or hiding criteria is done in the app by an administrator, not through these tools.
 
@@ -1784,6 +1786,18 @@ Who asked for a request: distinct requesters (Stakeholders and Personas, includi
 
 Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
 
+#### `product_feedback_get_request_close_the_loop` (read)
+
+What became of a request and who has been told: each requester with whether they were told the outcome, the Pain Points it addresses, the Requirements that realise it, and suggest_delivered (an accepted request whose requirements are all complete). Link Pain Points ('Addresses') and Requirements ('Realised by') with the core link tools.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
+
+#### `product_feedback_list_open_loops` (read)
+
+Lists the project's delivered or declined requests that still have requesters who have not been told the outcome, with those requesters.
+
+Parameters: `project_id*` (uuid, in path)
+
 #### `product_feedback_list_request_merges` (read)
 
 Lists the merges a request took part in (as canonical or duplicate), active and ended.
@@ -1825,6 +1839,12 @@ Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `canon
 Reverses a merge: the duplicate returns to the status it had. Needs the Feedback Triager role.
 
 Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
+
+#### `product_feedback_mark_requesters_informed` (write)
+
+Records that requesters were told the outcome of a delivered or declined request (informed=false withdraws the record). Nothing is sent to anyone: tell them first, then record it. Needs the Feedback Triager role; refused (409) unless the request is delivered or declined and every party is one of its requesters (get_request_demand lists them).
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `parties*` (array, in body), `informed` (boolean, in body), `note` (string, in body)
 
 #### `product_feedback_add_request_comment` (write)
 

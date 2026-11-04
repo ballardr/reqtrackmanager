@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b and 3c (backend) built 2026-11-05; Phase 4 next. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phase 5 next. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
@@ -15,8 +15,8 @@ artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-7 / 11 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
-Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension) done 2026-11-05. Phase 4 is next.
+8 / 11 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension) and Phase 4 (backend) done 2026-11-05. Phase 5 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -27,7 +27,7 @@ Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension) done 2026-1
 | 3 | ICE/RICE scoring on the core scoring matrix | [x] Complete (2026-11-04) — see "Phase 3 notes" |
 | 3b | Scoring: Ease, demand-derived axis, generic per-axis score storage | [x] Complete (2026-11-05) — see "Phase 3b notes" |
 | 3c | Scoring: organisation- and project-defined criteria and models (multiply or weighted sum) | [x] Complete (2026-11-05) — see "Phase 3c notes" |
-| 4 | Relationships + close-the-loop | [ ] Not started |
+| 4 | Relationships + close-the-loop | [x] Complete (2026-11-05) — see "Phase 4 notes" |
 | 5 | Frontend UI | [ ] Not started |
 | 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06, see `docs/modules.md` §4g |
 | 7 | Docs website coverage | [ ] Not started |
@@ -219,6 +219,26 @@ Backend built; account, the resolved design questions and security review in `do
 - **Module:** reads the effective scheme everywhere (`ratings.py`, `validate_levels`, the unscored filter, record-table columns and import, bundle import); `scoring_definitions` travels in the project and organisation bundles.
 - **Phase 5 must add (beyond the lists above):** the axis and model editors with hide and restore on the organisation and project scoring settings, and level fields built from the effective scheme (an axis's `origin` as a quiet badge). The inbox shows only the organisation's models.
 - **Phase 6 must:** report F1 states the model it ranks on and ranks the inbox on an organisation model only.
+
+## Phase 4 notes (2026-11-05)
+
+Backend built; account, the resolved design questions and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 4").
+
+```mermaid
+flowchart LR
+    R[Request] -- Addresses --> PP[Pain Point]
+    R -- Realised by --> RQ[Requirement]
+    RQ -- completion overlay --> D[suggest_delivered prompt]
+    R -- Requested by --> P[Requesters, merged ones included]
+    P -- PUT informed --> I[enhancement_request_informed]
+    I --> L[Open-loop list]
+```
+
+- **Links:** `relationships.py` seeds "Addresses" (merges with Decision Management's) and "Realised by"; `compute_links` gives each request its Pain Points and Requirements (a merged duplicate's included) in a fixed number of statements. An Engagement as evidence is the existing "Requested by" link to an Engagement, so there is no third link type.
+- **Closing the loop:** `loop.py`; table `enhancement_request_informed` (migration `0136`, next `0137`) keyed by the requester and matched to the current requesters on read. `GET .../requests/{id}/close-the-loop`, `PUT .../requests/{id}/informed`, `GET .../close-the-loop`; recording needs a delivered or declined request. `suggest_delivered` is a prompt from the Requirements' completion overlay, never a transition.
+- `RequestOut` carries `pain_point_count`, `requirement_count`, `informed_count`, `loop_open_count`.
+- **Phase 5 must add (beyond the lists above):** the Pain Point and Requirement link panels with the "No Pain Point linked" warning, the close-the-loop panel (checkbox, date, note, "Mark all told"), the "Ready to deliver?" prompt beside the Delivered transition, and the open-loop badge and list.
+- **Phase 6 must:** F2 reads `pain_point_count == 0` and F3 reads `loop.open_loop_requests`, so the reports and the list share one definition.
 
 ## Scoring extension (added 2026-11-05)
 

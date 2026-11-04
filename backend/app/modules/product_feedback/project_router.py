@@ -2,8 +2,8 @@
 Module: modules.product_feedback.project_router
 
 Project-scoped Product Feedback API, mounted at `/api/v1/projects/{project_id}/modules/product_feedback`:
-request CRUD, archive, versions, lifecycle transitions, merging duplicates, the demand breakdown, comments, files
-and the project's submission policy.
+request CRUD, archive, versions, lifecycle transitions, merging duplicates, the demand breakdown, closing the loop
+(who was told the outcome), comments, files and the project's submission policy.
 
 RBAC: sub-component enablement and project membership to view; any project member may submit a request
 unless the project's administrator restricted submission to triagers; `_shared.require_request_manage`
@@ -27,9 +27,12 @@ from app.modules.product_feedback.enums import EnhancementRequestStatus
 from app.modules.product_feedback.models import EnhancementRequest
 from app.modules.product_feedback.ratings import parse_model_keys
 from app.modules.product_feedback.schemas import (
+    CloseTheLoopOut,
     DemandOut,
     FeedbackSettingsOut,
     FeedbackSettingsUpdate,
+    InformedUpdate,
+    OpenLoopOut,
     RequestCommentCreate,
     RequestCommentOut,
     RequestCommentUpdate,
@@ -280,6 +283,43 @@ def get_request_demand(
     withheld but still counted."""
     project = _project(db, project_id)
     return sh.demand_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user)
+
+
+# --- Closing the loop ------------------------------------------------------------
+
+
+@router.get("/close-the-loop", response_model=list[OpenLoopOut])
+def list_open_loops(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """The delivered or declined requests that still have a requester who has not been told the outcome, with those
+    requesters (names withheld for records the caller may not view). Archived requests are left out."""
+    return sh.open_loops_out(db, _project(db, project_id), current_user)
+
+
+@router.get("/requests/{request_id}/close-the-loop", response_model=CloseTheLoopOut)
+def get_request_close_the_loop(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """What became of a request: its requesters and whether each was told, the Pain Points it addresses (a request with
+    none is flagged by `pain_point_count`), the Requirements that realise it and `suggest_delivered`, the cue that an
+    accepted request's requirements are all complete. Pain Points and Requirements are linked with the generic link
+    tools (link types 'Addresses' and 'Realised by')."""
+    project = _project(db, project_id)
+    return sh.close_the_loop_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user)
+
+
+@router.put("/requests/{request_id}/informed", response_model=CloseTheLoopOut)
+def set_requesters_informed(
+    project_id: UUID, request_id: UUID, payload: InformedUpdate, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Records that requesters were told the outcome (or withdraws that record with `informed: false`). Nothing is
+    sent: the triager tells them and ticks them off. Needs the triager role; 409 unless the request is delivered or
+    declined (recording only), is not archived and every party is one of its current requesters."""
+    project = _project(db, project_id)
+    holder = RecordOwner.of_project(project)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.inform_from_payload(db, holder, project, request, payload, current_user)
 
 
 # --- Comments ----------------------------------------------------------------

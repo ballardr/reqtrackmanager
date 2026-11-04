@@ -3,6 +3,8 @@ role grants, and request builders."""
 
 from __future__ import annotations
 
+import uuid
+
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 MODULE_KEY = "product_feedback"
@@ -168,3 +170,80 @@ def get_demand(client, token, project_id, request_id) -> dict:
     resp = client.get(f"{project_base(project_id)}/requests/{request_id}/demand", headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+# --- Problems and work (Pain Points, Requirements) and closing the loop ------
+
+
+def enable_other_module(client, token, org_id, module_key: str) -> None:
+    """Enables another module for the organisation (Context & Strategy holds the Pain Points)."""
+    resp = client.put(f"/api/v1/orgs/{org_id}/modules/{module_key}", json={"enabled": True}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+
+def create_pain_point(client, token, project_id, title="Slow reports") -> dict:
+    """A Pain Point through Context & Strategy (enable that module before creating the project's data)."""
+    base = f"/api/v1/projects/{project_id}/modules/context_strategy"
+    types = client.get(f"{base}/pain-point-types", headers=auth_headers(token)).json()
+    resp = client.post(
+        f"{base}/pain-points", json={"pain_point_type_id": types[0]["id"], "title": title, "description": "Late."},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def create_core_requirement(client, token, project_id, name="Export the list") -> dict:
+    """A core requirement in the project (with a fresh component and category if it has none)."""
+    from tests.conftest import create_component_and_category
+
+    components = client.get(f"/api/v1/projects/{project_id}/components", headers=auth_headers(token)).json()
+    categories = client.get(f"/api/v1/projects/{project_id}/categories", headers=auth_headers(token)).json()
+    if components and categories:
+        component_id, category_id = components[0]["id"], categories[0]["id"]
+    else:
+        component_id, category_id = create_component_and_category(client, token, project_id)
+    resp = client.post(
+        f"/api/v1/projects/{project_id}/requirements",
+        json={"name": name, "component_id": component_id, "category_id": category_id}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def mark_requirement_completed(requirement_id) -> None:
+    """Sets the completion overlay directly (the real route needs an approved requirement and a second person)."""
+    from app.database import SessionLocal
+    from app.models.requirement import Requirement
+
+    with SessionLocal() as db:
+        requirement = db.get(Requirement, uuid.UUID(str(requirement_id)))
+        assert requirement is not None
+        requirement.is_completed = True
+        db.commit()
+
+
+def add_link(client, token, org_id, project_id, request_id, forward_name, other_type, other_id):
+    """POSTs the generic link endpoint from the request's page, with the organisation's link type of that name."""
+    rows = client.get(f"/api/v1/orgs/{org_id}/link-types", headers=auth_headers(token)).json()
+    link_type = next(row["id"] for row in rows if row["forward_name"] == forward_name)
+    return client.post(
+        f"/api/v1/projects/{project_id}/artefacts/enhancement_request/{request_id}/links",
+        json={"link_type_id": link_type, "direction": "outgoing", "other_type": other_type, "other_id": other_id},
+        headers=auth_headers(token),
+    )
+
+
+def get_loop(client, token, project_id, request_id) -> dict:
+    resp = client.get(f"{project_base(project_id)}/requests/{request_id}/close-the-loop", headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+def mark_informed(client, token, project_id, request_id, parties, *, informed=True, note=""):
+    """PUTs the informed endpoint; `parties` is a list of `(artefact_type, id)`."""
+    return client.put(
+        f"{project_base(project_id)}/requests/{request_id}/informed",
+        json={"parties": [{"artefact_type": t, "id": i} for t, i in parties], "informed": informed, "note": note},
+        headers=auth_headers(token),
+    )

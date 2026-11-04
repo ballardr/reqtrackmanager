@@ -7,7 +7,8 @@ rather than those core files importing this module.
 
 - Org level: the organisation's inbox requests and the active merges between them.
 - Project level: the project's submission policy and its requests (current content and status, tags,
-  evidence attachments, their "Requested by" links and the active merge of a duplicate).
+  evidence attachments, their "Requested by" and "Addresses" links, the requesters told the outcome, the active
+  merge of a duplicate) and the links to Requirements and other requests.
 
 Design decisions (all Decided by: Agent):
 - A request's scoring levels (one per axis) travel by *axis and name* and are matched to the target organisation's
@@ -25,7 +26,11 @@ Design decisions (all Decided by: Agent):
   after every module's own import so the Stakeholders, Personas and Engagements exist): a requester is its
   type and title (`services.codes.label_title`; a code is renumbered on import), a merge names the canonical
   request by its exported code. Only active merges travel; ended ones are history, like versions. A requester
-  that matches no record, or more than one, is skipped with a warning rather than guessed at.
+  that matches no record, or more than one, is skipped with a warning rather than guessed at. A Pain Point an
+  request addresses travels the same way (type and title), and so does an informed requester (type, title, when,
+  who and the note; the person who recorded it is matched by e-mail, else the importer).
+- Links to Requirements and to other requests travel through the shared `services.bundle_links` (a Requirement by
+  its code, which the core import keeps); a link to another module's record is carried by type and title above.
 - The org-level merge skips an inbox request whose title and description the organisation already holds, so a
   re-import is idempotent.
 
@@ -53,11 +58,13 @@ from app.modules.product_feedback.enums import EnhancementRequestScope, Enhancem
 from app.modules.product_feedback.models import (
     EnhancementRequest,
     EnhancementRequestFile,
+    EnhancementRequestInformed,
     EnhancementRequestMerge,
     EnhancementRequestVersion,
     EnhancementRequestVersionScore,
     ProjectFeedbackSettings,
 )
+from app.modules.product_feedback.relationships import ADDRESSES_FORWARD, ADDRESSES_REVERSE, PAIN_POINT_TYPE
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.service import (
     REQUEST_ARTEFACT_TYPE,
@@ -68,6 +75,7 @@ from app.modules.product_feedback.service import (
 )
 from app.modules.registry import ScoringSchemeDefinition, get_artefact_summaries_in_project
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
+from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.codes import label_title
 from app.services.link_types import ensure_org_link_type
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
@@ -78,6 +86,7 @@ from app.services.sequences import code_owner, generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 _PENDING_CODES = "product_feedback_imported_codes"
+_LINKS_KEY = "enhancement_request_links"
 
 
 def _j(value: datetime | None) -> str | None:
@@ -310,40 +319,90 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     return {
         "feedback_settings": {"submission_policy": settings.submission_policy.value} if settings else None,
         "enhancement_requests": entries,
+        _LINKS_KEY: export_artefact_links(db, project, {REQUEST_ARTEFACT_TYPE: {r.id: r.unique_code for r, _ in pairs}}),
         "scoring_definitions": export_definitions(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id),
     }, assets
 
 
-def _add_requesters_and_merges(
-    db: Session, project: Project, requests: list[EnhancementRequest], entries: list[dict[str, Any]],
-) -> None:
-    """Adds `requested_by` (type and title of each visible requester record) and `merged_into` (the canonical
-    request's exported code, for an active merge) to the exported `entries`, which are in `requests` order."""
-    ids = [r.id for r in requests]
-    wanted: dict[str, set[UUID]] = {}
-    by_request: dict[UUID, list[tuple[str, UUID]]] = {}
+def _linked_titles(
+    db: Session, project: Project, ids: list[UUID], forward_name: str, target_types: tuple[str, ...],
+) -> dict[UUID, list[tuple[str, UUID]]]:
+    """`{request id: [(target type, target id)]}` for the requests' same-project links of one link type."""
+    out: dict[UUID, list[tuple[str, UUID]]] = {}
+    if not ids:
+        return out
     for source_id, target_type, target_id in db.execute(
         select(ArtefactLink.source_id, ArtefactLink.target_type, ArtefactLink.target_id)
         .join(RequirementLinkTypeDefinition, RequirementLinkTypeDefinition.id == ArtefactLink.link_type_id)
         .where(
             ArtefactLink.source_type == REQUEST_ARTEFACT_TYPE, ArtefactLink.source_id.in_(ids),
-            ArtefactLink.target_type.in_(REQUESTER_TYPES), ArtefactLink.source_project_id.is_(None),
-            RequirementLinkTypeDefinition.forward_name == REQUESTED_BY_FORWARD,
+            ArtefactLink.target_type.in_(target_types), ArtefactLink.source_project_id.is_(None),
+            RequirementLinkTypeDefinition.forward_name == forward_name,
             RequirementLinkTypeDefinition.organization_id == project.organization_id,
         )
-    ).all() if ids else []:
-        by_request.setdefault(source_id, []).append((target_type, target_id))
-        wanted.setdefault(target_type, set()).add(target_id)
+    ).all():
+        out.setdefault(source_id, []).append((target_type, target_id))
+    return out
+
+
+def _titles(db: Session, project: Project, wanted: dict[str, set[UUID]]) -> dict[tuple[str, UUID], str]:
+    """`{(type, id): title}` of the records the project can see (a code is renumbered on import, so only the title travels)."""
     titles: dict[tuple[str, UUID], str] = {}
     for target_type, target_ids in wanted.items():
         found = get_artefact_summaries_in_project(db, project.id, target_type, sorted(target_ids, key=str)) or {}
         titles.update({(target_type, i): label_title(summary.label) for i, summary in found.items()})
+    return titles
+
+
+def _titled_links(
+    requests: list[EnhancementRequest], entries: list[dict[str, Any]], key: str,
+    linked: dict[UUID, list[tuple[str, UUID]]], titles: dict[tuple[str, UUID], str],
+) -> None:
+    """Sets `entries[i][key]` to the sorted `{type, title}` of each request's linked records that have a title."""
     for request, entry in zip(requests, entries, strict=True):
-        entry["requested_by"] = sorted(
+        entry[key] = sorted(
             (
                 {"type": target_type, "title": titles[(target_type, target_id)]}
-                for target_type, target_id in by_request.get(request.id, ())
+                for target_type, target_id in linked.get(request.id, ())
                 if (target_type, target_id) in titles
+            ),
+            key=lambda e: (e["type"], e["title"]),
+        )
+
+
+def _add_requesters_and_merges(
+    db: Session, project: Project, requests: list[EnhancementRequest], entries: list[dict[str, Any]],
+) -> None:
+    """Adds `requested_by` and `addresses` (type and title of each visible linked record), `informed` (the requesters
+    told the outcome) and `merged_into` (the canonical request's exported code, for an active merge) to the exported
+    `entries`, which are in `requests` order."""
+    ids = [r.id for r in requests]
+    requested_by = _linked_titles(db, project, ids, REQUESTED_BY_FORWARD, REQUESTER_TYPES)
+    addresses = _linked_titles(db, project, ids, ADDRESSES_FORWARD, (PAIN_POINT_TYPE,))
+    informed: dict[UUID, list[EnhancementRequestInformed]] = {}
+    for row in db.scalars(select(EnhancementRequestInformed).where(EnhancementRequestInformed.request_id.in_(ids))) if ids else ():
+        informed.setdefault(row.request_id, []).append(row)
+    wanted: dict[str, set[UUID]] = {}
+    for linked in (requested_by, addresses):
+        for pairs in linked.values():
+            for target_type, target_id in pairs:
+                wanted.setdefault(target_type, set()).add(target_id)
+    for rows in informed.values():
+        for row in rows:
+            wanted.setdefault(row.party_type, set()).add(row.party_id)
+    titles = _titles(db, project, wanted)
+    _titled_links(requests, entries, "requested_by", requested_by, titles)
+    _titled_links(requests, entries, "addresses", addresses, titles)
+    emails = _emails(db, {row.informed_by for rows in informed.values() for row in rows})
+    for request, entry in zip(requests, entries, strict=True):
+        entry["informed"] = sorted(
+            (
+                {
+                    "type": row.party_type, "title": titles[(row.party_type, row.party_id)], "informed_at": _j(row.informed_at),
+                    "informed_by_email": emails.get(row.informed_by), "note": row.note,
+                }
+                for row in informed.get(request.id, ())
+                if (row.party_type, row.party_id) in titles
             ),
             key=lambda e: (e["type"], e["title"]),
         )
@@ -401,44 +460,71 @@ def import_late_project_data(
     db: Session, project: Project, data: dict[str, Any], file_bytes_by_ref: dict[str, bytes], current_user: User,
     users: UserResolver, warnings: BundleImportWarnings,
 ) -> None:
-    """`ModuleProjectBundleHooks.import_late`: recreates each request's "Requested by" links and active merge once
-    the Stakeholders, Personas and Engagements of every module exist. A requester that matches no record, or more
-    than one, is skipped with a warning; a merge the rules refuse is skipped with the reason."""
+    """`ModuleProjectBundleHooks.import_late`: recreates each request's "Requested by" and "Addresses" links, the
+    requesters told the outcome, its links to Requirements and other requests, and its active merge once the
+    Stakeholders, Personas, Engagements and Pain Points of every module exist. A linked record that matches no record,
+    or more than one, is skipped with a warning; a merge the rules refuse is skipped with the reason."""
     imported: dict[str, UUID] = db.info.pop((_PENDING_CODES, project.id), {})
     entries = data.get("enhancement_requests", [])
     summaries: dict[str, dict[str, list[UUID]]] = {}
-    link_type = None
+
+    def match(code: str, target_type: str, title: str, what: str) -> UUID | None:
+        """The one record of `target_type` titled `title`, else a warning naming `what` and None."""
+        if target_type not in summaries:
+            by_title: dict[str, list[UUID]] = {}
+            for summary in (get_artefact_summaries_in_project(db, project.id, target_type, _all_ids(db, project, target_type)) or {}).values():
+                by_title.setdefault(label_title(summary.label), []).append(summary.id)
+            summaries[target_type] = by_title
+        matches = summaries[target_type].get(title, [])
+        if len(matches) != 1:
+            warnings.add(f"Request {code}: {what} {title!r} ({target_type}) not found or ambiguous — skipped.")
+            return None
+        return matches[0]
+
+    link_kinds = (
+        ("requested_by", REQUESTER_TYPES, REQUESTED_BY_FORWARD, REQUESTED_BY_REVERSE, "requester"),
+        ("addresses", (PAIN_POINT_TYPE,), ADDRESSES_FORWARD, ADDRESSES_REVERSE, "pain point"),
+    )
+    link_types: dict[str, Any] = {}
     for entry in entries:
         request_id = imported.get(entry.get("unique_code", ""))
         if request_id is None:
             continue
-        for requester in entry.get("requested_by", []):
-            target_type = requester["type"]
-            if target_type not in REQUESTER_TYPES:
+        code = entry["unique_code"]
+        for key, allowed, forward, reverse, what in link_kinds:
+            for linked in entry.get(key, []):
+                target_type = linked["type"]
+                target_id = match(code, target_type, linked["title"], what) if target_type in allowed else None
+                if target_id is None:
+                    continue
+                if forward not in link_types:
+                    link_types[forward] = ensure_org_link_type(db, project.organization_id, forward, reverse)
+                try:
+                    with db.begin_nested():
+                        create_link(
+                            db, source_type=REQUEST_ARTEFACT_TYPE, source_id=request_id, target_type=target_type,
+                            target_id=target_id, link_type_id=link_types[forward].id, created_by=current_user.id,
+                            project_id=project.id, enforce_rules=False,
+                        )
+                except IntegrityError:
+                    continue
+        for told in entry.get("informed", []):
+            if told["type"] not in REQUESTER_TYPES:
                 continue
-            if target_type not in summaries:
-                by_title: dict[str, list[UUID]] = {}
-                for summary in (get_artefact_summaries_in_project(db, project.id, target_type, _all_ids(db, project, target_type)) or {}).values():
-                    by_title.setdefault(label_title(summary.label), []).append(summary.id)
-                summaries[target_type] = by_title
-            matches = summaries[target_type].get(requester["title"], [])
-            if len(matches) != 1:
-                warnings.add(
-                    f"Request {entry['unique_code']}: requester {requester['title']!r} ({target_type}) not found or "
-                    "ambiguous — skipped."
-                )
+            party_id = match(code, told["type"], told["title"], "informed requester")
+            if party_id is None:
                 continue
-            if link_type is None:
-                link_type = ensure_org_link_type(db, project.organization_id, REQUESTED_BY_FORWARD, REQUESTED_BY_REVERSE)
-            try:
-                with db.begin_nested():
-                    create_link(
-                        db, source_type=REQUEST_ARTEFACT_TYPE, source_id=request_id, target_type=target_type,
-                        target_id=matches[0], link_type_id=link_type.id, created_by=current_user.id,
-                        project_id=project.id, enforce_rules=False,
-                    )
-            except IntegrityError:
-                continue
+            informer = users.resolve(told.get("informed_by_email"), required=False, context="Request informed-by user")
+            db.add(EnhancementRequestInformed(
+                request_id=request_id, party_type=told["type"], party_id=party_id,
+                informed_by=informer or current_user.id, informed_at=_dt(told.get("informed_at")) or datetime.now(UTC),
+                note=told.get("note", ""),
+            ))
+    db.flush()
+    import_artefact_links(
+        db, project, data.get(_LINKS_KEY, []), {REQUEST_ARTEFACT_TYPE: imported}, current_user, users, warnings,
+        context="Product Feedback",
+    )
     _replay_merges(db, entries, imported, users, warnings, current_user)
     db.flush()
 

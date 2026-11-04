@@ -6,9 +6,9 @@ router endpoint, so the endpoint's own authorisation, guards and audit logging a
 grants nothing.
 
 Responsibilities:
-- `build_mcp_tools`: read tools (requests, versions, comments, demand, merges, settings) and write tools (create,
-  update, lifecycle move, comment, merge, unmerge, scoring scheme) for a project, plus list, create, scoring scheme and
-  move-into-a-project for the organisation's inbox.
+- `build_mcp_tools`: read tools (requests, versions, comments, demand, merges, close-the-loop, settings) and write tools
+  (create, update, lifecycle move, comment, merge, unmerge, record requesters as told, scoring scheme) for a project,
+  plus list, create, scoring scheme and move-into-a-project for the organisation's inbox.
 
 Design decisions:
 - Write-enabled (**Decided by: User**, as for every module's MCP tools). Writes still need `MCP_WRITES_ENABLED`
@@ -116,6 +116,24 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="GET", path_template=f"{_REQUEST}/demand", params=[_PROJECT_ID, _REQUEST_ID],
         ),
         McpToolDefinition(
+            name="get_request_close_the_loop",
+            description=(
+                "What became of a request and who has been told: each requester with whether they were told the "
+                "outcome, the Pain Points it addresses, the Requirements that realise it, and suggest_delivered (an "
+                "accepted request whose requirements are all complete). Link Pain Points ('Addresses') and "
+                "Requirements ('Realised by') with the core link tools."
+            ),
+            method="GET", path_template=f"{_REQUEST}/close-the-loop", params=[_PROJECT_ID, _REQUEST_ID],
+        ),
+        McpToolDefinition(
+            name="list_open_loops",
+            description=(
+                "Lists the project's delivered or declined requests that still have requesters who have not been told "
+                "the outcome, with those requesters."
+            ),
+            method="GET", path_template=f"{_PREFIX}/close-the-loop", params=[_PROJECT_ID],
+        ),
+        McpToolDefinition(
             name="list_request_merges",
             description="Lists the merges a request took part in (as canonical or duplicate), active and ended.",
             method="GET", path_template=f"{_REQUEST}/merges", params=[_PROJECT_ID, _REQUEST_ID],
@@ -166,6 +184,22 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             name="unmerge_request",
             description="Reverses a merge: the duplicate returns to the status it had. Needs the Feedback Triager role.",
             method="POST", path_template=f"{_REQUEST}/unmerge", params=[_PROJECT_ID, _REQUEST_ID],
+        ),
+        McpToolDefinition(
+            name="mark_requesters_informed",
+            description=(
+                "Records that requesters were told the outcome of a delivered or declined request (informed=false "
+                "withdraws the record). Nothing is sent to anyone: tell them first, then record it. Needs the "
+                "Feedback Triager role; refused (409) unless the request is delivered or declined and every party is "
+                "one of its requesters (get_request_demand lists them)."
+            ),
+            method="PUT", path_template=f"{_REQUEST}/informed",
+            params=[
+                _PROJECT_ID, _REQUEST_ID,
+                _body("parties", "array", 'Requesters, each {"artefact_type": "stakeholder" | "persona", "id": uuid}.', required=True),
+                _body("informed", "boolean", "True (default) to record, false to withdraw."),
+                _body("note", "string", "How or by whom they were told."),
+            ],
         ),
         McpToolDefinition(
             name="add_request_comment", description="Adds a comment to a request's discussion.", method="POST",

@@ -70,6 +70,14 @@ export interface EnhancementRequest extends ProjectScopedRow {
   version_number: number;
   created_at: string;
   updated_at: string;
+  /** Pain Points the request addresses; 0 is flagged (a solution with no stated problem), never blocked. */
+  pain_point_count: number;
+  /** Requirements that realise the request. */
+  requirement_count: number;
+  /** Requesters recorded as told the outcome. */
+  informed_count: number;
+  /** Requesters still to be told; 0 unless the request is delivered or declined. */
+  loop_open_count: number;
 }
 
 /** A request's derived score; `normalised` is the share of the model's best possible score. */
@@ -93,4 +101,56 @@ export interface EnhancementRequestCreate {
 
 export interface FeedbackSettings {
   submission_policy: SubmissionPolicy;
+}
+
+/** A record linked to a request; `label` is null (and `hidden` true) when the viewer may not see it. */
+export interface LinkedRecord {
+  id: string;
+  label: string | null;
+  hidden: boolean;
+}
+
+export interface RealisingRequirement extends LinkedRecord {
+  /** The requirement's completion overlay; null while hidden. */
+  is_completed: boolean | null;
+}
+
+/** A requester of a request with whether they were told its outcome. */
+export interface LoopRequester {
+  artefact_type: string;
+  id: string;
+  label: string | null;
+  weight: number | null;
+  effective_weight: number;
+  from_merge: boolean;
+  via_engagement: boolean;
+  hidden: boolean;
+  informed: boolean;
+  informed_at: string | null;
+  informed_by: string | null;
+  note: string;
+}
+
+/** `GET .../requests/{id}/close-the-loop`: what became of a request and who has been told. */
+export interface CloseTheLoop {
+  request_id: string;
+  status: RequestStatus;
+  decline_reason: string;
+  /** True when the request is delivered or declined, so telling requesters can be recorded. */
+  can_record: boolean;
+  requesters: LoopRequester[];
+  informed_count: number;
+  open_count: number;
+  pain_points: LinkedRecord[];
+  realising_requirements: RealisingRequirement[];
+  all_requirements_complete: boolean | null;
+  /** Prompt only: an accepted request whose requirements are all complete may be marked delivered. */
+  suggest_delivered: boolean;
+}
+
+/** `PUT .../requests/{id}/informed` body. */
+export interface InformedUpdate {
+  parties: { artefact_type: string; id: string }[];
+  informed?: boolean;
+  note?: string;
 }

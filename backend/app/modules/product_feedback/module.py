@@ -14,16 +14,18 @@ reference to it.
 - Sub-components: `enhancement_request` gates the project list; `organization_requests` gates the
   organisation's inbox, so an organisation administrator switches the inbox off without touching its projects.
 - `default_enabled` stays `False`: an organisation opts in explicitly (**Decided by: Agent**).
-- Link type: "Requested by" (request -> Stakeholder, Persona or Engagement), authored with the generic link tools;
-  `demand.py` turns those links into demand through the registry's `demand_party_providers` hook.
+- Link types, all authored with the generic link tools: "Requested by" (request -> Stakeholder, Persona or
+  Engagement; `demand.py` turns those links into demand through the registry's `demand_party_providers` hook),
+  "Addresses" (request -> Pain Point) and "Realised by" (request -> Requirement) (`relationships.py`).
+- Closing the loop: a triager records which requesters were told a delivered or declined request's outcome
+  (`loop.py`); nothing is sent to anyone.
 - Merging: a duplicate is merged into a canonical request, reversibly (`merge.py`); demand is the union.
 - Scoring: the `enhancement_request` scheme (`scoring.py`) scores a request on Reach, Impact, Confidence and
   Effort (a divisor); ICE or RICE is chosen when viewing and the score is derived on every read (`ratings.py`).
 - MCP tools: write-enabled (`mcp_tools.py`).
 
 No `frontend_manifest` yet: the nav entry and pages arrive with the module's UI, so no nav item points at a page that
-does not exist. Reports and the remaining relationships arrive in later changes through the same
-registration.
+does not exist. Reports arrive in a later change through the same registration.
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ from app.modules.product_feedback.models import EnhancementRequestVersion
 from app.modules.product_feedback.perf_dataset import generate_requests
 from app.modules.product_feedback.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
 from app.modules.product_feedback.record_tables import RECORD_TABLES
+from app.modules.product_feedback.relationships import ADDRESSES_SEED, REALISED_BY_SEED
 from app.modules.product_feedback.report_fields import REPORT_FIELDS
 from app.modules.product_feedback.scaling_probes import SCALING_PROBES
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME
@@ -132,7 +135,7 @@ MODULE_DEFINITION = ModuleDefinition(
     models_import_path="app.modules.product_feedback.models",
     migrations_dir="app/modules/product_feedback/migrations",
     artefact_types=(REQUEST_ARTEFACT_TYPE,),
-    link_type_seeds=(REQUESTED_BY_SEED,),
+    link_type_seeds=(REQUESTED_BY_SEED, ADDRESSES_SEED, REALISED_BY_SEED),
     artefact_type_labels={REQUEST_ARTEFACT_TYPE: "Enhancement request"},
     artefact_ids_in_organization=_artefact_ids_in_organization,
     artefact_summary_providers={REQUEST_ARTEFACT_TYPE: REQUEST_SUMMARY_PROVIDER},

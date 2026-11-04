@@ -11,6 +11,10 @@ transitions, archiving and attachments need the triager role of the tier (`feedb
 project, `org_feedback_triager` in the organisation) or a Fine-Grained Access Control
 `(enhancement_request, manage)` grant.
 
+Closing the loop: `close_the_loop_out` reads what became of a request (who was told, the problems and work it is
+linked to, the cue to mark it delivered), `inform_from_payload` is the gated, audited body of the "told" endpoint and
+`open_loops_out` is the project's list of delivered or declined requests with requesters still to be told.
+
 Demand and merging: `request_extras` adds each request's place in a merge and its demand to the list and detail
 shapes in a fixed number of statements; `merge_from_payload` / `unmerge_from_payload` are the gated, audited
 bodies of the merge endpoints, and `demand_out` is the per-request demand breakdown with names the caller may
@@ -34,8 +38,18 @@ from sqlalchemy.orm import Session
 from app.models.enums import PermissionLevel
 from app.models.project import Project
 from app.models.user import User
-from app.modules.product_feedback.demand import EMPTY_DEMAND, Demand, compute_demand
+from app.modules.product_feedback.demand import EMPTY_DEMAND, Demand, Requester, compute_demand
 from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, SubmissionPolicy
+from app.modules.product_feedback.loop import (
+    CLOSED_STATUSES,
+    PartyKey,
+    delivery_state,
+    informed_by_request,
+    open_count,
+    open_loop_requests,
+    requirements_complete,
+    set_informed,
+)
 from app.modules.product_feedback.models import (
     EnhancementRequest,
     EnhancementRequestComment,
@@ -52,9 +66,16 @@ from app.modules.product_feedback.ratings import (
     parse_model_keys,
     score_levels,
 )
+from app.modules.product_feedback.relationships import NO_LINKS, RequestLinks, compute_links
 from app.modules.product_feedback.schemas import (
+    CloseTheLoopOut,
     DemandEngagementOut,
     DemandOut,
+    InformedUpdate,
+    LinkedRecordOut,
+    LoopRequesterOut,
+    OpenLoopOut,
+    RealisingRequirementOut,
     RequestCommentOut,
     RequestCreate,
     RequesterOut,
@@ -129,16 +150,20 @@ class RequestExtras:
         merged_into: `{duplicate id: the canonical request it is merged into}` (active merges only).
         merged_count: `{canonical id: how many duplicates are merged into it}`.
         demand: `{request id: Demand}`; absent for a request with no project (an inbox request).
+        links: `{request id: RequestLinks}` (its Pain Points and Requirements); absent for an inbox request.
+        informed: `{request id: the requesters recorded as told}`.
     """
 
     merged_into: dict[uuid.UUID, RequestRefOut] = field(default_factory=dict)
     merged_count: dict[uuid.UUID, int] = field(default_factory=dict)
     demand: dict[uuid.UUID, Demand] = field(default_factory=dict)
+    links: dict[uuid.UUID, RequestLinks] = field(default_factory=dict)
+    informed: dict[uuid.UUID, set[PartyKey]] = field(default_factory=dict)
 
 
 def request_extras(db: Session, requests: Sequence[EnhancementRequest]) -> RequestExtras:
-    """Merge status and demand for `requests` in a fixed number of statements however many there are (demand
-    only for project-owned ones: an inbox request cannot hold requesters)."""
+    """Merge status, demand, links and informed requesters for `requests` in a fixed number of statements however
+    many there are (demand and links only for project-owned ones: an inbox request cannot hold links)."""
     extras = RequestExtras()
     ids = [r.id for r in requests]
     if not ids:
@@ -173,6 +198,8 @@ def request_extras(db: Session, requests: Sequence[EnhancementRequest]) -> Reque
         project = db.get(Project, project_id)
         if project is not None:
             extras.demand.update(compute_demand(db, project, project_request_ids))
+            extras.links.update(compute_links(db, project, project_request_ids))
+    extras.informed = {rid: set(rows) for rid, rows in informed_by_request(db, ids).items()}
     return extras
 
 
@@ -215,6 +242,8 @@ def request_to_out(
     ctx = ctx if ctx is not None else rating_context_for(db, request, scoring_model)
     levels = levels if levels is not None else version_levels(db, [version.id])[version.id]
     demand = extras.demand.get(request.id, EMPTY_DEMAND)
+    links = extras.links.get(request.id, NO_LINKS)
+    informed = extras.informed.get(request.id, set())
     scores = score_levels(ctx, levels, demand.weighted)
     return RequestOut(
         id=request.id, scope=request.scope, organization_id=request.organization_id, project_id=request.project_id,
@@ -233,6 +262,9 @@ def request_to_out(
         version_number=version.version_number, created_at=request.created_at, updated_at=request.updated_at,
         merged_into=extras.merged_into.get(request.id), merged_count=extras.merged_count.get(request.id, 0),
         requester_count=demand.count, weighted_demand=demand.weighted,
+        pain_point_count=len(links.pain_point_ids), requirement_count=len(links.requirement_ids),
+        informed_count=sum(1 for r in demand.requesters if (r.artefact_type, r.id) in informed),
+        loop_open_count=open_count(demand, version.status, informed),
     )
 
 
@@ -619,26 +651,124 @@ def demand_out(db: Session, project: Project, request: EnhancementRequest, viewe
         wanted[requester.artefact_type].add(requester.id)
     wanted["engagement"].update(demand.engagement_ids)
     resolver.resolve(dict(wanted))
-
-    def can_see(artefact_type: str, record_id: uuid.UUID) -> bool:
-        return resolver.visible((artefact_type, record_id)) is not None
-
     engagement_labels = {e: resolver.visible(("engagement", e)) for e in demand.engagement_ids}
     return DemandOut(
         request_id=request.id, requester_count=demand.count, weighted_demand=demand.weighted,
-        requesters=[
-            RequesterOut(
-                artefact_type=r.artefact_type, id=r.id, label=r.label if can_see(r.artefact_type, r.id) else None,
-                weight=r.weight if can_see(r.artefact_type, r.id) else None, effective_weight=r.effective_weight,
-                from_merge=r.from_merge, via_engagement=r.via_engagement, hidden=not can_see(r.artefact_type, r.id),
-            )
-            for r in demand.requesters
-        ],
+        requesters=[_requester_out(r, resolver) for r in demand.requesters],
         engagements=[
             DemandEngagementOut(id=e, label=s.label if s else None, hidden=s is None) for e, s in engagement_labels.items()
         ],
         merged_duplicates=_merged_duplicate_refs(db, request.id),
     )
+
+
+def _requester_out(requester: Requester, resolver: ArtefactResolver) -> RequesterOut:
+    """A requester as `resolver`'s user may see it: the name and weight only when they can view the record."""
+    seen = resolver.visible((requester.artefact_type, requester.id)) is not None
+    return RequesterOut(
+        artefact_type=requester.artefact_type, id=requester.id, label=requester.label if seen else None,
+        weight=requester.weight if seen else None, effective_weight=requester.effective_weight,
+        from_merge=requester.from_merge, via_engagement=requester.via_engagement, hidden=not seen,
+    )
+
+
+# --- Closing the loop ------------------------------------------------------------
+
+
+def _linked_records(
+    resolver: ArtefactResolver, artefact_type: str, ids: Sequence[uuid.UUID],
+) -> list[tuple[uuid.UUID, str | None]]:
+    """`(id, label or None when the viewer cannot see it)` for each id, in order."""
+    resolver.resolve({artefact_type: set(ids)})
+    return [(i, s.label if (s := resolver.visible((artefact_type, i))) else None) for i in ids]
+
+
+def close_the_loop_out(db: Session, project: Project, request: EnhancementRequest, viewer: User) -> CloseTheLoopOut:
+    """What became of `request`: its requesters with whether each was told, the Pain Points it addresses, the
+    Requirements that realise it and the cue to mark it delivered. Names are withheld (counts kept) for records the
+    viewer cannot see, as `demand_out` does."""
+    version = get_current_version(db, request.id)
+    demand = compute_demand(db, project, [request.id])[request.id]
+    links = compute_links(db, project, [request.id])[request.id]
+    told = informed_by_request(db, [request.id]).get(request.id, {})
+    resolver = ArtefactResolver(db, project, viewer.id, include_related=True)
+    wanted: dict[str, set[uuid.UUID]] = defaultdict(set)
+    for requester in demand.requesters:
+        wanted[requester.artefact_type].add(requester.id)
+    resolver.resolve(dict(wanted))
+    requesters = []
+    for r in demand.requesters:
+        row = told.get((r.artefact_type, r.id))
+        base = _requester_out(r, resolver)
+        requesters.append(LoopRequesterOut(
+            **base.model_dump(), informed=row is not None, informed_at=row.informed_at if row else None,
+            informed_by=row.informed_by if row else None, note=row.note if row else "",
+        ))
+    complete = requirements_complete(db, links.requirement_ids)
+    state = delivery_state(db, links.requirement_ids)
+    return CloseTheLoopOut(
+        request_id=request.id, status=version.status, decline_reason=version.decline_reason,
+        can_record=version.status in CLOSED_STATUSES, requesters=requesters,
+        informed_count=sum(1 for r in requesters if r.informed), open_count=open_count(demand, version.status, told),
+        pain_points=[
+            LinkedRecordOut(id=i, label=label, hidden=label is None)
+            for i, label in _linked_records(resolver, "pain_point", links.pain_point_ids)
+        ],
+        realising_requirements=[
+            RealisingRequirementOut(
+                id=i, label=label, hidden=label is None, is_completed=complete.get(i) if label is not None else None,
+            )
+            for i, label in _linked_records(resolver, "requirement", links.requirement_ids)
+        ],
+        all_requirements_complete=state,
+        suggest_delivered=version.status == EnhancementRequestStatus.ACCEPTED and state is True,
+    )
+
+
+def inform_from_payload(
+    db: Session, holder: RecordOwner, project: Project, request: EnhancementRequest, payload: InformedUpdate,
+    actor: User,
+) -> CloseTheLoopOut:
+    """Records (or withdraws) that requesters were told the outcome (the caller has checked the actor may),
+    audit-logs one event with the party keys and counts (never the note), commits and returns the close-the-loop view.
+    Locks the request row first so two concurrent ticks cannot race on the same party.
+
+    Raises:
+        HTTPException: 409 if the request is archived or has no outcome yet, or a party is not one of its requesters.
+    """
+    lock_row_for_update(db, EnhancementRequest, request.id)
+    db.refresh(request)
+    parties = [(p.artefact_type, p.id) for p in payload.parties]
+    changed = apply_value_error_as_conflict(set_informed, db, project, request, parties, payload.informed, payload.note, actor)
+    audit_request(db, holder, request, "requesters_informed" if payload.informed else "requesters_informed_withdrawn", actor, {
+        "parties": [{"type": t, "id": str(i)} for t, i in parties], "changed": changed,
+    })
+    db.commit()
+    return close_the_loop_out(db, project, request, actor)
+
+
+def open_loops_out(db: Session, project: Project, viewer: User) -> list[OpenLoopOut]:
+    """The project's delivered or declined requests with requesters still to be told, names withheld for records the
+    viewer cannot see (the count of those still to be told is exact)."""
+    loops = open_loop_requests(db, project)
+    if not loops:
+        return []
+    resolver = ArtefactResolver(db, project, viewer.id)
+    wanted: dict[str, set[uuid.UUID]] = defaultdict(set)
+    for loop in loops:
+        for artefact_type, party_id in loop.uninformed:
+            wanted[artefact_type].add(party_id)
+    resolver.resolve(dict(wanted))
+    out = []
+    for loop in loops:
+        pending = set(loop.uninformed)
+        out.append(OpenLoopOut(
+            request=RequestRefOut(id=loop.request.id, unique_code=loop.request.unique_code, title=loop.version.title),
+            status=loop.version.status, decline_reason=loop.version.decline_reason,
+            requester_count=loop.demand.count, open_count=len(pending),
+            uninformed=[_requester_out(r, resolver) for r in loop.demand.requesters if (r.artefact_type, r.id) in pending],
+        ))
+    return out
 
 
 # --- Comments and files (shared kit, see `services.module_attachments`) ------

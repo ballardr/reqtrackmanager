@@ -3605,8 +3605,36 @@ def main() -> None:
         f"{feedback_url}/requests/{duplicate_request['id']}/merge",
         json={"canonical_id": export_request["id"], "note": "Same ask, different wording."}, headers=h_pm, timeout=30,
     ).raise_for_status()
-    print("  Product Feedback: 4 Falcon-3 requests (accepted with requesters from a stakeholder, an engagement and a"
-          " merged duplicate; new; declined) and 2 organisation inbox requests")
+    # Problem and delivery: the accepted request addresses a Pain Point and is realised by a requirement; a delivered
+    # request has one requester told and one still to tell (the close-the-loop list).
+    link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
+    create_artefact_link(
+        h_pm, drone["id"], "enhancement_request", export_request["id"], link_type_id=link_types["Addresses"]["id"],
+        other_type="pain_point", other_id=pp_accepted["id"],
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "enhancement_request", export_request["id"], link_type_id=link_types["Realised by"]["id"],
+        other_type="requirement", other_id=list(drone_reqs.values())[0]["id"],
+    )
+    delivered_request = create_enhancement_request(
+        h_pm, feedback_url, title="Pre-flight checklist as a printable sheet",
+        description="Pilots want the pre-flight checklist on one printable page.",
+    )
+    for status in ("under_review", "accepted", "delivered"):
+        transition_enhancement_request(h_pm, feedback_url, delivered_request["id"], status)
+    for other_type, other in (("stakeholder", stakeholder_fleet), ("persona", persona_auditor)):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", delivered_request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    httpx.put(
+        f"{feedback_url}/requests/{delivered_request['id']}/informed",
+        json={"parties": [{"artefact_type": "stakeholder", "id": stakeholder_fleet["id"]}], "informed": True,
+              "note": "Told at the monthly review."}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    print("  Product Feedback: 5 Falcon-3 requests (accepted with requesters from a stakeholder, an engagement and a"
+          " merged duplicate, linked to a Pain Point and a requirement; new; declined; delivered with one requester"
+          " still to be told) and 2 organisation inbox requests")
 
     print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
           " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"

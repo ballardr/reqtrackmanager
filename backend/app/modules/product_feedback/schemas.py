@@ -13,8 +13,10 @@ is cleared, one not mentioned is kept). A response carries them with the scores 
 (`scores`; `score` / `scoring_model_key` are the primary one; null while an axis the model needs is unset), and
 `derived_levels` for an axis read from the request's demand.
 
-A request also reports its place in a merge (`merged_into`, `merged_count`) and its demand
-(`requester_count`, `weighted_demand`; see `demand.py`). Both are derived, never written here.
+A request also reports its place in a merge (`merged_into`, `merged_count`), its demand
+(`requester_count`, `weighted_demand`; see `demand.py`), the problems and work it is linked to (`pain_point_count`,
+`requirement_count`; `relationships.py`) and how many requesters were told its outcome (`informed_count`,
+`loop_open_count`; `loop.py`). All are derived, never written here.
 
 `owner` is a principal: a user, an organisation group or a project group. Requests send a
 `PrincipalRef` (`{type, id}`; null clears it) and responses return a resolved `PrincipalOut`.
@@ -137,6 +139,14 @@ class RequestOut(ProjectScopedRow):
     merged_count: int = 0
     requester_count: int = 0
     weighted_demand: float = 0.0
+    pain_point_count: int = Field(
+        default=0, description="Pain Points the request addresses (its merged duplicates' included); 0 is flagged."
+    )
+    requirement_count: int = Field(default=0, description="Requirements that realise the request.")
+    informed_count: int = Field(default=0, description="Requesters recorded as told the outcome.")
+    loop_open_count: int = Field(
+        default=0, description="Requesters still to be told; 0 unless the request is delivered or declined."
+    )
 
 
 class RequestVersionOut(BaseModel):
@@ -243,3 +253,75 @@ class RequestMergeOut(BaseModel):
     unmerged_by: UUID | None = None
     unmerged_at: datetime | None = None
     active: bool
+
+
+class PartyRef(BaseModel):
+    """A requester record: a Stakeholder or Persona."""
+
+    artefact_type: str = Field(max_length=64)
+    id: UUID
+
+
+class InformedUpdate(BaseModel):
+    """Records (or withdraws) that requesters were told the outcome of a delivered or declined request. Every party
+    must be a current requester (`GET .../demand` lists them)."""
+
+    parties: list[PartyRef] = Field(min_length=1, max_length=500)
+    informed: bool = True
+    note: str = Field(default="", max_length=2000, description="How or by whom they were told; kept with a recorded row.")
+
+
+class LoopRequesterOut(RequesterOut):
+    """A requester with whether they were told the outcome."""
+
+    informed: bool = False
+    informed_at: datetime | None = None
+    informed_by: UUID | None = None
+    note: str = ""
+
+
+class LinkedRecordOut(BaseModel):
+    """A record linked to a request; `label` is null (and `hidden` true) when the caller may not view it."""
+
+    id: UUID
+    label: str | None = None
+    hidden: bool = False
+
+
+class RealisingRequirementOut(LinkedRecordOut):
+    """A Requirement that realises a request, with its completion overlay (null while hidden)."""
+
+    is_completed: bool | None = None
+
+
+class CloseTheLoopOut(BaseModel):
+    """What became of a request and who has been told.
+
+    `suggest_delivered` is the prompt for marking an accepted request delivered: every requirement realising it is
+    complete. It never changes the status.
+    """
+
+    request_id: UUID
+    status: EnhancementRequestStatus
+    decline_reason: str
+    can_record: bool = Field(description="True when the request is delivered or declined, so telling requesters can be recorded.")
+    requesters: list[LoopRequesterOut]
+    informed_count: int
+    open_count: int
+    pain_points: list[LinkedRecordOut]
+    realising_requirements: list[RealisingRequirementOut]
+    all_requirements_complete: bool | None = Field(
+        default=None, description="Whether every realising requirement is complete; null when there are none."
+    )
+    suggest_delivered: bool
+
+
+class OpenLoopOut(BaseModel):
+    """A delivered or declined request with requesters still to be told."""
+
+    request: RequestRefOut
+    status: EnhancementRequestStatus
+    decline_reason: str
+    requester_count: int
+    open_count: int
+    uninformed: list[RequesterOut]
