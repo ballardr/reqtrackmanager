@@ -60,7 +60,7 @@ def test_a_project_round_trips_its_requests_policy_and_evidence_numbered_afresh(
     client.post(f"{base}/requests/{kept['id']}/files", files={"file": ("e.txt", b"evidence", "text/plain")}, headers=h)
     archived = create_request(client, token, project["id"], title="Archived")
     client.post(f"{base}/requests/{archived['id']}/archive", headers=h)
-    client.put(base + "/settings", json={"submission_policy": "triagers"}, headers=h)
+    client.put(base + "/settings", json={"submission_policy": "triagers", "request_page_sections": ["demand", "details"]}, headers=h)
 
     imported = _import_project(client, token, org["id"], _export(client, token, f"/api/v1/projects/{project['id']}/export"), "Restored")
     got = _requests(client, token, imported["id"], include_archived="true")
@@ -71,7 +71,9 @@ def test_a_project_round_trips_its_requests_policy_and_evidence_numbered_afresh(
     assert got["Decline"]["status"] == "declined" and got["Decline"]["decline_reason"] == "Not now."
     assert got["Archived"]["is_archived"] is True
     assert sorted(r["unique_code"] for r in got.values()) == ["ENH-001", "ENH-002", "ENH-003"]
-    assert client.get(project_base(imported["id"]) + "/settings", headers=h).json() == {"submission_policy": "triagers"}
+    assert client.get(project_base(imported["id"]) + "/settings", headers=h).json() == {
+        "submission_policy": "triagers", "request_page_sections": ["demand", "details"],
+    }
 
     files = client.get(f"{project_base(imported['id'])}/requests/{got['Keep']['id']}/files", headers=h).json()
     assert len(files) == 1 and client.get(f"/api/v1/files/{files[0]['id']}", headers=h).content == b"evidence"
@@ -137,13 +139,17 @@ def test_requesters_and_an_active_merge_round_trip_and_an_ended_merge_does_not(c
     assert add_requester(client, token, org["id"], pid, canonical["id"], "stakeholder", ann["id"]).status_code == 201
     assert add_requester(client, token, org["id"], pid, duplicate["id"], "persona", tech["id"]).status_code == 201
     for dup in (duplicate, ended):
-        assert client.post(f"{base}/requests/{dup['id']}/merge", json={"canonical_id": canonical["id"]}, headers=h).status_code == 200
+        body = {"canonical_id": canonical["id"], "note": f"Same as {dup['title']}"}
+        merged = client.post(f"{base}/requests/{dup['id']}/merge", json=body, headers=h)
+        assert merged.status_code == 200
     assert client.post(f"{base}/requests/{ended['id']}/unmerge", headers=h).status_code == 200
 
     imported = _import_project(client, token, org["id"], _export(client, token, f"/api/v1/projects/{pid}/export"), "Restored Demand")
     got = _requests(client, token, imported["id"])
     assert got["Duplicate"]["status"] == "duplicate" and got["Duplicate"]["merged_into"]["id"] == got["Canonical"]["id"]
     assert got["Ended"]["status"] == "new" and got["Ended"]["merged_into"] is None
+    carried = client.get(f"{project_base(imported['id'])}/requests/{got['Canonical']['id']}/merges", headers=h).json()
+    assert [m["note"] for m in carried] == ["Same as Duplicate"]  # the note travels with an active merge
     demand = get_demand(client, token, imported["id"], got["Canonical"]["id"])
     assert {r["label"]: r["from_merge"] for r in demand["requesters"]} == {"Ann": False, "Technician": True}
     assert demand["weighted_demand"] == 3 + 2

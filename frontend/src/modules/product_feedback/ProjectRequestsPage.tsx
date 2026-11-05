@@ -43,6 +43,7 @@ import { useTagFilter } from "../../hooks/useTagFilter";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { projectRequestApi } from "./api";
 import { RequestFormModal, type RequestFormValues } from "./RequestFormModal";
+import { RequestColumnChooser } from "./RequestColumnChooser";
 import { requestColumns } from "./requestColumns";
 import { RequestFilterFields } from "./RequestFilterFields";
 import { sortRequests, useRequestListFilters } from "./requestListState";
@@ -70,7 +71,7 @@ export function ProjectRequestsPage() {
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [viewMode, setViewMode] = useViewMode("product_feedback.requests", "list");
 
-  const filters = useRequestListFilters(scheme);
+  const filters = useRequestListFilters(scheme, "project", true);
 
   useEffect(() => {
     if (!projectId) return;
@@ -87,7 +88,7 @@ export function ProjectRequestsPage() {
     if (!projectId) return;
     try {
       setRequests(await projectRequestApi.list(projectId, {
-        include_archived: filters.includeArchived, scoring_model: filters.chosenModels,
+        include_archived: filters.includeArchived, scoring_model: filters.requestedModels,
         tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope,
       }));
       setLoadError(null);
@@ -96,7 +97,7 @@ export function ProjectRequestsPage() {
     }
   }
 
-  useLoadOnChange(reload, [projectId, filters.includeArchived, filters.chosenModels, tagFilter.query, projectScope.scope]);
+  useLoadOnChange(reload, [projectId, filters.includeArchived, filters.requestedModels.join(","), tagFilter.query, projectScope.scope]);
 
   async function create(values: RequestFormValues, quickLinks: Parameters<typeof commitQuickLinks>[1], tags: string[]) {
     if (!projectId) return;
@@ -122,7 +123,7 @@ export function ProjectRequestsPage() {
   const emptyBecauseOfOpenOnly = filters.openOnly && filtered.length === 0 && requests.some((r) => filters.matches(r, "open"));
   const params = addSharedListFilters(filters.filterParams(), tagFilter, projectScope);
   const columns = requestColumns({
-    scheme, models: filters.models, showLinkWarnings: true,
+    scheme, models: filters.models, shown: filters.columns.visible, showLinkWarnings: true,
     titleExtra: (r) => <ProjectScopeLabel row={r} />,
     codeCell: (r) => <RecordCode code={r.unique_code} ownerProjectCode={r.from_project_code} />,
   });
@@ -149,12 +150,11 @@ export function ProjectRequestsPage() {
           </FilterPanel>
         }
       >
-        {access?.can_triage && (
-          <div className="row" style={{ justifyContent: "flex-end", alignItems: "center" }}>
-            <div ref={setToolbarHost} className="row" style={{ alignItems: "center" }} />
-            <ViewToggle mode={viewMode} onChange={setViewMode} showTilesOption={false} showGridOption />
-          </div>
-        )}
+        <div className="row" style={{ justifyContent: "flex-end", alignItems: "center" }}>
+          <div ref={setToolbarHost} className="row" style={{ alignItems: "center" }} />
+          {!(access?.can_triage && viewMode === "grid") && <RequestColumnChooser filters={filters} scheme={scheme} />}
+          {access?.can_triage && <ViewToggle mode={viewMode} onChange={setViewMode} showTilesOption={false} showGridOption />}
+        </div>
         {access?.can_triage && viewMode === "grid" ? (
           <RecordGrid
             projectId={projectId} toolbarHost={toolbarHost} recordType="enhancement_request" filters={params.toString()}

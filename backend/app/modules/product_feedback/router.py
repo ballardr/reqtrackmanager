@@ -46,10 +46,13 @@ from app.modules.product_feedback.schemas import (
     RequestTransitionRequest,
     RequestUpdate,
     RequestVersionOut,
+    ScorePreviewIn,
+    ScorePreviewOut,
 )
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.scoring_filter import ScoredFilter
 from app.modules.product_feedback.service import (
+    EXTERNAL_REFERENCES_SUBCOMPONENT_KEY,
     ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY,
     PRODUCT_FEEDBACK_MODULE_KEY,
     RecordOwner,
@@ -69,6 +72,14 @@ router = APIRouter(
 )
 
 _require_view = require_org_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY)
+_require_references_on = require_org_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, EXTERNAL_REFERENCES_SUBCOMPONENT_KEY)
+
+
+def _require_references(current_user: User = Depends(_require_view), _on: User = Depends(_require_references_on)) -> User:
+    """The inbox gate plus the External references switch (the organisation's own: no project is in the picture)."""
+    return current_user
+
+
 # The module's organisation-wide reports (`reports.py`): generated routes at `/reports/<slug>`. They need the module and
 # the `org_feedback_triager` role, not the inbox switch (an organisation-wide run covers projects as well).
 router.include_router(REPORT_ROUTERS.org)
@@ -79,7 +90,7 @@ router.include_router(REPORT_ROUTERS.org)
 _require_module = require_org_module_enabled(PRODUCT_FEEDBACK_MODULE_KEY)
 register_org_vocabulary(
     router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system_definition",
-    view_dependency=_require_module,
+    view_dependency=_require_references_on,
 )
 register_org_vocabulary(
     router, path="/request-channels", vocabulary=REQUEST_CHANNELS, entity_type="request_channel_definition",
@@ -127,7 +138,8 @@ def list_org_requests(
     `open_only` and a case-insensitive `search` of code, title and description.
     `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
     being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
-    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis."""
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis, and
+    `missing_axis=any` those not rated on every criterion."""
     holder = _holder(db, organization_id)
     requests = list_organization_requests(db, organization_id, include_archived=include_archived)
     return sh.requests_to_out(
@@ -146,7 +158,8 @@ def get_org_request(
     """One inbox request with its current version.
     `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
     being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
-    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis."""
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis, and
+    `missing_axis=any` those not rated on every criterion."""
     return sh.current_request_out(db, _get(db, _holder(db, organization_id), request_id), scoring_model)
 
 
@@ -160,6 +173,16 @@ def get_org_scoring_scheme(
     server) can discover the level ids."""
     _holder(db, organization_id)
     return scoring.build_scheme_config(db, organization_id, scoring.get_registered_scheme(REQUEST_SCORING_SCHEME_KEY))
+
+
+@router.post("/score-preview", response_model=ScorePreviewOut)
+def preview_inbox_request_scores(
+    organization_id: UUID, payload: ScorePreviewIn, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Scores levels still being chosen for an inbox request, under the organisation's enabled models, without saving
+    anything. An inbox request has no requesters, so the derived Demand axis reads 0."""
+    return sh.preview_scores(db, _holder(db, organization_id), payload)
 
 
 @router.put("/requests/{request_id}", response_model=RequestOut)
@@ -252,7 +275,7 @@ def list_org_request_merges(
 
 @router.get("/requests/{request_id}/references", response_model=list[ExternalRefOut])
 def list_org_request_references(
-    organization_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    organization_id: UUID, request_id: UUID, current_user: User = Depends(_require_references), db: Session = Depends(get_db),
 ):
     """The inbox request's references to items in outside tools, oldest first."""
     request = _get(db, _holder(db, organization_id), request_id)
@@ -261,7 +284,7 @@ def list_org_request_references(
 
 @router.post("/requests/{request_id}/references", response_model=ExternalRefOut, status_code=status.HTTP_201_CREATED)
 def add_org_request_reference(
-    organization_id: UUID, request_id: UUID, payload: ExternalRefIn, current_user: User = Depends(_require_view),
+    organization_id: UUID, request_id: UUID, payload: ExternalRefIn, current_user: User = Depends(_require_references),
     db: Session = Depends(get_db),
 ):
     """Adds a reference (a system from the organisation's external system list). Needs the triager role."""
@@ -274,7 +297,7 @@ def add_org_request_reference(
 @router.patch("/requests/{request_id}/references/{reference_id}", response_model=ExternalRefOut)
 def update_org_request_reference(
     organization_id: UUID, request_id: UUID, reference_id: UUID, payload: ExternalRefUpdate,
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_references), db: Session = Depends(get_db),
 ):
     """Changes a reference (only fields present in the body). Needs the triager role."""
     holder = _holder(db, organization_id)
@@ -285,7 +308,7 @@ def update_org_request_reference(
 
 @router.delete("/requests/{request_id}/references/{reference_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_org_request_reference(
-    organization_id: UUID, request_id: UUID, reference_id: UUID, current_user: User = Depends(_require_view),
+    organization_id: UUID, request_id: UUID, reference_id: UUID, current_user: User = Depends(_require_references),
     db: Session = Depends(get_db),
 ):
     """Removes a reference. Needs the triager role."""

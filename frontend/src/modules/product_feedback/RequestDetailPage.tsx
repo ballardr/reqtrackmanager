@@ -18,9 +18,10 @@
  *   Requirement, "Requested by" a Stakeholder, Persona or Engagement). A solution with no Pain Point carries a warning
  *   badge, never a block. An inbox request has no links (links are a project's), so triage it into a project first.
  */
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { artefactLinksApi, type CollectedLink } from "../../api/artefactLinks";
 import { api } from "../../api/client";
 import { orgScoringApi, projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import type { FileAsset, OrgUser, Project } from "../../api/types";
@@ -32,18 +33,24 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailCard } from "../../components/DetailCard";
 import { DetailLayout } from "../../components/DetailLayout";
 import { FileAttachmentList } from "../../components/FileAttachmentList";
+import { Modal } from "../../components/Modal";
 import { RecordActivity } from "../../components/RecordActivity";
 import { recordActivityKey } from "../../components/recordActivityKey";
 import { RecordPrincipalField, VersionHistoryTable } from "../../components/RecordDetailParts";
 import { RecordHeader } from "../../components/RecordHeader";
 import { RecordTags } from "../../components/RecordTags";
+import { SectionOrderEditor } from "../../components/SectionOrderEditor";
 import { Spinner } from "../../components/Spinner";
 import { useArchiveAction } from "../../components/useConfirmedAction";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useUiPreference } from "../../hooks/useUiPreference";
 import { useRecordOwnerCode } from "../../hooks/useOrganizationCode";
+import { resolveSectionOrder } from "../../utils/sectionOrder";
 import { orgRequestApi, projectRequestApi } from "./api";
+import { AddRequestersModal } from "./AddRequestersModal";
 import { mergeCandidates } from "./mergeCandidates";
 import { MergeRequestDialog } from "./MergeRequestDialog";
 import { MoveToProjectDialog } from "./MoveToProjectDialog";
@@ -53,21 +60,26 @@ import { RequestDemandPanel } from "./RequestDemandPanel";
 import { RequestFormModal, type RequestFormValues } from "./RequestFormModal";
 import { RequestLoopPanel } from "./RequestLoopPanel";
 import { RequestReferencesCard } from "./RequestReferencesCard";
+import { REQUEST_PAGE_SECTIONS, REQUEST_SECTION_KEYS, REQUEST_SECTIONS_PREFERENCE } from "./requestSections";
 import { RequestScoresPanel } from "./RequestScoresPanel";
 import { REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE } from "./types";
 import type {
   CloseTheLoop, Demand, EnhancementRequest, ExternalRef, FeedbackAccess, RequestComment, RequestMerge, RequestStatus,
   Requester, RequestVersion,
 } from "./types";
+import { useExternalReferencesEnabled } from "./useExternalReferences";
 import { useExternalSystemChoices, useRequestChannelChoices } from "./useFeedbackLists";
 
 const SCHEME_KEY = "enhancement_request";
+
+/** How many requesters the Demand card loads at first and with each Show more. */
+const REQUESTER_PAGE = 25;
 
 /** What a lifecycle button is called, by where the request is and where it goes. */
 function transitionLabel(from: RequestStatus, to: RequestStatus): string {
   if (to === "declined") return "Decline";
   if (to === "delivered") return "Mark delivered";
-  if (to === "under_review") return from === "new" ? "Start review" : "Back to review";
+  if (to === "under_review") return from === "new" ? "Mark under review" : "Return to review";
   if (to === "accepted") return from === "delivered" ? "Reopen" : "Accept";
   return from === "declined" ? "Reopen" : "Back to new";
 }
@@ -105,6 +117,13 @@ export function RequestDetailPage() {
   const [demand, setDemand] = useState<Demand | null>(null);
   const [merges, setMerges] = useState<RequestMerge[] | null>(null);
   const [loop, setLoop] = useState<CloseTheLoop | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [addingRequesters, setAddingRequesters] = useState(false);
+  const [arranging, setArranging] = useState(false);
+  const [removingRequester, setRemovingRequester] = useState<{ linkId: string; name: string; kind: "requester" | "engagement" } | null>(null);
+  const [projectOrder, setProjectOrder] = useState<string[] | null>(null);
+  // A person's own order for the sections (empty: the project's, else the built-in one).
+  const [personalOrder, setPersonalOrder] = useUiPreference<string[]>(REQUEST_SECTIONS_PREFERENCE, []);
 
   const [editing, setEditing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -122,6 +141,8 @@ export function RequestDetailPage() {
   const organization = projectId ? project?.organization_id : organizationId;
   const systems = useExternalSystemChoices(projectId, organization);
   const channels = useRequestChannelChoices(projectId ?? "");
+  const commitRequesters = useCommitQuickLinks(projectId ?? "", "enhancement_request");
+  const referencesOn = useExternalReferencesEnabled(projectId, organization);
 
   useEffect(() => {
     if (!scopeId) return;
@@ -134,6 +155,7 @@ export function RequestDetailPage() {
       void orgScoringApi.get(scopeId, SCHEME_KEY).then(setScheme).catch(() => setScheme(null));
     }
     void scopedApi.getAccess(scopeId).then(setAccess).catch(() => setAccess(null));
+    if (projectId) void projectRequestApi.getSettings(projectId).then((x) => setProjectOrder(x.request_page_sections)).catch(() => setProjectOrder(null));
   }, [scopeId, projectId, scopedApi]);
 
   /** Reads the request and everything derived from its requesters and links again. */
@@ -149,12 +171,61 @@ export function RequestDetailPage() {
     void scopedApi.listVersions(scopeId, requestId).then(setVersions).catch(() => setVersions([]));
     void scopedApi.listMerges(scopeId, requestId).then(setMerges).catch(() => setMerges([]));
     if (projectId) {
-      void projectRequestApi.getDemand(projectId, requestId).then(setDemand).catch(() => setDemand(null));
+      void reloadDemand();
       void projectRequestApi.getCloseTheLoop(projectId, requestId).then(setLoop).catch(() => setLoop(null));
     }
   }
 
   useLoadOnChange(refresh, [scopeId, projectId, requestId]);
+
+  /** Reads the requesters again, as many as are on screen (at least one page), so a change never collapses a long list. */
+  async function reloadDemand() {
+    if (!projectId || !requestId) return;
+    const loaded = demand?.requesters.length ?? 0;
+    try {
+      setDemand(await projectRequestApi.getDemand(projectId, requestId, { limit: Math.min(500, Math.max(loaded, REQUESTER_PAGE)) }));
+    } catch {
+      setDemand(null);
+    }
+  }
+
+  /** Appends the next page of requesters. */
+  async function showMoreRequesters() {
+    if (!projectId || !requestId || !demand) return;
+    setLoadingMore(true);
+    try {
+      const next = await projectRequestApi.getDemand(projectId, requestId, { limit: REQUESTER_PAGE, offset: demand.requesters.length });
+      setDemand((prev) => (prev ? { ...next, requesters: [...prev.requesters, ...next.requesters] } : next));
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not load more requesters."), "error");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  /** Removes the request's own "Requested by" link (a requester, or an Engagement it was raised in), then shows the result. */
+  async function removeRequester(target: { linkId: string; name: string; kind: "requester" | "engagement" }) {
+    if (!projectId || !request) return;
+    try {
+      await artefactLinksApi.remove(projectId, "enhancement_request", request.id, target.linkId);
+      showToast(target.kind === "engagement" ? "Engagement removed." : "Requester removed.");
+      setRemovingRequester(null);
+      await refresh();
+      setLinksVersion((n) => n + 1);
+    } catch (err) {
+      showToast(toErrorMessage(err, "Could not remove it."), "error");
+      setRemovingRequester(null);
+    }
+  }
+
+  /** Records the chosen requesters as "Requested by" links, then shows them. */
+  async function addRequesters(links: CollectedLink[]) {
+    if (!request) return;
+    const added = await commitRequesters(request.id, links);
+    if (added) setAddingRequesters(false);
+    await refresh();
+    setLinksVersion((n) => n + 1);
+  }
 
   async function reloadCommentsAndFiles() {
     if (!scopeId || !requestId) return;
@@ -180,14 +251,16 @@ export function RequestDetailPage() {
     }
   }
 
-  async function saveEdit(values: RequestFormValues) {
+  async function saveEdit(values: RequestFormValues, requesters: CollectedLink[]) {
     if (!scopeId || !request) return;
     setFormError(null);
     try {
       setRequest(await scopedApi.update(scopeId, request.id, values));
       showToast("Request updated.");
       setEditing(false);
+      await commitRequesters(request.id, requesters);
       await refresh();
+      if (requesters.length > 0) setLinksVersion((n) => n + 1);
     } catch (err) {
       setFormError(toErrorMessage(err, "Could not update the request."));
     }
@@ -239,9 +312,10 @@ export function RequestDetailPage() {
   async function setChannel(requester: Requester, channelId: string | null) {
     if (!projectId || !request) return;
     try {
-      setDemand(await projectRequestApi.setRequesterChannel(projectId, request.id, {
+      await projectRequestApi.setRequesterChannel(projectId, request.id, {
         parties: [{ artefact_type: requester.artefact_type, id: requester.id }], channel_id: channelId,
-      }));
+      });
+      await reloadDemand();
       showToast(channelId ? "Channel recorded." : "Channel cleared.");
       void projectRequestApi.getCloseTheLoop(projectId, request.id).then(setLoop).catch(() => undefined);
     } catch (err) {
@@ -276,6 +350,126 @@ export function RequestDetailPage() {
   const delivering = pending?.to === "delivered";
   const showLoop = Boolean(projectId) && loop !== null && (request.status === "delivered" || request.status === "declined");
   const readyToDeliver = Boolean(loop?.suggest_delivered) && request.status === "accepted" && canTriage;
+
+  /** Each arrangeable section's content, keyed as `REQUEST_PAGE_SECTIONS`; an empty one (nothing to show here) is skipped. */
+  const sectionNodes: Record<string, ReactNode> = {
+    details: (
+      <>
+          <DetailCard>
+            {request.description ? <Field label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
+            {request.status === "declined" && request.decline_reason && <Field label="Decline reason" value={request.decline_reason} />}
+            <RecordPrincipalField
+              label="Owner" ariaLabel="Request owner" principal={request.owner} orgUsers={orgUsers}
+              organizationId={organization} projectId={projectId} readOnly={!canTriage} onChange={(o) => void setOwner(o)}
+            />
+          </DetailCard>
+      </>
+    ),
+    references: (
+      <>
+          {referencesOn && (
+            <RequestReferencesCard
+              references={request.external_refs} canEdit={canTriage && !request.is_archived}
+              onAdd={() => { setReferenceError(null); setEditingReference("new"); }}
+              onEdit={(ref) => { setReferenceError(null); setEditingReference(ref); }}
+              onRemove={setRemovingReference}
+            />
+          )}
+      </>
+    ),
+    scoring: (
+      <>
+          <RequestScoresPanel request={request} scheme={scheme} showDemand={Boolean(projectId)} />
+      </>
+    ),
+    demand: (
+      <>
+          {projectId && (
+            <RequestDemandPanel
+              projectId={projectId} demand={demand} merges={merges} channels={channels}
+              canSetChannel={canTriage && !request.is_archived} onSetChannel={setChannel}
+              onAddRequesters={canTriage && !request.is_archived ? () => setAddingRequesters(true) : undefined}
+            onRemoveRequester={canTriage && !request.is_archived ? (linkId, name, kind) => setRemovingRequester({ linkId, name, kind }) : undefined}
+              onShowMore={() => void showMoreRequesters()} loadingMore={loadingMore}
+            />
+          )}
+      </>
+    ),
+    loop: (
+      <>
+          {showLoop && loop && (
+            <RequestLoopPanel
+              loop={loop}
+              onInformed={async (parties, informed, note) => {
+                try {
+                  setLoop(await projectRequestApi.setInformed(projectId!, request.id, { parties, informed, note }));
+                  showToast(informed ? "Recorded as told." : "Told status withdrawn.");
+                  void refresh();
+                } catch (err) {
+                  showToast(toErrorMessage(err, "Could not record that."), "error");
+                }
+              }}
+            />
+          )}
+      </>
+    ),
+    versions: (
+      <>
+          <VersionHistoryTable
+            versions={versions}
+            columns={[
+              { header: "Status", render: (v: RequestVersion) => REQUEST_STATUS_LABEL[v.status] },
+            ]}
+          />
+      </>
+    ),
+    evidence: (
+      <>
+          <DetailCard heading="Evidence">
+            <FileAttachmentList
+              files={files}
+              disabled={!canTriage || request.is_archived}
+              emptyHint={canTriage ? undefined : "Only a triager can attach evidence to a request."}
+              onUpload={async (file) => {
+                const asset = await scopedApi.uploadFile(scopeId, request.id, file);
+                setFiles((prev) => [...prev, asset]);
+              }}
+              onRemove={async (fileId) => {
+                await scopedApi.unlinkFile(scopeId, request.id, fileId);
+                setFiles((prev) => prev.filter((f) => f.id !== fileId));
+              }}
+            />
+          </DetailCard>
+      </>
+    ),
+    comments: (
+      <>
+          <ArtefactCommentsSection
+            comments={comments ?? []}
+            currentUserId={user?.id}
+            onPost={async (body) => {
+              const comment = await scopedApi.addComment(scopeId, request.id, body);
+              setComments((prev) => [...(prev ?? []), comment]);
+              return comment;
+            }}
+            onEdit={async (commentId, body) => {
+              const updated = await scopedApi.editComment(scopeId, request.id, commentId, body);
+              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
+            }}
+            onUploadAttachment={async (commentId, file) => {
+              const asset = await scopedApi.uploadCommentAttachment(scopeId, request.id, commentId, file);
+              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
+            }}
+            onRemoveAttachment={async (commentId, fileId) => {
+              await scopedApi.removeCommentAttachment(scopeId, request.id, commentId, fileId);
+              setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
+            }}
+          />
+      </>
+    ),
+  };
+  const availableSections = REQUEST_SECTION_KEYS.filter((key) => (key !== "references" || referencesOn) && (key !== "demand" || Boolean(projectId)) && (key !== "loop" || showLoop));
+  const sectionOrder = resolveSectionOrder(availableSections, personalOrder, projectOrder);
 
   return (
     <DetailLayout
@@ -313,6 +507,7 @@ export function RequestDetailPage() {
         ) : undefined}
         onEdit={canTriage ? () => setEditing(true) : undefined}
         actions={[
+          { label: "Arrange sections…", onSelect: () => setArranging(true) },
           canTriage && !isDuplicate && !request.is_archived && { label: "Merge into another request…", onSelect: () => void openMerge() },
           canTriage && !projectId && !request.is_archived && !isDuplicate && { label: "Move to a project…", onSelect: () => void openMove() },
           archive.item,
@@ -343,98 +538,49 @@ export function RequestDetailPage() {
           </DetailCard>
         )}
 
-        <DetailCard>
-          {request.description ? <Field label="Description" value={request.description} /> : <p className="text-muted">No description.</p>}
-          {request.status === "declined" && request.decline_reason && <Field label="Decline reason" value={request.decline_reason} />}
-          <RecordPrincipalField
-            label="Owner" ariaLabel="Request owner" principal={request.owner} orgUsers={orgUsers}
-            organizationId={organization} projectId={projectId} readOnly={!canTriage} onChange={(o) => void setOwner(o)}
-          />
-        </DetailCard>
-
-        <RequestReferencesCard
-          references={request.external_refs} canEdit={canTriage && !request.is_archived}
-          onAdd={() => { setReferenceError(null); setEditingReference("new"); }}
-          onEdit={(ref) => { setReferenceError(null); setEditingReference(ref); }}
-          onRemove={setRemovingReference}
-        />
-
-        <RequestScoresPanel request={request} scheme={scheme} showDemand={Boolean(projectId)} />
-
-        {projectId && (
-          <RequestDemandPanel
-            projectId={projectId} demand={demand} merges={merges} channels={channels}
-            canSetChannel={canTriage && !request.is_archived} onSetChannel={setChannel}
-          />
-        )}
-
-        {showLoop && loop && (
-          <RequestLoopPanel
-            loop={loop}
-            onInformed={async (parties, informed, note) => {
-              try {
-                setLoop(await projectRequestApi.setInformed(projectId!, request.id, { parties, informed, note }));
-                showToast(informed ? "Recorded as told." : "Told status withdrawn.");
-                void refresh();
-              } catch (err) {
-                showToast(toErrorMessage(err, "Could not record that."), "error");
-              }
-            }}
-          />
-        )}
-
-        <VersionHistoryTable
-          versions={versions}
-          columns={[
-            { header: "Status", render: (v: RequestVersion) => REQUEST_STATUS_LABEL[v.status] },
-          ]}
-        />
-
-        <DetailCard heading="Evidence">
-          <FileAttachmentList
-            files={files}
-            disabled={!canTriage || request.is_archived}
-            emptyHint={canTriage ? undefined : "Only a triager can attach evidence to a request."}
-            onUpload={async (file) => {
-              const asset = await scopedApi.uploadFile(scopeId, request.id, file);
-              setFiles((prev) => [...prev, asset]);
-            }}
-            onRemove={async (fileId) => {
-              await scopedApi.unlinkFile(scopeId, request.id, fileId);
-              setFiles((prev) => prev.filter((f) => f.id !== fileId));
-            }}
-          />
-        </DetailCard>
-
-        <ArtefactCommentsSection
-          comments={comments ?? []}
-          currentUserId={user?.id}
-          onPost={async (body) => {
-            const comment = await scopedApi.addComment(scopeId, request.id, body);
-            setComments((prev) => [...(prev ?? []), comment]);
-            return comment;
-          }}
-          onEdit={async (commentId, body) => {
-            const updated = await scopedApi.editComment(scopeId, request.id, commentId, body);
-            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? updated : c)));
-          }}
-          onUploadAttachment={async (commentId, file) => {
-            const asset = await scopedApi.uploadCommentAttachment(scopeId, request.id, commentId, file);
-            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: [...c.attachments, asset] } : c)));
-          }}
-          onRemoveAttachment={async (commentId, fileId) => {
-            await scopedApi.removeCommentAttachment(scopeId, request.id, commentId, fileId);
-            setComments((prev) => (prev ?? []).map((c) => (c.id === commentId ? { ...c, attachments: c.attachments.filter((a) => a.id !== fileId) } : c)));
-          }}
-        />
+        {sectionOrder.map((key) => <Fragment key={key}>{sectionNodes[key]}</Fragment>)}
       </div>
 
       {editing && (
         <RequestFormModal
           initial={request} scopeLabel={projectId ? "project" : "organisation inbox"} scheme={scheme} orgUsers={orgUsers}
           organizationId={organization} projectId={projectId} error={formError}
+          currentRequesters={demand ? { requesters: demand.requesters, total: demand.requester_count } : undefined}
           onCancel={() => { setEditing(false); setFormError(null); }} onSave={saveEdit}
         />
+      )}
+
+      {arranging && (
+        <Modal title="Arrange sections" onClose={() => setArranging(false)}>
+          <div className="stack">
+            <p className="text-muted" style={{ margin: 0 }}>
+              Choose the order of the sections on request pages. This is your own order, for every request{projectId ? "; until you set one the project's order applies" : ""}.
+            </p>
+            <SectionOrderEditor
+              sections={REQUEST_PAGE_SECTIONS} order={sectionOrder} ariaLabel="Section order"
+              onChange={setPersonalOrder}
+              onReset={() => setPersonalOrder([])} resetLabel={projectOrder ? "Use the project's order" : "Use the built-in order"}
+              resetDisabled={personalOrder.length === 0}
+            />
+            <div><button type="button" className="btn btn-primary" onClick={() => setArranging(false)}>Done</button></div>
+          </div>
+        </Modal>
+      )}
+
+      {removingRequester && (
+        <ConfirmDialog
+          title={removingRequester.kind === "engagement" ? "Remove this Engagement?" : "Remove this requester?"}
+          message={removingRequester.kind === "engagement"
+            ? `${removingRequester.name} is no longer recorded as somewhere this request was raised. People it reached who are not requesters in their own right stop counting toward the demand. The Engagement itself is not touched.`
+            : `${removingRequester.name} is no longer recorded as having asked for this request, and stops counting toward its demand. The record itself is not touched.`}
+          confirmLabel="Remove"
+          onCancel={() => setRemovingRequester(null)}
+          onConfirm={() => void removeRequester(removingRequester)}
+        />
+      )}
+
+      {addingRequesters && projectId && (
+        <AddRequestersModal projectId={projectId} onCancel={() => setAddingRequesters(false)} onSave={addRequesters} />
       )}
 
       {editingReference && (

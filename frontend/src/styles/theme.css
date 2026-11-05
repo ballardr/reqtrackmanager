@@ -181,7 +181,9 @@ textarea {
   border-color: var(--color-danger);
 }
 
-.btn:disabled {
+.btn:disabled,
+/* A button that cannot act but must stay focusable and hoverable so its tooltip can say why. */
+.btn[aria-disabled="true"] {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -787,7 +789,7 @@ select.input[size] {
 /* A tooltip carrying a sentence or two (field help): wraps inside a bounded width. `width: max-content`
    keeps the wrapped width independent of where the bubble sits, so measuring it stays stable. */
 .tooltip-bubble--wrap {
-  white-space: normal;
+  white-space: pre-line; /* a help text may list one item per line */
   width: max-content;
   max-width: min(22rem, calc(100vw - 1rem));
   padding: 0.45rem 0.7rem;

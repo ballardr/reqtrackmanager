@@ -105,5 +105,6 @@ def test_the_inbox_is_on_by_default_and_listed_as_a_sub_component(client, admin_
     resp = client.get(f"/api/v1/orgs/{org['id']}/modules/product_feedback/subcomponents", headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
     by_key = {s["subcomponent_key"]: s for s in resp.json()}
-    assert set(by_key) == {"enhancement_request", "organization_requests"}
+    assert set(by_key) == {"enhancement_request", "organization_requests", "external_references"}
     assert by_key["organization_requests"]["enabled"] is True
+    assert by_key["external_references"]["enabled"] is True  # on by default: switching it off is the opt-out

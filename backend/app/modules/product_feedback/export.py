@@ -44,6 +44,7 @@ Dependencies: `services.bundle_common`, `services.principals`, `services.tags`, 
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -79,11 +80,13 @@ from app.modules.product_feedback.models import (
     ProjectFeedbackSettings,
 )
 from app.modules.product_feedback.relationships import ADDRESSES_FORWARD, ADDRESSES_REVERSE, PAIN_POINT_TYPE
+from app.modules.product_feedback.schemas import SECTION_KEY_PATTERN
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.service import (
     REQUEST_ARTEFACT_TYPE,
     REQUEST_CODE_PREFIX,
     RecordOwner,
+    set_request_page_sections,
     set_submission_policy,
     version_levels,
 )
@@ -362,7 +365,10 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     entries = _export_requests(db, project.organization_id, [tuple(p) for p in pairs], assets)
     _add_requesters_and_merges(db, project, [r for r, _ in pairs], entries)
     return {
-        "feedback_settings": {"submission_policy": settings.submission_policy.value} if settings else None,
+        "feedback_settings": (
+            {"submission_policy": settings.submission_policy.value, "request_page_sections": settings.request_page_sections}
+            if settings else None
+        ),
         "enhancement_requests": entries,
         _LINKS_KEY: export_artefact_links(db, project, {REQUEST_ARTEFACT_TYPE: {r.id: r.unique_code for r, _ in pairs}}),
         "scoring_definitions": export_definitions(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id),
@@ -485,7 +491,7 @@ def _add_merges(db: Session, requests: list[EnhancementRequest], entries: list[d
         entry["merged_into"] = (
             {
                 "canonical_code": canonical_code, "prior_status": merge.prior_status.value,
-                "merged_by_email": emails.get(merge.merged_by), "merged_at": _j(merge.merged_at),
+                "merged_by_email": emails.get(merge.merged_by), "merged_at": _j(merge.merged_at), "note": merge.note,
             }
             if merge is not None and canonical_code is not None else None
         )
@@ -499,6 +505,10 @@ def import_project_data(
     settings = data.get("feedback_settings")
     if settings:
         set_submission_policy(db, project.id, SubmissionPolicy(settings["submission_policy"]))
+        sections = settings.get("request_page_sections")
+        if sections:
+            valid = [k for k in dict.fromkeys(sections) if isinstance(k, str) and re.fullmatch(SECTION_KEY_PATTERN, k)]
+            set_request_page_sections(db, project.id, valid[:20])
     holder = RecordOwner.of_project(project)
     imported: dict[str, UUID] = {}
     requests = data.get("enhancement_requests", [])
@@ -632,7 +642,7 @@ def _replay_merges(
             continue
         try:
             with db.begin_nested():
-                merge_requests(db, canonical, duplicate, actor)
+                merge_requests(db, canonical, duplicate, actor, str(merged.get("note") or "")[:2000])
         except ValueError as exc:
             warnings.add(f"Request {entry.get('unique_code')}: merge skipped — {exc}")
             continue

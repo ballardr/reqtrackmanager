@@ -46,7 +46,12 @@ export const ChoosingParentsBuildsTheQuery: Story = {
     await expect(within(select).queryByRole("option", { name: /child/ })).not.toBeInTheDocument();
     await userEvent.selectOptions(select, "parents");
     await expect(canvas.getByLabelText("Query").textContent).toBe("project_scope=parents");
-    await expect(canvas.getByText(/Includes records from related/)).toBeInTheDocument();
+    // What the options mean is a (?) tooltip listing every option, never a permanent line under the select.
+    await expect(canvas.queryByText(/Includes records from related/)).not.toBeInTheDocument();
+    await userEvent.hover(canvas.getByRole("button", { name: "Help: Show records from" }));
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("This + child projects: also the records of its children.");
+    await expect(tip).toHaveTextContent("Only projects you can open are included");
   },
 };
 

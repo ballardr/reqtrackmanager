@@ -48,8 +48,8 @@ test.describe("Enhancement requests: submit, score and decide", () => {
       await page.getByRole("link", { name: "ENH-001" }).click();
       await expect(page.getByRole("heading", { name: new RegExp(title) })).toBeVisible();
       await expect(page.getByText("No Pain Point linked")).toBeVisible();
-      await page.getByRole("button", { name: "Start review" }).click();
-      await page.getByRole("dialog").getByRole("button", { name: "Start review" }).click();
+      await page.getByRole("button", { name: "Mark under review" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Mark under review" }).click();
       await expect(page.locator("span.badge", { hasText: /^Under review$/ })).toBeVisible();
     });
 

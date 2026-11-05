@@ -200,3 +200,24 @@ def test_inbox_requests_merge_within_the_inbox_and_a_merged_request_cannot_be_tr
     project_request = create_request(client, token, project["id"], title="In project")
     cross = _merge(client, token, base, keep["id"], project_request["id"])
     assert cross.status_code == 404
+
+
+def test_the_merge_note_is_kept_shown_in_the_history_and_carried_to_the_duplicates_versions(client, admin_token):
+    org, project, token = setup(client, admin_token, "Feedback Merge Note Co")
+    pid, base = project["id"], project_base(project["id"])
+    a = create_request(client, token, pid, title="Export to Excel")
+    b = create_request(client, token, pid, title="Excel please")
+    c = create_request(client, token, pid, title="Spreadsheet output")
+    assert _merge(client, token, base, b["id"], a["id"], "  Same ask, different words  ").status_code == 200
+    assert _merge(client, token, base, c["id"], a["id"]).status_code == 200
+    h = auth_headers(token)
+
+    history = {m["duplicate"]["id"]: m for m in client.get(f"{base}/requests/{a['id']}/merges", headers=h).json()}
+    assert history[b["id"]]["note"] == "Same ask, different words"  # trimmed, and kept (it used to be dropped)
+    assert history[c["id"]]["note"] == ""
+    versions = client.get(f"{base}/requests/{b['id']}/versions", headers=h).json()
+    assert any(v["change_note"] == f"Merged into {a['unique_code']} as a duplicate. Same ask, different words" for v in versions)
+    # It outlives an unmerge: the ended row still says why they were merged.
+    assert _unmerge(client, token, base, b["id"]).status_code == 200
+    ended = {m["duplicate"]["id"]: m for m in client.get(f"{base}/requests/{a['id']}/merges", headers=h).json()}[b["id"]]
+    assert ended["active"] is False and ended["note"] == "Same ask, different words"

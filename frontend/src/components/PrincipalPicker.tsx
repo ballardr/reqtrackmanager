@@ -4,7 +4,8 @@
  * The one control for a field that names "who": a user, an organisation group or a project group
  * (users and groups on parity —). It shows the current
  * value (a `PrincipalBadge`, or "Unassigned"), an Unassign action while one is set, and a
- * `UserAutocomplete` search that also matches groups, each option tagged with its kind. It replaces
+ * `UserAutocomplete` search that also matches groups, each option tagged with its kind, all on one line
+ * (they wrap only when the space is narrow). It replaces
  * the user-only `AssigneePicker`; a field that cannot name a group yet passes `kinds={["user"]}`
  * and makes no group requests.
  *
@@ -86,16 +87,14 @@ export function PrincipalPicker({
     );
   }
   return (
-    <div className="stack" style={{ gap: "var(--space-2)" }}>
-      <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-        <PrincipalBadge principal={shown} />
-        {value && (
-          <button type="button" className="btn" onClick={() => onChange(null)} aria-label={`${clearLabel}: ${ariaLabel}`}>
-            {clearLabel}
-          </button>
-        )}
-      </div>
-      {search(() => {})}
+    <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
+      <PrincipalBadge principal={shown} />
+      {value && (
+        <button type="button" className="btn" onClick={() => onChange(null)} aria-label={`${clearLabel}: ${ariaLabel}`}>
+          {clearLabel}
+        </button>
+      )}
+      <div style={{ flex: "1 1 12rem", minWidth: 0 }}>{search(() => {})}</div>
     </div>
   );
 }

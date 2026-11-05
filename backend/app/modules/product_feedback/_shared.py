@@ -93,9 +93,12 @@ from app.modules.product_feedback.schemas import (
     RequestScoreOut,
     RequestUpdate,
     RequestVersionOut,
+    ScorePreviewIn,
+    ScorePreviewOut,
 )
 from app.modules.product_feedback.service import (
     ALLOWED_TRANSITIONS,
+    EXTERNAL_REFERENCES_SUBCOMPONENT_KEY,
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
     REQUEST_SUBCOMPONENT_KEY,
@@ -424,6 +427,52 @@ def _check_levels(db: Session, holder: RecordOwner, sent: dict) -> None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
 
+def preview_scores(
+    db: Session, holder: RecordOwner, payload: ScorePreviewIn, request: EnhancementRequest | None = None,
+) -> ScorePreviewOut:
+    """Scores levels that are still being chosen, under the enabled models, exactly as a saved request would be.
+
+    Nothing is stored or audited. A new request has no requesters yet, so its weighted demand is 0; an existing
+    one (`request`) reads its own, so the derived Demand axis shows what saving would give.
+
+    Args:
+        db: Active session (read only).
+        holder: The project, or the organisation for an inbox request.
+        payload: The levels chosen so far.
+        request: The existing request being edited, if any (already checked to belong to `holder`).
+
+    Raises:
+        HTTPException: 400 for an unknown axis, or a level of another organisation, scheme or axis.
+    """
+    levels = {axis: level for axis, level in payload.levels.items() if level is not None}
+    _check_levels(db, holder, {"levels": levels})
+    ctx = load_rating_context(db, holder.organization_id, holder.project_id)
+    weighted = 0.0
+    if request is not None and holder.project_id is not None:
+        project = db.get(Project, holder.project_id)
+        assert project is not None  # the FK guarantees it
+        weighted = compute_demand(db, project, [request.id])[request.id].weighted
+    scores = score_levels(ctx, levels, weighted)
+    return ScorePreviewOut(
+        scores={key: _score_out(score) for key, score in scores.items()},
+        derived_levels=derived_levels(ctx, levels, weighted), weighted_demand=weighted,
+    )
+
+
+def references_enabled(db: Session, holder: RecordOwner) -> bool:
+    """Whether External references are switched on for the holder: a project's effective state (its own switch, else
+    the organisation default), or the organisation's own for an inbox."""
+    from app.modules.registry import is_module_subcomponent_enabled, is_org_module_subcomponent_enabled
+
+    if holder.project_id is not None:
+        return is_module_subcomponent_enabled(
+            db, holder.project_id, PRODUCT_FEEDBACK_MODULE_KEY, EXTERNAL_REFERENCES_SUBCOMPONENT_KEY,
+        )
+    return is_org_module_subcomponent_enabled(
+        db, holder.organization_id, PRODUCT_FEEDBACK_MODULE_KEY, EXTERNAL_REFERENCES_SUBCOMPONENT_KEY,
+    )
+
+
 def stage_request(db: Session, holder: RecordOwner, payload: RequestCreate, creator: User) -> EnhancementRequest:
     """Validates a create payload, creates the request (`NEW`) and audit-logs it. Does not commit: the endpoint and
     the record-table import each own their transaction. The caller has checked `require_request_submit`.
@@ -432,6 +481,8 @@ def stage_request(db: Session, holder: RecordOwner, payload: RequestCreate, crea
         HTTPException: 400 for an unusable owner or scoring level.
     """
     content = payload.model_dump(exclude={"owner", "references"})
+    if (payload.references or payload.external_ref_url or payload.external_ref_key) and not references_enabled(db, holder):
+        raise HTTPException(status.HTTP_409_CONFLICT, "External references are switched off here.")
     _check_levels(db, holder, content)
     content.update(_owner_columns(db, holder, payload))
     request = create_request(db, holder, creator, **content)
@@ -606,7 +657,7 @@ def merge_from_payload(
 
     canonical = get_request_in_scope(db, holder, canonical_id)
     _lock_both(db, duplicate, canonical)
-    merge = apply_value_error_as_conflict(merge_requests, db, canonical, duplicate, actor)
+    merge = apply_value_error_as_conflict(merge_requests, db, canonical, duplicate, actor, note)
     detail: dict = {"canonical": canonical.unique_code, "duplicate": duplicate.unique_code, "prior_status": merge.prior_status.value}
     if note.strip():
         detail["note"] = note.strip()
@@ -659,7 +710,7 @@ def merges_out(db: Session, request: EnhancementRequest) -> list[RequestMergeOut
     return [
         RequestMergeOut(
             id=m.id, canonical=ref(m.canonical_id), duplicate=ref(m.duplicate_id), prior_status=m.prior_status,
-            merged_by=m.merged_by, merged_at=m.merged_at, unmerged_by=m.unmerged_by, unmerged_at=m.unmerged_at,
+            merged_by=m.merged_by, merged_at=m.merged_at, note=m.note, unmerged_by=m.unmerged_by, unmerged_at=m.unmerged_at,
             active=m.unmerged_at is None,
         )
         for m in rows
@@ -678,27 +729,38 @@ def _merged_duplicate_refs(db: Session, canonical_id: uuid.UUID) -> list[Request
     return [RequestRefOut(id=i, unique_code=codes[i], title=titles[i].title) for i in ids]
 
 
-def demand_out(db: Session, project: Project, request: EnhancementRequest, viewer: User) -> DemandOut:
-    """The request's demand broken down for `viewer`.
+#: How many requesters a demand response carries unless the caller asks for more or fewer.
+DEMAND_PAGE_SIZE = 50
+#: The most requesters one demand response may carry.
+DEMAND_PAGE_MAX = 500
 
-    The totals count every party the project can see. A party's name and weight are given only when `viewer`
-    holds `view` on its type (the same rule the link finder applies), and are null otherwise, so a count never
-    reveals who a hidden party is.
+
+def demand_out(
+    db: Session, project: Project, request: EnhancementRequest, viewer: User, *, limit: int = DEMAND_PAGE_SIZE, offset: int = 0,
+) -> DemandOut:
+    """The request's demand broken down for `viewer`, one page of requesters at a time.
+
+    The totals (`requester_count`, `weighted_demand`) count every party the project can see, however many are on the
+    page. `requesters` is the page `[offset, offset + limit)` of the heaviest-first list, and only those parties'
+    names are looked up. A party's name and weight are given only when `viewer` holds `view` on its type (the same
+    rule the link finder applies), and are null otherwise, so a count never reveals who a hidden party is.
     """
     demand = compute_demand(db, project, [request.id])[request.id]
+    page = demand.requesters[offset:offset + limit]
     resolver = ArtefactResolver(db, project, viewer.id)
     wanted: dict[str, set[uuid.UUID]] = defaultdict(set)
-    for requester in demand.requesters:
+    for requester in page:
         wanted[requester.artefact_type].add(requester.id)
     wanted["engagement"].update(demand.engagement_ids)
     resolver.resolve(dict(wanted))
     engagement_labels = {e: resolver.visible(("engagement", e)) for e in demand.engagement_ids}
     channels = channels_by_request(db, [request.id])[request.id]
     return DemandOut(
-        request_id=request.id, requester_count=demand.count, weighted_demand=demand.weighted,
-        requesters=[_requester_out(r, resolver, channels) for r in demand.requesters],
+        request_id=request.id, requester_count=demand.count, weighted_demand=demand.weighted, offset=offset, limit=limit,
+        requesters=[_requester_out(r, resolver, channels) for r in page],
         engagements=[
-            DemandEngagementOut(id=e, label=s.label if s else None, hidden=s is None) for e, s in engagement_labels.items()
+            DemandEngagementOut(id=e, label=s.label if s else None, hidden=s is None, link_id=demand.engagement_links.get(e))
+            for e, s in engagement_labels.items()
         ],
         merged_duplicates=_merged_duplicate_refs(db, request.id),
     )
@@ -714,7 +776,7 @@ def _requester_out(
     return RequesterOut(
         artefact_type=requester.artefact_type, id=requester.id, label=requester.label if seen else None,
         weight=requester.weight if seen else None, effective_weight=requester.effective_weight,
-        from_merge=requester.from_merge, via_engagement=requester.via_engagement, hidden=not seen,
+        from_merge=requester.from_merge, via_engagement=requester.via_engagement, hidden=not seen, link_id=requester.link_id,
         channel=ChannelOut(id=choice.id, name=choice.name) if choice else None,
     )
 

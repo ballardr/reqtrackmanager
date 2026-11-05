@@ -3571,7 +3571,7 @@ def main() -> None:
     )
     transition_enhancement_request(h_pm, feedback_url, export_request["id"], "under_review")
     transition_enhancement_request(h_pm, feedback_url, export_request["id"], "accepted")
-    create_enhancement_request(
+    offline_request = create_enhancement_request(
         h_pm, feedback_url, title="Offline map tiles for remote sites",
         description="Field teams lose the map when they work outside coverage.",
         **request_score_fields(request_levels, "Some", "Massive", "Medium", "Large", "Hard"),
@@ -3633,6 +3633,48 @@ def main() -> None:
         h_pm, drone["id"], "enhancement_request", export_request["id"], link_type_id=link_types["Realised by"]["id"],
         other_type="requirement", other_id=list(drone_reqs.values())[0]["id"],
     )
+    # More demand for the reports: a request with no problem behind it (Unlinked requests), a declined request nobody
+    # has told yet (Close the loop), and requests addressing Pain Points with and without a Requirement (Problem demand).
+    # Everything is created today, so Triage ageing lists these only with "Waiting longer than" set to 0 days.
+    for request, other_type, other in (
+        (offline_request, "stakeholder", stakeholder_fleet), (offline_request, "persona", drone_operator_persona),
+        (declined_request, "stakeholder", stakeholder_authority),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    controller_request = create_enhancement_request(
+        h_pm, feedback_url, title="Show which flight controller is in command",
+        description="A clear indicator on the ground-station display of the active controller.",
+        **request_score_fields(request_levels, "Some", "Massive", "High", "Medium", "Moderate", safety="Safety critical"),
+    )
+    transition_enhancement_request(h_pm, feedback_url, controller_request["id"], "under_review")
+    audit_request = create_enhancement_request(
+        h_pm, feedback_url, title="Audit-ready flight log export",
+        description="A signed export of a flight's log for external auditors.",
+        **request_score_fields(request_levels, "Few", "High", "Medium", "Large"),
+    )
+    summary_request = create_enhancement_request(
+        h_pm, feedback_url, title="Weekly inspection summary by email",
+        description="A digest of the week's inspections for the fleet manager.",
+    )
+    for request, other_type, other in (
+        (controller_request, "persona", drone_operator_persona),
+        (audit_request, "stakeholder", stakeholder_authority), (audit_request, "persona", persona_auditor),
+        (summary_request, "stakeholder", stakeholder_fleet),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    for request, pain_point in (
+        (controller_request, pp_scored), (audit_request, pp_all_personas), (summary_request, pp_accepted),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=link_types["Addresses"]["id"],
+            other_type="pain_point", other_id=pain_point["id"],
+        )
     delivered_request = create_enhancement_request(
         h_pm, feedback_url, title="Pre-flight checklist as a printable sheet",
         description="Pilots want the pre-flight checklist on one printable page.",
@@ -3649,9 +3691,11 @@ def main() -> None:
         json={"parties": [{"artefact_type": "stakeholder", "id": stakeholder_fleet["id"]}], "informed": True,
               "note": "Told at the monthly review."}, headers=h_pm, timeout=30,
     ).raise_for_status()
-    print("  Product Feedback: 5 Falcon-3 requests (accepted with requesters from a stakeholder, an engagement and a"
-          " merged duplicate, linked to a Pain Point and a requirement; new; declined; delivered with one requester"
-          " still to be told) and 2 organisation inbox requests")
+    print("  Product Feedback: 8 Falcon-3 requests (accepted with requesters from a stakeholder, an engagement and a"
+          " merged duplicate, linked to a Pain Point and a requirement; one with demand but no Pain Point; declined and"
+          " delivered with requesters still to be told; three scored requests addressing Pain Points that have no"
+          " Requirement yet) and 2 organisation inbox requests; reports: Demand ranking, Unlinked requests, Close the"
+          " loop, Triage ageing (set 'Waiting longer than' to 0) and Problem demand")
 
     print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
           " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"

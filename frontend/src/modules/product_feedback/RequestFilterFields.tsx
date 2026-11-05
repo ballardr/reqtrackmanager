@@ -6,9 +6,8 @@
  */
 import type { ScoringScheme } from "../../api/scoring";
 import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
-import { MultiSelectDropdown } from "../../components/MultiSelectDropdown";
 import { isDerivedAxis } from "./requestLevels";
-import type { RequestListFilters } from "./requestListState";
+import { ANY_CRITERION, type RequestListFilters } from "./requestListState";
 import { REQUEST_STATUS_LABEL } from "./types";
 import type { EnhancementRequest, RequestStatus } from "./types";
 
@@ -45,22 +44,12 @@ export function RequestFilterFields({
               <option value="scored">Scored</option>
             </select>
           </FilterField>
-          <FilterField label="Missing a level for">
+          <FilterField label="Criteria not rated">
             <select className="input" value={filters.missingAxis} onChange={(e) => filters.setMissingAxis(e.target.value)}>
-              <option value="">Any criterion</option>
+              <option value="">No filter</option>
+              <option value={ANY_CRITERION}>Any criterion</option>
               {manualAxes.map((axis) => <option key={axis.key} value={axis.key}>{axis.label}</option>)}
             </select>
-          </FilterField>
-          <FilterField label="Scores shown">
-            <MultiSelectDropdown
-              triggerLabel="Scoring models shown" emptyLabel="Default models"
-              options={scheme.models.map((m) => ({
-                value: m.key, label: m.label, optionLabel: `Show ${m.label}`, checked: filters.models.includes(m.key),
-                onToggle: () => filters.setChosenModels(
-                  filters.models.includes(m.key) ? filters.models.filter((k) => k !== m.key) : [...filters.models, m.key],
-                ),
-              }))}
-            />
           </FilterField>
         </>
       )}

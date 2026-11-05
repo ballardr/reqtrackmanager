@@ -11,34 +11,40 @@ import { Badge } from "../../components/Badge";
 import type { DirectoryColumn } from "../../components/DirectoryTable";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { RequestScoreBadge } from "./RequestScoreBadge";
+import { modelShortName } from "./requestLevels";
 import { demandText } from "./requestListState";
 import { REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE } from "./types";
 import type { EnhancementRequest } from "./types";
+
+/** Codes, statuses, demand and scores are short and read as one unit, so they never wrap; the title takes the slack. */
+const NO_WRAP = { whiteSpace: "nowrap" } as const;
 
 /**
  * The columns of a request list.
  *
  * @param scheme The scoring scheme in effect (model labels for the score columns).
  * @param models The model keys to show a score column for.
+ * @param shown The ids of the optional columns the person has chosen (`status`, `demand`, `owner`); the code and title are always on.
  * @param titleExtra Extra content after a row's title (the project list adds the scope label).
  * @param codeCell How a row's code is shown (a project code, or the organisation-qualified one for an inbox request).
  * @param showLinkWarnings True on the project tier, where a request can be linked to a Pain Point and have requesters.
  */
 export function requestColumns({
-  scheme, models, titleExtra, codeCell, showLinkWarnings,
+  scheme, models, shown, titleExtra, codeCell, showLinkWarnings,
 }: {
   scheme: ScoringScheme | null;
   models: string[];
+  shown: readonly string[];
   titleExtra?: (r: EnhancementRequest) => ReactNode;
   codeCell: (r: EnhancementRequest) => ReactNode;
   showLinkWarnings: boolean;
 }): DirectoryColumn<EnhancementRequest>[] {
   const modelLabel = (key: string) => scheme?.models.find((m) => m.key === key)?.label ?? key;
   // A model's label spells out its axes ("ICE (Impact × Confidence × Ease)"); the header keeps the name and the tooltip the rest.
-  const shortLabel = (key: string) => modelLabel(key).split(" (")[0];
+  const shortLabel = (key: string) => modelShortName(modelLabel(key));
   const settled = (r: EnhancementRequest) => r.status === "declined" || r.status === "duplicate";
   return [
-    { key: "code", label: "Code", render: codeCell },
+    { key: "code", label: "Code", render: (r) => <span style={NO_WRAP}>{codeCell(r)}</span> },
     {
       key: "title", label: "Title",
       render: (r) => (
@@ -59,13 +65,16 @@ export function requestColumns({
         </>
       ),
     },
-    { key: "status", label: "Status", render: (r) => <Badge tone={REQUEST_STATUS_TONE[r.status]}>{REQUEST_STATUS_LABEL[r.status]}</Badge> },
-    ...(showLinkWarnings ? [{ key: "demand", label: "Demand", sortable: true, render: (r: EnhancementRequest) => demandText(r) }] : []),
+    ...(shown.includes("status") ? [{
+      key: "status", label: "Status",
+      render: (r: EnhancementRequest) => <span style={NO_WRAP}><Badge tone={REQUEST_STATUS_TONE[r.status]}>{REQUEST_STATUS_LABEL[r.status]}</Badge></span>,
+    }] : []),
+    ...(showLinkWarnings && shown.includes("demand") ? [{ key: "demand", label: "Demand", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{demandText(r)}</span> }] : []),
     ...models.map((key, index) => ({
       key: index === 0 ? "score" : `score:${key}`,
       label: models.length > 1 ? <span title={modelLabel(key)}>Score ({shortLabel(key)})</span> : "Score",
-      sortable: index === 0, render: (r: EnhancementRequest) => <RequestScoreBadge score={r.scores[key]} />,
+      sortable: index === 0, render: (r: EnhancementRequest) => <span style={NO_WRAP}><RequestScoreBadge score={r.scores[key]} /></span>,
     })),
-    { key: "owner", label: "Owner", render: (r) => (r.owner ? <PrincipalBadge principal={r.owner} /> : "–") },
+    ...(shown.includes("owner") ? [{ key: "owner", label: "Owner", render: (r: EnhancementRequest) => (r.owner ? <PrincipalBadge principal={r.owner} /> : "–") }] : []),
   ];
 }

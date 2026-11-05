@@ -61,7 +61,7 @@ def has_active_merge(db: Session, request_id: uuid.UUID) -> bool:
 
 
 def merge_requests(
-    db: Session, canonical: EnhancementRequest, duplicate: EnhancementRequest, actor: User,
+    db: Session, canonical: EnhancementRequest, duplicate: EnhancementRequest, actor: User, note: str = "",
 ) -> EnhancementRequestMerge:
     """Merges `duplicate` into `canonical`.
 
@@ -70,6 +70,7 @@ def merge_requests(
         canonical: The request that stays.
         duplicate: The request to mark as a duplicate of it.
         actor: The acting user.
+        note: Why they are the same ask; kept on the merge row and in the duplicate's version history.
 
     Returns:
         The new active merge row (flushed).
@@ -101,14 +102,15 @@ def merge_requests(
             "into another."
         )
     now = datetime.now(UTC)
+    note = note.strip()
     merge = EnhancementRequestMerge(
         canonical_id=canonical.id, duplicate_id=duplicate.id, prior_status=duplicate_version.status,
-        merged_by=actor.id, merged_at=now,
+        merged_by=actor.id, merged_at=now, note=note,
     )
     db.add(merge)
     apply_new_version(
         db, duplicate, duplicate_version, actor, changes={"status": _S.DUPLICATE},
-        change_note=f"Merged into {canonical.unique_code} as a duplicate.",
+        change_note=f"Merged into {canonical.unique_code} as a duplicate." + (f" {note}" if note else ""),
     )
     db.flush()
     return merge

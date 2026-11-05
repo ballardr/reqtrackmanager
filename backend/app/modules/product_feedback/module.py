@@ -58,6 +58,7 @@ from app.modules.product_feedback.scaling_probes import SCALING_PROBES
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME
 from app.modules.product_feedback.search import SEARCH_PROVIDERS
 from app.modules.product_feedback.service import (
+    EXTERNAL_REFERENCES_SUBCOMPONENT_KEY,
     ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY,
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
@@ -164,6 +165,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(
             key=ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY, name="Organisation-level request inbox", default_enabled=True,
         ),
+        ModuleSubComponentDefinition(key=EXTERNAL_REFERENCES_SUBCOMPONENT_KEY, name="External references", default_enabled=True),
     ),
     org_bundle_hooks=ModuleOrgBundleHooks(export=bundle_export.export_org_data, import_=bundle_export.import_org_data),
     project_bundle_hooks=ModuleProjectBundleHooks(

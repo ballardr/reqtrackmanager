@@ -131,7 +131,10 @@ test.describe("list scope filter across nested projects", () => {
       await expect(row).toContainText(`${parent.code}-${parentReq.code}`);
       await expect(row.getByRole("checkbox")).toHaveCount(0);
       await expect(row.getByRole("button", { name: "Move up" })).toHaveCount(0);
-      await expect(page.getByText("Includes records from related")).toBeVisible();
+      // The options are explained in a tooltip, not in a permanent line under the select.
+      await expect(page.getByText("Includes records from related")).toHaveCount(0);
+      await page.getByRole("button", { name: "Help: Show records from" }).hover();
+      await expect(page.getByRole("tooltip")).toContainText("This + parent projects: also the records of its parents.");
       // A sibling project is never part of the scope.
       await expect(page.getByText(other.name)).toHaveCount(0);
     });

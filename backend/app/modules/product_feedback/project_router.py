@@ -50,17 +50,22 @@ from app.modules.product_feedback.schemas import (
     RequestTransitionRequest,
     RequestUpdate,
     RequestVersionOut,
+    ScorePreviewIn,
+    ScorePreviewOut,
 )
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.scoring_filter import ScoredFilter
 from app.modules.product_feedback.service import (
+    EXTERNAL_REFERENCES_SUBCOMPONENT_KEY,
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
     REQUEST_SUBCOMPONENT_KEY,
     RecordOwner,
     filter_requests,
+    get_request_page_sections,
     get_submission_policy,
     list_project_requests,
+    set_request_page_sections,
     set_submission_policy,
 )
 from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
@@ -79,6 +84,15 @@ router = APIRouter(
 )
 
 _require_view = require_project_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, REQUEST_SUBCOMPONENT_KEY)
+_require_references_on = require_project_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, EXTERNAL_REFERENCES_SUBCOMPONENT_KEY)
+
+
+def _require_references(current_user: User = Depends(_require_view), _on: User = Depends(_require_references_on)) -> User:
+    """The request gate plus the External references switch: 404 for the reference routes and the external system list
+    while the project (or its organisation) has references switched off."""
+    return current_user
+
+
 # The module's reports (`reports.py`): generated routes at `/reports/<slug>`, under this router's prefix.
 router.include_router(REPORT_ROUTERS.project)
 
@@ -102,7 +116,8 @@ def _get(db: Session, holder: RecordOwner, request_id: UUID) -> EnhancementReque
 
 
 register_project_vocabulary(
-    router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system", view_dependency=_require_view,
+    router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system",
+    view_dependency=_require_references,
 )
 register_project_vocabulary(
     router, path="/request-channels", vocabulary=REQUEST_CHANNELS, entity_type="request_channel", view_dependency=_require_view,
@@ -116,7 +131,9 @@ register_project_vocabulary(
 def get_feedback_settings(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
     """The project's Product Feedback settings (any member can read them, so the UI knows whether to offer Submit)."""
     _project(db, project_id)
-    return FeedbackSettingsOut(submission_policy=get_submission_policy(db, project_id))
+    return FeedbackSettingsOut(
+        submission_policy=get_submission_policy(db, project_id), request_page_sections=get_request_page_sections(db, project_id),
+    )
 
 
 @router.get("/access", response_model=FeedbackAccessOut)
@@ -130,14 +147,23 @@ def update_feedback_settings(
     project_id: UUID, payload: FeedbackSettingsUpdate, project: Project = Depends(require_project_manage),
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    """Sets who may submit requests in this project. Needs project-settings management."""
-    previous = get_submission_policy(db, project.id)
-    set_submission_policy(db, project.id, payload.submission_policy)
+    """Changes the project's Product Feedback settings: who may submit requests and the default order of a request
+    page's sections. Only the fields sent change (`request_page_sections: null` returns to the built-in order).
+    Needs project-settings management."""
+    detail: dict[str, object] = {}
+    if payload.submission_policy is not None:
+        previous = get_submission_policy(db, project.id)
+        set_submission_policy(db, project.id, payload.submission_policy)
+        detail["submission_policy"] = {"from": previous.value, "to": payload.submission_policy.value}
+    if "request_page_sections" in payload.model_fields_set:
+        set_request_page_sections(db, project.id, payload.request_page_sections)
+        detail["request_page_sections"] = {"count": len(payload.request_page_sections or [])}
     log_event(db, entity_type="project_feedback_settings", entity_id=project.id, action="updated",
-              actor_id=current_user.id, project_id=project.id,
-              detail={"submission_policy": {"from": previous.value, "to": payload.submission_policy.value}})
+              actor_id=current_user.id, project_id=project.id, detail=detail)
     db.commit()
-    return FeedbackSettingsOut(submission_policy=payload.submission_policy)
+    return FeedbackSettingsOut(
+        submission_policy=get_submission_policy(db, project.id), request_page_sections=get_request_page_sections(db, project.id),
+    )
 
 
 # --- Request CRUD ------------------------------------------------------------
@@ -165,7 +191,8 @@ def list_requests(
     (new, under review or accepted) and a case-insensitive `search` of code, title and description.
     `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
     being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
-    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis."""
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis, and
+    `missing_axis=any` those not rated on every criterion."""
 
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
@@ -194,7 +221,8 @@ def get_request(
     """One request with its current version.
     `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
     being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
-    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis."""
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis, and
+    `missing_axis=any` those not rated on every criterion."""
     return sh.current_request_out(db, _get(db, _holder(db, project_id), request_id), scoring_model)
 
 
@@ -208,6 +236,18 @@ def get_project_scoring_scheme(project_id: UUID, current_user: User = Depends(_r
     return scoring.build_scheme_config(
         db, project.organization_id, scoring.get_registered_scheme(REQUEST_SCORING_SCHEME_KEY), project,
     )
+
+
+@router.post("/score-preview", response_model=ScorePreviewOut)
+def preview_request_scores(
+    project_id: UUID, payload: ScorePreviewIn, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Scores levels still being chosen, under the project's enabled models, without saving anything: what the
+    create and edit forms show as the person picks. `request_id` (an existing request of the project) supplies the
+    weighted demand the derived Demand axis reads; a new request has none."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, payload.request_id) if payload.request_id else None
+    return sh.preview_scores(db, holder, payload, request)
 
 
 @router.put("/requests/{request_id}", response_model=RequestOut)
@@ -300,14 +340,16 @@ def list_request_merges(
 
 @router.get("/requests/{request_id}/demand", response_model=DemandOut)
 def get_request_demand(
-    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, request_id: UUID, limit: int = Query(sh.DEMAND_PAGE_SIZE, ge=1, le=sh.DEMAND_PAGE_MAX),
+    offset: int = Query(0, ge=0), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
     """Who asked for the request: its distinct requesters (Stakeholders and Personas, including those reached through
     linked Engagements and through requests merged into it), the engagements it was raised in, and the count and
     weighted demand. Requesters are added with the generic "Requested by" link; names the caller may not view are
-    withheld but still counted."""
+    withheld but still counted. The requesters come a page at a time (`limit`, `offset`; heaviest first); the totals
+    cover them all."""
     project = _project(db, project_id)
-    return sh.demand_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user)
+    return sh.demand_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user, limit=limit, offset=offset)
 
 
 @router.put("/requests/{request_id}/requester-channel", response_model=DemandOut)
@@ -331,7 +373,7 @@ def set_requester_channel(
 
 @router.get("/requests/{request_id}/references", response_model=list[ExternalRefOut])
 def list_request_references(
-    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_references), db: Session = Depends(get_db),
 ):
     """The request's references to items in outside tools (Jira, ServiceNow, ...), oldest first."""
     request = _get(db, _holder(db, project_id), request_id)
@@ -340,7 +382,7 @@ def list_request_references(
 
 @router.post("/requests/{request_id}/references", response_model=ExternalRefOut, status_code=status.HTTP_201_CREATED)
 def add_request_reference(
-    project_id: UUID, request_id: UUID, payload: ExternalRefIn, current_user: User = Depends(_require_view),
+    project_id: UUID, request_id: UUID, payload: ExternalRefIn, current_user: User = Depends(_require_references),
     db: Session = Depends(get_db),
 ):
     """Adds a reference: a system from the project's external system list, a key and/or an http(s) link, and a role
@@ -354,7 +396,7 @@ def add_request_reference(
 @router.patch("/requests/{request_id}/references/{reference_id}", response_model=ExternalRefOut)
 def update_request_reference(
     project_id: UUID, request_id: UUID, reference_id: UUID, payload: ExternalRefUpdate,
-    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    current_user: User = Depends(_require_references), db: Session = Depends(get_db),
 ):
     """Changes a reference (only fields present in the body). Needs the triager role."""
     holder = _holder(db, project_id)
@@ -365,7 +407,7 @@ def update_request_reference(
 
 @router.delete("/requests/{request_id}/references/{reference_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_request_reference(
-    project_id: UUID, request_id: UUID, reference_id: UUID, current_user: User = Depends(_require_view),
+    project_id: UUID, request_id: UUID, reference_id: UUID, current_user: User = Depends(_require_references),
     db: Session = Depends(get_db),
 ):
     """Removes a reference. Needs the triager role."""

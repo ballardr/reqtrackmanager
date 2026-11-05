@@ -3362,6 +3362,7 @@ const en = {
       children: "This + child {projects}",
       both: "This + parent and child {projects}",
     },
+    help: "This {project}: only this {project}'s records.\nThis + parent {projects}: also the records of its parents.\nThis + child {projects}: also the records of its children.\nThis + parent and child {projects}: both.\nOnly {projects} you can open are included, and the counts cover every one that is.",
     widenedHint: "Includes records from related {projects} you can open. Counts cover all of them.",
     selectHint: "Choose whether the counts cover related {projects} you can open.",
     fromProject: (name: string) => `From ${name}`,

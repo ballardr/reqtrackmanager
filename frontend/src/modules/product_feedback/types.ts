@@ -136,6 +136,15 @@ export interface RequestScore {
   tone: string | null;
 }
 
+/** What levels still being chosen would score (the server derives it, nothing is saved). */
+export interface ScorePreview {
+  /** The score under each enabled model; null = not scored. */
+  scores: Record<string, RequestScore | null>;
+  /** The level each derived axis resolves to where none was chosen. */
+  derived_levels: Record<string, string>;
+  weighted_demand: number;
+}
+
 export interface EnhancementRequestCreate {
   title: string;
   description?: string;
@@ -159,6 +168,8 @@ export interface FeedbackAccess {
 
 export interface FeedbackSettings {
   submission_policy: SubmissionPolicy;
+  /** The project's default order of a request page's sections; null is the built-in order. */
+  request_page_sections: string[] | null;
 }
 
 /** A record linked to a request; `label` is null (and `hidden` true) when the viewer may not see it. */
@@ -234,6 +245,9 @@ export interface Requester {
   hidden: boolean;
   /** How they asked; null when none is recorded (an Engagement requester reads as an Engagement). */
   channel: ChannelRef | null;
+  /** The request's own "Requested by" link to this party, which removes it; null when reached only through an
+   * Engagement or a merged duplicate. */
+  link_id: string | null;
 }
 
 /** An engagement the request was raised in; `label` is null while hidden. */
@@ -241,13 +255,18 @@ export interface DemandEngagement {
   id: string;
   label: string | null;
   hidden: boolean;
+  /** The request's own "Requested by" link to it; null for one reached only through a merged duplicate. */
+  link_id: string | null;
 }
 
-/** `GET .../requests/{id}/demand`: who asked, and the totals. */
+/** `GET .../requests/{id}/demand`: who asked, and the totals. `requesters` is one page (heaviest first) of
+ * `requester_count`; the count and weight cover every requester. */
 export interface Demand {
   request_id: string;
   requester_count: number;
   weighted_demand: number;
+  offset: number;
+  limit: number;
   requesters: Requester[];
   engagements: DemandEngagement[];
   merged_duplicates: RequestRef[];
@@ -261,6 +280,8 @@ export interface RequestMerge {
   prior_status: RequestStatus;
   merged_by: string;
   merged_at: string;
+  /** Why the two are the same ask, as the person who merged wrote it (empty when none). */
+  note: string;
   unmerged_by: string | null;
   unmerged_at: string | null;
   active: boolean;

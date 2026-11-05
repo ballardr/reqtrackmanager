@@ -1,9 +1,10 @@
 """
 Module: modules.product_feedback.scoring_filter
 
-The request lists' "Unscored" filter: `scored=unscored|scored` against a scoring model, and `missing_axis=<key>`
-to find who lacks one criterion. Shared by both list endpoints, the record-table export and the MCP list tools
-(through `service.filter_requests`), so the same rows come back everywhere.
+The request lists' "Unscored" filter: `scored=unscored|scored` against a scoring model, and
+`missing_axis=<key>` to find who lacks one criterion (`missing_axis=any`: who lacks at least one, so is not fully
+rated). Shared by both list endpoints, the record-table export and the MCP list tools (through
+`service.filter_requests`), so the same rows come back everywhere.
 
 A request is unscored under a model when it has no level on one of the model's *manual* axes (multiplied or
 divisor); a derived axis (Demand) is never missing, since a value always falls in a level. The test reads the
@@ -31,6 +32,9 @@ from app.services.scoring_custom import effective_scheme
 
 ScoredFilter = Literal["scored", "unscored"]
 
+#: `missing_axis` value meaning "lacks at least one manual criterion of the scheme", rather than one named axis.
+ANY_AXIS = "any"
+
 
 def keep_by_scoring(
     db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None, requests: list[EnhancementRequest], *,
@@ -44,7 +48,8 @@ def keep_by_scoring(
         project_id: The project the requests belong to, or `None` for the organisation's inbox.
         requests: Candidate requests of that one owner.
         scored: Keep only requests scored (or not) under the model.
-        missing_axis: Keep only requests with no level on this scheme axis (none, for a derived axis).
+        missing_axis: Keep only requests with no level on this scheme axis (none, for a derived axis), or, for
+            `ANY_AXIS`, those with no level on at least one of the scheme's manual axes.
         model_keys: The models chosen when viewing; the first decides `scored`. `None` = the effective default.
 
     Raises:
@@ -53,7 +58,7 @@ def keep_by_scoring(
     if not requests or (scored is None and missing_axis is None):
         return requests
     scheme = effective_scheme(db, organization_id, REQUEST_SCORING_SCHEME, project_id)
-    if missing_axis is not None and scheme.axis(missing_axis) is None:
+    if missing_axis is not None and missing_axis != ANY_AXIS and scheme.axis(missing_axis) is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown scoring axis '{missing_axis}'.")
     model_key = model_keys[0] if model_keys else resolve_effective_model(db, organization_id, scheme, project_id)[0]
     model = scheme.model(model_key)
@@ -63,7 +68,11 @@ def keep_by_scoring(
         key for key in (*model.axis_keys, *model.divisor_axis_keys)
         if (axis := scheme.axis(key)) is not None and axis.derived_source is None
     }
-    wanted = needed | ({missing_axis} if missing_axis else set())
+    manual = {a.key for a in scheme.axes if a.derived_source is None}
+    if missing_axis == ANY_AXIS:
+        wanted = needed | manual
+    else:
+        wanted = needed | ({missing_axis} if missing_axis else set())
     present: dict[uuid.UUID, set[str]] = defaultdict(set)
     for request_id, axis_key in db.execute(
         select(EnhancementRequestVersion.request_id, EnhancementRequestVersionScore.axis_key)
@@ -79,7 +88,10 @@ def keep_by_scoring(
         have = present[request.id]
         if scored is not None and (needed <= have) != (scored == "scored"):
             continue
-        if missing_axis is not None:
+        if missing_axis == ANY_AXIS:
+            if manual <= have:
+                continue
+        elif missing_axis is not None:
             axis = scheme.axis(missing_axis)
             if axis is not None and (axis.derived_source is not None or missing_axis in have):
                 continue

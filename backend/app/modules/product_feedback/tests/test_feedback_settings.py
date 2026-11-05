@@ -28,7 +28,7 @@ def test_the_default_policy_lets_any_member_submit(client, admin_token):
     org, project, admin = setup(client, admin_token, "Policy Default Co")
     _, member = add_member(client, admin, org["id"], project["id"], "member.policy@example.com")
     resp = client.get(project_base(project["id"]) + "/settings", headers=auth_headers(member))
-    assert resp.status_code == 200 and resp.json() == {"submission_policy": "members"}
+    assert resp.status_code == 200 and resp.json() == {"submission_policy": "members", "request_page_sections": None}
     assert create_request(client, member, project["id"])["status"] == "new"
 
 
@@ -37,12 +37,14 @@ def test_restricting_submission_stops_members_but_not_triagers(client, admin_tok
     _, member = add_member(client, admin, org["id"], project["id"], "member.restrict@example.com")
     triager_id, triager = add_member(client, admin, org["id"], project["id"], "triager.restrict@example.com")
     grant_project_role(client, admin, project["id"], triager_id, "feedback_triager")
-    assert _put(client, admin, project["id"], "triagers").json() == {"submission_policy": "triagers"}
+    assert _put(client, admin, project["id"], "triagers").json() == {"submission_policy": "triagers", "request_page_sections": None}
 
     body = {"title": "Please"}
     assert client.post(project_base(project["id"]) + "/requests", json=body, headers=auth_headers(member)).status_code == 403
     assert client.post(project_base(project["id"]) + "/requests", json=body, headers=auth_headers(triager)).status_code == 201
-    assert client.get(project_base(project["id"]) + "/settings", headers=auth_headers(member)).json() == {"submission_policy": "triagers"}
+    assert client.get(project_base(project["id"]) + "/settings", headers=auth_headers(member)).json() == {
+        "submission_policy": "triagers", "request_page_sections": None,
+    }
 
     assert _put(client, admin, project["id"], "members").status_code == 200
     assert client.post(project_base(project["id"]) + "/requests", json=body, headers=auth_headers(member)).status_code == 201
@@ -73,3 +75,29 @@ def test_changing_the_policy_is_audited(client, admin_token):
     assert len(events) == 1 and events[0].action == "updated"
     assert events[0].detail is not None
     assert events[0].detail["submission_policy"] == {"from": "members", "to": "triagers"}
+
+
+def test_a_project_sets_clears_and_validates_the_default_order_of_a_request_page(client, admin_token):
+    org, project, admin = setup(client, admin_token, "Policy Sections Co")
+    _, member = add_member(client, admin, org["id"], project["id"], "member.sections@example.com")
+    url = project_base(project["id"]) + "/settings"
+    h = auth_headers(admin)
+
+    chosen = client.put(url, json={"request_page_sections": ["demand", "details", "scoring"]}, headers=h)
+    assert chosen.status_code == 200, chosen.text
+    # Only what is sent changes: the submission policy is untouched, and any member can read the order.
+    assert chosen.json() == {"submission_policy": "members", "request_page_sections": ["demand", "details", "scoring"]}
+    assert client.get(url, headers=auth_headers(member)).json()["request_page_sections"] == ["demand", "details", "scoring"]
+    assert _put(client, admin, project["id"], "triagers").json()["request_page_sections"] == ["demand", "details", "scoring"]
+
+    # A member cannot change it, a repeated key or a malformed key is refused, and null returns to the built-in order.
+    assert client.put(url, json={"request_page_sections": ["demand"]}, headers=auth_headers(member)).status_code == 403
+    assert client.put(url, json={"request_page_sections": ["demand", "demand"]}, headers=h).status_code == 422
+    assert client.put(url, json={"request_page_sections": ["Demand!"]}, headers=h).status_code == 422
+    assert client.put(url, json={"request_page_sections": [f"s{i}" for i in "abcdefghijklmnopqrstu"]}, headers=h).status_code == 422
+    cleared = client.put(url, json={"request_page_sections": None}, headers=h)
+    assert cleared.json() == {"submission_policy": "triagers", "request_page_sections": None}
+
+    with SessionLocal() as db:
+        events = db.scalars(select(AuditEvent).where(AuditEvent.entity_type == "project_feedback_settings")).all()
+    assert any((e.detail or {}).get("request_page_sections") == {"count": 3} for e in events)

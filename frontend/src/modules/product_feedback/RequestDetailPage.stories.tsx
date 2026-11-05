@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withAuth, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import {
   buildDemand, buildExternalRef, buildLoop, buildRequest, buildRequestScheme, CHANNEL_CHOICES, ORG_ID, ORG_USERS, PROJECT_ID,
   REQUEST_ID, SYSTEM_CHOICES,
@@ -14,14 +14,24 @@ interface Mock {
   request?: EnhancementRequest;
   access?: FeedbackAccess;
   loop?: CloseTheLoop;
+  referencesOn?: boolean;
+  projectOrder?: string[] | null;
 }
 
 const TRIAGER: FeedbackAccess = { can_submit: true, can_triage: true };
 
-function mockApis({ request = buildRequest(), access = TRIAGER, loop = buildLoop() }: Mock = {}) {
+const REFERENCES_ON = [{
+  module_key: "product_feedback", subcomponent_key: "external_references", name: "External references",
+  effective_enabled: true, enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: false,
+  project_override_enabled: null, default_enabled: true, default_project_enabled: true, has_org_override: false,
+}];
+
+function mockApis({ request = buildRequest(), access = TRIAGER, loop = buildLoop(), referencesOn = true, projectOrder = null }: Mock = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     const route = path.split("?")[0];
     if (route.endsWith("/product_feedback/access")) return access;
+    if (route.endsWith("/product_feedback/settings")) return { submission_policy: "members", request_page_sections: projectOrder };
+    if (route.endsWith("/subcomponents")) return referencesOn ? REFERENCES_ON : [{ ...REFERENCES_ON[0], effective_enabled: false, enabled: false }];
     if (route.endsWith("/external-systems")) return SYSTEM_CHOICES.map((c, i) => ({ id: c.value, name: c.label, display_order: i, is_enabled: true, source: "org" }));
     if (route.endsWith("/request-channels")) return CHANNEL_CHOICES.map((c, i) => ({ id: c.value, name: c.label, display_order: i, is_enabled: true, source: "org" }));
     if (route.includes("/scoring-schemes/enhancement_request")) return buildRequestScheme();
@@ -67,7 +77,7 @@ export const LifecycleButtonsFollowTheAllowedMoves: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByRole("heading", { name: /Export the list to Excel/ });
-    await expect(canvas.getByRole("button", { name: "Start review" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Mark under review" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Decline" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Mark delivered" })).not.toBeInTheDocument();
   },
@@ -98,7 +108,7 @@ export const ANonTriagerSeesNoEditOrTransitionControls: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByRole("heading", { name: /Export the list to Excel/ });
-    await waitFor(() => expect(canvas.queryByRole("button", { name: "Start review" })).not.toBeInTheDocument());
+    await waitFor(() => expect(canvas.queryByRole("button", { name: "Mark under review" })).not.toBeInTheDocument());
     await expect(canvas.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
   },
@@ -147,7 +157,7 @@ export const ADuplicateOffersUndoMerge: Story = {
     await expect(canvas.getByRole("link", { name: "ENH-007 Canonical" })).toHaveAttribute(
       "href", `/projects/${PROJECT_ID}/modules/product_feedback/requests/request-7`,
     );
-    await expect(canvas.queryByRole("button", { name: "Start review" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Mark under review" })).not.toBeInTheDocument();
   },
 };
 
@@ -194,5 +204,87 @@ export const ANonTriagerCannotChangeReferences: Story = {
     await expect(await canvas.findByRole("link", { name: "PROJ-123" })).toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: "Add reference" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: /Remove reference/ })).not.toBeInTheDocument();
+  },
+};
+
+/** With External references switched off for the project the card is not offered at all (the stored ones are kept). */
+export const ExternalReferencesAreHiddenWhileSwitchedOff: Story = {
+  beforeEach: () => mockApis({ request: buildRequest({ external_refs: [buildExternalRef()] }), referencesOn: false }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("region", { name: "Demand" });
+    await expect(canvas.queryByRole("region", { name: "External references" })).not.toBeInTheDocument();
+  },
+};
+
+/** The page's sections, top to bottom, as the names of their cards. */
+function sectionHeadings(canvasElement: HTMLElement): string[] {
+  return Array.from(canvasElement.querySelectorAll("section[aria-label]"))
+    .map((el) => el.getAttribute("aria-label") ?? "")
+    .filter((name) => ["External references", "Scoring", "Demand", "Evidence"].includes(name));
+}
+
+/** With no saved order the sections follow the built-in order. */
+export const SectionsFollowTheBuiltInOrder: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByRole("region", { name: "Demand" });
+    await expect(sectionHeadings(canvasElement)).toEqual(["External references", "Scoring", "Demand", "Evidence"]);
+  },
+};
+
+/** A project's default order moves Demand up; sections it does not name keep their built-in order after it. */
+export const AProjectDefaultOrderReordersTheSections: Story = {
+  beforeEach: () => mockApis({ projectOrder: ["demand", "details"] }),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByRole("region", { name: "Demand" });
+    await waitFor(() => expect(sectionHeadings(canvasElement)).toEqual(["Demand", "External references", "Scoring", "Evidence"]));
+  },
+};
+
+/** A person arranges the page from its menu; their own order wins over the project's and can be reset. */
+export const ArrangingTheSectionsIsPersonalAndResettable: Story = {
+  decorators: [withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan", ui_preferences: {} }))],
+  beforeEach: () => mockApis({ projectOrder: ["demand", "details"] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("region", { name: "Demand" });
+    await userEvent.click(canvas.getByRole("button", { name: "Request actions" }));
+    await userEvent.click(await within(document.body).findByRole("menuitem", { name: "Arrange sections…" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Arrange sections" }));
+    const reset = dialog.getByRole("button", { name: "Use the project's order" });
+    await expect(reset).toBeDisabled();
+    // Evidence sits below Version history, which is not a card shown here, so it takes two moves to pass Scoring.
+    await userEvent.click(dialog.getByRole("button", { name: "Move Evidence up" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Move Evidence up" }));
+    await waitFor(() => expect(sectionHeadings(canvasElement)).toEqual(["Demand", "External references", "Evidence", "Scoring"]));
+    await userEvent.click(reset);
+    await waitFor(() => expect(sectionHeadings(canvasElement)).toEqual(["Demand", "External references", "Scoring", "Evidence"]));
+  },
+};
+
+/** Removing a requester asks first, then deletes that link and says so. */
+export const RemovingARequesterAsksFirst: Story = {
+  beforeEach: () => {
+    mockApis();
+    spyOn(api, "delete").mockResolvedValue(undefined as never);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Remove requester Priya Shah" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Remove this requester?" }));
+    await expect(api.delete).not.toHaveBeenCalled();
+    await userEvent.click(dialog.getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(expect.stringContaining("/enhancement_request/")));
+    await expect(await within(document.body).findByText("Requester removed.")).toBeInTheDocument();
+  },
+};
+
+export const ANonTriagerSeesNoRemoveButtons: Story = {
+  beforeEach: () => mockApis({ access: { can_submit: true, can_triage: false } }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("table", { name: "Requesters" });
+    await expect(canvas.queryByRole("button", { name: /^Remove requester/ })).not.toBeInTheDocument();
   },
 };

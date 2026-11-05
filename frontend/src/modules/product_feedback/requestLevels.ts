@@ -37,3 +37,18 @@ export function levelsPayload(draft: LevelDraft, previous?: Record<string, strin
   for (const axis of Object.keys(previous ?? {})) if (!draft[axis]) out[axis] = null;
   return out;
 }
+
+/** The labels of the manual axes a model needs that have no level in `levels`, in the model's order. */
+export function missingAxisLabels(scheme: ScoringScheme, modelKey: string, levels: LevelDraft): string[] {
+  const model = scheme.models.find((m) => m.key === modelKey);
+  if (!model) return [];
+  return [...model.axis_keys, ...(model.divisor_axis_keys ?? [])]
+    .map((key) => scheme.axes.find((a) => a.key === key))
+    .filter((axis): axis is NonNullable<typeof axis> => Boolean(axis) && !isDerivedAxis(axis!) && !levels[axis!.key])
+    .map((axis) => axis.label);
+}
+
+/** A model's name without its formula ("RICE (Reach × Impact …)" reads "RICE"); callers keep the full label as a hover title. */
+export function modelShortName(label: string): string {
+  return label.replace(/\s*\(.*\)\s*$/, "") || label;
+}

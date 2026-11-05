@@ -2623,7 +2623,12 @@ segment automatically, and renders whichever section's `key` matches the
 active group by calling its `render({ orgId })` — no per-module edit to
 `OrgAdminPage.tsx` itself. A section's `key` must be unique across every
 installed module (and distinct from the ten core group keys); a colliding
-key is dropped, logged, rather than silently shadowing a core group. See
+key is dropped, logged, rather than silently shadowing a core group. A section
+that configures one sub-component names it in the optional `subComponent` field
+(on `OrgAdminSectionDef` and `ProjectAdminSectionDef`); the page leaves the
+section out while that sub-component is off for the organisation or project, so
+no one is offered settings for a feature they cannot use (Product Feedback's
+External Systems is the first). See
 `frontend/src/modules/compliance/module.ts` for a real example
 (`OrgCompliancePanel`, the org-wide compliance dashboard — Compliance's own
 former second section, `ComplianceAdminPanel`, was retired in Phase 18, see

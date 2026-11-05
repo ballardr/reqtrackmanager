@@ -1,60 +1,79 @@
 /**
  * Module: modules/product_feedback/RequestScoresPanel
  *
- * A request's scoring on the detail page: the score under each model scored, side by side, and the level chosen on
- * each criterion of the scheme. Scores are derived on every read, so showing several models costs nothing and no
- * model "wins": a model that needs a criterion the request has no level for reads "Not scored", never zero. A derived
- * criterion (Demand) shows the level worked out from the requesters and says so; a level chosen by hand wins.
- * The weighted demand is shown beside the scores, not folded into them.
+ * A request's scoring on the request page, laid out like the form that edits it, in two titled blocks so the inputs
+ * and the results are never mistaken for each other: **Criteria** (the level chosen on each criterion of the scheme,
+ * name above level; the criteria are shared by the models, none belongs to one) and **Scores** (the
+ * score under each model, `RequestScoreTable`; a model missing a criterion reads "Not scored", never zero). The derived criterion (Demand) shows its level with a calculator icon whose tooltip gives the demand it was worked
+ * out from (or says a person chose it instead); weighted demand is never folded into a score.
  */
+import { Calculator } from "lucide-react";
+import { useId } from "react";
+
 import type { ScoringScheme } from "../../api/scoring";
 import { DetailCard } from "../../components/DetailCard";
+import { Tooltip } from "../../components/Tooltip";
 import { isDerivedAxis } from "./requestLevels";
 import { demandText } from "./requestListState";
-import { RequestScoreBadge } from "./RequestScoreBadge";
+import { RequestScoreTable } from "./RequestScoreTable";
+import { ScoringBlock } from "./ScoringBlock";
 import type { EnhancementRequest } from "./types";
+
+/** The "calculated" mark beside a derived criterion's level: an icon whose tooltip says where the level came from. */
+function DerivedNote({ note }: { note: string }) {
+  const textId = useId();
+  return (
+    <Tooltip label={note} pinnable wrap bubbleId={textId}>
+      <button type="button" className="field-help__button" aria-describedby={textId}>
+        <Calculator aria-hidden="true" />
+        <span className="sr-only">{note}</span>
+      </button>
+    </Tooltip>
+  );
+}
 
 /**
  * @param request The request.
  * @param scheme The scoring scheme in effect (model and level names); null leaves the panel's detail out.
- * @param showDemand True on the project tier, where a request has requesters.
+ * @param showDemand True on the project tier, where a request has requesters (the Demand level then names them).
  */
 export function RequestScoresPanel({
   request, scheme, showDemand,
 }: { request: EnhancementRequest; scheme: ScoringScheme | null; showDemand: boolean }) {
-  const modelKeys = Object.keys(request.scores);
-  const modelLabel = (key: string) => scheme?.models.find((m) => m.key === key)?.label ?? key;
   return (
     <DetailCard heading="Scoring">
-      <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap" }}>
-        {modelKeys.map((key) => (
-          <div key={key} className="stack" style={{ gap: "var(--space-1)" }}>
-            <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>{modelLabel(key)}</span>
-            <RequestScoreBadge score={request.scores[key]} />
-          </div>
-        ))}
-        {showDemand && (
-          <div className="stack" style={{ gap: "var(--space-1)" }}>
-            <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>Demand</span>
-            <span>{demandText(request)}</span>
-          </div>
-        )}
-      </div>
       {scheme && (
-        <dl className="stack" style={{ margin: 0, gap: "var(--space-2)" }}>
-          {scheme.axes.map((axis) => {
-            const chosen = axis.levels.find((l) => l.id === request.levels[axis.key]);
-            const worked = isDerivedAxis(axis) ? axis.levels.find((l) => l.id === request.derived_levels[axis.key]) : undefined;
-            return (
-              <div key={axis.key} className="row" style={{ gap: "var(--space-2)" }}>
-                <dt className="text-muted" style={{ minWidth: "8rem" }}>{axis.label}</dt>
-                <dd style={{ margin: 0 }}>
-                  {chosen ? chosen.name : worked ? <>{worked.name} <span className="text-muted">(worked out from demand)</span></> : <span className="text-muted">Not set</span>}
-                </dd>
-              </div>
-            );
-          })}
-        </dl>
+        <ScoringBlock title="Criteria">
+          <dl
+            style={{
+              margin: 0, display: "grid", gap: "var(--space-4) var(--space-5)", alignItems: "start",
+              gridTemplateColumns: "repeat(auto-fill, minmax(11.5rem, 1fr))",
+            }}
+          >
+            {scheme.axes.map((axis) => {
+              const chosen = axis.levels.find((l) => l.id === request.levels[axis.key]);
+              const worked = isDerivedAxis(axis) && !chosen ? axis.levels.find((l) => l.id === request.derived_levels[axis.key]) : undefined;
+              const level = chosen ?? worked;
+              const note = isDerivedAxis(axis)
+                ? `${chosen ? "Chosen by hand" : "Worked out"}${showDemand ? ` from ${demandText(request)}` : " from demand"}`
+                : null;
+              return (
+                <div key={axis.key} className="stack" style={{ gap: "var(--space-1)" }}>
+                  <dt className="text-muted">{axis.label}</dt>
+                  <dd className="row" style={{ margin: 0, gap: "var(--space-2)", alignItems: "center" }}>
+                    {level ? level.name : <span className="text-muted">Not set</span>}
+                    {note && <DerivedNote note={note} />}
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+        </ScoringBlock>
+      )}
+      {scheme && Object.keys(request.scores).length > 0 && (
+        <ScoringBlock title="Scores">
+          <RequestScoreTable scheme={scheme} scores={request.scores} levels={request.levels} />
+        </ScoringBlock>
       )}
     </DetailCard>
   );

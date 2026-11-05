@@ -25,6 +25,7 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { orgRequestApi } from "./api";
 import { RequestFormModal, type RequestFormValues } from "./RequestFormModal";
+import { RequestColumnChooser } from "./RequestColumnChooser";
 import { requestColumns } from "./requestColumns";
 import { RequestFilterFields } from "./RequestFilterFields";
 import { sortRequests, useRequestListFilters } from "./requestListState";
@@ -41,7 +42,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const filters = useRequestListFilters(scheme);
+  const filters = useRequestListFilters(scheme, "inbox", false);
 
   useEffect(() => {
     void orgScoringApi.get(orgId, SCHEME_KEY).then(setScheme).catch(() => setScheme(null));
@@ -51,7 +52,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
 
   async function reload() {
     try {
-      setRequests(await orgRequestApi.list(orgId, { include_archived: filters.includeArchived, scoring_model: filters.chosenModels }));
+      setRequests(await orgRequestApi.list(orgId, { include_archived: filters.includeArchived, scoring_model: filters.requestedModels }));
       setLoadError(null);
     } catch (err) {
       // A switched-off inbox answers 403/404; say what that means instead of the server's bare message.
@@ -63,7 +64,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  useLoadOnChange(reload, [orgId, filters.includeArchived, filters.chosenModels]);
+  useLoadOnChange(reload, [orgId, filters.includeArchived, filters.requestedModels.join(",")]);
 
   async function create(values: RequestFormValues) {
     setCreateError(null);
@@ -82,7 +83,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
 
   const filtered = requests.filter((r) => filters.matches(r));
   const columns = requestColumns({
-    scheme, models: filters.models, showLinkWarnings: false,
+    scheme, models: filters.models, shown: filters.columns.visible, showLinkWarnings: false,
     codeCell: (r) => <span className="text-muted"><ScopedRecordCode record={r} /></span>,
   });
 
@@ -93,6 +94,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
         <ListActions
           organizationId={orgId} recordType="enhancement_request" filters={filters.filterParams().toString()} onImported={reload}
         />
+        <RequestColumnChooser filters={filters} scheme={scheme} />
       </div>
       <div className="side-grid">
         <DirectoryTable

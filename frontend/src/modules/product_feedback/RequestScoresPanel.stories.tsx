@@ -13,16 +13,23 @@ export default meta;
 
 type Story = StoryObj<typeof RequestScoresPanel>;
 
-/** Each model scored sits side by side with the demand, and the derived criterion says it was worked out. */
+/** Each model scored sits side by side, and the derived criterion says it was worked out and from what. */
 export const ShowsEveryModelAndTheWorkedOutDemandLevel: Story = {
   args: { request: buildRequest() },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("ICE")).toBeInTheDocument();
-    await expect(canvas.getByText("RICE")).toBeInTheDocument();
+    await expect(canvas.getByRole("columnheader", { name: "ICE" })).toBeInTheDocument();
+    await expect(canvas.getByRole("columnheader", { name: "RICE" })).toBeInTheDocument();
     await expect(canvas.getByText("High · 48")).toHaveClass("badge--accent");
-    await expect(canvas.getByText("1 requester")).toBeInTheDocument();
-    await expect(canvas.getByText(/\(worked out from demand\)/)).toBeInTheDocument();
+    await expect(canvas.getByText(/Worked out from 1 requester/)).toBeInTheDocument(); // the icon button's accessible name
+  },
+};
+
+/** A level a person chose for the derived criterion says so, rather than claiming it was worked out. */
+export const AChosenDemandLevelSaysSo: Story = {
+  args: { request: buildRequest({ levels: { demand: "demand-3" } }) },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText(/Chosen by hand from 1 requester/)).toBeInTheDocument();
   },
 };
 
@@ -36,10 +43,12 @@ export const AMissingLevelReadsNotScored: Story = {
   },
 };
 
-/** An inbox request has no requesters, so no demand is shown. */
+/** An inbox request has no requesters, so the Demand note names no one. */
 export const InboxHidesDemand: Story = {
   args: { request: buildRequest({ scope: "organization" }), showDemand: false },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).queryByText("Demand", { selector: "span" })).not.toBeInTheDocument();
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByText(/requester/)).not.toBeInTheDocument();
+    await expect(canvas.getByText(/Worked out from demand/)).toBeInTheDocument();
   },
 };

@@ -54,6 +54,9 @@ REQUEST_ARTEFACT_TYPE = "enhancement_request"
 REQUEST_CODE_PREFIX = "ENH"
 REQUEST_SUBCOMPONENT_KEY = "enhancement_request"
 ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY = "organization_requests"
+#: Links to items in outside tools (Jira, ServiceNow) and the list of systems they point at; switchable per project and
+#: by organisation default like any sub-component. Turning it off hides the feature; stored references are kept.
+EXTERNAL_REFERENCES_SUBCOMPONENT_KEY = "external_references"
 
 #: The content fields a version carries (everything an edit may change except the status and the scoring
 #: levels, which are rows of their own: `version_levels`).
@@ -333,7 +336,7 @@ def filter_requests(
         open_only: Keep only `REQUEST_OPEN_STATUSES`.
         search: Keep only requests whose code, title or description contains this text.
         scored: Keep only requests scored, or not scored, under the first of `scoring_model` (else the default).
-        missing_axis: Keep only requests with no level on this scoring axis.
+        missing_axis: Keep only requests with no level on this scoring axis, or (`any`) on at least one criterion.
         scoring_model: The model keys chosen when viewing.
     """
     requests = keep_by_scoring(
@@ -361,6 +364,24 @@ def get_submission_policy(db: Session, project_id: uuid.UUID) -> SubmissionPolic
     """The project's submission policy (`MEMBERS` until an administrator sets one)."""
     row = db.scalar(select(ProjectFeedbackSettings).where(ProjectFeedbackSettings.project_id == project_id))
     return row.submission_policy if row is not None else SubmissionPolicy.MEMBERS
+
+
+def get_request_page_sections(db: Session, project_id: uuid.UUID) -> list[str] | None:
+    """The project's default order of the request page's sections, or `None` for the built-in order."""
+    row = db.scalar(select(ProjectFeedbackSettings).where(ProjectFeedbackSettings.project_id == project_id))
+    return list(row.request_page_sections) if row is not None and row.request_page_sections else None
+
+
+def set_request_page_sections(db: Session, project_id: uuid.UUID, sections: list[str] | None) -> ProjectFeedbackSettings:
+    """Sets (or, with `None`, clears) the project's default section order, creating its settings row on first use
+    (the caller commits)."""
+    row = db.scalar(select(ProjectFeedbackSettings).where(ProjectFeedbackSettings.project_id == project_id))
+    if row is None:
+        row = ProjectFeedbackSettings(project_id=project_id, submission_policy=SubmissionPolicy.MEMBERS)
+        db.add(row)
+    row.request_page_sections = sections or None
+    db.flush()
+    return row
 
 
 def set_submission_policy(db: Session, project_id: uuid.UUID, policy: SubmissionPolicy) -> ProjectFeedbackSettings:

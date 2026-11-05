@@ -31,8 +31,8 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -71,6 +71,8 @@ class Requester:
         weight: The party's own weight, `None` when unset (it then counts `DEFAULT_WEIGHT`).
         from_merge: True when the party is reached only through a merged duplicate.
         via_engagement: True when the party is reached through a linked Engagement (alone or as well as directly).
+        link_id: The request's own "Requested by" link to this party, which removes it as a requester; `None` when the
+            party is reached only through an Engagement or a merged duplicate (remove the Engagement, or undo the merge).
     """
 
     artefact_type: str
@@ -79,6 +81,7 @@ class Requester:
     weight: float | None
     from_merge: bool
     via_engagement: bool
+    link_id: uuid.UUID | None = None
 
     @property
     def effective_weight(self) -> float:
@@ -93,10 +96,13 @@ class Demand:
     Attributes:
         requesters: The distinct parties, heaviest first.
         engagement_ids: The Engagements the request was raised in (own and merged), in id order.
+        engagement_links: `{engagement id: the request's own "Requested by" link to it}`, for the ones it is linked to
+            directly (an Engagement reached through a merged duplicate has none here).
     """
 
     requesters: tuple[Requester, ...]
     engagement_ids: tuple[uuid.UUID, ...]
+    engagement_links: Mapping[uuid.UUID, uuid.UUID] = field(default_factory=dict)
 
     @property
     def count(self) -> int:
@@ -128,13 +134,13 @@ def active_merged_duplicates(db: Session, canonical_ids: Sequence[uuid.UUID]) ->
 
 def _linked_targets(
     db: Session, project: Project, source_ids: Sequence[uuid.UUID],
-) -> dict[uuid.UUID, list[tuple[str, uuid.UUID]]]:
-    """`{request id: [(target type, target id)]}` for the requests' "Requested by" links, in one statement."""
-    out: dict[uuid.UUID, list[tuple[str, uuid.UUID]]] = defaultdict(list)
+) -> dict[uuid.UUID, list[tuple[str, uuid.UUID, uuid.UUID]]]:
+    """`{request id: [(target type, target id, link id)]}` for the requests' "Requested by" links, in one statement."""
+    out: dict[uuid.UUID, list[tuple[str, uuid.UUID, uuid.UUID]]] = defaultdict(list)
     if not source_ids:
         return out
-    for source_id, target_type, target_id in db.execute(
-        select(ArtefactLink.source_id, ArtefactLink.target_type, ArtefactLink.target_id)
+    for source_id, target_type, target_id, link_id in db.execute(
+        select(ArtefactLink.source_id, ArtefactLink.target_type, ArtefactLink.target_id, ArtefactLink.id)
         .join(RequirementLinkTypeDefinition, RequirementLinkTypeDefinition.id == ArtefactLink.link_type_id)
         .where(
             ArtefactLink.source_type == REQUEST_ARTEFACT_TYPE, ArtefactLink.source_id.in_(list(source_ids)),
@@ -144,7 +150,7 @@ def _linked_targets(
             (RequirementLinkTypeDefinition.project_id.is_(None)) | (RequirementLinkTypeDefinition.project_id == project.id),
         )
     ).all():
-        out[source_id].append((target_type, target_id))
+        out[source_id].append((target_type, target_id, link_id))
     return out
 
 
@@ -168,36 +174,47 @@ def compute_demand(db: Session, project: Project, request_ids: Sequence[uuid.UUI
 
     wanted: dict[str, set[uuid.UUID]] = defaultdict(set)
     for linked in targets.values():
-        for target_type, target_id in linked:
+        for target_type, target_id, _ in linked:
             wanted[target_type].add(target_id)
     parties: dict[str, dict[uuid.UUID, list[DemandParty]]] = {
         target_type: resolve_demand_parties(db, project.id, target_type, sorted(target_ids))
         for target_type, target_ids in wanted.items()
     }
 
-    def expand(source_id: uuid.UUID, own: bool, found: dict[tuple[str, uuid.UUID], list], engagements: set) -> None:
-        """Adds one source's parties to `found` (`[party, own, via engagement]`) and its Engagements to `engagements`."""
-        for target_type, target_id in targets.get(source_id, ()):
+    def expand(
+        source_id: uuid.UUID, own: bool, found: dict[tuple[str, uuid.UUID], list], engagements: dict[uuid.UUID, uuid.UUID | None],
+    ) -> None:
+        """Adds one source's parties to `found` (`[party, own, via engagement, own link id]`) and its Engagements to
+        `engagements` (`{id: own link id or None}`)."""
+        for target_type, target_id, link_id in targets.get(source_id, ()):
             expanded = parties.get(target_type, {}).get(target_id)
             if expanded is None:
                 continue
             if target_type == "engagement":
-                engagements.add(target_id)
+                engagements[target_id] = link_id if own else engagements.get(target_id)
             for party in expanded:
-                entry = found.setdefault((party.artefact_type, party.id), [party, False, False])
+                entry = found.setdefault((party.artefact_type, party.id), [party, False, False, None])
                 entry[1] = entry[1] or own
                 entry[2] = entry[2] or target_type == "engagement"
+                if own and target_type != "engagement":
+                    entry[3] = link_id
 
     result: dict[uuid.UUID, Demand] = {}
     for request_id in ids:
         found: dict[tuple[str, uuid.UUID], list] = {}
-        engagements: set[uuid.UUID] = set()
+        engagements: dict[uuid.UUID, uuid.UUID | None] = {}
         expand(request_id, True, found, engagements)
         for duplicate_id in merged.get(request_id, ()):
             expand(duplicate_id, False, found, engagements)
         requesters = sorted(
-            (Requester(p.artefact_type, p.id, p.label, p.weight, not own, via_engagement) for p, own, via_engagement in found.values()),
+            (
+                Requester(p.artefact_type, p.id, p.label, p.weight, not own, via_engagement, link_id)
+                for p, own, via_engagement, link_id in found.values()
+            ),
             key=lambda r: (-r.effective_weight, r.label.casefold(), str(r.id)),
         )
-        result[request_id] = Demand(tuple(requesters), tuple(sorted(engagements, key=str)))
+        result[request_id] = Demand(
+            tuple(requesters), tuple(sorted(engagements, key=str)),
+            {e: link for e, link in engagements.items() if link is not None},
+        )
     return result

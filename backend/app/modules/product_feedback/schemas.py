@@ -30,10 +30,11 @@ reference on the "Other" system, and is never returned.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 from app.modules.product_feedback.enums import (
     EnhancementRequestScope,
@@ -176,6 +177,26 @@ class RequestScoreOut(BaseModel):
     tone: str | None = None
 
 
+class ScorePreviewIn(BaseModel):
+    """The levels of a request being filled in, to be scored without saving anything."""
+
+    levels: dict[str, UUID | None] = Field(
+        default_factory=dict, description="Scoring level id by axis key; null or absent means the axis is not scored.",
+    )
+    request_id: UUID | None = Field(
+        default=None, description="An existing request of this owner, whose weighted demand the derived Demand axis reads.",
+    )
+
+
+class ScorePreviewOut(BaseModel):
+    """What the given levels would score: each enabled model's score (null = not scored), the level each derived axis
+    resolves to where none was given, and the weighted demand that was used."""
+
+    scores: dict[str, RequestScoreOut | None]
+    derived_levels: dict[str, UUID]
+    weighted_demand: float
+
+
 class RequestOut(ProjectScopedRow):
     """A request merged with its current version. Built explicitly (identity row plus version), never via
     `from_attributes`."""
@@ -270,6 +291,9 @@ class FeedbackSettingsOut(BaseModel):
     """A project's Product Feedback settings."""
 
     submission_policy: SubmissionPolicy
+    request_page_sections: list[str] | None = Field(
+        default=None, description="The project's default order of the request page's sections; null is the built-in order.",
+    )
 
 
 class FeedbackAccessOut(BaseModel):
@@ -279,10 +303,26 @@ class FeedbackAccessOut(BaseModel):
     can_triage: bool = Field(description="May edit, decide, merge, move, archive and attach evidence to requests.")
 
 
-class FeedbackSettingsUpdate(BaseModel):
-    """Replacement settings."""
+#: Keys of the request page's sections are short lowercase identifiers; the page ignores ones it does not know.
+SECTION_KEY_PATTERN = r"^[a-z][a-z_]{0,39}$"
 
-    submission_policy: SubmissionPolicy
+
+class FeedbackSettingsUpdate(BaseModel):
+    """Settings changes: only the fields sent are changed. `request_page_sections` null returns to the built-in order."""
+
+    submission_policy: SubmissionPolicy | None = None
+    request_page_sections: list[Annotated[str, StringConstraints(pattern=SECTION_KEY_PATTERN)]] | None = Field(
+        default=None, max_length=20,
+        description="The default order of the request page's sections (each key once); null clears it.",
+    )
+
+    @model_validator(mode="after")
+    def _keys_are_unique(self) -> FeedbackSettingsUpdate:
+        """Each section key may appear once."""
+        sections = self.request_page_sections
+        if sections is not None and len(set(sections)) != len(sections):
+            raise ValueError("Each section may appear only once.")
+        return self
 
 
 class ChannelOut(BaseModel):
@@ -306,23 +346,33 @@ class RequesterOut(BaseModel):
     via_engagement: bool
     hidden: bool = False
     channel: ChannelOut | None = None
+    link_id: UUID | None = Field(
+        default=None,
+        description="The request's own 'Requested by' link to this party (remove it with the generic link delete); "
+        "null when the party is reached only through an Engagement or a merged duplicate.",
+    )
 
 
 class DemandEngagementOut(BaseModel):
-    """An Engagement the request was raised in; `label` is null when the caller may not view it."""
+    """An Engagement the request was raised in; `label` is null when the caller may not view it. `link_id` is the
+    request's own 'Requested by' link to it (null for one reached only through a merged duplicate)."""
 
     id: UUID
     label: str | None = None
     hidden: bool = False
+    link_id: UUID | None = None
 
 
 class DemandOut(BaseModel):
-    """A request's demand: the distinct requesters (its own and those of requests merged into it), the
-    engagements it was raised in, and the totals."""
+    """A request's demand: one page of the distinct requesters (its own and those of requests merged into it,
+    heaviest first; `offset` and `limit` say which page), the engagements it was raised in, and the totals, which
+    cover every requester and not only the page."""
 
     request_id: UUID
     requester_count: int
     weighted_demand: float
+    offset: int = 0
+    limit: int = 0
     requesters: list[RequesterOut]
     engagements: list[DemandEngagementOut]
     merged_duplicates: list[RequestRefOut]
@@ -337,6 +387,7 @@ class RequestMergeOut(BaseModel):
     prior_status: EnhancementRequestStatus
     merged_by: UUID
     merged_at: datetime
+    note: str = ""
     unmerged_by: UUID | None = None
     unmerged_at: datetime | None = None
     active: bool

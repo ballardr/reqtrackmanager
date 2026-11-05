@@ -208,3 +208,61 @@ def test_the_list_reads_demand_in_a_fixed_number_of_statements(client, admin_tok
         merge(duplicate, first[0])
     large = _statements_for_list(client, token, pid)
     assert small == large, f"list statements grew with rows: {small} -> {large}"
+
+
+def test_requesters_come_a_page_at_a_time_while_the_totals_cover_every_requester(client, admin_token):
+    org, project, token = setup_with_people(client, admin_token, "Feedback Demand Page Co")
+    pid = project["id"]
+    h = auth_headers(token)
+    request = create_request(client, token, pid)
+    for i in range(7):
+        person = create_stakeholder(client, token, pid, f"Person {i}", influence="High" if i == 5 else None, org_id=org["id"])
+        assert add_requester(client, token, org["id"], pid, request["id"], "stakeholder", person["id"]).status_code == 201
+    url = f"{project_base(pid)}/requests/{request['id']}/demand"
+
+    first = client.get(url, params={"limit": 3}, headers=h).json()
+    assert first["requester_count"] == 7 and first["weighted_demand"] == 3 + 6  # one High (3) and six unrated (1 each)
+    assert (first["offset"], first["limit"], len(first["requesters"])) == (0, 3, 3)
+    assert first["requesters"][0]["label"] == "Person 5"  # heaviest first
+    second = client.get(url, params={"limit": 3, "offset": 3}, headers=h).json()
+    last = client.get(url, params={"limit": 3, "offset": 6}, headers=h).json()
+    pages = [r["label"] for page in (first, second, last) for r in page["requesters"]]
+    assert len(pages) == 7 and len(set(pages)) == 7  # every requester exactly once across the pages
+    assert second["requester_count"] == 7 and len(last["requesters"]) == 1
+    assert client.get(url, params={"offset": 99}, headers=h).json()["requesters"] == []
+    assert client.get(url, params={"limit": 0}, headers=h).status_code == 422
+    assert client.get(url, params={"limit": 501}, headers=h).status_code == 422
+
+
+def test_a_requester_or_engagement_added_by_mistake_is_removed_with_the_link_the_demand_names(client, admin_token):
+    org, project, token = setup_with_people(client, admin_token, "Feedback Demand Remove Co")
+    pid, h = project["id"], auth_headers(token)
+    request = create_request(client, token, pid)
+    other = create_request(client, token, pid, title="Duplicate")
+    ann = create_stakeholder(client, token, pid, "Ann", org_id=org["id"])
+    bob = create_stakeholder(client, token, pid, "Bob")
+    cat = create_stakeholder(client, token, pid, "Cat")
+    workshop = create_engagement(client, token, pid, "Field workshop", stakeholder_ids=[bob["id"]])
+    for kind, record in (("stakeholder", ann), ("engagement", workshop)):
+        assert add_requester(client, token, org["id"], pid, request["id"], kind, record["id"]).status_code == 201
+    assert add_requester(client, token, org["id"], pid, other["id"], "stakeholder", cat["id"]).status_code == 201
+    assert client.post(
+        f"{project_base(pid)}/requests/{other['id']}/merge", json={"canonical_id": request["id"]}, headers=h,
+    ).status_code == 200
+
+    demand = get_demand(client, token, pid, request["id"])
+    people = _requesters(demand)
+    # Only the request's own direct link can be removed: Bob is reached through the Engagement, Cat through a merge.
+    assert people["Ann"]["link_id"] is not None
+    assert people["Bob"]["link_id"] is None and people["Cat"]["link_id"] is None
+    assert demand["engagements"][0]["link_id"] is not None
+
+    base = f"/api/v1/projects/{pid}/artefacts/enhancement_request/{request['id']}/links"
+    assert client.delete(f"{base}/{people['Ann']['link_id']}", headers=h).status_code == 204
+    after = get_demand(client, token, pid, request["id"])
+    assert sorted(_requesters(after)) == ["Bob", "Cat"]
+    # Removing the Engagement removes the people only it reached; the merged duplicate's requester stays.
+    assert client.delete(f"{base}/{after['engagements'][0]['link_id']}", headers=h).status_code == 204
+    final = get_demand(client, token, pid, request["id"])
+    assert sorted(_requesters(final)) == ["Cat"] and final["engagements"] == []
+    assert final["requester_count"] == 1

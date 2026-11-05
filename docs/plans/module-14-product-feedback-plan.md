@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens), 5c (external references and channel per ask), 5b (scoring administration screens) and 6 (reports) built 2026-11-05; Phase 7 (docs website) next. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens), 5c (external references and channel per ask), 5b (scoring administration screens) and 6 (reports) built 2026-11-05; Phase 7 (docs website) next (the 2026-11-05 review follow-ups are in `docs/decisions.md`'s "Eighth follow-up" entry and the website must cover them: requesters and paging, the External references switch, the section order). Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's

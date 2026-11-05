@@ -39,7 +39,7 @@ export const AHiddenRequesterIsCountedNotNamed: Story = {
 export const EmptyDemandSaysHowToAddARequester: Story = {
   args: { demand: buildDemand({ requesters: [], engagements: [], requester_count: 0, weighted_demand: 0 }) },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText(/“Requested by” in the Links panel/)).toBeInTheDocument();
+    await expect(within(canvasElement).getByText(/No one is recorded as having asked for this yet/)).toBeInTheDocument();
   },
 };
 
@@ -49,7 +49,7 @@ export const MergedDuplicatesAreListedWithTheirHistory: Story = {
     merges: [{
       id: "merge-1", canonical: { id: "request-1", unique_code: "ENH-001", title: "Export" },
       duplicate: { id: "request-9", unique_code: "ENH-009", title: "Excel please" }, prior_status: "new",
-      merged_by: "user-1", merged_at: "2026-11-02T09:00:00Z", unmerged_by: null, unmerged_at: null, active: true,
+      merged_by: "user-1", merged_at: "2026-11-02T09:00:00Z", note: "Same ask, different words", unmerged_by: null, unmerged_at: null, active: true,
     }],
   },
   play: async ({ canvasElement }) => {
@@ -58,6 +58,8 @@ export const MergedDuplicatesAreListedWithTheirHistory: Story = {
       "href", `/projects/${PROJECT_ID}/modules/product_feedback/requests/request-9`,
     );
     await expect(canvas.getByText("Merge history (1)")).toBeInTheDocument();
+    // The note the triager gave when merging is shown as the reason.
+    await expect(canvas.getByText("Same ask, different words")).toBeInTheDocument();
   },
 };
 
@@ -103,5 +105,87 @@ export const AReaderSeesNoChannelControls: Story = {
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Call")).toBeInTheDocument();
     await expect(within(canvasElement).queryByRole("button", { name: /Set channel/ })).not.toBeInTheDocument();
+  },
+};
+
+/** A long list shows what is loaded against the total and offers the next page; the headline still covers everyone. */
+export const AShortPageOfALongListOffersShowMore: Story = {
+  args: {
+    demand: buildDemand({ requester_count: 120, weighted_demand: 131, requesters: [buildRequester(), buildRequester({ id: "stakeholder-2", label: "Sam Rivera" })] }),
+    onShowMore: fn(),
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("120 requesters · 131")).toBeInTheDocument();
+    await expect(canvas.getByText("Showing 2 of 120 requesters")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Show more" }));
+    await expect(args.onShowMore).toHaveBeenCalled();
+  },
+};
+
+/** Everyone loaded: no paging line. */
+export const NoPagingWhenEveryoneIsLoaded: Story = {
+  args: { demand: buildDemand(), onShowMore: fn() },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByText(/Showing \d+ of/)).not.toBeInTheDocument();
+    await expect(within(canvasElement).queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+  },
+};
+
+/** A triager gets Add requester, with or without anyone listed yet. */
+export const ATriagerCanAddRequesters: Story = {
+  args: { demand: buildDemand(), onAddRequesters: fn() },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Add requester" }));
+    await expect(args.onAddRequesters).toHaveBeenCalled();
+  },
+};
+
+export const NobodyElseSeesAddRequester: Story = {
+  args: { demand: buildDemand() },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("button", { name: "Add requester" })).not.toBeInTheDocument();
+  },
+};
+
+/** Only the request's own links can be removed: a requester reached through an Engagement has a dimmed button saying why. */
+export const ADirectRequesterAndAnEngagementCanBeRemoved: Story = {
+  args: { demand: buildDemand(), onRemoveRequester: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const dimmed = canvas.getByRole("button", { name: "Remove requester Power user" });
+    await expect(dimmed).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(dimmed);
+    await expect(args.onRemoveRequester).not.toHaveBeenCalled();
+    await userEvent.hover(dimmed);
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent(/Remove that Engagement to remove them/);
+    await userEvent.unhover(dimmed);
+    await userEvent.click(canvas.getByRole("button", { name: "Remove requester Priya Shah" }));
+    await expect(args.onRemoveRequester).toHaveBeenLastCalledWith("link-1", "Priya Shah", "requester");
+    await userEvent.click(canvas.getByRole("button", { name: "Remove Engagement Customer workshop" }));
+    await expect(args.onRemoveRequester).toHaveBeenLastCalledWith("link-e1", "Customer workshop", "engagement");
+  },
+};
+
+/** A requester counted from a merged duplicate says to undo the merge; an enabled button says what it removes. */
+export const EveryRemoveButtonExplainsItself: Story = {
+  args: {
+    demand: buildDemand({ requesters: [buildRequester(), buildRequester({ id: "stakeholder-2", label: "Sam Rivera", from_merge: true, link_id: null })] }),
+    onRemoveRequester: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.hover(canvas.getByRole("button", { name: "Remove requester Sam Rivera" }));
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Undo that merge to remove them");
+    await userEvent.unhover(canvas.getByRole("button", { name: "Remove requester Sam Rivera" }));
+    await userEvent.hover(canvas.getByRole("button", { name: "Remove requester Priya Shah" }));
+    await expect(await within(document.body).findByRole("tooltip")).toHaveTextContent("Remove Priya Shah as a requester");
+  },
+};
+
+export const NoRemoveButtonsWithoutTheRight: Story = {
+  args: { demand: buildDemand() },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("button", { name: /^Remove/ })).not.toBeInTheDocument();
   },
 };

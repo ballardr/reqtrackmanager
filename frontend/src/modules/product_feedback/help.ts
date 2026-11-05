@@ -16,6 +16,8 @@ export const PRODUCT_FEEDBACK_HELP = {
   requesterChannel: "How this person asked: a support ticket, a call, an email and so on. It shows where demand comes from.",
   requestDerivedLevel: "Worked out from how many people asked, weighted by their influence. Choose a level only to override it; clear it to go back to the worked-out one.",
   submissionPolicy: "Who may submit a request in this project. Triagers can always edit, merge and decide requests whichever you choose.",
+  requestPageSections: "The order of the sections on every request's page in this project. Anyone can still arrange the page for themselves from its menu; their order wins over this one.",
+  changeNote: "Why you are making this edit, in a few words. It is recorded against the new version in the request's Version history, so later readers can see the reason. Leave it empty if it is obvious.",
   declineReason: "Why the request was declined. This is kept with the request and shown to anyone told the outcome.",
   mergeNote: "Why these are the same ask. Kept in the merge history so the merge can be understood, and undone, later.",
   informedNote: "How or by whom the requesters were told, for example 'Emailed by support on release day'. Nothing is sent from here.",

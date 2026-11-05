@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { buildRecordColumns } from "../../testing/recordTablesFixtures";
-import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { buildRequest, buildRequestScheme, buildUnscoredRequest, ORG_USERS, PROJECT_ID } from "./requestFixtures";
 import { ProjectRequestsPage } from "./ProjectRequestsPage";
 import type { EnhancementRequest, FeedbackAccess } from "./types";
@@ -39,7 +39,7 @@ const meta: Meta<typeof ProjectRequestsPage> = {
   title: "Modules/ProductFeedback/ProjectRequestsPage",
   component: ProjectRequestsPage,
   decorators: [
-    withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
+    withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
     (Story, context) =>
       withRouter(
         `/projects/${PROJECT_ID}/modules/product_feedback/requests${context.parameters.query ?? ""}`,
@@ -53,7 +53,7 @@ export default meta;
 type Story = StoryObj<typeof ProjectRequestsPage>;
 
 /** Open requests only by default; a delivered or duplicate one is hidden until Open only is unticked. */
-export const OpensOnOpenRequestsWithScoreDemandAndWarnings: Story = {
+export const OpensOnOpenRequestsWithScoreAndWarnings: Story = {
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -61,7 +61,7 @@ export const OpensOnOpenRequestsWithScoreDemandAndWarnings: Story = {
     await expect(canvas.getByRole("checkbox", { name: "Open only" })).toBeChecked();
     const row = within(within(table).getByRole("link", { name: "ENH-001" }).closest("tr")!);
     await expect(row.getByText("High · 48")).toHaveClass("badge--accent");
-    await expect(row.getByText("1 requester")).toBeInTheDocument();
+    await expect(row.queryByText("1 requester")).not.toBeInTheDocument(); // demand starts hidden
     await expect(row.getByText("No Pain Point")).toHaveClass("badge--warning");
     await expect(within(table).queryByRole("link", { name: "ENH-004" })).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole("checkbox", { name: "Open only" }));
@@ -136,5 +136,59 @@ export const NewRequestOpensTheFormLayeredOverTheList: Story = {
     await canvas.findByRole("table", { name: "Enhancement requests" });
     await userEvent.click(canvas.getByRole("button", { name: "New request" }));
     await expect(within(document.body).getByRole("dialog", { name: /New enhancement request/ })).toBeInTheDocument();
+  },
+};
+
+/** Demand and Owner start hidden; the Columns control shows them, hides a score column and resets to the defaults. */
+export const TheColumnsControlShowsAndHidesColumns: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Enhancement requests" });
+    const headers = () => within(table).getAllByRole("columnheader").map((h) => h.textContent?.trim());
+    await expect(headers()).not.toContain("Demand");
+    await expect(headers()).not.toContain("Owner");
+    await expect(headers()).toContain("Status");
+    const initial = headers().filter((h) => h?.startsWith("Score"));
+    await expect(initial.length).toBeGreaterThan(0);
+
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const popover = within(await within(document.body).findByRole("dialog"));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Demand" }));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Owner" }));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Status" }));
+    await expect(headers()).toContain("Demand");
+    await expect(headers()).toContain("Owner");
+    await expect(headers()).not.toContain("Status");
+    await expect(within(table).getByText("1 requester")).toBeInTheDocument();
+
+    await userEvent.click(popover.getByRole("button", { name: "Show the default columns" }));
+    await expect(headers()).not.toContain("Demand");
+    await expect(headers()).toContain("Status");
+  },
+};
+
+/** "Criteria not rated" reads as it says: Any criterion keeps requests not rated on every criterion, a named one that criterion. */
+export const CriteriaNotRatedAnyKeepsTheIncomplete: Story = {
+  beforeEach: () => mockApis([
+    buildRequest({ id: "request-1", unique_code: "ENH-001", title: "Complete", status: "new" }),
+    buildRequest({ id: "request-2", unique_code: "ENH-002", title: "No ease", status: "new", levels: { impact: "impact-4", confidence: "conf-4", reach: "reach-3", effort: "effort-2" } }),
+    buildRequest({ id: "request-3", unique_code: "ENH-003", title: "No reach", status: "new", levels: { impact: "impact-4", confidence: "conf-4", ease: "ease-4", effort: "effort-2" } }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Enhancement requests" });
+    const filter = canvas.getByLabelText("Criteria not rated");
+    await expect(within(filter).getByRole("option", { name: "No filter" })).toBeInTheDocument();
+    await expect(within(table).getAllByRole("link", { name: /^ENH-/ })).toHaveLength(3);
+
+    await userEvent.selectOptions(filter, "any");
+    await expect(within(table).queryByRole("link", { name: "ENH-001" })).not.toBeInTheDocument();
+    await expect(within(table).getByRole("link", { name: "ENH-002" })).toBeInTheDocument();
+    await expect(within(table).getByRole("link", { name: "ENH-003" })).toBeInTheDocument();
+
+    await userEvent.selectOptions(filter, "reach");
+    await expect(within(table).queryByRole("link", { name: "ENH-002" })).not.toBeInTheDocument();
+    await expect(within(table).getByRole("link", { name: "ENH-003" })).toBeInTheDocument();
   },
 };

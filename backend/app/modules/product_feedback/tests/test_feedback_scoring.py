@@ -19,7 +19,7 @@ from app.modules.product_feedback.tests._helpers import (
     setup,
     setup_with_people,
 )
-from tests.conftest import auth_headers
+from tests.conftest import auth_headers, create_org_admin_in
 
 
 def _scheme(client, token, project_id) -> dict:
@@ -365,6 +365,10 @@ def test_missing_axis_finds_who_lacks_one_criterion(client, admin_token):
     assert _titles(client, token, pid, "missing_axis=impact") == ["Bare"]
     assert _titles(client, token, pid, "missing_axis=demand") == []  # derived: never missing
     assert _titles(client, token, pid, "missing_axis=reach&scored=unscored") == ["Bare", "No reach"]
+    # `any` is "not rated on every criterion": a request lacking at least one manual criterion (a derived one never counts).
+    assert _titles(client, token, pid, "missing_axis=any") == ["Bare", "No ease", "No reach"]
+    # Combined with Unscored it also needs the first model (RICE) to lack a level, which "No ease" does not.
+    assert _titles(client, token, pid, "missing_axis=any&scored=unscored") == ["Bare", "No reach"]
     bad = client.get(project_base(pid) + "/requests?missing_axis=gravity", headers=auth_headers(token))
     assert bad.status_code == 400
     assert client.get(project_base(pid) + "/requests?scored=maybe", headers=auth_headers(token)).status_code == 422
@@ -388,3 +392,60 @@ def test_the_filter_follows_the_current_version_and_applies_to_the_inbox_and_the
     )
     assert export.status_code == 200, export.text
     assert "Bare" in export.text and "Full" not in export.text and "No reach" not in export.text
+
+
+def _preview(client, token, base: str, levels: dict, request_id: str | None = None):
+    body = {"levels": levels, **({"request_id": request_id} if request_id else {})}
+    return client.post(f"{base}/score-preview", json=body, headers=auth_headers(token))
+
+
+def test_score_preview_scores_unsaved_levels_exactly_as_a_saved_request_would_be(client, admin_token):
+    _, project, token = setup(client, admin_token, "Feedback Preview Co")
+    pid, base = project["id"], project_base(project["id"])
+    levels = _levels(_scheme(client, token, pid))
+    payload = _scored(levels, effort="Medium", ease=None)
+    saved = create_request(client, token, pid, **payload)
+
+    resp = _preview(client, token, base, payload["levels"])
+    assert resp.status_code == 200, resp.text
+    preview = resp.json()
+    assert preview["scores"] == saved["scores"]  # the same derivation, nothing stored
+    assert preview["scores"]["ice"] is None  # Ease is missing, so ICE is not scored (never zero)
+    assert preview["weighted_demand"] == 0 and set(preview["derived_levels"]) == {"demand"}
+    assert len(client.get(base + "/requests", headers=auth_headers(token)).json()) == 1  # the preview created nothing
+
+    # Nothing chosen: nothing scores, and a null level is the same as an absent one.
+    empty = _preview(client, token, base, {"reach": None}).json()
+    assert empty["scores"]["rice"] is None and empty["scores"]["ice"] is None
+
+
+def test_score_preview_reads_an_existing_requests_demand_and_refuses_bad_levels(client, admin_token):
+    _, project, token = setup_with_people(client, admin_token, "Feedback Preview Demand Co")
+    pid, base = project["id"], project_base(project["id"])
+    levels = _levels(_scheme(client, token, pid))
+    request = create_request(client, token, pid, **_scored(levels))
+    for name in ("Ann", "Bob", "Cy", "Dee"):
+        person = create_stakeholder(client, token, pid, name)
+        assert add_requester(client, token, project["organization_id"], pid, request["id"], "stakeholder", person["id"]).status_code == 201
+
+    with_demand = _preview(client, token, base, _scored(levels)["levels"], request["id"]).json()
+    without = _preview(client, token, base, _scored(levels)["levels"]).json()
+    assert with_demand["weighted_demand"] == 4 and without["weighted_demand"] == 0
+    assert with_demand["derived_levels"]["demand"] != without["derived_levels"]["demand"]
+    assert with_demand["scores"]["rice_demand"]["normalised"] > without["scores"]["rice_demand"]["normalised"]
+
+    # A level on the wrong axis, an unknown axis and a request of another project are refused.
+    assert _preview(client, token, base, {"impact": levels["reach"]["Many"]}).status_code == 400
+    assert _preview(client, token, base, {"no_such_axis": levels["reach"]["Many"]}).status_code == 400
+    assert _preview(client, token, base, {}, "00000000-0000-0000-0000-000000000000").status_code == 404
+
+
+def test_score_preview_works_for_the_inbox_and_needs_membership(client, admin_token):
+    org, project, token = setup(client, admin_token, "Feedback Preview Inbox Co")
+    outsider_org, outsider = create_org_admin_in(client, admin_token, "Feedback Preview Outsider Co")
+    levels = _levels(_scheme(client, token, project["id"]))
+    body = _scored(levels)["levels"]
+    resp = _preview(client, token, org_base(org["id"]), body)
+    assert resp.status_code == 200 and resp.json()["scores"]["rice"] is not None
+    assert _preview(client, outsider, org_base(org["id"]), body).status_code in (403, 404)
+    assert _preview(client, outsider, project_base(project["id"]), body).status_code in (403, 404)

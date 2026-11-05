@@ -40,6 +40,9 @@ export interface OrgAdminSectionDef {
    * `TierAModuleRoute.path` already relies on for project routes. */
   key: string;
   label: string;
+  /** The module's sub-component this section configures. The page leaves the section out while that sub-component is
+   * switched off for the organisation, so no one is offered settings for a feature they cannot use. */
+  subComponent?: string;
   render: (props: { orgId: string }) => ReactNode;
 }
 
@@ -52,6 +55,9 @@ export interface ProjectAdminSectionDef {
    * from every core group key `ProjectAdminPage.tsx` itself declares). */
   key: string;
   label: string;
+  /** The module's sub-component this section configures. The page leaves the section out while that sub-component is
+   * effectively off for the project (its own switch, else the organisation's). */
+  subComponent?: string;
   render: (props: { projectId: string }) => ReactNode;
 }
 

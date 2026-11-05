@@ -23,6 +23,7 @@ from app.modules.product_feedback.tests._helpers import (
     grant_project_role,
     org_base,
     project_base,
+    set_org_inbox,
     setup,
 )
 from tests.conftest import auth_headers, create_org_admin_in, create_project
@@ -557,3 +558,63 @@ def test_a_child_renames_an_inherited_entry_without_touching_the_parents(client,
     assert renamed.status_code == 200, renamed.text
     assert "Child GitHub" in _systems(client, token, child["id"]) and "Parent GitHub" not in _systems(client, token, child["id"])
     assert "Parent GitHub" in _systems(client, token, parent["id"])
+
+
+def _set_references(client, token, url_base: str, enabled: bool) -> None:
+    resp = client.put(f"{url_base}/subcomponents/external_references", json={"enabled": enabled}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+
+
+def test_a_project_can_switch_external_references_off_and_back_on_keeping_what_it_stored(client, admin_token):
+    org, project, token = setup(client, admin_token, "Refs Switch Co")
+    h = auth_headers(token)
+    systems = _systems(client, token, project["id"])
+    request = create_request(client, token, project["id"], references=[
+        {"system_id": systems["Jira"]["id"], "key": "PROJ-1", "role": "delivery"},
+    ])
+    project_modules = f"/api/v1/projects/{project['id']}/modules/product_feedback"
+
+    _set_references(client, token, project_modules, False)
+    # The feature is gone: its routes and its system list answer 404, and a create cannot carry references.
+    assert client.get(_refs_url(project["id"], request["id"]), headers=h).status_code == 404
+    assert client.post(
+        _refs_url(project["id"], request["id"]), json={"system_id": systems["Jira"]["id"], "key": "PROJ-2"}, headers=h,
+    ).status_code == 404
+    assert client.get(project_base(project["id"]) + "/external-systems", headers=h).status_code == 404
+    refused = client.post(
+        project_base(project["id"]) + "/requests",
+        json={"title": "With a reference", "references": [{"system_id": systems["Jira"]["id"], "key": "PROJ-3"}]}, headers=h,
+    )
+    assert refused.status_code == 409, refused.text
+    # The rest of the request still works, and the stored reference was not deleted.
+    assert client.post(project_base(project["id"]) + "/requests", json={"title": "Plain"}, headers=h).status_code == 201
+    assert client.get(f"{project_base(project['id'])}/requests/{request['id']}", headers=h).status_code == 200
+
+    _set_references(client, token, project_modules, True)
+    assert [r["key"] for r in client.get(_refs_url(project["id"], request["id"]), headers=h).json()] == ["PROJ-1"]
+
+
+def test_the_organisation_switches_external_references_off_everywhere_or_only_by_default(client, admin_token):
+    org, project, token = setup(client, admin_token, "Refs Org Default Co")
+    h = auth_headers(token)
+    set_org_inbox(client, token, org["id"], True)
+    org_modules = f"/api/v1/orgs/{org['id']}/modules/product_feedback"
+    inbox = create_inbox_request(client, token, org["id"])
+    refs = f"{org_base(org['id'])}/requests/{inbox['id']}/references"
+
+    # Off for the organisation: no project and not the inbox has the feature.
+    _set_references(client, token, org_modules, False)
+    assert client.get(project_base(project["id"]) + "/external-systems", headers=h).status_code == 404
+    assert client.get(org_base(org["id"]) + "/external-systems", headers=h).status_code == 404
+    assert client.get(refs, headers=h).status_code == 404
+
+    # On again, but off by default for new projects: an existing project keeps it, a new one does not, the inbox has it.
+    switched = client.put(
+        f"{org_modules}/subcomponents/external_references", json={"enabled": True, "default_project_enabled": False}, headers=h,
+    )
+    assert switched.status_code == 200, switched.text
+    later = create_project(client, token, org["id"], "Created after the default changed")
+    assert client.get(project_base(project["id"]) + "/external-systems", headers=h).status_code == 200
+    assert client.get(project_base(later["id"]) + "/external-systems", headers=h).status_code == 404
+    assert client.get(org_base(org["id"]) + "/external-systems", headers=h).status_code == 200
+    assert client.get(refs, headers=h).status_code == 200

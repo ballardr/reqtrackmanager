@@ -9,6 +9,7 @@ import {
 import { OrgRequestsPanel } from "./OrgRequestsPanel";
 import { ProjectRequestsPage } from "./ProjectRequestsPage";
 import { RequestDetailPage } from "./RequestDetailPage";
+import { EXTERNAL_REFERENCES_KEY } from "./useExternalReferences";
 import { SubmissionPolicyPanel } from "./SubmissionPolicyPanel";
 import { REQUEST_STATUS_LABEL } from "./types";
 
@@ -72,6 +73,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "product-feedback-external-systems",
       label: "External Systems",
+      subComponent: EXTERNAL_REFERENCES_KEY,
       render: ({ orgId }) => createElement(OrgExternalSystemsPanel, { orgId }),
     },
     {
@@ -94,6 +96,7 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "product-feedback-external-systems",
       label: "External Systems",
+      subComponent: EXTERNAL_REFERENCES_KEY,
       render: ({ projectId }) => createElement(ProjectExternalSystemsPanel, { projectId }),
     },
     {

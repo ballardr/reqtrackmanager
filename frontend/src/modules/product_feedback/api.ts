@@ -24,7 +24,7 @@ import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton
 import type {
   ChannelUpdate, CloseTheLoop, Demand, EnhancementRequest, EnhancementRequestCreate, EnhancementRequestUpdate,
   ExternalRef, ExternalRefInput, FeedbackSettings, FeedbackAccess, InformedUpdate, OpenLoop, RequestComment, RequestMerge,
-  RequestStatus, RequestVersion, SubmissionPolicy,
+  RequestStatus, RequestVersion, ScorePreview, SubmissionPolicy,
 } from "./types";
 
 /** The filters a request list takes; the server applies them, so a page's export sees the same rows. */
@@ -69,6 +69,9 @@ function buildRequestApi(base: (id: string) => string) {
     getAccess: (id: string) => api.get<FeedbackAccess>(`${base(id)}/access`),
     list: (id: string, filters: RequestListFilters = {}) =>
       api.get<EnhancementRequest[]>(`${base(id)}/requests${listQuery(filters)}`),
+    /** Scores levels still being chosen, without saving; `requestId` supplies an existing request's demand. */
+    previewScores: (id: string, levels: Record<string, string | null>, requestId?: string) =>
+      api.post<ScorePreview>(`${base(id)}/score-preview`, { levels, request_id: requestId ?? null }),
     create: (id: string, values: EnhancementRequestCreate) => api.post<EnhancementRequest>(`${base(id)}/requests`, values),
     get: (id: string, requestId: string, models?: string[]) =>
       api.get<EnhancementRequest>(`${url(id, requestId)}${modelQuery(models)}`),
@@ -122,8 +125,17 @@ export const projectRequestApi = {
   getSettings: (projectId: string) => api.get<FeedbackSettings>(`${projectBase(projectId)}/settings`),
   setSubmissionPolicy: (projectId: string, submission_policy: SubmissionPolicy) =>
     api.put<FeedbackSettings>(`${projectBase(projectId)}/settings`, { submission_policy }),
-  getDemand: (projectId: string, requestId: string) =>
-    api.get<Demand>(`${projectBase(projectId)}/requests/${requestId}/demand`),
+  /** Sets the project's default order of a request page's sections; null returns to the built-in order. */
+  setRequestPageSections: (projectId: string, request_page_sections: string[] | null) =>
+    api.put<FeedbackSettings>(`${projectBase(projectId)}/settings`, { request_page_sections }),
+  /** One page of the request's requesters (heaviest first); the totals in the answer cover them all. */
+  getDemand: (projectId: string, requestId: string, page: { limit?: number; offset?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (page.limit !== undefined) params.set("limit", String(page.limit));
+    if (page.offset !== undefined) params.set("offset", String(page.offset));
+    const query = params.toString();
+    return api.get<Demand>(`${projectBase(projectId)}/requests/${requestId}/demand${query ? `?${query}` : ""}`);
+  },
   getCloseTheLoop: (projectId: string, requestId: string) =>
     api.get<CloseTheLoop>(`${projectBase(projectId)}/requests/${requestId}/close-the-loop`),
   setInformed: (projectId: string, requestId: string, body: InformedUpdate) =>

@@ -83,7 +83,10 @@ _LIST_FILTERS = [
         "unscored: only requests missing a level on the first model's manual axes (the ones still to score); "
         "scored: only the fully scored.",
     ),
-    _query("missing_axis", "string", "Only requests with no level on this axis (reach, impact, confidence, ease, effort)."),
+    _query("missing_axis", "string", (
+        "Only requests with no level on this axis (reach, impact, confidence, ease, effort), or `any` for requests "
+        "not rated on every criterion."
+    )),
 ]
 
 
@@ -123,9 +126,16 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             description=(
                 "Who asked for a request: distinct requesters (Stakeholders and Personas, including those reached "
                 "through linked Engagements and requests merged into it), the engagements it was raised in, the "
-                "requester count and weighted demand. Add requesters with the core link tools (link type 'Requested by')."
+                "requester count and weighted demand (the count and weight cover every requester). Requesters come "
+                "heaviest first, a page at a time: pass offset to read on when requester_count exceeds what came back. "
+                "Add requesters with the core link tools (link type 'Requested by')."
             ),
-            method="GET", path_template=f"{_REQUEST}/demand", params=[_PROJECT_ID, _REQUEST_ID],
+            method="GET", path_template=f"{_REQUEST}/demand",
+            params=[
+                _PROJECT_ID, _REQUEST_ID,
+                _query("limit", "integer", "Requesters per page, 1 to 500 (default 50)."),
+                _query("offset", "integer", "Requesters to skip (default 0)."),
+            ],
         ),
         McpToolDefinition(
             name="get_request_close_the_loop",

@@ -37,7 +37,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy import text as sa_text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -230,6 +230,7 @@ class EnhancementRequestMerge(UUIDPKMixin, TimestampMixin, Base):
         duplicate_id: The request marked `DUPLICATE` by this merge (at most one active merge per duplicate).
         prior_status: The duplicate's status before the merge, restored by unmerging.
         merged_by / merged_at: Who merged, and when (UTC).
+        note: Why the two are the same ask, as written by whoever merged (empty when none was given).
         unmerged_by / unmerged_at: Who reversed it, and when; both null while the merge is active.
     """
 
@@ -255,6 +256,7 @@ class EnhancementRequestMerge(UUIDPKMixin, TimestampMixin, Base):
     prior_status: Mapped[EnhancementRequestStatus] = mapped_column(str_enum(EnhancementRequestStatus, 20))
     merged_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     merged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str] = mapped_column(Text, default="")
     unmerged_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     unmerged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -442,6 +444,9 @@ class ProjectFeedbackSettings(UUIDPKMixin, TimestampMixin, Base):
     Attributes:
         project_id: The project (one row at most).
         submission_policy: Who may submit a request; see `SubmissionPolicy`.
+        request_page_sections: The project's default order of the sections on a request's page (keys the page
+            understands; ones it does not know are ignored and ones left out follow in the built-in order), or `None`
+            for the built-in order. A person's own order overrides it.
     """
 
     __tablename__ = "project_feedback_settings"
@@ -452,3 +457,4 @@ class ProjectFeedbackSettings(UUIDPKMixin, TimestampMixin, Base):
     submission_policy: Mapped[SubmissionPolicy] = mapped_column(
         str_enum(SubmissionPolicy, 20), default=SubmissionPolicy.MEMBERS
     )
+    request_page_sections: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
