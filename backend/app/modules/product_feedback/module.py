@@ -5,8 +5,8 @@ Registers the Product Feedback module into the modular feature system's registry
 
 Product Feedback captures enhancement requests: proposed solutions asked for by stakeholders, staff or support.
 A request is a versioned record owned by a project or, where the organisation allows it, by the organisation
-(its inbox). Delivery tracking stays in the organisation's own delivery tool; a request carries an external
-reference to it.
+(its inbox). Delivery tracking stays in the organisation's own delivery tool; a request carries external
+references to it (each in one of the organisation's external systems).
 
 - Roles: `feedback_triager` (project) and `org_feedback_triager` (organisation) edit, move, archive and attach
   evidence to requests; each carries the matching `(enhancement_request, manage)` permission atom. Submitting
@@ -22,10 +22,14 @@ reference to it.
 - Merging: a duplicate is merged into a canonical request, reversibly (`merge.py`); demand is the union.
 - Scoring: the `enhancement_request` scheme (`scoring.py`) scores a request on Reach, Impact, Confidence and
   Effort (a divisor); ICE or RICE is chosen when viewing and the score is derived on every read (`ratings.py`).
+- External references and channels: a request lists the items it points to in outside tools (`references.py`), and each
+  requester says how they asked (`channels.py`); both are chosen from organisation lists a project can extend and
+  hide entries of (`vocabularies.py`, administered with the `feedback_list_admin` role).
 - MCP tools: write-enabled (`mcp_tools.py`).
 
-No `frontend_manifest` yet: the nav entry and pages arrive with the module's UI, so no nav item points at a page that
-does not exist. Reports arrive in a later change through the same registration.
+- `frontend_manifest` (Tier A; `frontend/src/modules/product_feedback/module.ts` serves the list and detail routes,
+  the organisation inbox panel, the scoring settings and the submission setting). The nav entry is gated on the
+  `enhancement_request` sub-component. Reports arrive in a later change through the same registration.
 """
 
 from __future__ import annotations
@@ -57,8 +61,11 @@ from app.modules.product_feedback.service import (
     REQUEST_SUBCOMPONENT_KEY,
 )
 from app.modules.product_feedback.summaries import REQUEST_SUMMARY_PROVIDER
+from app.modules.product_feedback.vocabularies import seed_org_defaults
+from app.modules.product_feedback.vocabulary_routes import LIST_ADMIN_ROLE_KEY
 from app.modules.registry import (
     ModuleDefinition,
+    ModuleFrontendManifest,
     ModuleOrgBundleHooks,
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
@@ -138,6 +145,7 @@ MODULE_DEFINITION = ModuleDefinition(
     link_type_seeds=(REQUESTED_BY_SEED, ADDRESSES_SEED, REALISED_BY_SEED),
     artefact_type_labels={REQUEST_ARTEFACT_TYPE: "Enhancement request"},
     artefact_ids_in_organization=_artefact_ids_in_organization,
+    on_org_created=seed_org_defaults,
     artefact_summary_providers={REQUEST_ARTEFACT_TYPE: REQUEST_SUMMARY_PROVIDER},
     search_providers=SEARCH_PROVIDERS,
     scoring_schemes=(REQUEST_SCORING_SCHEME,),
@@ -159,6 +167,13 @@ MODULE_DEFINITION = ModuleDefinition(
         import_late=bundle_export.import_late_project_data,
     ),
     principal_references=_principal_references(),
+    frontend_manifest=ModuleFrontendManifest(
+        tier="installed",
+        nav_label="Enhancement requests",
+        nav_path=f"/projects/{{project_id}}/modules/{PRODUCT_FEEDBACK_MODULE_KEY}/requests",
+        nav_icon="lightbulb",
+        nav_sub_component=REQUEST_SUBCOMPONENT_KEY,
+    ),
     mcp_tools=build_mcp_tools(),
     mcp_guidance=_MCP_GUIDANCE,
     roles=(
@@ -169,6 +184,11 @@ MODULE_DEFINITION = ModuleDefinition(
                 "member may submit one (unless the project restricted submission to triagers)."
             ),
             scope="project", permissions=(REQUEST_MANAGE_PERMISSION,),
+        ),
+        ModuleRoleDefinition(
+            role_key=LIST_ADMIN_ROLE_KEY, name="Feedback List Admin",
+            description="Edits the organisation's external system and request channel lists.",
+            scope="org",
         ),
         ModuleRoleDefinition(
             role_key="org_feedback_triager", name="Organisation Feedback Triager",

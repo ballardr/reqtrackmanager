@@ -28,7 +28,12 @@ from app.modules.product_feedback import _shared as sh
 from app.modules.product_feedback.enums import EnhancementRequestStatus
 from app.modules.product_feedback.models import EnhancementRequest
 from app.modules.product_feedback.ratings import parse_model_keys
+from app.modules.product_feedback.references import references_by_request
 from app.modules.product_feedback.schemas import (
+    ExternalRefIn,
+    ExternalRefOut,
+    ExternalRefUpdate,
+    FeedbackAccessOut,
     RequestCommentCreate,
     RequestCommentOut,
     RequestCommentUpdate,
@@ -50,17 +55,32 @@ from app.modules.product_feedback.service import (
     filter_requests,
     list_organization_requests,
 )
+from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
+from app.modules.product_feedback.vocabulary_routes import register_org_vocabulary
 from app.schemas.file import FileAssetOut
 from app.schemas.scoring import ScoringSchemeOut
 from app.services import module_attachments as att
 from app.services import scoring
-from app.services.rbac import require_org_subcomponent_enabled
+from app.services.rbac import require_org_module_enabled, require_org_subcomponent_enabled
 
 router = APIRouter(
     prefix=f"/api/v1/orgs/{{organization_id}}/modules/{PRODUCT_FEEDBACK_MODULE_KEY}", tags=["product-feedback-org"],
 )
 
 _require_view = require_org_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY)
+
+
+# The organisation's two classified lists are read by the inbox form and administered even with the inbox switched off,
+# so they need only the module.
+_require_module = require_org_module_enabled(PRODUCT_FEEDBACK_MODULE_KEY)
+register_org_vocabulary(
+    router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system_definition",
+    view_dependency=_require_module,
+)
+register_org_vocabulary(
+    router, path="/request-channels", vocabulary=REQUEST_CHANNELS, entity_type="request_channel_definition",
+    view_dependency=_require_module,
+)
 
 
 def _holder(db: Session, organization_id: UUID) -> RecordOwner:
@@ -73,6 +93,12 @@ def _holder(db: Session, organization_id: UUID) -> RecordOwner:
 def _get(db: Session, holder: RecordOwner, request_id: UUID) -> EnhancementRequest:
     """A request of this organisation's inbox (404 for anything else)."""
     return sh.get_request_in_scope(db, holder, request_id)
+
+
+@router.get("/access", response_model=FeedbackAccessOut)
+def get_org_feedback_access(organization_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """What the caller may do in the inbox: submit a request and triage requests."""
+    return sh.access_out(db, current_user, _holder(db, organization_id))
 
 
 @router.post("/requests", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
@@ -218,6 +244,51 @@ def list_org_request_merges(
 ):
     """The merges an inbox request took part in, active and ended, newest first."""
     return sh.merges_out(db, _get(db, _holder(db, organization_id), request_id))
+
+
+@router.get("/requests/{request_id}/references", response_model=list[ExternalRefOut])
+def list_org_request_references(
+    organization_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The inbox request's references to items in outside tools, oldest first."""
+    request = _get(db, _holder(db, organization_id), request_id)
+    return references_by_request(db, [request.id])[request.id]
+
+
+@router.post("/requests/{request_id}/references", response_model=ExternalRefOut, status_code=status.HTTP_201_CREATED)
+def add_org_request_reference(
+    organization_id: UUID, request_id: UUID, payload: ExternalRefIn, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Adds a reference (a system from the organisation's external system list). Needs the triager role."""
+    holder = _holder(db, organization_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.add_reference_from_payload(db, holder, request, payload, current_user)
+
+
+@router.patch("/requests/{request_id}/references/{reference_id}", response_model=ExternalRefOut)
+def update_org_request_reference(
+    organization_id: UUID, request_id: UUID, reference_id: UUID, payload: ExternalRefUpdate,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Changes a reference (only fields present in the body). Needs the triager role."""
+    holder = _holder(db, organization_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.update_reference_from_payload(db, holder, request, reference_id, payload, current_user)
+
+
+@router.delete("/requests/{request_id}/references/{reference_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_org_request_reference(
+    organization_id: UUID, request_id: UUID, reference_id: UUID, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Removes a reference. Needs the triager role."""
+    holder = _holder(db, organization_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    sh.remove_reference_from_payload(db, holder, request, reference_id, current_user)
 
 
 @router.post("/requests/{request_id}/move-to-project", response_model=RequestOut)

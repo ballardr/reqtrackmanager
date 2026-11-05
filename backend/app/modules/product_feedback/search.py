@@ -8,7 +8,8 @@ Responsibilities:
 - Declare the columns the search reads (from the request's current version) and the free-text fields it may match.
 
 Design decisions:
-- Opt-in fields: the description only. The decline reason and change notes are not matched.
+- Opt-in fields: the description and the keys of the external references (a ticket number finds the request). The
+  decline reason, change notes and reference links are not matched.
 - An organisation's inbox request is found only where the `organization_requests` sub-component is on
   (`organization_subcomponent`), and opens on the organisation's inbox page.
 
@@ -17,10 +18,13 @@ Dependencies: this module's models and labels; `services.search_core` (builders)
 
 from __future__ import annotations
 
+from sqlalchemy import func, select
+
 from app.modules.product_feedback.labels import REQUEST_STATUS_LABEL
 from app.modules.product_feedback.models import (
     EnhancementRequest,
     EnhancementRequestComment,
+    EnhancementRequestExternalRef,
     EnhancementRequestVersion,
 )
 from app.modules.product_feedback.service import ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY
@@ -32,6 +36,12 @@ SEARCH_PROVIDERS: dict[str, ArtefactSearchProvider] = {
         EnhancementRequest, EnhancementRequestVersion, "request_id", title=EnhancementRequestVersion.title,
         status_labels=REQUEST_STATUS_LABEL, organization_subcomponent=ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY,
         comments=comments_of(EnhancementRequestComment, EnhancementRequestComment.request_id),
-        fields=(SearchField("description", "Description", EnhancementRequestVersion.description),),
+        fields=(
+            SearchField("description", "Description", EnhancementRequestVersion.description),
+            # The keys of the request's external references (PROJ-123), so a ticket number finds the request.
+            SearchField("references", "External references", select(func.string_agg(
+                EnhancementRequestExternalRef.key, " ",
+            )).where(EnhancementRequestExternalRef.request_id == EnhancementRequest.id).scalar_subquery()),
+        ),
     ),
 }

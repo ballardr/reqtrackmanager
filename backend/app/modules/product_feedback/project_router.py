@@ -26,9 +26,15 @@ from app.modules.product_feedback import _shared as sh
 from app.modules.product_feedback.enums import EnhancementRequestStatus
 from app.modules.product_feedback.models import EnhancementRequest
 from app.modules.product_feedback.ratings import parse_model_keys
+from app.modules.product_feedback.references import references_by_request
 from app.modules.product_feedback.schemas import (
+    ChannelUpdate,
     CloseTheLoopOut,
     DemandOut,
+    ExternalRefIn,
+    ExternalRefOut,
+    ExternalRefUpdate,
+    FeedbackAccessOut,
     FeedbackSettingsOut,
     FeedbackSettingsUpdate,
     InformedUpdate,
@@ -56,6 +62,8 @@ from app.modules.product_feedback.service import (
     list_project_requests,
     set_submission_policy,
 )
+from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
+from app.modules.product_feedback.vocabulary_routes import register_project_vocabulary
 from app.schemas.file import FileAssetOut
 from app.schemas.scoring import ScoringSchemeOut
 from app.services import module_attachments as att
@@ -90,6 +98,14 @@ def _get(db: Session, holder: RecordOwner, request_id: UUID) -> EnhancementReque
     return sh.get_request_in_scope(db, holder, request_id)
 
 
+register_project_vocabulary(
+    router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system", view_dependency=_require_view,
+)
+register_project_vocabulary(
+    router, path="/request-channels", vocabulary=REQUEST_CHANNELS, entity_type="request_channel", view_dependency=_require_view,
+)
+
+
 # --- Settings ----------------------------------------------------------------
 
 
@@ -98,6 +114,12 @@ def get_feedback_settings(project_id: UUID, current_user: User = Depends(_requir
     """The project's Product Feedback settings (any member can read them, so the UI knows whether to offer Submit)."""
     _project(db, project_id)
     return FeedbackSettingsOut(submission_policy=get_submission_policy(db, project_id))
+
+
+@router.get("/access", response_model=FeedbackAccessOut)
+def get_feedback_access(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """What the caller may do here: submit a request and triage requests."""
+    return sh.access_out(db, current_user, _holder(db, project_id))
 
 
 @router.put("/settings", response_model=FeedbackSettingsOut)
@@ -283,6 +305,71 @@ def get_request_demand(
     withheld but still counted."""
     project = _project(db, project_id)
     return sh.demand_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user)
+
+
+@router.put("/requests/{request_id}/requester-channel", response_model=DemandOut)
+def set_requester_channel(
+    project_id: UUID, request_id: UUID, payload: ChannelUpdate, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Records how requesters asked (their channel from the project's request channel list), or clears it with a null
+    `channel_id`. A requester reached only through an Engagement is shown as an Engagement and needs no channel.
+    Needs the triager role; 409 for an archived request, a party that is not one of its current requesters or a
+    channel the project cannot use. Returns the request's demand view."""
+    project = _project(db, project_id)
+    holder = RecordOwner.of_project(project)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.set_channel_from_payload(db, holder, project, request, payload, current_user)
+
+
+# --- External references -------------------------------------------------------
+
+
+@router.get("/requests/{request_id}/references", response_model=list[ExternalRefOut])
+def list_request_references(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The request's references to items in outside tools (Jira, ServiceNow, ...), oldest first."""
+    request = _get(db, _holder(db, project_id), request_id)
+    return references_by_request(db, [request.id])[request.id]
+
+
+@router.post("/requests/{request_id}/references", response_model=ExternalRefOut, status_code=status.HTTP_201_CREATED)
+def add_request_reference(
+    project_id: UUID, request_id: UUID, payload: ExternalRefIn, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Adds a reference: a system from the project's external system list, a key and/or an http(s) link, and a role
+    (`origin` or `delivery`). Not a new version of the request. Needs the triager role; 409 for an archived request."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.add_reference_from_payload(db, holder, request, payload, current_user)
+
+
+@router.patch("/requests/{request_id}/references/{reference_id}", response_model=ExternalRefOut)
+def update_request_reference(
+    project_id: UUID, request_id: UUID, reference_id: UUID, payload: ExternalRefUpdate,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Changes a reference (only fields present in the body). Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.update_reference_from_payload(db, holder, request, reference_id, payload, current_user)
+
+
+@router.delete("/requests/{request_id}/references/{reference_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_request_reference(
+    project_id: UUID, request_id: UUID, reference_id: UUID, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Removes a reference. Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    sh.remove_reference_from_payload(db, holder, request, reference_id, current_user)
 
 
 # --- Closing the loop ------------------------------------------------------------

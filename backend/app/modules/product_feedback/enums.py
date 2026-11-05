@@ -38,3 +38,10 @@ class SubmissionPolicy(str, enum.Enum):
 
     MEMBERS = "members"
     TRIAGERS = "triagers"
+
+
+class ExternalRefRole(str, enum.Enum):
+    """What a request's external reference is: the ticket it came from, or the one where it is delivered."""
+
+    ORIGIN = "origin"
+    DELIVERY = "delivery"

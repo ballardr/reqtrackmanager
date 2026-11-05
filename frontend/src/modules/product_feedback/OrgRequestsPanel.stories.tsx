@@ -1,0 +1,55 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
+import { expect, spyOn, within } from "storybook/test";
+
+import { ApiError, api } from "../../api/client";
+import { buildRecordColumns } from "../../testing/recordTablesFixtures";
+import { buildUser, withAuth, withRouter, withToast } from "../../testing/storybook-helpers";
+import { buildRequest, buildRequestScheme, ORG_ID, ORG_USERS } from "./requestFixtures";
+import { OrgRequestsPanel } from "./OrgRequestsPanel";
+
+const meta: Meta<typeof OrgRequestsPanel> = {
+  title: "Modules/ProductFeedback/OrgRequestsPanel",
+  component: OrgRequestsPanel,
+  args: { orgId: ORG_ID },
+  decorators: [withAuth(buildUser({ id: "user-1" })), withRouter("/"), withToast()],
+};
+export default meta;
+
+type Story = StoryObj<typeof OrgRequestsPanel>;
+
+/** The inbox lists organisation-owned requests with their score but no demand or Pain Point warning. */
+export const ListsInboxRequestsWithoutProjectOnlyColumns: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      const route = path.split("?")[0];
+      if (route.endsWith("/records/enhancement_request/columns")) return buildRecordColumns({ label: "Enhancement requests" });
+      if (route.includes("/scoring-schemes/enhancement_request")) return buildRequestScheme();
+      if (route.endsWith("/product_feedback/access")) return { can_submit: true, can_triage: false };
+      if (route.endsWith("/modules/product_feedback/requests")) return [buildRequest({ scope: "organization", project_id: null, organization_id: ORG_ID })];
+      if (route.includes("/users")) return ORG_USERS;
+      throw new Error(`Unmocked GET: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Request inbox" });
+    await expect(within(table).getByText("Export the list to Excel")).toBeInTheDocument();
+    await expect(within(table).getByText("High · 48")).toBeInTheDocument();
+    await expect(within(table).queryByText("No Pain Point")).not.toBeInTheDocument();
+    await expect(within(table).queryByRole("columnheader", { name: "Demand" })).not.toBeInTheDocument();
+  },
+};
+
+/** An organisation that switched the inbox off sees a plain explanation, not an error screen. */
+export const SaysSoWhenTheInboxIsSwitchedOff: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/modules/product_feedback/requests")) throw new ApiError(404, "Not found");
+      if (path.includes("/scoring-schemes/")) return buildRequestScheme();
+      return [] as never;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByText(/inbox is switched off/)).toBeInTheDocument();
+  },
+};

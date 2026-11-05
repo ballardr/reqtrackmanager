@@ -1727,15 +1727,17 @@ Capture enhancement requests (proposed solutions) from stakeholders, staff and s
 
 Capture, triage and track enhancement requests: proposed solutions asked for by stakeholders, staff or support.
 
-Model: a **request** is a *solution* someone wants; a Pain Point is the *problem* it addresses. A request has a lifecycle (`new` -> `under_review` -> `accepted` -> `delivered`, or `declined`; `duplicate` is set only by merging). It lives in a project or, where the organisation allows it, in the organisation's **inbox**. It carries an owner (a user or a group) and an optional external reference to the same item in a delivery tool (URL plus key). Delivery tracking itself stays in that tool.
+Model: a **request** is a *solution* someone wants; a Pain Point is the *problem* it addresses. A request has a lifecycle (`new` -> `under_review` -> `accepted` -> `delivered`, or `declined`; `duplicate` is set only by merging). It lives in a project or, where the organisation allows it, in the organisation's **inbox**. It carries an owner (a user or a group) and any number of **external references** to the same work in outside tools (a Jira epic, a ServiceNow ticket). Delivery tracking itself stays in those tools.
 
 Read workflow: `product_feedback_list_requests` (filter `status`, `open_only`, `search`), then `product_feedback_get_request` for detail and `allowed_next_statuses`; `product_feedback_list_request_versions` for history and `product_feedback_list_request_comments` for the discussion. `product_feedback_get_feedback_settings` says who may submit in the project.
 
-Write workflow: `create_request` (only a title is needed) -> `update_request` (owner, description, external reference) -> `transition_request`. Link it to the Pain Point it addresses and the Requirement that realises it with the core link tools (see Problem and delivery).
+Write workflow: `create_request` (only a title is needed) -> `update_request` (owner, description) -> `transition_request`. Link it to the Pain Point it addresses and the Requirement that realises it with the core link tools (see Problem and delivery).
 
 Demand: record who asked by linking the request to a Stakeholder, a Persona or an Engagement with the core link tools (link type `Requested by`). `product_feedback_get_request_demand` returns the distinct requesters (an Engagement counts its participants and covered personas; someone reached twice counts once), the count and the weighted demand (a Stakeholder's Influence level, a Persona's weight; unweighted counts 1). `get_request` and `list_requests` carry `requester_count` and `weighted_demand`. Duplicates: `merge_request` marks a request a duplicate of another (same project, still open) and adds its requesters to the canonical request's demand; `unmerge_request` restores it. A request in a merge cannot be moved out of the inbox.
 
 Problem and delivery: link a request to the Pain Point it answers (link type `Addresses`) and to the Requirement that delivers it (`Realised by`) with the core link tools; `get_request` carries `pain_point_count` and `requirement_count`, and a request with `pain_point_count` 0 is flagged as a solution with no stated problem (a warning, never a block). An Engagement that evidenced the request is a `Requested by` link to that Engagement. Closing the loop: when a request is `delivered` or `declined`, `product_feedback_get_request_close_the_loop` lists its requesters and whether each was told; `product_feedback_list_open_loops` lists every closed request with someone still to tell. Nothing is sent to anyone: tell the person by your usual means, then `mark_requesters_informed` (409 until the request is delivered or declined; `informed=false` withdraws). `suggest_delivered` is only a prompt that an accepted request's Requirements are all complete; moving it to `delivered` stays a person's decision.
+
+External references and channels: a reference names a **system** (`list_external_systems`; the organisation's list, which a project extends and hides entries of), a `key` and/or an http(s) `url`, and a `role`: `origin` (the request came from that ticket) or `delivery` (it is built there). Add them at creation (`references` on `create_request`) or later with `add_request_reference`, `update_request_reference` and `remove_request_reference`; they are not versions of the request. `get_request` carries them as `external_refs`. The old `external_ref_url`/`external_ref_key` pair is still accepted and is filed as a delivery reference on the "Other" system. Each requester also has a **channel** (how they asked: `list_request_channels`): `set_requester_channel` records or clears it for requesters returned by `get_request_demand`, which shows each one's `channel`; a requester reached through an Engagement shows as an Engagement and needs none. Inbox requests use the organisation's list (`list_inbox_external_systems`).
 
 Scoring: a request holds an optional level per axis in `levels` (`{"impact": <level id>, "effort": null}`: an axis set to `null` is cleared, one not mentioned is kept). Axes: **Reach, Impact, Confidence, Ease** (higher is easier), **Effort** (a higher level lowers a RICE score) and **Demand** (derived from the requesters; set a level by hand only to override it, `derived_levels` shows what it resolved to). Find the ids with `product_feedback_get_request_scoring_scheme` (or `get_inbox_scoring_scheme`). Scores are derived, never written: **ICE** is Impact x Confidence x Ease, **RICE** is Reach x Impact x Confidence / Effort, **rice_demand** replaces Reach with Demand. `get_request` and `list_requests` return `scores` (model key to `raw`, `normalised`, band `label`) for the project's enabled models, or those named by `scoring_model` (comma-separated, the first is the primary shown as `score`); a score is null until every manual axis the model needs has a level. To find work to do, filter `list_requests` with `scored=unscored` (or `missing_axis=ease`). Reach is a manual level, separate from the derived demand; compare the two, do not substitute one for the other. Scores of different models are not comparable. The organisation and each project may add their own axes (keys `c_...`) and models (keys `m_...`: a product with divisors and exponents, or a weighted sum), and hide the built-in ones: the scheme tools return exactly what this project can use, with each criterion's `origin`, so read it before choosing an axis or model; a request cannot take a level on an axis its project cannot see. Defining or hiding criteria is done in the app by an administrator, not through these tools.
 
@@ -1752,7 +1754,7 @@ Rules and gotchas:
 
 #### `product_feedback_list_requests` (read)
 
-Lists a project's enhancement requests with status, owner and external reference.
+Lists a project's enhancement requests with status, owner and external references.
 
 Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query), `scored` (string, in query), `missing_axis` (string, in query), `scoring_model` (string, in query)
 
@@ -1798,6 +1800,24 @@ Lists the project's delivered or declined requests that still have requesters wh
 
 Parameters: `project_id*` (uuid, in path)
 
+#### `product_feedback_list_external_systems` (read)
+
+Lists the project's effective external systems (Jira, ServiceNow, ...): the ids a request's references take as system_id.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `product_feedback_list_request_channels` (read)
+
+Lists the project's effective request channels (Support ticket, Call, Email, ...): the ids set_requester_channel takes as channel_id.
+
+Parameters: `project_id*` (uuid, in path)
+
+#### `product_feedback_list_request_references` (read)
+
+Lists a request's references to items in outside tools, with each one's system and role.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
+
 #### `product_feedback_list_request_merges` (read)
 
 Lists the merges a request took part in (as canonical or duplicate), active and ended.
@@ -1814,13 +1834,13 @@ Parameters: `project_id*` (uuid, in path)
 
 Submits an enhancement request in the New status. Any project member may unless the project restricted submission to triagers; only the title is required.
 
-Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `levels` (object, in body)
+Parameters: `project_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `levels` (object, in body), `references` (array, in body)
 
 #### `product_feedback_update_request` (write)
 
 Updates a request as a new version; only the fields supplied change. Needs the Feedback Triager role.
 
-Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `title` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `levels` (object, in body), `change_note` (string, in body)
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `title` (string, in body), `description` (string, in body), `owner` (object, in body), `levels` (object, in body), `change_note` (string, in body)
 
 #### `product_feedback_transition_request` (write)
 
@@ -1845,6 +1865,30 @@ Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path)
 Records that requesters were told the outcome of a delivered or declined request (informed=false withdraws the record). Nothing is sent to anyone: tell them first, then record it. Needs the Feedback Triager role; refused (409) unless the request is delivered or declined and every party is one of its requesters (get_request_demand lists them).
 
 Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `parties*` (array, in body), `informed` (boolean, in body), `note` (string, in body)
+
+#### `product_feedback_add_request_reference` (write)
+
+Adds a reference from a request to an item in an outside tool (a Jira epic, a ServiceNow ticket). Not a new version of the request. Needs the Feedback Triager role.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `system_id*` (uuid, in body), `key` (string, in body), `url` (string, in body), `role` (string, in body)
+
+#### `product_feedback_update_request_reference` (write)
+
+Changes a reference; only the fields supplied change. Needs the Feedback Triager role.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `reference_id*` (uuid, in path), `system_id` (uuid, in body), `key` (string, in body), `url` (string, in body), `role` (string, in body)
+
+#### `product_feedback_remove_request_reference` (write)
+
+Removes a reference. Needs the Feedback Triager role.
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `reference_id*` (uuid, in path)
+
+#### `product_feedback_set_requester_channel` (write)
+
+Records how requesters asked (their channel), or clears it with channel_id null. A requester reached through an Engagement is shown as an Engagement and needs none. Needs the Feedback Triager role; refused (409) unless every party is a current requester (get_request_demand lists them).
+
+Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `parties*` (array, in body), `channel_id` (uuid, in body)
 
 #### `product_feedback_add_request_comment` (write)
 
@@ -1874,4 +1918,10 @@ Parameters: `organization_id*` (uuid, in path), `request_id*` (uuid, in path), `
 
 Submits an enhancement request to the organisation's inbox. Any organisation member may.
 
-Parameters: `organization_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `external_ref_url` (string, in body), `external_ref_key` (string, in body), `levels` (object, in body)
+Parameters: `organization_id*` (uuid, in path), `title*` (string, in body), `description` (string, in body), `owner` (object, in body), `levels` (object, in body), `references` (array, in body)
+
+#### `product_feedback_list_inbox_external_systems` (read)
+
+Lists the organisation's external systems (Jira, ServiceNow, ...) an inbox request's references can use.
+
+Parameters: `organization_id*` (uuid, in path)

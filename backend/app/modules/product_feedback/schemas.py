@@ -5,7 +5,7 @@ Pydantic request/response schemas for Product Feedback's routers: request create
 version history, lifecycle transitions, comments and the project settings.
 
 `RequestUpdate` is partial: only fields present in the request body change, so a nullable field
-(the owner, the external reference) can be cleared by sending an explicit `null`. `status` is not
+(the owner) can be cleared by sending an explicit `null`. `status` is not
 editable here (the transition endpoint owns it).
 
 Scoring levels are a map of axis key to level id (`levels`), optional and clearable per axis (an axis sent as `null`
@@ -18,6 +18,11 @@ A request also reports its place in a merge (`merged_into`, `merged_count`), its
 `requirement_count`; `relationships.py`) and how many requesters were told its outcome (`informed_count`,
 `loop_open_count`; `loop.py`). All are derived, never written here.
 
+External references are a list of their own (`ExternalRefIn` / `ExternalRefOut`): a create payload may carry the
+initial ones, later changes use the reference endpoints and are not versions of the request. The single
+`external_ref_url` / `external_ref_key` pair older clients send is still accepted on create and update, as a delivery
+reference on the "Other" system, and is never returned.
+
 `owner` is a principal: a user, an organisation group or a project group. Requests send a
 `PrincipalRef` (`{type, id}`; null clears it) and responses return a resolved `PrincipalOut`.
 """
@@ -25,14 +30,78 @@ A request also reports its place in a merge (`merged_into`, `merged_count`), its
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, SubmissionPolicy
+from app.modules.product_feedback.enums import (
+    EnhancementRequestScope,
+    EnhancementRequestStatus,
+    ExternalRefRole,
+    SubmissionPolicy,
+)
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
+
+
+def check_web_url(value: str | None) -> str | None:
+    """Accepts only an absolute `http` or `https` URL (or nothing). The reference is rendered as a link, and a
+    `javascript:` or `data:` URL stored there would run in the viewer's browser or in an export.
+
+    Raises:
+        ValueError: If a non-empty value is not an http(s) URL with a host.
+    """
+    if not value:
+        return value
+    parts = urlsplit(value.strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise ValueError("A link must be an http or https URL.")
+    return value.strip()
+
+
+class ExternalRefIn(BaseModel):
+    """A new external reference: the system (an id from the request's tier's external system list), the item's key
+    and/or link, and its role."""
+
+    system_id: UUID
+    key: str = Field(default="", max_length=100)
+    url: str | None = Field(default=None, max_length=500)
+    role: ExternalRefRole = ExternalRefRole.DELIVERY
+
+    _check_url = field_validator("url")(check_web_url)
+
+    @model_validator(mode="after")
+    def _needs_key_or_url(self) -> ExternalRefIn:
+        if not self.key.strip() and not self.url:
+            raise ValueError("A reference needs a key or a link.")
+        return self
+
+
+class ExternalRefUpdate(BaseModel):
+    """Partial change of a reference: only fields present change (`url` null clears the link)."""
+
+    system_id: UUID | None = None
+    key: str | None = Field(default=None, max_length=100)
+    url: str | None = Field(default=None, max_length=500)
+    role: ExternalRefRole | None = None
+
+    _check_url = field_validator("url")(check_web_url)
+
+
+class ExternalRefOut(BaseModel):
+    """A reference with its system's name. `system_id` is accepted back by the request's tier's system picker."""
+
+    id: UUID
+    request_id: UUID
+    system_id: UUID
+    system_name: str
+    key: str
+    url: str | None = None
+    role: ExternalRefRole
+    created_by: UUID
+    created_at: datetime
 
 
 class RequestCreate(BaseModel):
@@ -41,11 +110,14 @@ class RequestCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str = ""
     owner: PrincipalRef | None = None
-    external_ref_url: str | None = Field(default=None, max_length=500)
-    external_ref_key: str | None = Field(default=None, max_length=100)
+    external_ref_url: str | None = Field(default=None, max_length=500, description="Deprecated: use `references`.")
+    external_ref_key: str | None = Field(default=None, max_length=100, description="Deprecated: use `references`.")
+    references: list[ExternalRefIn] = Field(default_factory=list, max_length=50)
     levels: dict[str, UUID | None] | None = Field(
         default=None, description="Scoring level id by axis key (`get scoring-scheme` lists them); null clears an axis."
     )
+
+    _check_url = field_validator("external_ref_url")(check_web_url)
 
 
 class RequestUpdate(BaseModel):
@@ -54,12 +126,14 @@ class RequestUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
     description: str | None = None
     owner: PrincipalRef | None = None
-    external_ref_url: str | None = Field(default=None, max_length=500)
-    external_ref_key: str | None = Field(default=None, max_length=100)
+    external_ref_url: str | None = Field(default=None, max_length=500, description="Deprecated: use the reference endpoints.")
+    external_ref_key: str | None = Field(default=None, max_length=100, description="Deprecated: use the reference endpoints.")
     levels: dict[str, UUID | None] | None = Field(
         default=None, description="Scoring level id by axis key (`get scoring-scheme` lists them); null clears an axis."
     )
     change_note: str = ""
+
+    _check_url = field_validator("external_ref_url")(check_web_url)
 
 
 class RequestTransitionRequest(BaseModel):
@@ -120,8 +194,7 @@ class RequestOut(ProjectScopedRow):
     status: EnhancementRequestStatus
     allowed_next_statuses: list[EnhancementRequestStatus]
     owner: PrincipalOut | None = None
-    external_ref_url: str | None = None
-    external_ref_key: str | None = None
+    external_refs: list[ExternalRefOut] = Field(default_factory=list)
     decline_reason: str
     levels: dict[str, UUID] = Field(default_factory=dict, description="The scoring levels chosen, by axis key.")
     derived_levels: dict[str, UUID] = Field(
@@ -161,8 +234,6 @@ class RequestVersionOut(BaseModel):
     description: str
     status: EnhancementRequestStatus
     owner: PrincipalOut | None = None
-    external_ref_url: str | None = None
-    external_ref_key: str | None = None
     decline_reason: str
     levels: dict[str, UUID] = Field(default_factory=dict, description="The scoring levels chosen, by axis key.")
     change_note: str
@@ -201,15 +272,30 @@ class FeedbackSettingsOut(BaseModel):
     submission_policy: SubmissionPolicy
 
 
+class FeedbackAccessOut(BaseModel):
+    """What the caller may do with this tier's requests, so the UI offers only controls the server will accept."""
+
+    can_submit: bool = Field(description="May create a request (any member, unless the project restricted it to triagers).")
+    can_triage: bool = Field(description="May edit, decide, merge, move, archive and attach evidence to requests.")
+
+
 class FeedbackSettingsUpdate(BaseModel):
     """Replacement settings."""
 
     submission_policy: SubmissionPolicy
 
 
+class ChannelOut(BaseModel):
+    """The channel a requester asked through: the project's channel row (an id the channel picker accepts) and name."""
+
+    id: UUID
+    name: str
+
+
 class RequesterOut(BaseModel):
     """One distinct party behind a request. `label` and `weight` are null (and `hidden` true) for a party the
-    caller may not view; it still counts toward the totals."""
+    caller may not view; it still counts toward the totals. `channel` is how they asked, null when none was
+    recorded (a requester reached through an Engagement is shown as an Engagement instead)."""
 
     artefact_type: str
     id: UUID
@@ -219,6 +305,7 @@ class RequesterOut(BaseModel):
     from_merge: bool
     via_engagement: bool
     hidden: bool = False
+    channel: ChannelOut | None = None
 
 
 class DemandEngagementOut(BaseModel):
@@ -269,6 +356,14 @@ class InformedUpdate(BaseModel):
     parties: list[PartyRef] = Field(min_length=1, max_length=500)
     informed: bool = True
     note: str = Field(default="", max_length=2000, description="How or by whom they were told; kept with a recorded row.")
+
+
+class ChannelUpdate(BaseModel):
+    """Sets (or, with a null `channel_id`, clears) how requesters asked. Every party must be a current requester of
+    the request (`GET .../demand` lists them); `channel_id` is an id from the project's channel list."""
+
+    parties: list[PartyRef] = Field(min_length=1, max_length=500)
+    channel_id: UUID | None = None
 
 
 class LoopRequesterOut(RequesterOut):

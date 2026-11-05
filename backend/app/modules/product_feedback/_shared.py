@@ -38,6 +38,8 @@ from sqlalchemy.orm import Session
 from app.models.enums import PermissionLevel
 from app.models.project import Project
 from app.models.user import User
+from app.modules.product_feedback import references as refs
+from app.modules.product_feedback.channels import ChannelChoice, channels_by_request, set_channels
 from app.modules.product_feedback.demand import EMPTY_DEMAND, Demand, Requester, compute_demand
 from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, SubmissionPolicy
 from app.modules.product_feedback.loop import (
@@ -68,9 +70,15 @@ from app.modules.product_feedback.ratings import (
 )
 from app.modules.product_feedback.relationships import NO_LINKS, RequestLinks, compute_links
 from app.modules.product_feedback.schemas import (
+    ChannelOut,
+    ChannelUpdate,
     CloseTheLoopOut,
     DemandEngagementOut,
     DemandOut,
+    ExternalRefIn,
+    ExternalRefOut,
+    ExternalRefUpdate,
+    FeedbackAccessOut,
     InformedUpdate,
     LinkedRecordOut,
     LoopRequesterOut,
@@ -152,6 +160,7 @@ class RequestExtras:
         demand: `{request id: Demand}`; absent for a request with no project (an inbox request).
         links: `{request id: RequestLinks}` (its Pain Points and Requirements); absent for an inbox request.
         informed: `{request id: the requesters recorded as told}`.
+        references: `{request id: its external references}`.
     """
 
     merged_into: dict[uuid.UUID, RequestRefOut] = field(default_factory=dict)
@@ -159,6 +168,7 @@ class RequestExtras:
     demand: dict[uuid.UUID, Demand] = field(default_factory=dict)
     links: dict[uuid.UUID, RequestLinks] = field(default_factory=dict)
     informed: dict[uuid.UUID, set[PartyKey]] = field(default_factory=dict)
+    references: dict[uuid.UUID, list[ExternalRefOut]] = field(default_factory=dict)
 
 
 def request_extras(db: Session, requests: Sequence[EnhancementRequest]) -> RequestExtras:
@@ -200,6 +210,7 @@ def request_extras(db: Session, requests: Sequence[EnhancementRequest]) -> Reque
             extras.demand.update(compute_demand(db, project, project_request_ids))
             extras.links.update(compute_links(db, project, project_request_ids))
     extras.informed = {rid: set(rows) for rid, rows in informed_by_request(db, ids).items()}
+    extras.references = refs.references_by_request(db, ids)
     return extras
 
 
@@ -254,8 +265,8 @@ def request_to_out(
             ALLOWED_TRANSITIONS[version.status] - {EnhancementRequestStatus.DUPLICATE},
             key=list(EnhancementRequestStatus).index,
         ),
-        owner=_owner_of(labels, version), external_ref_url=version.external_ref_url,
-        external_ref_key=version.external_ref_key, decline_reason=version.decline_reason,
+        owner=_owner_of(labels, version), external_refs=extras.references.get(request.id, []),
+        decline_reason=version.decline_reason,
         levels=levels, derived_levels=derived_levels(ctx, levels, demand.weighted),
         score=_score_out(scores[ctx.model.key]), scoring_model_key=ctx.model.key,
         scores={key: _score_out(score) for key, score in scores.items()},
@@ -304,7 +315,6 @@ def request_versions_out(db: Session, versions: Sequence[EnhancementRequestVersi
         RequestVersionOut(
             id=v.id, request_id=v.request_id, version_number=v.version_number, valid_from=v.valid_from,
             valid_to=v.valid_to, title=v.title, description=v.description, status=v.status, owner=_owner_of(labels, v),
-            external_ref_url=v.external_ref_url, external_ref_key=v.external_ref_key,
             decline_reason=v.decline_reason, levels=levels[v.id],
             change_note=v.change_note, created_by=v.created_by, created_at=v.created_at,
         )
@@ -362,6 +372,14 @@ def require_request_submit(db: Session, current_user: User, holder: RecordOwner)
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a Feedback Triager may submit requests in this project.")
 
 
+def access_out(db: Session, current_user: User, holder: RecordOwner) -> FeedbackAccessOut:
+    """The caller's submit and triage rights on this tier, computed with the same checks the write endpoints use."""
+    can_triage = can_manage(db, current_user, holder)
+    project_id = holder.project_id
+    restricted = project_id is not None and get_submission_policy(db, project_id) == SubmissionPolicy.TRIAGERS
+    return FeedbackAccessOut(can_submit=can_triage or not restricted, can_triage=can_triage)
+
+
 def apply_value_error_as_conflict(fn, *args, **kwargs):
     """Calls `fn`, translating `ValueError` (an illegal move) into HTTP 409."""
     try:
@@ -413,11 +431,24 @@ def stage_request(db: Session, holder: RecordOwner, payload: RequestCreate, crea
     Raises:
         HTTPException: 400 for an unusable owner or scoring level.
     """
-    content = payload.model_dump(exclude={"owner"})
+    content = payload.model_dump(exclude={"owner", "references"})
     _check_levels(db, holder, content)
     content.update(_owner_columns(db, holder, payload))
     request = create_request(db, holder, creator, **content)
-    audit_request(db, holder, request, "created", creator, {"title": payload.title, "unique_code": request.unique_code})
+    try:
+        for ref in payload.references:
+            refs.add_reference(
+                db, request, system_id=ref.system_id, key=ref.key, url=ref.url, role=ref.role, actor=creator,
+            )
+        if payload.external_ref_url or payload.external_ref_key:
+            refs.apply_legacy_link(db, request, changes={
+                "external_ref_url": payload.external_ref_url, "external_ref_key": payload.external_ref_key,
+            }, actor=creator)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    audit_request(db, holder, request, "created", creator, {
+        "title": payload.title, "unique_code": request.unique_code, "references": len(payload.references),
+    })
     return request
 
 
@@ -439,6 +470,7 @@ def stage_request_update(
         HTTPException: 422 for a null title, 400 for an unusable owner or scoring level.
     """
     sent = payload.model_dump(exclude_unset=True, exclude={"change_note", "owner"})
+    legacy = {k: sent.pop(k) for k in ("external_ref_url", "external_ref_key") if k in sent}
     if "title" in sent and sent["title"] is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "An enhancement request title cannot be null.")
     if "description" in sent and sent["description"] is None:
@@ -446,6 +478,14 @@ def stage_request_update(
     _check_levels(db, holder, sent)
     sent.update(_owner_columns(db, holder, payload))
     lock_row_for_update(db, EnhancementRequest, request.id)
+    if legacy:
+        try:
+            refs.apply_legacy_link(db, request, changes=legacy, actor=actor)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+        if not sent and "owner" not in payload.model_fields_set and not payload.change_note:
+            audit_request(db, holder, request, "updated", actor)
+            return
     current = get_current_version(db, request.id)
     apply_new_version(db, request, current, actor, changes=sent, change_note=payload.change_note)
     audit_request(db, holder, request, "updated", actor)
@@ -534,6 +574,7 @@ def move_to_project_from_payload(
         organization_id=holder.organization_id, project_id=project.id,
         detail={
             "from_code": result.previous_code, "to_code": result.new_code, "tags": result.tags, "files": result.files,
+            "references": result.references,
         },
     )
     db.commit()
@@ -652,9 +693,10 @@ def demand_out(db: Session, project: Project, request: EnhancementRequest, viewe
     wanted["engagement"].update(demand.engagement_ids)
     resolver.resolve(dict(wanted))
     engagement_labels = {e: resolver.visible(("engagement", e)) for e in demand.engagement_ids}
+    channels = channels_by_request(db, [request.id])[request.id]
     return DemandOut(
         request_id=request.id, requester_count=demand.count, weighted_demand=demand.weighted,
-        requesters=[_requester_out(r, resolver) for r in demand.requesters],
+        requesters=[_requester_out(r, resolver, channels) for r in demand.requesters],
         engagements=[
             DemandEngagementOut(id=e, label=s.label if s else None, hidden=s is None) for e, s in engagement_labels.items()
         ],
@@ -662,13 +704,18 @@ def demand_out(db: Session, project: Project, request: EnhancementRequest, viewe
     )
 
 
-def _requester_out(requester: Requester, resolver: ArtefactResolver) -> RequesterOut:
-    """A requester as `resolver`'s user may see it: the name and weight only when they can view the record."""
+def _requester_out(
+    requester: Requester, resolver: ArtefactResolver, channels: dict[PartyKey, ChannelChoice] | None = None,
+) -> RequesterOut:
+    """A requester as `resolver`'s user may see it: the name and weight only when they can view the record. The
+    channel (how they asked) is not personal data of the party, so it is given whether or not the party is visible."""
     seen = resolver.visible((requester.artefact_type, requester.id)) is not None
+    choice = (channels or {}).get((requester.artefact_type, requester.id))
     return RequesterOut(
         artefact_type=requester.artefact_type, id=requester.id, label=requester.label if seen else None,
         weight=requester.weight if seen else None, effective_weight=requester.effective_weight,
         from_merge=requester.from_merge, via_engagement=requester.via_engagement, hidden=not seen,
+        channel=ChannelOut(id=choice.id, name=choice.name) if choice else None,
     )
 
 
@@ -691,6 +738,7 @@ def close_the_loop_out(db: Session, project: Project, request: EnhancementReques
     demand = compute_demand(db, project, [request.id])[request.id]
     links = compute_links(db, project, [request.id])[request.id]
     told = informed_by_request(db, [request.id]).get(request.id, {})
+    channels = channels_by_request(db, [request.id])[request.id]
     resolver = ArtefactResolver(db, project, viewer.id, include_related=True)
     wanted: dict[str, set[uuid.UUID]] = defaultdict(set)
     for requester in demand.requesters:
@@ -699,7 +747,7 @@ def close_the_loop_out(db: Session, project: Project, request: EnhancementReques
     requesters = []
     for r in demand.requesters:
         row = told.get((r.artefact_type, r.id))
-        base = _requester_out(r, resolver)
+        base = _requester_out(r, resolver, channels)
         requesters.append(LoopRequesterOut(
             **base.model_dump(), informed=row is not None, informed_at=row.informed_at if row else None,
             informed_by=row.informed_by if row else None, note=row.note if row else "",
@@ -759,6 +807,7 @@ def open_loops_out(db: Session, project: Project, viewer: User) -> list[OpenLoop
         for artefact_type, party_id in loop.uninformed:
             wanted[artefact_type].add(party_id)
     resolver.resolve(dict(wanted))
+    channels = channels_by_request(db, [loop.request.id for loop in loops])
     out = []
     for loop in loops:
         pending = set(loop.uninformed)
@@ -766,9 +815,105 @@ def open_loops_out(db: Session, project: Project, viewer: User) -> list[OpenLoop
             request=RequestRefOut(id=loop.request.id, unique_code=loop.request.unique_code, title=loop.version.title),
             status=loop.version.status, decline_reason=loop.version.decline_reason,
             requester_count=loop.demand.count, open_count=len(pending),
-            uninformed=[_requester_out(r, resolver) for r in loop.demand.requesters if (r.artefact_type, r.id) in pending],
+            uninformed=[
+                _requester_out(r, resolver, channels[loop.request.id])
+                for r in loop.demand.requesters if (r.artefact_type, r.id) in pending
+            ],
         ))
     return out
+
+
+# --- External references and the channel per ask -----------------------------
+
+
+def add_reference_from_payload(
+    db: Session, holder: RecordOwner, request: EnhancementRequest, payload: ExternalRefIn, actor: User,
+) -> ExternalRefOut:
+    """Adds a reference (the caller has checked the actor may), audit-logs its system and role (never the key or the
+    link), commits and returns it.
+
+    Raises:
+        HTTPException: 409 for an archived request; 400 for a system the request cannot use or too many references.
+    """
+    _require_unarchived(request)
+    lock_row_for_update(db, EnhancementRequest, request.id)
+    try:
+        row = refs.add_reference(
+            db, request, system_id=payload.system_id, key=payload.key, url=payload.url, role=payload.role, actor=actor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    audit_request(db, holder, request, "reference_added", actor, {"reference_id": str(row.id), "role": row.role.value})
+    db.commit()
+    return next(r for r in refs.references_by_request(db, [request.id])[request.id] if r.id == row.id)
+
+
+def update_reference_from_payload(
+    db: Session, holder: RecordOwner, request: EnhancementRequest, reference_id: uuid.UUID, payload: ExternalRefUpdate,
+    actor: User,
+) -> ExternalRefOut:
+    """Changes a reference (partial), audit-logs which fields changed, commits and returns it.
+
+    Raises:
+        HTTPException: 404 for a reference of another request; 409 for an archived request; 400 for an unusable
+            system or a result with neither a key nor a link.
+    """
+    _require_unarchived(request)
+    row = refs.get_reference(db, request, reference_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Reference not found.")
+    changes = payload.model_dump(exclude_unset=True)
+    try:
+        refs.update_reference(db, request, row, changes)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    audit_request(db, holder, request, "reference_updated", actor, {"reference_id": str(row.id), "fields": sorted(changes)})
+    db.commit()
+    return next(r for r in refs.references_by_request(db, [request.id])[request.id] if r.id == row.id)
+
+
+def remove_reference_from_payload(
+    db: Session, holder: RecordOwner, request: EnhancementRequest, reference_id: uuid.UUID, actor: User,
+) -> None:
+    """Removes a reference, audit-logs it and commits.
+
+    Raises:
+        HTTPException: 404 for a reference of another request; 409 for an archived request.
+    """
+    _require_unarchived(request)
+    row = refs.get_reference(db, request, reference_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Reference not found.")
+    refs.remove_reference(db, row)
+    audit_request(db, holder, request, "reference_removed", actor, {"reference_id": str(reference_id)})
+    db.commit()
+
+
+def _require_unarchived(request: EnhancementRequest) -> None:
+    """Raises 409 for an archived request: its references and channels are frozen until it is unarchived."""
+    if request.is_archived:
+        raise HTTPException(status.HTTP_409_CONFLICT, "An archived request cannot be changed; unarchive it first.")
+
+
+def set_channel_from_payload(
+    db: Session, holder: RecordOwner, project: Project, request: EnhancementRequest, payload: ChannelUpdate,
+    actor: User,
+) -> DemandOut:
+    """Sets (or clears) how requesters asked (the caller has checked the actor may), audit-logs the party keys and
+    the count changed, commits and returns the request's demand view.
+
+    Raises:
+        HTTPException: 409 for an archived request, a party that is not a requester or a channel the project cannot use.
+    """
+    lock_row_for_update(db, EnhancementRequest, request.id)
+    db.refresh(request)
+    parties = [(p.artefact_type, p.id) for p in payload.parties]
+    changed = apply_value_error_as_conflict(set_channels, db, project, request, parties, payload.channel_id, actor)
+    audit_request(db, holder, request, "requester_channel_set" if payload.channel_id else "requester_channel_cleared", actor, {
+        "parties": [{"type": t, "id": str(i)} for t, i in parties], "changed": changed,
+    })
+    db.commit()
+    return demand_out(db, project, request, actor)
 
 
 # --- Comments and files (shared kit, see `services.module_attachments`) ------

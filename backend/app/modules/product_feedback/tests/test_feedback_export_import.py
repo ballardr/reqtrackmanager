@@ -66,7 +66,8 @@ def test_a_project_round_trips_its_requests_policy_and_evidence_numbered_afresh(
     got = _requests(client, token, imported["id"], include_archived="true")
     assert set(got) == {"Keep", "Decline", "Archived"}
     assert got["Keep"]["description"] == "Second version." and got["Keep"]["status"] == "new"
-    assert got["Keep"]["external_ref_key"] == "P-1" and got["Keep"]["version_number"] == 1
+    assert [(r["system_name"], r["key"]) for r in got["Keep"]["external_refs"]] == [("Other", "P-1")]
+    assert got["Keep"]["version_number"] == 1
     assert got["Decline"]["status"] == "declined" and got["Decline"]["decline_reason"] == "Not now."
     assert got["Archived"]["is_archived"] is True
     assert sorted(r["unique_code"] for r in got.values()) == ["ENH-001", "ENH-002", "ENH-003"]

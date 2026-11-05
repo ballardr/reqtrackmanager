@@ -18,6 +18,13 @@ Product Feedback's data model:
   makes a merge reversible and what demand is unioned over.
 - `EnhancementRequestInformed` — a record that one requester (a Stakeholder or Persona) has been told the outcome
   of a delivered or declined request; what the close-the-loop list is built from.
+- `ExternalSystemDefinition` / `ProjectExternalSystem` and `RequestChannelDefinition` / `ProjectRequestChannel` — the
+  two-tier vocabularies (organisation base, project overrides, additions and hidden defaults) a request's external
+  references and its requesters' channels are chosen from (`vocabularies.py`).
+- `EnhancementRequestExternalRef` — one pointer to an item in an outside tool (a Jira epic, a ServiceNow ticket) with
+  its role; not versioned with the request.
+- `EnhancementRequestRequesterChannel` — how one requester asked (the channel per ask), matched to the current
+  requesters on read like `EnhancementRequestInformed`.
 - `ProjectFeedbackSettings` — one optional row per project holding who may submit. Absence
   means the default policy (`SubmissionPolicy.MEMBERS`).
 
@@ -38,7 +45,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
-from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, SubmissionPolicy
+from app.modules.product_feedback.enums import (
+    EnhancementRequestScope,
+    EnhancementRequestStatus,
+    ExternalRefRole,
+    SubmissionPolicy,
+)
 
 
 class EnhancementRequest(UUIDPKMixin, TimestampMixin, Base):
@@ -94,8 +106,6 @@ class EnhancementRequestVersion(UUIDPKMixin, Base):
             `models.principal`) looking after the request; both null when unowned. No foreign
             key; `services.principals.validate_principal` checks it on write and `module.py`'s
             `principal_references` guard group deletion.
-        external_ref_url / external_ref_key: A pointer to the same item in a delivery tool (a URL
-            and its key, e.g. a Jira issue); both optional.
         decline_reason: Why the request was declined (mandatory when the status is `DECLINED`).
         A version's scoring levels are `EnhancementRequestVersionScore` rows, one per axis it has a level on
             (`scoring.py`); an axis with no row is unscored. A score is derived from them on every read under
@@ -128,8 +138,6 @@ class EnhancementRequestVersion(UUIDPKMixin, Base):
     )
     owner_type: Mapped[str | None] = principal_type_column(nullable=True)
     owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
-    external_ref_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    external_ref_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     decline_reason: Mapped[str] = mapped_column(Text, default="")
     change_note: Mapped[str] = mapped_column(Text, default="")
 
@@ -277,6 +285,155 @@ class EnhancementRequestInformed(UUIDPKMixin, TimestampMixin, Base):
     informed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     informed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     note: Mapped[str] = mapped_column(Text, default="")
+
+
+class ExternalSystemDefinition(UUIDPKMixin, TimestampMixin, Base):
+    """Organisation-scoped base list of outside systems a request can point into (Jira, ServiceNow, ...).
+    `sort_order` is the name `services.ordering.move_ordered` expects.
+
+    Attributes:
+        organization_id: The owning organisation.
+        name: Display name, unique per organisation.
+        sort_order: Display / picker order.
+        is_active: Soft-disable; an inactive system drops out of every project's list without being deleted.
+    """
+
+    __tablename__ = "external_system_definitions"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_external_system_definitions_org_name"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProjectExternalSystem(UUIDPKMixin, TimestampMixin, Base):
+    """A project's own view onto the external system list: an override of one organisation system, or a system of
+    its own (`org_type_id` null, named by `name_override`; enforced by a CHECK). Same shape as every typed
+    vocabulary (`services.type_vocabulary.TypeVocabulary`)."""
+
+    __tablename__ = "project_external_systems"
+    __table_args__ = (
+        UniqueConstraint("project_id", "org_type_id", name="uq_project_external_systems_project_org_type"),
+        CheckConstraint(
+            "org_type_id IS NOT NULL OR name_override IS NOT NULL", name="ck_project_external_systems_local_has_name"
+        ),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    org_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("external_system_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    name_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    display_order_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class RequestChannelDefinition(UUIDPKMixin, TimestampMixin, Base):
+    """Organisation-scoped base list of the channels a requester can have asked through (Support ticket, Call,
+    Email, ...). Shape as `ExternalSystemDefinition`."""
+
+    __tablename__ = "request_channel_definitions"
+    __table_args__ = (UniqueConstraint("organization_id", "name", name="uq_request_channel_definitions_org_name"),)
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    name: Mapped[str] = mapped_column(String(100))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ProjectRequestChannel(UUIDPKMixin, TimestampMixin, Base):
+    """A project's own view onto the channel list; shape as `ProjectExternalSystem`."""
+
+    __tablename__ = "project_request_channels"
+    __table_args__ = (
+        UniqueConstraint("project_id", "org_type_id", name="uq_project_request_channels_project_org_type"),
+        CheckConstraint(
+            "org_type_id IS NOT NULL OR name_override IS NOT NULL", name="ck_project_request_channels_local_has_name"
+        ),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    org_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("request_channel_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    name_override: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    display_order_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class EnhancementRequestExternalRef(UUIDPKMixin, TimestampMixin, Base):
+    """A pointer from a request to an item in an outside tool. Several per request, added and removed on their own
+    (each with an audit event), so a change here does not create a content version.
+
+    Exactly one of `org_system_id` (an inbox request: the organisation's system) and `project_system_id` (a
+    project request: the project's row for the system) is set (a CHECK), as for any typed record.
+
+    Attributes:
+        request_id: The request (removed with it).
+        org_system_id / project_system_id: The system, from the list of the request's tier.
+        key: The item's key in that system (e.g. `PROJ-123`).
+        url: Optional link to the item; only an absolute http(s) URL is accepted (`schemas.check_web_url`).
+        role: `ORIGIN` (it came from there) or `DELIVERY` (it is built there).
+        created_by: Who added it.
+    """
+
+    __tablename__ = "enhancement_request_external_refs"
+    __table_args__ = (
+        CheckConstraint(
+            "(org_system_id IS NOT NULL) <> (project_system_id IS NOT NULL)",
+            name="ck_enhancement_request_external_refs_one_system",
+        ),
+        Index("ix_enhancement_request_external_refs_request", "request_id"),
+    )
+
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enhancement_requests.id", ondelete="CASCADE")
+    )
+    org_system_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("external_system_definitions.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_system_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_external_systems.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    key: Mapped[str] = mapped_column(String(100), default="")
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    role: Mapped[ExternalRefRole] = mapped_column(str_enum(ExternalRefRole, 20), default=ExternalRefRole.DELIVERY)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+
+
+class EnhancementRequestRequesterChannel(UUIDPKMixin, TimestampMixin, Base):
+    """The channel a requester asked through. The party is a Stakeholder or Persona of another module, so it is a
+    `(party_type, party_id)` pair with no foreign key; the row is matched against the request's current requesters
+    on every read (as `EnhancementRequestInformed` is), so one for a party that stopped being a requester is
+    ignored. A requester reached through an Engagement has no row and is shown as an Engagement.
+
+    Attributes:
+        request_id: The request the channel was recorded on (the canonical one, or a merged duplicate the party
+            asked through; the canonical's own row wins when both exist).
+        party_type / party_id: The requester record.
+        channel_id: The project's channel row.
+        set_by: Who recorded it.
+    """
+
+    __tablename__ = "enhancement_request_requester_channel"
+    __table_args__ = (
+        UniqueConstraint("request_id", "party_type", "party_id", name="uq_enhancement_request_requester_channel_party"),
+    )
+
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("enhancement_requests.id", ondelete="CASCADE"), index=True
+    )
+    party_type: Mapped[str] = mapped_column(String(64))
+    party_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_request_channels.id", ondelete="CASCADE"), index=True
+    )
+    set_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 
 
 class ProjectFeedbackSettings(UUIDPKMixin, TimestampMixin, Base):

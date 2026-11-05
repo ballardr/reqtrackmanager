@@ -58,7 +58,7 @@ ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY = "organization_requests"
 #: The content fields a version carries (everything an edit may change except the status and the scoring
 #: levels, which are rows of their own: `version_levels`).
 REQUEST_CONTENT_FIELDS = (
-    "title", "description", "owner_type", "owner_id", "external_ref_url", "external_ref_key", "decline_reason",
+    "title", "description", "owner_type", "owner_id", "decline_reason",
 )
 
 _S = EnhancementRequestStatus

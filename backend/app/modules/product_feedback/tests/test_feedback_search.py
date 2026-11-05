@@ -47,3 +47,20 @@ def test_an_inbox_request_is_found_at_organisation_level_only_while_the_inbox_is
     assert [h["id"] for h in hits] == [inbox["id"]]
     set_org_inbox(client, token, org["id"], False)
     assert _search(client, token, {"q": "inboxfbzq", **scope})["hits"] == []
+
+
+def test_a_reference_key_finds_the_request_only_when_that_field_is_searched(client, admin_token):
+    _, project, token = setup(client, admin_token, "Search Feedback Ref Co")
+    systems = {
+        e["name"]: e["id"]
+        for e in client.get(
+            f"/api/v1/projects/{project['id']}/modules/product_feedback/external-systems", headers=auth_headers(token),
+        ).json()
+    }
+    request = create_request(client, token, project["id"], references=[{"system_id": systems["Jira"], "key": "ZZQ-4242"}])
+    create_request(client, token, project["id"], title="Unrelated")
+    scope = {"scope": "project", "project_id": project["id"]}
+    assert _search(client, token, {"q": "ZZQ-4242", **scope})["hits"] == []
+    found = _search(client, token, {"q": "ZZQ-4242", "fields": ["id", "title", "references"], **scope})
+    assert [h["id"] for h in found["hits"]] == [request["id"]]
+    assert found["hits"][0]["snippet"]["field_label"] == "External references"

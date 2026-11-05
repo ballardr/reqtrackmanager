@@ -6,8 +6,8 @@ it exports to CSV, PDF and Word and imports from the same CSV (a row with a code
 The organisation's inbox is the provider's `OrganizationRecordTable`.
 
 Responsibilities:
-- Declare the columns (title, description, owner, external reference, the four scoring levels, tags) and the
-  status, decline reason and derived score as export-only cells.
+- Declare the columns (title, description, owner, external references, the scoring levels, tags) and the
+  status, decline reason, demand, channel mix and derived score as export-only cells.
 - Share the create and edit logic with the endpoints (`_shared.stage_request` / `stage_request_update`), so the
   owner validation, the version history and the audit event are the ones the screen applies.
 
@@ -17,6 +17,11 @@ Design decisions:
   request starts `New`, as the create endpoint starts it.
 - A scoring level is written by its name on its axis (`Many`, `Large`) for the organisation's own scheme; the
   score is derived (under the owner's default model) and so is export-only. A blank level cell clears the level.
+- `references` is one list cell, `System:key` (the system's name; `System:https://...` for a link with no key;
+  ` (origin)` after a reference that came from there), the way the export writes it. An import *adds* the
+  references a cell names that the request lacks and never removes or edits one (the role and link of an existing
+  reference are not in the cell), so a round trip changes nothing and removing a reference stays a deliberate act
+  on the request. `channels` (how the requesters asked, as a count per channel) is export-only.
 - Updating needs the triager role (the edit endpoint's gate); creating follows the endpoint's gate (any member,
   unless the project restricted submission to triagers).
 
@@ -37,12 +42,14 @@ from app.models.organization import Organization
 from app.models.project import Project
 from app.models.user import User
 from app.modules.product_feedback import _shared as sh
+from app.modules.product_feedback import references as refs
+from app.modules.product_feedback.channels import channels_by_request
 from app.modules.product_feedback.demand import EMPTY_DEMAND
-from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus
+from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, ExternalRefRole
 from app.modules.product_feedback.labels import REQUEST_STATUS_LABEL, REQUEST_STATUS_TONE
 from app.modules.product_feedback.models import EnhancementRequest, EnhancementRequestVersion
 from app.modules.product_feedback.ratings import derived_levels, load_rating_context, parse_model_keys, score_levels
-from app.modules.product_feedback.schemas import RequestCreate, RequestUpdate
+from app.modules.product_feedback.schemas import ExternalRefIn, RequestCreate, RequestUpdate, check_web_url
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.scoring_filter import ScoredFilter
 from app.modules.product_feedback.service import (
@@ -56,6 +63,7 @@ from app.modules.product_feedback.service import (
     list_project_requests,
     version_levels,
 )
+from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS
 from app.modules.registry import (
     OrganizationRecordTable,
     RecordCellError,
@@ -67,7 +75,16 @@ from app.modules.registry import (
 from app.services import tags as tag_service
 from app.services.principals import principal_ref
 from app.services.record_tables import PrincipalCells, find_many_by_code
-from app.services.record_tables_core import cached_lookup, count_rows, enum_filter, list_cell, person_parser, text_parser
+from app.services.record_tables_core import (
+    LIST_SEPARATOR,
+    cached_lookup,
+    count_rows,
+    enum_filter,
+    list_cell,
+    list_parser,
+    person_parser,
+    text_parser,
+)
 from app.services.scoring import list_levels
 from app.services.scoring_custom import effective_scheme
 
@@ -102,14 +119,41 @@ class _Prepared:
             for levels in list_levels(db, organization_id, REQUEST_SCORING_SCHEME_KEY).values() for level in levels
         }
         stored = version_levels(db, [v.id for v in self.versions.values()])
-        demand = sh.request_extras(db, records).demand
+        extras = sh.request_extras(db, records)
+        demand = extras.demand
+        self.references = extras.references
+        self.channel_mix: dict[uuid.UUID, str] = _channel_mix(db, records, demand)
         ctx = load_rating_context(db, organization_id, project_id)
         self.levels: dict[uuid.UUID, dict[str, uuid.UUID]] = {}
         self.scores = {}
+        self.requesters: dict[uuid.UUID, int] = {}
+        self.weighted_demand: dict[uuid.UUID, float] = {}
         for rid, version in self.versions.items():
             weighted = demand.get(rid, EMPTY_DEMAND).weighted
+            self.requesters[rid] = demand.get(rid, EMPTY_DEMAND).count
+            self.weighted_demand[rid] = weighted
             self.levels[rid] = {**derived_levels(ctx, stored[version.id], weighted), **stored[version.id]}
             self.scores[rid] = score_levels(ctx, stored[version.id], weighted)[ctx.model.key]
+
+
+def _channel_mix(db: Session, records: list[Any], demand: dict[uuid.UUID, Any]) -> dict[uuid.UUID, str]:
+    """`{request id: "Call x2; Email"}`: how many of each request's requesters asked through each channel (a
+    requester reached through an Engagement counts as an Engagement; one with no channel recorded is left out).
+    Names no one, so it carries no personal data."""
+    project_owned = [r.id for r in records if r.project_id is not None]
+    channels = channels_by_request(db, project_owned)
+    mix: dict[uuid.UUID, str] = {}
+    for request_id in project_owned:
+        counts: dict[str, int] = {}
+        for requester in demand.get(request_id, EMPTY_DEMAND).requesters:
+            choice = channels[request_id].get((requester.artefact_type, requester.id))
+            name = choice.name if choice else ("Engagement" if requester.via_engagement else "")
+            if name:
+                counts[name] = counts.get(name, 0) + 1
+        mix[request_id] = LIST_SEPARATOR.join(
+            name if n == 1 else f"{name} x{n}" for name, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        )
+    return mix
 
 
 def _filtered(
@@ -146,9 +190,64 @@ def _list_organization(
     )
 
 
-def _text(key: str, label: str, *, required: bool = False) -> RecordColumn:
+def _reference_text(ref: Any) -> str:
+    """One reference as a cell entry: `System:key` (`System:link` when it has no key), `(origin)` marked."""
+    text = f"{ref.system_name}:{ref.key or ref.url or ''}"
+    return f"{text} (origin)" if ref.role == ExternalRefRole.ORIGIN else text
+
+
+def _references_parser(ctx: RecordImportContext, text: str) -> list[tuple[str, str, str | None, ExternalRefRole]]:
+    """The `;`-separated entries of a references cell as `(system name, key, link, role)`, each checked as the API
+    checks a reference (a system name is matched when the import is applied, against the request's own list)."""
+    entries = []
+    for part in list_parser(ctx, text):
+        role = ExternalRefRole.DELIVERY
+        if part.lower().endswith("(origin)"):
+            part, role = part[: -len("(origin)")].strip(), ExternalRefRole.ORIGIN
+        system, sep, rest = part.partition(":")
+        rest = rest.strip()
+        if not sep or not system.strip() or not rest:
+            raise RecordCellError(f"'{part}' is not a reference: write System:key, e.g. Jira:PROJ-123.")
+        is_link = rest.lower().startswith(("http://", "https://"))
+        try:
+            link = check_web_url(rest) if is_link else None
+        except ValueError as exc:
+            raise RecordCellError(str(exc)) from None
+        if len(rest) > (500 if is_link else 100):
+            raise RecordCellError(f"A reference's {'link' if is_link else 'key'} is too long.")
+        entries.append((system.strip(), "" if is_link else rest, link, role))
+    return entries
+
+
+def _system_ids(ctx: RecordImportContext) -> dict[str, uuid.UUID]:
+    """`{system name (lower case): id}` the import's tier can pick from (the project's effective list, or the
+    organisation's active entries for the inbox)."""
+    def load() -> dict[str, uuid.UUID]:
+        if ctx.project is not None:
+            return {
+                e.name.casefold(): e.id
+                for e in EXTERNAL_SYSTEMS.resolve_effective(ctx.db, ctx.project.id, ctx.organization.id) if e.is_enabled
+            }
+        return {t.name.casefold(): t.id for t in EXTERNAL_SYSTEMS.active_org_types(ctx.db, ctx.organization.id)}
+
+    return cached_lookup(ctx, "feedback:systems", lambda: load())
+
+
+def _reference_inputs(ctx: RecordImportContext, entries: list[tuple[str, str, str | None, ExternalRefRole]]) -> list[ExternalRefIn]:
+    """The entries as API payloads, naming each system in the request's tier; an unknown system is a row error."""
+    systems = _system_ids(ctx)
+    out = []
+    for name, key, link, role in entries:
+        system_id = systems.get(name.casefold())
+        if system_id is None:
+            raise RecordCellError(f"'{name}' is not an external system here; pick one from the list.")
+        out.append(ExternalRefIn(system_id=system_id, key=key, url=link, role=role))
+    return out
+
+
+def _text(key: str, label: str, *, required: bool = False, parser: Any = text_parser) -> RecordColumn:
     return RecordColumn(
-        key, label, lambda t, r: getattr(t.versions[r.id], key) or "", text_parser, editable=True, required=required,
+        key, label, lambda t, r: getattr(t.versions[r.id], key) or "", parser, editable=True, required=required,
     )
 
 
@@ -195,9 +294,16 @@ def _columns(db: Session, owner: Project | Organization) -> list[RecordColumn]:
             "owner", "Owner", lambda t, r: t.people.text(t.versions[r.id].owner_type, t.versions[r.id].owner_id),
             person_parser("owner"), kind="principal",
         ),
-        _text("external_ref_url", "External reference URL"),
-        _text("external_ref_key", "External reference key"),
+        RecordColumn(
+            "references", "External references", lambda t, r: list_cell([_reference_text(x) for x in t.references.get(r.id, [])]),
+            _references_parser, kind="list",
+        ),
         *(level_column(a.key, a.label, a.derived_source is not None) for a in scheme.axes),
+        RecordColumn("requesters", "Requesters", lambda t, r: str(t.requesters.get(r.id, 0)), kind="number"),
+        RecordColumn(
+            "weighted_demand", "Weighted demand", lambda t, r: f"{t.weighted_demand.get(r.id, 0.0):g}", kind="number",
+        ),
+        RecordColumn("channels", "Request channels", lambda t, r: t.channel_mix.get(r.id, ""), kind="list"),
         RecordColumn("score", "Score", _score_text, kind="number"),
         RecordColumn("score_band", "Score band", lambda t, r: (t.scores[r.id].label or "") if t.scores.get(r.id) else ""),
         RecordColumn("tags", "Tags", lambda t, r: list_cell(t.tags.get(r.id, [])), kind="list"),
@@ -217,7 +323,7 @@ def _fields(ctx: RecordImportContext, values: Mapping[str, Any]) -> dict[str, An
     )
     fields = {
         key: values[key]
-        for key in ("title", "description", "owner", "external_ref_url", "external_ref_key") if key in values
+        for key in ("title", "description", "owner") if key in values
     }
     levels = {a.key: values[a.key] for a in scheme.axes if a.derived_source is None and a.key in values}
     return fields | ({"levels": levels} if levels else {})
@@ -229,13 +335,35 @@ def _holder(ctx: RecordImportContext) -> RecordOwner:
 
 
 def _create(ctx: RecordImportContext, values: Mapping[str, Any]) -> EnhancementRequest:
-    return sh.stage_request(ctx.db, _holder(ctx), RequestCreate(**_fields(ctx, values)), ctx.user)
+    references = _reference_inputs(ctx, values["references"]) if values.get("references") else []
+    return sh.stage_request(ctx.db, _holder(ctx), RequestCreate(**_fields(ctx, values), references=references), ctx.user)
 
 
 def _update(ctx: RecordImportContext, request: EnhancementRequest, values: Mapping[str, Any]) -> None:
-    sh.stage_request_update(
-        ctx.db, _holder(ctx), request, RequestUpdate(**_fields(ctx, values), change_note=IMPORT_NOTE), ctx.user,
-    )
+    fields = _fields(ctx, values)
+    if fields:
+        sh.stage_request_update(ctx.db, _holder(ctx), request, RequestUpdate(**fields, change_note=IMPORT_NOTE), ctx.user)
+    if values.get("references"):
+        _add_missing_references(ctx, request, _reference_inputs(ctx, values["references"]))
+
+
+def _add_missing_references(ctx: RecordImportContext, request: EnhancementRequest, wanted: list[ExternalRefIn]) -> None:
+    """Adds the references of `wanted` the request does not hold (same system and key or link), keeping the rest."""
+    held = {
+        (r.system_name.casefold(), r.key or r.url or "") for r in refs.references_by_request(ctx.db, [request.id])[request.id]
+    }
+    systems = {v: k for k, v in _system_ids(ctx).items()}
+    for item in wanted:
+        marker = (systems.get(item.system_id, ""), item.key or item.url or "")
+        if marker in held:
+            continue
+        try:
+            refs.add_reference(
+                ctx.db, request, system_id=item.system_id, key=item.key, url=item.url, role=item.role, actor=ctx.user,
+            )
+        except ValueError as exc:
+            raise RecordCellError(str(exc)) from None
+        held.add(marker)
 
 
 def _may_manage_project(db: Session, user: User, project_id: uuid.UUID) -> bool:

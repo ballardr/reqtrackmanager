@@ -30,7 +30,11 @@ def test_a_request_is_created_new_with_a_project_code_and_its_content(client, ad
     assert request["status"] == "new" and request["scope"] == "project"
     assert request["unique_code"] == "ENH-001" and request["project_id"] == project["id"]
     assert request["organization_id"] is None and request["version_number"] == 1
-    assert request["external_ref_key"] == "PROJ-1" and request["owner"] is None
+    # The older single link pair is filed as a delivery reference on the "Other" system.
+    assert [(r["system_name"], r["key"], r["url"], r["role"]) for r in request["external_refs"]] == [
+        ("Other", "PROJ-1", "https://jira.example/PROJ-1", "delivery")
+    ]
+    assert request["owner"] is None
     assert request["allowed_next_statuses"] == ["under_review", "declined"]
     assert create_request(client, token, project["id"], title="Second")["unique_code"] == "ENH-002"
 
@@ -55,13 +59,14 @@ def test_an_update_is_a_new_version_that_keeps_the_fields_it_does_not_mention(cl
     assert versions[1]["change_note"] == "Reworded." and versions[0]["description"] == request["description"]
 
 
-def test_a_null_title_is_refused_and_an_explicit_null_clears_the_external_reference(client, admin_token):
+def test_a_null_title_is_refused_and_clearing_the_older_link_pair_removes_its_reference(client, admin_token):
     _, project, token = setup(client, admin_token, "Feedback Null Co")
     request = create_request(client, token, project["id"], external_ref_key="PROJ-9")
     base = f"{project_base(project['id'])}/requests/{request['id']}"
     assert client.put(base, json={"title": None}, headers=auth_headers(token)).status_code == 422
     cleared = client.put(base, json={"external_ref_key": None}, headers=auth_headers(token)).json()
-    assert cleared["external_ref_key"] is None
+    assert cleared["external_refs"] == []
+    assert cleared["version_number"] == 1  # a reference is not a content version
 
 
 def test_the_owner_may_be_a_user_and_is_cleared_by_null(client, admin_token):
@@ -254,3 +259,21 @@ def test_every_mutation_is_audit_logged_against_the_request(client, admin_token)
     assert all(str(e.project_id) == project["id"] for e in events)
     assert events[2].detail == {"from": "new", "to": "declined", "comment": "Not now."}
     assert "Changed." not in str([e.detail for e in events])  # content is never put in the audit trail
+
+
+def test_the_delivery_tool_link_must_be_an_http_url(client, admin_token):
+    """The reference is rendered as a link, so a `javascript:` URL is refused on create and update (and on import,
+    which builds the same payload)."""
+    _, project, token = setup(client, admin_token, "Feedback Url Co")
+    base = project_base(project["id"]) + "/requests"
+    for bad in ("javascript:alert(1)", "data:text/html,x", "ftp://files.example/a", "//no-scheme.example", "https://"):
+        refused = client.post(base, json={"title": "Bad link", "external_ref_url": bad}, headers=auth_headers(token))
+        assert refused.status_code == 422, bad
+    request = create_request(client, token, project["id"], external_ref_url=" https://jira.example/PROJ-9 ")
+    assert [r["url"] for r in request["external_refs"]] == ["https://jira.example/PROJ-9"]
+    refused = client.put(
+        f"{base}/{request['id']}", json={"external_ref_url": "javascript:alert(1)"}, headers=auth_headers(token),
+    )
+    assert refused.status_code == 422
+    cleared = client.put(f"{base}/{request['id']}", json={"external_ref_url": None}, headers=auth_headers(token))
+    assert cleared.status_code == 200 and cleared.json()["external_refs"] == []

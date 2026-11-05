@@ -3534,8 +3534,8 @@ def main() -> None:
           f" from its pinned cell), plus {risk_unscored['unique_code']} captured with no assessment yet and a modem supply-chain risk")
 
     print("Seeding Product Feedback — enabling the module, then enhancement requests on Falcon-3 across the"
-          " lifecycle (one owned by the avionics engineer, one declined with a reason, one linked to its delivery"
-          " tool; two scored with Reach, Impact, Confidence and Effort) and two in the organisation's inbox...")
+          " lifecycle (one owned by the avionics engineer, one declined with a reason, one with Jira and ServiceNow"
+          " references and a channel per requester; two scored with Reach, Impact, Confidence and Effort) and two in the organisation's inbox...")
     enable_module(h_pm, org["id"], "product_feedback")
     feedback_url = f"{BASE}/projects/{drone['id']}/modules/product_feedback"
     inbox_url = f"{BASE}/orgs/{org['id']}/modules/product_feedback"
@@ -3553,12 +3553,21 @@ def main() -> None:
             {"axis_key": "c_safety_relevance", "role": "sum", "importance": 40}],
     }, headers=h_pm, timeout=30).raise_for_status()
     request_levels = get_request_levels(h_pm, drone["id"])
+    external_systems = {
+        e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/external-systems", headers=h_pm, timeout=30).json()
+    }
+    request_channels = {
+        e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/request-channels", headers=h_pm, timeout=30).json()
+    }
     export_request = create_enhancement_request(
         h_pm, feedback_url, title="Export the inspection log as a spreadsheet",
         **request_score_fields(request_levels, "Many", "High", "High", "Small", "Easy", safety="Supports safe operation"),
         description="Inspectors want to pull a day's inspection log into a spreadsheet for the weekly review.",
         owner={"type": "user", "id": demo_engineer["user_id"]},
-        external_ref_url="https://tracker.example.com/browse/FAL-214", external_ref_key="FAL-214",
+        references=[
+            {"system_id": external_systems["Jira"], "key": "FAL-214", "url": "https://tracker.example.com/browse/FAL-214"},
+            {"system_id": external_systems["ServiceNow"], "key": "INC0012345", "role": "origin"},
+        ],
     )
     transition_enhancement_request(h_pm, feedback_url, export_request["id"], "under_review")
     transition_enhancement_request(h_pm, feedback_url, export_request["id"], "accepted")
@@ -3605,6 +3614,14 @@ def main() -> None:
         f"{feedback_url}/requests/{duplicate_request['id']}/merge",
         json={"canonical_id": export_request["id"], "note": "Same ask, different wording."}, headers=h_pm, timeout=30,
     ).raise_for_status()
+    # The channel per ask: how each requester of the accepted request (merged duplicate's included) asked. The
+    # engagement's participants are shown as an Engagement and need none.
+    for other, channel in ((stakeholder_fleet, "Support ticket"), (stakeholder_authority, "Email"), (persona_auditor, "Survey")):
+        httpx.put(
+            f"{feedback_url}/requests/{export_request['id']}/requester-channel",
+            json={"parties": [{"artefact_type": "persona" if other is persona_auditor else "stakeholder", "id": other["id"]}],
+                  "channel_id": request_channels[channel]}, headers=h_pm, timeout=30,
+        ).raise_for_status()
     # Problem and delivery: the accepted request addresses a Pain Point and is realised by a requirement; a delivered
     # request has one requester told and one still to tell (the close-the-loop list).
     link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}

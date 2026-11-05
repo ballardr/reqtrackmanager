@@ -45,8 +45,6 @@ def _query(name: str, type_: str, description: str) -> dict:
 _REQUEST_FIELDS = [
     _body("description", "string", "The proposed solution, in the requester's terms."),
     _body("owner", "object", 'Who looks after it: {"type": "user" | "org_group" | "project_group", "id": uuid}; null clears it.'),
-    _body("external_ref_url", "string", "URL of the same item in a delivery tool (e.g. a Jira issue); null clears it."),
-    _body("external_ref_key", "string", "Key of that item (e.g. PROJ-123); null clears it."),
     _body(
         "levels", "object",
         'Scoring levels by axis key, e.g. {"impact": <level id>, "effort": null}: the ids come from '
@@ -55,6 +53,18 @@ _REQUEST_FIELDS = [
         "the requesters unless a level is chosen), plus any axis (key c_...) the organisation or project defined: the "
         "scheme lists the ones this project can use.",
     ),
+]
+_CREATE_REFERENCES = _body(
+    "references", "array",
+    'External references to items in outside tools, each {"system_id": uuid (list_external_systems), "key": '
+    '"PROJ-123", "url": "https://...", "role": "origin" | "delivery"}; a key or a url is needed. Later changes use '
+    "add_request_reference, update_request_reference and remove_request_reference.",
+)
+_REFERENCE_ID = {"name": "reference_id", "type": "uuid", "required": True, "in": "path", "description": "The external reference."}
+_REFERENCE_FIELDS = [
+    _body("key", "string", "The item's key in that system, e.g. PROJ-123."),
+    _body("url", "string", "Link to the item (an absolute http or https URL); null clears it on update."),
+    _body("role", "string", "origin (the request came from this item) or delivery (it is built there); default delivery."),
 ]
 _SCORING_MODEL = _query(
     "scoring_model", "string",
@@ -79,7 +89,7 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
     """The module's MCP tools, read tools first."""
     return (
         McpToolDefinition(
-            name="list_requests", description="Lists a project's enhancement requests with status, owner and external reference.",
+            name="list_requests", description="Lists a project's enhancement requests with status, owner and external references.",
             method="GET", path_template=_REQUESTS, params=[_PROJECT_ID, *_LIST_FILTERS, _SCORING_MODEL],
         ),
         McpToolDefinition(
@@ -134,6 +144,27 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             method="GET", path_template=f"{_PREFIX}/close-the-loop", params=[_PROJECT_ID],
         ),
         McpToolDefinition(
+            name="list_external_systems",
+            description=(
+                "Lists the project's effective external systems (Jira, ServiceNow, ...): the ids a request's "
+                "references take as system_id."
+            ),
+            method="GET", path_template=f"{_PREFIX}/external-systems", params=[_PROJECT_ID],
+        ),
+        McpToolDefinition(
+            name="list_request_channels",
+            description=(
+                "Lists the project's effective request channels (Support ticket, Call, Email, ...): the ids "
+                "set_requester_channel takes as channel_id."
+            ),
+            method="GET", path_template=f"{_PREFIX}/request-channels", params=[_PROJECT_ID],
+        ),
+        McpToolDefinition(
+            name="list_request_references",
+            description="Lists a request's references to items in outside tools, with each one's system and role.",
+            method="GET", path_template=f"{_REQUEST}/references", params=[_PROJECT_ID, _REQUEST_ID],
+        ),
+        McpToolDefinition(
             name="list_request_merges",
             description="Lists the merges a request took part in (as canonical or duplicate), active and ended.",
             method="GET", path_template=f"{_REQUEST}/merges", params=[_PROJECT_ID, _REQUEST_ID],
@@ -150,7 +181,8 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
                 "restricted submission to triagers; only the title is required."
             ),
             method="POST", path_template=_REQUESTS,
-            params=[_PROJECT_ID, _body("title", "string", "Short name of the request.", required=True), *_REQUEST_FIELDS],
+            params=[_PROJECT_ID, _body("title", "string", "Short name of the request.", required=True), *_REQUEST_FIELDS,
+                    _CREATE_REFERENCES],
         ),
         McpToolDefinition(
             name="update_request",
@@ -202,6 +234,42 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             ],
         ),
         McpToolDefinition(
+            name="add_request_reference",
+            description=(
+                "Adds a reference from a request to an item in an outside tool (a Jira epic, a ServiceNow ticket). Not "
+                "a new version of the request. Needs the Feedback Triager role."
+            ),
+            method="POST", path_template=f"{_REQUEST}/references",
+            params=[_PROJECT_ID, _REQUEST_ID,
+                    _body("system_id", "uuid", "The system (list_external_systems).", required=True), *_REFERENCE_FIELDS],
+        ),
+        McpToolDefinition(
+            name="update_request_reference",
+            description="Changes a reference; only the fields supplied change. Needs the Feedback Triager role.",
+            method="PATCH", path_template=f"{_REQUEST}/references/{{reference_id}}",
+            params=[_PROJECT_ID, _REQUEST_ID, _REFERENCE_ID, _body("system_id", "uuid", "The system (list_external_systems)."),
+                    *_REFERENCE_FIELDS],
+        ),
+        McpToolDefinition(
+            name="remove_request_reference", description="Removes a reference. Needs the Feedback Triager role.",
+            method="DELETE", path_template=f"{_REQUEST}/references/{{reference_id}}",
+            params=[_PROJECT_ID, _REQUEST_ID, _REFERENCE_ID],
+        ),
+        McpToolDefinition(
+            name="set_requester_channel",
+            description=(
+                "Records how requesters asked (their channel), or clears it with channel_id null. A requester reached "
+                "through an Engagement is shown as an Engagement and needs none. Needs the Feedback Triager role; "
+                "refused (409) unless every party is a current requester (get_request_demand lists them)."
+            ),
+            method="PUT", path_template=f"{_REQUEST}/requester-channel",
+            params=[
+                _PROJECT_ID, _REQUEST_ID,
+                _body("parties", "array", 'Requesters, each {"artefact_type": "stakeholder" | "persona", "id": uuid}.', required=True),
+                _body("channel_id", "uuid", "The channel (list_request_channels); null clears it."),
+            ],
+        ),
+        McpToolDefinition(
             name="add_request_comment", description="Adds a comment to a request's discussion.", method="POST",
             path_template=f"{_REQUEST}/comments",
             params=[_PROJECT_ID, _REQUEST_ID, _body("body", "string", "The comment text.", required=True)],
@@ -230,6 +298,12 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             name="create_inbox_request",
             description="Submits an enhancement request to the organisation's inbox. Any organisation member may.",
             method="POST", path_template=f"{_ORG_PREFIX}/requests",
-            params=[_ORG_ID, _body("title", "string", "Short name of the request.", required=True), *_REQUEST_FIELDS],
+            params=[_ORG_ID, _body("title", "string", "Short name of the request.", required=True), *_REQUEST_FIELDS,
+                    _CREATE_REFERENCES],
+        ),
+        McpToolDefinition(
+            name="list_inbox_external_systems",
+            description="Lists the organisation's external systems (Jira, ServiceNow, ...) an inbox request's references can use.",
+            method="GET", path_template=f"{_ORG_PREFIX}/external-systems", params=[_ORG_ID],
         ),
     )

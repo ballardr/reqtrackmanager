@@ -48,6 +48,7 @@ from app.modules.product_feedback.models import (
     EnhancementRequestCommentFile,
     EnhancementRequestFile,
 )
+from app.modules.product_feedback.references import convert_to_project
 from app.modules.product_feedback.service import (
     REQUEST_ARTEFACT_TYPE,
     REQUEST_CODE_PREFIX,
@@ -67,12 +68,14 @@ class MoveResult:
         new_code: The code the project's counter gave it.
         tags: The tag names carried across.
         files: How many files (direct and on comments) became project files.
+        references: How many external references were re-pointed at the project's systems.
     """
 
     previous_code: str
     new_code: str
     tags: list[str]
     files: int
+    references: int = 0
 
 
 def move_to_project(db: Session, request: EnhancementRequest, project: Project, actor: User) -> MoveResult:
@@ -134,8 +137,9 @@ def move_to_project(db: Session, request: EnhancementRequest, project: Project, 
         .values(is_org_resource=False)
     ).rowcount
 
+    references = convert_to_project(db, request, project)
     apply_new_version(
         db, request, get_current_version(db, request.id), actor, changes={},
         change_note=f"Moved from the organisation inbox ({previous_code}) into project {project.name}.",
     )
-    return MoveResult(previous_code, request.unique_code, names, files or 0)
+    return MoveResult(previous_code, request.unique_code, names, files or 0, references)

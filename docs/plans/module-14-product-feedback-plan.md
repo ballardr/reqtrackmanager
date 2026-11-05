@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phase 5 next. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens) and 5c (external references and channel per ask) built 2026-11-05; Phase 5b (scoring administration screens) next. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
@@ -15,8 +15,8 @@ artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-8 / 11 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
-Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension) and Phase 4 (backend) done 2026-11-05. Phase 5 is next.
+10 / 13 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (backend) and Phase 5 (screens) done 2026-11-05. Phase 5c (**Decided by: User**, 2026-11-05) is done the same day; Phase 5b is next, then Phase 6.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -28,7 +28,9 @@ Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension) and Phase 4
 | 3b | Scoring: Ease, demand-derived axis, generic per-axis score storage | [x] Complete (2026-11-05) — see "Phase 3b notes" |
 | 3c | Scoring: organisation- and project-defined criteria and models (multiply or weighted sum) | [x] Complete (2026-11-05) — see "Phase 3c notes" |
 | 4 | Relationships + close-the-loop | [x] Complete (2026-11-05) — see "Phase 4 notes" |
-| 5 | Frontend UI | [ ] Not started |
+| 5 | Frontend UI: list, request page, forms, inbox, merge, demand, scoring display, closing the loop | [x] Complete (2026-11-05) — see "Phase 5 notes" |
+| 5b | Scoring administration screens: enabled models, level thresholds, custom axes and models, hide and restore | [ ] Not started — next; see "Phase 5 notes" |
+| 5c | External references (several, with system and role) and channel per ask | [x] Complete (2026-11-05) — see "Phase 5c" and "Phase 5c notes" |
 | 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06, see `docs/modules.md` §4g |
 | 7 | Docs website coverage | [ ] Not started |
 
@@ -239,6 +241,61 @@ flowchart LR
 - `RequestOut` carries `pain_point_count`, `requirement_count`, `informed_count`, `loop_open_count`.
 - **Phase 5 must add (beyond the lists above):** the Pain Point and Requirement link panels with the "No Pain Point linked" warning, the close-the-loop panel (checkbox, date, note, "Mark all told"), the "Ready to deliver?" prompt beside the Delivered transition, and the open-loop badge and list.
 - **Phase 6 must:** F2 reads `pain_point_count == 0` and F3 reads `loop.open_loop_requests`, so the reports and the list share one definition.
+
+## Phase 5 notes (2026-11-05)
+
+Screens built; account, the design table and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 5").
+
+```mermaid
+flowchart LR
+    NAV[Nav rail] --> L[Project list<br/>filters, Grid, export]
+    OV[Organisation Overview] --> IN[Request inbox]
+    L --> D[Request page]
+    IN --> D
+    D --> SC[Scores]
+    D --> DM[Demand and merge history]
+    D --> CL[Closing the loop]
+    D --> LK[Links panel:<br/>Requested by, Addresses, Realised by]
+```
+
+- Files in `frontend/src/modules/product_feedback/`: `ProjectRequestsPage`, `RequestDetailPage` (project and inbox routes), `OrgRequestsPanel`, `RequestFormModal` over `RequestFields`, `RequestScoresPanel`, `RequestDemandPanel`, `RequestLoopPanel`, `MergeRequestDialog`, `MoveToProjectDialog`, `SubmissionPolicyPanel`, with stories for each and three Playwright specs in `tests/playwright/tests/modules/product_feedback/`.
+- Backend additions found necessary by the screens: `GET .../access` (what the viewer may do), read-only `requesters` and `weighted_demand` columns on the export, and an http(s)-only rule on the delivery tool link.
+- Registered through the module (no core file names it): nav entry, routes, `globalRoutes` for the inbox request, `orgOverviewSections` (inbox), `orgAdminSections` and `projectAdminSections` (scoring, through core's shared editors, and the submission setting). The one core edit is the generic `lightbulb` entry in the nav icon palette.
+- Not done, by decision: the list of requests with requesters still to tell is report F3 (Phase 6); the Move to project picker is not limited to projects with the module enabled (the server refuses and the dialog shows why); the docs website arrives in Phase 7 with the reports and their screenshots.
+
+**Phase 5b must add:** in core's shared `ScoringSchemeEditor` and `ProjectScoringSettings`, the enabled-models control and the level threshold field (derived axes only), and the axis and model editors (product with exponents, or weighted sum with importance and invert) with hide and restore, on the organisation and project scoring settings; level fields already read the effective scheme, so a custom axis appears in the request form as soon as it exists. These are generic scoring screens in core (`allow_custom_criteria` opts a scheme in), with Storybook and Playwright coverage.
+
+## Phase 5c: external references and channel per ask (added 2026-11-05)
+
+**Decided by: User** (2026-11-05): put Jira or ServiceNow items on a request, and note which channel each ask came through (engagement, ticket, conversation and so on). The user chose channel **per ask**, not per request, and agreed to the reference list below. Reverses Phase 0 question 8 ("no types at first") for the channel list, **Decided by: User**.
+
+*Why:* a request today carries one delivery-tool link and key with no system name, so it cannot hold a Jira epic and a ServiceNow ticket, or say whether a ticket is where the ask came from or where it is delivered. A merged request is asked for through several channels, so one channel on the request records only the first. *Risk:* references lost in the description, and demand that cannot be traced to how people asked. *Outcome:* a request lists its tickets by system and role, and each requester says how they asked.
+
+```mermaid
+flowchart LR
+    R[Request] --> X["External references<br/>system, key, URL, role"]
+    R -- Requested by --> P[Requester]
+    P --> C["Channel per ask<br/>(request, requester) to channel"]
+    V["Channel list<br/>organisation, project adds and hides"] --> C
+    S["External system list<br/>organisation, project adds and hides"] --> X
+```
+
+- **External references.** A child table `enhancement_request_external_refs (request_id, system_id, key, url, role)`, many per request. `role` is `origin` (the ticket it came from) or `delivery` (where it is built). `system` is chosen from an **external system list** (below), not typed, for consistency (**Decided by: User**, 2026-11-05); a reference stores the system's id, so renaming a system renames it everywhere. The URL follows the http(s)-only rule. The existing `external_ref_url` / `external_ref_key` pair becomes the first `delivery` row in a migration, then those two columns and the form's two fields are replaced by the list; the API keeps accepting both for one release (as Phase 3b did for `score`). Not versioned with the request: a reference is added or removed on its own, with an audit event, so it does not create a content version.
+- **Channel per ask.** The "Requested by" link has no attributes, so the channel is a module table keyed like the informed record: `enhancement_request_requester_channel (request_id, party_type, party_id, channel_id)`, matched to the current requesters on every read and with no foreign key to the party (it belongs to another module). A requester reached through an Engagement is shown as Engagement without a row. It is set from the Demand panel (a channel picker per requester row) and by a `channel` argument when a requester is added in the form. A merged duplicate's requesters keep their own channel.
+- **Two lists, both set by the organisation and extendable by a project** (**Decided by: User**, 2026-11-05: lists, not free text, for consistency). `ExternalSystemDefinition` (Jira, ServiceNow, Zendesk, Azure DevOps, GitHub, Other) and `RequestChannelDefinition` (Engagement, Support ticket, Call, Chat, Conversation, Email, Survey, Internal, Other). Each is a two-tier typed vocabulary like the Pain Point types: the organisation's rows are the shared base, a project adds rows of its own and hides organisation defaults (`ProjectDefinitionSuppression`, `TypeVocabulary`, `type_vocabulary_routes`, `ProjectTypeVocabularyPanel`, `RestoreOrgDefaultsButton`), and both are seeded at organisation creation only. Deleting an entry in use is refused with a reassignment, as the other vocabularies do. **Nested projects:** a child project with none of its own rows falls back to its nearest ancestor's effective list, the standing rule (**Decided by: Agent**; record it in `docs/decisions.md` at the start, and seed a root project only). Admin screens sit beside the other module settings on Organisation and Project admin.
+- **Everywhere else, in the same change:** both bundles (references, both lists with the defaults a project hid, per-ask channels by portable party key), record table columns (references as one `System:key` list cell using the system's name, round-trip tested; channel per ask is export-only), search (references searchable by key, the two lists not), MCP tools and `mcp_guidance.md` (`add_request_reference`, `remove_request_reference`, `set_requester_channel`, then `generate_skill_reference` as the repo requires), the perf generator and scaling probe (references and channels flat in statement count), report fields, `seed_demo_data.py` (a Jira and a ServiceNow reference and a channel on each demo requester), and the Phase 6 reports (F1 may show the channel mix).
+- **UI:** a References card on the request page (add, edit, remove; system picker; role badge; link opens in a new tab only for http(s)), the form's References list in the shared field group (system picked from the list, with an Other entry for the rest), a Channel column in the Demand and closing-the-loop panels, the two lists under Organisation and Project admin (the shared type-vocabulary panels), a References column and a "has reference from" filter only if the Phase 5 filter rules allow it server-side. Stories, Playwright and, in Phase 7, the docs website.
+- **Security:** a reference URL is user content rendered as a link (http(s) only, `rel="noopener noreferrer"`); references and channel rows are checked against the request's owner so a request id from another project or organisation is refused; the system and channel ids must belong to the organisation or to the request's own project chain; a party must be a current requester; audit events carry keys and counts, never URLs or notes.
+
+### Phase 5c notes (2026-11-05)
+
+Built; account, decisions and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 5c"). Migration `0137` (next `0138`).
+
+- Backend: `vocabularies.py` (the two `TypeVocabulary` lists), `vocabulary_routes.py` (their organisation and project endpoints), `references.py`, `channels.py`, `vocabulary_bundle.py`; the `feedback_list_admin` organisation role administers the organisation lists.
+- Frontend: `ReferenceFields` (one field group) under `ReferencesField` (create form) and `ReferenceFormModal` (request page), `RequestReferencesCard`, `RequesterChannelEdit` in the Demand panel, a Channel column in the Demand and loop panels, and `FeedbackListPanels` (the four admin screens).
+- Nested projects follow the standing rule (**Decided by: User**): a child with no configuration of its own shows its nearest ancestor's lists, then the organisation's; its first change copies them into it. Done as an opt-in of the shared `TypeVocabulary`.
+- Differences from the plan above, all recorded in the decisions log: the quick link on the create form does not take a channel (needs a core extension to give a link attributes); no References column or filter on the list.
+- Phase 6 may show the channel mix in F1 through the `channels` export column's definition (`record_tables._channel_mix`).
 
 ## Scoring extension (added 2026-11-05)
 

@@ -10,12 +10,16 @@ import io
 
 from app.modules.product_feedback.tests._helpers import (
     add_member,
+    add_requester,
     create_inbox_request,
+    create_persona,
     create_request,
+    create_stakeholder,
     grant_project_role,
     org_base,
     project_base,
     setup,
+    setup_with_people,
     transition,
 )
 from tests.conftest import auth_headers
@@ -184,3 +188,37 @@ def test_ease_is_an_editable_level_column_and_demand_a_read_only_derived_one(cli
     assert set(shown["levels"]) == {"ease"}  # the demand cell is not an editable column: it set nothing
     row = _rows(client.get(f"{_project_tier(project)}/export", headers=auth_headers(token)))[0]
     assert row["ease"] == "Easy" and row["demand"] == "Single voice"
+
+
+def test_demand_exports_as_read_only_requester_and_weighted_demand_columns(client, admin_token):
+    org, project, token = setup_with_people(client, admin_token, "Feedback Tables Demand Co")
+    pid = project["id"]
+    request = create_request(client, token, pid)
+    create_request(client, token, pid, title="Nobody asked")
+    stakeholder = create_stakeholder(client, token, pid, "Priya")
+    persona = create_persona(client, token, pid, "Power user", weight=2.5)
+    for other_type, other in (("stakeholder", stakeholder), ("persona", persona)):
+        assert add_requester(client, token, org["id"], pid, request["id"], other_type, other["id"]).status_code == 201
+
+    rows = {r["title"]: r for r in _rows(client.get(f"{_project_tier(project)}/export", headers=auth_headers(token)))}
+    asked = rows[request["title"]]
+    assert asked["requesters"] == "2" and float(asked["weighted_demand"]) > 0
+    assert rows["Nobody asked"]["requesters"] == "0" and rows["Nobody asked"]["weighted_demand"] == "0"
+
+    # Demand is derived from links, so importing the exported file leaves it as it was.
+    columns = client.get(f"{_project_tier(project)}/columns", headers=auth_headers(token)).json()["columns"]
+    by_key = {c["key"]: c for c in columns}
+    assert not by_key["requesters"]["importable"] and not by_key["weighted_demand"]["importable"]
+
+
+def test_an_import_row_with_a_malformed_link_is_a_row_error_not_a_stored_link(client, admin_token):
+    _, project, token = setup(client, admin_token, "Feedback Tables Url Co")
+    text = _csv(["code", "title", "references"], ["", "Sneaky", "Jira:https://"], ["", "Fine", "Jira:https://jira.example/P-2"])
+    preview = _import(client, token, _project_tier(project), text)
+    assert preview.status_code == 200, preview.text
+    actions = {row["row"]: row["action"] for row in preview.json()["rows"]}
+    assert sorted(actions.values()) == ["create", "error"]
+    applied = _import(client, token, _project_tier(project), text, apply=True)
+    assert applied.status_code == 200, applied.text
+    titles = [r["title"] for r in client.get(project_base(project["id"]) + "/requests", headers=auth_headers(token)).json()]
+    assert titles == ["Fine"]

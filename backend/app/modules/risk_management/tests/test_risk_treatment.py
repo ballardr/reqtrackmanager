@@ -73,7 +73,8 @@ def test_a_decision_may_address_a_risk_through_the_merged_addresses_type(client,
         if r["forward_name"] == "Addresses"
     )
     assert "risk" in addresses["allowed_target_types"] and "pain_point" in addresses["allowed_target_types"]
-    assert addresses["allowed_source_types"] == ["decision"]
+    # The type is shared: a decision (Decision Management) and an enhancement request (Product Feedback) may both address.
+    assert set(addresses["allowed_source_types"]) == {"decision", "enhancement_request"}
 
 
 def test_a_risk_has_a_summary_for_the_link_system(client, admin_token):

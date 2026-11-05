@@ -25,13 +25,16 @@ from __future__ import annotations
 from datetime import timedelta
 
 from app.modules.product_feedback.demand import REQUESTED_BY_FORWARD
-from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus
+from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, ExternalRefRole
 from app.modules.product_feedback.models import (
     EnhancementRequest,
     EnhancementRequestComment,
+    EnhancementRequestExternalRef,
     EnhancementRequestMerge,
     EnhancementRequestVersion,
     EnhancementRequestVersionScore,
+    ExternalSystemDefinition,
+    ProjectExternalSystem,
 )
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME, REQUEST_SCORING_SCHEME_KEY
 from app.modules.product_feedback.service import REQUEST_ARTEFACT_TYPE, REQUEST_CODE_PREFIX
@@ -46,6 +49,7 @@ from app.services.perf_dataset.records import (
     created_at,
     link_to_earlier,
     pick_weighted,
+    project_type_ids,
 )
 from app.services.scoring import list_levels
 
@@ -73,6 +77,7 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
         axis: [lv.id for lv in rows]
         for axis, rows in list_levels(ctx.db, ctx.organization_uuid, REQUEST_SCORING_SCHEME_KEY).items()
     }
+    systems = project_type_ids(ctx, ProjectExternalSystem, ExternalSystemDefinition)
     batch = RecordBatch.start(ctx, REQUEST_ARTEFACT_TYPE, REQUEST_CODE_PREFIX, EnhancementRequest)
     canonicals: list = []
     for _ in range(count):
@@ -106,6 +111,14 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
             for axis in REQUEST_SCORING_SCHEME.axes
             if axis.derived_source is None and levels.get(axis.key) and rng.random() < 0.85
         }
+        ref_count = (2 if rng.random() < 0.2 else 1) if systems and rng.random() < 0.4 else 0
+        for _ in range(ref_count):
+            batch.satellite(EnhancementRequestExternalRef, {
+                "id": batch.new_id(), "request_id": record_id, "org_system_id": None,
+                "project_system_id": rng.choice(systems), "key": f"PROJ-{rng.randint(1, 9999)}",
+                "url": None, "role": rng.choice((ExternalRefRole.ORIGIN, ExternalRefRole.DELIVERY)), "created_by": creator,
+                "created_at": created, "updated_at": created,
+            })
         extra = extra_versions(rng, ctx.spec.ratios.versions_per_requirement)
         valid_from = created
         for number in range(1, extra + 2):
@@ -120,7 +133,6 @@ def generate_requests(ctx: PerfProjectContext) -> dict[str, int]:
                 "valid_to": None if last else next_from, "title": title,
                 "description": textgen.paragraphs(rng, empty_chance=0.1, short_max=3),
                 "status": final if last else _S.NEW, "owner_type": "user" if owner else None, "owner_id": owner,
-                "external_ref_url": None, "external_ref_key": None,
                 "decline_reason": textgen.sentences(rng, 1) if last and final == _S.DECLINED else "",
                 "change_note": "Initial creation." if number == 1 else "Reworded.", "created_by": author,
                 "created_at": valid_from,

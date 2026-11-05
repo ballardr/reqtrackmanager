@@ -29,6 +29,11 @@ Design decisions (all Decided by: Agent):
   that matches no record, or more than one, is skipped with a warning rather than guessed at. A Pain Point an
   request addresses travels the same way (type and title), and so does an informed requester (type, title, when,
   who and the note; the person who recorded it is matched by e-mail, else the importer).
+- External references travel with their request by *system name* (`vocabulary_bundle.NameResolver`): a name the target
+  organisation lacks becomes an entry of the target project's own, with a warning, so a reference is never dropped.
+  The organisation's two lists (external systems, request channels) travel in the organisation bundle and a project's
+  own rows and hidden defaults in the project bundle; a requester's channel is replayed in `import_late_project_data`
+  with the requester, by type, title and channel name.
 - Links to Requirements and to other requests travel through the shared `services.bundle_links` (a Requirement by
   its code, which the core import keeps); a link to another module's record is carried by type and title above.
 - The org-level merge skips an inbox request whose title and description the organisation already holds, so a
@@ -53,13 +58,22 @@ from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
+from app.modules.product_feedback import references as refs
+from app.modules.product_feedback.channels import channels_by_request
 from app.modules.product_feedback.demand import REQUESTED_BY_FORWARD, REQUESTED_BY_REVERSE, REQUESTER_TYPES
-from app.modules.product_feedback.enums import EnhancementRequestScope, EnhancementRequestStatus, SubmissionPolicy
+from app.modules.product_feedback.enums import (
+    EnhancementRequestScope,
+    EnhancementRequestStatus,
+    ExternalRefRole,
+    SubmissionPolicy,
+)
 from app.modules.product_feedback.models import (
     EnhancementRequest,
+    EnhancementRequestExternalRef,
     EnhancementRequestFile,
     EnhancementRequestInformed,
     EnhancementRequestMerge,
+    EnhancementRequestRequesterChannel,
     EnhancementRequestVersion,
     EnhancementRequestVersionScore,
     ProjectFeedbackSettings,
@@ -72,6 +86,13 @@ from app.modules.product_feedback.service import (
     RecordOwner,
     set_submission_policy,
     version_levels,
+)
+from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
+from app.modules.product_feedback.vocabulary_bundle import (
+    NameResolver,
+    export_org_list,
+    export_project_list,
+    import_org_list,
 )
 from app.modules.registry import ScoringSchemeDefinition, get_artefact_summaries_in_project
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
@@ -128,6 +149,7 @@ def _export_requests(
     ids = [r.id for r, _ in pairs]
     levels = _level_refs(db, organization_id)
     stored = version_levels(db, [v.id for _, v in pairs])
+    references = refs.references_by_request(db, ids)
     prime_record_tag_names(db, REQUEST_ARTEFACT_TYPE, ids)
     if assets is not None:
         prime_file_links(db, EnhancementRequestFile, "request_id", ids)
@@ -137,7 +159,10 @@ def _export_requests(
         entry: dict[str, Any] = {
             "unique_code": request.unique_code, "title": version.title, "description": version.description,
             "status": version.status.value, "decline_reason": version.decline_reason,
-            "external_ref_url": version.external_ref_url, "external_ref_key": version.external_ref_key,
+            "references": [
+                {"system": ref.system_name, "key": ref.key, "url": ref.url, "role": ref.role.value}
+                for ref in references[request.id]
+            ],
             "owner": principal_to_bundle(db, version.owner_type, version.owner_id),
             "levels": {axis: levels[level_id] for axis, level_id in stored[version.id].items() if level_id in levels},
             "created_by_email": emails.get(request.creator_id), "created_at": _j(request.created_at),
@@ -181,7 +206,7 @@ def _imported_status(entry: dict[str, Any]) -> EnhancementRequestStatus:
 def _import_request(
     db: Session, holder: RecordOwner, entry: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     current_user: User | None, file_bytes_by_ref: dict[str, bytes] | None, level_ids: dict[tuple[str, str], UUID],
-    scheme: ScoringSchemeDefinition, axis_map: dict[str, str],
+    scheme: ScoringSchemeDefinition, axis_map: dict[str, str], systems: NameResolver,
 ) -> EnhancementRequest:
     """Creates one request (numbered afresh) with its version 1, scoring levels, tags and attachments; a level
     `level_ids` (`_level_ids`) cannot match is left unset with a warning. `axis_map` re-points an exported custom
@@ -215,7 +240,6 @@ def _import_request(
     version = EnhancementRequestVersion(
         request_id=request.id, version_number=1, valid_from=now, valid_to=None, title=entry["title"],
         description=entry.get("description", ""), status=_imported_status(entry),
-        external_ref_url=entry.get("external_ref_url"), external_ref_key=entry.get("external_ref_key"),
         decline_reason=entry.get("decline_reason", ""),
         **principal_columns_from_bundle(
             db, entry, "owner", organization_id=holder.organization_id, project_id=holder.project_id, users=users,
@@ -227,6 +251,16 @@ def _import_request(
     db.flush()
     for axis_key, level_id in levels.items():
         db.add(EnhancementRequestVersionScore(version_id=version.id, axis_key=axis_key, level_id=level_id))
+    db.flush()
+    for ref in entry.get("references", [])[: refs.MAX_REFERENCES]:
+        system_id = systems.row_id(ref.get("system"))
+        if system_id is None or not (ref.get("key") or ref.get("url")):
+            continue
+        db.add(EnhancementRequestExternalRef(
+            request_id=request.id, org_system_id=system_id if holder.project_id is None else None,
+            project_system_id=system_id if holder.project_id is not None else None, key=ref.get("key") or "",
+            url=ref.get("url") or None, role=ExternalRefRole(ref.get("role", "delivery")), created_by=creator_id,
+        ))
     db.flush()
     restore_record_tags(
         db, organization_id=holder.organization_id, record_project_id=holder.project_id, actor_id=creator_id,
@@ -266,14 +300,22 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
     ).all()
     entries = _export_requests(db, org.id, [tuple(p) for p in pairs], None)
     _add_merges(db, [r for r, _ in pairs], entries)
-    return {"enhancement_requests": entries, "scoring_definitions": export_definitions(db, org.id, REQUEST_SCORING_SCHEME, None)}
+    return {
+        "enhancement_requests": entries,
+        "scoring_definitions": export_definitions(db, org.id, REQUEST_SCORING_SCHEME, None),
+        "external_systems": export_org_list(db, org, EXTERNAL_SYSTEMS),
+        "request_channels": export_org_list(db, org, REQUEST_CHANNELS),
+    }
 
 
 def import_org_data(
     db: Session, org: Organization, data: dict[str, Any], users: UserResolver, warnings: BundleImportWarnings,
     resolutions: dict[str, str] | None,
 ) -> None:
-    """`ModuleOrgBundleHooks.import_`: recreates the inbox requests, skipping one the organisation already holds."""
+    """`ModuleOrgBundleHooks.import_`: recreates the organisation's two lists and the inbox requests, skipping one
+    the organisation already holds."""
+    import_org_list(db, org, EXTERNAL_SYSTEMS, data.get("external_systems", []))
+    import_org_list(db, org, REQUEST_CHANNELS, data.get("request_channels", []))
     existing = {
         (v.title, v.description)
         for v in db.scalars(
@@ -288,13 +330,16 @@ def import_org_data(
     axis_map = _import_scoring_definitions(db, org.id, None, data, warnings)
     level_ids = _level_ids(db, org.id) if entries else {}
     scheme = effective_scheme(db, org.id, REQUEST_SCORING_SCHEME, None)
+    systems = NameResolver(db, EXTERNAL_SYSTEMS, org.id, None, warnings, "external system")
     for entry in entries:
         key = (entry["title"], entry.get("description", ""))
         if key in existing:
             warnings.add(f"Inbox request {entry['title']!r} skipped — the organisation already has one like it.")
             continue
         existing.add(key)
-        request = _import_request(db, RecordOwner(org.id), entry, users, warnings, None, None, level_ids, scheme, axis_map)
+        request = _import_request(
+            db, RecordOwner(org.id), entry, users, warnings, None, None, level_ids, scheme, axis_map, systems,
+        )
         if entry.get("unique_code"):
             imported[entry["unique_code"]] = request.id
     _replay_merges(db, entries, imported, users, warnings, None)
@@ -321,6 +366,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "enhancement_requests": entries,
         _LINKS_KEY: export_artefact_links(db, project, {REQUEST_ARTEFACT_TYPE: {r.id: r.unique_code for r, _ in pairs}}),
         "scoring_definitions": export_definitions(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id),
+        "external_systems": export_project_list(db, project, EXTERNAL_SYSTEMS),
+        "request_channels": export_project_list(db, project, REQUEST_CHANNELS),
     }, assets
 
 
@@ -390,11 +437,23 @@ def _add_requesters_and_merges(
     for rows in informed.values():
         for row in rows:
             wanted.setdefault(row.party_type, set()).add(row.party_id)
+    channels = channels_by_request(db, ids)
+    for by_party in channels.values():
+        for party_type, party_id in by_party:
+            wanted.setdefault(party_type, set()).add(party_id)
     titles = _titles(db, project, wanted)
     _titled_links(requests, entries, "requested_by", requested_by, titles)
     _titled_links(requests, entries, "addresses", addresses, titles)
     emails = _emails(db, {row.informed_by for rows in informed.values() for row in rows})
     for request, entry in zip(requests, entries, strict=True):
+        entry["requester_channels"] = sorted(
+            (
+                {"type": party_type, "title": titles[(party_type, party_id)], "channel": choice.name}
+                for (party_type, party_id), choice in channels.get(request.id, {}).items()
+                if (party_type, party_id) in titles
+            ),
+            key=lambda e: (e["type"], e["title"]),
+        )
         entry["informed"] = sorted(
             (
                 {
@@ -446,12 +505,16 @@ def import_project_data(
     axis_map = _import_scoring_definitions(db, project.organization_id, project.id, data, warnings, current_user)
     level_ids = _level_ids(db, project.organization_id) if requests else {}
     scheme = effective_scheme(db, project.organization_id, REQUEST_SCORING_SCHEME, project.id)
+    systems = NameResolver(db, EXTERNAL_SYSTEMS, project.organization_id, project, warnings, "external system")
+    systems.import_project_rows(data.get("external_systems", {}).get("rows", []))
     for entry in requests:
         request = _import_request(
-            db, holder, entry, users, warnings, current_user, file_bytes_by_ref, level_ids, scheme, axis_map,
+            db, holder, entry, users, warnings, current_user, file_bytes_by_ref, level_ids, scheme, axis_map, systems,
         )
         if entry.get("unique_code"):
             imported[entry["unique_code"]] = request.id
+    # Hidden last: a request above may use a system the project hides, which needs its row created first.
+    systems.hide(data.get("external_systems", {}).get("hidden", []))
     db.info[(_PENDING_CODES, project.id)] = imported
     db.flush()
 
@@ -466,6 +529,9 @@ def import_late_project_data(
     or more than one, is skipped with a warning; a merge the rules refuse is skipped with the reason."""
     imported: dict[str, UUID] = db.info.pop((_PENDING_CODES, project.id), {})
     entries = data.get("enhancement_requests", [])
+    channel_list = data.get("request_channels") or {}
+    channels = NameResolver(db, REQUEST_CHANNELS, project.organization_id, project, warnings, "request channel")
+    channels.import_project_rows(channel_list.get("rows", []))
     summaries: dict[str, dict[str, list[UUID]]] = {}
 
     def match(code: str, target_type: str, title: str, what: str) -> UUID | None:
@@ -508,6 +574,17 @@ def import_late_project_data(
                         )
                 except IntegrityError:
                     continue
+        for asked in entry.get("requester_channels", []):
+            if asked["type"] not in REQUESTER_TYPES:
+                continue
+            party_id = match(code, asked["type"], asked["title"], "requester")
+            channel_id = channels.row_id(asked.get("channel")) if party_id is not None else None
+            if party_id is None or channel_id is None:
+                continue
+            db.add(EnhancementRequestRequesterChannel(
+                request_id=request_id, party_type=asked["type"], party_id=party_id, channel_id=channel_id,
+                set_by=current_user.id,
+            ))
         for told in entry.get("informed", []):
             if told["type"] not in REQUESTER_TYPES:
                 continue
@@ -521,6 +598,7 @@ def import_late_project_data(
                 note=told.get("note", ""),
             ))
     db.flush()
+    channels.hide(channel_list.get("hidden", []))
     import_artefact_links(
         db, project, data.get(_LINKS_KEY, []), {REQUEST_ARTEFACT_TYPE: imported}, current_user, users, warnings,
         context="Product Feedback",
