@@ -91,10 +91,13 @@ from app.modules.registry import (
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
 from app.services.downloads import file_response, filename_safe
+from app.services.permissions import encode_permission
 from app.services.project_hierarchy import get_descendant_project_ids
 from app.services.rbac import (
+    get_effective_permissions,
     get_effective_project_roles,
     memoize_user_lookups,
+    permission_satisfied,
     prefetch_project_roles,
     require_org_module_enabled,
     require_project_any_subcomponent_enabled,
@@ -284,6 +287,8 @@ class ReportContext:
         all_org_projects: Whether `projects` is every project in the
             organisation rather than only those the caller can read.
         today: The reference date (UTC; injectable for tests).
+        viewer_id: The person the report is run for (`None` when not known). A collector that names another
+            record the project's members may not all see asks `can_view`, which fails closed without it.
     """
 
     module_key: str
@@ -293,6 +298,7 @@ class ReportContext:
     params: dict[str, Any] = field(default_factory=dict)
     all_org_projects: bool = False
     today: date = field(default_factory=lambda: datetime.now(UTC).date())
+    viewer_id: uuid.UUID | None = None
     _enabled: dict[tuple[uuid.UUID, str], bool] = field(default_factory=dict, repr=False)
 
     @property
@@ -347,6 +353,22 @@ class ReportContext:
             `{record id: "tag a, tag b"}`.
         """
         return {rid: ", ".join(names) for rid, names in tag_names_for_records(db, artefact_type, record_ids).items()}
+
+    def can_view(self, db: Session, artefact_type: str, project_id: uuid.UUID) -> bool:
+        """Whether the person the report is run for may view `artefact_type` records in the project: they hold the
+        type's `view` permission there. `False` when the viewer is not known, so a report names nothing it cannot
+        show them.
+
+        Args:
+            db: Database session.
+            artefact_type: A registered artefact type.
+            project_id: The project the record is in.
+        """
+        if self.viewer_id is None:
+            return False
+        return permission_satisfied(
+            get_effective_permissions(db, self.viewer_id, project_id=project_id), encode_permission(artefact_type, "view"),
+        )
 
     def eligible(self, db: Session, subcomponent: str) -> list[Project]:
         """The in-scope projects that have `subcomponent` effectively enabled.
@@ -893,6 +915,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
         params = validated_params(live, kw)
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=project, params=params,
+            viewer_id=kw["current_user"].id,
             projects=readable_projects(
                 db, kw["current_user"], organization=organization, root_project=project,
                 include_children=kw["include_children"],
@@ -937,7 +960,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         ctx = ReportContext(
             module_key=module_key, organization=organization, root_project=None, params=params,
             all_org_projects=live.org_scope == "all_org_projects",
-            projects=projects,
+            projects=projects, viewer_id=current_user.id,
         )
         result = apply_cell_tones(live.collector(db, ctx), live.cell_tones)
         return _respond(
@@ -982,7 +1005,7 @@ def _build_org_breakdown_route(module_key: str, definition: ReportDefinition) ->
         for project in projects[:MAX_BREAKDOWN_PROJECTS]:
             ctx = ReportContext(
                 module_key=module_key, organization=organization, root_project=None, params=params,
-                all_org_projects=live.org_scope == "all_org_projects", projects=[project],
+                all_org_projects=live.org_scope == "all_org_projects", projects=[project], viewer_id=current_user.id,
             )
             result = live.collector(db, ctx)
             if result.eligible_projects == 0:

@@ -27,6 +27,7 @@ from app.modules.product_feedback.enums import EnhancementRequestStatus
 from app.modules.product_feedback.models import EnhancementRequest
 from app.modules.product_feedback.ratings import parse_model_keys
 from app.modules.product_feedback.references import references_by_request
+from app.modules.product_feedback.reports import REPORT_ROUTERS
 from app.modules.product_feedback.schemas import (
     ChannelUpdate,
     CloseTheLoopOut,
@@ -78,6 +79,8 @@ router = APIRouter(
 )
 
 _require_view = require_project_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, REQUEST_SUBCOMPONENT_KEY)
+# The module's reports (`reports.py`): generated routes at `/reports/<slug>`, under this router's prefix.
+router.include_router(REPORT_ROUTERS.project)
 
 
 def _project(db: Session, project_id: UUID) -> Project:

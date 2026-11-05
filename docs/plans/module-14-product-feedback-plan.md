@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens), 5c (external references and channel per ask) and 5b (scoring administration screens) built 2026-11-05; Phase 6 (reports) next. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens), 5c (external references and channel per ask), 5b (scoring administration screens) and 6 (reports) built 2026-11-05; Phase 7 (docs website) next. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
@@ -15,8 +15,8 @@ artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-11 / 13 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
-Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (backend) and Phase 5 (screens) done 2026-11-05. Phase 5c (**Decided by: User**, 2026-11-05) and Phase 5b are done the same day; Phase 6 is next, then Phase 7.
+12 / 13 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (backend) and Phase 5 (screens) done 2026-11-05. Phase 5c (**Decided by: User**, 2026-11-05), Phase 5b and Phase 6 are done the same day; Phase 7 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -31,7 +31,7 @@ Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (b
 | 5 | Frontend UI: list, request page, forms, inbox, merge, demand, scoring display, closing the loop | [x] Complete (2026-11-05) — see "Phase 5 notes" |
 | 5b | Scoring administration screens: enabled models, level thresholds, custom axes and models, hide and restore | [x] Complete (2026-11-05) — see "Phase 5b notes" |
 | 5c | External references (several, with system and role) and channel per ask | [x] Complete (2026-11-05) — see "Phase 5c" and "Phase 5c notes" |
-| 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06, see `docs/modules.md` §4g |
+| 6 | Reports (F1–F5) | [x] Complete (2026-11-05) — see "Phase 6 notes" |
 | 7 | Docs website coverage | [ ] Not started |
 
 ## Where it fits
@@ -285,6 +285,26 @@ flowchart LR
 - New shared components in `frontend/src/components/`: `ScoringEnabledModels`, `ScoringCriteria`, `ScoringAxisFormModal`, `ScoringModelFormModal`, `scoringLevelFields`; `api/scoring.ts` gains the criteria calls, shared by both tiers. A scheme shows "Models shown" only when it sets the new `side_by_side_models` (Product Feedback does); "Criteria" only with `allow_custom_criteria`. Pain Point and Risk screens are unchanged.
 - Specs: Storybook for each component and the two editors; `scoring-administration.spec.ts` (organisation and project).
 - **Phase 6 may rely on:** nothing new; F1 still reads the effective scheme.
+
+## Phase 6 notes (2026-11-05)
+
+Backend built, no new screen (the shared Reports page renders them); account, decisions and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 6").
+
+```mermaid
+flowchart LR
+    R[Reports page / MCP / layouts] --> C[ReportContext<br/>scope + viewer_id]
+    C --> F1[F1 Demand ranking]
+    C --> F2[F2 Unlinked]
+    C --> F3[F3 Close the loop]
+    C --> F4[F4 Triage ageing]
+    C --> F5[F5 Problem demand]
+    F1 & F2 & F3 & F4 & F5 --> M[compute_demand · compute_links · loop · score_levels]
+```
+
+- `reports.py`: five `ReportDefinition`s (slugs `demand-ranking`, `unlinked-requests`, `close-the-loop`, `triage-ageing`, `problem-demand`), each at project level and, with the `org_feedback_triager` role, organisation level. F1 and F4 take `include_inbox` (organisation-wide runs only); F1 takes `rank_by` and `scoring_model`; F2 `include_closed`; F4 `older_than_days`.
+- **F3 names no requester** (personal data); it gives counts and channel mix. **Raised for the User:** name them for a holder of `export_personal_data` if wanted.
+- Core extension: `ReportContext.viewer_id` and `can_view` (so a report names another module's record only to someone who may view it); F5 uses it.
+- **Phase 7 must:** the docs pages for the module and the five reports, with the problem/solution distinction and a screenshot of the demand ranking; `request-reports.spec.ts` should be run once against the rebuilt stack first.
 
 ## Phase 5c: external references and channel per ask (added 2026-11-05)
 

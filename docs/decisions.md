@@ -16303,3 +16303,43 @@ flowchart LR
 **Finding (fixed in the same change).** The first version of "Models shown" appeared on every scheme's screen, including Pain Point and Risk, where no code reads the enabled set. Fixed with `side_by_side_models` and a story asserting the Pain Point editor shows neither "Models shown" nor "Criteria".
 
 **Test traps.** `Playwright .check()/.uncheck()` fail on these boxes, because each tick saves and the box only changes when the server answers; use `.click()` and assert the toast. A model's accessible name carries its full label (`ICE (Impact × Confidence × Ease)`), so a spec matches the start of the name.
+
+## Module 14 (Product Feedback) Phase 6: reports F1 to F5 (2026-11-05)
+
+Backend only (no migration, no new screen: the shared Reports page renders them). Code: `modules/product_feedback/reports.py`; one generic core extension, `ReportContext.viewer_id` and `can_view` (`services/report_framework.py`, set by every route, layout and widget run). Tests: `test_feedback_reports.py` (14), `request-reports.spec.ts` (written and type-checked, **not run**: it needs the rebuilt compose stack). MCP: one read tool per report, `mcp_guidance.md` and `mcp_skill_reference/module-tools.md` regenerated.
+
+```mermaid
+flowchart LR
+    D[compute_demand] --> F1[F1 Demand ranking]
+    L[compute_links] --> F1
+    S[score_levels] --> F1
+    L --> F2[F2 Unlinked requests]
+    D --> F2
+    D --> F3[F3 Close the loop]
+    I[informed rows + channels] --> F3
+    V[version history] --> F4[F4 Triage ageing]
+    L --> F5[F5 Problem demand]
+    D --> F5
+    P[Pain Point summaries] -->|if the viewer may view them| F5
+```
+
+| Decision | Choice | Decided by |
+|----------|--------|------------|
+| One definition | Every report reads the module's own readers (`compute_demand`, `compute_links`, the informed rows, `score_levels`), so a report and the request page cannot disagree. | Agent (the plan said so) |
+| What is listed | Unarchived requests only. F1 lists open requests (New, Under review, Accepted); F2 the same, plus delivered and declined on request; F4 New and Under review; F3 delivered and declined. A merged duplicate never appears (its demand and links are its canonical request's). | Agent |
+| F1 ranking | Weighted demand then score by default, or `rank_by=score`. A request lacking a level for the model is "Not scored" and listed after the scored ones, never as zero. Says which model it scored under. | Agent |
+| F1 scoring tier | A project run scores each project under its own scheme (its own criteria count; a project that hides the model leaves its requests unscored, with a note). An organisation-wide run scores everything under the organisation's scheme, because a model one project defined says nothing across projects. | Agent (the plan said so) |
+| The inbox | A project run never lists it. An organisation-wide run lists it only when asked (`include_inbox`, F1 and F4), because the organisation breakdown route calls a collector once per project and would repeat it in each. An inbox request cannot be linked, so F1 shows it as "Inbox" rather than flagging "No Pain Point", and F2, F3 and F5 leave it out. | Agent |
+| Gate of the organisation-wide run | The `org_feedback_triager` role, the module's only organisation role that manages requests. | Agent |
+| F3 names no one | The report gives counts, the outcome and the channel mix of the requesters still to tell, not their names. A Stakeholder's name is `personal` data that leaves the application in a file only under the personal-data policy and permission; the request page shows names only to a viewer who can see the record. The triager opens the request to see who. | Agent: **raised for the User**; naming requesters when the person holds `export_personal_data` is the alternative |
+| F4 clock | Time since the request *entered its current status* (the start of its unbroken run of versions in that status), so an edit does not reset it. Default threshold 14 days. | Agent |
+| F5 definitions | Counts requests not declined or merged away; requesters are the union across a Pain Point's requests (one person asking twice is one). A Pain Point "has a Requirement" when one is linked to it directly or realises a request that addresses it. A Pain Point of a related project is not listed. | Agent |
+| Time shape | Ages are elapsed time between two UTC instants (a past instant); no calendar date or timezone is involved, so no boundary-hour test applies. | Agent |
+| Nested projects, bundles, search, export, perf | No new table, vocabulary, column or record type, so none of those checklists applies; a report is not a bundle section. | Agent |
+| Docs website | Not updated here: Phase 7 covers the module's pages and the reports' screenshots, as agreed in the plan. | Agent |
+
+**Security review (identify, verify, remediate).** Touches multi-tenant scope, authorisation and personal data. *Identify:* (1) the inbox query leaking another organisation's requests; (2) an organisation-wide run covering projects the caller cannot read; (3) naming requesters (personal data) or a Pain Point the caller may not view; (4) a cell becoming a spreadsheet formula; (5) a request title or a status rendered as markup. *Verify:* (1) the inbox is selected by `organization_id == ctx.organization.id` and scope `organization` only; (2) the collector reads only `ctx.eligible(...)`, which never widens the framework's `readable_projects` scope, and the organisation route needs the triager role (tested: 403 without it, 404 for another organisation's or a disabled module); (3) F3 holds no name, tested by asserting four stakeholder names are absent from the whole response, and F5 asks `can_view` (tested with no viewer: nothing named, a note counts the withheld ones); (4) the framework's `csv_safe` (tested with a `=HYPERLINK(...)` title); (5) cells are plain text through the framework's escapers. *Remediate:* (3) found a gap: the framework gave a collector no viewer identity, so F5's first version named Pain Points to anyone able to run it, which the request page does not. Fixed with the generic `viewer_id` / `can_view` (documented in `docs/modules.md` §4g) rather than a module-local workaround.
+
+**Checked, no finding.** The Decision and Context & Strategy reports also read other modules' records through `get_artefact_summary`, but only to test existence and count them (`_readable_artefact`, the principle's decision count); they name none, so they needed no `can_view`. F5 is the first report to name another module's records, which is why it was the one to need it.
+
+**Not run.** `request-reports.spec.ts` (needs the compose stack rebuilt, which does not bind-mount source).

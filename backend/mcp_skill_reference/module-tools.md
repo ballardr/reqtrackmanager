@@ -1741,6 +1741,8 @@ External references and channels: a reference names a **system** (`list_external
 
 Scoring: a request holds an optional level per axis in `levels` (`{"impact": <level id>, "effort": null}`: an axis set to `null` is cleared, one not mentioned is kept). Axes: **Reach, Impact, Confidence, Ease** (higher is easier), **Effort** (a higher level lowers a RICE score) and **Demand** (derived from the requesters; set a level by hand only to override it, `derived_levels` shows what it resolved to). Find the ids with `product_feedback_get_request_scoring_scheme` (or `get_inbox_scoring_scheme`). Scores are derived, never written: **ICE** is Impact x Confidence x Ease, **RICE** is Reach x Impact x Confidence / Effort, **rice_demand** replaces Reach with Demand. `get_request` and `list_requests` return `scores` (model key to `raw`, `normalised`, band `label`) for the project's enabled models, or those named by `scoring_model` (comma-separated, the first is the primary shown as `score`); a score is null until every manual axis the model needs has a level. To find work to do, filter `list_requests` with `scored=unscored` (or `missing_axis=ease`). Reach is a manual level, separate from the derived demand; compare the two, do not substitute one for the other. Scores of different models are not comparable. The organisation and each project may add their own axes (keys `c_...`) and models (keys `m_...`: a product with divisors and exponents, or a weighted sum), and hide the built-in ones: the scheme tools return exactly what this project can use, with each criterion's `origin`, so read it before choosing an axis or model; a request cannot take a level on an axis its project cannot see. Defining or hiding criteria is done in the app by an administrator, not through these tools.
 
+Reports (`product_feedback_get_*_report`, project-level, read-only) answer cross-cutting questions in one call; prefer one to listing and fetching every request. **Demand ranking** (`demand-ranking`) ranks open requests by weighted demand (or `rank_by=score`), states the `scoring_model` it scored under and flags requests with no Pain Point; a request with a level missing for the model is "Not scored", never zero. **Unlinked requests** lists solutions with no stated problem, loudest first. **Close the loop** lists delivered or declined requests with requesters not yet told (counts and channel mix only, it names no one: use `get_request_close_the_loop` for who). **Triage ageing** (`older_than_days`, default 14) lists requests that have waited in New or Under review, counted from when they entered that status. **Problem demand** ranks Pain Points by the requests and distinct requesters asking for a fix, and says whether a Requirement exists.
+
 Rules and gotchas:
 - Submitting is open to project members unless the project restricted it to triagers; every other write needs the Feedback Triager role. A 403 means the caller lacks it.
 - `transition_request` to `declined` needs a `comment`: it is stored as the decline reason. Moving to `delivered` is a person's judgement; do it only when asked.
@@ -1925,3 +1927,33 @@ Parameters: `organization_id*` (uuid, in path), `title*` (string, in body), `des
 Lists the organisation's external systems (Jira, ServiceNow, ...) an inbox request's references can use.
 
 Parameters: `organization_id*` (uuid, in path)
+
+#### `product_feedback_get_demand_ranking_report` (read)
+
+Demand ranking: Open requests ranked by weighted demand and score, with requests resting on no Pain Point flagged.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `rank_by` (string, in query), `scoring_model` (string, in query), `include_inbox` (boolean, in query)
+
+#### `product_feedback_get_unlinked_requests_report` (read)
+
+Unlinked requests: Requests that address no Pain Point: a proposed solution with no problem behind it.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `include_closed` (boolean, in query)
+
+#### `product_feedback_get_close_the_loop_report` (read)
+
+Close the loop: Delivered or declined requests with requesters who have not been told the outcome.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)
+
+#### `product_feedback_get_triage_ageing_report` (read)
+
+Triage ageing: Requests that have waited in New or Under review longer than a number of days.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query), `older_than_days` (integer, in query), `include_inbox` (boolean, in query)
+
+#### `product_feedback_get_problem_demand_report` (read)
+
+Problem demand: Pain Points by the number of requests and people asking for a fix, and whether a Requirement exists.
+
+Parameters: `project_id*` (uuid, in path), `include_children` (boolean, in query)

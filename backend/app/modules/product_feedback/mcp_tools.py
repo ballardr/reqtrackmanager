@@ -21,8 +21,10 @@ Dependencies: `modules.registry` (`McpToolDefinition`).
 
 from __future__ import annotations
 
+from app.modules.product_feedback.reports import REPORT_DEFINITIONS
 from app.modules.product_feedback.service import PRODUCT_FEEDBACK_MODULE_KEY
 from app.modules.registry import McpToolDefinition
+from app.services.report_framework import report_mcp_tools
 
 _PREFIX = f"/api/v1/projects/{{project_id}}/modules/{PRODUCT_FEEDBACK_MODULE_KEY}"
 _ORG_PREFIX = f"/api/v1/orgs/{{organization_id}}/modules/{PRODUCT_FEEDBACK_MODULE_KEY}"
@@ -306,4 +308,4 @@ def build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             description="Lists the organisation's external systems (Jira, ServiceNow, ...) an inbox request's references can use.",
             method="GET", path_template=f"{_ORG_PREFIX}/external-systems", params=[_ORG_ID],
         ),
-    )
+    ) + report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=_PREFIX)

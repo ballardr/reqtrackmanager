@@ -251,6 +251,7 @@ def _evaluate_project(
     resolver = ArtefactResolver(db, root, user.id, include_related=True)
     ctx = ReportContext(
         module_key=MODULE_KEY, organization=organization, projects=list(projects), root_project=root, today=effective_today(),
+        viewer_id=user.id,
     )
     return evaluate_layout(
         db, resolver, ctx, version.tree, title=title, project_ids=[p.id for p in projects], timeout_seconds=timeout,

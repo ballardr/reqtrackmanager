@@ -25,11 +25,13 @@ references to it (each in one of the organisation's external systems).
 - External references and channels: a request lists the items it points to in outside tools (`references.py`), and each
   requester says how they asked (`channels.py`); both are chosen from organisation lists a project can extend and
   hide entries of (`vocabularies.py`, administered with the `feedback_list_admin` role).
-- MCP tools: write-enabled (`mcp_tools.py`).
+- Reports F1-F5 (`reports.py`): demand ranking, unlinked requests, close the loop, triage ageing and problem demand, for a
+  project and (with the `org_feedback_triager` role) the organisation.
+- MCP tools: write-enabled (`mcp_tools.py`), plus a read tool per report.
 
 - `frontend_manifest` (Tier A; `frontend/src/modules/product_feedback/module.ts` serves the list and detail routes,
   the organisation inbox panel, the scoring settings and the submission setting). The nav entry is gated on the
-  `enhancement_request` sub-component. Reports arrive in a later change through the same registration.
+  `enhancement_request` sub-component.
 """
 
 from __future__ import annotations
@@ -51,6 +53,7 @@ from app.modules.product_feedback.record_attachments import NO_RECORD_ATTACHMENT
 from app.modules.product_feedback.record_tables import RECORD_TABLES
 from app.modules.product_feedback.relationships import ADDRESSES_SEED, REALISED_BY_SEED
 from app.modules.product_feedback.report_fields import REPORT_FIELDS
+from app.modules.product_feedback.reports import REPORT_DEFINITIONS
 from app.modules.product_feedback.scaling_probes import SCALING_PROBES
 from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME
 from app.modules.product_feedback.search import SEARCH_PROVIDERS
@@ -150,6 +153,7 @@ MODULE_DEFINITION = ModuleDefinition(
     search_providers=SEARCH_PROVIDERS,
     scoring_schemes=(REQUEST_SCORING_SCHEME,),
     report_fields=REPORT_FIELDS,
+    reports=REPORT_DEFINITIONS,
     record_attachments=RECORD_ATTACHMENTS,
     no_record_attachments=NO_RECORD_ATTACHMENTS,
     record_tables=RECORD_TABLES,

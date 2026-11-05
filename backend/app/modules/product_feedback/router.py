@@ -29,6 +29,7 @@ from app.modules.product_feedback.enums import EnhancementRequestStatus
 from app.modules.product_feedback.models import EnhancementRequest
 from app.modules.product_feedback.ratings import parse_model_keys
 from app.modules.product_feedback.references import references_by_request
+from app.modules.product_feedback.reports import REPORT_ROUTERS
 from app.modules.product_feedback.schemas import (
     ExternalRefIn,
     ExternalRefOut,
@@ -68,6 +69,9 @@ router = APIRouter(
 )
 
 _require_view = require_org_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY)
+# The module's organisation-wide reports (`reports.py`): generated routes at `/reports/<slug>`. They need the module and
+# the `org_feedback_triager` role, not the inbox switch (an organisation-wide run covers projects as well).
+router.include_router(REPORT_ROUTERS.org)
 
 
 # The organisation's two classified lists are read by the inbox form and administered even with the inbox switched off,
