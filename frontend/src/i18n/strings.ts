@@ -3588,6 +3588,16 @@ const en = {
     // Scoring
     scoringModel: "The formula that combines the scoring axes (for example likelihood and consequence) into one score and band.",
     scoringDefaultModel: "The scoring model used for new scores in this {project} when none is chosen. The model decides how the axes combine into one score.",
+    scoringEnabledModels: "The models whose scores are shown side by side for each record. The default model is always shown. Clear the choice to show every model.",
+    scoringAxisName: "What this criterion measures, for example Strategic fit. People see it as a field when they score a record.",
+    scoringAxisDescription: "Guidance for the person scoring: what the criterion means and how to choose a level.",
+    scoringLevelThreshold: "The lowest worked-out value that falls in this level. A request lands in the highest level whose threshold it reaches, so the first level is normally 0.",
+    scoringModelName: "What people see when they pick this model, for example Weighted value.",
+    scoringModelCombination: "A product multiplies the chosen levels' weights (and can divide by an axis such as Effort). A weighted sum scales each axis to 0 to 100% and adds them by importance.",
+    scoringModelRole: "How the model uses this criterion: multiply the score by it, divide the score by it, add it to the sum, or leave it out.",
+    scoringModelExponent: "How much this criterion counts in a product. 1 is normal, 2 counts it twice as strongly, 0.5 half as strongly.",
+    scoringModelImportance: "The share of the total score this criterion carries, as a percentage. The shares must total 100.",
+    scoringModelLowerBetter: "Tick when a lower level is better, such as Effort or Risk, so a low level scores high.",
     scoringRollup: "How several scores become one number: a weighted average uses each score's weight, worst case takes the highest, and a plain average ignores weights.",
     // Organisation and server administration
     ssoEnable: "Lets members sign in through the organisation's identity provider (OpenID Connect). Fill in the issuer and client details first.",

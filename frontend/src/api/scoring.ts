@@ -40,6 +40,22 @@ export const SCORING_BAND_TONE_LABEL: Record<BadgeTone, string> = {
 
 export type ScoringCriterionOrigin = "built_in" | "org" | "project";
 
+/** Who defined a criterion, as the tier looking at it names them; a project's own is "This project". */
+export function scoringOriginLabel(
+  origin: ScoringCriterionOrigin | undefined, ownerProjectId: string | null | undefined, projectId?: string,
+): string {
+  if (origin === "org") return "Organisation";
+  if (origin === "project") return ownerProjectId && ownerProjectId === projectId ? "This project" : "Parent project";
+  return "Built in";
+}
+
+/** Whether the tier editing (the organisation, or `projectId`) defined this criterion, so it can edit and delete it rather than only hide it. */
+export function scoringOwnsCriterion(
+  origin: ScoringCriterionOrigin | undefined, ownerProjectId: string | null | undefined, projectId?: string,
+): boolean {
+  return projectId ? origin === "project" && ownerProjectId === projectId : origin === "org";
+}
+
 export interface ScoringLevel {
   id: string;
   name: string;
@@ -114,6 +130,8 @@ export interface ScoringScheme {
   enabled_models_source?: ScoringResolutionSource;
   /** Whether the organisation and projects may define their own axes and models on this scheme. */
   allow_custom_criteria?: boolean;
+  /** Whether the module scores a record with several models at once, so which models are enabled matters. */
+  side_by_side_models?: boolean;
   /** Registered or inherited criteria this tier hid, which it can restore. */
   hidden_criteria?: { kind: "axis" | "model"; key: string; label: string }[];
 }
@@ -150,11 +168,77 @@ export function topWeight(axis: ScoringAxis): number {
   return axis.levels.length ? axis.levels[axis.levels.length - 1].weight : 0;
 }
 
+/** One level of a new axis. */
+export interface ScoringLevelSpec {
+  name: string;
+  weight: number;
+  description: string | null;
+}
+
+/** Defines an axis: a name, optional guidance and its first levels (two to twelve). */
+export interface ScoringAxisInput {
+  label: string;
+  description: string | null;
+  levels: ScoringLevelSpec[];
+}
+
+/** How a model uses one axis: `multiply` or `divide` (with an exponent) in a product, `sum` (with an importance) in a weighted sum. */
+export interface ScoringModelAxisInput {
+  axis_key: string;
+  role: "multiply" | "divide" | "sum";
+  exponent?: number;
+  importance?: number | null;
+  lower_is_better?: boolean;
+}
+
+export interface ScoringModelInput {
+  label: string;
+  combination: "product" | "weighted_sum";
+  axes: ScoringModelAxisInput[];
+}
+
+/** An axis or model a tier hid, or is asked to hide or restore. */
+export interface ScoringCriterionRef {
+  kind: "axis" | "model";
+  key: string;
+}
+
 const orgBase = (orgId: string, scheme: string) => `/api/v1/orgs/${orgId}/scoring-schemes/${scheme}`;
 const projectBase = (projectId: string, scheme: string) => `/api/v1/projects/${projectId}/scoring-schemes/${scheme}`;
 
-/** Org-level configuration (levels, default model, bands, cell ratings). */
+/**
+ * The calls that edit a tier's enabled models, own axes and models, and hidden criteria. The organisation and a
+ * project expose them at the same paths under their own base, so both tiers share one set (`ScoringCriteria`).
+ * Every call returns the tier's refreshed effective scheme.
+ */
+function criteriaCalls(base: string) {
+  const enc = encodeURIComponent;
+  return {
+    /** `null` clears the override so the tier inherits; the default model is always shown. */
+    setEnabledModels: (models: string[] | null) => api.put<ScoringScheme>(`${base}/enabled-models`, { models }),
+    createAxis: (body: ScoringAxisInput) => api.post<ScoringScheme>(`${base}/axes`, body),
+    updateAxis: (axisKey: string, body: { label?: string; description?: string | null }) =>
+      api.patch<ScoringScheme>(`${base}/axes/${enc(axisKey)}`, body),
+    /** 409 while a model uses the axis, or while scores use it unless `clearScores` drops them. */
+    deleteAxis: (axisKey: string, clearScores = false) =>
+      api.delete<ScoringScheme>(`${base}/axes/${enc(axisKey)}${clearScores ? "?clear_scores=true" : ""}`),
+    createModel: (body: ScoringModelInput) => api.post<ScoringScheme>(`${base}/models`, body),
+    updateModel: (modelKey: string, body: Partial<ScoringModelInput>) =>
+      api.patch<ScoringScheme>(`${base}/models/${enc(modelKey)}`, body),
+    deleteModel: (modelKey: string) => api.delete<ScoringScheme>(`${base}/models/${enc(modelKey)}`),
+    hideCriterion: (ref: ScoringCriterionRef) => api.post<ScoringScheme>(`${base}/hidden-criteria`, ref),
+    restoreCriterion: (ref: ScoringCriterionRef) =>
+      api.delete<ScoringScheme>(`${base}/hidden-criteria?kind=${ref.kind}&key=${enc(ref.key)}`),
+  };
+}
+
+/** The calls `ScoringCriteria` makes, for whichever tier (organisation or project) it is editing. */
+export type ScoringCriteriaCalls = ReturnType<typeof criteriaCalls>;
+
+/** Org-level configuration (levels, default model, enabled models, bands, cell ratings, own criteria). */
 export const orgScoringApi = {
+  /** The enabled-models, own-criteria and hide/restore calls for one scheme. */
+  criteria: (orgId: string, scheme: string): ScoringCriteriaCalls => criteriaCalls(orgBase(orgId, scheme)),
   get: (orgId: string, scheme: string) => api.get<ScoringScheme>(orgBase(orgId, scheme)),
   createLevel: (orgId: string, scheme: string, axisKey: string, body: ScoringLevelInput) =>
     api.post<ScoringLevel>(`${orgBase(orgId, scheme)}/axes/${axisKey}/levels`, body),
@@ -175,9 +259,20 @@ export const orgScoringApi = {
     api.put<ScoringScheme>(`${orgBase(orgId, scheme)}/models/${model}/cell-ratings`, { cells }),
 };
 
-/** Project-level overrides (default model, bands, cell ratings); levels are org-only. */
+/** Project-level overrides (default model, enabled models, bands, cell ratings, own criteria and their levels). */
 export const projectScoringApi = {
   get: (projectId: string, scheme: string) => api.get<ScoringScheme>(projectBase(projectId, scheme)),
+  /** The enabled-models, own-criteria and hide/restore calls for one scheme. */
+  criteria: (projectId: string, scheme: string): ScoringCriteriaCalls => criteriaCalls(projectBase(projectId, scheme)),
+  /** Levels of an axis this project defined (the organisation's levels are edited there). */
+  createLevel: (projectId: string, scheme: string, axisKey: string, body: ScoringLevelInput) =>
+    api.post<ScoringLevel>(`${projectBase(projectId, scheme)}/axes/${axisKey}/levels`, body),
+  updateLevel: (projectId: string, scheme: string, levelId: string, body: ScoringLevelInput) =>
+    api.patch<ScoringLevel>(`${projectBase(projectId, scheme)}/levels/${levelId}`, body),
+  deleteLevel: (projectId: string, scheme: string, levelId: string, reassignToId?: string) =>
+    api.delete<void>(
+      `${projectBase(projectId, scheme)}/levels/${levelId}${reassignToId ? `?reassign_to_id=${encodeURIComponent(reassignToId)}` : ""}`,
+    ),
   /** `null` clears the override so the project inherits. */
   setDefaultModel: (projectId: string, scheme: string, model: string | null) =>
     api.put<ScoringScheme>(`${projectBase(projectId, scheme)}/default-model`, { model }),

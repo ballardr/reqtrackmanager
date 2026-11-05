@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ScoringScheme } from "../api/scoring";
-import { buildScoringScheme, withToast } from "../testing/storybook-helpers";
+import { buildCustomCriteriaScheme, buildScoringScheme, withToast } from "../testing/storybook-helpers";
 import { ScoringSchemeEditor } from "./ScoringSchemeEditor";
 
 const ORG_ID = "org-1";
@@ -55,6 +55,9 @@ export const ShowsAxesAndDefaults: Story = {
     // Levels are weight-ordered, not manually reordered.
     await expect(canvas.queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
     await expect(canvas.getAllByText("Module default").length).toBeGreaterThan(0);
+    // A scheme that does not score with several models at once, or take custom criteria, shows neither setting.
+    await expect(canvas.queryByRole("heading", { name: "Models shown" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("heading", { name: "Criteria" })).not.toBeInTheDocument();
   },
 };
 
@@ -135,5 +138,46 @@ export const LoadError: Story = {
   },
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(within(canvasElement).getByText("Not found.")).toBeInTheDocument());
+  },
+};
+
+/** A scheme that takes custom criteria lists its criteria; Models shown saves the whole set. */
+export const CustomCriteriaAndModelsShown: Story = {
+  args: { schemeKey: "enhancement_request" },
+  beforeEach: () => mockSchemeApis(buildCustomCriteriaScheme()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: "Criteria" });
+    await expect(canvas.getByRole("button", { name: "Edit Strategic fit" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Hide Impact" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Show Weighted value" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/scoring-schemes/enhancement_request/enabled-models`, { models: ["ice"] },
+    ));
+    await waitFor(() => expect(within(document.body).getByText("Models shown saved.")).toBeInTheDocument());
+  },
+};
+
+/** A derived axis (Demand) edits a threshold per level, and a new level must give one. */
+export const DerivedAxisLevelsHaveAThreshold: Story = {
+  args: { schemeKey: "enhancement_request" },
+  beforeEach: () => mockSchemeApis(buildCustomCriteriaScheme()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: "Criteria" });
+    await expect(canvas.getAllByRole("spinbutton", { name: "Demand level threshold" })).toHaveLength(4); // 3 levels + the add row
+    await expect(canvas.queryByRole("spinbutton", { name: "Impact level threshold" })).not.toBeInTheDocument();
+    const names = canvas.getAllByRole("textbox", { name: "Demand level name" });
+    await userEvent.type(names[names.length - 1], "Huge");
+    const weights = canvas.getAllByRole("spinbutton", { name: "Demand level weight" });
+    await userEvent.type(weights[weights.length - 1], "4");
+    await expect(canvas.getByRole("button", { name: "Add Demand level" })).toBeDisabled(); // no threshold yet
+    const thresholds = canvas.getAllByRole("spinbutton", { name: "Demand level threshold" });
+    await userEvent.type(thresholds[thresholds.length - 1], "25");
+    await userEvent.click(canvas.getByRole("button", { name: "Add Demand level" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/api/v1/orgs/${ORG_ID}/scoring-schemes/enhancement_request/axes/demand/levels`,
+      { name: "Huge", weight: 4, description: null, threshold: 25 },
+    ));
   },
 };

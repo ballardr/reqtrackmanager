@@ -139,6 +139,41 @@ export function buildScoringScheme(overrides: Partial<ScoringScheme> = {}): Scor
   };
 }
 
+/**
+ * A scheme that takes custom criteria (as the Product Feedback request scheme does): a built-in Impact axis, a
+ * built-in Demand axis worked out from demand (levels carry thresholds), an organisation-defined Strategic fit axis,
+ * a built-in product model, an organisation-defined weighted-sum model, and one hidden built-in model to restore.
+ */
+export function buildCustomCriteriaScheme(overrides: Partial<ScoringScheme> = {}): ScoringScheme {
+  const bands = [
+    { label: "Low", min_score: 0, tone: "muted" as const },
+    { label: "High", min_score: 0.5, tone: "accent" as const },
+  ];
+  const levels = (prefix: string, names: string[], thresholds?: number[]) => names.map((name, i) => ({
+    id: `${prefix}-${i + 1}`, name, description: null, weight: i + 1, ...(thresholds ? { threshold: thresholds[i] } : {}),
+  }));
+  return {
+    key: "enhancement_request", label: "Request scoring", module_key: "product_feedback",
+    allow_custom_criteria: true, side_by_side_models: true,
+    axes: [
+      { key: "impact", label: "Impact", description: null, origin: "built_in", levels: levels("imp", ["Low", "Medium", "High"]) },
+      { key: "demand", label: "Demand", description: null, origin: "built_in", derived_source: "weighted_demand", levels: levels("dem", ["None", "Some", "Lots"], [0, 3, 10]) },
+      { key: "c_strategic_fit", label: "Strategic fit", description: "How well it fits the plan.", origin: "org", owner_project_id: null, levels: levels("fit", ["Weak", "Strong"]) },
+    ],
+    models: [
+      { key: "ice", label: "ICE", axis_keys: ["impact", "demand"], combination: "product", origin: "built_in", bands, bands_source: "system", cell_ratings: [], cell_ratings_source: "none" },
+      {
+        key: "m_weighted_value", label: "Weighted value", axis_keys: ["impact", "c_strategic_fit"], combination: "weighted_sum", origin: "org",
+        owner_project_id: null, importance: { impact: 60, c_strategic_fit: 40 }, inverted_axis_keys: [], bands, bands_source: "system", cell_ratings: [], cell_ratings_source: "none",
+      },
+    ],
+    system_default_model_key: "ice", default_model_key: "ice", default_model_source: "system",
+    enabled_model_keys: ["ice", "m_weighted_value"], enabled_models_source: "system",
+    hidden_criteria: [{ kind: "model", key: "rice", label: "RICE" }],
+    ...overrides,
+  };
+}
+
 export function buildProjectStatus(overrides: Partial<ProjectStatusDefinition> = {}): ProjectStatusDefinition {
   return { id: nextId("status"), organization_id: "org-1", name: "Active", sort_order: 0, ...overrides };
 }

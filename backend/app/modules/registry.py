@@ -1252,6 +1252,9 @@ class ScoringSchemeDefinition:
         allow_custom_criteria: Whether an organisation (and a project) may define its own axes and models on this
             scheme, beside the registered ones, which then can only be hidden, never deleted. Off keeps a scheme
             exactly as registered.
+        side_by_side_models: Whether the module shows several models' scores for one record at once, so the
+            administrator chooses which models are enabled (`enabled_model_keys`). Off hides that setting from
+            the scoring screens, because nothing would read it.
 
     Raises:
         ValueError: On construction, if keys are malformed or duplicated,
@@ -1269,6 +1272,7 @@ class ScoringSchemeDefinition:
     count_level_usage: Callable[[Session, uuid.UUID], int] | None = None
     reassign_level_usage: Callable[[Session, uuid.UUID, uuid.UUID], None] | None = None
     allow_custom_criteria: bool = False
+    side_by_side_models: bool = False
 
     def __post_init__(self) -> None:
         """Validates the scheme's internal consistency (see class docstring)."""

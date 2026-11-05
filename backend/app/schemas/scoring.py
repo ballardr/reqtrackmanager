@@ -109,6 +109,7 @@ class ScoringSchemeOut(BaseModel):
     enabled_model_keys: list[str] = []
     enabled_models_source: ResolutionSource = "system"
     allow_custom_criteria: bool = False
+    side_by_side_models: bool = False
     hidden_criteria: list[HiddenCriterionOut] = []
 
 

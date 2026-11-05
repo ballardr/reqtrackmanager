@@ -7,7 +7,7 @@ cross-cutting architecture. Not in the overview. Requested by the user on
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens) and 5c (external references and channel per ask) built 2026-11-05; Phase 5b (scoring administration screens) next. Plan now, build after Modules 1 and 2
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens), 5c (external references and channel per ask) and 5b (scoring administration screens) built 2026-11-05; Phase 6 (reports) next. Plan now, build after Modules 1 and 2
 (**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
@@ -15,8 +15,8 @@ artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-10 / 13 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
-Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (backend) and Phase 5 (screens) done 2026-11-05. Phase 5c (**Decided by: User**, 2026-11-05) is done the same day; Phase 5b is next, then Phase 6.
+11 / 13 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (backend) and Phase 5 (screens) done 2026-11-05. Phase 5c (**Decided by: User**, 2026-11-05) and Phase 5b are done the same day; Phase 6 is next, then Phase 7.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -29,7 +29,7 @@ Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (b
 | 3c | Scoring: organisation- and project-defined criteria and models (multiply or weighted sum) | [x] Complete (2026-11-05) — see "Phase 3c notes" |
 | 4 | Relationships + close-the-loop | [x] Complete (2026-11-05) — see "Phase 4 notes" |
 | 5 | Frontend UI: list, request page, forms, inbox, merge, demand, scoring display, closing the loop | [x] Complete (2026-11-05) — see "Phase 5 notes" |
-| 5b | Scoring administration screens: enabled models, level thresholds, custom axes and models, hide and restore | [ ] Not started — next; see "Phase 5 notes" |
+| 5b | Scoring administration screens: enabled models, level thresholds, custom axes and models, hide and restore | [x] Complete (2026-11-05) — see "Phase 5b notes" |
 | 5c | External references (several, with system and role) and channel per ask | [x] Complete (2026-11-05) — see "Phase 5c" and "Phase 5c notes" |
 | 6 | Reports (F1–F5) | [ ] Not started — needs Module 1 Phase 13 (Reports UI); Phase 12b (report framework) shipped 2026-10-06, see `docs/modules.md` §4g |
 | 7 | Docs website coverage | [ ] Not started |
@@ -264,6 +264,27 @@ flowchart LR
 - Not done, by decision: the list of requests with requesters still to tell is report F3 (Phase 6); the Move to project picker is not limited to projects with the module enabled (the server refuses and the dialog shows why); the docs website arrives in Phase 7 with the reports and their screenshots.
 
 **Phase 5b must add:** in core's shared `ScoringSchemeEditor` and `ProjectScoringSettings`, the enabled-models control and the level threshold field (derived axes only), and the axis and model editors (product with exponents, or weighted sum with importance and invert) with hide and restore, on the organisation and project scoring settings; level fields already read the effective scheme, so a custom axis appears in the request form as soon as it exists. These are generic scoring screens in core (`allow_custom_criteria` opts a scheme in), with Storybook and Playwright coverage.
+
+## Phase 5b notes (2026-11-05)
+
+Built; account, decisions and security review in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 5b"). Frontend only, plus one flag on the scheme.
+
+```mermaid
+flowchart LR
+    SE[ScoringSchemeEditor<br/>organisation] --> EM[Models shown]
+    SE --> CR[ScoringCriteria]
+    SE --> LV[Levels + derived threshold]
+    PS[ProjectScoringSettings<br/>project] --> EM
+    PS --> CR
+    PS --> LV2[Levels of its own axes]
+    CR --> AX[Axis dialog]
+    CR --> MD[Model dialog]
+    CR --> HR[Hide, Hidden list, Restore]
+```
+
+- New shared components in `frontend/src/components/`: `ScoringEnabledModels`, `ScoringCriteria`, `ScoringAxisFormModal`, `ScoringModelFormModal`, `scoringLevelFields`; `api/scoring.ts` gains the criteria calls, shared by both tiers. A scheme shows "Models shown" only when it sets the new `side_by_side_models` (Product Feedback does); "Criteria" only with `allow_custom_criteria`. Pain Point and Risk screens are unchanged.
+- Specs: Storybook for each component and the two editors; `scoring-administration.spec.ts` (organisation and project).
+- **Phase 6 may rely on:** nothing new; F1 still reads the effective scheme.
 
 ## Phase 5c: external references and channel per ask (added 2026-11-05)
 

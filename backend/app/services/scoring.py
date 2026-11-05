@@ -983,5 +983,6 @@ def build_scheme_config(
         "enabled_model_keys": enabled_keys,
         "enabled_models_source": enabled_source,
         "allow_custom_criteria": scheme.allow_custom_criteria,
+        "side_by_side_models": scheme.side_by_side_models,
         "hidden_criteria": criteria.hidden,
     }

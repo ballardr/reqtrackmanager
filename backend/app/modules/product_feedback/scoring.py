@@ -186,6 +186,7 @@ REQUEST_SCORING_SCHEME = ScoringSchemeDefinition(
     default_model_key="rice",
     admin_role_key="org_feedback_triager",
     allow_custom_criteria=True,
+    side_by_side_models=True,
     count_level_usage=count_level_usage,
     reassign_level_usage=reassign_level_usage,
 )

@@ -323,7 +323,9 @@ def test_only_a_scheme_admin_may_define_criteria(client, admin_token):
     _call(client, member, "post", _org_url(org["id"], "/axes"), expect=403, json=body)
     _call(client, member, "post", _project_url(project["id"], "/axes"), expect=403, json=body)
     _call(client, member, "post", _org_url(org["id"], "/hidden-criteria"), expect=403, json={"kind": "axis", "key": "ease"})
-    assert _call(client, member, "get", _project_url(project["id"])).json()["allow_custom_criteria"] is True
+    scheme = _call(client, member, "get", _project_url(project["id"])).json()
+    assert scheme["allow_custom_criteria"] is True
+    assert scheme["side_by_side_models"] is True
 
 
 def _rows(response) -> list[dict[str, str]]:

@@ -901,7 +901,17 @@ flowchart LR
   the effective default and puts it first; `PUT .../scoring-schemes/{key}/enabled-models`
   on both tiers writes it (`null` inherits). A scheme config carries
   `enabled_model_keys` and `enabled_models_source`. Nothing is stored per
-  model: a module derives every enabled model's score on read.
+  model: a module derives every enabled model's score on read. A scheme
+  that does this sets `side_by_side_models`; the shared scoring screens show
+  the "Models shown" setting only then, because no other module reads it.
+- **Scoring screens (Module 14 Phase 5b).** `ScoringSchemeEditor` and
+  `ProjectScoringSettings` also hold the threshold field of a derived axis,
+  "Models shown" (`side_by_side_models`), and `ScoringCriteria` (a scheme with
+  `allow_custom_criteria`): axes and models with their origin, add, edit and
+  delete for what the tier defined, hide for anything else, and a Hidden list
+  to restore from. A project edits the levels of an axis it defined; every
+  other axis's levels stay the organisation's. A module embeds the two
+  editors with its scheme key and nothing else.
 - **Default model and bands** resolve project → nearest ancestor → org →
   module default (the nested-projects fallback rule). No rows = inherit.
 - **Cell ratings (Module 3 Phase 1a).** Thresholds on a product can't
