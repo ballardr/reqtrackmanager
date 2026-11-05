@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook, selectOrgAdminGroup, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { expandScoringLevels } from "../scoringLevels";
 import { API_BASE_URL, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
@@ -20,6 +21,7 @@ test.describe("Enhancement requests: scoring administration", () => {
     await selectOrgAdminGroup(page, "Request Scoring");
 
     await test.step("a derived axis edits a threshold per level, a manual axis does not", async () => {
+      await expandScoringLevels(page);
       await expect(page.getByRole("spinbutton", { name: "Demand level threshold" }).first()).toBeVisible();
       await expect(page.getByRole("spinbutton", { name: "Impact level threshold" })).toHaveCount(0);
     });
@@ -35,6 +37,7 @@ test.describe("Enhancement requests: scoring administration", () => {
       await dialog.getByRole("button", { name: "Save" }).click();
       await expect(page.getByText("Axis added.")).toBeVisible();
       await expect(page.getByRole("button", { name: "Edit Strategic fit" })).toBeVisible();
+      await expandScoringLevels(page);
       await expect(page.getByRole("textbox", { name: "Strategic fit level name" }).first()).toBeVisible();
     });
 
@@ -108,6 +111,7 @@ test.describe("Enhancement requests: scoring administration", () => {
     });
 
     await test.step("edits a level of that axis, but not an organisation axis's levels", async () => {
+      await expandScoringLevels(page);
       const name = page.getByRole("textbox", { name: "Local fit level name" }).first();
       await name.fill("Awful");
       await page.getByRole("button", { name: "Rename" }).click();

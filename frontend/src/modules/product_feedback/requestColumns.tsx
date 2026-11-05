@@ -19,12 +19,15 @@ import type { EnhancementRequest } from "./types";
 /** Codes, statuses, demand and scores are short and read as one unit, so they never wrap; the title takes the slack. */
 const NO_WRAP = { whiteSpace: "nowrap" } as const;
 
+/** A past instant (a UTC timestamp from the API) in the viewer's own timezone, date and time. */
+const instantText = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
 /**
  * The columns of a request list.
  *
  * @param scheme The scoring scheme in effect (model labels for the score columns).
  * @param models The model keys to show a score column for.
- * @param shown The ids of the optional columns the person has chosen (`status`, `demand`, `owner`); the code and title are always on.
+ * @param shown The ids of the optional columns the person has chosen (`status`, `demand`, `owner`, `created`, `updated`); the code and title are always on.
  * @param titleExtra Extra content after a row's title (the project list adds the scope label).
  * @param codeCell How a row's code is shown (a project code, or the organisation-qualified one for an inbox request).
  * @param showLinkWarnings True on the project tier, where a request can be linked to a Pain Point and have requesters.
@@ -76,5 +79,7 @@ export function requestColumns({
       sortable: index === 0, render: (r: EnhancementRequest) => <span style={NO_WRAP}><RequestScoreBadge score={r.scores[key]} /></span>,
     })),
     ...(shown.includes("owner") ? [{ key: "owner", label: "Owner", render: (r: EnhancementRequest) => (r.owner ? <PrincipalBadge principal={r.owner} /> : "–") }] : []),
+    ...(shown.includes("created") ? [{ key: "created", label: "Created", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{instantText(r.created_at)}</span> }] : []),
+    ...(shown.includes("updated") ? [{ key: "updated", label: "Last updated", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{instantText(r.updated_at)}</span> }] : []),
   ];
 }

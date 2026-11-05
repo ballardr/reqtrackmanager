@@ -54,11 +54,11 @@ stateDiagram-v2
 
 ## The list
 
-The project list (**Enhancement requests** in the navigation) shows code, title and one score column per scoring model you choose. The **Columns** control adds Status, Demand and Owner (Demand and Owner start hidden) and one **Score** column per model; your choice is kept per person.
+The project list (**Enhancement requests** in the navigation) shows code, title and one score column per scoring model you choose. The **Columns** control adds Status, Demand, Owner, **Created**, **Last updated** (Demand, Owner and the two dates start hidden; Created and Last updated sort) and one **Score** column per model; your choice is kept per person.
 
 | Filter | Does |
 | --- | --- |
-| Search, Status, Tags, **Open only**, **Show archived** | The usual narrowing. |
+| Search, **Status**, Tags, **Show archived** | The usual narrowing. Status opens on **Open statuses** (New, Under review, Accepted); choose All statuses or one status to see Delivered, Declined and Duplicate. |
 | **Scoring** | **Unscored** or **Scored** under the first chosen model. |
 | **Criteria not rated** | **Any criterion**, or one named criterion, with no level yet. A derived criterion such as Demand never counts as missing. |
 | **Show records from** | Widens the list to related (child) projects you can open. |

@@ -59,6 +59,21 @@ def test_an_update_is_a_new_version_that_keeps_the_fields_it_does_not_mention(cl
     assert versions[1]["change_note"] == "Reworded." and versions[0]["description"] == request["description"]
 
 
+def test_updated_at_moves_with_each_new_version_and_created_at_does_not(client, admin_token):
+    """The list's Last updated column reads `updated_at`; a new version leaves the request row itself untouched, so
+    the time comes from the current version (a past instant, UTC)."""
+    _, project, token = setup(client, admin_token, "Feedback Updated Co")
+    request = create_request(client, token, project["id"])
+    base = f"{project_base(project['id'])}/requests/{request['id']}"
+    updated = client.put(base, json={"description": "Changed."}, headers=auth_headers(token)).json()
+    versions = client.get(base + "/versions", headers=auth_headers(token)).json()
+    assert updated["created_at"] == request["created_at"]
+    assert updated["updated_at"] > request["updated_at"]
+    assert updated["updated_at"] >= versions[1]["created_at"]
+    listed = client.get(f"{project_base(project['id'])}/requests", headers=auth_headers(token)).json()
+    assert listed[0]["updated_at"] == updated["updated_at"]
+
+
 def test_a_null_title_is_refused_and_clearing_the_older_link_pair_removes_its_reference(client, admin_token):
     _, project, token = setup(client, admin_token, "Feedback Null Co")
     request = create_request(client, token, project["id"], external_ref_key="PROJ-9")

@@ -21,4 +21,5 @@ export const PRODUCT_FEEDBACK_HELP = {
   declineReason: "Why the request was declined. This is kept with the request and shown to anyone told the outcome.",
   mergeNote: "Why these are the same ask. Kept in the merge history so the merge can be understood, and undone, later.",
   informedNote: "How or by whom the requesters were told, for example 'Emailed by support on release day'. Nothing is sent from here.",
+  requestStatusFilter: "Open statuses: New, Under review and Accepted, the requests still being decided or built.\nAll statuses: also Delivered, Declined and Duplicate.\nA single status: only requests in that status.",
 } as const;

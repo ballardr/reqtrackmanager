@@ -6,8 +6,9 @@
  */
 import type { ScoringScheme } from "../../api/scoring";
 import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
+import { PRODUCT_FEEDBACK_HELP } from "./help";
 import { isDerivedAxis } from "./requestLevels";
-import { ANY_CRITERION, type RequestListFilters } from "./requestListState";
+import { ANY_CRITERION, type RequestListFilters, type StatusChoice } from "./requestListState";
 import { REQUEST_STATUS_LABEL } from "./types";
 import type { EnhancementRequest, RequestStatus } from "./types";
 
@@ -26,9 +27,10 @@ export function RequestFilterFields({
   const manualAxes = (scheme?.axes ?? []).filter((a) => !isDerivedAxis(a));
   return (
     <>
-      <FilterField label="Status">
-        <select className="input" value={filters.status} onChange={(e) => filters.setStatus(e.target.value as RequestStatus | "")}>
-          <option value="">All statuses</option>
+      <FilterField label="Status" help={PRODUCT_FEEDBACK_HELP.requestStatusFilter}>
+        <select className="input" aria-label="Status" value={filters.statusChoice} onChange={(e) => filters.setStatusChoice(e.target.value as StatusChoice)}>
+          <option value="open">Open statuses</option>
+          <option value="all">All statuses</option>
           {STATUSES.map((value) => <option key={value} value={value}>{REQUEST_STATUS_LABEL[value]}</option>)}
         </select>
       </FilterField>
@@ -53,7 +55,6 @@ export function RequestFilterFields({
           </FilterField>
         </>
       )}
-      <FilterCheckbox label="Open only" checked={filters.openOnly} onChange={filters.setOpenOnly} />
       <FilterCheckbox label="Show archived" checked={filters.includeArchived} onChange={filters.setIncludeArchived} />
     </>
   );

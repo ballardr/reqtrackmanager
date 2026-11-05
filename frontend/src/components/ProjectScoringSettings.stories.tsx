@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ScoringScheme } from "../api/scoring";
-import { buildCustomCriteriaScheme, buildScoringScheme, withToast } from "../testing/storybook-helpers";
+import { buildCustomCriteriaScheme, buildScoringScheme, buildUser, expandScoringLevels, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ProjectScoringSettings } from "./ProjectScoringSettings";
 
 const PROJECT_ID = "project-1";
@@ -32,7 +32,8 @@ const meta: Meta<typeof ProjectScoringSettings> = {
   title: "Components/Scoring/ProjectScoringSettings",
   component: ProjectScoringSettings,
   args: { projectId: PROJECT_ID, schemeKey: "pain_point" },
-  decorators: [withToast()],
+  // The folding blocks remember their state through the signed-in person's preferences.
+  decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
 };
 export default meta;
 
@@ -101,6 +102,7 @@ export const OwnAxisLevelsAreEditable: Story = {
     const canvas = within(canvasElement);
     await canvas.findByRole("heading", { name: "Criteria" });
     await expect(canvas.getByText("Levels are set by the organisation, except for an axis this project defined.")).toBeInTheDocument();
+    await expandScoringLevels(canvas);
     await expect(canvas.getAllByRole("textbox", { name: "Local fit level name" }).length).toBeGreaterThan(0);
     await expect(canvas.queryByRole("textbox", { name: "Impact level name" })).not.toBeInTheDocument();
     const name = canvas.getAllByRole("textbox", { name: "Local fit level name" })[0];

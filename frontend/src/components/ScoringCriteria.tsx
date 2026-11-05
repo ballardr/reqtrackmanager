@@ -23,6 +23,7 @@ import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ScoringAxisFormModal } from "./ScoringAxisFormModal";
 import { ScoringModelFormModal } from "./ScoringModelFormModal";
+import { ScoringSection } from "./ScoringSection";
 
 type Dialog =
   | { kind: "axis"; axis?: ScoringAxis }
@@ -93,75 +94,97 @@ export function ScoringCriteria({
     <Badge>{scoringOriginLabel(origin, owner, projectId)}</Badge>
   );
 
+  /** One row's action cell: edit and delete for a criterion this tier defined, otherwise Hide. */
+  const actions = (
+    own: boolean, label: string, edit: () => void, remove: () => void, hide: () => void,
+  ) => (
+    <div className="definition-grid__actions" style={{ justifyContent: "flex-end" }}>
+      {own ? (
+        <>
+          <button type="button" className="btn btn-icon btn-sm" aria-label={`Edit ${label}`} title="Edit" onClick={edit}><Pencil /></button>
+          <button type="button" className="btn btn-icon btn-sm" aria-label={`Delete ${label}`} title="Delete" onClick={remove}><Trash2 /></button>
+        </>
+      ) : (
+        <button type="button" className="btn btn-sm" aria-label={`Hide ${label}`} onClick={hide}>Hide</button>
+      )}
+    </div>
+  );
+  const columns = "minmax(10rem, 3fr) minmax(7rem, 1fr) minmax(8rem, 1.5fr) max-content";
+
   return (
-    <section className="stack" aria-labelledby={`${scheme.key}-criteria`}>
-      <h3 id={`${scheme.key}-criteria`} style={{ margin: 0 }}>Criteria</h3>
+    <ScoringSection sectionKey={`${scheme.key}:${projectId ? "p" : "o"}:criteria`} title="Criteria">
       <p className="text-muted" style={{ margin: 0 }}>
         Define your own axes and models beside the built-in ones. Ones you define can be edited or deleted; any other can
         only be hidden{projectId ? " in this project" : ""}, and restored later. Scores already stored are kept.
       </p>
 
-      <h4 style={{ margin: 0 }}>Axes</h4>
-      <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0, gap: "var(--space-2)" }}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
+        <h4 style={{ margin: 0 }}>Axes</h4>
+        <button type="button" className="btn btn-sm" onClick={() => setDialog({ kind: "axis" })}><Plus /> Add axis</button>
+      </div>
+      <div className="definition-grid" style={{ gridTemplateColumns: columns }}>
+        <span className="definition-grid__head">Axis</span>
+        <span className="definition-grid__head">Defined by</span>
+        <span className="definition-grid__head">Scored</span>
+        <span className="definition-grid__head" aria-hidden="true" />
         {scheme.axes.map((axis) => {
           const own = scoringOwnsCriterion(axis.origin, axis.owner_project_id, projectId);
           return (
-            <li key={axis.key} className="row" style={{ gap: "var(--space-3)" }}>
-              <strong>{axis.label}</strong>
-              {badges(axis.origin, axis.owner_project_id)}
-              {axis.derived_source && <Badge tone="info">Worked out from demand</Badge>}
-              {own ? (
-                <>
-                  <button type="button" className="btn btn-icon btn-sm" aria-label={`Edit ${axis.label}`} title="Edit" onClick={() => setDialog({ kind: "axis", axis })}><Pencil /></button>
-                  <button type="button" className="btn btn-icon btn-sm" aria-label={`Delete ${axis.label}`} title="Delete" onClick={() => setDialog({ kind: "delete-axis", axis })}><Trash2 /></button>
-                </>
-              ) : (
-                <button type="button" className="btn btn-sm" aria-label={`Hide ${axis.label}`} onClick={() => setDialog({ kind: "hide", criterion: "axis", key: axis.key, label: axis.label })}>Hide</button>
+            <div key={axis.key} style={{ display: "contents" }}>
+              <strong className="definition-grid__cell">{axis.label}</strong>
+              <span className="definition-grid__cell">{badges(axis.origin, axis.owner_project_id)}</span>
+              <span className="definition-grid__cell">{axis.derived_source ? <Badge tone="info">Automatic</Badge> : "By hand"}</span>
+              {actions(
+                own, axis.label, () => setDialog({ kind: "axis", axis }), () => setDialog({ kind: "delete-axis", axis }),
+                () => setDialog({ kind: "hide", criterion: "axis", key: axis.key, label: axis.label }),
               )}
-            </li>
+            </div>
           );
         })}
-      </ul>
-      <div><button type="button" className="btn" onClick={() => setDialog({ kind: "axis" })}><Plus /> Add axis</button></div>
+      </div>
 
-      <h4 style={{ margin: 0 }}>Models</h4>
-      <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0, gap: "var(--space-2)" }}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
+        <h4 style={{ margin: 0 }}>Models</h4>
+        <button type="button" className="btn btn-sm" onClick={() => setDialog({ kind: "model" })}><Plus /> Add model</button>
+      </div>
+      <div className="definition-grid" style={{ gridTemplateColumns: columns }}>
+        <span className="definition-grid__head">Model</span>
+        <span className="definition-grid__head">Defined by</span>
+        <span className="definition-grid__head">Combines</span>
+        <span className="definition-grid__head" aria-hidden="true" />
         {scheme.models.map((model) => {
           const own = scoringOwnsCriterion(model.origin, model.owner_project_id, projectId);
           return (
-            <li key={model.key} className="row" style={{ gap: "var(--space-3)" }}>
-              <strong>{model.label}</strong>
-              {badges(model.origin, model.owner_project_id)}
-              <Badge>{model.combination === "weighted_sum" ? "Weighted sum" : "Product"}</Badge>
-              {own ? (
-                <>
-                  <button type="button" className="btn btn-icon btn-sm" aria-label={`Edit ${model.label}`} title="Edit" onClick={() => setDialog({ kind: "model", model })}><Pencil /></button>
-                  <button type="button" className="btn btn-icon btn-sm" aria-label={`Delete ${model.label}`} title="Delete" onClick={() => setDialog({ kind: "delete-model", model })}><Trash2 /></button>
-                </>
-              ) : (
-                <button type="button" className="btn btn-sm" aria-label={`Hide ${model.label}`} onClick={() => setDialog({ kind: "hide", criterion: "model", key: model.key, label: model.label })}>Hide</button>
+            <div key={model.key} style={{ display: "contents" }}>
+              <strong className="definition-grid__cell">{model.label}</strong>
+              <span className="definition-grid__cell">{badges(model.origin, model.owner_project_id)}</span>
+              <span className="definition-grid__cell"><Badge>{model.combination === "weighted_sum" ? "Weighted sum" : "Product"}</Badge></span>
+              {actions(
+                own, model.label, () => setDialog({ kind: "model", model }), () => setDialog({ kind: "delete-model", model }),
+                () => setDialog({ kind: "hide", criterion: "model", key: model.key, label: model.label }),
               )}
-            </li>
+            </div>
           );
         })}
-      </ul>
-      <div><button type="button" className="btn" onClick={() => setDialog({ kind: "model" })}><Plus /> Add model</button></div>
+      </div>
 
       {(scheme.hidden_criteria ?? []).length > 0 && (
         <>
           <h4 style={{ margin: 0 }}>Hidden</h4>
-          <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0, gap: "var(--space-2)" }}>
+          <div className="definition-grid" style={{ gridTemplateColumns: "minmax(10rem, 3fr) minmax(7rem, 1fr) max-content" }}>
             {(scheme.hidden_criteria ?? []).map((h) => (
-              <li key={`${h.kind}:${h.key}`} className="row" style={{ gap: "var(--space-3)" }}>
-                <span>{h.label}</span>
-                <Badge>{h.kind === "axis" ? "Axis" : "Model"}</Badge>
-                <button type="button" className="btn btn-sm" aria-label={`Restore ${h.label}`}
-                  onClick={() => void run(() => calls.restoreCriterion({ kind: h.kind, key: h.key }), `${h.label} restored.`)}>
-                  Restore
-                </button>
-              </li>
+              <div key={`${h.kind}:${h.key}`} style={{ display: "contents" }}>
+                <span className="definition-grid__cell">{h.label}</span>
+                <span className="definition-grid__cell"><Badge>{h.kind === "axis" ? "Axis" : "Model"}</Badge></span>
+                <div className="definition-grid__actions" style={{ justifyContent: "flex-end" }}>
+                  <button type="button" className="btn btn-sm" aria-label={`Restore ${h.label}`}
+                    onClick={() => void run(() => calls.restoreCriterion({ kind: h.kind, key: h.key }), `${h.label} restored.`)}>
+                    Restore
+                  </button>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         </>
       )}
 
@@ -207,6 +230,6 @@ export function ScoringCriteria({
           onConfirm={() => { const { criterion, key, label } = dialog; close(); void run(() => calls.hideCriterion({ kind: criterion, key }), `${label} hidden.`); }}
         />
       )}
-    </section>
+    </ScoringSection>
   );
 }

@@ -52,19 +52,19 @@ export default meta;
 
 type Story = StoryObj<typeof ProjectRequestsPage>;
 
-/** Open requests only by default; a delivered or duplicate one is hidden until Open only is unticked. */
+/** Open requests only by default; a delivered or duplicate one is hidden until the Status is set to All statuses. */
 export const OpensOnOpenRequestsWithScoreAndWarnings: Story = {
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const table = await canvas.findByRole("table", { name: "Enhancement requests" });
-    await expect(canvas.getByRole("checkbox", { name: "Open only" })).toBeChecked();
+    await expect(canvas.getByLabelText("Status")).toHaveValue("open");
     const row = within(within(table).getByRole("link", { name: "ENH-001" }).closest("tr")!);
     await expect(row.getByText("High · 48")).toHaveClass("badge--accent");
     await expect(row.queryByText("1 requester")).not.toBeInTheDocument(); // demand starts hidden
     await expect(row.getByText("No Pain Point")).toHaveClass("badge--warning");
     await expect(within(table).queryByRole("link", { name: "ENH-004" })).not.toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("checkbox", { name: "Open only" }));
+    await userEvent.selectOptions(canvas.getByLabelText("Status"), "all");
     const duplicateRow = within((await within(table).findByRole("link", { name: "ENH-005" })).closest("tr")!);
     await expect(duplicateRow.getByText("Duplicate of ENH-001")).toBeInTheDocument();
     await expect(duplicateRow.queryByText("No Pain Point")).not.toBeInTheDocument();
@@ -103,7 +103,7 @@ export const ALinkNamingAStatusOpensOnIt: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const table = await canvas.findByRole("table", { name: "Enhancement requests" });
-    await expect(canvas.getByRole("checkbox", { name: "Open only" })).not.toBeChecked();
+    await expect(canvas.getByLabelText("Status")).toHaveValue("delivered");
     await expect(within(table).getByRole("link", { name: "ENH-004" })).toBeInTheDocument();
     await expect(within(table).queryByRole("link", { name: "ENH-001" })).not.toBeInTheDocument();
   },
@@ -139,7 +139,7 @@ export const NewRequestOpensTheFormLayeredOverTheList: Story = {
   },
 };
 
-/** Demand and Owner start hidden; the Columns control shows them, hides a score column and resets to the defaults. */
+/** Demand, Owner, Created and Last updated start hidden; the Columns control shows them, hides a score column and resets to the defaults. */
 export const TheColumnsControlShowsAndHidesColumns: Story = {
   beforeEach: () => mockApis(),
   play: async ({ canvasElement }) => {
@@ -148,6 +148,8 @@ export const TheColumnsControlShowsAndHidesColumns: Story = {
     const headers = () => within(table).getAllByRole("columnheader").map((h) => h.textContent?.trim());
     await expect(headers()).not.toContain("Demand");
     await expect(headers()).not.toContain("Owner");
+    await expect(headers()).not.toContain("Created");
+    await expect(headers()).not.toContain("Last updated");
     await expect(headers()).toContain("Status");
     const initial = headers().filter((h) => h?.startsWith("Score"));
     await expect(initial.length).toBeGreaterThan(0);
@@ -156,7 +158,11 @@ export const TheColumnsControlShowsAndHidesColumns: Story = {
     const popover = within(await within(document.body).findByRole("dialog"));
     await userEvent.click(popover.getByRole("checkbox", { name: "Demand" }));
     await userEvent.click(popover.getByRole("checkbox", { name: "Owner" }));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Created" }));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Last updated" }));
     await userEvent.click(popover.getByRole("checkbox", { name: "Status" }));
+    await expect(headers()).toContain("Created");
+    await expect(headers()).toContain("Last updated");
     await expect(headers()).toContain("Demand");
     await expect(headers()).toContain("Owner");
     await expect(headers()).not.toContain("Status");
@@ -190,5 +196,28 @@ export const CriteriaNotRatedAnyKeepsTheIncomplete: Story = {
     await userEvent.selectOptions(filter, "reach");
     await expect(within(table).queryByRole("link", { name: "ENH-002" })).not.toBeInTheDocument();
     await expect(within(table).getByRole("link", { name: "ENH-003" })).toBeInTheDocument();
+  },
+};
+
+/** Created and Last updated sort by the instant, newest or oldest first, and show it in the viewer's own timezone. */
+export const CreatedAndUpdatedColumnsSortByTime: Story = {
+  parameters: { query: "?open=0" },
+  beforeEach: () => mockApis([
+    buildRequest({ id: "r-a", unique_code: "ENH-010", title: "Middle", created_at: "2026-11-02T09:00:00Z", updated_at: "2026-11-05T09:00:00Z" }),
+    buildRequest({ id: "r-b", unique_code: "ENH-011", title: "Oldest", created_at: "2026-10-01T09:00:00Z", updated_at: "2026-11-06T09:00:00Z" }),
+    buildRequest({ id: "r-c", unique_code: "ENH-012", title: "Newest", created_at: "2026-11-04T09:00:00Z", updated_at: "2026-11-04T09:00:00Z" }),
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Enhancement requests" });
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    const popover = within(await within(document.body).findByRole("dialog"));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Created" }));
+    await userEvent.click(popover.getByRole("checkbox", { name: "Last updated" }));
+    const codes = () => within(table).getAllByRole("link").map((l) => l.textContent?.trim());
+    await userEvent.click(within(table).getByRole("button", { name: /Created/ }));
+    await expect(codes()).toEqual(["ENH-011", "ENH-010", "ENH-012"]);
+    await userEvent.click(within(table).getByRole("button", { name: /Last updated/ }));
+    await expect(codes()).toEqual(["ENH-012", "ENH-010", "ENH-011"]);
   },
 };

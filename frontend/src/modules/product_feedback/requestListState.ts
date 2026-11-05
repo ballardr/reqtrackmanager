@@ -5,6 +5,9 @@
  * in the URL), the client-side match, the filters' server parameters, the sort and the demand text. The filter fields
  * are `RequestFilterFields` and the table columns `requestColumns`.
  *
+ * - **Status.** One dropdown: "Open statuses" (New, Under review, Accepted; the default), "All statuses" or a single
+ *   status. It is held as the URL's `status` (a single status) and `open=1|0` (open statuses, or all); a link that
+ *   names a status or `open=0` starts on that choice, so a link never lands on an empty list.
  * - **Criteria not rated.** `missing=<axis key>` keeps requests with no level on that criterion, and `missing=any` those not
  *   rated on every criterion (any one missing); no value is no filter.
  * - **Unscored filter.** A request is unscored when the primary model has no score for it (a manual axis it needs has
@@ -33,7 +36,9 @@ const STATUSES = Object.keys(REQUEST_STATUS_LABEL) as RequestStatus[];
 const SCORED_FILTERS = ["unscored", "scored"] as const;
 /** The "Criteria not rated" filter value meaning any criterion, as the server's `missing_axis` takes it. */
 export const ANY_CRITERION = "any";
-export const REQUEST_SORT_KEYS = ["demand", "score"] as const;
+/** The Status dropdown's two non-status choices. */
+export type StatusChoice = RequestStatus | "open" | "all";
+export const REQUEST_SORT_KEYS = ["demand", "score", "created", "updated"] as const;
 
 /** The models a list shows until the person chooses: the scheme's enabled models, else its default. */
 export function defaultModels(scheme: ScoringScheme | null): string[] {
@@ -61,8 +66,14 @@ export function useRequestListFilters(scheme: ScoringScheme | null, list: "proje
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
   const [sort, setSort] = useUrlSort<string>(REQUEST_SORT_KEYS);
+  const statusChoice: StatusChoice = status || (openOnly ? "open" : "all");
+  /** Picks a Status dropdown entry: a single status turns the open-statuses default off, as it would hide it. */
+  const setStatusChoice = (choice: StatusChoice) => {
+    setStatus(choice === "open" || choice === "all" ? "" : choice);
+    setOpenOnly(choice === "open");
+  };
   const columnIds = useMemo(
-    () => ["status", ...(withDemand ? ["demand"] : []), "owner", ...(scheme?.models.map((m) => scoreColumnId(m.key)) ?? [])],
+    () => ["status", ...(withDemand ? ["demand"] : []), "owner", "created", "updated", ...(scheme?.models.map((m) => scoreColumnId(m.key)) ?? [])],
     [scheme, withDemand],
   );
   const columnDefaults = useMemo(() => ["status", ...defaultModels(scheme).map(scoreColumnId)], [scheme]);
@@ -104,8 +115,8 @@ export function useRequestListFilters(scheme: ScoringScheme | null, list: "proje
   }
 
   return {
-    search, setSearch, status, setStatus, scored, setScored, missingAxis, setMissingAxis,
-    includeArchived, setIncludeArchived, openOnly, setOpenOnly, sort, setSort, models, requestedModels, primary, columns, columnIds,
+    search, setSearch, status, statusChoice, setStatusChoice, scored, setScored, missingAxis, setMissingAxis,
+    includeArchived, setIncludeArchived, openOnly, sort, setSort, models, requestedModels, primary, columns, columnIds,
     isUnscored, matches, filterParams,
   };
 }
@@ -116,8 +127,12 @@ export type RequestListFilters = ReturnType<typeof useRequestListFilters>;
 export function sortRequests(rows: EnhancementRequest[], filters: RequestListFilters): EnhancementRequest[] {
   const { sort, primary } = filters;
   if (!sort) return rows;
-  const value = (r: EnhancementRequest): number | null =>
-    sort.key === "demand" ? r.weighted_demand : primary ? r.scores[primary]?.normalised ?? null : null;
+  const value = (r: EnhancementRequest): number | null => {
+    if (sort.key === "demand") return r.weighted_demand;
+    if (sort.key === "created") return Date.parse(r.created_at);
+    if (sort.key === "updated") return Date.parse(r.updated_at);
+    return primary ? r.scores[primary]?.normalised ?? null : null;
+  };
   return [...rows].sort((a, b) => {
     const [x, y] = [value(a), value(b)];
     if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;

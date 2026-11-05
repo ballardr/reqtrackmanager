@@ -16421,3 +16421,40 @@ Documentation only; closes the module's plan (13/13, archived in `plans/complete
 **Verification.** `npm run build` clean; `scripts/check_doc_links.py` passes with the plan archived; all five Mermaid diagrams parse and render in Chromium; `request-reports.spec.ts` (the Phase 6 spec the plan asked to be run against the rebuilt stack) passes.
 
 **Review (identify, verify, remediate).** Identified the claims most likely to drift from the code and checked each: the lifecycle moves against `ALLOWED_TRANSITIONS`; level names and weights and the Demand thresholds against `scoring.py`; import columns against `record_tables._columns` (references are importable, score and demand are export-only); button names against `RequestDetailPage` (the menu entries read "Merge into another request…" and "Move to a project…", and the merge undo reads "Undo merge", not "Unmerge"); the tool count against the generated MCP reference (34: 29 module tools and 5 reports); the bundle contents against `export.py`. Found and corrected in the draft: those three wordings, the channel-mix example (the export writes "Email x2", not "Email 2") and the import column list. No security-relevant surface changed.
+
+## Admin panels: aligned rows and foldable scoring blocks (2026-11-05)
+
+A UI/UX review of the configuration panels, from the User's report: unlabelled inputs and half-empty guidance boxes floating and wrapping in the scoring levels, "a block of hard to read text" for inherited levels, and axes and models as loose left-floating lines. The User then asked for some sections to fold.
+
+| Decision | Choice | Decided by |
+|----------|--------|------------|
+| Row layout | `DefinitionList` gets an opt-in `layout="grid"` (headings, tracks, add row and a right-aligned extra column all in one CSS grid, classes `.definition-grid*` in `theme.css`); the default stays `stack`. Used by the scoring levels and the type vocabulary panels (Pain Point, Risk, Persona and Stakeholder types, External Systems, Request Channels). The existing row lookups in stories and specs keep working because each grid row is a `display: contents` wrapper. | Agent |
+| Inherited levels | A read-only grid with the same columns, not a sentence. | Agent |
+| Criteria | Axes and models are tables (name, defined by, how scored or combined, actions). | Agent |
+| Folding | Each scoring block and each axis's levels fold (`ScoringSection`, `ScoringAxisLevels`); axis levels start folded with a count pill, the blocks start open. The org Request Scoring page went from about 5,500 px to about 2,300 px. | User (asked for folding), Agent (what folds and the defaults) |
+| Fold key | A preference key is at most 100 characters; the first version carried a project id and the save was refused (422), so a block would not open. Keys now name the scheme, tier (`o`/`p`) and block only. | Agent (found while verifying) |
+
+**Review (identify, verify, remediate).** Identified by reading each panel at 1440 px: the scoring panels, the type and list panels, Product Feedback settings, Tags and Fields & actions. *Fixed:* the scoring panels and the six type-list panels above. *Verified:* stories for every panel using `DefinitionList` (2,842 pass), type and lint checks, and the Playwright specs for scoring, type vocabularies and request references and channels (the specs that read a level now open the folded blocks through `tests/modules/scoringLevels.ts`; two row locators changed from `.stack` to `.definition-grid__row`). No access or data behaviour changed.
+
+**Found, not changed (for the User to prioritise):**
+- **Fields & actions** is about 4,200 px: the link-type list is 60 rows with no folding or paging, and its "Link types of this project" and "New link type" forms wrap unaligned. Custom fields' add row is also a loose line.
+- **Tags**: the three-column tables under "Where tags are used" size their columns separately, so Tag, Used on and Last used do not line up from one table to the next.
+- **Type and list panels**: each opens with a long paragraph that is read once, which the explain-in-a-tooltip rule says belongs in a `(?)`; the scoring panels' "Define your own axes…" and "Levels are…" lines are the same. This is part of the known sweep of about 90 `hint=` lines.
+- **Models shown / Default model**: the source pill and `(?)` sit on a line of their own above the checkboxes; folding the block hides it, but it could join the title row.
+- Not opened this pass: Structure, Members, Project groups, Reports and Modules, and the organisation-level admin pages other than Request Scoring and External Systems.
+
+## Enhancement requests: the Status dropdown carries the open default
+
+**Decided by: User** (asked for the list's default Status to leave out Duplicate, Delivered and Declined; chose the dropdown over a checkbox or a multi-select), **Agent** (the wording and the URL mapping).
+
+The list already opened on open requests through a separate "Open only" checkbox while the Status dropdown read "All statuses", so the default looked unfiltered. The dropdown now has **Open statuses** (New, Under review, Accepted; the default), **All statuses** and each single status, with a `(?)` listing what each includes; the checkbox is gone from this module's two lists (project list and organisation inbox, which share `RequestFilterFields`). The URL and API are unchanged: a single status is `status=`, Open statuses is `open=1`, All is `open=0`; picking a single status turns the open default off so it cannot hide the status chosen. A link naming a status or `open=0` still starts on that choice. Other modules' lists keep the shared Open only checkbox (`useOpenOnly`); aligning them is a separate choice.
+
+**Review (identify, verify, remediate).** No access, data or API change. Verified by the list's stories (default is Open statuses, All shows the closed ones, a status link opens on that status) and type, lint and field-help checks.
+
+## Enhancement requests: Created and Last updated columns
+
+**Decided by: User** (asked for both as selectable columns), **Agent** (hidden by default, sortable, date and time in the viewer's timezone).
+
+Both are optional columns in the shared request-list column chooser (project list and organisation inbox). Each is a **past instant in UTC** on the wire, converted to the viewer's timezone in the browser. *Found and fixed while building it:* a request's `updated_at` never moved on an edit, because a new version is a new row and the request row itself is untouched, so it always equalled the creation time. It is now the later of the request row's own time (archive, move) and the current version's time. A backend test pins it (it fails without the fix).
+
+**Review (identify, verify, remediate).** No access or data-shape change; the API field existed. Verified by the backend module suite (182 pass), the list stories (90 pass, including a sort-by-time story) and the Columns Playwright spec (extended, not run here).

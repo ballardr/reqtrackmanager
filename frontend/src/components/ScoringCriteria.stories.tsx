@@ -4,7 +4,7 @@ import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError } from "../api/client";
 import type { ScoringCriteriaCalls, ScoringScheme } from "../api/scoring";
-import { buildCustomCriteriaScheme, buildScoringScheme, withToast } from "../testing/storybook-helpers";
+import { buildCustomCriteriaScheme, buildScoringScheme, buildUser, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ScoringCriteria } from "./ScoringCriteria";
 
 /** Calls that resolve with `result` unless overridden; each is a spy the play function checks. */
@@ -25,7 +25,8 @@ function Harness(props: { scheme: ScoringScheme; calls: ScoringCriteriaCalls; pr
 const meta: Meta<typeof Harness> = {
   title: "Components/Scoring/ScoringCriteria",
   component: Harness,
-  decorators: [withToast()],
+  // The folding blocks remember their state through the signed-in person's preferences.
+  decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
   args: { scheme: buildCustomCriteriaScheme(), calls: calls(buildCustomCriteriaScheme()) },
 };
 export default meta;
@@ -45,7 +46,7 @@ export const OwnCriteriaAreEditableAndBuiltInsOnlyHideable: Story = {
     await expect(canvas.getByRole("button", { name: "Hide Impact" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Hide ICE" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Edit Weighted value" })).toBeInTheDocument();
-    await expect(canvas.getByText("Worked out from demand")).toBeInTheDocument();
+    await expect(canvas.getByText("Automatic")).toBeInTheDocument();
   },
 };
 

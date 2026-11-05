@@ -18,17 +18,16 @@
 import { useEffect, useState } from "react";
 
 import {
-  orgScoringApi, SCORING_SOURCE_LABEL, scoringOriginLabel, type ScoringLevel, type ScoringScheme,
+  orgScoringApi, SCORING_SOURCE_LABEL, type ScoringScheme,
 } from "../api/scoring";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { Badge } from "./Badge";
-import { DefinitionList } from "./DefinitionList";
 import { LabeledSelect } from "./LabeledSelect";
 import { OverridePill } from "./OverridePill";
-import { levelFields, parseLevel } from "./scoringLevelFields";
+import { ScoringAxisLevels } from "./ScoringAxisLevels";
 import { ScoringCriteria } from "./ScoringCriteria";
 import { ScoringEnabledModels } from "./ScoringEnabledModels";
 import { ScoringModelBands } from "./ScoringModelBands";
+import { ScoringSection } from "./ScoringSection";
 import { Spinner } from "./Spinner";
 import { useStrings } from "../context/TerminologyContext";
 
@@ -80,8 +79,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
 
   return (
     <div className="stack">
-      <section className="stack" aria-labelledby={`${schemeKey}-default-model`}>
-        <h3 id={`${schemeKey}-default-model`} style={{ margin: 0 }}>Default model</h3>
+      <ScoringSection sectionKey={`${schemeKey}:o:default-model`} title="Default model">
         <p className="text-muted" style={{ margin: 0 }}>
           Used unless a project sets its own; anyone viewing scores can still switch model.
         </p>
@@ -102,11 +100,10 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
               void mutate(() => orgScoringApi.setDefaultModel(orgId, schemeKey, null), "Default model reset.", applySchemeResult)}
           />
         </div>
-      </section>
+      </ScoringSection>
 
       {scheme.side_by_side_models && (
-        <section className="stack" aria-labelledby={`${schemeKey}-enabled-models`}>
-          <h3 id={`${schemeKey}-enabled-models`} style={{ margin: 0 }}>Models shown</h3>
+        <ScoringSection sectionKey={`${schemeKey}:o:enabled-models`} title="Models shown">
           <p className="text-muted" style={{ margin: 0 }}>
             Each record is scored by every model ticked here, side by side. Projects can choose their own.
           </p>
@@ -117,57 +114,27 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
             onSave={(models) => mutate(() => criteria.setEnabledModels(models), "Models shown saved.", applySchemeResult)}
             onReset={() => mutate(() => criteria.setEnabledModels(null), "Models shown reset.", applySchemeResult)}
           />
-        </section>
+        </ScoringSection>
       )}
 
       <ScoringCriteria scheme={scheme} calls={criteria} onChange={setScheme} />
 
-      <section className="stack" aria-labelledby={`${schemeKey}-levels`}>
-        <h3 id={`${schemeKey}-levels`} style={{ margin: 0 }}>Levels</h3>
+      <ScoringSection sectionKey={`${schemeKey}:o:levels`} title="Levels">
         <p className="text-muted" style={{ margin: 0 }}>
           Levels are ordered by weight; a model's score multiplies the chosen levels' weights. Every axis keeps at least
           two levels, and the highest weight is the axis's top level.
         </p>
-        {scheme.axes.map((axis) => (
-          <div key={axis.key} className="stack" style={{ gap: "var(--space-2)" }}>
-            <h4 style={{ margin: 0 }}>
-              {axis.label}{axis.origin && axis.origin !== "built_in" && <> <Badge>{scoringOriginLabel(axis.origin, axis.owner_project_id)}</Badge></>}
-            </h4>
-            {axis.description && <span className="text-muted">{axis.description}</span>}
-            {axis.derived_source && (
-              <span className="text-muted">
-                Worked out from demand: a record lands in the highest level whose threshold its value reaches. A level chosen by hand wins.
-              </span>
-            )}
-            <DefinitionList<ScoringLevel>
-              items={axis.levels}
-              minItems={2}
-              fields={levelFields(axis)}
-              getReassignLabel={(l) => l.name}
-              onRename={async (id, values) => {
-                await orgScoringApi.updateLevel(orgId, schemeKey, id, parseLevel(values, !!axis.derived_source));
-                showToast("Level saved.");
-                reload();
-              }}
-              onAdd={async (values) => {
-                await orgScoringApi.createLevel(orgId, schemeKey, axis.key, parseLevel(values, !!axis.derived_source));
-                showToast("Level added.");
-                reload();
-              }}
-              onDelete={async (id, reassignToId) => {
-                await orgScoringApi.deleteLevel(orgId, schemeKey, id, reassignToId);
-                showToast("Level deleted.");
-                reload();
-              }}
-              deleteLabel={`Delete ${axis.label} level`}
-              addLabel={`Add ${axis.label} level`}
-            />
-          </div>
-        ))}
-      </section>
+        <ScoringAxisLevels
+          scheme={scheme} onChanged={reload}
+          calls={{
+            create: (axisKey, body) => orgScoringApi.createLevel(orgId, schemeKey, axisKey, body),
+            update: (id, body) => orgScoringApi.updateLevel(orgId, schemeKey, id, body),
+            remove: (id, reassignToId) => orgScoringApi.deleteLevel(orgId, schemeKey, id, reassignToId),
+          }}
+        />
+      </ScoringSection>
 
-      <section className="stack" aria-labelledby={`${schemeKey}-bands`}>
-        <h3 id={`${schemeKey}-bands`} style={{ margin: 0 }}>Rating bands</h3>
+      <ScoringSection sectionKey={`${schemeKey}:o:bands`} title="Rating bands">
         <ScoringModelBands
           scheme={scheme}
           isCustom={(m) => m.bands_source === "org"}
@@ -182,7 +149,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
           onResetCells={(model) =>
             mutate(() => orgScoringApi.setCellRatings(orgId, schemeKey, model, null), "Cell ratings reset.", applySchemeResult)}
         />
-      </section>
+      </ScoringSection>
     </div>
   );
 }

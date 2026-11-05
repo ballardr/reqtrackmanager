@@ -2,7 +2,7 @@
  * Module: modules/product_feedback/ProjectRequestsPage
  *
  * The project's enhancement request list, mounted at `/projects/:projectId/modules/product_feedback/requests`.
- * It opens on open requests (New, Under review, Accepted); a link that names a status or the unscored slice starts
+ * It opens on the Open statuses choice (New, Under review, Accepted); a link that names a status or the unscored slice starts
  * with that filter instead.
  *
  * Columns, filters and the unscored count are `requestList.tsx`'s, shared with the organisation inbox. Demand sits
@@ -174,7 +174,7 @@ export function ProjectRequestsPage() {
             emptyState={
               <p className="text-muted">
                 {emptyBecauseOfOpenOnly
-                  ? "No open requests. Untick Open only to include delivered, declined and duplicate ones."
+                  ? "No open requests. Set Status to All statuses to include delivered, declined and duplicate ones."
                   : requests.length > 0 ? "No requests match these filters." : "No enhancement requests in this project yet."}
               </p>
             }

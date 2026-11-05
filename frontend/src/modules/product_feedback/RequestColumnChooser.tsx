@@ -2,7 +2,7 @@
  * Module: modules/product_feedback/RequestColumnChooser
  *
  * The Columns control of the request lists (the project list and the organisation inbox): the shared `ColumnChooser`
- * over the optional columns (status, demand on the project tier, owner and one score column per scoring model),
+ * over the optional columns (status, demand on the project tier, owner, created, last updated and one score column per scoring model),
  * bound to the choice `useRequestListFilters` keeps per person. Code and title are always on.
  */
 import type { ScoringScheme } from "../../api/scoring";
@@ -19,7 +19,7 @@ export function RequestColumnChooser({ filters, scheme }: { filters: RequestList
     const model = scheme?.models.find((m) => scoreColumnId(m.key) === id);
     return model ? `Score (${modelShortName(model.label)})` : id;
   };
-  const names: Record<string, string> = { status: "Status", demand: "Demand", owner: "Owner" };
+  const names: Record<string, string> = { status: "Status", demand: "Demand", owner: "Owner", created: "Created", updated: "Last updated" };
   return (
     <ColumnChooser
       columns={filters.columnIds.map((id) => ({ id, label: names[id] ?? modelLabel(id) }))}

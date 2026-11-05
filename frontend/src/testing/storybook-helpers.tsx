@@ -17,6 +17,7 @@
  * the two context providers.
  */
 import type { Decorator } from "@storybook/react-vite";
+import { userEvent, type within } from "storybook/test";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { ScoringScheme } from "../api/scoring";
@@ -559,4 +560,13 @@ export function withThemeProvider(): Decorator {
       <Story />
     </ThemeProvider>
   );
+}
+
+/**
+ * Opens every folded axis block of a scoring editor's Levels section (`ScoringAxisLevels` folds each axis to
+ * "<axis> · N levels"), so a story can reach the level fields. Safe to call when none are folded.
+ */
+export async function expandScoringLevels(canvas: ReturnType<typeof within>): Promise<void> {
+  const folded = canvas.queryAllByRole("button", { expanded: false }).filter((b: HTMLElement) => /\d+ levels/.test(b.textContent ?? ""));
+  for (const bar of folded) await userEvent.click(bar);
 }

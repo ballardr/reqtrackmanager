@@ -116,13 +116,13 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
       // User/Operator, and this new org type before its override) shares the
       // same "Org default" text, so a page-wide `getByText` would match more
       // than one element (a Playwright strict-mode violation).
-      let orgTypeRow = inputWithValue(page, orgTypeName).locator("xpath=ancestor::div[contains(@class,'stack')][1]");
+      let orgTypeRow = inputWithValue(page, orgTypeName).locator("xpath=ancestor::div[contains(@class,'definition-grid__row')][1]");
       await expect(orgTypeRow.getByText("Org default", { exact: true })).toBeVisible();
 
       await inputWithValue(page, orgTypeName).fill(overriddenTypeName);
       await page.getByRole("button", { name: "Rename" }).click();
       await expect(inputWithValue(page, overriddenTypeName)).toBeVisible();
-      orgTypeRow = inputWithValue(page, overriddenTypeName).locator("xpath=ancestor::div[contains(@class,'stack')][1]");
+      orgTypeRow = inputWithValue(page, overriddenTypeName).locator("xpath=ancestor::div[contains(@class,'definition-grid__row')][1]");
       await expect(orgTypeRow.getByText("Org default (overridden)")).toBeVisible();
     });
 

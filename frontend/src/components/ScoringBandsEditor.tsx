@@ -103,28 +103,39 @@ export function ScoringBandsEditor({
         <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel}
           onReset={() => void run(onReset)} disabled={busy} />
       </div>
-      {draft.map((band, i) => (
-        <div key={i} className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap", alignItems: "center" }}>
-          <input className="input" style={{ maxWidth: 160 }} aria-label={`Band ${i + 1} label`} value={band.label}
-            onChange={(e) => update(i, { label: e.target.value })} />
-          <label className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
-            <span className="text-muted">from</span>
-            <input className="input" type="number" min={0} max={99.9} step={0.1} style={{ maxWidth: 90 }}
-              aria-label={`Band ${i + 1} starts at percent`} value={band.percent} disabled={i === 0}
-              onChange={(e) => update(i, { percent: e.target.value })} />
-            <span className="text-muted">%</span>
-          </label>
-          <select className="input" style={{ maxWidth: 120 }} aria-label={`Band ${i + 1} colour`} value={band.tone}
-            onChange={(e) => update(i, { tone: e.target.value as BadgeTone })}>
-            {TONES.map((tone) => <option key={tone} value={tone}>{SCORING_BAND_TONE_LABEL[tone]}</option>)}
-          </select>
-          <Badge tone={band.tone}>{band.label || "—"}</Badge>
-          <button type="button" className="btn btn-danger" aria-label={`Remove band ${i + 1}`} title="Remove band"
-            disabled={draft.length <= 1} onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}>
-            <Trash2 />
-          </button>
-        </div>
-      ))}
+      <div className="definition-grid" style={{ gridTemplateColumns: "minmax(8rem, 1fr) 6.5rem 8rem 6rem max-content" }}>
+        <span className="definition-grid__head">Label</span>
+        <span className="definition-grid__head">From (% of maximum)</span>
+        <span className="definition-grid__head">Colour</span>
+        <span className="definition-grid__head">Preview</span>
+        <span className="definition-grid__head" aria-hidden="true" />
+        {draft.map((band, i) => (
+          <div key={i} style={{ display: "contents" }}>
+            <div className="definition-grid__cell">
+              <input className="input" aria-label={`Band ${i + 1} label`} value={band.label}
+                onChange={(e) => update(i, { label: e.target.value })} />
+            </div>
+            <div className="definition-grid__cell">
+              <input className="input" type="number" min={0} max={99.9} step={0.1}
+                aria-label={`Band ${i + 1} starts at percent`} value={band.percent} disabled={i === 0}
+                onChange={(e) => update(i, { percent: e.target.value })} />
+            </div>
+            <div className="definition-grid__cell">
+              <select className="input" aria-label={`Band ${i + 1} colour`} value={band.tone}
+                onChange={(e) => update(i, { tone: e.target.value as BadgeTone })}>
+                {TONES.map((tone) => <option key={tone} value={tone}>{SCORING_BAND_TONE_LABEL[tone]}</option>)}
+              </select>
+            </div>
+            <div className="definition-grid__cell"><Badge tone={band.tone}>{band.label || "—"}</Badge></div>
+            <div className="definition-grid__actions">
+              <button type="button" className="btn btn-danger" aria-label={`Remove band ${i + 1}`} title="Remove band"
+                disabled={draft.length <= 1} onClick={() => setDraft((d) => d.filter((_, j) => j !== i))}>
+                <Trash2 />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
       {error && dirty && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
       <div className="row" style={{ gap: "var(--space-3)" }}>
         <button type="button" className="btn" disabled={draft.length >= MAX_BANDS}

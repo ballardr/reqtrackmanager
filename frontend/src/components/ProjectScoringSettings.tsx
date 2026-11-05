@@ -14,17 +14,16 @@
 import { useEffect, useState } from "react";
 
 import {
-  projectScoringApi, SCORING_SOURCE_LABEL, scoringOriginLabel, scoringOwnsCriterion, type ScoringLevel, type ScoringScheme,
+  projectScoringApi, SCORING_SOURCE_LABEL, type ScoringScheme,
 } from "../api/scoring";
 import { toErrorMessage, useToast } from "../context/ToastContext";
-import { Badge } from "./Badge";
-import { DefinitionList } from "./DefinitionList";
 import { LabeledSelect } from "./LabeledSelect";
 import { OverridePill } from "./OverridePill";
 import { ScoringCriteria } from "./ScoringCriteria";
 import { ScoringEnabledModels } from "./ScoringEnabledModels";
 import { ScoringModelBands } from "./ScoringModelBands";
-import { levelFields, parseLevel } from "./scoringLevelFields";
+import { ScoringSection } from "./ScoringSection";
+import { ScoringAxisLevels } from "./ScoringAxisLevels";
 import { Spinner } from "./Spinner";
 import { useStrings } from "../context/TerminologyContext";
 
@@ -73,8 +72,7 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
 
   return (
     <div className="stack">
-      <section className="stack" aria-labelledby={`${schemeKey}-project-default-model`}>
-        <h3 id={`${schemeKey}-project-default-model`} style={{ margin: 0 }}>Default model</h3>
+      <ScoringSection sectionKey={`${schemeKey}:p:default-model`} title="Default model">
         <div className="row" style={{ gap: "var(--space-4)", alignItems: "flex-end", flexWrap: "wrap" }}>
           <LabeledSelect help={strings.help.scoringDefaultModel}
             label="Default model"
@@ -92,11 +90,10 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
               void mutate(() => projectScoringApi.setDefaultModel(projectId, schemeKey, null), "Default model reset.")}
           />
         </div>
-      </section>
+      </ScoringSection>
 
       {scheme.side_by_side_models && (
-        <section className="stack" aria-labelledby={`${schemeKey}-project-enabled-models`}>
-          <h3 id={`${schemeKey}-project-enabled-models`} style={{ margin: 0 }}>Models shown</h3>
+        <ScoringSection sectionKey={`${schemeKey}:p:enabled-models`} title="Models shown">
           <p className="text-muted" style={{ margin: 0 }}>Each record is scored by every model ticked here, side by side.</p>
           <ScoringEnabledModels
             scheme={scheme}
@@ -105,52 +102,26 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
             onSave={(models) => mutate(() => criteria.setEnabledModels(models), "Models shown saved.")}
             onReset={() => mutate(() => criteria.setEnabledModels(null), "Models shown reset.")}
           />
-        </section>
+        </ScoringSection>
       )}
 
       <ScoringCriteria scheme={scheme} calls={criteria} projectId={projectId} onChange={setScheme} />
 
-      <section className="stack" aria-labelledby={`${schemeKey}-project-levels`}>
-        <h3 id={`${schemeKey}-project-levels`} style={{ margin: 0 }}>Levels</h3>
+      <ScoringSection sectionKey={`${schemeKey}:p:levels`} title="Levels">
         <p className="text-muted" style={{ margin: 0 }}>
           Levels are set by the organisation{scheme.allow_custom_criteria ? ", except for an axis this project defined" : ""}.
         </p>
-        {scheme.axes.map((axis) => scoringOwnsCriterion(axis.origin, axis.owner_project_id, projectId) ? (
-          <div key={axis.key} className="stack" style={{ gap: "var(--space-2)" }}>
-            <h4 style={{ margin: 0 }}>{axis.label} <Badge>{scoringOriginLabel(axis.origin, axis.owner_project_id, projectId)}</Badge></h4>
-            <DefinitionList<ScoringLevel>
-              items={axis.levels}
-              minItems={2}
-              fields={levelFields(axis)}
-              getReassignLabel={(l) => l.name}
-              onRename={async (id, values) => {
-                await projectScoringApi.updateLevel(projectId, schemeKey, id, parseLevel(values, !!axis.derived_source));
-                showToast("Level saved.");
-                reload();
-              }}
-              onAdd={async (values) => {
-                await projectScoringApi.createLevel(projectId, schemeKey, axis.key, parseLevel(values, !!axis.derived_source));
-                showToast("Level added.");
-                reload();
-              }}
-              onDelete={async (id, reassignToId) => {
-                await projectScoringApi.deleteLevel(projectId, schemeKey, id, reassignToId);
-                showToast("Level deleted.");
-                reload();
-              }}
-              deleteLabel={`Delete ${axis.label} level`}
-              addLabel={`Add ${axis.label} level`}
-            />
-          </div>
-        ) : (
-          <div key={axis.key}>
-            <strong>{axis.label}:</strong> {axis.levels.map((l) => `${l.name} (${l.weight})`).join(" · ")}
-          </div>
-        ))}
-      </section>
+        <ScoringAxisLevels
+          scheme={scheme} projectId={projectId} onChanged={reload}
+          calls={{
+            create: (axisKey, body) => projectScoringApi.createLevel(projectId, schemeKey, axisKey, body),
+            update: (id, body) => projectScoringApi.updateLevel(projectId, schemeKey, id, body),
+            remove: (id, reassignToId) => projectScoringApi.deleteLevel(projectId, schemeKey, id, reassignToId),
+          }}
+        />
+      </ScoringSection>
 
-      <section className="stack" aria-labelledby={`${schemeKey}-project-bands`}>
-        <h3 id={`${schemeKey}-project-bands`} style={{ margin: 0 }}>Rating bands</h3>
+      <ScoringSection sectionKey={`${schemeKey}:p:bands`} title="Rating bands">
         <ScoringModelBands
           scheme={scheme}
           isCustom={(m) => m.bands_source === "project"}
@@ -161,7 +132,7 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
           onSaveCells={(model, cells) => mutate(() => projectScoringApi.setCellRatings(projectId, schemeKey, model, cells), "Cell ratings saved.")}
           onResetCells={(model) => mutate(() => projectScoringApi.setCellRatings(projectId, schemeKey, model, null), "Cell ratings reset.")}
         />
-      </section>
+      </ScoringSection>
     </div>
   );
 }

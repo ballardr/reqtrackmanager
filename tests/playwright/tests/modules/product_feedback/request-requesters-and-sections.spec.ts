@@ -172,7 +172,7 @@ test.describe("Enhancement requests: requesters, paging, references switch and s
     });
   });
 
-  test("the list's Columns control hides score columns and shows Demand and Owner, and remembers", async ({ page }) => {
+  test("the list's Columns control hides score columns and shows Demand, Owner, Created and Last updated, and remembers", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "FeedbackColumns");
     await createRequest(page, projectBase(project.id), adminHeaders, { title: `Listed ${suffix}` });
     const list = `/projects/${project.id}/modules/product_feedback/requests`;
@@ -183,6 +183,8 @@ test.describe("Enhancement requests: requesters, paging, references switch and s
     await expect(table).toBeVisible();
     await expect(headers().filter({ hasText: /^Demand$/ })).toHaveCount(0); // demand and owner start hidden
     await expect(headers().filter({ hasText: /^Owner$/ })).toHaveCount(0);
+    await expect(headers().filter({ hasText: /^Created$/ })).toHaveCount(0);
+    await expect(headers().filter({ hasText: /^Last updated$/ })).toHaveCount(0);
     await expect(headers().filter({ hasText: /^Status$/ })).toHaveCount(1);
     const scoreColumns = await headers().filter({ hasText: /^Score/ }).count();
     expect(scoreColumns).toBeGreaterThan(0);
@@ -191,9 +193,13 @@ test.describe("Enhancement requests: requesters, paging, references switch and s
     const chooser = page.getByRole("dialog", { name: "Columns" });
     await chooser.getByRole("checkbox", { name: "Demand", exact: true }).check();
     await chooser.getByRole("checkbox", { name: "Owner", exact: true }).check();
+    await chooser.getByRole("checkbox", { name: "Created", exact: true }).check();
+    await chooser.getByRole("checkbox", { name: "Last updated", exact: true }).check();
     await chooser.getByRole("checkbox", { name: /^Score \(/ }).first().uncheck();
     await expect(headers().filter({ hasText: /^Demand$/ })).toHaveCount(1);
     await expect(headers().filter({ hasText: /^Owner$/ })).toHaveCount(1);
+    await expect(headers().filter({ hasText: /^Created$/ })).toHaveCount(1);
+    await expect(headers().filter({ hasText: /^Last updated$/ })).toHaveCount(1);
     await expect(headers().filter({ hasText: /^Score/ })).toHaveCount(scoreColumns - 1);
 
     await page.reload();
