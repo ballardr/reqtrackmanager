@@ -9125,7 +9125,7 @@ tags is in [module-02-stakeholders-and-personas-plan.md](plans/module-02-stakeho
 
 ## Module 14 (Product Feedback / Enhancement Requests) proposed (2026-10-05)
 
-Planning only. Plan: [module-14-product-feedback-plan.md](plans/module-14-product-feedback-plan.md).
+Planning only. Plan: [module-14-product-feedback-plan.md](plans/completed/module-14-product-feedback-plan.md).
 
 - **A new, independently toggleable module for enhancement requests**,
   planned now and built after Modules 1 and 2. (Decided by: User.)
@@ -16404,3 +16404,20 @@ From a UI/UX review of the seeded demo, by the User: the owner field took three 
 **Thirteenth follow-up: "Criteria not rated" says what it filters.** The list's "Missing a level for" filter had "Any criterion" as its no-filter option, which reads as "any criterion missing" (a request not rated on every criterion) but showed every request. It is renamed **Criteria not rated** and its options are **No filter**, **Any criterion** (requests with no level on at least one manual criterion; a derived one such as Demand never counts) and one per criterion. Any criterion is `missing_axis=any` on the list, export and MCP tools too (the reserved value cannot clash with an axis key), so the page, Export and agents narrow identically. **Decided by: User** (the reading and rename); the wording and the `any` value **Decided by: Agent**.
 
 **Fourteenth follow-up: explanations go in tooltips, not in the layout.** The project scope filter printed "Includes records from related projects you can open. Counts cover all of them." under its select whenever it was widened, and the shared Link to field printed "Links are added when the record is saved." under its box in every create form: text read once and then permanent. Both are now `(?)` tooltips on the caption (`FilterField` gained `help`; `QuickLinkField`'s `hint` became `help`, as did the requesters field's), and the scope tooltip lists every option. A standing rule is added to `CLAUDE.md` and the style guide ("Pattern: explain in help, not in the layout"): explain in a tooltip that covers every option, use the shared `Tooltip` rather than a native `title`, and keep text visible only for errors, destructive warnings, hidden-counts, empty states and required next steps. **Known remainder, not swept:** about 90 existing `hint=` lines predate the rule; they are to be converted when their screen is next touched (a judgement per line, since some are legitimate format or warning text). **Decided by: User** (the rule and the two fixes); the scope of the sweep **Decided by: Agent**.
+
+## Module 14 (Product Feedback) Phase 7: docs website (2026-11-05)
+
+Documentation only; closes the module's plan (13/13, archived in `plans/completed/`). Pages in `docs/website/docs/modules/product-feedback-module/`, sidebar entry in `docs/website/sidebars.ts`.
+
+| Decision | Choice | Decided by |
+|----------|--------|------------|
+| Page split | Nine pages, following the nested-section decision for modules: overview, enhancement requests, demand and merging, scoring, relationships and closing the loop, external references and channels, reports, MCP, known limitations. Scoring, demand and references each get a page because each has its own settings and vocabulary. | Agent |
+| Problem versus solution | Stated on the overview first, because it is the idea the rest depends on (a request is a solution, a Pain Point the problem, and a request with no Pain Point is a warning, never a block). | Agent (from the plan's stated requirement) |
+| Screenshots | Five, captured at 1440 wide against the demo dataset: list, request page, inbox, and the Demand ranking and Close the loop reports. The Falcon-3 project's Spec/ECR terminology was cleared for the capture and restored, and the list and inbox shots are cropped to the page body so the navigation does not show it. The create form was captured but not used (the form is described, not pictured). | Agent |
+| Follow-ups covered | Requesters and paging, the External references sub-component, section order, the Columns control, the merge note and the "Criteria not rated" filter are all described. The tooltip-not-layout rule is a UI convention and has no page of its own. | Agent |
+| Performance pages | Not changed: this phase moves no measured number. The module's own scaling probe and generator shipped with the earlier phases. | Agent |
+| F3 naming | The Close the loop page says it names no one and points to the request page, as the report does; the plan's open question (name requesters for a holder of `export_personal_data`) stays with the User. | Agent |
+
+**Verification.** `npm run build` clean; `scripts/check_doc_links.py` passes with the plan archived; all five Mermaid diagrams parse and render in Chromium; `request-reports.spec.ts` (the Phase 6 spec the plan asked to be run against the rebuilt stack) passes.
+
+**Review (identify, verify, remediate).** Identified the claims most likely to drift from the code and checked each: the lifecycle moves against `ALLOWED_TRANSITIONS`; level names and weights and the Demand thresholds against `scoring.py`; import columns against `record_tables._columns` (references are importable, score and demand are export-only); button names against `RequestDetailPage` (the menu entries read "Merge into another request…" and "Move to a project…", and the merge undo reads "Undo merge", not "Unmerge"); the tool count against the generated MCP reference (34: 29 module tools and 5 reports); the bundle contents against `export.py`. Found and corrected in the draft: those three wordings, the channel-mix example (the export writes "Email x2", not "Email 2") and the import column list. No security-relevant surface changed.

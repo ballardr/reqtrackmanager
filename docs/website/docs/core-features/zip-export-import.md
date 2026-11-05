@@ -29,10 +29,11 @@ Every module's records travel with the project, and its organisation-level recor
 | Compliance | Assignments, assessments, evidence, reviews, requirement links and the standards the project is excepted from | Standards, vocabularies, mappings and the default compliance managers group |
 | Risk Management | [Risks, reviews and treatment links](../modules/risk-management-module/export-and-import.md) and risk types | Risk types |
 | Stakeholders & Personas | Personas, stakeholders, needs, groups, relationships and engagements with their findings | Organisation-level personas, stakeholders, groups and type vocabularies |
+| Product Feedback | [Enhancement requests](../modules/product-feedback-module/enhancement-request.md) with their evidence, external references, requesters, Pain Point and Requirement links, who was told, active merges, the submission policy and section order, plus the project's scoring criteria, external systems and request channels (with defaults it hid) | The organisation's inbox requests and merges, scoring criteria, external systems and request channels |
 
 A record travels as it is now: its current content and status, not its version history or comments. Records are numbered afresh in the new project (Risks keep their codes), and references are matched by name, title or code, with a warning where one cannot be matched (for example a score against a persona the new project does not have, or a user who is not in the target organisation). Links only travel between records of the same project; a link to another project, or to a record that is not in the bundle, is dropped. Organisation-level attachments do not travel.
 
-[Tags](tags.md) travel too: the project's tag list, colours and setting, and the tags on its requirements, personas, stakeholders, needs, engagements, research findings, risks, pain points, strategies, future states, guiding principles, open questions and decisions. They are restored even if the new project only allows listed tags. An organisation bundle does not carry the tag list itself.
+[Tags](tags.md) travel too: the project's tag list, colours and setting, and the tags on its requirements, personas, stakeholders, needs, engagements, research findings, risks, pain points, strategies, future states, guiding principles, open questions, decisions and enhancement requests. They are restored even if the new project only allows listed tags. An organisation bundle does not carry the tag list itself.
 
 ## What's excluded, and why
 

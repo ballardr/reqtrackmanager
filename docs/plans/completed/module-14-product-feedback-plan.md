@@ -1,22 +1,21 @@
 # Module 14 — Product Feedback (Enhancement Requests) — Implementation Plan
 
-See [future-modules-2026-09-index.md](future-modules-2026-09-index.md) for
+See [future-modules-2026-09-index.md](../future-modules-2026-09-index.md) for
 cross-cutting architecture. Not in the overview. Requested by the user on
 2026-10-05 while scoping
-[Module 2's Engagements](module-02-stakeholders-and-personas-plan.md)
+[Module 2's Engagements](../module-02-stakeholders-and-personas-plan.md)
 (Phase 0 addendum 2): "a better place to store [enhancement requests]
 rather than say something like Jira". **Decided by: User.**
 
-**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens), 5c (external references and channel per ask), 5b (scoring administration screens) and 6 (reports) built 2026-11-05; Phase 7 (docs website) next (the 2026-11-05 review follow-ups are in `docs/decisions.md`'s "Eighth follow-up" entry and the website must cover them: requesters and paging, the External references switch, the section order). Plan now, build after Modules 1 and 2
-(**Decided by: User**). Hard-depends on Module 0. Soft dependencies:
+**Status:** Phase 0 signed off 2026-11-04; Phases 1, 1b, 2 and 3 (backend) built 2026-11-04; Phases 3b, 3c and 4 (backend) built 2026-11-05; Phases 5 (screens), 5c (external references and channel per ask), 5b (scoring administration screens), 6 (reports) and 7 (docs website) built 2026-11-05. **Plan closed 13/13.** Hard-depends on Module 0. Soft dependencies:
 Module 1 (Pain Point links, report framework from its Phases 12b and 13) and Module 2
 (Stakeholder/Persona/Engagement links). Links to a disabled module's
 artefacts simply aren't offered.
 
 ## Status / Resume Here
 
-12 / 13 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
-Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (backend) and Phase 5 (screens) done 2026-11-05. Phase 5c (**Decided by: User**, 2026-11-05), Phase 5b and Phase 6 are done the same day; Phase 7 is next.
+13 / 13 phases complete. Phases 0, 1, 1b, 2 and 3 done 2026-11-04 (Module 2 Phase 1.2 and
+Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (backend) and Phase 5 (screens) done 2026-11-05. Phase 5c (**Decided by: User**, 2026-11-05), Phase 5b, Phase 6 and Phase 7 are done the same day.
 
 | # | Phase | Status |
 |---|-------|--------|
@@ -32,7 +31,7 @@ Module 1 Phase 13 had shipped); Phases 3b and 3c (scoring extension), Phase 4 (b
 | 5b | Scoring administration screens: enabled models, level thresholds, custom axes and models, hide and restore | [x] Complete (2026-11-05) — see "Phase 5b notes" |
 | 5c | External references (several, with system and role) and channel per ask | [x] Complete (2026-11-05) — see "Phase 5c" and "Phase 5c notes" |
 | 6 | Reports (F1–F5) | [x] Complete (2026-11-05) — see "Phase 6 notes" |
-| 7 | Docs website coverage | [ ] Not started |
+| 7 | Docs website coverage | [x] Complete (2026-11-05) — see "Phase 7 notes" |
 
 ## Where it fits
 
@@ -305,6 +304,16 @@ flowchart LR
 - **F3 names no requester** (personal data); it gives counts and channel mix. **Raised for the User:** name them for a holder of `export_personal_data` if wanted.
 - Core extension: `ReportContext.viewer_id` and `can_view` (so a report names another module's record only to someone who may view it); F5 uses it.
 - **Phase 7 must:** the docs pages for the module and the five reports, with the problem/solution distinction and a screenshot of the demand ranking; `request-reports.spec.ts` should be run once against the rebuilt stack first.
+
+## Phase 7 notes (2026-11-05)
+
+Docs only; account in `docs/decisions.md` ("Module 14 (Product Feedback) Phase 7").
+
+- A nine-page **Product Feedback module** section in `docs/website/docs/modules/product-feedback-module/` (overview, enhancement requests, demand and merging, scoring, relationships and closing the loop, external references and channels, reports, MCP, known limitations), five screenshots, five Mermaid diagrams (all rendered to check), and the sidebar entry.
+- The review follow-ups are covered: requesters and paging, the External references sub-component, the section order, the Columns control, the merge note.
+- Cross-references updated: modules overview and roadmap, bundles table, MCP overview and agent skill, glossary (three terms).
+- The Phase 6 spec `request-reports.spec.ts` was run against the stack and passes.
+- The two performance pages need no change: no measured number moved.
 
 ## Phase 5c: external references and channel per ask (added 2026-11-05)
 
