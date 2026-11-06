@@ -6,6 +6,7 @@ import type { TierAModuleDefinition } from "../types";
 import {
   OrgExternalSystemsPanel, OrgRequestChannelsPanel, ProjectExternalSystemsPanel, ProjectRequestChannelsPanel,
 } from "./FeedbackListPanels";
+import { CreateRequestDialog } from "./CreateRequestDialog";
 import { OrgRequestsPanel } from "./OrgRequestsPanel";
 import { ProjectRequestsPage } from "./ProjectRequestsPage";
 import { RequestDetailPage } from "./RequestDetailPage";
@@ -42,6 +43,9 @@ const PRODUCT_FEEDBACK_ADMIN_GROUP = { key: "product-feedback", label: "Product 
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "product_feedback",
+  linkedRecordCreators: {
+    enhancement_request: { label: "Enhancement Request", render: (props) => createElement(CreateRequestDialog, props) },
+  },
   artefactPaths: {
     enhancement_request: (projectId, id) => `/projects/${projectId}/modules/product_feedback/requests/${id}`,
   },

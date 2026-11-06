@@ -84,7 +84,7 @@ export function CreateLinkedRecordDialog({
 
   if (step === 2) {
     return getLinkedRecordCreator(entry.type)?.render({
-      projectId, onCreated: (id) => void created(id), onCancel: onClose,
+      projectId, pageRecord: { type: artefactType, id: artefactId }, onCreated: (id) => void created(id), onCancel: onClose,
     }) ?? null;
   }
   const typeSelect = (

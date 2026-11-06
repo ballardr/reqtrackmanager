@@ -6,7 +6,7 @@ drafting a change request (against an existing requirement, or proposing a
 new one, an action add/remove, or a link add/remove), listing/fetching one,
 and its per-entity activity timeline. Also home for `_to_out`/`_latest_version`
 (imported by `workflow.py`, the only other bucket that needs them),
-`CAN_SUBMIT_ROLES` (imported by `comments.py`), and `OPEN_CR_STATUSES`
+and `OPEN_CR_STATUSES`
 (imported by `votes.py`) — each used by exactly one sibling bucket besides
 this one, so kept here rather than promoted to `_shared.py` (see that
 module's own docstring for the "used by 3+ buckets" threshold).
@@ -62,20 +62,12 @@ from app.services.tags import TagFilter
 
 router = APIRouter(tags=["change-requests-core"])
 
-CAN_SUBMIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
-
 
 def _require_can_create_change_request(db: Session, user: User, project: Project) -> None:
-    """Like `comments._require_submit_role`, but also allows plain "members"
-    when the project has enabled member change-request submission (C-U-13,
-    defaults to enabled). Only applies to creating a change request —
-    commenting on one still requires stakeholder+ regardless of this toggle.
-    """
-    roles = get_effective_project_roles(db, user.id, project.id)
-    allowed = set(CAN_SUBMIT_ROLES)
-    if project.allow_member_change_requests:
-        allowed.add(ProjectRole.MEMBER)
-    if not roles & allowed:
+    """Raises 403 unless `user` may submit a change request here (`may_submit_change_request`, which also answers the
+    Links panel's "Create new"); the member toggle (C-U-13, enabled by default) applies to creating only, since
+    commenting on a request still requires stakeholder or above (`CAN_SUBMIT_ROLES`)."""
+    if not list_service.may_submit_change_request(db, user, project):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to submit change requests on this project.")
 
 

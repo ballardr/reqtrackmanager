@@ -34,11 +34,11 @@ from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.user import User
 from app.routers.change_requests._shared import _get_cr_in_project
-from app.routers.change_requests.core import CAN_SUBMIT_ROLES
 from app.schemas.file import FileAssetOut
 from app.schemas.requirement import CommentCreate, CommentOut, CommentUpdate
 from app.services import engagement, notifications
 from app.services.audit import log_event
+from app.services.change_request_list import CAN_SUBMIT_ROLES
 from app.services.files import upload_file
 from app.services.rbac import get_effective_project_roles, require_project_view
 

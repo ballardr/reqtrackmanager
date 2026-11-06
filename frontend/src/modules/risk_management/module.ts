@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { ProjectScoringSettings } from "../../components/ProjectScoringSettings";
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
+import { CreateRiskDialog } from "./CreateRiskDialog";
 import { OrgRiskTypesPanel } from "./OrgRiskTypesPanel";
 import { ProjectRiskTypesPanel } from "./ProjectRiskTypesPanel";
 import { ProjectRisksPage } from "./ProjectRisksPage";
@@ -37,6 +38,9 @@ const RISK_ADMIN_GROUP = { key: "risk-management", label: "Risk Management" };
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "risk_management",
+  linkedRecordCreators: {
+    risk: { label: "Risk", render: (props) => createElement(CreateRiskDialog, props) },
+  },
   artefactPaths: {
     risk: (projectId, id) => `/projects/${projectId}/modules/risk_management/risks/${id}`,
   },

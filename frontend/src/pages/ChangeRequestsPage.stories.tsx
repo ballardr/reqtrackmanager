@@ -207,7 +207,7 @@ export const SearchRefetchesWithSearchParam: Story = {
 export const SubmitCreatesChangeRequest: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "post").mockResolvedValue({ id: "cr-new" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -236,7 +236,7 @@ export const SubmitCreatesChangeRequest: Story = {
 export const ModifyRequestSendsItsProposedLinks: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis({ links: true });
-    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "post").mockResolvedValue({ id: "cr-new" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

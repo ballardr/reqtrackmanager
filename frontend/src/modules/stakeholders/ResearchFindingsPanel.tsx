@@ -17,41 +17,16 @@ import { useLocation } from "react-router-dom";
 
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { Modal } from "../../components/Modal";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectResearchApi } from "./api";
-import { TextAreaField, TextField } from "../../components/FormFields";
+import type { CollectedLink } from "../../api/artefactLinks";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
+import { FindingFormModal } from "./FindingFormModal";
 import type { ResearchFinding } from "./types";
-import { FormActions } from "../../components/FormActions";
 
 /** A finding sits in its engagement's page, so its link list leaves the engagement out (the trace still shows it). */
 const HIDE_ENGAGEMENT = ["engagement"] as const;
-
-function FindingFormModal({
-  initial, error, onCancel, onSave,
-}: {
-  initial?: ResearchFinding;
-  error: string | null;
-  onCancel: () => void;
-  onSave: (values: { title: string; description: string }) => void;
-}) {
-  const [title, setTitle] = useState(initial?.title ?? "");
-  const [description, setDescription] = useState(initial?.description ?? "");
-  return (
-    <Modal title={initial ? `Edit ${initial.title}` : "New finding"} onClose={onCancel} size="lg">
-      <div className="stack">
-        <TextField helpNotNeeded required label="Title" ariaLabel="Finding title" value={title} onChange={setTitle} hint="One line, e.g. “Technicians skip the checklist when offline”." />
-        <TextAreaField helpNotNeeded label="Description" rows={5} value={description} onChange={setDescription} hint="Findings can quote participants and are deleted with the engagement." />
-        <FormActions
-          error={error}
-          onCancel={onCancel}
-          onSave={() => onSave({ title: title.trim(), description })}
-          saveDisabled={title.trim() === ""}
-        />
-      </div>
-    </Modal>
-  );
-}
 
 export function ResearchFindingsPanel({
   projectId, engagementId, onChanged,
@@ -62,6 +37,8 @@ export function ResearchFindingsPanel({
   onChanged?: () => void;
 }) {
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId, "research_finding");
+  const commitTags = useCommitTags(projectId, "research_finding");
   const [findings, setFindings] = useState<ResearchFinding[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ResearchFinding | null>(null);
@@ -77,14 +54,19 @@ export function ResearchFindingsPanel({
     };
   }, [projectId, engagementId, refresh]);
 
-  async function save(values: { title: string; description: string }) {
+  async function save(values: { title: string; description: string }, quickLinks: CollectedLink[], tags: string[]) {
     setFormError(null);
     try {
+      let createdId: string | null = null;
       if (editing) await projectResearchApi.updateFinding(projectId, editing.id, values);
-      else await projectResearchApi.addFinding(projectId, engagementId, values);
+      else createdId = (await projectResearchApi.addFinding(projectId, engagementId, values)).id;
       showToast(editing ? "Finding updated." : "Finding added.");
       setEditing(null);
       setCreating(false);
+      if (createdId) {
+        await commitQuickLinks(createdId, quickLinks);
+        await commitTags(createdId, tags);
+      }
       setRefresh((n) => n + 1);
       onChanged?.();
     } catch (err) {
@@ -140,9 +122,10 @@ export function ResearchFindingsPanel({
       {(creating || editing) && (
         <FindingFormModal
           initial={editing ?? undefined}
+          projectId={projectId}
           error={formError}
           onCancel={() => { setCreating(false); setEditing(null); setFormError(null); }}
-          onSave={save}
+          onSave={(values, extras) => save(values, extras.quickLinks, extras.tags)}
         />
       )}
       {deleting && (

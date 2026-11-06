@@ -1,0 +1,27 @@
+{
+  "creatable": [
+    "change_request",
+    "compliance_evidence",
+    "decision",
+    "engagement",
+    "enhancement_request",
+    "future_state",
+    "guiding_principle",
+    "open_question",
+    "pain_point",
+    "persona",
+    "requirement",
+    "requirement_action",
+    "research_finding",
+    "risk",
+    "stakeholder",
+    "stakeholder_group",
+    "stakeholder_need",
+    "strategy"
+  ],
+  "notCreatable": [
+    "compliance_required_action_assessment",
+    "compliance_requirement",
+    "project_compliance_requirement"
+  ]
+}

@@ -742,6 +742,12 @@ def _change_request_columns(db: Session, project: Project) -> list[RecordColumn]
     return columns
 
 
+def _may_submit_change_request(db: Session, user: User, project_id: uuid.UUID) -> bool:
+    """The create endpoint's gate: a manager, administrator or stakeholder, or a member when the project allows it."""
+    project = db.get(Project, project_id)
+    return project is not None and change_request_service.may_submit_change_request(db, user, project)
+
+
 CHANGE_REQUEST_TABLE = RecordTableProvider(
     label="Change requests",
     columns=_change_request_columns,
@@ -751,6 +757,7 @@ CHANGE_REQUEST_TABLE = RecordTableProvider(
     prepare=lambda db, project, records: _ChangeRequestTable(db, project, records),
     filter_params=frozenset({"cr_status", "active_only", "target_stage_id", "search"}),
     count=lambda db, user, project_id: count_rows(db, ChangeRequest, project_id, live_only=False),
+    can_create=_may_submit_change_request,
     approval_gated=True,
 )
 

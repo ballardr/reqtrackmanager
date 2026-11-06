@@ -9,9 +9,7 @@
  */
 import { useEffect, useState } from "react";
 
-import { toErrorMessage, useToast } from "../../context/ToastContext";
-import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
-import { useCommitTags } from "../../hooks/useCommitTags";
+import { useLinkedRecordSave } from "../../hooks/useLinkedRecordSave";
 import type { LinkedRecordCreatorProps } from "../types";
 import { projectPainPointApi } from "./api";
 import { PainPointFormModal } from "./PainPointFormModal";
@@ -23,11 +21,8 @@ import type { EffectivePainPointType, PainPointFieldValues } from "./types";
  * @param onCancel Called when the dialog is dismissed without creating.
  */
 export function CreatePainPointDialog({ projectId, onCreated, onCancel }: LinkedRecordCreatorProps) {
-  const { showToast } = useToast();
-  const commitQuickLinks = useCommitQuickLinks(projectId, "pain_point");
-  const commitTags = useCommitTags(projectId, "pain_point");
+  const { error, save } = useLinkedRecordSave(projectId, "pain_point", "Pain Point", onCreated);
   const [types, setTypes] = useState<EffectivePainPointType[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -39,18 +34,7 @@ export function CreatePainPointDialog({ projectId, onCreated, onCancel }: Linked
   return (
     <PainPointFormModal
       projectId={projectId} types={types} error={error} onCancel={onCancel}
-      onSave={async (values: PainPointFieldValues, quickLinks, tags) => {
-        setError(null);
-        try {
-          const created = await projectPainPointApi.create(projectId, values);
-          showToast("Pain Point created.");
-          await commitQuickLinks(created.id, quickLinks);
-          await commitTags(created.id, tags);
-          onCreated(created.id);
-        } catch (err) {
-          setError(toErrorMessage(err, "Could not create Pain Point."));
-        }
-      }}
+      onSave={(values: PainPointFieldValues, quickLinks, tags) => save(() => projectPainPointApi.create(projectId, values), quickLinks, tags)}
     />
   );
 }

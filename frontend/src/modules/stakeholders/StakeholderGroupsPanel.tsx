@@ -19,6 +19,7 @@
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { ListActions } from "../../components/ListActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
@@ -26,6 +27,8 @@ import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { TreeView } from "../../components/TreeView";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
 import { orgStakeholderApi, orgStakeholderGroupApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
 import { type GroupNode, buildGroupTree } from "./groupTree";
 import { GroupsFromTextModal } from "./GroupsFromTextModal";
@@ -54,6 +57,8 @@ export function StakeholderGroupsPanel({
   const tier = projectId ? "project" : "organization";
   const scopeId = (projectId ?? organizationId) as string;
   const groupApi = projectId ? projectStakeholderGroupApi : orgStakeholderGroupApi;
+  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "stakeholder_group");
+  const commitTags = useCommitTags(projectId ?? "", "stakeholder_group");
   const stakeholderApi = projectId ? projectStakeholderApi : orgStakeholderApi;
 
   const [groups, setGroups] = useState<StakeholderGroup[] | null>(null);
@@ -119,13 +124,18 @@ export function StakeholderGroupsPanel({
     }
   }
 
-  async function saveForm(values: StakeholderGroupFieldValues) {
+  async function saveForm(values: StakeholderGroupFieldValues, quickLinks: CollectedLink[], tags: string[]) {
     setFormError(null);
     try {
+      let createdId: string | null = null;
       if (form?.initial) await groupApi.update(scopeId, form.initial.id, values);
-      else await groupApi.create(scopeId, values);
+      else createdId = (await groupApi.create(scopeId, values)).id;
       showToast(form?.initial ? "Group updated." : "Group created.");
       setForm(null);
+      if (createdId && projectId) {
+        await commitQuickLinks(createdId, quickLinks);
+        await commitTags(createdId, tags);
+      }
       reload();
     } catch (err) {
       setFormError(toErrorMessage(err, "Could not save this group."));
@@ -256,7 +266,7 @@ export function StakeholderGroupsPanel({
 
       {form && (
         <StakeholderGroupFormModal
-          initial={form.initial} groups={groups} defaultParentId={form.parentId ?? null} error={formError}
+          initial={form.initial} groups={groups} projectId={projectId} defaultParentId={form.parentId ?? null} error={formError}
           onCancel={() => setForm(null)} onSave={saveForm}
         />
       )}

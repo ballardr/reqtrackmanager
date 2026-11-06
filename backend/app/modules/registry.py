@@ -2827,6 +2827,10 @@ class ModuleDefinition:
             it cannot be imported in `not_importable` (and still registers a provider for export).
         not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
             test fails for a type that has neither a provider able to import nor a reason.
+        not_creatable_from_links: `{artefact type: reason}` for a type a person cannot author, so the Links panel's
+            "Create new" never offers it (a record derived from an assigned standard). Every other type declares a
+            `linkedRecordCreators` entry on the frontend; a backend test fails when
+            `frontend/src/modules/creatableRecordTypes.json` disagrees with the registry.
         perf_generators: Maps one of this module's own `artefact_types` to a `PerfDatasetGenerator`, so the
             performance tooling's dataset tiers scale this type's records and their links. Read via
             `get_perf_generators`. A backend test fails for a registered type with neither a generator, a reason in
@@ -2941,6 +2945,7 @@ class ModuleDefinition:
     report_snippets: tuple[ReportSnippet, ...] = field(default=())
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
+    not_creatable_from_links: dict[str, str] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
@@ -4743,6 +4748,15 @@ def get_not_importable_types() -> dict[str, str]:
     reasons: dict[str, str] = dict(CORE_NOT_IMPORTABLE)
     for definition in get_module_registry().values():
         reasons.update(definition.not_importable)
+    return reasons
+
+
+def get_not_creatable_from_links_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type the Links panel cannot offer "Create new" for: each module's
+    `not_creatable_from_links` (no core type is among them)."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_creatable_from_links)
     return reasons
 
 

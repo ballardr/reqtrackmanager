@@ -4,6 +4,10 @@ import { ProjectScoringSettings } from "../../components/ProjectScoringSettings"
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
 import { NEED_STATUS_LABEL, PERSONA_STATUS_LABEL, STAKEHOLDER_STATUS_LABEL } from "./types";
+import {
+  CreateEngagementDialog, CreateFindingDialog, CreateNeedDialog, CreatePersonaDialog, CreateStakeholderDialog,
+  CreateStakeholderGroupDialog,
+} from "./CreateLinkedRecordDialogs";
 import { EngagementDetailPage } from "./EngagementDetailPage";
 import { EngagementStalenessReportView } from "./EngagementStalenessReportView";
 import { NeedDetailPage } from "./NeedDetailPage";
@@ -58,6 +62,14 @@ const STAKEHOLDER_ADMIN_GROUP = { key: "stakeholders", label: "Personas and Stak
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "stakeholders",
+  linkedRecordCreators: {
+    persona: { label: "Persona", render: (props) => createElement(CreatePersonaDialog, props) },
+    stakeholder: { label: "Stakeholder", render: (props) => createElement(CreateStakeholderDialog, props) },
+    stakeholder_group: { label: "Stakeholder Group", render: (props) => createElement(CreateStakeholderGroupDialog, props) },
+    stakeholder_need: { label: "Stakeholder Need", render: (props) => createElement(CreateNeedDialog, props) },
+    engagement: { label: "Engagement", render: (props) => createElement(CreateEngagementDialog, props) },
+    research_finding: { label: "Finding", render: (props) => createElement(CreateFindingDialog, props) },
+  },
   artefactPaths: {
     persona: (projectId, id) => `/projects/${projectId}/modules/stakeholders/personas/${id}`,
     stakeholder: (projectId, id) => `/projects/${projectId}/modules/stakeholders/stakeholders/${id}`,

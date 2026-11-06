@@ -118,6 +118,15 @@ NOT_IMPORTABLE = {
     ),
 }
 
+#: Why each derived type cannot be created from the Links panel (`ModuleDefinition.not_creatable_from_links`).
+NOT_CREATABLE_FROM_LINKS = {
+    ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT: "A standard's requirements are authored in a draft version of the standard, not beside another record.",
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT: (
+        "A project's assessment exists once a standard version is assigned to the project; it is not authored."
+    ),
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT: "A required-action assessment is produced when a standard is assigned; it is not authored.",
+}
+
 #: The filters of the assessment-side lists, by the names their exports take. `assignment` is a project compliance
 #: (one standard version assigned to the project); `standard` and `version` narrow to a standard or one of its
 #: versions, and `section` to one top-level requirement and everything beneath it (the outstanding panel's filters).

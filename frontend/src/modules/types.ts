@@ -255,6 +255,9 @@ export interface ReportViewDef {
 /** What the Links panel hands a module's create dialog (`TierAModuleDefinition.linkedRecordCreators`). */
 export interface LinkedRecordCreatorProps {
   projectId: string;
+  /** The record whose Links panel opened the dialog, for a form that pre-fills from it (a Change Request's affected
+   * Requirement, a Finding's Engagement); the panel links the new record to it either way. */
+  pageRecord: { type: string; id: string };
   /** Called with the new record's id once it is created (the panel then links it and closes the dialog). */
   onCreated: (id: string) => void;
   /** Called when the person dismisses the dialog without creating anything. */

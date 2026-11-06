@@ -29,9 +29,8 @@ test.describe("Enhancement requests: Pain Points", () => {
       await addLink.click();
       await page.getByRole("menuitem", { name: "Create a new record" }).click();
       const step = page.getByRole("dialog", { name: "Create and link a new record" });
-      // Only a Pain Point can be created here, so the record type is fixed and unavailable.
-      await expect(step.getByLabel("Record type")).toHaveValue(/pain_point/);
-      await expect(step.getByLabel("Record type")).toBeDisabled();
+      // Every record type the request can link to and the person may create is offered; the Pain Point is chosen here.
+      await step.getByLabel("Record type").selectOption({ label: "Pain Point" });
       await expect(step.getByLabel("Relationship")).toContainText("Addresses");
       await step.getByRole("button", { name: "Next" }).click();
       const dialog = page.getByRole("dialog", { name: /New Pain Point/ });

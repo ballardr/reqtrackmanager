@@ -70,6 +70,8 @@ export function PeoplePage() {
   const { showToast } = useToast();
   const commitPersonaLinks = useCommitQuickLinks(projectId ?? "", "persona");
   const commitStakeholderLinks = useCommitQuickLinks(projectId ?? "", "stakeholder");
+  const commitGroupLinks = useCommitQuickLinks(projectId ?? "", "stakeholder_group");
+  const commitGroupTags = useCommitTags(projectId ?? "", "stakeholder_group");
   const commitPersonaTags = useCommitTags(projectId ?? "", "persona");
   const commitStakeholderTags = useCommitTags(projectId ?? "", "stakeholder");
   const { modules, loaded } = useProjectEnabledModules(projectId ?? null);
@@ -392,9 +394,13 @@ export function PeoplePage() {
       )}
       {creating === "group" && (
         <StakeholderGroupFormModal
-          groups={ownGroups} error={createError} onCancel={cancelCreate}
-          onSave={(values: StakeholderGroupFieldValues) =>
-            create(async () => { await projectStakeholderGroupApi.create(projectId, values); }, "Stakeholder group created.")}
+          groups={ownGroups} projectId={projectId} error={createError} onCancel={cancelCreate}
+          onSave={(values: StakeholderGroupFieldValues, quickLinks, tags) =>
+            create(async () => {
+              const created = await projectStakeholderGroupApi.create(projectId, values);
+              await commitGroupLinks(created.id, quickLinks);
+              await commitGroupTags(created.id, tags);
+            }, "Stakeholder group created.")}
         />
       )}
     </div>

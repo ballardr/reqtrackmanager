@@ -9,6 +9,7 @@ import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
 import { ComplianceOrgOverviewTiles } from "./ComplianceOrgOverviewTiles";
 import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
 import { ComplianceSettingsPage } from "./ComplianceSettingsPage";
+import { CreateEvidenceDialog } from "./CreateEvidenceDialog";
 import { EvidenceDetailPage } from "./EvidenceDetailPage";
 import { evidencePath, projectCompliancePath } from "./paths";
 import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
@@ -119,6 +120,9 @@ const strings = t();
 
 export const moduleDefinition: TierAModuleDefinition = {
   key: "compliance",
+  linkedRecordCreators: {
+    compliance_evidence: { label: "Evidence", render: (props) => createElement(CreateEvidenceDialog, props) },
+  },
   artefactPaths: {
     compliance_requirement: () => "/standards",
     compliance_evidence: evidencePath,

@@ -8,7 +8,6 @@ import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
   OrgUser,
-  PrincipalRef,
   Project,
   RequirementAction,
   RequirementActionOutcome,
@@ -18,7 +17,6 @@ import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
-import { QuickLinkField } from "../components/QuickLinkField";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
 import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
@@ -32,11 +30,10 @@ import { useTagFilter } from "../hooks/useTagFilter";
 import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
 import { rowProjectId } from "../api/projectScope";
-import { TagField } from "../components/TagField";
 import { TagFilterField } from "../components/TagFilterField";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
-import { ActionFields } from "../components/ActionFields";
+import { ActionFormModal, type NewActionValues } from "../components/ActionFormModal";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { addSharedListFilters } from "../utils/listFilterParams";
 
@@ -63,7 +60,6 @@ export function ProjectActionsPage() {
   const commitTags = useCommitTags(projectId ?? "", "requirement_action");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [newTags, setNewTags] = useState<string[]>([]);
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -80,12 +76,7 @@ export function ProjectActionsPage() {
   const [sort, setSort] = useUrlSort(ACTION_SORT_KEYS);
 
   const [showNewForm, setShowNewForm] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newActionTypeId, setNewActionTypeId] = useState("");
-  const [newAssignee, setNewAssignee] = useState<PrincipalRef | null>(null);
-  const [newDueDate, setNewDueDate] = useState("");
-  const [newQuickLinks, setNewQuickLinks] = useState<CollectedLink[]>([]);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   /** The list's filters, by the names its list request and the shared export both take. */
   function filterParams(): URLSearchParams {
@@ -123,7 +114,6 @@ export function ProjectActionsPage() {
     if (!isLatest()) return;
     setActionTypes(types);
     setActions(list);
-    if (!newActionTypeId && types[0]) setNewActionTypeId(types[0].id);
   }
 
   useLoadOnChange(reload, [projectId, outcomeFilter, typeFilter, includeArchived, tagFilter.query, projectScope.scope]);
@@ -142,29 +132,17 @@ export function ProjectActionsPage() {
     })();
   }, [projectId]);
 
-  async function createAction() {
-    if (!newTitle.trim() || !newActionTypeId) return;
+  async function createAction(values: NewActionValues, quickLinks: CollectedLink[], tags: string[]) {
+    setCreateError(null);
     try {
-      const created = await api.post<RequirementAction>(`/api/v1/projects/${projectId}/actions`, {
-        title: newTitle,
-        description: newDescription,
-        action_type_id: newActionTypeId,
-        assignee: newAssignee,
-        due_date: newDueDate || null,
-      });
-      setNewTitle("");
-      setNewDescription("");
-      setNewAssignee(null);
-      setNewDueDate("");
+      const created = await api.post<RequirementAction>(`/api/v1/projects/${projectId}/actions`, values);
       setShowNewForm(false);
       reload();
       showToast(strings.actions.created);
-      await commitQuickLinks(created.id, newQuickLinks);
-      setNewQuickLinks([]);
-      await commitTags(created.id, newTags);
-      setNewTags([]);
+      await commitQuickLinks(created.id, quickLinks);
+      await commitTags(created.id, tags);
     } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
+      setCreateError(toErrorMessage(err, strings.common.error));
     }
   }
 
@@ -229,31 +207,12 @@ export function ProjectActionsPage() {
           </FilterPanel>
         }
       >
-        {showNewForm && (
-          <div className="card stack">
-            <ActionFields
-              values={{ title: newTitle, description: newDescription, actionTypeId: newActionTypeId, assignee: newAssignee, dueDate: newDueDate }}
-              onChange={(v) => {
-                setNewTitle(v.title);
-                setNewDescription(v.description);
-                setNewActionTypeId(v.actionTypeId);
-                setNewAssignee(v.assignee);
-                setNewDueDate(v.dueDate);
-              }}
-              actionTypes={actionTypes}
-              orgUsers={orgUsers}
-              organizationId={organizationId}
-              projectId={projectId}
-            />
-            <QuickLinkField projectId={projectId ?? ""} artefactType="requirement_action" preferredType="requirement" value={newQuickLinks} onChange={setNewQuickLinks} />
-            <TagField projectId={projectId ?? ""} artefactType="requirement_action" value={newTags} onChange={setNewTags} />
-            <button
-              className="btn btn-primary" style={{ alignSelf: "flex-start" }}
-              onClick={createAction} disabled={!newTitle.trim() || !newActionTypeId}
-            >
-              {strings.common.create}
-            </button>
-          </div>
+        {showNewForm && projectId && (
+          <ActionFormModal
+            projectId={projectId} actionTypes={actionTypes} orgUsers={orgUsers} organizationId={organizationId}
+            error={createError} onCancel={() => { setShowNewForm(false); setCreateError(null); }}
+            onSave={createAction}
+          />
         )}
           <div className="stack">
             {!actions && <Spinner />}

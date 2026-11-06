@@ -2,6 +2,7 @@ import { createElement } from "react";
 
 import type { TierAModuleDefinition } from "../types";
 import { DECISION_STATUS_LABEL } from "./types";
+import { CreateDecisionDialog } from "./CreateDecisionDialog";
 import { DecisionDetailPage } from "./DecisionDetailPage";
 import { DecisionTemplatesPanel } from "./DecisionTemplatesPanel";
 import { DecisionTypesPanel } from "./DecisionTypesPanel";
@@ -58,6 +59,9 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  */
 export const moduleDefinition: TierAModuleDefinition = {
   key: "decisions",
+  linkedRecordCreators: {
+    decision: { label: "Decision", render: (props) => createElement(CreateDecisionDialog, props) },
+  },
   artefactPaths: {
     decision: (projectId, id) => `/projects/${projectId}/modules/decisions/${id}`,
   },

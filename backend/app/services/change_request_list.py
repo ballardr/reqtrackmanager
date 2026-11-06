@@ -15,7 +15,10 @@ Design decisions:
 - Search matches what the list shows: the request's code, the proposed name, the reason, and the target
   requirement's code and current name (loaded in one batched query).
 
-Dependencies: `models.change_request`, `models.requirement`.
+- Answer who may submit a change request (`may_submit_change_request`), the one check the create endpoint and the record
+  table's `can_create` (so the Links panel's "Create new") both use.
+
+Dependencies: `models.change_request`, `models.requirement`, `models.project`, `services.rbac`.
 """
 
 from __future__ import annotations
@@ -27,11 +30,39 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.change_request import ChangeRequest, ChangeRequestVersion
-from app.models.enums import ChangeRequestStatus
+from app.models.enums import ChangeRequestStatus, ProjectRole
+from app.models.project import Project
 from app.models.requirement import Requirement, RequirementVersion
+from app.models.user import User
+from app.services.rbac import get_effective_project_roles
 
 #: The statuses `active_only` keeps: everything not yet decided or withdrawn.
 ACTIVE_STATUSES = (ChangeRequestStatus.DRAFT, ChangeRequestStatus.SUBMITTED, ChangeRequestStatus.IN_REVIEW)
+
+#: The roles that may always submit a change request (and comment on one); a plain member may too when the project
+#: allows member submission.
+CAN_SUBMIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
+
+
+def may_submit_change_request(db: Session, user: User, project: Project) -> bool:
+    """Whether `user` may create a change request in `project`.
+
+    A project manager, project administrator or stakeholder always may; a plain member may when the project has
+    enabled member change-request submission. Commenting on a request still needs a `CAN_SUBMIT_ROLES` role.
+
+    Args:
+        db: Active session (read only).
+        user: The person asking.
+        project: The project the request would be created in.
+
+    Returns:
+        True when the create endpoint would accept the person.
+    """
+    roles = get_effective_project_roles(db, user.id, project.id)
+    allowed = set(CAN_SUBMIT_ROLES)
+    if project.allow_member_change_requests:
+        allowed.add(ProjectRole.MEMBER)
+    return bool(roles & allowed)
 
 
 def count_change_requests(db: Session, project_id: uuid.UUID) -> int:

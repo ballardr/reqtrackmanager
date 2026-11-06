@@ -148,7 +148,7 @@ from app.modules.compliance.perf_dataset import (
     generate_required_action_assessments,
 )
 from app.modules.compliance.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
-from app.modules.compliance.record_tables import NOT_IMPORTABLE, RECORD_TABLES
+from app.modules.compliance.record_tables import NOT_CREATABLE_FROM_LINKS, NOT_IMPORTABLE, RECORD_TABLES
 from app.modules.compliance.report_fields import REPORT_FIELDS
 from app.modules.compliance.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.compliance.scaling_probes import SCALING_PROBES
@@ -508,6 +508,7 @@ MODULE_DEFINITION = ModuleDefinition(
         "compliance_evidence": PerfDatasetGenerator(generate=generate_evidence, order=230),
     },
     not_importable=NOT_IMPORTABLE,
+    not_creatable_from_links=NOT_CREATABLE_FROM_LINKS,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,

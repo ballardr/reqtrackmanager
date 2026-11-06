@@ -1316,7 +1316,7 @@ Read left to right: the same provider defines the columns of the file out and th
 
 ### 4l2. Creating and linking a record from the Links panel
 
-The shared Links panel's **Add link** menu offers **Create a new record** on every record page: a first step chooses the record type and relationship, then the owning module's own dialog creates the record and the panel links it, in one flow. A module opts in with two frontend fields on `TierAModuleDefinition`; core never imports a module's form. Whether the caller may create a type is answered by the server, not by the module's frontend code.
+The shared Links panel's **Add link** menu offers **Create a new record** on every record page: a first step chooses the record type and relationship, then the owning module's own dialog creates the record and the panel links it, in one flow. Every registered artefact type a person can author has a creator (a module declares its own on `TierAModuleDefinition`; the three core types are listed in `modules/coreLinkedRecordCreators.tsx`); core never imports a module's form. Whether the caller may create a type is answered by the server, not by the module's frontend code.
 
 ```mermaid
 flowchart LR
@@ -1327,11 +1327,14 @@ flowchart LR
 
 | Field | Declared by | Purpose |
 | --- | --- | --- |
-| `linkedRecordCreators[type] = { label, render({ projectId, onCreated, onCancel }) }` | The module that owns the *created* type | Its own create dialog; it creates the record itself and reports the id. |
+| `linkedRecordCreators[type] = { label, render({ projectId, pageRecord, onCreated, onCancel }) }` | The module that owns the *created* type | Its own create dialog (the type's form modal, so every edit field, the quick-link field and the tag field are present); it creates the record itself and reports the id. `pageRecord` is the record whose panel opened it, for a form that pre-fills from it. `hooks/useLinkedRecordSave` is the shared save step (create, quick links, tags, error). |
+| `ModuleDefinition.not_creatable_from_links[type] = reason` (backend) | The module that owns a type nobody authors | A type derived from an assigned standard (the three Compliance assessment types). Every other registered type needs a creator. |
 | `preferredLinkPhrases[type][otherType]` | The module that owns the *page* record | The relationship that carries meaning, e.g. a request's Pain Points are the ones it "Addresses". Other relationships stay selectable. |
 
 - The panel offers only types that a link type from the page record reaches; the server's link options already leave out types of a module or sub-component that is off, so no separate gate is needed.
 - Each record type in a `link-types` option carries `can_create`, computed by `services.record_tables.creatable_record_types`: the type's `RecordTableProvider.can_create` (else the fine-grained `propose_create` permission), the same check an import of the type makes. A type with no record table is `false`. A module declares no creation check of its own; changing who may create a type changes its provider, and the Links panel, list import and the create endpoint then agree.
+- **Completeness is guarded.** `frontend/src/modules/creatableRecordTypes.json` lists the creatable and the not-creatable types; `backend/tests/test_creatable_record_types.py` keeps it equal to the registry, and `linkedRecordCreators.stories.tsx` fails for a creatable type with no creator and checks each creator opens a form with the quick-link and tag fields. A new artefact type therefore ships its creator (or a stated reason) in the same change.
+- **The flag cannot drift from the endpoint.** The same backend test replays each type's create request (its scaling probe's) as a plain member, a project manager, a stakeholder and the holder of each module role, and fails when `can_create` differs from whether the endpoint accepts. A gate added to an endpoint without its record-table check fails it. A provider's `can_create` and its endpoint share one function where the rule is more than a role list (`services.change_request_list.may_submit_change_request`).
 - Not offered where links go through a change request, or where the caller cannot link; then "Add link" is the plain button that opens the finder.
 - The server's own create endpoint still enforces permission and shows any refusal in the dialog.
 
