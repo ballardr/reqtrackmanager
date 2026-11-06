@@ -103,6 +103,7 @@ from app.services.bundle_links import export_artefact_links, import_artefact_lin
 from app.services.codes import label_title
 from app.services.link_types import ensure_org_link_type
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
+from app.services.rbac import lock_row_for_update
 from app.services.relationships import create_link
 from app.services.scoring import list_levels, seed_missing_scoring_levels
 from app.services.scoring_custom import effective_scheme, export_definitions, import_definitions
@@ -640,6 +641,7 @@ def _replay_merges(
         actor = (db.get(User, merger) if merger else None) or current_user or db.get(User, duplicate.creator_id)
         if actor is None:
             continue
+        lock_row_for_update(db, EnhancementRequest, duplicate.id)
         try:
             with db.begin_nested():
                 merge_requests(db, canonical, duplicate, actor, str(merged.get("note") or "")[:2000])

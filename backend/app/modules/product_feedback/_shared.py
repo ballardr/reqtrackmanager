@@ -636,7 +636,7 @@ def move_to_project_from_payload(
 # --- Merging and demand --------------------------------------------------------
 
 
-def _lock_both(db: Session, first: EnhancementRequest, second: EnhancementRequest) -> None:
+def _lock_both_for_update(db: Session, first: EnhancementRequest, second: EnhancementRequest) -> None:
     """Locks two request rows in id order (so two opposite merges cannot deadlock) and refreshes them."""
     for row in sorted((first, second), key=lambda r: str(r.id)):
         lock_row_for_update(db, EnhancementRequest, row.id)
@@ -657,7 +657,7 @@ def merge_from_payload(
     from app.modules.product_feedback.merge import merge_requests
 
     canonical = get_request_in_scope(db, holder, canonical_id)
-    _lock_both(db, duplicate, canonical)
+    _lock_both_for_update(db, duplicate, canonical)
     merge = apply_value_error_as_conflict(merge_requests, db, canonical, duplicate, actor, note)
     detail: dict = {"canonical": canonical.unique_code, "duplicate": duplicate.unique_code, "prior_status": merge.prior_status.value}
     if note.strip():
@@ -679,9 +679,9 @@ def unmerge_from_payload(db: Session, holder: RecordOwner, duplicate: Enhancemen
     current = active_merge_of(db, duplicate.id)
     canonical = db.get(EnhancementRequest, current.canonical_id) if current is not None else None
     if canonical is None:
-        _lock_both(db, duplicate, duplicate)
+        _lock_both_for_update(db, duplicate, duplicate)
     else:
-        _lock_both(db, duplicate, canonical)
+        _lock_both_for_update(db, duplicate, canonical)
     merge = apply_value_error_as_conflict(unmerge_request, db, duplicate, actor)
     detail = {
         "canonical": canonical.unique_code if canonical else None, "duplicate": duplicate.unique_code,

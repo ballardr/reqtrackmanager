@@ -97,8 +97,9 @@ def test_seed_registry_merges_shared_names_and_flags_supersedes():
     # A core default stays unrestricted and keeps its flow.
     assert seeds["Implements"].allowed_source_types is None
     assert seeds["Implements"].flow.value == "forward_is_upstream"
-    # The Decision seeds carry their restrictions; Risk Management adds itself as a target.
-    assert seeds["Addresses"].allowed_source_types == (DEC,)
+    # The Decision seeds carry their restrictions; Risk Management adds itself as a target and Product Feedback
+    # adds the enhancement request as a source.
+    assert set(seeds["Addresses"].allowed_source_types) == {DEC, "enhancement_request"}
     assert set(seeds["Addresses"].allowed_target_types) == {PAIN, "risk"}
 
 
@@ -106,7 +107,8 @@ def test_ensure_org_link_type_creates_from_seed_and_never_overwrites_an_edit(wor
     db = SessionLocal()
     try:
         created = ensure_org_link_type(db, uuid.UUID(world.org["id"]), "Addresses")
-        assert (created.reverse_name, created.allowed_source_types) == ("Is addressed by", [DEC])
+        assert created.reverse_name == "Is addressed by"
+        assert set(created.allowed_source_types) == {DEC, "enhancement_request"}
         assert set(created.allowed_target_types) == {PAIN, "risk"}
         created.reverse_name = "Edited reverse"
         created.allowed_target_types = None
