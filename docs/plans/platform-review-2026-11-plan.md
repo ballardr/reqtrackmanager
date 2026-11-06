@@ -1,17 +1,17 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phase 1 done 2026-11-06 (uncommitted), the rest not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 and 2 done (uncommitted), the rest not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-1 / 17 phases complete.
+2 / 17 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
 | 1 | mypy: remove the baseline, fix every finding | 1,042 findings (606 distinct keys) fixed, 14 existing `# type: ignore` replaced, baseline and `--update` removed; full-suite result in `docs/decisions.md` | [x] |
-| 2 | Storage alert investigation | Reproduce first; may be a defect, not a feature | [ ] |
+| 2 | Storage alert investigation | Cause was SeaweedFS preallocation (already fixed); monitor hardened: restart-safe state, 2-failure threshold, admin email fixed; see `docs/decisions.md` | [x] |
 | 3 | Back link consistency + UI/UX consistency audit | Produces findings that feed phases 4, 9, 10 | [ ] |
 | 4 | Two-level admin navigation | Expandable left menu; settled with the user | [ ] |
 | 5 | Links panel: server-side "can create" | Reuses `RecordTableProvider.can_create`, no new hook | [ ] |

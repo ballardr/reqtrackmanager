@@ -34,6 +34,7 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `DEPLOYMENT_NOTIFICATION_EMAIL` | unset | — | Address notified of deployment-level events such as low disk space |
 | `DISK_USAGE_WARNING_THRESHOLD_PERCENT` | `90` | — | Disk usage monitor threshold for the `local` storage backend |
 | `STORAGE_HEALTH_CHECK_ENABLED` / `STORAGE_HEALTH_CHECK_INTERVAL_SECONDS` | `true` / `300` | — | Periodic write probe of the file storage (alerts server admins when it stops accepting writes). Each probe is one write, read and delete, so set `false` (or raise the interval, minimum 60) to avoid request charges on a metered S3 provider |
+| `STORAGE_HEALTH_FAILURES_BEFORE_ALERT` | `2` | — | Consecutive failed storage probes before server admins are alerted (minimum 1), so one dropped write is not reported as an outage |
 | `WEBSOCKET_ENABLED` | `true` | — | Whether the optional live-update WebSocket interface is mounted at all |
 | `BACKEND_WORKERS` | `4` | — | Backend worker processes per container (CPU cores the API can use). Workers coordinate via PostgreSQL; see the deployment guide's scaling section for connection/memory sizing |
 | `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `10` | — | Database connections each backend worker keeps / may add under load. A worker holds at most `DB_POOL_SIZE + DB_MAX_OVERFLOW` plus two dedicated connections (17 by default), so `BACKEND_WORKERS × replicas × 17` must stay under PostgreSQL's `max_connections` (100 by default, 3 reserved) |

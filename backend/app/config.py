@@ -66,6 +66,8 @@ class Settings(BaseSettings):
             `GET /api/v1/system/storage-health` still works.
         storage_health_check_interval_seconds: Seconds between probes
             (minimum 60). Raising it is the cheaper alternative to disabling.
+        storage_health_failures_before_alert: Consecutive failed probes before
+            server admins are alerted, so one dropped write is not an outage.
         websocket_enabled: Whether the optional live-update WebSocket
             interface (I-A-04) is mounted at all. Deployments that can't or
             don't want persistent socket connections (e.g. behind certain
@@ -323,6 +325,7 @@ class Settings(BaseSettings):
     disk_usage_warning_threshold_percent: int = 90
     storage_health_check_enabled: bool = True
     storage_health_check_interval_seconds: int = Field(default=300, ge=60)
+    storage_health_failures_before_alert: int = Field(default=2, ge=1)
 
     websocket_enabled: bool = True
 
