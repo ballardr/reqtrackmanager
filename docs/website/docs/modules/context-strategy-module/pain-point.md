@@ -4,7 +4,7 @@ sidebar_position: 17
 
 # Pain Point
 
-A **Pain Point** records a problem, deficiency, or improvement opportunity motivating a [Strategy](./strategy.md) or Requirement — with a source, its impact, supporting evidence, and a configurable type. Unlike Strategy, Future State, and Guiding Principle, a Pain Point is **project-scoped only** — there is no organisation-scoped equivalent. Any project member can raise one and attach evidence files; the **Pain Point Manager** role is only needed to triage, decide, reclassify, or manage the type vocabulary (see [Roles](#roles) below) — this broad creation model is deliberate, not an oversight.
+A **Pain Point** records a problem, deficiency, or improvement opportunity motivating a [Strategy](./strategy.md) or Requirement — with a source, its impact, supporting evidence, and a configurable type. Unlike Strategy, Future State, and Guiding Principle, a Pain Point is **project-scoped only** — there is no organisation-scoped equivalent. By default **Pain Point Managers** submit them, and ordinary requests are raised as [Enhancement Requests](../product-feedback-module/enhancement-request.md) instead. A project or organisation can [allow any project member to submit](#who-can-submit), which is the broad creation model: any member raises a Pain Point and attaches evidence files. The **Pain Point Manager** role is always needed to triage, decide, reclassify, or manage the type vocabulary (see [Roles](#roles) below).
 
 | A project's Pain Points |
 | --- |
@@ -60,6 +60,17 @@ A genuinely **branching** lifecycle, unlike Strategy/Future State/Guiding Princi
 | --- | --- | --- |
 | **Pain Point Manager** | Project | Triages, classifies, and decides Pain Points (reject/accept/address/close), and manages the project's own Pain Point type overrides. A single elevated role, not an owner/approver pair — this artefact names one "Pain Point Manager / Project Manager" tier rather than a two-tier split. |
 | **Pain Point Type Admin** | Organisation | Manages the organisation's shared Pain Point type vocabulary and its [scoring configuration](./pain-point-scoring.md#configuring-scoring). |
+
+## Who can submit
+
+By default only **Pain Point Managers** (project managers hold this tier too) can submit a Pain Point. A project administrator, or an organisation administrator for the whole organisation, can allow any project member to submit. Editing, triage and scoring are for Pain Point Managers whichever is chosen, and members can still comment and attach evidence. Organisations that existed before this setting was introduced were set to allow any project member, so their members keep submitting until an administrator changes it.
+
+| Where | Who sets it | Choices |
+| --- | --- | --- |
+| **Project Admin → Pain Points → Pain Point Submission** | Project administrator | Inherit, Any project member, Pain Point Managers only |
+| **Organisation Admin → Pain Points → Pain Point Submission** | Organisation administrator | Not set (Pain Point Managers only), Any project member, Pain Point Managers only |
+
+A project follows its own setting; otherwise its parent project's, then the organisation default, then Pain Point Managers only. The project panel shows which of these applies. Where submission is restricted to managers, a member sees the reason in place of **New Pain Point**, with a pointer to Enhancement Requests when Product Feedback is enabled; the same rule applies to list import, the Links panel and the MCP `create_pain_point` tool. The setting travels in project and organisation exports.
 
 ## Relationships
 

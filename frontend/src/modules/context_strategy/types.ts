@@ -362,6 +362,42 @@ export type PainPointPriority = "low" | "medium" | "high";
 
 export const PAIN_POINT_PRIORITY_LABEL: Record<PainPointPriority, string> = STRATEGY_PRIORITY_LABEL;
 
+/** Who may submit a Pain Point: any project member, or only a Pain Point Manager. */
+export type PainPointSubmissionPolicy = "members" | "managers";
+
+export const PAIN_POINT_SUBMISSION_POLICY_LABEL: Record<PainPointSubmissionPolicy, string> = {
+  members: "Any project member",
+  managers: "Pain Point Managers only",
+};
+
+/** Where a project's resolved submission policy comes from. */
+export type PainPointSubmissionSource = "project" | "ancestor" | "organization" | "default";
+
+export const PAIN_POINT_SUBMISSION_SOURCE_LABEL: Record<PainPointSubmissionSource, string> = {
+  project: "this project",
+  ancestor: "a parent project",
+  organization: "the organisation",
+  default: "the platform default",
+};
+
+/** `GET/PUT …/pain-point-settings` on a project: the resolved policy and what the caller may do under it. */
+export interface PainPointSubmissionSettings {
+  submission_policy: PainPointSubmissionPolicy;
+  source: PainPointSubmissionSource;
+  /** The project's own setting; null when it inherits. */
+  own_policy: PainPointSubmissionPolicy | null;
+  /** The organisation's default; null when it has not set one. */
+  organization_default: PainPointSubmissionPolicy | null;
+  can_submit: boolean;
+  /** Why the caller cannot submit and where to raise the request instead; null when they can. */
+  restriction_message: string | null;
+}
+
+/** `GET/PUT …/pain-point-settings` on an organisation. */
+export interface OrgPainPointSubmissionSettings {
+  submission_policy: PainPointSubmissionPolicy | null;
+}
+
 export type PainPointStatus = "submitted" | "triaged" | "rejected" | "duplicate" | "accepted" | "addressed" | "closed";
 
 export const PAIN_POINT_STATUS_LABEL: Record<PainPointStatus, string> = {

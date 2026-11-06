@@ -184,6 +184,7 @@ from app.modules.context_strategy.enums import (
     OpenQuestionStatus,
     PainPointPriority,
     PainPointStatus,
+    PainPointSubmissionPolicy,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -796,6 +797,42 @@ class PainPointFile(UUIDPKMixin, Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PainPointSubmissionSetting(UUIDPKMixin, TimestampMixin, Base):
+    """Who may submit a Pain Point: a project's own choice (`project_id` set) or an organisation's default
+    (`project_id` NULL). A row exists only where someone chose a value; resolution is project, nearest
+    ancestor, organisation default, then `PainPointSubmissionPolicy.MANAGERS`
+    (`submission_policy.resolve_submission_policy`).
+
+    Deliberately a Context & Strategy table, not a column on the core `Project`/`Organization` models: the
+    setting is this module's own configuration.
+
+    Attributes:
+        organization_id: The owning organisation (always set).
+        project_id: The project, or `None` for the organisation's default.
+        policy: The chosen `PainPointSubmissionPolicy`.
+    """
+
+    __tablename__ = "pain_point_submission_settings"
+    __table_args__ = (
+        Index(
+            "uq_pain_point_submission_settings_org", "organization_id", unique=True,
+            postgresql_where=sa_text("project_id IS NULL"),
+        ),
+        Index(
+            "uq_pain_point_submission_settings_project", "project_id", unique=True,
+            postgresql_where=sa_text("project_id IS NOT NULL"),
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    policy: Mapped[PainPointSubmissionPolicy] = mapped_column(str_enum(PainPointSubmissionPolicy, 20))
 
 
 # --- Guiding Principles --------------------------------------------

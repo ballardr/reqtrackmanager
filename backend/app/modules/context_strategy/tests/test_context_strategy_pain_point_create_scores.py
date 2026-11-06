@@ -91,6 +91,10 @@ def test_member_can_create_but_not_score_and_is_told_so(client, admin_token):
     user_id = create_org_user(client, token, org["id"], "pp_create_scores_member@example.com")
     assert client.post(f"/api/v1/projects/{pid}/roles", json={"user_id": user_id, "role": "member"}, headers=auth_headers(token)).status_code == 204
     member = login(client, "pp_create_scores_member@example.com", "Password123!")
+    allow = client.put(
+        _cs(pid) + "/pain-point-settings", json={"submission_policy": "members"}, headers=auth_headers(token),
+    )
+    assert allow.status_code == 200, allow.text
     before = _count(pid)
 
     assert _create(client, member, pid).status_code == 201

@@ -302,8 +302,17 @@ def test_create_and_get_pain_point(client, admin_token):
     assert resp.json()["id"] == pain_point["id"]
 
 
-def test_any_project_member_may_create_a_pain_point_no_manager_role_required(client, admin_token):
+def _allow_member_submission(client, token, project_id) -> None:
+    """Opts the project in to member submission (the platform default is Pain Point Managers only)."""
+    resp = client.put(
+        f"{_project_base(project_id)}/pain-point-settings", json={"submission_policy": "members"}, headers=auth_headers(token),
+    )
+    assert resp.status_code == 200, resp.text
+
+
+def test_a_project_member_may_create_a_pain_point_once_member_submission_is_allowed(client, admin_token):
     org, project, org_admin_token = _setup(client, admin_token, "PainPoint Broad Create Co")
+    _allow_member_submission(client, org_admin_token, project["id"])
     _, member_token = _add_plain_member(
         client, org_admin_token, org["id"], project["id"], "pp_broad_creator@example.com"
     )

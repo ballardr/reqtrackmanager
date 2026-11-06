@@ -13,7 +13,8 @@ Responsibilities:
 
 Design decisions:
 - Create and update go through the same checks as the endpoints: any project member may create (the
-  endpoints' gate), a record's owner role (`strategy_owner`, `pain_point_manager`, ...) may update, and a
+  endpoints' gate; a Pain Point only where the project or organisation opted in to member submission), a record's owner
+  role (`strategy_owner`, `pain_point_manager`, ...) may update, and a
   record past review or at a terminal outcome refuses the edit (the row's error carries the endpoint's message).
 - `status` is export-only for every type: a Strategy, Future State and Guiding Principle move through
   propose / review / approve, and a Pain Point and an Open Question through decide-tier transitions that need a
@@ -106,6 +107,7 @@ from app.modules.context_strategy.service import (
     is_pain_point_locked,
     resolve_effective_pain_point_types,
 )
+from app.modules.context_strategy.submission_policy import can_submit_pain_point
 from app.modules.registry import (
     OrganizationRecordTable,
     RecordCellError,
@@ -803,6 +805,11 @@ def _may_manage_pain_points(db: Session, user: User, project_id: uuid.UUID) -> b
     return can_manage_pain_points(db, user, organization_id=_org_id(db, project_id), project_id=project_id)
 
 
+def _may_submit_pain_point(db: Session, user: User, project_id: uuid.UUID) -> bool:
+    """The create endpoint's gate: any member, unless the project restricted submission to managers."""
+    return can_submit_pain_point(db, user, project_or_404(db, project_id))
+
+
 def _create_pain_point(ctx: RecordImportContext, values: Mapping[str, Any]) -> PainPoint:
     owner: PrincipalRef | None = values.get("owner")
     if owner is not None and not _may_manage_pain_points(ctx.db, ctx.user, ctx.project.id):
@@ -854,7 +861,7 @@ PAIN_POINT_TABLE = RecordTableProvider(
     update=_update_pain_point,
     filter_params=COMMON_FILTERS | {"open_only", "hide_intentional", "only_intentional", "blockers_only", "scored", "model_key", "rollup"},
     gate=(MODULE_KEY, "pain_point"),
-    can_create=_all_may_create,
+    can_create=_may_submit_pain_point,
     can_update=_may_manage_pain_points,
     approval_gated=True,
     read_only_reason=lambda prepared, pain_point: edits.PAIN_POINT_LOCKED if is_pain_point_locked(pain_point) else None,

@@ -38,6 +38,7 @@ import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton
 import type {
   ContextStrategyLink,
   EffectivePainPointType,
+  OrgPainPointSubmissionSettings,
   FutureState,
   FutureStateComment,
   FutureStateFieldValues,
@@ -61,6 +62,8 @@ import type {
   PainPointScores,
   PainPointScoringTargets,
   PainPointScoringList,
+  PainPointSubmissionPolicy,
+  PainPointSubmissionSettings,
   PainPointTypeDefinition,
   ProjectPainPointType,
   Strategy,
@@ -350,6 +353,16 @@ export interface PainPointListFilters extends TagListFilters, ScopeListFilters {
   include_archived?: boolean;
 }
 
+/** The organisation's default for who may submit a Pain Point (`null` clears it). */
+export const orgPainPointSettingsApi = {
+  get(organizationId: string) {
+    return api.get<OrgPainPointSubmissionSettings>(`${orgBase(organizationId)}/pain-point-settings`);
+  },
+  setSubmissionPolicy(organizationId: string, policy: PainPointSubmissionPolicy | null) {
+    return api.put<OrgPainPointSubmissionSettings>(`${orgBase(organizationId)}/pain-point-settings`, { submission_policy: policy });
+  },
+};
+
 /** Org-scoped `PainPointTypeDefinition` CRUD (the shared base
  * tier) — `id` parameters below are an `organization_id`. */
 export const orgPainPointTypeApi = {
@@ -401,6 +414,15 @@ export const projectPainPointApi = {
   },
   restoreTypes(projectId: string, orgTypeIds?: string[]) {
     return api.post<unknown>(`${projectBase(projectId)}/pain-point-types/restore`, { org_type_ids: orgTypeIds ?? null });
+  },
+
+  // --- Submission policy ------------------------------------------------------
+  getSubmissionSettings(projectId: string) {
+    return api.get<PainPointSubmissionSettings>(`${projectBase(projectId)}/pain-point-settings`);
+  },
+  /** Sets the project's own policy; `null` removes it so the project inherits. */
+  setSubmissionPolicy(projectId: string, policy: PainPointSubmissionPolicy | null) {
+    return api.put<PainPointSubmissionSettings>(`${projectBase(projectId)}/pain-point-settings`, { submission_policy: policy });
   },
 
   // --- CRUD -----------------------------------------------------------------

@@ -6,7 +6,7 @@ import { buildGrid, buildRecordColumns } from "../../testing/recordTablesFixture
 import { buildProject, buildScoringScheme, buildUser, withRouter, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { scoreValue, scoringSummary } from "./painPointScoringFixtures";
 import { ProjectPainPointsPage } from "./ProjectPainPointsPage";
-import type { EffectivePainPointType, PainPoint, PainPointScoringSummary } from "./types";
+import type { EffectivePainPointType, PainPoint, PainPointScoringSummary, PainPointSubmissionSettings } from "./types";
 import { openListMenu, chooseExport } from "../../testing/listActionsMenu";
 
 const PROJECT_ID = "project-1";
@@ -27,8 +27,16 @@ function painPoint(overrides: Partial<PainPoint> = {}): PainPoint {
   };
 }
 
-function mockPageApis(painPoints: PainPoint[], scoring: PainPointScoringSummary[] = [], { canScore = false } = {}) {
+const OPEN_SUBMISSION: PainPointSubmissionSettings = {
+  submission_policy: "members", source: "organization", own_policy: null, organization_default: "members", can_submit: true,
+  restriction_message: null,
+};
+
+function mockPageApis(
+  painPoints: PainPoint[], scoring: PainPointScoringSummary[] = [], { canScore = false, submission = OPEN_SUBMISSION } = {},
+) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.endsWith("/pain-point-settings")) return submission;
     if (path.endsWith("/records/pain_point/columns")) return buildRecordColumns({ label: "Pain points" });
     if (path.includes("/records/pain_point/grid")) return buildGrid();
     if (path.endsWith("/pain-point-scoring-targets")) return { can_score: canScore, available_targets: [] };
@@ -72,6 +80,23 @@ export const ListsPainPoints: Story = {
     // The record code has its own column, so a Pain Point can be named in conversation.
     await expect(canvas.getByRole("columnheader", { name: "Code" })).toBeInTheDocument();
     await expect(canvas.getAllByText(/PP-001/).length).toBeGreaterThan(0);
+  },
+};
+
+/** Where submission is restricted to managers (the platform default), a member sees why instead of a New button. */
+export const RestrictedSubmissionHidesNewPainPoint: Story = {
+  beforeEach: () =>
+    mockPageApis([painPoint()], [], {
+      submission: {
+        ...OPEN_SUBMISSION, submission_policy: "managers", source: "project", own_policy: "managers", can_submit: false,
+        restriction_message: "Pain Points are submitted by Pain Point Managers in this project. Raise an Enhancement Request instead.",
+      },
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Report delays under poor connectivity")).toBeInTheDocument());
+    await expect(canvas.getByRole("note")).toHaveTextContent("Raise an Enhancement Request instead.");
+    await expect(canvas.queryByRole("button", { name: "New Pain Point" })).not.toBeInTheDocument();
   },
 };
 

@@ -62,6 +62,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.enums import OrgRole
 from app.models.file import FileAsset
 from app.models.organization import Organization
 from app.models.user import User
@@ -126,6 +127,8 @@ from app.modules.context_strategy.schemas import (
     GuidingPrincipleTransitionRequest,
     GuidingPrincipleUpdate,
     GuidingPrincipleVersionOut,
+    OrgPainPointSubmissionSettingsOut,
+    PainPointSubmissionSettingsUpdate,
     PainPointTypeCreate,
     PainPointTypeOut,
     PainPointTypeUpdate,
@@ -189,6 +192,7 @@ from app.modules.context_strategy.service import (
     unarchive_guiding_principle,
     unarchive_strategy,
 )
+from app.modules.context_strategy.submission_policy import get_org_submission_policy, set_org_submission_policy
 from app.schemas.file import FileAssetOut
 from app.schemas.project import MoveDirection
 from app.services.audit import log_event
@@ -196,7 +200,7 @@ from app.services.current_versions import current_versions
 from app.services.files import delete_file, upload_file
 from app.services.module_attachments import comments_out
 from app.services.ordering import move_ordered
-from app.services.rbac import require_org_subcomponent_enabled
+from app.services.rbac import require_org_role, require_org_subcomponent_enabled
 from app.services.relationships import get_all_links
 
 router = APIRouter(prefix="/api/v1/orgs/{organization_id}/modules/context_strategy", tags=["context-strategy-org"])
@@ -1068,6 +1072,35 @@ def unlink_org_future_state_file(
 # second `Depends` dependency.
 
 _require_pain_point_type_view = require_org_subcomponent_enabled("context_strategy", "pain_point")
+
+
+@router.get("/pain-point-settings", response_model=OrgPainPointSubmissionSettingsOut)
+def get_org_pain_point_settings(
+    organization_id: UUID, current_user: User = Depends(_require_pain_point_type_view), db: Session = Depends(get_db),
+):
+    """The organisation's default for who may submit a Pain Point (null: the platform default, Pain Point Managers only)."""
+    return OrgPainPointSubmissionSettingsOut(submission_policy=get_org_submission_policy(db, organization_id))
+
+
+@router.put("/pain-point-settings", response_model=OrgPainPointSubmissionSettingsOut)
+def update_org_pain_point_settings(
+    organization_id: UUID, payload: PainPointSubmissionSettingsUpdate,
+    current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
+    _module: User = Depends(_require_pain_point_type_view),
+):
+    """Sets the organisation's default for who may submit a Pain Point, or clears it (null). A project's own
+    setting, or its parent project's, still wins. Needs an organisation administrator."""
+    previous = set_org_submission_policy(db, organization_id, payload.submission_policy)
+    log_event(
+        db, entity_type="pain_point_submission_settings", entity_id=organization_id, action="updated",
+        actor_id=current_user.id, organization_id=organization_id,
+        detail={"submission_policy": {
+            "from": previous.value if previous else None,
+            "to": payload.submission_policy.value if payload.submission_policy else None,
+        }},
+    )
+    db.commit()
+    return OrgPainPointSubmissionSettingsOut(submission_policy=get_org_submission_policy(db, organization_id))
 
 
 @router.post("/pain-point-types", response_model=PainPointTypeOut, status_code=status.HTTP_201_CREATED)

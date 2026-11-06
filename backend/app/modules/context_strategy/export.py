@@ -13,6 +13,9 @@ than those core files importing this module.
   Pain Points with their scores; Open Questions; and the links between those
   records and to Requirements.
 
+- The Pain Point submission policy travels as its own setting (project: the project's own; organisation: the
+  default) and is carried only when set. An organisation merge keeps a default the organisation already has.
+
 Design decisions (all Decided by: Agent):
 - A record travels as its *current* content and status only (Strategy, Future
   State and Guiding Principle as their current version). Version history,
@@ -72,6 +75,7 @@ from app.modules.context_strategy.enums import (
     OpenQuestionStatus,
     PainPointPriority,
     PainPointStatus,
+    PainPointSubmissionPolicy,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -113,6 +117,12 @@ from app.modules.context_strategy.service import (
     get_or_create_project_pain_point_type,
     list_hidden_pain_point_types,
 )
+from app.modules.context_strategy.submission_policy import (
+    get_org_submission_policy,
+    get_project_submission_policy,
+    set_org_submission_policy,
+    set_project_submission_policy,
+)
 from app.modules.registry import get_scoring_targets
 from app.services import definition_suppression
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
@@ -147,6 +157,17 @@ def _emails(db: Session, user_ids: Iterable[uuid.UUID | None]) -> dict[uuid.UUID
     """`{user id: email}` for the given ids (None ignored)."""
     ids = {u for u in user_ids if u is not None}
     return {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(ids)))} if ids else {}
+
+
+def _policy_from_bundle(value: Any, warnings: BundleImportWarnings, context: str) -> PainPointSubmissionPolicy | None:
+    """The submission policy named in a bundle, or `None` (with a warning for an unknown value)."""
+    if value is None:
+        return None
+    try:
+        return PainPointSubmissionPolicy(value)
+    except ValueError:
+        warnings.add(f"{context} submission policy {value!r} skipped — unknown value.")
+        return None
 
 
 @dataclass(frozen=True)
@@ -298,6 +319,9 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
             {"name": t.name, "sort_order": t.sort_order, "is_active": t.is_active, "definition": t.definition} for t in types
         ],
     }
+    default_policy = get_org_submission_policy(db, org.id)
+    if default_policy is not None:
+        out["pain_point_submission_policy"] = default_policy.value
     for spec in _SPECS:
         records = list(db.scalars(
             select(spec.identity).where(spec.identity.organization_id == org.id, spec.identity.scope == spec.scope_enum.ORGANIZATION)
@@ -329,6 +353,11 @@ def import_org_data(
         ))
         existing.add(t["name"])
     db.flush()
+
+    # A default the organisation already chose is kept: a merge never overrides its own settings.
+    imported_policy = _policy_from_bundle(data.get("pain_point_submission_policy"), warnings, "Organisation")
+    if imported_policy is not None and get_org_submission_policy(db, org.id) is None:
+        set_org_submission_policy(db, org.id, imported_policy)
 
     for spec in _SPECS:
         entries = data.get(spec.key, [])
@@ -439,6 +468,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "definition_override": row.definition_override,
         })
     out["pain_point_project_types"] = type_rows
+    own_policy = get_project_submission_policy(db, project.id)
+    if own_policy is not None:
+        out["pain_point_submission_policy"] = own_policy.value
     out["pain_point_hidden_org_types"] = [
         t.name for t in list_hidden_pain_point_types(db, project.id, project.organization_id)
     ]
@@ -574,7 +606,7 @@ def import_project_data(
     Scores are imported later, by `import_late`."""
     if not any(data.get(k) for k in (
         "pain_point_project_types", "pain_point_hidden_org_types", "pain_points", "open_questions",
-        *(spec.key for spec in _SPECS),
+        "pain_point_submission_policy", *(spec.key for spec in _SPECS),
     )):
         return
     organization_id = project.organization_id
@@ -595,6 +627,10 @@ def import_project_data(
                 users=users, context=f"{spec.artefact_type} {entry['ref']}",
             )
         refs[spec.artefact_type] = by_ref
+
+    imported_policy = _policy_from_bundle(data.get("pain_point_submission_policy"), warnings, "Project")
+    if imported_policy is not None:
+        set_project_submission_policy(db, project, imported_policy)
 
     rows = _import_types(db, project, data, warnings)
     org_types = {t.name: t for t in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.organization_id == organization_id))}

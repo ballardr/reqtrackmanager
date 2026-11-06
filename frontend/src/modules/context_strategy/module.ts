@@ -16,6 +16,7 @@ import { OpenQuestionRegisterReportView } from "./OpenQuestionRegisterReportView
 import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
 import { OrgGuidingPrinciplesPanel } from "./OrgGuidingPrinciplesPanel";
 import { OrgPainPointTypesPanel } from "./OrgPainPointTypesPanel";
+import { OrgPainPointSubmissionPanel, ProjectPainPointSubmissionPanel } from "./PainPointSubmissionPanel";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
 import { PainPointDetailPage } from "./PainPointDetailPage";
 import { PainPointPrioritisationReportView } from "./PainPointPrioritisationReportView";
@@ -217,6 +218,12 @@ export const moduleDefinition: TierAModuleDefinition = {
       render: ({ orgId }) => createElement(OrgPainPointTypesPanel, { orgId }),
     },
     {
+      key: "context-strategy-pain-point-submission",
+      label: "Pain Point Submission",
+      group: PAIN_POINT_ADMIN_GROUP,
+      render: ({ orgId }) => createElement(OrgPainPointSubmissionPanel, { orgId }),
+    },
+    {
       key: "context-strategy-pain-point-scoring",
       label: "Pain Point Scoring",
       group: PAIN_POINT_ADMIN_GROUP,
@@ -229,6 +236,12 @@ export const moduleDefinition: TierAModuleDefinition = {
       label: "Pain Point Types",
       group: PAIN_POINT_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectPainPointTypesPanel, { projectId }),
+    },
+    {
+      key: "context-strategy-pain-point-submission",
+      label: "Pain Point Submission",
+      group: PAIN_POINT_ADMIN_GROUP,
+      render: ({ projectId }) => createElement(ProjectPainPointSubmissionPanel, { projectId }),
     },
     {
       key: "context-strategy-pain-point-scoring",

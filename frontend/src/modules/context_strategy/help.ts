@@ -9,4 +9,8 @@
 /** Help text for the Context & Strategy module's form fields, passed as `help` to the shared field components. */
 export const CONTEXT_STRATEGY_HELP = {
   scoringMode: "All personas together records one score for the pain point. Each persona separately records a score per persona, which are then combined by the persona roll-up.",
+  painPointSubmission:
+    "Any project member: everyone with access to the project can submit a Pain Point.\nPain Point Managers only: only Pain Point Managers and project managers can submit; other members raise an Enhancement Request where Product Feedback is enabled.\nEditing and triage are always for Pain Point Managers.",
+  painPointSubmissionProject:
+    "Inherit: use the parent project's setting, else the organisation default, else Pain Point Managers only.\nAny project member: everyone with access to the project can submit a Pain Point.\nPain Point Managers only: only Pain Point Managers and project managers can submit.\nEditing and triage are always for Pain Point Managers.",
 } as const;

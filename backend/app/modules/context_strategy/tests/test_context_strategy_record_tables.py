@@ -276,6 +276,11 @@ def test_a_pain_point_intentional_flag_and_priority_round_trip(world):
 def test_a_plain_member_may_create_but_not_update_and_a_manager_may_assign_an_owner(world, client):
     _, org, project, token = world
     _, member_token = _add_plain_member(client, token, org["id"], project["id"], f"cs-member-{uuid.uuid4().hex[:6]}@example.com")
+    allow = client.put(
+        f"/api/v1/projects/{project['id']}/modules/context_strategy/pain-point-settings", json={"submission_policy": "members"},
+        headers=auth_headers(token),
+    )
+    assert allow.status_code == 200, allow.text
     pain_point = _create_pain_point(client, token, project["id"])
     update = _import(client, member_token, project, PAIN_POINT, _csv(["code", "impact"], [pain_point["unique_code"], "x"]), apply=True)
     assert update.status_code == 200 and update.json()["failed"] == 1

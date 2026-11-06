@@ -67,6 +67,7 @@ return a resolved `PrincipalOut` (`_shared.owner_labels`).
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -81,6 +82,7 @@ from app.modules.context_strategy.enums import (
     OpenQuestionStatus,
     PainPointPriority,
     PainPointStatus,
+    PainPointSubmissionPolicy,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -889,3 +891,41 @@ class GuidingPrincipleSupersessionCreate(BaseModel):
     old_guiding_principle_id: UUID
     comment: str | None = None
     attachments: list[FileAssetOut] = []
+
+
+# --- Pain Point submission policy ----------------------------------------------------------------------------------
+
+
+class PainPointSubmissionSettingsOut(BaseModel):
+    """A project's Pain Point submission setting, resolved."""
+
+    submission_policy: PainPointSubmissionPolicy = Field(description="The policy that applies to the project.")
+    source: Literal["project", "ancestor", "organization", "default"] = Field(
+        description="Where the policy comes from: the project's own setting, a parent project's, the organisation default or the platform default.",
+    )
+    own_policy: PainPointSubmissionPolicy | None = Field(
+        description="The project's own setting; null when it inherits.",
+    )
+    organization_default: PainPointSubmissionPolicy | None = Field(
+        description="The organisation's default; null when it has not set one.",
+    )
+    can_submit: bool = Field(description="Whether the caller may submit a Pain Point under the policy.")
+    restriction_message: str | None = Field(
+        description="Why the caller cannot submit and where to raise the request instead; null when they can.",
+    )
+
+
+class PainPointSubmissionSettingsUpdate(BaseModel):
+    """Sets (or, with null, clears) a project's own policy."""
+
+    submission_policy: PainPointSubmissionPolicy | None = Field(
+        description="The policy to set; null removes the project's own setting so it inherits.",
+    )
+
+
+class OrgPainPointSubmissionSettingsOut(BaseModel):
+    """An organisation's default Pain Point submission policy."""
+
+    submission_policy: PainPointSubmissionPolicy | None = Field(
+        description="The organisation's default; null when it has not set one (the platform default, Pain Point Managers only, applies).",
+    )

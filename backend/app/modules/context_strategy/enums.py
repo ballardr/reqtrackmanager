@@ -149,6 +149,16 @@ class PainPointPriority(str, enum.Enum):
     HIGH = "high"
 
 
+class PainPointSubmissionPolicy(str, enum.Enum):
+    """Who may submit a Pain Point in a project: only a Pain Point Manager (the platform default) or any project
+    member (§6.5's broad-creation model, which a project or organisation opts in to). Ordinary requests are raised
+    as Enhancement Requests where Product Feedback is enabled. Editing and triage stay manager-tier whichever is
+    chosen."""
+
+    MEMBERS = "members"
+    MANAGERS = "managers"
+
+
 class PainPointStatus(str, enum.Enum):
     """Lifecycle states for a `PainPoint` (§6.4) —
     deliberately a **branching**, not linear, lifecycle: `Submitted ->

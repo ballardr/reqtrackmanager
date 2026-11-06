@@ -65,7 +65,7 @@ import {
 } from "./types";
 import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointRollup,
-  PainPointScoringList, PainPointScoringSummary, PainPointScoringTargets, PainPointStatus,
+  PainPointScoringList, PainPointScoringSummary, PainPointScoringTargets, PainPointStatus, PainPointSubmissionSettings,
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
@@ -100,6 +100,8 @@ export function ProjectPainPointsPage() {
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Who may submit here; until it loads (or if it fails) the New button is offered and the server decides.
+  const [submission, setSubmission] = useState<PainPointSubmissionSettings | null>(null);
 
   const [search, setSearch] = useUrlText("q");
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]);
@@ -146,6 +148,7 @@ export function ProjectPainPointsPage() {
     if (!projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
     void projectPainPointApi.listTypes(projectId).then(setTypes).catch(() => setTypes([]));
+    void projectPainPointApi.getSubmissionSettings(projectId).then(setSubmission).catch(() => setSubmission(null));
   }, [projectId]);
 
   useLoadOnChange(reloadPainPoints, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
@@ -280,9 +283,13 @@ export function ProjectPainPointsPage() {
         title="Pain Point"
         records={{ projectId, recordType: "pain_point", filters: filterParams().toString(), onImported: reloadPainPoints }}
         actions={
-          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-            New Pain Point
-          </button>
+          submission && !submission.can_submit ? (
+            <p className="text-muted" role="note">{submission.restriction_message}</p>
+          ) : (
+            <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+              New Pain Point
+            </button>
+          )
         }
         filter={
           <FilterPanel

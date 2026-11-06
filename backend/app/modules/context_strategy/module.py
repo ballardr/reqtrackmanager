@@ -478,7 +478,8 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             params=[_PROJECT_ID_PARAM, _id_param("future_state", "The Future State to update."), *_FUTURE_STATE_CREATE_UPDATE_PARAMS],
         ),
         McpToolDefinition(
-            name="create_pain_point", description="Submits a new Pain Point (any project member may do this).",
+            name="create_pain_point",
+            description="Submits a new Pain Point (Pain Point Managers, or any project member where the project or organisation allows it).",
             method="POST", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-points",
             params=[_PROJECT_ID_PARAM, *_PAIN_POINT_CREATE_PARAMS],
         ),

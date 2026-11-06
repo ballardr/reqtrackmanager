@@ -234,6 +234,8 @@ from app.modules.context_strategy.schemas import (
     PainPointScoringListOut,
     PainPointScoringSummaryOut,
     PainPointScoringTargetsOut,
+    PainPointSubmissionSettingsOut,
+    PainPointSubmissionSettingsUpdate,
     PainPointTransitionRequest,
     PainPointUpdate,
     ProjectPainPointTypeCreate,
@@ -323,6 +325,13 @@ from app.modules.context_strategy.service import (
     unarchive_strategy,
     withdraw_open_question,
 )
+from app.modules.context_strategy.submission_policy import (
+    can_submit_pain_point,
+    require_pain_point_submit,
+    resolve_submission_policy,
+    restricted_message,
+    set_project_submission_policy,
+)
 from app.schemas.file import FileAssetOut
 from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreTypesRequest
 from app.services.audit import log_event
@@ -331,7 +340,11 @@ from app.services.files import delete_file, upload_file
 from app.services.lookups import project_or_404
 from app.services.module_attachments import comments_out
 from app.services.project_scope import ProjectScope
-from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
+from app.services.rbac import (
+    require_ai_approvals_enabled,
+    require_project_manage,
+    require_project_subcomponent_enabled,
+)
 from app.services.relationships import get_all_links
 from app.services.tags import TagFilter
 from app.services.type_vocabulary_routes import list_hidden_types, remove_project_type, restore_hidden_types
@@ -1400,6 +1413,53 @@ def restore_hidden_project_pain_point_types(
     return restore_hidden_types(db, PAIN_POINT_TYPE_HIDING, project, payload, current_user, "project_pain_point_type")
 
 
+# --- Pain Point submission policy ---------------------------------------------------------------------------
+
+
+def _submission_settings_out(db: Session, project: Project, current_user: User) -> PainPointSubmissionSettingsOut:
+    """The project's resolved submission setting and what the caller may do under it."""
+    resolved = resolve_submission_policy(db, project)
+    own = resolved.policy if resolved.source == "project" else None
+    may_submit = can_submit_pain_point(db, current_user, project)
+    return PainPointSubmissionSettingsOut(
+        submission_policy=resolved.policy, source=resolved.source, own_policy=own,
+        organization_default=resolved.organization_default, can_submit=may_submit,
+        restriction_message=None if may_submit else restricted_message(db, project),
+    )
+
+
+@router.get("/pain-point-settings", response_model=PainPointSubmissionSettingsOut)
+def get_pain_point_settings(
+    project_id: UUID, current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Who may submit a Pain Point here and where that comes from. Any member can read it, so the UI knows
+    whether to offer New Pain Point."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return _submission_settings_out(db, project, current_user)
+
+
+@router.put("/pain-point-settings", response_model=PainPointSubmissionSettingsOut)
+def update_pain_point_settings(
+    project_id: UUID, payload: PainPointSubmissionSettingsUpdate, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
+):
+    """Sets the project's own submission policy, or clears it (null) so the project follows its parent project or
+    the organisation default. Needs project-settings management."""
+    previous = set_project_submission_policy(db, project, payload.submission_policy)
+    log_event(
+        db, entity_type="pain_point_submission_settings", entity_id=project.id, action="updated", actor_id=current_user.id,
+        organization_id=project.organization_id, project_id=project.id,
+        detail={"submission_policy": {
+            "from": previous.value if previous else None,
+            "to": payload.submission_policy.value if payload.submission_policy else None,
+        }},
+    )
+    db.commit()
+    return _submission_settings_out(db, project, current_user)
+
+
 # --- Pain Point CRUD -----------------------------------------------------------
 
 
@@ -1412,10 +1472,13 @@ def create_project_pain_point(
     the module enabled may create one — no `pain_point_manager` grant
     required (§6.5's broad-creation model: "restricting creation to
     administrators would prevent the system from capturing problems
-    discovered by ordinary users and operators")."""
+    discovered by ordinary users and operators") — where the project (or its
+    organisation) opted in to it. The platform default restricts submission
+    to Pain Point managers (`submission_policy`)."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    require_pain_point_submit(db, current_user, project)
     pain_point_type = resolve_usable_pain_point_type(db, project, payload.pain_point_type_id)
     scoring_ctx = None
     if payload.scores:

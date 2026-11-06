@@ -604,6 +604,7 @@ Read workflow: `list_<type>` then `get_<type>`; `list_<type>_relationships` show
 Write workflow:
 - `create_<type>` then `update_<type>`. Non-decisive transitions are one tool each (`propose_*`, `submit_*_for_review`, `send_*_back`, `supersede_*`, `triage_pain_point`, `accept_pain_point`, `investigate_open_question`, and so on). Call a transition only from a status that allows it; a conflict error means the status is wrong, so re-read the record.
 - Link artefacts with `create_<type>_relationship` (the `kind` decides the target type; list the existing relationships first to avoid duplicates). Supersession has its own `create_*_supersession` tools.
+- Pain Point submission is restricted to Pain Point Managers unless the project or organisation allows any member; `context_strategy_create_pain_point` returns 403 for anyone else. Raise an Enhancement Request instead where the Product Feedback module is enabled.
 - Score a pain point with `context_strategy_set_pain_point_scores`: it **replaces** all scores. Fetch the current scores and the project's scoring levels first, and use either all-persona or per-persona entries, never both.
 
 Rules and gotchas:
@@ -731,7 +732,7 @@ Parameters: `project_id*` (uuid, in path), `future_state_id*` (uuid, in path), `
 
 #### `context_strategy_create_pain_point` (write)
 
-Submits a new Pain Point (any project member may do this).
+Submits a new Pain Point (Pain Point Managers, or any project member where the project or organisation allows it).
 
 Parameters: `project_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body), `title*` (string, in body), `description` (string, in body), `source` (string, in body), `impact` (string, in body), `evidence` (string, in body), `priority` (string, in body), `date_identified` (string, in body), `is_intentional` (boolean, in body)
 
