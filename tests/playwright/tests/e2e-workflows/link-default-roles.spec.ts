@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD } from "./helpers";
+import { openAddLinkDialog } from "../modules/linksPanel";
 
 // Deletes this file's disposable org after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -75,7 +76,7 @@ test.describe("linking by default role", () => {
     await test.step("the draft requirement can be linked", async () => {
       await page.goto(`/projects/${world.projectId}/requirements/${draft}`);
       const links = page.getByRole("region", { name: "Links", exact: true });
-      await links.getByRole("button", { name: "Add link" }).click();
+      await openAddLinkDialog(page, links);
       const dialog = page.getByRole("dialog", { name: "Add a link" });
       await dialog.getByLabel("Link to").selectOption({ label: "Requirement" });
       const option = dialog.getByRole("option", { name: /Another draft requirement/ });

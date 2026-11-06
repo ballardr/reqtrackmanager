@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { installCleanupHook, selectOptionContaining, showLinkRelationships } from "../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./stakeholders/helpers";
+import { openAddLinkDialog } from "./linksPanel";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -77,7 +78,7 @@ async function setUpRecords(page: import("@playwright/test").Page) {
 
 /** Links the open page's record to `record` (of type `type`) with `relationship` through the panel. */
 async function addLink(page: import("@playwright/test").Page, relationship: string, record: { type: string; label: string }) {
-  await links(page).getByRole("button", { name: "Add link" }).click();
+  await openAddLinkDialog(page, links(page));
   const dialog = page.getByRole("dialog", { name: "Add a link" });
   await dialog.getByLabel("Link to").selectOption({ label: record.type });
   const recordSelect = dialog.getByLabel("Record");

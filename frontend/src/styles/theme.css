@@ -2566,10 +2566,12 @@ td:has(> .disclosure-toggle) {
   justify-content: flex-end;
 }
 
+/* `overscroll-behavior: contain` stops a scroll that reaches the end of the body from carrying on to the page. */
 .dialog-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-5);
 }
 

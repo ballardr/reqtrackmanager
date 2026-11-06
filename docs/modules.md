@@ -1316,7 +1316,7 @@ Read left to right: the same provider defines the columns of the file out and th
 
 ### 4l2. Creating and linking a record from the Links panel
 
-The shared Links panel offers **Create new** on every record page: it creates a record of another type and links it in one step. A module opts in with two frontend fields on `TierAModuleDefinition`; core never imports a module's form.
+The shared Links panel's **Add link** menu offers **Create a new record** on every record page: a first step chooses the record type and relationship, then the owning module's own dialog creates the record and the panel links it, in one flow. A module opts in with two frontend fields on `TierAModuleDefinition`; core never imports a module's form.
 
 ```mermaid
 flowchart LR
@@ -1331,7 +1331,7 @@ flowchart LR
 | `preferredLinkPhrases[type][otherType]` | The module that owns the *page* record | The relationship that carries meaning, e.g. a request's Pain Points are the ones it "Addresses". Other relationships stay selectable. |
 
 - The panel offers only types that a link type from the page record reaches; the server's link options already leave out types of a module or sub-component that is off, so no separate gate is needed.
-- Not offered where links go through a change request, or where the caller cannot link.
+- Not offered where links go through a change request, or where the caller cannot link; then "Add link" is the plain button that opens the finder.
 - The server's own create endpoint still enforces permission and shows any refusal in the dialog.
 
 ### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)

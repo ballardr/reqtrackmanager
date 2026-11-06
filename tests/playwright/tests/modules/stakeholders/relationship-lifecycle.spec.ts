@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { installCleanupHook, selectOptionContaining } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
+import { openAddLinkDialog } from "../linksPanel";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -24,7 +25,7 @@ async function addLink(
   relationship: string,
   record: { type: string; label: string },
 ) {
-  await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+  await openAddLinkDialog(page, page.getByRole("region", { name: "Links", exact: true }));
   const dialog = page.getByRole("dialog", { name: "Add a link" });
   await dialog.getByLabel("Link to").selectOption({ label: record.type });
   const recordSelect = dialog.getByLabel("Record");
@@ -119,7 +120,7 @@ test.describe("Stakeholders & Personas: links", () => {
     });
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/personas/${persona.id}`);
-    await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+    await openAddLinkDialog(page, page.getByRole("region", { name: "Links", exact: true }));
     const dialog = page.getByRole("dialog", { name: "Add a link" });
     await dialog.getByLabel("Link to").selectOption({ label: "Requirement" });
     // The relationships offered are those usable between a Persona and the chosen record.

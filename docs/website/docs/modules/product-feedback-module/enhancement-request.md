@@ -23,8 +23,8 @@ The side panel holds the request's **Links** and **Activity**.
 
 | A request page |
 | --- |
-| Status actions at the top; details, demand (each requester's weight and where it comes from), scoring and external references below |
-| ![Request page for ENH-001 showing the Accepted status with Return to review, Mark delivered and Decline buttons, then the Details, Demand, Scoring and External references sections, with each requester's weight source under its weight](../../../static/img/screenshots/feedback-request-detail-full.png) |
+| Status actions at the top; details, external references, scoring and demand (each requester's weight and where it comes from) below |
+| ![Request page for ENH-001 showing the Accepted status with Return to review, Mark delivered and Decline buttons, then the Details, External references, Scoring and Demand sections, with each requester's weight source under its weight](../../../static/img/screenshots/feedback-request-detail-full.png) |
 
 **Arrange sections…** (on the page's menu) sets your own order for these sections. A project administrator can set a default order for the project; your own choice wins, and any section the order does not mention follows in the standard order.
 

@@ -23,8 +23,17 @@ test.describe("Enhancement requests: Pain Points", () => {
 
     await test.step("Create new in the Links panel makes the Pain Point and links it", async () => {
       await page.goto(`${list}/${withPain.id}`);
-      await page.getByRole("button", { name: "Create a record and link it" }).click();
-      await page.getByRole("button", { name: "New Pain Point" }).click();
+      const addLink = page.getByRole("button", { name: "Add link" });
+      // The plain button becomes a menu once the panel knows a Pain Point can be created here.
+      await expect(addLink).toHaveAttribute("aria-haspopup", "menu");
+      await addLink.click();
+      await page.getByRole("menuitem", { name: "Create a new record" }).click();
+      const step = page.getByRole("dialog", { name: "Create and link a new record" });
+      // Only a Pain Point can be created here, so the record type is fixed and unavailable.
+      await expect(step.getByLabel("Record type")).toHaveValue(/pain_point/);
+      await expect(step.getByLabel("Record type")).toBeDisabled();
+      await expect(step.getByLabel("Relationship")).toContainText("Addresses");
+      await step.getByRole("button", { name: "Next" }).click();
       const dialog = page.getByRole("dialog", { name: /New Pain Point/ });
       await dialog.getByLabel("Type").selectOption({ index: 1 });
       await dialog.getByLabel("Pain Point title").fill(`Slow exports ${suffix}`);

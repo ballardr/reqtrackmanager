@@ -172,6 +172,8 @@ test.describe("Enhancement requests: requesters, paging, references switch and s
     await test.step("built in: references, scoring, demand, evidence", async () => {
       await page.goto(detail);
       await expect(page.getByRole("region", { name: "Demand" })).toBeVisible();
+      // The References card waits for the external system list, so it appears after the others.
+      await expect(page.getByRole("region", { name: "External references" })).toBeVisible();
       expect(await cardOrder(page)).toEqual(["External references", "Scoring", "Demand", "Evidence"]);
     });
 

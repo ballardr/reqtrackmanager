@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook, selectOrgAdminGroup } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, createRisk, riskLevels, setUpOrg, statusBadge } from "./helpers";
+import { openAddLinkDialog } from "../linksPanel";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -93,7 +94,7 @@ test.describe("Risk Management", () => {
     await expect(treatments(page).getByText(/No effective treatment yet/)).toBeVisible();
 
     // --- Linking a requirement through the Links panel only *proposes* a treatment.
-    await links(page).getByRole("button", { name: "Add link" }).click();
+    await openAddLinkDialog(page, links(page));
     const add = page.getByRole("dialog", { name: "Add a link" });
     await add.getByLabel("Link to").selectOption({ label: "Requirement" });
     const record = add.getByLabel("Record");

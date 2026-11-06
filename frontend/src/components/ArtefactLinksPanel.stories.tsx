@@ -5,7 +5,7 @@ import type { ArtefactLinkFinderParams } from "../api/artefactLinks";
 import { ProjectContext } from "../context/ProjectContextValue";
 import {
   buildBrowseStep, buildCandidate, buildGraph, buildGraphNode, buildLinksApi, buildOption, buildRelatedProject,
-  LINKS_ARTEFACT_ID, LINKS_PROJECT_ID,
+  LINKS_ARTEFACT_ID, LINKS_PROJECT_ID, openAddLinkDialog,
 } from "../testing/artefactLinksFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { orphanedControlViolations } from "../testing/orphanedControls";
@@ -91,7 +91,7 @@ export const GroupsCollapseAndAPageCanStartSomeCollapsed: Story = {
   },
 };
 
-/** The header's buttons keep one order in both layouts: Add, Create new, Trace, then View options at the end. */
+/** The header's buttons keep one order in both layouts: Add link, Trace, then View options at the end. */
 export const HeaderButtonsKeepOneOrderInBothLayouts: Story = {
   args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]])) }) },
   play: async ({ canvasElement }) => {
@@ -99,10 +99,10 @@ export const HeaderButtonsKeepOneOrderInBothLayouts: Story = {
     await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
     const order = () =>
       [...canvasElement.querySelectorAll(".artefact-links__buttons > button")].map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim());
-    await waitFor(() => expect(order()).toEqual(["Add link", "Create a record and link it", "Trace", "View options"]));
+    await waitFor(() => expect(order()).toEqual(["Add link", "Trace", "View options"]));
     await userEvent.click(canvas.getByRole("button", { name: "View options" }));
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "View options" })).getByRole("checkbox", { name: "Compact view" }));
-    await expect(order()).toEqual(["Add link", "Create a record and link it", "Trace", "View options"]);
+    await expect(order()).toEqual(["Add link", "Trace", "View options"]);
   },
 };
 
@@ -184,7 +184,7 @@ export const CompactSitsInsideACardWithIconButtonsAndHidesTypes: Story = {
     // No card, no text buttons: the title has a (+) and a trace icon next to it, both named.
     await expect(canvasElement.querySelector(".card")).toBeNull();
     await expect(canvas.getByRole("button", { name: "Trace" })).toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Add link" }));
+    await openAddLinkDialog(canvas);
     await waitFor(() => expect(within(document.body).getByRole("dialog", { name: "Add a link" })).toBeInTheDocument());
     await expect(args.api!.options).toHaveBeenCalled();
   },
@@ -316,8 +316,8 @@ export const AddsALinkChoosingRecordTypeRelationshipAndRecord: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
-    const dialog = within(await within(document.body).findByRole("dialog"));
+    await openAddLinkDialog(canvas);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add a link" }));
     await userEvent.selectOptions(await dialog.findByLabelText("Link to"), "decision");
     await dialog.findByRole("option", { name: "DEC-002 Use Redis" });
     // The relationship is chosen after the record, from those usable for it; "Related to" is the default.
@@ -349,8 +349,8 @@ export const SearchesEveryRecordTypeFromTwoCharacters: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
-    const dialog = within(await within(document.body).findByRole("dialog"));
+    await openAddLinkDialog(canvas);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add a link" }));
     // Nothing is searched until a type is chosen or two characters are typed.
     await expect(await dialog.findByText(/Type at least two characters to search every record type/)).toBeInTheDocument();
     await expect(args.api!.candidates).not.toHaveBeenCalled();
@@ -400,8 +400,8 @@ export const NarrowsATypeByItsBrowseLevels: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
-    const dialog = within(await within(document.body).findByRole("dialog"));
+    await openAddLinkDialog(canvas);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add a link" }));
     // One type is offered, so it is preselected and its first level appears.
     await userEvent.selectOptions(await dialog.findByLabelText("Standard"), "std-1");
     await userEvent.selectOptions(await dialog.findByLabelText("Version"), "ver-std-1");
@@ -445,8 +445,8 @@ export const FiltersALongBrowseLevel: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
-    const dialog = within(await within(document.body).findByRole("dialog"));
+    await openAddLinkDialog(canvas);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add a link" }));
     await userEvent.type(await dialog.findByLabelText("Filter component options"), "nav");
     await dialog.findByRole("option", { name: "Navigation unit" });
     await expect(args.api!.browse).toHaveBeenLastCalledWith(
@@ -466,8 +466,8 @@ export const OffersAParentProjectAndSearchesIt: Story = {
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
-    const dialog = within(await within(document.body).findByRole("dialog"));
+    await openAddLinkDialog(canvas);
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Add a link" }));
     await userEvent.selectOptions(await dialog.findByLabelText("Project"), "project-parent");
     await waitFor(() =>
       expect(args.api!.options).toHaveBeenLastCalledWith(LINKS_PROJECT_ID, "requirement", LINKS_ARTEFACT_ID, {

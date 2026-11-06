@@ -16490,3 +16490,23 @@ The card on a request's page, its place in the section order and the create form
 - **A bug found while testing:** the first version chose the first non-generic relationship, which was "Derives from", not "Addresses" (the only one a request counts); hence the owner-declared preference above.
 
 **Review (identify, verify, remediate).** The creating endpoint is the Pain Point module's own (its permission and audit apply, unchanged); linking uses the generic link endpoint with the caller's own link authority; the new filter reads links through the existing resolver and adds no data. Verified by the backend filter tests, the stories for the panel, column, filter and availability, and a Playwright spec that creates and links a Pain Point from a request, filters and counts, and checks nothing is offered with Pain Points off.
+
+## Links panel: "Add link" is a menu, and creating is a two-step dialog
+
+**Decided by: User** (the "Create new" button moved Settings and Trace onto a second line; "Add link" should offer Link existing or Create new, and the record type and relationship should be step 1 of a modal, with the new record's form as step 2), **Agent** (menu only where something can be created, wording, no Back button).
+
+- **One control.** "Add link" is a `MenuButton` (compact: an `ActionMenu` with the same name) with **Link an existing record** and **Create a new record** where `useCreatableRecordTypes` finds a creatable type, else the plain button it was. The header keeps one order (Add link, Trace, View options) and does not wrap. The "Create new" popover (a button and relationship select per type) is removed.
+- **Two steps.** `CreateLinkedRecordDialog`: step 1 **Record type** and **Relationship** (the owning module's preferred relationship leads; changing the type resets it), step 2 the module's own create dialog. Closing step 2 abandons the create; there is no Back, since step 1 holds two selects.
+- **Cost.** Where a record could already be linked, "Add link" now needs one more click on pages that offer creating; specs and stories open the dialog through `openAddLinkDialog` so they pass either way.
+
+**Review (identify, verify, remediate).** Presentation only; the create and link endpoints, permissions and the module gating are unchanged. Verified by the panel and create-flow stories (84 pass) and the updated Playwright specs (type-checked; the request Pain Point spec was run against a rebuilt stack, see the hand-back).
+
+## Dialogs: the page behind does not scroll; create step shows the default relationship
+
+**Decided by: User** (a scroll in the Pain Point dialog sometimes moved the page behind it; the single-type tooltip appeared far from the pointer; mark the default relationship), **Agent** (the mechanism).
+
+- **Scroll lock.** `ModalBase` and `SidePanel` call `useBodyScrollLock` (`hooks/useBodyScrollLock.ts`): `overflow: hidden` on `<html>` and `<body>` with a scrollbar-width padding so the page does not shift, counted so nested dialogs keep it until the last closes; `.dialog-body` also has `overscroll-behavior: contain`. Cause: the page scrolls on the viewport, so a wheel scroll at the end of the dialog body, or over the backdrop, chained to it. `Popover` does not lock (a small anchored layer).
+- **Create step.** The single-type tooltip follows the pointer (`followPointer`) instead of centring above the whole-width block, and the first relationship is labelled "(default)" whenever there is a choice.
+
+**Review (identify, verify, remediate).** Presentation only. Verified by the Modal, panel and create-flow stories and Playwright specs for the scroll lock and the Pain Point create flow.
+

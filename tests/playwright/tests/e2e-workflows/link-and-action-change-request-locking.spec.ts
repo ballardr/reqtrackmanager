@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { approveRequirementFromDetail, loginAs, openProject, openRequirementByName, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { openAddLinkDialog } from "../modules/linksPanel";
 
 /**
  * Job to be done: Once a requirement is
@@ -83,7 +84,7 @@ test.describe("action/link change-request locking", () => {
       await expect(actionPanel).not.toBeVisible();
       await expect(page.getByRole("link", { name: actionTitle })).toBeVisible();
 
-      await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+      await openAddLinkDialog(page, page.getByRole("region", { name: "Links", exact: true }));
       const linkModal = page.getByRole("dialog", { name: "Add a link" });
       // Still draft — no change-request notice, and Add link works directly.
       await expect(linkModal.getByText(/requires link changes to go through a change request/i)).toHaveCount(0);
@@ -163,7 +164,7 @@ test.describe("action/link change-request locking", () => {
 
     let addLinkCrId = "";
     await test.step("adding a new link now shows the change-request notice, offers only requirements and requires a reason", async () => {
-      await page.getByRole("region", { name: "Links", exact: true }).getByRole("button", { name: "Add link" }).click();
+      await openAddLinkDialog(page, page.getByRole("region", { name: "Links", exact: true }));
       const modal = page.getByRole("dialog", { name: "Add a link" });
       await expect(modal.getByText(/requires link changes to go through a change request/i)).toBeVisible();
       await modal.getByLabel("Search").fill(reqCName);

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { loginAs, openProject, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, showLinkRelationships, closeDialogWithoutSaving } from "../../e2e-workflows/helpers";
 import { createStandardWithVersion } from "./helpers";
+import { openAddLinkDialog } from "../linksPanel";
 
 /**
  * Job to be done: a core requirement traces to the compliance standard's clause it
@@ -55,7 +56,7 @@ test.describe("Compliance: core requirement <-> standard clause links through th
     const dialog = page.getByRole("dialog", { name: "Add a link" });
 
     await test.step("searching the clause's text across every record type finds it, labelled with its type", async () => {
-      await panel.getByRole("button", { name: "Add link" }).click();
+      await openAddLinkDialog(page, panel);
       await expect(dialog.getByText(/Type at least two characters to search every record type/)).toBeVisible();
       await dialog.getByLabel("Search").fill(clauseReference);
       const found = dialog.getByLabel("Record").locator("option", { hasText: clauseName });
@@ -66,7 +67,7 @@ test.describe("Compliance: core requirement <-> standard clause links through th
     });
 
     await test.step("narrowing Standard -> Version -> Requirement lists the clause, then link it", async () => {
-      await panel.getByRole("button", { name: "Add link" }).click();
+      await openAddLinkDialog(page, panel);
       await dialog.getByLabel("Link to").selectOption({ label: "Compliance standard clause" });
       // The picker lists only the first options of a long list and offers a filter box above it; a shared
       // database holds many standards, so narrow to this run's own before choosing it.

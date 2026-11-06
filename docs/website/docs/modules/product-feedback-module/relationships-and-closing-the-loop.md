@@ -16,7 +16,7 @@ An Engagement as evidence is a **Requested by** link to that Engagement, so ther
 
 A request with no Pain Point is flagged **None** in the list's optional **Pain Points** column (a count otherwise) and **No Pain Point linked** on its page. It is a prompt to find the problem, not a rule: you can accept, score and deliver it regardless. The list's **Pain Points** filter narrows to requests with none or at least one. All of this appears only where Pain Points are enabled for the project.
 
-You do not need to leave the request to make the Pain Point: **Create new → New Pain Point** in its Links panel opens the Pain Point form and links the new record with **Addresses** (choose another relationship from the same menu if one applies).
+You do not need to leave the request to make the Pain Point: **Add link → Create a new record** in its Links panel asks for the record type (Pain Point) and the relationship (**Addresses** is chosen for you; pick another if one applies), then opens the Pain Point form and links the new record when you save it.
 
 ```mermaid
 flowchart LR
