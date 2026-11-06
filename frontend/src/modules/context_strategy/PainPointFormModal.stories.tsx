@@ -133,7 +133,7 @@ function mockLinkFinder() {
         truncated: false,
       };
     }
-    if (path.includes("/link-types")) return [buildOption({ other_types: [{ type: "persona", label: "Persona" }] })];
+    if (path.includes("/link-types")) return [buildOption({ other_types: [{ type: "persona", label: "Persona", can_create: false }] })];
     if (path.endsWith("/tags")) return buildRecordTags({ tags: [] });
     throw new Error(`unmocked path: ${path}`);
   });

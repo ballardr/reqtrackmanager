@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 4 done (uncommitted), the rest not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 5 done (uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-4 / 17 phases complete.
+5 / 18 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -14,7 +14,8 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 2 | Storage alert investigation | Cause was SeaweedFS preallocation (already fixed); monitor hardened: restart-safe state, 2-failure threshold, admin email fixed; see `docs/decisions.md` | [x] |
 | 3 | Back link consistency + UI/UX consistency audit | Back link on all 21 `RecordHeader` pages, drawn by the header, guarded by `check_record_header_back.py`; not-found state on three core pages; findings register below | [x] |
 | 4 | Two-level admin navigation | `group` on module admin sections, expandable `ResourceMenu`, `/…/admin/:group/:section` with redirects; see `docs/decisions.md` | [x] |
-| 5 | Links panel: server-side "can create" | Reuses `RecordTableProvider.can_create`, no new hook | [ ] |
+| 5 | Links panel: server-side "can create" | `can_create` on each `link-types` record type from `creatable_record_types`; frontend `canCreate` removed; see `docs/decisions.md` | [x] |
+| 5b | Create new from the Links panel for every creatable type | Only Pain Point has a creator today; phase 7 adds Need; this covers the rest | [ ] |
 | 6 | Pain Point submission policy (project setting) | Mirrors Product Feedback's `submission_policy`; settled with the user | [ ] |
 | 7 | Engagement outcome: create new | Reuses phase 5 | [ ] |
 | 8 | Engagement participants | Reproduce first | [ ] |
@@ -33,7 +34,8 @@ flowchart LR
     P1["1 mypy"] --> P3["3 Consistency audit"]
     P3 --> P4["4 Two-level nav"]
     P5["5 can_create"] --> P6["6 Pain Point permission"]
-    P5 --> P7["7 Outcome: create new"]
+    P5 --> P5b["5b Creators for every type"]
+    P5b --> P7["7 Outcome: create new"]
     P3 --> P8["8 Participants"]
     P9["9 Component/category"] --> P17["17 Demo data"]
     P12["12 Cost of Delay"] --> P17
@@ -137,6 +139,19 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Tests:** per-module test, a role-gated type not offered to a member without the role; `docs/modules.md` §4l2 updated (remove `canCreate`, describe the flag); stories updated.
 - **Prerequisite for phase 6's behaviour and phase 7.**
 
+### Phase 5b — Create new from the Links panel for every creatable type
+
+*Decided by: User* (2026-11-07): "Create new" in the Links panel should offer every standard type of record, not only Pain Points.
+
+- **Why:** `linkedRecordCreators` is declared for `pain_point` only (phase 7 adds `stakeholder_need`), so a person on a Risk, Decision or Requirement cannot create the Persona, Open Question or Action they want to link without leaving the page. Phase 7 (outcomes) also picks its target types from the same registry.
+- **Types in scope:** every registered artefact type a person authors in a project that has a create form: `requirement`, `requirement_action`, `change_request`, `decision`, `risk`, `enhancement_request`, `strategy`, `future_state`, `guiding_principle`, `open_question`, `persona`, `stakeholder`, `stakeholder_group`, `research_finding`, `engagement`, `compliance_evidence`, plus `stakeholder_need` (phase 7 if not done here). *Decided by: User* (2026-11-07): **Change Request is included** (a finding or an enhancement request is often a change to an existing requirement, so it is created and linked from that record), and **no path is restricted for workflow reasons**: the panel offers every type a link type reaches and the person may create. **Excluded, with the reason recorded in `docs/decisions.md`:** `compliance_requirement`, `project_compliance_requirement` and `compliance_required_action_assessment` only, because they are derived from an assigned standard and cannot be authored at all (*Decided by: Agent*). A test lists the exclusions, so a new type must be creatable or give a reason, as `not_importable` does.
+- **Design:** each owning module registers `linkedRecordCreators[type]` with a dialog that wraps the type's existing form (`CreatePainPointDialog` is the pattern: load what the form needs, create through the same API, commit quick links and tags, report the id). The form is the type's own create dialog, so every edit field is present (create and edit share one field group). **`QuickLinkField` stays in every dialog** (*Decided by: User*, 2026-11-07): the new record may need links to other items beyond the page record, even if only "Related to"; the panel's own link to the page record is made in addition. The Change Request dialog takes its affected requirement from the page record when that is a requirement (pre-filled, editable), and otherwise asks as the normal form does. Core types (requirement, action, change request) need their creators declared by the core page set; where a form lives in a page file, extract it to a shared `*FormModal` first and move the page onto it (shared components first), rather than a second copy. `can_create` comes from phase 5 and needs no change.
+- **Guard:** `frontend/src/modules/linkedRecordCreators.stories.tsx` (or a unit test) fails for a registered creatable type with neither a creator nor a stated exclusion; the backend lists the exclusions once so the two cannot drift.
+- **Outcome:** from any record's Links panel, "Create new" offers every type a link type reaches that the person may create; a role-gated type is hidden by the server flag.
+- **Permission rule (*Decided by: User*, 2026-11-07):** a type the person may not create is never offered. The server flag from phase 5 is the only gate; no creator adds its own or ignores it. Several providers answer `can_create` with an unconditional "any member" (risk, decision, pain point, open question and others), so this phase audits every creatable type's provider against its create endpoint and fixes any that is looser. A parametrised backend test covers every creatable type: for a person with no role, a plain member and a role holder, the flag equals whether the create endpoint refuses (403), so a gate added to an endpoint without its provider fails the test.
+- **Tests:** a story per creator (create and link), the registry-completeness test, a Playwright spec creating and linking one type per module (Requirement, Decision, Risk, Persona, Open Question), a refused case for a role-gated type, and a creator that adds a quick link besides the panel's own link.
+- **Docs:** `docs/modules.md` §4l2 (the registry guard), `docs/ux-style-guide.md` if it names Pain Point as the only creator, docs website Links panel page.
+
 ### Phase 6 — Pain Point submission policy (project setting)
 
 *Decided by: User* (2026-11-06): a project configuration, not a role the platform imposes. Mirrors Product Feedback's `ProjectFeedbackSettings.submission_policy`.
@@ -154,7 +169,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 
 - **Why:** an engagement raises Pain Points, Needs and Open Questions, but `EngagementOutcomesPanel` can only pick existing records, which forces leaving the page.
 - **Design:** add "Create new" beside the picker, using `linkedRecordCreators` and the phase 5 `can_create` flag so it works for every outcome target type without importing a module. If a target type declares no creator (for example Needs, which has none today), add one in its module in this phase. After creation the outcome link is made in the same flow.
-- **Create-form rules:** the created record's form is the type's own dialog (`TagField` and every edit field through the shared field group); `QuickLinkField` is omitted here because the outcome link is the link. Record that reason in `docs/decisions.md`.
+- **Create-form rules:** the created record's form is the type's own dialog (`TagField` and every edit field through the shared field group); `QuickLinkField` stays (*Decided by: User*, 2026-11-07, as in phase 5b): the outcome link is made in addition to any quick links.
 - **Outcome:** an engagement logged from a session can record its outcomes without leaving the page.
 - **Tests:** component story; Playwright creating each target type from an engagement; permission-refused case shows the type unavailable.
 
@@ -297,4 +312,4 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Phase 1 is large**; running it first delays visible features but prevents every later phase adding to the debt.
 - **Phase 13 depends on bundle hooks being complete for configuration**; the spike may uncover module gaps that are fixed in that phase.
 
-When the table reads 17/17: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 18/18: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

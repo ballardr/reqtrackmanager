@@ -3,8 +3,8 @@
  *
  * Which record types a person may create and link from a record's Links panel: each type a link type from the
  * page's record reaches (the server's link options, already filtered by restriction, enabled modules and what the
- * caller may link) that the owning module can create (`modules/linkedRecordCreators`) and, where the module declares
- * a `canCreate` check, that the caller may create. An empty list means the panel offers no create choice, so a
+ * caller may link) that the owning module can create (`modules/linkedRecordCreators`) and that the server says the
+ * caller may create (`can_create` on each option's record type, the type's own record-table check). An empty list means the panel offers no create choice, so a
  * record never offers one that would be refused. The relationship that leads is the page record's module's preferred
  * one (`preferredLinkPhrases`), else a specific link type; the symmetric "Related to" leads only when it is all there is.
  */
@@ -29,7 +29,7 @@ function creatableTypes(options: ArtefactLinkTypeOption[], artefactType: string)
   const byType = new Map<string, ArtefactLinkTypeOption[]>();
   for (const option of options) {
     for (const other of option.other_types) {
-      if (getLinkedRecordCreator(other.type)) byType.set(other.type, [...(byType.get(other.type) ?? []), option]);
+      if (other.can_create && getLinkedRecordCreator(other.type)) byType.set(other.type, [...(byType.get(other.type) ?? []), option]);
     }
   }
   const generic = (o: ArtefactLinkTypeOption) => o.forward_name === "Related to" && o.reverse_name === "Related to";
@@ -64,18 +64,5 @@ export function useCreatableRecordTypes(
     return () => { live = false; };
   }, [api, projectId, artefactType, artefactId, enabled]);
 
-  const candidates = useMemo(() => creatableTypes(options, artefactType), [options, artefactType]);
-  // The types the caller may create: a type with a `canCreate` check waits for it (and is left out while unknown or refused).
-  const [allowed, setAllowed] = useState<string[]>([]);
-  useEffect(() => {
-    let live = true;
-    Promise.all(candidates.map(async (c) => {
-      const check = getLinkedRecordCreator(c.type)?.canCreate;
-      if (!check) return c.type;
-      try { return (await check(projectId)) ? c.type : null; } catch { return null; }
-    })).then((types) => { if (live) setAllowed(types.filter((t): t is string => t !== null)); });
-    return () => { live = false; };
-  }, [candidates, projectId]);
-  const creatable = useMemo(() => candidates.filter((c) => allowed.includes(c.type)), [candidates, allowed]);
-  return enabled ? creatable : NONE;
+  return useMemo(() => (enabled ? creatableTypes(options, artefactType) : NONE), [enabled, options, artefactType]);
 }

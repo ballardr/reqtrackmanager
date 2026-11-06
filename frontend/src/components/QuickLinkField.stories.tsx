@@ -79,10 +79,10 @@ export const TheRelationshipCanBeChanged: Story = {
     initial: [CHOSEN],
     api: buildLinksApi({
       options: fn(async () => [
-        buildOption({ other_types: [{ type: "decision", label: "Decision" }] }),
+        buildOption({ other_types: [{ type: "decision", label: "Decision", can_create: false }] }),
         buildOption({
           link_type_id: "lt-addresses", forward_name: "Addresses", reverse_name: "Addressed by", phrase: "Addresses",
-          other_types: [{ type: "decision", label: "Decision" }],
+          other_types: [{ type: "decision", label: "Decision", can_create: false }],
         }),
       ]),
     }),
@@ -109,7 +109,7 @@ export const ThePreferredTypeIsListedOnFocus: Story = {
   args: {
     preferredType: "persona",
     api: buildLinksApi({
-      options: fn(async () => [buildOption({ other_types: [{ type: "persona", label: "Persona" }] })]),
+      options: fn(async () => [buildOption({ other_types: [{ type: "persona", label: "Persona", can_create: false }] })]),
       candidates: fn(async () => ({
         items: [buildCandidate({ type: "persona", id: "per-1", type_label: "Persona", label: "PER-001 Field engineer" })],
         truncated: false,

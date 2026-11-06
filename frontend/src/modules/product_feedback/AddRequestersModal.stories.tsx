@@ -8,7 +8,7 @@ import { PROJECT_ID } from "./requestFixtures";
 
 const REQUESTED_BY = buildOption({
   link_type_id: "lt-requested-by", forward_name: "Requested by", reverse_name: "Requests", phrase: "Requested by",
-  other_types: [{ type: "stakeholder", label: "Stakeholder" }, { type: "persona", label: "Persona" }],
+  other_types: [{ type: "stakeholder", label: "Stakeholder", can_create: false }, { type: "persona", label: "Persona", can_create: false }],
 });
 const RELATED = buildOption();
 

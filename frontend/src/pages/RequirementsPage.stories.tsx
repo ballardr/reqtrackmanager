@@ -535,7 +535,7 @@ export const CreateStepAttachFileThenFinish: Story = {
 export const CreateRequirementLinksTheChosenRecords: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager", {
-      linkOptions: [buildOption({ other_types: [{ type: "requirement", label: "Requirement" }] })],
+      linkOptions: [buildOption({ other_types: [{ type: "requirement", label: "Requirement", can_create: false }] })],
       candidates: [buildCandidate({ type: "requirement", id: "r1", type_label: "Requirement", label: "AUTH-LOG-001 Reset password" })],
     });
     spyOn(api, "post").mockImplementation(async (path: string) => {

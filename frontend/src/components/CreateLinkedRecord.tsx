@@ -7,8 +7,7 @@
  * Responsibilities:
  * - `useCreatableRecordTypes` (`hooks/useCreatableRecordTypes`): offer each record type a link type from the page's record reaches (the server's link
  *   options, already filtered by restriction, enabled modules and what the caller may link) that the owning module
- *   can create (`modules/linkedRecordCreators`) and, where the module declares a `canCreate` check, that the caller
- *   may create; an empty list means the panel offers no create choice, so a record never offers one that would be refused.
+ *   can create (`modules/linkedRecordCreators`) and that the server says the caller may create (`can_create`); an empty list means the panel offers no create choice, so a record never offers one that would be refused.
  * - `CreateLinkedRecordDialog`: step 1 chooses the record type and the relationship; step 2 shows the owning module's
  *   own create dialog (core never imports a module's form) and links the new record once it reports the id.
  *

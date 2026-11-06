@@ -58,7 +58,7 @@ import io
 import logging
 import uuid
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -151,6 +151,40 @@ def _may(provider_check: Any, db: Session, user: User, project: Project, artefac
         return bool(provider_check(db, user, project.id))
     held = get_effective_permissions(db, user.id, project_id=project.id)
     return permission_satisfied(held, encode_permission(artefact_type, level))
+
+
+def creatable_record_types(db: Session, user: User, project: Project, artefact_types: Iterable[str]) -> set[str]:
+    """The subset of `artefact_types` that `user` may create in `project`: the Links panel's "Create new" answer.
+
+    Each type is checked exactly as an import of it is (`_may`): the type's own create check, else the fine-grained
+    `propose_create` permission. A type with no table is left out, since nothing can say the caller may create it.
+    The caller's permissions are read once for the whole call, not once per type.
+
+    Args:
+        db: Active session (read only).
+        user: The person asking.
+        project: The project the record would be created in.
+        artefact_types: The candidate record types (duplicates are checked once).
+
+    Returns:
+        The types the person may create.
+    """
+    providers = get_record_table_providers()
+    held: set[str] | None = None
+    allowed: set[str] = set()
+    for artefact_type in set(artefact_types):
+        provider = providers.get(artefact_type)
+        if provider is None:
+            continue
+        if provider.can_create is not None:
+            if provider.can_create(db, user, project.id):
+                allowed.add(artefact_type)
+            continue
+        if held is None:
+            held = get_effective_permissions(db, user.id, project_id=project.id)
+        if permission_satisfied(held, encode_permission(artefact_type, "propose_create")):
+            allowed.add(artefact_type)
+    return allowed
 
 
 def import_capability(provider: RecordTableProvider, artefact_type: str, *, organization: bool = False) -> str | None:

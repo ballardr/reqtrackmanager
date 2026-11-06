@@ -413,7 +413,7 @@ const OTHER_REQUIREMENT = buildGraphNode({
 });
 const DEPENDS_ON: ArtefactLinkTypeOption = buildOption({
   link_type_id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", phrase: "Depends on",
-  other_types: [{ type: "requirement", label: "Requirement" }],
+  other_types: [{ type: "requirement", label: "Requirement", can_create: false }],
 });
 const OTHER_REQUIREMENT_CANDIDATE = buildCandidate({
   type: "requirement", id: "requirement-2", type_label: "Requirement", label: OTHER_REQUIREMENT.label,

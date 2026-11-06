@@ -25,6 +25,12 @@ class LinkOrientation(str, enum.Enum):
     INCOMING = "incoming"
 
 
+class ArtefactLinkOtherType(ArtefactTypeOut):
+    """A record type that may sit at the other end of a link, and whether the caller may create one here."""
+
+    can_create: bool = False
+
+
 class ArtefactLinkTypeOption(BaseModel):
     """One way to use a link type from the artefact: its orientation, the phrase
     to show, and the artefact types that may sit at the other end."""
@@ -36,7 +42,7 @@ class ArtefactLinkTypeOption(BaseModel):
     nesting_scope: LinkNestingScope = LinkNestingScope.ANCESTOR_EITHER_WAY
     direction: LinkOrientation
     phrase: str
-    other_types: list[ArtefactTypeOut]
+    other_types: list[ArtefactLinkOtherType]
 
 
 class ArtefactLinkCreate(BaseModel):

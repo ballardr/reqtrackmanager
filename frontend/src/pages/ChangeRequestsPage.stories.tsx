@@ -37,7 +37,7 @@ function mockChangeRequestsListApis({ links = false }: { links?: boolean } = {})
       });
     }
     if (links && path.includes("/link-graph")) return buildGraph([], { can_link: true });
-    if (links && path.includes("/link-types")) return [buildOption({ other_types: [{ type: "decision", label: "Decision" }] })];
+    if (links && path.includes("/link-types")) return [buildOption({ other_types: [{ type: "decision", label: "Decision", can_create: false }] })];
     if (links && path.includes("/link-candidates")) return { items: [buildCandidate()], truncated: false };
     if (links && path.includes("/link-browse")) return null;
     if (links && path.includes("/link-candidate-projects")) return { items: [], truncated: false };

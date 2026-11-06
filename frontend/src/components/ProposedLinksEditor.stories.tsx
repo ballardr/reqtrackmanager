@@ -46,7 +46,7 @@ export const EmptyAndOffersToAddALink: Story = {
 export const CollectsALinkWithoutCreatingIt: Story = {
   args: {
     api: buildLinksApi({
-      options: fn(async () => [buildOption({ other_types: [{ type: "decision", label: "Decision" }] })]),
+      options: fn(async () => [buildOption({ other_types: [{ type: "decision", label: "Decision", can_create: false }] })]),
     }),
   },
   play: async ({ canvasElement, args }) => {

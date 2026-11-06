@@ -267,10 +267,6 @@ export interface LinkedRecordCreator {
   label: string;
   /** Renders the module's own create dialog; it must create the record itself and report its id. */
   render: (props: LinkedRecordCreatorProps) => ReactNode;
-  /** Whether the signed-in person may create this type in the project; omit where any project member may (Pain
-   * Points). The panel offers the type only when this resolves true (a failed check offers nothing), so a role-gated
-   * type never shows a control that would be refused. */
-  canCreate?: (projectId: string) => Promise<boolean>;
 }
 
 /**

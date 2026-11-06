@@ -40,13 +40,13 @@ from app.schemas.artefact_links import (
     ArtefactLinkCandidatesOut,
     ArtefactLinkCreate,
     ArtefactLinkOtherEnd,
+    ArtefactLinkOtherType,
     ArtefactLinkOut,
     ArtefactLinkTypeOption,
     LinkOrientation,
 )
 from app.schemas.changes import RecordActivityOut
 from app.schemas.link_graph import LinkGraphDirection, LinkGraphOut
-from app.schemas.link_type import ArtefactTypeOut
 from app.services.link_authoring import (
     CreatedLink,
     create_link_for_artefact,
@@ -60,6 +60,7 @@ from app.services.link_graph import MAX_DEPTH, ArtefactResolver, build_link_grap
 from app.services.link_types import ensure_org_seeds
 from app.services.rbac import memoize_user_lookups, require_project_view
 from app.services.record_activity import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, get_record_activity
+from app.services.record_tables import creatable_record_types
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/artefacts", tags=["artefact-links"])
 
@@ -184,6 +185,8 @@ def list_artefact_link_types(
     )
     ensure_org_seeds(db, project.organization_id)
     db.commit()
+    options = usable_options(db, project, artefact_type, other_type, other_project)
+    creatable = creatable_record_types(db, current_user, project, {t for option in options for t in option.other_types})
     return [
         ArtefactLinkTypeOption(
             link_type_id=option.link_type.id, forward_name=option.link_type.forward_name,
@@ -191,9 +194,12 @@ def list_artefact_link_types(
             nesting_scope=option.link_type.nesting_scope,
             direction=LinkOrientation.OUTGOING if option.outgoing else LinkOrientation.INCOMING,
             phrase=option.phrase,
-            other_types=[ArtefactTypeOut(type=t, label=get_artefact_type_label(t)) for t in option.other_types],
+            other_types=[
+                ArtefactLinkOtherType(type=t, label=get_artefact_type_label(t), can_create=t in creatable)
+                for t in option.other_types
+            ],
         )
-        for option in usable_options(db, project, artefact_type, other_type, other_project)
+        for option in options
     ]
 
 
