@@ -6,8 +6,8 @@
  * (`useProjectScope`) and sends it to the server.
  *
  * Renders nothing for a project with no openable relatives, so a flat project sees no new
- * control. When the list is widened it states so beside the select, which is also what tells a
- * reader that the list's counts cover more than this project.
+ * control. What each option includes is the caption's `(?)` tooltip (listing every option), never a line under the
+ * select: the chosen option names the scope, and the explanation is only needed the first time.
  */
 import type { ProjectScopeState } from "../hooks/useProjectScope";
 import { useStrings } from "../context/TerminologyContext";
@@ -21,9 +21,8 @@ export function ProjectScopeFilter({ scope }: { scope: ProjectScopeState }) {
   const strings = useStrings();
   if (scope.available.length < 2) return null;
   return (
-    <FilterField label={strings.projectScope.label}>
+    <FilterField label={strings.projectScope.label} help={strings.projectScope.help}>
       <ProjectScopeSelect scope={scope} />
-      {scope.widened && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.projectScope.widenedHint}</span>}
     </FilterField>
   );
 }

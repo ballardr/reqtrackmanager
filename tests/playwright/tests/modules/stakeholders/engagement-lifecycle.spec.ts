@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { installCleanupHook, chooseRecordAction, selectOptionContaining } from "../../e2e-workflows/helpers";
 import { API_BASE_URL, setUpOrg } from "./helpers";
+import { openAddLinkDialog } from "../linksPanel";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -305,7 +306,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(card.getByText("FND-001")).toBeVisible();
     const needName = `Work offline ${suffix}`;
     await post(page, `${base}/needs`, adminHeaders, { name: needName });
-    await card.getByRole("button", { name: "Add link" }).click();
+    await openAddLinkDialog(page, card);
     const linkDialog = page.getByRole("dialog", { name: "Add a link" });
     await linkDialog.getByLabel("Link to").selectOption({ label: "Stakeholder need" });
     await selectOptionContaining(linkDialog.getByLabel("Record"), needName);

@@ -388,6 +388,7 @@ def link_to_earlier(
         for index in range(len(batch.ids)):
             for _ in range(_poisson(rng, mean)):
                 roll = rng.random()
+                is_dormant = False
                 if parent_targets and roll < ratios.cross_level_link_fraction:
                     target_id, project_pair = rng.choice(parent_targets), ((parent_id, here) if partner.record_is_target else (here, parent_id))
                     link_type = rng.choice(cross_types)
@@ -395,7 +396,7 @@ def link_to_earlier(
                     sibling_id, sibling_ids = rng.choice(sibling_targets)
                     target_id, project_pair = rng.choice(sibling_ids), ((sibling_id, here) if partner.record_is_target else (here, sibling_id))
                     link_type = rng.choice(cross_types)
-                    dormant += 1
+                    is_dormant = True
                 else:
                     target_id, project_pair = targets[order[rng.choices(range(n), cum_weights=cumulative)[0]]], (None, None)
                     link_type = rng.choice(types) if types else None
@@ -404,6 +405,7 @@ def link_to_earlier(
                     continue
                 seen.add(key)
                 emit(index, target_id, link_type, project_pair)
+                dormant += is_dormant  # counted only once written: a repeated pair is skipped above
 
         # Plant the hub: the highest-weighted partner record gets links from as many of the batch's records as the cap allows.
         if ratios.hub_max_degree > 0:

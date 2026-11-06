@@ -175,6 +175,21 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
+          label: 'Product Feedback module',
+          items: [
+            'modules/product-feedback-module/overview',
+            'modules/product-feedback-module/enhancement-request',
+            'modules/product-feedback-module/demand-and-merging',
+            'modules/product-feedback-module/scoring',
+            'modules/product-feedback-module/relationships-and-closing-the-loop',
+            'modules/product-feedback-module/external-references-and-channels',
+            'modules/product-feedback-module/reports',
+            'modules/product-feedback-module/mcp-integration',
+            'modules/product-feedback-module/known-limitations',
+          ],
+        },
+        {
+          type: 'category',
           label: 'Risk Management module',
           items: [
             'modules/risk-management-module/overview',

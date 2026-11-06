@@ -34,8 +34,11 @@ below creates its database on first use.
 """
 
 import asyncio
+import atexit
 import os
+import shutil
 import sys
+import tempfile
 
 # `dedicated_pytest_database_url`/`PYTEST_DB_NAME` live in the tiny sibling
 # module `tests/_pytest_database.py`, not here, purely so this can be a
@@ -60,6 +63,12 @@ os.environ.setdefault("SERVER_ADMIN_CREATE_ORG", "true")
 # A fresh install seeds every module available; the suite's tables are truncated after every test, so
 # that seed would reach only the first test. Tests that need it enable the setting themselves.
 os.environ.setdefault("MODULES_DEFAULT_AVAILABLE", "false")
+# Uploads the suite stores go to a throwaway directory, never the repo's `./data/files` (a run started from the repo
+# root, not `backend/`, used to leave files in an untracked `data/` there). An explicit STORAGE_LOCAL_DIR wins.
+if "STORAGE_LOCAL_DIR" not in os.environ:
+    _pytest_storage_dir = tempfile.mkdtemp(prefix="reqtrack-pytest-files-")
+    os.environ["STORAGE_LOCAL_DIR"] = _pytest_storage_dir
+    atexit.register(shutil.rmtree, _pytest_storage_dir, ignore_errors=True)
 
 import pytest
 from fastapi.testclient import TestClient

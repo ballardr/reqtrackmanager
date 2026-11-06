@@ -1,6 +1,7 @@
 import { expect, type APIRequestContext, type Page, test } from "@playwright/test";
 
 import { deleteOrgOnCleanup, installCleanupHook, loginAs, PASSWORD, selectOrgAdminGroup, selectProjectAdminGroup } from "../../e2e-workflows/helpers";
+import { expandScoringLevels } from "../scoringLevels";
 
 const API_BASE_URL = "http://localhost:8000";
 
@@ -68,6 +69,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
     await test.step("org: seeded levels, add a level, set the default model and bands", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
       await selectOrgAdminGroup(page, "Pain Point Scoring");
+      await expandScoringLevels(page);
       await expect(inputWithValue(page, "Blocker")).toBeVisible();
       await expect(inputWithValue(page, "Constant")).toBeVisible();
 
@@ -96,7 +98,8 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
       const defaultModel = section(page, "Default model");
       await expect(defaultModel.getByRole("combobox", { name: "Default model" })).toHaveValue("sxf");
       await expect(defaultModel.getByText("Inherited from organisation")).toBeVisible();
-      await expect(section(page, "Levels").getByText(/Catastrophic \(6\)/)).toBeVisible();
+      await expandScoringLevels(page);
+      await expect(section(page, "Levels").getByText("Catastrophic", { exact: true })).toBeVisible();
 
       const parentOverride = await request.put(
         `${API_BASE_URL}/api/v1/projects/${parent.id}/scoring-schemes/pain_point/default-model`,

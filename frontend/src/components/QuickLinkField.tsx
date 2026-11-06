@@ -32,6 +32,7 @@ import {
   type CollectedLink,
 } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
+import { FieldHelp } from "./FieldHelp";
 import { ItemRow } from "./ItemRow";
 import { defaultOptionKey, optionKey } from "./linkOptions";
 
@@ -51,16 +52,29 @@ function sameRecord(a: { other_type: string; other_id: string }, b: { other_type
  * @param value The links chosen so far; the form owns them.
  * @param onChange Called with the new list when a record is added, a relationship changed or a record removed.
  * @param preferredType A record type to offer first (and to list on focus), for example `persona`.
+ * @param onlyLinkNamed Offers only the link type whose forward name this is ("Requested by"), and only the record types
+ *   it reaches, for a field that makes one kind of link (a request's requesters) rather than any link.
+ * @param label Caption override (default "Link to").
+ * @param placeholder Search box placeholder override.
+ * @param help The `(?)` tooltip after the caption (default: links are added when the record is saved). Never a line under the box.
+ * @param titled Shows the caption as a bold section title, for a form whose neighbouring sections ("Scoring",
+ *   "External references") are bold titles, so "Link to" is not read as part of the section above it.
  * @param api Injectable calls (stories pass a fake); defaults to the live API.
  */
 export function QuickLinkField({
-  projectId, artefactType, value, onChange, preferredType, api = artefactLinksApi,
+  projectId, artefactType, value, onChange, preferredType, onlyLinkNamed, label, placeholder, help, titled = false,
+  api = artefactLinksApi,
 }: {
   projectId: string;
   artefactType: string;
   value: CollectedLink[];
   onChange: (links: CollectedLink[]) => void;
   preferredType?: string;
+  onlyLinkNamed?: string;
+  label?: string;
+  placeholder?: string;
+  help?: string;
+  titled?: boolean;
   api?: ArtefactLinksApi;
 }) {
   const strings = useStrings();
@@ -78,7 +92,7 @@ export function QuickLinkField({
     let active = true;
     api.options(projectId, artefactType, DRAFT_ARTEFACT_ID)
       .then((result) => {
-        if (active) setOptions(result);
+        if (active) setOptions(onlyLinkNamed ? result.filter((o) => o.forward_name === onlyLinkNamed) : result);
       })
       .catch(() => {
         if (active) setOptions([]);
@@ -86,7 +100,7 @@ export function QuickLinkField({
     return () => {
       active = false;
     };
-  }, [api, projectId, artefactType]);
+  }, [api, projectId, artefactType, onlyLinkNamed]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -122,13 +136,16 @@ export function QuickLinkField({
 
   const matches = useMemo(() => {
     const found = loaded?.key === searchKey ? loaded.result.items : [];
-    const fresh = found.filter((c) => !value.some((v) => sameRecord(v, { other_type: c.type, other_id: c.id })));
+    // The finder searches every linkable type; a restricted field keeps the types its one link type reaches.
+    const reachable = onlyLinkNamed ? new Set((options ?? []).flatMap((o) => o.other_types.map((t) => t.type))) : null;
+    const fresh = found.filter((c) => !reachable || reachable.has(c.type)).filter((c) => !value.some((v) => sameRecord(v, { other_type: c.type, other_id: c.id })));
     // Array.prototype.sort is stable, so the finder's label order is kept inside each group.
     return preferredType ? [...fresh].sort((a, b) => Number(b.type === preferredType) - Number(a.type === preferredType)) : fresh;
-  }, [loaded, searchKey, value, preferredType]);
+  }, [loaded, searchKey, value, preferredType, options, onlyLinkNamed]);
 
   if (!options || options.length === 0) return null;
 
+  const caption = label ?? strings.artefactLinks.quick.label;
   const showList = open && searchable;
   const waiting = showList && loaded?.key !== searchKey;
 
@@ -182,7 +199,10 @@ export function QuickLinkField({
 
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <label htmlFor={`${listboxId}-input`}>{strings.artefactLinks.quick.label}</label>
+      <span className="field-caption">
+        <label htmlFor={`${listboxId}-input`}>{titled ? <strong>{caption}</strong> : caption}</label>
+        <FieldHelp label={caption} help={help ?? strings.artefactLinks.quick.hint} />
+      </span>
       <div ref={containerRef} style={{ position: "relative" }}>
         <input
           id={`${listboxId}-input`}
@@ -192,7 +212,7 @@ export function QuickLinkField({
           aria-controls={listboxId}
           aria-autocomplete="list"
           aria-activedescendant={showList && highlighted >= 0 ? `${listboxId}-option-${highlighted}` : undefined}
-          placeholder={strings.artefactLinks.quick.placeholder}
+          placeholder={placeholder ?? strings.artefactLinks.quick.placeholder}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -235,7 +255,6 @@ export function QuickLinkField({
           </div>
         )}
       </div>
-      <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.artefactLinks.quick.hint}</span>
       {value.length > 0 && (
         <ul className="stack" style={{ gap: "var(--space-1)", listStyle: "none", margin: 0, padding: 0 }} aria-label={strings.artefactLinks.quick.chosenLabel}>
           {value.map((link) => {

@@ -27,6 +27,7 @@ import {
   Anchor,
   CircleHelp,
   Compass,
+  Lightbulb,
   type LucideIcon,
   MessagesSquare,
   Network,
@@ -55,6 +56,7 @@ const ICONS_BY_NAME: Record<string, LucideIcon> = {
   "user-round": UserRound,
   target: Target,
   "messages-square": MessagesSquare,
+  lightbulb: Lightbulb,
 };
 
 /** The same generic fallback `nav_icon`'s own backend default resolves to

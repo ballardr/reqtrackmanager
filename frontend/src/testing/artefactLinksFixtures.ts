@@ -4,7 +4,7 @@
  * Builders and a fake `ArtefactLinksApi` for the Links panel's stories, so each
  * story states only the links and options it is about and needs no network.
  */
-import { fn } from "storybook/test";
+import { fn, userEvent, waitFor, within } from "storybook/test";
 
 import type {
   ArtefactLinkBrowseStep, ArtefactLinkCandidate, ArtefactLinksApi, ArtefactLinkTypeOption, LinkCandidateProject,
@@ -162,4 +162,22 @@ export function buildTraceApi(records: TraceRecord[], links: TraceLink[]): Artef
       };
     }),
   });
+}
+
+/**
+ * Opens the Links panel's "Add a link" dialog from its "Add link" control, which is a menu once a record type can be
+ * created from the record (then "Link an existing record" is chosen) and a plain button before that or where none can.
+ *
+ * @param canvas The panel's canvas queries.
+ */
+export async function openAddLinkDialog(canvas: ReturnType<typeof within>): Promise<void> {
+  await userEvent.click(await canvas.findByRole("button", { name: "Add link" }));
+  const body = within(document.body);
+  await waitFor(() => {
+    if (!body.queryByRole("dialog", { name: "Add a link" }) && !body.queryByRole("menuitem", { name: "Link an existing record" })) {
+      throw new Error("Neither the add-link dialog nor its menu is open.");
+    }
+  });
+  const existing = body.queryByRole("menuitem", { name: "Link an existing record" });
+  if (existing) await userEvent.click(existing);
 }

@@ -62,3 +62,24 @@ export const ThreeAxisModelHasNoCellEditor: Story = {
     await expect(canvas.getByText(/Preview at the top level of the remaining axes/)).toBeInTheDocument();
   },
 };
+
+/** A model with a divisor axis (Frequency divides Severity × Confidence) has a third dimension a cell grid cannot
+ * pin, so it keeps the preview even when cell handlers are given. */
+export const DivisorModelHasNoCellEditor: Story = {
+  args: {
+    scheme: (() => {
+      const base = buildScoringScheme();
+      const model = {
+        ...base.models[0], key: "sxc_div", label: "Severity × Confidence ÷ Frequency",
+        axis_keys: ["severity", "confidence"], divisor_axis_keys: ["frequency"],
+      };
+      return { ...base, models: [model], default_model_key: "sxc_div", system_default_model_key: "sxc_div" };
+    })(),
+    isCellsCustom: () => false, onSaveCells: fn(async () => {}), onResetCells: fn(async () => {}),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("button", { name: "Save cell ratings" })).not.toBeInTheDocument();
+    await expect(canvas.getByText(/Preview at the top level of the remaining axes/)).toBeInTheDocument();
+  },
+};

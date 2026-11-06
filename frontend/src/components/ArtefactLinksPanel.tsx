@@ -17,6 +17,9 @@
  *   hidden what the user may not see and says how many it left out.
  * - Show links to other projects (a parent or child) with a project badge, and flag
  *   a link its link type no longer permits instead of hiding it.
+ * - Offer "Add link" as a menu of linking an existing record or, for a record type another module can create and a
+ *   link type reaches (`CreateLinkedRecord`), creating and linking a new one in one step (a record type and
+ *   relationship step, then the owning module's form). Where nothing can be created it is the plain button.
  * - Open the trace (tree and map) of the record's links in a modal.
  * - Remove a link behind a Tier-1 confirmation; route through a change request when
  *   the page says links are locked (`changeRequest`).
@@ -44,18 +47,22 @@
  *   that expects a long group of little interest passes `collapsedTypes` to start those groups
  *   collapsed (an engagement starts with its findings collapsed); the viewer's own toggling then wins.
  */
-import { ChevronDown, ChevronRight, GitBranch, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FilePlus, GitBranch, Link2, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { artefactLinksApi, type ArtefactLinksApi, type LinkGraph, type LinkGraphEdge, type LinkGraphNode } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
+import { useCreatableRecordTypes } from "../hooks/useCreatableRecordTypes";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { ActionMenu } from "./ActionMenu";
 import { AddPopoverButton } from "./AddPopoverButton";
 import { AddArtefactLinkModal, type LinksChangeRequestMode } from "./AddArtefactLinkModal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { CreateLinkedRecordDialog } from "./CreateLinkedRecord";
 import { ItemRow } from "./ItemRow";
 import { LinkedRecordSummary } from "./LinkedRecordSummary";
 import { LinkTraceModal } from "./LinkTraceModal";
+import { MenuButton } from "./MenuButton";
 import { useInDetailAside } from "./detailAsideContext";
 import { TextAreaField } from "./FormFields";
 
@@ -135,6 +142,7 @@ export function ArtefactLinksPanel({
   const [failed, setFailed] = useState(false);
   const [reload, setReload] = useState(0);
   const [adding, setAdding] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [tracing, setTracing] = useState(false);
   const [removing, setRemoving] = useState<LinkRow | null>(null);
   const [removeReason, setRemoveReason] = useState("");
@@ -164,6 +172,10 @@ export function ArtefactLinksPanel({
       active = false;
     };
   }, [api, projectId, artefactType, artefactId, refreshToken, reload]);
+
+  // Creating needs a project, the right to link and plain links (a locked record would have to propose the new record).
+  const mayCreate = !!projectId && !changeRequest && (graph?.can_link ?? false);
+  const creatable = useCreatableRecordTypes(projectId ?? "", artefactType, artefactId, api, mayCreate);
 
   const groups = useMemo(() => {
     if (!graph) return [];
@@ -228,6 +240,10 @@ export function ArtefactLinksPanel({
 
   // Changing links on a locked record goes through a change request, which anyone allowed to link it at all may propose.
   const canLink = (changeRequest ? graph?.can_propose : graph?.can_link) ?? false;
+  const addItems = [
+    { key: "existing", label: strings.artefactLinks.linkExisting, icon: <Link2 aria-hidden="true" />, onSelect: () => setAdding(true) },
+    { key: "new", label: strings.artefactLinks.createNewRecord, icon: <FilePlus aria-hidden="true" />, onSelect: () => setCreating(true) },
+  ];
   const viewOptions = (
     <AddPopoverButton label={strings.artefactLinks.viewOptions} icon={SlidersHorizontal} size={compactView ? "sm" : "md"}>
       {() => (
@@ -255,7 +271,19 @@ export function ArtefactLinksPanel({
             buttons do not move when the layout flips and the View options popover stays open. */}
         <div className="row artefact-links__buttons">
           {canLink && (
-            compactView ? (
+            creatable.length > 0 ? (
+              // The same "Add link" button, as a menu of the two ways to add one.
+              compactView ? (
+                <ActionMenu
+                  triggerLabel={strings.artefactLinks.addLink} icon={<Plus aria-hidden="true" />} size="sm" items={addItems}
+                />
+              ) : (
+                <MenuButton
+                  primary label={<><Plus aria-hidden="true" /> {strings.artefactLinks.addLink}</>}
+                  menuLabel={strings.artefactLinks.addLink} items={addItems}
+                />
+              )
+            ) : compactView ? (
               <button
                 className="btn btn-sm btn-icon" aria-label={strings.artefactLinks.addLink} title={strings.artefactLinks.addLink}
                 aria-haspopup="dialog" onClick={() => setAdding(true)}
@@ -367,6 +395,12 @@ export function ArtefactLinksPanel({
             changed();
           }}
           onClose={() => setAdding(false)}
+        />
+      )}
+      {creating && creatable.length > 0 && (
+        <CreateLinkedRecordDialog
+          projectId={projectId} artefactType={artefactType} artefactId={artefactId} types={creatable} api={api}
+          onLinked={changed} onClose={() => setCreating(false)}
         />
       )}
       {tracing && graph && (

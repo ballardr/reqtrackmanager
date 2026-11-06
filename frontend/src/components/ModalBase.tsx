@@ -8,6 +8,7 @@
 import { useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useDialogA11y } from "./dialogA11y";
 import { DialogFrame, type DialogGuardFrame } from "./DialogHeader";
 
@@ -66,6 +67,7 @@ export function ModalBase({
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, onClose);
+  useBodyScrollLock();
 
   return createPortal(
     <div

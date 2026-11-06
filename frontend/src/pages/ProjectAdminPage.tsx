@@ -176,10 +176,15 @@ export function ProjectAdminPage() {
   // fallback needs to recognise a module-contributed group key too, not
   // just the six fixed core ones.
   const { modules: projectEnabledModules } = useProjectEnabledModules(projectId ?? null);
+  const [projectModuleSubComponents, setProjectModuleSubComponents] = useState<Record<string, ProjectModuleSubComponent[]>>({});
   const enabledProjectModuleKeys = new Set(projectEnabledModules.map((m) => m.module_key));
   const moduleAdminSections: ProjectAdminSectionDef[] = installedModules
     .filter((m) => enabledProjectModuleKeys.has(m.key))
-    .flatMap((m) => m.projectAdminSections ?? [])
+    .flatMap((m) => (m.projectAdminSections ?? []).filter((section) => {
+      // A section tied to a sub-component is left out once that sub-component is known to be off here.
+      const subs = projectModuleSubComponents[m.key];
+      return !section.subComponent || !subs || subs.some((s) => s.subcomponent_key === section.subComponent && s.effective_enabled);
+    }))
     .filter((section) => {
       if ((PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(section.key)) {
         console.error(`Module-contributed project-admin section "${section.key}" collides with a core group key; ignoring it.`);
@@ -196,7 +201,6 @@ export function ProjectAdminPage() {
   // Strategy today, see `reload()`'s own "fetch for every module
   // unconditionally" comment).
   const [projectModules, setProjectModules] = useState<ProjectModuleEnablement[]>([]);
-  const [projectModuleSubComponents, setProjectModuleSubComponents] = useState<Record<string, ProjectModuleSubComponent[]>>({});
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);

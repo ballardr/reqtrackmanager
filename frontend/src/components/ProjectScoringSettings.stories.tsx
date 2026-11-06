@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { ScoringScheme } from "../api/scoring";
-import { buildScoringScheme, withToast } from "../testing/storybook-helpers";
+import { buildCustomCriteriaScheme, buildScoringScheme, buildUser, expandScoringLevels, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ProjectScoringSettings } from "./ProjectScoringSettings";
 
 const PROJECT_ID = "project-1";
@@ -32,7 +32,8 @@ const meta: Meta<typeof ProjectScoringSettings> = {
   title: "Components/Scoring/ProjectScoringSettings",
   component: ProjectScoringSettings,
   args: { projectId: PROJECT_ID, schemeKey: "pain_point" },
-  decorators: [withToast()],
+  // The folding blocks remember their state through the signed-in person's preferences.
+  decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
 };
 export default meta;
 
@@ -78,5 +79,52 @@ export const OverrideBands: Story = {
     await waitFor(() => expect(within(document.body).getByText("Rating bands saved.")).toBeInTheDocument());
     // Now an override: the pill offers a way back to the inherited bands.
     await waitFor(() => expect(canvas.getAllByRole("button", { name: "Use inherited value" })).toHaveLength(1));
+  },
+};
+
+const OWN_AXIS = {
+  key: "c_local", label: "Local fit", description: null, origin: "project" as const, owner_project_id: PROJECT_ID,
+  levels: [
+    { id: "loc-1", name: "Weak", description: null, weight: 1 },
+    { id: "loc-2", name: "Strong", description: null, weight: 2 },
+  ],
+};
+
+/** A project edits the levels of an axis it defined, with its own level endpoints; other axes stay read-only. */
+export const OwnAxisLevelsAreEditable: Story = {
+  args: { schemeKey: "enhancement_request" },
+  beforeEach: () => {
+    const base = buildCustomCriteriaScheme();
+    mockProjectApis(buildCustomCriteriaScheme({ axes: [...base.axes, OWN_AXIS] }));
+    spyOn(api, "patch").mockImplementation(async (_path: string, body?: unknown) => body);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: "Criteria" });
+    await expect(canvas.getByText("Levels are set by the organisation, except for an axis this project defined.")).toBeInTheDocument();
+    await expandScoringLevels(canvas);
+    await expect(canvas.getAllByRole("textbox", { name: "Local fit level name" }).length).toBeGreaterThan(0);
+    await expect(canvas.queryByRole("textbox", { name: "Impact level name" })).not.toBeInTheDocument();
+    const name = canvas.getAllByRole("textbox", { name: "Local fit level name" })[0];
+    await userEvent.clear(name);
+    await userEvent.type(name, "Poor");
+    await userEvent.tab();
+    await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      `/api/v1/projects/${PROJECT_ID}/scoring-schemes/enhancement_request/levels/loc-1`, expect.objectContaining({ name: "Poor" }),
+    ));
+  },
+};
+
+/** Models shown is the project's own choice, with a way back to inheriting. */
+export const ModelsShownOverrideAndReset: Story = {
+  args: { schemeKey: "enhancement_request" },
+  beforeEach: () => mockProjectApis(buildCustomCriteriaScheme()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "Show Weighted value" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      "/api/v1/projects/project-1/scoring-schemes/enhancement_request/enabled-models", { models: ["ice"] },
+    ));
   },
 };

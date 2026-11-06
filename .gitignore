@@ -189,6 +189,8 @@ tests/playwright/.cache/
 # Local file storage backend data (STORAGE_BACKEND=local) — dev/test uploads,
 # never real product data
 backend/data/
+# The same default (`./data/files`) when the backend is started from the repo root
+/data/
 
 # Storybook
 frontend/storybook-static/

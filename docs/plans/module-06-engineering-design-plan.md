@@ -132,6 +132,7 @@ open-question resolutions below, before Phase 1.
    Phase 5), so a separate promotion later (if interfaces turn out to need
    their own lifecycle or volume of use) is a normal schema migration, not
    a redesign.
+   **Update 2026-11-04:** [Module 18](module-18-system-architecture-plan.md) (System Architecture) plans first-class Connections between Elements; an Interface Design would then *describe* a connection instead of restating source, destination and protocol. Re-answer this question against Module 18's Q2 before Phase 4.
 4. **Engineering Attributes: literally the same `custom_fields` JSONB
    mechanism `RequirementVersion` already uses, or a Design-specific
    variant?** Confirmed by reading the code: `RequirementVersion` already

@@ -2027,6 +2027,47 @@ def create_risk(
     return r.json()
 
 
+def get_request_levels(headers: dict, project_id: str) -> dict[str, dict[str, str]]:
+    """Returns the org's enhancement-request scoring levels as `{axis_key: {level_name: level_id}}`."""
+    r = httpx.get(f"{BASE}/projects/{project_id}/scoring-schemes/enhancement_request", headers=headers, timeout=30)
+    r.raise_for_status()
+    return {axis["key"]: {lvl["name"]: lvl["id"] for lvl in axis["levels"]} for axis in r.json()["axes"]}
+
+
+def request_score_fields(
+    levels: dict[str, dict[str, str]], reach: str, impact: str, confidence: str, effort: str, ease: str | None = None,
+    safety: str | None = None,
+) -> dict:
+    """The `levels` payload of a scored request, by level name (Demand is derived from the requesters, so it is
+    never set here; leaving `ease` out leaves the request unscored under ICE; `safety` is the Falcon-3 project's own
+    "Safety relevance" axis)."""
+    chosen = {"reach": reach, "impact": impact, "confidence": confidence, "effort": effort}
+    if ease is not None:
+        chosen["ease"] = ease
+    if safety is not None:
+        chosen["c_safety_relevance"] = safety
+    return {"levels": {axis: levels[axis][name] for axis, name in chosen.items()}}
+
+
+def create_enhancement_request(headers: dict, base: str, *, title: str, description: str = "", **fields) -> dict:
+    """Submits a Product Feedback enhancement request (it starts New). `base` is the project's or organisation's
+    `.../modules/product_feedback` URL, so the same helper fills a project list and the organisation inbox."""
+    r = httpx.post(
+        f"{base}/requests", json={"title": title, "description": description, **fields}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def transition_enhancement_request(headers: dict, base: str, request_id: str, status: str, comment: str = "") -> dict:
+    """Moves an enhancement request to `status` (declining needs a `comment`, the decline reason)."""
+    r = httpx.post(
+        f"{base}/requests/{request_id}/transition", json={"status": status, "comment": comment}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def transition_risk(headers: dict, project_id: str, risk_id: str, *statuses: str) -> dict:
     """Moves a Risk through the given lifecycle statuses in order and returns the last response."""
     out: dict = {}
@@ -3491,6 +3532,170 @@ def main() -> None:
           f" (inherent {risk_single_controller['inherent_rating']['label']}, residual {risk_single_controller['residual_rating']['label']}),"
           f" {risk_regulator['unique_code']} {risk_regulator['title']!r} (inherent {risk_regulator['inherent_rating']['label']}"
           f" from its pinned cell), plus {risk_unscored['unique_code']} captured with no assessment yet and a modem supply-chain risk")
+
+    print("Seeding Product Feedback — enabling the module, then enhancement requests on Falcon-3 across the"
+          " lifecycle (one owned by the avionics engineer, one declined with a reason, one with Jira and ServiceNow"
+          " references and a channel per requester; two scored with Reach, Impact, Confidence and Effort) and two in the organisation's inbox...")
+    enable_module(h_pm, org["id"], "product_feedback")
+    feedback_url = f"{BASE}/projects/{drone['id']}/modules/product_feedback"
+    inbox_url = f"{BASE}/orgs/{org['id']}/modules/product_feedback"
+    # Falcon-3's own scoring criteria, added to the built-in ones: a "Safety relevance" axis and a weighted-sum model
+    # that trades impact against it (the project layer of the scoring scheme).
+    scoring_url = f"{BASE}/projects/{drone['id']}/scoring-schemes/enhancement_request"
+    httpx.post(f"{scoring_url}/axes", json={
+        "label": "Safety relevance", "description": "How much the request matters for safe operation.",
+        "levels": [{"name": "None", "weight": 1}, {"name": "Supports safe operation", "weight": 2},
+                   {"name": "Safety critical", "weight": 4}],
+    }, headers=h_pm, timeout=30).raise_for_status()
+    httpx.post(f"{scoring_url}/models", json={
+        "label": "Impact and safety", "combination": "weighted_sum", "axes": [
+            {"axis_key": "impact", "role": "sum", "importance": 60},
+            {"axis_key": "c_safety_relevance", "role": "sum", "importance": 40}],
+    }, headers=h_pm, timeout=30).raise_for_status()
+    request_levels = get_request_levels(h_pm, drone["id"])
+    external_systems = {
+        e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/external-systems", headers=h_pm, timeout=30).json()
+    }
+    request_channels = {
+        e["name"]: e["id"] for e in httpx.get(f"{feedback_url}/request-channels", headers=h_pm, timeout=30).json()
+    }
+    export_request = create_enhancement_request(
+        h_pm, feedback_url, title="Export the inspection log as a spreadsheet",
+        **request_score_fields(request_levels, "Many", "High", "High", "Small", "Easy", safety="Supports safe operation"),
+        description="Inspectors want to pull a day's inspection log into a spreadsheet for the weekly review.",
+        owner={"type": "user", "id": demo_engineer["user_id"]},
+        references=[
+            {"system_id": external_systems["Jira"], "key": "FAL-214", "url": "https://tracker.example.com/browse/FAL-214"},
+            {"system_id": external_systems["ServiceNow"], "key": "INC0012345", "role": "origin"},
+        ],
+    )
+    transition_enhancement_request(h_pm, feedback_url, export_request["id"], "under_review")
+    transition_enhancement_request(h_pm, feedback_url, export_request["id"], "accepted")
+    offline_request = create_enhancement_request(
+        h_pm, feedback_url, title="Offline map tiles for remote sites",
+        description="Field teams lose the map when they work outside coverage.",
+        **request_score_fields(request_levels, "Some", "Massive", "Medium", "Large", "Hard"),
+    )
+    declined_request = create_enhancement_request(
+        h_pm, feedback_url, title="Add a built-in video editor",
+        description="Let operators trim flight footage in the app.",
+    )
+    transition_enhancement_request(
+        h_pm, feedback_url, declined_request["id"], "declined",
+        "Out of scope: footage is edited in the customer's existing tools.",
+    )
+    create_enhancement_request(
+        h_pm, inbox_url, title="Single sign-on for the operator console",
+        description="Operations staff want to use the company login.",
+    )
+    create_enhancement_request(
+        h_pm, inbox_url, title="Dark mode for night operations",
+        description="The console is too bright for night flights.",
+    )
+    # Demand: who asked is a "Requested by" link to a Stakeholder, Persona or Engagement; a duplicate is merged into
+    # the request it repeats, so the accepted request's demand is the union of both requests' requesters.
+    requested_by = next(
+        lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()
+        if lt["forward_name"] == "Requested by"
+    )
+    duplicate_request = create_enhancement_request(
+        h_pm, feedback_url, title="Download inspection results as CSV",
+        description="Same ask as the spreadsheet export, from the certification side.",
+    )
+    for request, other_type, other in (
+        (export_request, "stakeholder", stakeholder_fleet), (export_request, "engagement", engagement_focus),
+        (duplicate_request, "stakeholder", stakeholder_authority), (duplicate_request, "persona", persona_auditor),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    httpx.post(
+        f"{feedback_url}/requests/{duplicate_request['id']}/merge",
+        json={"canonical_id": export_request["id"], "note": "Same ask, different wording."}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    # The channel per ask: how each requester of the accepted request (merged duplicate's included) asked. The
+    # engagement's participants are shown as an Engagement and need none.
+    for other, channel in ((stakeholder_fleet, "Support ticket"), (stakeholder_authority, "Email"), (persona_auditor, "Survey")):
+        httpx.put(
+            f"{feedback_url}/requests/{export_request['id']}/requester-channel",
+            json={"parties": [{"artefact_type": "persona" if other is persona_auditor else "stakeholder", "id": other["id"]}],
+                  "channel_id": request_channels[channel]}, headers=h_pm, timeout=30,
+        ).raise_for_status()
+    # Problem and delivery: the accepted request addresses a Pain Point and is realised by a requirement; a delivered
+    # request has one requester told and one still to tell (the close-the-loop list).
+    link_types = {lt["forward_name"]: lt for lt in httpx.get(f"{BASE}/orgs/{org['id']}/link-types", headers=h_pm, timeout=30).json()}
+    create_artefact_link(
+        h_pm, drone["id"], "enhancement_request", export_request["id"], link_type_id=link_types["Addresses"]["id"],
+        other_type="pain_point", other_id=pp_accepted["id"],
+    )
+    create_artefact_link(
+        h_pm, drone["id"], "enhancement_request", export_request["id"], link_type_id=link_types["Realised by"]["id"],
+        other_type="requirement", other_id=list(drone_reqs.values())[0]["id"],
+    )
+    # More demand for the reports: a request with no problem behind it (Unlinked requests), a declined request nobody
+    # has told yet (Close the loop), and requests addressing Pain Points with and without a Requirement (Problem demand).
+    # Everything is created today, so Triage ageing lists these only with "Waiting longer than" set to 0 days.
+    for request, other_type, other in (
+        (offline_request, "stakeholder", stakeholder_fleet), (offline_request, "persona", drone_operator_persona),
+        (declined_request, "stakeholder", stakeholder_authority),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    controller_request = create_enhancement_request(
+        h_pm, feedback_url, title="Show which flight controller is in command",
+        description="A clear indicator on the ground-station display of the active controller.",
+        **request_score_fields(request_levels, "Some", "Massive", "High", "Medium", "Moderate", safety="Safety critical"),
+    )
+    transition_enhancement_request(h_pm, feedback_url, controller_request["id"], "under_review")
+    audit_request = create_enhancement_request(
+        h_pm, feedback_url, title="Audit-ready flight log export",
+        description="A signed export of a flight's log for external auditors.",
+        **request_score_fields(request_levels, "Few", "High", "Medium", "Large"),
+    )
+    summary_request = create_enhancement_request(
+        h_pm, feedback_url, title="Weekly inspection summary by email",
+        description="A digest of the week's inspections for the fleet manager.",
+    )
+    for request, other_type, other in (
+        (controller_request, "persona", drone_operator_persona),
+        (audit_request, "stakeholder", stakeholder_authority), (audit_request, "persona", persona_auditor),
+        (summary_request, "stakeholder", stakeholder_fleet),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    for request, pain_point in (
+        (controller_request, pp_scored), (audit_request, pp_all_personas), (summary_request, pp_accepted),
+    ):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", request["id"], link_type_id=link_types["Addresses"]["id"],
+            other_type="pain_point", other_id=pain_point["id"],
+        )
+    delivered_request = create_enhancement_request(
+        h_pm, feedback_url, title="Pre-flight checklist as a printable sheet",
+        description="Pilots want the pre-flight checklist on one printable page.",
+    )
+    for status in ("under_review", "accepted", "delivered"):
+        transition_enhancement_request(h_pm, feedback_url, delivered_request["id"], status)
+    for other_type, other in (("stakeholder", stakeholder_fleet), ("persona", persona_auditor)):
+        create_artefact_link(
+            h_pm, drone["id"], "enhancement_request", delivered_request["id"], link_type_id=requested_by["id"],
+            other_type=other_type, other_id=other["id"],
+        )
+    httpx.put(
+        f"{feedback_url}/requests/{delivered_request['id']}/informed",
+        json={"parties": [{"artefact_type": "stakeholder", "id": stakeholder_fleet["id"]}], "informed": True,
+              "note": "Told at the monthly review."}, headers=h_pm, timeout=30,
+    ).raise_for_status()
+    print("  Product Feedback: 8 Falcon-3 requests (accepted with requesters from a stakeholder, an engagement and a"
+          " merged duplicate, linked to a Pain Point and a requirement; one with demand but no Pain Point; declined and"
+          " delivered with requesters still to be told; three scored requests addressing Pain Points that have no"
+          " Requirement yet) and 2 organisation inbox requests; reports: Demand ranking, Unlinked requests, Close the"
+          " loop, Triage ageing (set 'Waiting longer than' to 0) and Problem demand")
 
     print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
           " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"

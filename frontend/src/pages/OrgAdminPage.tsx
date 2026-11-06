@@ -2162,7 +2162,11 @@ export function OrgAdminPage() {
   const coreGroupKeys: readonly string[] = CORE_ORG_ADMIN_GROUP_KEYS;
   const moduleAdminSections = installedModules
     .filter((m) => enabledModuleKeys.has(m.key))
-    .flatMap((m) => m.orgAdminSections ?? [])
+    .flatMap((m) => (m.orgAdminSections ?? []).filter((section) => {
+      // A section tied to a sub-component is left out once that sub-component is known to be off for the organisation.
+      const subs = orgModuleSubComponents[m.key];
+      return !section.subComponent || !subs || subs.some((s) => s.subcomponent_key === section.subComponent && s.enabled);
+    }))
     // Defensive: a module whose own section `key` collides with one of the
     // ten fixed core groups above (or, in principle, with another module's
     // section — not checked here since two modules colliding with each

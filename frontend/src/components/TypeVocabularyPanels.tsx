@@ -93,9 +93,10 @@ function definitionField<T extends { definition?: string | null }>(noun: string,
   return {
     key: "definition",
     getValue: (item) => item.definition ?? "",
+    label: "Definition (what belongs under it)",
     placeholder: `${scope}${noun} type definition (what belongs under it)`,
     ariaLabel: `${scope}${noun} type definition`,
-    maxWidth: 360,
+    track: "minmax(14rem, 2.5fr)",
     multiline: true,
     optional: true,
   };
@@ -171,9 +172,10 @@ export function OrgTypeVocabularyPanel<T extends OrgTypeRow>({
     <div className="stack">
       <p className="text-muted">{description}</p>
       <DefinitionList<T>
+        layout="grid"
         items={items}
         fields={[
-          { key: "name", getValue: (item) => item.name, placeholder: `${noun} type name`, ariaLabel: `${noun} type name` },
+          { key: "name", getValue: (item) => item.name, label: "Name", placeholder: `${noun} type name`, ariaLabel: `${noun} type name`, track: "minmax(10rem, 1fr)" },
           ...(withDefinition ? [definitionField<T>(noun, "")] : []),
         ]}
         getReassignLabel={(item) => item.name}
@@ -272,9 +274,10 @@ export function ProjectTypeVocabularyPanel({
     <div className="stack">
       <p className="text-muted">{description}</p>
       <DefinitionList<EffectiveTypeRow>
+        layout="grid"
         items={items}
         fields={[
-          { key: "name", getValue: (item) => item.name, placeholder: `Project ${noun} type name`, ariaLabel: `Project ${noun} type name` },
+          { key: "name", getValue: (item) => item.name, label: "Name", placeholder: `Project ${noun} type name`, ariaLabel: `Project ${noun} type name`, track: "minmax(10rem, 1fr)" },
           ...(withDefinition ? [definitionField<EffectiveTypeRow>(noun, "Project ")] : []),
         ]}
         getReassignLabel={(item) => item.name}
@@ -329,7 +332,8 @@ export function ProjectTypeVocabularyPanel({
         addLabel={`Add project-only ${noun} type`}
         renderExtra={(item) => (
           <span key="type-extra" className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
-            <span className="text-muted" style={{ fontSize: "0.75rem" }}>{SOURCE_LABEL[item.source]}</span>
+            {/* A fixed width, so the toggles line up whichever label a row has. */}
+            <span className="text-muted" style={{ fontSize: "0.75rem", minWidth: "10.5rem", textAlign: "right" }}>{SOURCE_LABEL[item.source]}</span>
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>Enabled</span>
             <ToggleSwitch
               checked={item.is_enabled}

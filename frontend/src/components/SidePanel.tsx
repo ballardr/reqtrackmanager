@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useDialogA11y } from "./dialogA11y";
 import { DialogFrame } from "./DialogHeader";
 import { useDialogGuard } from "./useDialogGuard";
@@ -36,6 +37,7 @@ export function SidePanel({
   const dialogRef = useRef<HTMLDivElement>(null);
   const guard = useDialogGuard(onClose, dirty, dismissOnBackdrop);
   useDialogA11y(dialogRef, guard.requestClose);
+  useBodyScrollLock();
 
   return createPortal(
     <>

@@ -8,6 +8,7 @@ import { t } from "../i18n/strings";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { Tooltip } from "./Tooltip";
 import { ResultCount } from "./ResultCount";
+import { FieldCaption } from "./FieldHelp";
 import { CheckboxField } from "./FormFields";
 
 const strings = t();
@@ -151,7 +152,24 @@ export function FilterPanel({
   );
 }
 
-export function FilterField({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * One labelled control of the filter panel.
+ *
+ * @param label The caption.
+ * @param help What the options mean, as a `(?)` tooltip after the caption (docs/ux-style-guide.md, "Pattern: explain in
+ *   help, not in the layout"). With help the caption and control are siblings, not one `<label>` (a button inside a label
+ *   would take its place), so the control must name itself (`aria-label`).
+ * @param children The control.
+ */
+export function FilterField({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
+  if (help) {
+    return (
+      <div className="stack" style={{ gap: "var(--space-1)" }}>
+        <FieldCaption label={label} help={help} muted />
+        {children}
+      </div>
+    );
+  }
   return (
     <label className="stack" style={{ gap: "var(--space-1)" }}>
       <span className="text-muted" style={{ fontSize: "0.8rem", fontWeight: 600 }}>

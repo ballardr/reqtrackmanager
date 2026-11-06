@@ -49,6 +49,7 @@ export function ScoringModelBands({
   const model = scheme.models.find((m) => m.key === modelKey) ?? scheme.models[0];
   // First axis on the rows (Y), second across the columns (X).
   const [yKey, xKey] = model.axis_keys;
+  const hasDivisor = (model.divisor_axis_keys ?? []).length > 0;
   const xAxis = scheme.axes.find((a) => a.key === xKey);
   const yAxis = scheme.axes.find((a) => a.key === yKey);
   return (
@@ -66,7 +67,7 @@ export function ScoringModelBands({
         onSave={(bands) => onSave(model.key, bands)}
         onReset={() => onReset(model.key)}
       />
-      {xAxis && yAxis && model.axis_keys.length === 2 && onSaveCells && onResetCells && isCellsCustom ? (
+      {xAxis && yAxis && model.axis_keys.length === 2 && !hasDivisor && onSaveCells && onResetCells && isCellsCustom ? (
         <ScoringCellRatingsEditor
           xAxis={xAxis} yAxis={yAxis} bands={model.bands} cellRatings={model.cell_ratings}
           custom={isCellsCustom(model)} defaultLabel={SCORING_SOURCE_LABEL[model.cell_ratings_source]}
@@ -77,7 +78,7 @@ export function ScoringModelBands({
         <ScoringMatrixChart
           xAxis={xAxis} yAxis={yAxis} bands={model.bands} cellRatings={model.cell_ratings}
           caption={
-            model.axis_keys.length > 2
+            (model.axis_keys.length > 2 || hasDivisor)
               ? `Preview at the top level of the remaining axes (${model.label}).`
               : `Preview (${model.label}).`
           }

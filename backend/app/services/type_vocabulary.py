@@ -8,9 +8,15 @@ Context & Strategy's Pain-Point-specific functions. Lives in core so a module
 never imports another module's package.
 
 Design decisions:
-- No ancestor fallback for nested projects: the org list is the base every
-  project already sees, so an empty project table already means "use org
-  defaults" (Decided by: Agent).
+- Nested projects: by default no ancestor fallback — the org list is the base
+  every project already sees, so an empty project table already means "use org
+  defaults" (Decided by: Agent). A vocabulary opts in with
+  `inherit_from_ancestors=True`: a project with no configuration of its own
+  (no override, local entry or hidden default; a bare passthrough row, which
+  only records that a type was used, is not configuration) shows the nearest
+  ancestor's effective list, else the organisation's. The first change made in
+  such a project copies the inherited configuration into it (`materialize_inherited`),
+  so from then on it is its own, as an Action Type list is.
 - Org types are never deleted while referenced; a project is asked to stop
   using one, or it is disabled instead. Cross-project reassignment has no
   single correct target (same reasoning as Pain Point types).
@@ -34,6 +40,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.services import definition_suppression
+
+#: How many ancestors `configuration_source` will walk (a guard against a corrupt tree).
+_ANCESTOR_CAP = 50
 
 
 @dataclass(frozen=True)
@@ -68,6 +77,8 @@ class TypeVocabulary:
         project_model: The project-level model (`project_id`, `org_type_id`,
             `name_override`, `display_order_override`, `is_enabled`).
         default_names: Names seeded for each new organisation.
+        inherit_from_ancestors: Whether a project with no configuration of its own shows its nearest
+            ancestor's effective list (see the module docstring).
         org_type_in_use: `(db, org_type_id) -> bool`, whether any artefact
             row references the org type directly.
         project_type_in_use: `(db, project_type_id) -> bool`, whether any
@@ -78,7 +89,9 @@ class TypeVocabulary:
         self, *, kind: str, label: str, org_model, project_model, default_names: tuple[str, ...],
         org_type_in_use: Callable[[Session, uuid.UUID], bool],
         project_type_in_use: Callable[[Session, uuid.UUID], bool],
+        inherit_from_ancestors: bool = False,
     ) -> None:
+        self.inherit_from_ancestors = inherit_from_ancestors
         self.kind = kind
         self.label = label
         self.org_model = org_model
@@ -133,10 +146,100 @@ class TypeVocabulary:
             .order_by(self.org_model.sort_order)
         ).all())
 
+    def has_own_configuration(self, db: Session, project_id: uuid.UUID) -> bool:
+        """Whether the project configures the list itself: an override, a project-local type, a disabled type or a
+        hidden default. A bare passthrough row (an organisation type recorded only because a record used it) is not."""
+        if definition_suppression.get_suppressed_ids(db, project_id, self.kind):
+            return True
+        model = self.project_model
+        return db.scalar(
+            select(model.id).where(
+                model.project_id == project_id,
+                (model.org_type_id.is_(None)) | (model.name_override.is_not(None))
+                | (model.display_order_override.is_not(None)) | (model.is_enabled.is_(False)),
+            ).limit(1)
+        ) is not None
+
+    def configuration_source(self, db: Session, project_id: uuid.UUID) -> uuid.UUID:
+        """The project whose configuration `project_id` shows: itself, or (for an opted-in vocabulary, when it has
+        none of its own) its nearest ancestor with some, else itself (the organisation's list). Cycle-safe and capped."""
+        if not self.inherit_from_ancestors or self.has_own_configuration(db, project_id):
+            return project_id
+        from app.models.project import Project
+
+        visited = {project_id}
+        current = db.scalar(select(Project.parent_project_id).where(Project.id == project_id))
+        for _ in range(_ANCESTOR_CAP):
+            if current is None or current in visited:
+                break
+            if self.has_own_configuration(db, current):
+                return current
+            visited.add(current)
+            current = db.scalar(select(Project.parent_project_id).where(Project.id == current))
+        return project_id
+
+    def materialize_inherited(self, db: Session, project_id: uuid.UUID) -> dict[uuid.UUID, uuid.UUID]:
+        """Before a project changes an inherited list, copies the ancestor's configuration into it so the change
+        edits the project's own copy and never the ancestor's. Does nothing when the project is not inheriting.
+
+        Returns:
+            `{the ancestor's row id: the project's copy}` for translating an id taken from the inherited list.
+        """
+        source_id = self.configuration_source(db, project_id)
+        if source_id == project_id:
+            return {}
+        mapping: dict[uuid.UUID, uuid.UUID] = {}
+        passthroughs = {
+            r.org_type_id: r for r in db.scalars(select(self.project_model).where(
+                self.project_model.project_id == project_id, self.project_model.org_type_id.is_not(None),
+            ))
+        }
+        for row in db.scalars(select(self.project_model).where(self.project_model.project_id == source_id)):
+            copy = passthroughs.get(row.org_type_id) if row.org_type_id is not None else None
+            if copy is None:
+                copy = self.project_model(project_id=project_id, org_type_id=row.org_type_id)
+                db.add(copy)
+            # A passthrough the project already holds (records use it) takes the ancestor's settings in place.
+            copy.name_override = row.name_override
+            copy.display_order_override = row.display_order_override
+            copy.is_enabled = row.is_enabled
+            db.flush()
+            mapping[row.id] = copy.id
+        for org_type_id in definition_suppression.get_suppressed_ids(db, source_id, self.kind):
+            definition_suppression.hide_definition(db, project_id, self.kind, org_type_id)
+        return mapping
+
+    def usable_row_id(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID, type_ref_id: uuid.UUID) -> uuid.UUID:
+        """The row a record stores for an entry chosen from the project's effective list: that list's own row (the
+        ancestor's, when inherited), or a passthrough created here for an organisation entry.
+
+        Raises:
+            ValueError: If the id is not in the project's effective list, or the entry is disabled there.
+        """
+        entries = {e.id: e for e in self.resolve_effective(db, project_id, organization_id)}
+        entry = entries.get(type_ref_id)
+        if entry is None:
+            # An organisation id still names its entry once an override or passthrough row stands for it in the list.
+            standing = db.scalar(select(self.project_model.id).where(
+                self.project_model.project_id == self.configuration_source(db, project_id),
+                self.project_model.org_type_id == type_ref_id,
+            ))
+            entry = entries.get(standing) if standing is not None else None
+        if entry is None:
+            raise ValueError(f"This is not a valid {self.label} for this project.")
+        if not entry.is_enabled:
+            raise ValueError(f"This {self.label} is disabled for this project.")
+        row = db.get(self.project_model, entry.id)
+        if row is not None:
+            return row.id
+        return self.get_or_create_project_type(db, project_id, organization_id, entry.id).id
+
     def resolve_effective(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list[EffectiveType]:
         """A project's effective list: every active org type the project has
         not hidden (with its override applied) plus every project-local type,
-        ordered by effective display order."""
+        ordered by effective display order. An inheriting vocabulary shows the
+        configuration of `configuration_source` instead."""
+        project_id = self.configuration_source(db, project_id)
         org_types = db.scalars(
             select(self.org_model).where(self.org_model.organization_id == organization_id, self.org_model.is_active.is_(True))
         ).all()
@@ -232,8 +335,8 @@ class TypeVocabulary:
         return org_type
 
     def list_hidden(self, db: Session, project_id: uuid.UUID, organization_id: uuid.UUID) -> list:
-        """The organisation types hidden in the project, in the organisation's order."""
-        hidden = definition_suppression.get_suppressed_ids(db, project_id, self.kind)
+        """The organisation types hidden in the project (or in the ancestor it inherits from), in the organisation's order."""
+        hidden = definition_suppression.get_suppressed_ids(db, self.configuration_source(db, project_id), self.kind)
         if not hidden:
             return []
         return list(db.scalars(

@@ -27,6 +27,28 @@ export const Default: Story = {
   },
 };
 
+/** The page behind an open dialog does not scroll (a scroll past the dialog's end must not move it), and scrolls again once it closes. */
+export const LocksPageScrollWhileOpen: Story = {
+  render: function Render() {
+    const [open, setOpen] = useState(true);
+    return (
+      <>
+        <button className="btn" onClick={() => setOpen(false)}>Close from outside</button>
+        {open && <Modal title="Scroll lock" onClose={() => setOpen(false)}>A dialog over a scrolling page.</Modal>}
+      </>
+    );
+  },
+  play: async ({ canvasElement }) => {
+    await within(document.body).findByRole("dialog", { name: "Scroll lock" });
+    await expect(document.body.style.overflow).toBe("hidden");
+    await expect(document.documentElement.style.overflow).toBe("hidden");
+    await expect(document.querySelector(".dialog-body")).toHaveStyle({ overscrollBehavior: "contain" });
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Close from outside" }));
+    await expect(document.body.style.overflow).toBe("");
+    await expect(document.documentElement.style.overflow).toBe("");
+  },
+};
+
 export const ClosesOnEscape: Story = {
   play: async ({ args }) => {
     await userEvent.keyboard("{Escape}");

@@ -771,6 +771,17 @@ _REVIEWED_LINK_READERS = {
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",
+    "modules/product_feedback/demand.py": "same-project requester links only (source_project_id is null)",
+    "modules/product_feedback/export.py": "same-project links only (source_project_id is null); a cross-level link is not exported",
+    "modules/product_feedback/relationships.py": (
+        "a request's own same-project links plus cross-level links recorded for the viewed project "
+        "(source_project_id is null or the project)"
+    ),
+    "modules/product_feedback/reports.py": "same-project Pain Point -> Requirement links only (source_project_id is null)",
+    "modules/product_feedback/triage.py": (
+        "deliberately refuses to move a request into a project while it has any link, cross-level included"
+    ),
+    "modules/stakeholders/demand.py": "same-project engagement links only (source_project_id is null)",
     "modules/stakeholders/engagements.py": (
         "same-project participant/covers/outcome links only (source_project_id is null); erasure deliberately removes "
         "every link, cross-level included"

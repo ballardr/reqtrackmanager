@@ -385,3 +385,62 @@ export const PerRowDeleteLabelAndConfirmation: Story = {
 
 export const LightTheme: Story = { ...RenameReorderAndDelete };
 export const DarkTheme: Story = { ...RenameReorderAndDelete, globals: { theme: "dark" } };
+
+interface Level {
+  id: string;
+  name: string;
+  weight: number;
+  guidance: string;
+}
+
+/** `layout="grid"`: one heading per field, every row and the add row aligned under it, and a Rename that only shows once a row is edited. */
+function GridHarness() {
+  const [items, setItems] = useState<Level[]>([
+    { id: "1", name: "Low", weight: 1, guidance: "A handful of people." },
+    { id: "2", name: "High", weight: 2, guidance: "" },
+  ]);
+  return (
+      <DefinitionList<Level>
+        layout="grid"
+        items={items}
+        fields={[
+          { key: "name", getValue: (l) => l.name, label: "Level", placeholder: "Level name", ariaLabel: "Level name", track: "minmax(8rem, 1fr)" },
+          { key: "weight", getValue: (l) => String(l.weight), label: "Weight", placeholder: "Weight", ariaLabel: "Level weight", track: "6rem", inputType: "number" },
+          { key: "guidance", getValue: (l) => l.guidance, label: "Guidance", placeholder: "Guidance", ariaLabel: "Level guidance", track: "minmax(10rem, 2fr)", optional: true, multiline: true },
+        ]}
+        getReassignLabel={(l) => l.name}
+        minItems={1}
+        onRename={fn(async (id, values) => {
+          setItems((prev) => prev.map((l) => (l.id === id ? { ...l, name: values.name, guidance: values.guidance } : l)));
+        })}
+        onAdd={fn(async (values) => {
+          setItems((prev) => [...prev, { id: `new-${prev.length}`, name: values.name, weight: Number(values.weight), guidance: values.guidance }]);
+        })}
+        onDelete={fn(async (id) => {
+          setItems((prev) => prev.filter((l) => l.id !== id));
+        })}
+        deleteLabel="Delete level"
+        addLabel="Add level"
+      />
+  );
+}
+
+export const GridLayoutAlignsRowsUnderHeadings: Story = {
+  render: () => <GridHarness />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("Guidance")).toBeInTheDocument();
+    // Nothing to save yet, so no Rename is offered.
+    await expect(canvas.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
+    const names = canvas.getAllByRole("textbox", { name: "Level name" });
+    await userEvent.clear(names[0]);
+    await userEvent.type(names[0], "Minor");
+    await userEvent.click(canvas.getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Minor")).toBeInTheDocument());
+    // The add row is the last input in each column.
+    await userEvent.type(canvas.getAllByRole("textbox", { name: "Level name" }).slice(-1)[0], "Top");
+    await userEvent.type(canvas.getAllByRole("spinbutton", { name: "Level weight" }).slice(-1)[0], "5");
+    await userEvent.click(canvas.getByRole("button", { name: "Add level" }));
+    await waitFor(() => expect(canvas.getByDisplayValue("Top")).toBeInTheDocument());
+  },
+};

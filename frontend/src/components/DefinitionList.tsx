@@ -33,6 +33,10 @@ export interface DefinitionListField<T> {
   /** A long free-text value (a definition): a row shows a field that grows with its content, and the add form a
    * growing text area, instead of a one-line input. */
   multiline?: boolean;
+  /** `layout="grid"` only: the column heading (default: the placeholder). */
+  label?: string;
+  /** `layout="grid"` only: the column's CSS grid track (default `minmax(0, 1fr)`), e.g. `"6rem"`. */
+  track?: string;
 }
 
 /** What the in-use delete dialog shows for one item, when a vocabulary needs
@@ -105,6 +109,14 @@ export interface DefinitionListProps<T extends { id: string }> {
   /** The fewest items the list may hold (default 1); delete is disabled at
    * this floor. Scoring axes, for example, keep at least two levels. */
   minItems?: number;
+  /**
+   * `"stack"` (default): each row is a line of unlabelled inputs. `"grid"`: one CSS grid with a heading per field
+   * (`DefinitionListField.label`/`track`), every row and the add row aligned under it and the row actions in a
+   * last column, for a list of several fields (a scoring level's name, weight and guidance) or one with a per-row
+   * control beside the fields (`renderExtra` gets its own right-aligned column; keep its width the same on every
+   * row so the controls line up). `renderDetails` is ignored in a grid.
+   */
+  layout?: "stack" | "grid";
 }
 
 /**
@@ -132,6 +144,7 @@ export function DefinitionList<T extends { id: string }>({
   renderExtra,
   renderDetails,
   minItems = 1,
+  layout = "stack",
 }: DefinitionListProps<T>) {
   const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
   const [newDraft, setNewDraft] = useState<Record<string, string>>(() =>
@@ -199,6 +212,139 @@ export function DefinitionList<T extends { id: string }>({
     } catch (err) {
       setError(err instanceof Error ? err.message : strings.common.error);
     }
+  }
+
+  const dialogs = (
+    <>
+      {confirming && (
+        <ConfirmDialog
+          title={confirming.title}
+          message={confirming.message}
+          confirmLabel={confirming.confirmLabel}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            const { item } = confirming;
+            setConfirming(null);
+            void handleAttemptDelete(item);
+          }}
+        />
+      )}
+      {inUse && (
+        <DeleteInUseDialog
+          title={strings.admin.deleteInUseTitle(fields[0].getValue(inUse.item))}
+          summary={inUse.config?.summary ?? inUse.message}
+          details={inUse.config?.details}
+          candidates={
+            inUse.config?.candidates ??
+            items
+              .filter((other) => other.id !== inUse.item.id)
+              .map((other) => ({ id: other.id, label: getReassignLabel(other) }))
+          }
+          onMove={(replacementId, keep) => onDelete(inUse.item.id, replacementId, keep)}
+          remove={inUse.config?.remove}
+          keep={inUse.config?.keep}
+          moveBlockedReason={inUse.config?.moveBlockedReason}
+          onKeepChange={
+            inUse.config?.reload
+              ? async (keep) => {
+                  const config = await inUse.config!.reload!(keep);
+                  setInUse((current) => (current ? { ...current, config } : current));
+                }
+              : undefined
+          }
+          onDeleteKeeping={inUse.config?.keep ? () => onDelete(inUse.item.id, undefined, true) : undefined}
+          onClose={() => setInUse(null)}
+        />
+      )}
+    </>
+  );
+
+  /** A grid cell's control: a one-line input, or a text area that starts at one row and grows with its content.
+   * Only the add row shows the placeholder; an existing row is named by its column heading. */
+  function gridControl(f: DefinitionListField<T>, value: string, onChange: (next: string) => void, adding = false) {
+    // The add row keeps the name it always had (its placeholder, except for a one-line field among several, which
+    // takes its aria label), so a row's control and the add row's are told apart by name.
+    const addName = f.multiline || fields.length === 1 ? f.placeholder : f.ariaLabel;
+    const ariaLabel = adding ? (addName ?? f.ariaLabel ?? f.key) : (f.ariaLabel ?? f.placeholder ?? f.key);
+    const placeholder = adding ? f.placeholder : undefined;
+    return f.multiline ? (
+      <AutoGrowTextarea rows={1} aria-label={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} />
+    ) : (
+      <InlineTextInput type={f.inputType ?? "text"} ariaLabel={ariaLabel} placeholder={placeholder} value={value} onChange={onChange} />
+    );
+  }
+
+  if (layout === "grid") {
+    const columns = `${fields.map((f) => f.track ?? "minmax(0, 1fr)").join(" ")}${renderExtra ? " max-content" : ""} max-content`;
+    const floorHint = minItems > 1 ? strings.admin.deleteMinItemsHint(minItems) : strings.admin.deleteLastOneHint;
+    return (
+      <div className="stack">
+        {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
+        <div className="definition-grid" style={{ gridTemplateColumns: columns }}>
+          {fields.map((f) => <span key={f.key} className="definition-grid__head">{f.label ?? f.placeholder ?? f.key}</span>)}
+          {renderExtra && <span aria-hidden="true" className="definition-grid__head" />}
+          <span aria-hidden="true" className="definition-grid__head" />
+          {items.map((item, idx) => {
+            const draft = draftFor(item);
+            const dirty = isDirty(item, draft);
+            const atFloor = items.length <= minItems;
+            return (
+              <div key={item.id} className="definition-grid__row">
+                {fields.map((f) => (
+                  <div key={f.key} className="definition-grid__cell">
+                    {gridControl(f, draft[f.key], (next) => setEdits((m) => ({ ...m, [item.id]: { ...draft, [f.key]: next } })))}
+                  </div>
+                ))}
+                {renderExtra && <div className="definition-grid__actions">{renderExtra(item)}</div>}
+                <div className="definition-grid__actions">
+                  {/* Always laid out so the columns do not shift when a row becomes dirty; hidden (and out of
+                      the accessibility tree) until there is something to save. */}
+                  <button
+                    className="btn" title={strings.admin.rename} aria-label={strings.admin.rename}
+                    style={{ visibility: dirty && isValid(draft) ? "visible" : "hidden" }} onClick={() => handleRename(item)}
+                  >
+                    <Pencil />
+                  </button>
+                  {onMove && (
+                    <>
+                      <button className="btn" disabled={idx === 0} title={strings.common.up} aria-label={strings.common.up} onClick={() => onMove(item.id, "up")}>
+                        <ArrowUp />
+                      </button>
+                      <button
+                        className="btn" disabled={idx === items.length - 1} title={strings.common.down} aria-label={strings.common.down}
+                        onClick={() => onMove(item.id, "down")}
+                      >
+                        <ArrowDown />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    className="btn btn-danger" disabled={atFloor}
+                    title={atFloor ? floorHint : (getDeleteLabel?.(item) ?? deleteLabel)}
+                    aria-label={atFloor ? floorHint : (getDeleteLabel?.(item) ?? deleteLabel)}
+                    onClick={() => handleDeleteClick(item)}
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {fields.map((f) => (
+            <div key={`add-${f.key}`} className="definition-grid__cell definition-grid__add">
+              {gridControl(f, newDraft[f.key], (next) => setNewDraft((d) => ({ ...d, [f.key]: next })), true)}
+            </div>
+          ))}
+          {renderExtra && <div className="definition-grid__add" />}
+          <div className="definition-grid__actions definition-grid__add">
+            <button className="btn btn-primary" title={addLabel} aria-label={addLabel} onClick={handleAdd} disabled={!isValid(newDraft)}>
+              <Plus /> Add
+            </button>
+          </div>
+        </div>
+        {dialogs}
+      </div>
+    );
   }
 
   return (

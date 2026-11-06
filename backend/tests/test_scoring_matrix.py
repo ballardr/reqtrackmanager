@@ -31,7 +31,7 @@ from app.modules.registry import (
     build_registry,
     validate_scoring_bands,
 )
-from app.services.scoring import BandValue, CellRatings, band_for, compute_score, sync_scoring_levels
+from app.services.scoring import BandValue, CellRatings, band_for, compute_score, derived_level, sync_scoring_levels
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project, login
 
 FAKE_MODULE_KEY = "fake_scoring_module"
@@ -123,6 +123,18 @@ def _model(config: dict, key: str) -> dict:
     ({"axes": (ScoringAxisDefinition("a", "A", (ScoringLevelDefault("X", 1), ScoringLevelDefault("Y", 1))),),
       "models": (ScoringModelDefinition("m", "M", ("a",)),), "default_model_key": "m"}, "unique positive weights"),
     ({"reassign_level_usage": None}, "supplied together"),
+    ({"axes": (ScoringAxisDefinition("a", "A", (ScoringLevelDefault("X", 1), ScoringLevelDefault("Y", 2)),
+                                     derived_source="demand"),),
+      "models": (ScoringModelDefinition("m", "M", ("a",)),), "default_model_key": "m"}, "unique threshold on every level"),
+    ({"axes": (ScoringAxisDefinition("a", "A", (
+        ScoringLevelDefault("X", 1, threshold=0), ScoringLevelDefault("Y", 2, threshold=0)), derived_source="demand"),),
+      "models": (ScoringModelDefinition("m", "M", ("a",)),), "default_model_key": "m"}, "unique threshold on every level"),
+    ({"axes": (ScoringAxisDefinition("a", "A", (ScoringLevelDefault("X", 1, threshold=0), ScoringLevelDefault("Y", 2))),),
+      "models": (ScoringModelDefinition("m", "M", ("a",)),), "default_model_key": "m"}, "takes no threshold|take no threshold"),
+    ({"models": (ScoringModelDefinition("m", "M", ("impact",), divisor_axis_keys=("missing",)),), "default_model_key": "m"},
+     "divisors must be distinct axes"),
+    ({"models": (ScoringModelDefinition("m", "M", ("impact",), divisor_axis_keys=("impact",)),), "default_model_key": "m"},
+     "divisors must be distinct axes"),
 ])
 def test_scheme_definition_rejects_inconsistent_config(overrides, message):
     with pytest.raises(ValueError, match=message):
@@ -154,6 +166,88 @@ def test_compute_score_is_product_normalised_and_banded():
     assert compute_score(model, {"impact": Decimal(4), "likelihood": None}, maxima, bands) is None
     assert compute_score(model, {"impact": Decimal(4)}, maxima, bands) is None
     assert band_for(0.9, []) is None
+
+
+def test_compute_score_divides_by_divisor_axes_and_normalises_against_the_best_case():
+    model = ScoringModelDefinition("ice", "ICE", ("impact", "confidence"), divisor_axis_keys=("effort",))
+    bands = [BandValue("Low", 0, "muted"), BandValue("High", 0.5, "accent")]
+    maxima = {"impact": Decimal(4), "confidence": Decimal(1), "effort": Decimal(8)}
+    minima = {"effort": Decimal(1)}
+    # Best case: top impact and confidence at the lowest effort scores 1.
+    best = compute_score(model, {"impact": Decimal(4), "confidence": Decimal(1), "effort": Decimal(1)}, maxima, bands, min_weights=minima)
+    assert best is not None and best.raw == Decimal(4) and best.normalised == 1 and best.band.label == "High"
+    # Doubling the effort halves the score; it never raises it.
+    costly = compute_score(model, {"impact": Decimal(4), "confidence": Decimal(1), "effort": Decimal(2)}, maxima, bands, min_weights=minima)
+    assert costly.raw == Decimal(2) and costly.normalised == 0.5
+    worst = compute_score(model, {"impact": Decimal(4), "confidence": Decimal(1), "effort": Decimal(8)}, maxima, bands, min_weights=minima)
+    assert worst.normalised == 0.125 and worst.band.label == "Low"
+    # An unset divisor, or no lowest weight to normalise against, means "not scored".
+    assert compute_score(model, {"impact": Decimal(4), "confidence": Decimal(1)}, maxima, bands, min_weights=minima) is None
+    assert compute_score(model, {"impact": Decimal(4), "confidence": Decimal(1), "effort": Decimal(1)}, maxima, bands) is None
+
+
+def test_a_product_can_weight_an_axis_with_an_exponent():
+    model = ScoringModelDefinition("sq", "Squared", ("impact", "confidence"), exponents=(("impact", 2.0),))
+    maxima = {"impact": Decimal(4), "confidence": Decimal(1)}
+    bands = [BandValue("Low", 0, "muted")]
+    result = compute_score(model, {"impact": Decimal(2), "confidence": Decimal(1)}, maxima, bands)
+    assert result is not None and result.raw == Decimal(4) and result.normalised == 0.25  # 2^2 of a best 4^2 = 16
+
+
+def test_a_weighted_sum_scales_each_axis_to_its_best_level_and_can_invert_one():
+    model = ScoringModelDefinition(
+        "ws", "Sum", ("value", "cost"), combination="weighted_sum",
+        importance=(("value", 60.0), ("cost", 40.0)), inverted_axis_keys=("cost",),
+    )
+    maxima, minima = {"value": Decimal(4), "cost": Decimal(8)}, {"value": Decimal(1), "cost": Decimal(1)}
+    bands = [BandValue("Low", 0, "muted")]
+    best = compute_score(model, {"value": Decimal(4), "cost": Decimal(1)}, maxima, bands, min_weights=minima)
+    assert best is not None and best.raw == 100 and best.normalised == 1  # top value, cheapest cost
+    middle = compute_score(model, {"value": Decimal(2), "cost": Decimal(2)}, maxima, bands, min_weights=minima)
+    assert middle is not None and middle.raw == Decimal(60) * Decimal("0.5") + Decimal(40) * Decimal("0.5")
+    assert compute_score(model, {"value": Decimal(2)}, maxima, bands, min_weights=minima) is None  # cost unset
+    assert compute_score(model, {"value": Decimal(2), "cost": Decimal(2)}, maxima, bands) is None  # no lowest weights
+
+
+@pytest.mark.parametrize("model, message", [
+    (ScoringModelDefinition("m", "M", ("a",), combination="vote"), "unknown combination"),
+    (ScoringModelDefinition("m", "M", ("a",), exponents=(("a", 0.0),)), "exponent"),
+    (ScoringModelDefinition("m", "M", ("a",), exponents=(("z", 2.0),)), "exponent"),
+    (ScoringModelDefinition("m", "M", ("a",), importance=(("a", 100.0),)), "takes no importance"),
+    (ScoringModelDefinition("m", "M", ("a", "b"), combination="weighted_sum", importance=(("a", 50.0), ("b", 40.0))), "total 100"),
+    (ScoringModelDefinition("m", "M", ("a", "b"), combination="weighted_sum", importance=(("a", 100.0),)), "one importance"),
+    (ScoringModelDefinition("m", "M", ("a",), combination="weighted_sum", importance=(("a", 100.0),), divisor_axis_keys=("b",)), "no divisors"),
+    (ScoringModelDefinition("m", "M", ("a",), combination="weighted_sum", importance=(("a", 100.0),), inverted_axis_keys=("b",)), "invert"),
+])
+def test_model_maths_validation(model, message):
+    from app.modules.registry import validate_scoring_model_maths
+
+    with pytest.raises(ValueError, match=message):
+        validate_scoring_model_maths(model)
+
+
+def test_a_derived_value_falls_in_the_level_with_the_highest_threshold_not_above_it():
+    def level(name, weight, threshold):
+        return ScoringLevel(name=name, weight=Decimal(weight), threshold=None if threshold is None else Decimal(threshold))
+
+    levels = [level("Many", 3, 15), level("None", 1, 0), level("Few", 2, 3)]  # deliberately unordered
+    assert derived_level(levels, 0).name == "None"
+    assert derived_level(levels, 2.99).name == "None"
+    assert derived_level(levels, 3).name == "Few"  # a threshold is inclusive
+    assert derived_level(levels, 14.5).name == "Few"
+    assert derived_level(levels, 1000).name == "Many"
+    # Below every threshold the lowest level takes it, so a value always lands in a level.
+    assert derived_level([level("Few", 2, 3), level("Many", 3, 15)], 1).name == "Few"
+    assert derived_level([level("Plain", 1, None)], 5) is None
+
+
+def test_a_divisor_model_has_no_cell_ratings():
+    plain = ScoringModelDefinition("ixc", "IxC", ("impact", "confidence"))
+    divided = ScoringModelDefinition("ice", "ICE", ("impact", "confidence"), divisor_axis_keys=("effort",))
+    assert plain.supports_cell_ratings and not divided.supports_cell_ratings
+    cells = CellRatings({(uuid.uuid4(), uuid.uuid4()): "High"})
+    ids = {"impact": next(iter(cells.cells))[0], "confidence": next(iter(cells.cells))[1]}
+    assert cells.band(divided, ids, [BandValue("High", 0.5, "accent")]) is None
 
 
 def test_compute_score_cell_rating_overrides_only_its_cell_and_ignores_stale_labels():
@@ -240,7 +334,7 @@ def test_level_create_update_rules_and_audit(client, admin_token, fake_scoring_m
     resp = client.patch(f"{base}/levels/{level_id}", json={"name": "Critical", "weight": 5, "description": None},
                         headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"id": level_id, "name": "Critical", "description": None, "weight": 5}
+    assert resp.json() == {"id": level_id, "name": "Critical", "description": None, "weight": 5, "threshold": None, "org_threshold": None}
     names = [lvl["name"] for lvl in _axis(_get(client, base, token), "impact")["levels"]]
     assert names[-1] == "Critical"  # re-weighting reorders, and it is now the top level
 
@@ -322,6 +416,42 @@ def test_default_model_resolves_project_ancestor_org_system(client, admin_token,
     assert resp.status_code == 400
 
 
+def test_enabled_models_resolve_project_ancestor_org_system_and_always_include_the_default(client, admin_token, fake_scoring_module):
+    org, token = create_org_admin_in(client, admin_token, "Scoring Enabled Co")
+    parent = create_project(client, token, org["id"], "Parent", can_be_parent=True)
+    child = create_project(client, token, org["id"], "Child", parent_project_id=parent["id"])
+
+    def enabled(project):
+        config = _get(client, _project_base(project["id"]), token)
+        return config["enabled_model_keys"], config["enabled_models_source"]
+
+    assert enabled(child) == (["ixl", "i"], "system")  # every model, the default first
+    resp = client.put(f"{_org_base(org['id'])}/enabled-models", json={"models": ["i"]}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    # The default model (ixl) is not in the set but always shown, first.
+    assert enabled(child) == (["ixl", "i"], "org")
+    client.put(f"{_org_base(org['id'])}/default-model", json={"model": "i"}, headers=auth_headers(token))
+    assert enabled(child) == (["i"], "org")
+
+    resp = client.put(f"{_project_base(parent['id'])}/enabled-models", json={"models": ["ixl", "i"]}, headers=auth_headers(token))
+    assert resp.status_code == 200, resp.text
+    assert enabled(parent) == (["i", "ixl"], "project") and enabled(child) == (["i", "ixl"], "ancestor")
+    client.put(f"{_project_base(parent['id'])}/enabled-models", json={"models": None}, headers=auth_headers(token))
+    assert enabled(child) == (["i"], "org")
+
+    for bad in ([], ["nope"], ["i", "i"]):
+        resp = client.put(f"{_org_base(org['id'])}/enabled-models", json={"models": bad}, headers=auth_headers(token))
+        assert resp.status_code == 400, bad
+    db = SessionLocal()
+    try:
+        actions = db.scalars(select(AuditEvent.action).where(
+            AuditEvent.entity_type == "scoring_enabled_models", AuditEvent.project_id == parent["id"],
+        )).all()
+    finally:
+        db.close()
+    assert sorted(actions) == ["reset", "set"]
+
+
 def test_bands_resolve_and_validate(client, admin_token, fake_scoring_module):
     org, token = create_org_admin_in(client, admin_token, "Scoring Bands Co")
     parent = create_project(client, token, org["id"], "Parent", can_be_parent=True)
@@ -375,6 +505,8 @@ def test_member_can_read_but_not_write(client, admin_token, fake_scoring_module)
         ("patch", f"{_org_base(org['id'])}/levels/{level_id}", {"name": "X"}),
         ("put", f"{_org_base(org['id'])}/default-model", {"model": "i"}),
         ("put", f"{_org_base(org['id'])}/models/ixl/bands", {"bands": None}),
+        ("put", f"{_org_base(org['id'])}/enabled-models", {"models": ["i"]}),
+        ("put", f"{_project_base(project['id'])}/enabled-models", {"models": ["i"]}),
         ("put", f"{_project_base(project['id'])}/default-model", {"model": "i"}),
         ("put", f"{_project_base(project['id'])}/models/ixl/bands", {"bands": None}),
         ("put", f"{_org_base(org['id'])}/models/ixl/cell-ratings", {"cells": None}),

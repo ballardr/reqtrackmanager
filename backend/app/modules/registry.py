@@ -1088,6 +1088,38 @@ def validate_scoring_bands(bands: list[tuple[str, float, str]]) -> None:
             raise ValueError(f"Unknown band tone '{tone}'.")
 
 
+def validate_scoring_model_maths(model: ScoringModelDefinition) -> None:
+    """Checks how a model combines its axes.
+
+    Raises:
+        ValueError: For an unknown combination; a product model with an exponent that is not in (0, 10] or names
+            an axis the model does not use, or with weighted-sum settings; a weighted-sum model with divisors,
+            exponents, an importance missing for an axis or naming another, a non-positive importance, a total
+            other than 100, or an inverted axis it does not sum.
+    """
+    used = {*model.axis_keys, *model.divisor_axis_keys}
+    if model.combination == "product":
+        if model.importance or model.inverted_axis_keys:
+            raise ValueError(f"Model '{model.key}' is a product, so it takes no importance or inverted axes.")
+        for axis_key, exponent in model.exponents:
+            if axis_key not in used or not 0 < exponent <= 10:
+                raise ValueError(f"Model '{model.key}': exponent for '{axis_key}' must be in (0, 10] on a used axis.")
+        if len({axis_key for axis_key, _ in model.exponents}) != len(model.exponents):
+            raise ValueError(f"Model '{model.key}' lists an exponent twice.")
+    elif model.combination == "weighted_sum":
+        if model.divisor_axis_keys or model.exponents:
+            raise ValueError(f"Model '{model.key}' is a weighted sum, so it takes no divisors or exponents.")
+        percentages = dict(model.importance)
+        if set(percentages) != set(model.axis_keys) or len(percentages) != len(model.importance):
+            raise ValueError(f"Model '{model.key}' needs one importance for each summed axis.")
+        if any(p <= 0 for p in percentages.values()) or abs(sum(percentages.values()) - 100) > 0.01:
+            raise ValueError(f"Model '{model.key}' importance must be positive and total 100%.")
+        if not set(model.inverted_axis_keys) <= set(model.axis_keys):
+            raise ValueError(f"Model '{model.key}' can only invert an axis it sums.")
+    else:
+        raise ValueError(f"Model '{model.key}' has an unknown combination '{model.combination}'.")
+
+
 @dataclass(frozen=True)
 class ScoringLevelDefault:
     """One seeded level of a scoring axis (e.g. Severity "Blocker", weight 5).
@@ -1098,11 +1130,14 @@ class ScoringLevelDefault:
             always ordered by weight, so the highest weight is the axis's
             top level.
         description: Optional guidance shown beside the level when scoring.
+        threshold: Only on a derived axis (`ScoringAxisDefinition.derived_source`): the lowest derived value that
+            falls in this level. The levels' thresholds are unique.
     """
 
     name: str
     weight: float
     description: str = ""
+    threshold: float | None = None
 
 
 @dataclass(frozen=True)
@@ -1114,12 +1149,17 @@ class ScoringAxisDefinition:
         label: Display label.
         description: Optional guidance for scorers.
         default_levels: Levels seeded into every organisation (at least 2).
+        derived_source: Names the module-computed number this axis is read from (e.g. a weighted demand) instead
+            of being chosen manually; core only stores the name. Each level then has a `threshold`, and the level
+            for a value is the one with the highest threshold not above it (the lowest level takes anything below). A scorer may still pick a level by
+            hand, which then wins. `None` = an ordinary, manually chosen axis.
     """
 
     key: str
     label: str
     default_levels: tuple[ScoringLevelDefault, ...]
     description: str = ""
+    derived_source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1140,21 +1180,51 @@ class ScoringBandDefault:
 @dataclass(frozen=True)
 class ScoringModelDefinition:
     """A named combination of axes (e.g. S×F) whose score is the product of
-    the chosen levels' weights.
+    the chosen levels' weights, divided by the product of any divisor axes'
+    weights (e.g. RICE: Reach × Impact × Confidence ÷ Effort).
 
     Attributes:
         key: Stable machine key, unique within its scheme.
         label: Display label.
-        axis_keys: The axes combined (≥1); the first two are the matrix
-            chart's rows (Y) and columns (X).
+        axis_keys: The axes multiplied together (≥1); the first two are the
+            matrix chart's rows (Y) and columns (X).
         default_bands: Optional default rating bands (empty = no banding
             until an org/project defines some).
+        divisor_axis_keys: Axes the product is divided by (an axis where a
+            *higher* weight is worse, such as Effort); disjoint from
+            `axis_keys`. The normalised score divides by the best case: every
+            multiplied axis at its top weight and every divisor at its lowest.
+        combination: `"product"` (the default: multiplied axes over divisors) or `"weighted_sum"` (each axis
+            scaled to 0..1 and summed by its importance).
+        exponents: Product only: `(axis key, exponent)` pairs raising an axis's weight to a power, so a more
+            important criterion counts for more; an axis not listed has exponent 1.
+        importance: Weighted sum only: `(axis key, percentage)` for every axis in `axis_keys`, totalling 100.
+        inverted_axis_keys: Weighted sum only: axes where a *lower* weight is better (they score lowest weight
+            ÷ the chosen weight), the sum's counterpart of a divisor axis.
     """
 
     key: str
     label: str
     axis_keys: tuple[str, ...]
     default_bands: tuple[ScoringBandDefault, ...] = ()
+    divisor_axis_keys: tuple[str, ...] = ()
+    combination: str = "product"
+    exponents: tuple[tuple[str, float], ...] = ()
+    importance: tuple[tuple[str, float], ...] = ()
+    inverted_axis_keys: tuple[str, ...] = ()
+
+    def exponent(self, axis_key: str) -> float:
+        """The exponent applied to `axis_key` in a product model (1 unless listed)."""
+        return dict(self.exponents).get(axis_key, 1.0)
+
+    def importance_of(self, axis_key: str) -> float:
+        """The percentage `axis_key` carries in a weighted-sum model (0 if it is not part of it)."""
+        return dict(self.importance).get(axis_key, 0.0)
+
+    @property
+    def supports_cell_ratings(self) -> bool:
+        """Whether per-cell rating overrides apply: only a plain two-axis product has a matrix of cells."""
+        return len(self.axis_keys) == 2 and not self.divisor_axis_keys and self.combination == "product"
 
 
 @dataclass(frozen=True)
@@ -1179,6 +1249,12 @@ class ScoringSchemeDefinition:
         reassign_level_usage: Optional `(db, from_level_id, to_level_id)`
             moving those references. Required whenever `count_level_usage`
             is set.
+        allow_custom_criteria: Whether an organisation (and a project) may define its own axes and models on this
+            scheme, beside the registered ones, which then can only be hidden, never deleted. Off keeps a scheme
+            exactly as registered.
+        side_by_side_models: Whether the module shows several models' scores for one record at once, so the
+            administrator chooses which models are enabled (`enabled_model_keys`). Off hides that setting from
+            the scoring screens, because nothing would read it.
 
     Raises:
         ValueError: On construction, if keys are malformed or duplicated,
@@ -1195,6 +1271,8 @@ class ScoringSchemeDefinition:
     admin_role_key: str | None = None
     count_level_usage: Callable[[Session, uuid.UUID], int] | None = None
     reassign_level_usage: Callable[[Session, uuid.UUID, uuid.UUID], None] | None = None
+    allow_custom_criteria: bool = False
+    side_by_side_models: bool = False
 
     def __post_init__(self) -> None:
         """Validates the scheme's internal consistency (see class docstring)."""
@@ -1211,6 +1289,12 @@ class ScoringSchemeDefinition:
             count = len(axis.default_levels)
             if count < 2 or len(names) != count or len(weights) != count or min(weights) <= 0:
                 raise ValueError(f"Axis '{axis.key}' needs ≥2 levels with unique names and unique positive weights.")
+            thresholds = [lvl.threshold for lvl in axis.default_levels]
+            if axis.derived_source is None:
+                if any(t is not None for t in thresholds):
+                    raise ValueError(f"Axis '{axis.key}' is not derived, so its levels take no threshold.")
+            elif None in thresholds or len(set(thresholds)) != count:
+                raise ValueError(f"Derived axis '{axis.key}' needs a unique threshold on every level.")
         model_keys = [m.key for m in self.models]
         if not model_keys or len(set(model_keys)) != len(model_keys):
             raise ValueError(f"Scheme '{self.key}' needs at least one model and unique model keys.")
@@ -1219,6 +1303,10 @@ class ScoringSchemeDefinition:
                 raise ValueError(f"Invalid scoring model key '{model.key}'.")
             if not model.axis_keys or not set(model.axis_keys) <= set(axis_keys) or len(set(model.axis_keys)) != len(model.axis_keys):
                 raise ValueError(f"Model '{model.key}' must combine distinct axes of scheme '{self.key}'.")
+            divisors = model.divisor_axis_keys
+            if not set(divisors) <= set(axis_keys) or len(set(divisors)) != len(divisors) or set(divisors) & set(model.axis_keys):
+                raise ValueError(f"Model '{model.key}' divisors must be distinct axes of scheme '{self.key}' not also multiplied.")
+            validate_scoring_model_maths(model)
             if model.default_bands:
                 validate_scoring_bands([(b.label, b.min_score, b.tone) for b in model.default_bands])
         if self.default_model_key not in model_keys:
@@ -1257,6 +1345,33 @@ class ScoringTarget:
     label: str
     weight: float | None
     is_active: bool
+
+
+@dataclass(frozen=True)
+class DemandParty:
+    """One party (a person or a persona) a record stands for when another module counts demand, returned by a
+    `ModuleDefinition.demand_party_providers` callable.
+
+    A record of the provider's own type expands to one or more parties: a Stakeholder or Persona is its own
+    party, an Engagement is the Stakeholders who took part and the Personas it covered. The counting module
+    de-duplicates parties by `(artefact_type, id)`, so a party reached twice counts once.
+
+    Attributes:
+        artefact_type: The party's own registered artefact type (e.g. `"stakeholder"`).
+        id: The party record's id.
+        label: Display name.
+        weight: The party's resolved importance in the requesting project, or `None` when none is set (the
+            counting module then weights it as 1).
+        weight_source: Where the weight comes from, as a short key the counting module passes on for display (the
+            stakeholders provider uses `influence`, `project`, `ancestor_project`, `persona` or `none`); empty when
+            the provider does not say.
+    """
+
+    artefact_type: str
+    id: uuid.UUID
+    label: str
+    weight: float | None
+    weight_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -2655,6 +2770,15 @@ class ModuleDefinition:
             `get_scoring_targets` (below), which returns `[]` when the
             owning module is disabled for the project. Empty for a module
             offering no scoring targets.
+        demand_party_providers: Maps one of this module's own
+            `artefact_types` to a callable `(db, project_id, ids) -> {id: [DemandParty]}`
+            saying which parties each record stands for (a Stakeholder or Persona
+            is itself, an Engagement is its participants and covered personas),
+            with weights. Lets Product Feedback count who asked for a request
+            without importing the module that owns the people. Read via
+            `resolve_demand_parties` (below), which returns `{}` when the owning
+            module is disabled for the project. Empty for a module whose records
+            stand for no one.
         artefact_summary_providers: Maps one of this
             module's own `artefact_types` to an `ArtefactSummaryProvider`
             (`get` + `list_for_project`), so another module can validate,
@@ -2796,6 +2920,9 @@ class ModuleDefinition:
     scoring_target_providers: dict[str, Callable[[Session, uuid.UUID], list[ScoringTarget]]] = field(
         default_factory=dict
     )
+    demand_party_providers: dict[
+        str, Callable[[Session, uuid.UUID, Sequence[uuid.UUID]], dict[uuid.UUID, list[DemandParty]]]
+    ] = field(default_factory=dict)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = field(default_factory=dict)
     artefact_type_labels: dict[str, str] = field(default_factory=dict)
     reports: tuple[ReportDefinition, ...] = field(default=())
@@ -4384,6 +4511,44 @@ def get_scoring_targets(db: Session, project_id: uuid.UUID, target_type: str) ->
             return []
         return provider(db, project_id)
     return []
+
+
+def has_demand_party_provider(artefact_type: str) -> bool:
+    """Whether some registered module can expand records of `artefact_type` into demand parties (regardless of
+    whether that module is enabled anywhere)."""
+    return any(artefact_type in d.demand_party_providers for d in get_module_registry().values())
+
+
+def resolve_demand_parties(
+    db: Session, project_id: uuid.UUID, artefact_type: str, ids: Sequence[uuid.UUID],
+) -> dict[uuid.UUID, list[DemandParty]]:
+    """Expands records of `artefact_type` into the parties they stand for, via the owning module's
+    `demand_party_providers` entry.
+
+    Returns `{}` — never raises — when no module provides `artefact_type` or the owning module is disabled for
+    the project, so a demand count degrades to "nothing known about these records" rather than breaking. An id
+    the provider cannot see in the project (another project's record, one hidden from it) is absent from the
+    result.
+
+    Args:
+        db: An active database session (read only).
+        project_id: The project the counting happens in.
+        artefact_type: A registered artefact type, e.g. `"engagement"`.
+        ids: The records to expand.
+
+    Returns:
+        `{record id: parties}`.
+    """
+    if not ids:
+        return {}
+    for definition in get_module_registry().values():
+        provider = definition.demand_party_providers.get(artefact_type)
+        if provider is None:
+            continue
+        if not is_module_enabled_for_project(db, project_id, definition.key):
+            return {}
+        return provider(db, project_id, list(ids))
+    return {}
 
 
 def _summary_provider_for(artefact_type: str) -> tuple[ModuleDefinition, ArtefactSummaryProvider] | None:

@@ -227,6 +227,13 @@ artefact. This reuses the same org-default table/endpoint the project-scoped
 resolution's own middle tier already uses, rather than inventing a second,
 parallel org-scoped mechanism.
 
+A module whose organisation tier needs a switch of its own, so an organisation
+can turn it off without touching its projects, declares a **separate**
+sub-component for that tier (Product Feedback's `organization_requests`, the
+organisation's request inbox, beside `enhancement_request` for the projects'
+lists). A shared key would not do: the organisation's `enabled` for it is also
+the default every project inherits.
+
 ```mermaid
 flowchart TD
     WM{"Whole module enabled?"}
@@ -365,6 +372,7 @@ class ModuleDefinition:
     sub_components: tuple[ModuleSubComponentDefinition, ...] = ()  # independently-toggleable pieces (§2a)
     scoring_schemes: tuple[ScoringSchemeDefinition, ...] = ()  # configurable scoring matrices (§4d)
     scoring_target_providers: dict[str, Callable[[Session, UUID], list[ScoringTarget]]] = {}  # records others score against (§4e)
+    demand_party_providers: dict[str, Callable[[Session, UUID, Sequence[UUID]], dict[UUID, list[DemandParty]]]] = {}  # who a record stands for (§4e2)
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
@@ -851,6 +859,59 @@ flowchart LR
 - **Models** combine axes; score = product of the chosen levels' weights,
   "not scored" if any input is missing. **Bands** use the normalised score
   (score ÷ maximum), so they survive re-weighting.
+- **Divisor axes (Module 14 Phase 3).** A model may also name
+  `divisor_axis_keys` (an axis where a higher weight is worse, such as
+  Effort): score = product of `axis_keys` ÷ product of the divisors, and the
+  maximum is every multiplied axis at its top weight with every divisor at its
+  *lowest* (`services.scoring.min_axis_weights`, passed to `compute_score` as
+  `min_weights`), so the normalised score stays in (0, 1]. A divisor model has
+  no cell ratings (`ScoringModelDefinition.supports_cell_ratings`). RICE is
+  Reach × Impact × Confidence ÷ Effort.
+- **Derived axes (Module 14 Phase 3b).** An axis with
+  `ScoringAxisDefinition.derived_source` is read from a number the module
+  computes (a weighted demand) instead of being chosen: each of its levels
+  carries a `threshold` (`ScoringLevel.threshold`, unique per axis, required
+  on a derived axis and refused on an ordinary one, editable like a weight),
+  and `services.scoring.derived_level(levels, value)` returns the level with
+  the highest threshold not above the value (the lowest level takes anything
+  below every threshold). Bucketing, not the raw number, keeps the best case
+  defined so bands still normalise. The module decides which source it feeds
+  and whether a level chosen manually overrides it; core only stores the name.
+- **Custom criteria (Module 14 Phase 3c).** A scheme with
+  `allow_custom_criteria` lets an organisation, and each project, define its
+  own axes (`scoring_custom_axes` + ordinary `scoring_levels`) and models
+  (`scoring_custom_models`: a *product* with divisors and importance
+  exponents, or a *weighted sum* with importance percentages totalling 100
+  and an optional "lower is better" per axis). The registered criteria can
+  only be hidden (the organisation: `scoring_hidden_criteria`; a project: a
+  `ProjectDefinitionSuppression` tombstone). The layer is additive and
+  inherited down the project chain. A module must read
+  `services.scoring_custom.effective_scheme(db, org_id, scheme, project_id)`
+  rather than its registered scheme, which returns a plain
+  `ScoringSchemeDefinition`, so every other `services.scoring` function works
+  on it unchanged. Custom keys are `c_…` (axes) and `m_…` (models), unique per
+  organisation and scheme. Endpoints on both tiers: `POST/PATCH/DELETE
+  …/axes[/{key}]`, `POST/PATCH/DELETE …/models[/{key}]`, `POST/DELETE
+  …/hidden-criteria`. A module carries a tier's definitions in its bundle with
+  `export_definitions` / `import_definitions`.
+- **Enabled models (Module 14 Phase 3b).** A scheme can show several models
+  at once. `scoring_enabled_models` holds the set per organisation or
+  project (all-or-nothing like bands); `resolve_enabled_models` resolves
+  project → nearest ancestor → org → every registered model, always includes
+  the effective default and puts it first; `PUT .../scoring-schemes/{key}/enabled-models`
+  on both tiers writes it (`null` inherits). A scheme config carries
+  `enabled_model_keys` and `enabled_models_source`. Nothing is stored per
+  model: a module derives every enabled model's score on read. A scheme
+  that does this sets `side_by_side_models`; the shared scoring screens show
+  the "Models shown" setting only then, because no other module reads it.
+- **Scoring screens (Module 14 Phase 5b).** `ScoringSchemeEditor` and
+  `ProjectScoringSettings` also hold the threshold field of a derived axis,
+  "Models shown" (`side_by_side_models`), and `ScoringCriteria` (a scheme with
+  `allow_custom_criteria`): axes and models with their origin, add, edit and
+  delete for what the tier defined, hide for anything else, and a Hidden list
+  to restore from. A project edits the levels of an axis it defined; every
+  other axis's levels stay the organisation's. A module embeds the two
+  editors with its scheme key and nothing else.
 - **Default model and bands** resolve project → nearest ancestor → org →
   module default (the nested-projects fallback rule). No rows = inherit.
 - **Cell ratings (Module 3 Phase 1a).** Thresholds on a product can't
@@ -990,6 +1051,31 @@ flowchart LR
   tolerate a target disappearing or the owner being disabled.
 - The provider does its own sub-component and tenancy checks; the caller has
   already authorised the project.
+### 4e2. Demand parties: who a record stands for (Product Feedback Phase 2)
+
+A module that counts *who asked* (Product Feedback's enhancement requests) can't import the module that owns the
+people. The owner declares
+`demand_party_providers[artefact_type] = (db, project_id, ids) -> {id: [DemandParty]}` and the counter calls
+`registry.resolve_demand_parties(db, project_id, type, ids)`.
+
+```mermaid
+flowchart LR
+    REQ["Request 'Requested by' links"] --> DP["resolve_demand_parties"]
+    DP -->|stakeholder| S["itself, weighted by Influence level"]
+    DP -->|persona| P["itself, weighted by effective persona weight"]
+    DP -->|engagement| E["its participants + covered personas"]
+    S --> U["de-duplicated by (type, id)"]
+    P --> U
+    E --> U
+    U --> D["count + weighted demand"]
+```
+
+- `DemandParty(artefact_type, id, label, weight)`: `weight` is `None` when unset; the counter treats that as 1.
+- The provider does its own sub-component and tenancy checks and omits an id the project cannot see, so a count
+  never discloses a hidden record. `resolve_demand_parties` returns `{}` when the owning module is off.
+- Reads in a fixed number of statements however many ids it is given (a list asks for a whole page at once).
+- The counter de-duplicates by `(artefact_type, id)`, so a party reached twice counts once.
+
 ### 4f. Link targets: records another module relates to (Module 2 Phase 3)
 
 A module that relates its records to another module's (a Stakeholder
@@ -1227,6 +1313,26 @@ Read left to right: the same provider defines the columns of the file out and th
 - **PDF and Word: the Record list report.** A provider's table is also a report (`GET /projects/{id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`, `services/record_list_report.py`), listed in the report catalogue under the platform (`module_key` `platform`), not a module, with one `record_type` parameter holding exactly the types the caller may list. It adds no code per type: it renders `build_table`, so it shows the columns and rows the CSV export would. `format=csv` is the export's file byte for byte; a file (not the on-screen run) is audited as `records_exported`. A column colours its cells in PDF and Word with `RecordColumn.tones` (`{cell text: tone}`, tones as `report_model.TONE_FILL`); the text still names the value. The same MCP tool (`get_record_list_report`) serves every type.
 - **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (a Pain Point scored per persona has no single severity). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
 - **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export (no `create`/`update`) and gives a reason in `not_importable`; a core type's reason is in `CORE_NOT_IMPORTABLE` (`services/record_tables_core.py`, change requests). Do not add per-type export or import code to a core file.
+
+### 4l2. Creating and linking a record from the Links panel
+
+The shared Links panel's **Add link** menu offers **Create a new record** on every record page: a first step chooses the record type and relationship, then the owning module's own dialog creates the record and the panel links it, in one flow. A module opts in with two frontend fields on `TierAModuleDefinition`; core never imports a module's form.
+
+```mermaid
+flowchart LR
+    P["Links panel<br/>(page record)"] -- "link options" --> S["Server: link types reaching<br/>types of enabled modules"]
+    S --> C["linkedRecordCreators[type]<br/>(owning module's dialog)"]
+    C -- "onCreated(id)" --> L["Panel links the new record<br/>(preferredLinkPhrases)"]
+```
+
+| Field | Declared by | Purpose |
+| --- | --- | --- |
+| `linkedRecordCreators[type] = { label, render({ projectId, onCreated, onCancel }), canCreate? }` | The module that owns the *created* type | Its own create dialog; it creates the record itself and reports the id. `canCreate(projectId)` is declared where creating needs more than project membership, so the type is offered only to someone allowed to create it. |
+| `preferredLinkPhrases[type][otherType]` | The module that owns the *page* record | The relationship that carries meaning, e.g. a request's Pain Points are the ones it "Addresses". Other relationships stay selectable. |
+
+- The panel offers only types that a link type from the page record reaches; the server's link options already leave out types of a module or sub-component that is off, so no separate gate is needed.
+- Not offered where links go through a change request, or where the caller cannot link; then "Add link" is the plain button that opens the finder.
+- The server's own create endpoint still enforces permission and shows any refusal in the dialog.
 
 ### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
 
@@ -2397,6 +2503,10 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
   registered artefact types the report names (`backend/tests/test_report_record_codes.py` fails for a
   report that declares none, or an unregistered type). A custom view renders the server's `code`
   string and does not format it again.
+- **Naming another record: ask `ctx.can_view`.** `ReportContext.viewer_id` is the person the report is run for (set by every
+  route, layout and widget run). A collector that names a record of another type, which a project member may lack `view`
+  on (a Pain Point in Product Feedback's problem-demand report), checks `ctx.can_view(db, artefact_type, project_id)`
+  first and counts what it withholds in a note; it returns `False` without a viewer, so a new caller fails closed.
 - **Read-only reports.** `ReportDefinition.view_only=True` marks a report meant to be read on screen (a summary pack). The catalogue entry carries `view_only`; a record list's "Download report" leaves it out, the Reports dialog still shows it, and its `parts` remain widgets. Nothing in core names a report.
 - **Packs on a record list.** `ReportPackOut.record_types` is the sorted union of the types its entries read (a module report's `ReportDefinition.record_types`, a layout tree's `record_types_of`), resolved for the asking scope (`report_pack_run.pack_record_types`); a record list's "Download report" offers a pack when its types include the list's.
 - **Cells are untrusted.** CSV cells go through `csv_safe`, PDF cells through
@@ -2533,7 +2643,12 @@ segment automatically, and renders whichever section's `key` matches the
 active group by calling its `render({ orgId })` — no per-module edit to
 `OrgAdminPage.tsx` itself. A section's `key` must be unique across every
 installed module (and distinct from the ten core group keys); a colliding
-key is dropped, logged, rather than silently shadowing a core group. See
+key is dropped, logged, rather than silently shadowing a core group. A section
+that configures one sub-component names it in the optional `subComponent` field
+(on `OrgAdminSectionDef` and `ProjectAdminSectionDef`); the page leaves the
+section out while that sub-component is off for the organisation or project, so
+no one is offered settings for a feature they cannot use (Product Feedback's
+External Systems is the first). See
 `frontend/src/modules/compliance/module.ts` for a real example
 (`OrgCompliancePanel`, the org-wide compliance dashboard — Compliance's own
 former second section, `ComplianceAdminPanel`, was retired in Phase 18, see

@@ -25,12 +25,16 @@ export const NotScored: Story = {
   },
 };
 
-/** The chosen level's guidance shows underneath; clearing reports `null`. */
-export const SelectedShowsGuidance: Story = {
+/** The (?) tooltip lists every level with its guidance, whatever is selected; clearing reports `null`. */
+export const HelpListsEveryLevel: Story = {
   args: { value: "sev-5" },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Unusable for this persona; no workaround.")).toBeInTheDocument();
+    await userEvent.hover(canvas.getByRole("button", { name: "Help: Severity" }));
+    const tip = await within(document.body).findByRole("tooltip");
+    await expect(tip).toHaveTextContent("Cosmetic: Task unaffected.");
+    await expect(tip).toHaveTextContent("Minor");
+    await expect(tip).toHaveTextContent("Blocker: Unusable for this persona; no workaround.");
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Severity" }), "");
     await expect(args.onChange).toHaveBeenCalledWith(null);
   },

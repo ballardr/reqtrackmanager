@@ -68,7 +68,7 @@ test.describe("Context & Strategy: hide and restore organisation Pain Point type
       await selectProjectAdminGroup(page, "Pain Point Types");
       await expect(page.getByRole("button", { name: /Add organisation defaults/ })).toHaveCount(0);
 
-      const userRow = inputWithValue(page, "User").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
+      const userRow = inputWithValue(page, "User").locator("xpath=ancestor::div[contains(@class,'definition-grid__row')][1]");
       await userRow.getByRole("button", { name: "Hide Pain Point type in this project" }).click();
       const dialog = page.getByRole("dialog", { name: 'Hide "User" in this project?' });
       await dialog.getByRole("button", { name: "Hide" }).click();

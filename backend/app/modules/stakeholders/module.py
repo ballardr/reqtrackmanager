@@ -28,6 +28,8 @@ Registered contributions:
 - `scoring_target_providers["persona"]`: the generic hook Context & Strategy's
   per-persona Pain Point scoring reads, so Context &
   Strategy never imports this module.
+- `demand_party_providers`: the generic hook Product Feedback reads to count who stands behind a request
+  (`demand.py`): a Stakeholder or Persona is itself, an Engagement is its participants and covered personas.
 - `on_org_created` seeds each new organisation's default Persona and
   Stakeholder types; the migrations backfill existing organisations.
 - Org and project bundle hooks (`export.py` for Personas,
@@ -77,6 +79,7 @@ from app.modules.stakeholders._engagement_shared import ENGAGEMENT_MANAGE_PERMIS
 from app.modules.stakeholders._need_shared import NEED_MANAGE_PERMISSION
 from app.modules.stakeholders._shared import PERSONA_MANAGE_PERMISSION
 from app.modules.stakeholders._stakeholder_shared import STAKEHOLDER_MANAGE_PERMISSION
+from app.modules.stakeholders.demand import engagement_parties, persona_parties, stakeholder_parties
 from app.modules.stakeholders.engagements import ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE, RESEARCH_SUBCOMPONENT
 from app.modules.stakeholders.groups import GROUP_ARTEFACT_TYPE
 from app.modules.stakeholders.models import (
@@ -947,6 +950,10 @@ MODULE_DEFINITION = ModuleDefinition(
     ),
     scoring_schemes=(STAKEHOLDER_SCORING_SCHEME,),
     scoring_target_providers={PERSONA_ARTEFACT_TYPE: persona_scoring_targets},
+    demand_party_providers={
+        STAKEHOLDER_ARTEFACT_TYPE: stakeholder_parties, PERSONA_ARTEFACT_TYPE: persona_parties,
+        ENGAGEMENT_ARTEFACT_TYPE: engagement_parties,
+    },
     org_bundle_hooks=ModuleOrgBundleHooks(export=_export_org, import_=_import_org),
     project_bundle_hooks=ModuleProjectBundleHooks(export=_export_project, import_=_import_project),
     roles=(

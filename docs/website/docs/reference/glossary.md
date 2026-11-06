@@ -26,6 +26,10 @@ The formal, versioned history of a requirement or change request: who changed wh
 
 The only way to modify a locked (Approved or Completed) requirement: a proposal with its own reasoning, targeted fields, and an explicit approve/reject decision from a project manager or administrator. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
 
+#### Close the loop
+
+Recording that the people who asked for an [enhancement request](#enhancement-request) were told its outcome once it was delivered or declined. Nothing is sent to them. See [Product Feedback → Relationships and closing the loop](../modules/product-feedback-module/relationships-and-closing-the-loop.md#closing-the-loop).
+
 #### Custom field
 
 A project-defined attribute (short text, long text, checkbox, or option list) attached to requirements or change requests, versioned alongside every built-in field. See [Custom fields, terminology, and templates](../concepts/custom-fields-terminology-and-templates.md).
@@ -41,6 +45,10 @@ Informal comments (which can carry file attachments) for the conversation around
 #### Enablement
 
 The org-tier switch turning a [module](#module) on for one specific organisation, among whichever modules it's entitled to. See [Modules → Overview](../modules/overview.md).
+
+#### Enhancement request
+
+A proposed solution someone asked the product for, kept in the Product Feedback [module](#module) with a triage lifecycle, [weighted demand](#weighted-demand) and a score. It is a solution; the Pain Point it addresses is the problem. See [Product Feedback → Overview](../modules/product-feedback-module/overview.md).
 
 #### Entitlement
 
@@ -149,3 +157,7 @@ The window opened from a record's Links panel that follows its links to any dept
 #### Two-factor authentication (2FA)
 
 An optional TOTP-based second authentication factor a user can enrol in for their own account. See [Core Features → Two-factor authentication](../core-features/two-factor-authentication.md).
+
+#### Weighted demand
+
+The sum of the weights of the distinct people and Personas who asked for an [enhancement request](#enhancement-request) (a Stakeholder's Influence level, a Persona's weight), counting each only once. See [Product Feedback → Demand and merging](../modules/product-feedback-module/demand-and-merging.md).

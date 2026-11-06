@@ -119,6 +119,7 @@ def run_module_report(
     ctx = ReportContext(
         module_key=module_key, organization=organization, root_project=project, params=typed_params(definition, params),
         all_org_projects=project is None and definition.org_scope == "all_org_projects", projects=projects,
+        viewer_id=user.id,
     )
     return apply_cell_tones(definition.collector(db, ctx), definition.cell_tones)
 

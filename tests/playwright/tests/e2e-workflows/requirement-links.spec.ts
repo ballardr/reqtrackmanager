@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAs, openProject, openRequirementByCode, PERSONAS, PROJECT_NAMES, showLinkRelationships, closeDialogWithoutSaving } from "./helpers";
+import { openAddLinkDialog } from "../modules/linksPanel";
 
 /**
  * Job to be done: two requirements can be linked with a typed, bidirectional
@@ -30,7 +31,7 @@ const linksPanel = (page: import("@playwright/test").Page) => page.getByRole("re
 
 /** Links the open requirement to the requirement named `target` with `relationship` via the panel's dialog. */
 async function addRequirementLink(page: import("@playwright/test").Page, relationship: string, target: string) {
-  await linksPanel(page).getByRole("button", { name: "Add link" }).click();
+  await openAddLinkDialog(page, linksPanel(page));
   const modal = page.getByRole("dialog", { name: "Add a link" });
   await modal.getByLabel("Link to").selectOption({ label: "Requirement" });
   await modal.getByLabel("Search").fill(target);
@@ -114,7 +115,7 @@ test.describe("requirement traceability links", () => {
       // no state behind for later runs.
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-007");
-      await linksPanel(page).getByRole("button", { name: "Add link" }).click();
+      await openAddLinkDialog(page, linksPanel(page));
       const modal = page.getByRole("dialog", { name: "Add a link" });
       await modal.getByLabel("Link to").selectOption({ label: "Requirement" });
       await modal.getByLabel("Search").fill("SW-PERF-008");

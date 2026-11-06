@@ -1,0 +1,554 @@
+"""
+Module: modules.product_feedback.project_router
+
+Project-scoped Product Feedback API, mounted at `/api/v1/projects/{project_id}/modules/product_feedback`:
+request CRUD, archive, versions, lifecycle transitions, merging duplicates, the demand breakdown, closing the loop
+(who was told the outcome), comments, files and the project's submission policy.
+
+RBAC: sub-component enablement and project membership to view; any project member may submit a request
+unless the project's administrator restricted submission to triagers; `_shared.require_request_manage`
+(project Feedback Triager role or FGAC grant) to edit, transition, archive or attach evidence; the
+settings need project-settings management. A request's files resolve through
+`service.resolve_request_file_project_id`.
+"""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.project import Project
+from app.models.user import User
+from app.modules.product_feedback import _shared as sh
+from app.modules.product_feedback.enums import EnhancementRequestStatus
+from app.modules.product_feedback.models import EnhancementRequest
+from app.modules.product_feedback.ratings import parse_model_keys
+from app.modules.product_feedback.references import references_by_request
+from app.modules.product_feedback.reports import REPORT_ROUTERS
+from app.modules.product_feedback.schemas import (
+    ChannelUpdate,
+    CloseTheLoopOut,
+    DemandOut,
+    ExternalRefIn,
+    ExternalRefOut,
+    ExternalRefUpdate,
+    FeedbackAccessOut,
+    FeedbackSettingsOut,
+    FeedbackSettingsUpdate,
+    InformedUpdate,
+    OpenLoopOut,
+    RequestCommentCreate,
+    RequestCommentOut,
+    RequestCommentUpdate,
+    RequestCreate,
+    RequestMergeOut,
+    RequestMergeRequest,
+    RequestOut,
+    RequestTransitionRequest,
+    RequestUpdate,
+    RequestVersionOut,
+    ScorePreviewIn,
+    ScorePreviewOut,
+)
+from app.modules.product_feedback.scoring import REQUEST_SCORING_SCHEME_KEY
+from app.modules.product_feedback.scoring_filter import ScoredFilter
+from app.modules.product_feedback.service import (
+    EXTERNAL_REFERENCES_SUBCOMPONENT_KEY,
+    PRODUCT_FEEDBACK_MODULE_KEY,
+    REQUEST_ARTEFACT_TYPE,
+    REQUEST_SUBCOMPONENT_KEY,
+    PainPointFilter,
+    RecordOwner,
+    filter_requests,
+    get_request_page_sections,
+    get_submission_policy,
+    list_project_requests,
+    set_request_page_sections,
+    set_submission_policy,
+)
+from app.modules.product_feedback.vocabularies import EXTERNAL_SYSTEMS, REQUEST_CHANNELS
+from app.modules.product_feedback.vocabulary_routes import register_project_vocabulary
+from app.schemas.file import FileAssetOut
+from app.schemas.scoring import ScoringSchemeOut
+from app.services import module_attachments as att
+from app.services import scoring
+from app.services.audit import log_event
+from app.services.project_scope import ProjectScope
+from app.services.rbac import require_project_manage, require_project_subcomponent_enabled
+from app.services.tags import TagFilter
+
+router = APIRouter(
+    prefix=f"/api/v1/projects/{{project_id}}/modules/{PRODUCT_FEEDBACK_MODULE_KEY}", tags=["product-feedback-project"],
+)
+
+_require_view = require_project_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, REQUEST_SUBCOMPONENT_KEY)
+_require_references_on = require_project_subcomponent_enabled(PRODUCT_FEEDBACK_MODULE_KEY, EXTERNAL_REFERENCES_SUBCOMPONENT_KEY)
+
+
+def _require_references(current_user: User = Depends(_require_view), _on: User = Depends(_require_references_on)) -> User:
+    """The request gate plus the External references switch: 404 for the reference routes and the external system list
+    while the project (or its organisation) has references switched off."""
+    return current_user
+
+
+# The module's reports (`reports.py`): generated routes at `/reports/<slug>`, under this router's prefix.
+router.include_router(REPORT_ROUTERS.project)
+
+
+def _project(db: Session, project_id: UUID) -> Project:
+    """Loads the project in the URL, 404ing if it does not exist."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return project
+
+
+def _holder(db: Session, project_id: UUID) -> RecordOwner:
+    """The owner of this project's requests."""
+    return RecordOwner.of_project(_project(db, project_id))
+
+
+def _get(db: Session, holder: RecordOwner, request_id: UUID) -> EnhancementRequest:
+    """A request of this project (404 for anything else)."""
+    return sh.get_request_in_scope(db, holder, request_id)
+
+
+register_project_vocabulary(
+    router, path="/external-systems", vocabulary=EXTERNAL_SYSTEMS, entity_type="external_system",
+    view_dependency=_require_references,
+)
+register_project_vocabulary(
+    router, path="/request-channels", vocabulary=REQUEST_CHANNELS, entity_type="request_channel", view_dependency=_require_view,
+)
+
+
+# --- Settings ----------------------------------------------------------------
+
+
+@router.get("/settings", response_model=FeedbackSettingsOut)
+def get_feedback_settings(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """The project's Product Feedback settings (any member can read them, so the UI knows whether to offer Submit)."""
+    _project(db, project_id)
+    return FeedbackSettingsOut(
+        submission_policy=get_submission_policy(db, project_id), request_page_sections=get_request_page_sections(db, project_id),
+    )
+
+
+@router.get("/access", response_model=FeedbackAccessOut)
+def get_feedback_access(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """What the caller may do here: submit a request and triage requests."""
+    return sh.access_out(db, current_user, _holder(db, project_id))
+
+
+@router.put("/settings", response_model=FeedbackSettingsOut)
+def update_feedback_settings(
+    project_id: UUID, payload: FeedbackSettingsUpdate, project: Project = Depends(require_project_manage),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Changes the project's Product Feedback settings: who may submit requests and the default order of a request
+    page's sections. Only the fields sent change (`request_page_sections: null` returns to the built-in order).
+    Needs project-settings management."""
+    detail: dict[str, object] = {}
+    if payload.submission_policy is not None:
+        previous = get_submission_policy(db, project.id)
+        set_submission_policy(db, project.id, payload.submission_policy)
+        detail["submission_policy"] = {"from": previous.value, "to": payload.submission_policy.value}
+    if "request_page_sections" in payload.model_fields_set:
+        set_request_page_sections(db, project.id, payload.request_page_sections)
+        detail["request_page_sections"] = {"count": len(payload.request_page_sections or [])}
+    log_event(db, entity_type="project_feedback_settings", entity_id=project.id, action="updated",
+              actor_id=current_user.id, project_id=project.id, detail=detail)
+    db.commit()
+    return FeedbackSettingsOut(
+        submission_policy=get_submission_policy(db, project.id), request_page_sections=get_request_page_sections(db, project.id),
+    )
+
+
+# --- Request CRUD ------------------------------------------------------------
+
+
+@router.post("/requests", response_model=RequestOut, status_code=status.HTTP_201_CREATED)
+def create_request(
+    project_id: UUID, payload: RequestCreate, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Submits a request in `NEW`. Any project member may, unless the project restricted submission to triagers."""
+    holder = _holder(db, project_id)
+    sh.require_request_submit(db, current_user, holder)
+    return sh.create_from_payload(db, holder, payload, current_user)
+
+
+@router.get("/requests", response_model=list[RequestOut])
+def list_requests(
+    project_id: UUID, include_archived: bool = False, status: EnhancementRequestStatus | None = None,
+    open_only: bool = False, search: str | None = None, scoring_model: list[str] | None = Query(None),
+    scored: ScoredFilter | None = None, missing_axis: str | None = None, pain_points: PainPointFilter | None = None,
+    tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+    project_scope: ProjectScope = Depends(),
+):
+    """The project's requests; archived ones only with `include_archived`, narrowed by `status`, `open_only`
+    (new, under review or accepted) and a case-insensitive `search` of code, title and description.
+    `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
+    being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis, and
+    `missing_axis=any` those not rated on every criterion. `pain_points=none|some` keeps requests that address no Pain
+    Point, or at least one."""
+
+    def rows_for(pid: UUID) -> list:
+        """This endpoint's rows for one project of the scope."""
+        holder = _holder(db, pid)
+        requests = tag_filter.keep(
+            db, pid, REQUEST_ARTEFACT_TYPE, list_project_requests(db, pid, include_archived=include_archived),
+        )
+        return sh.requests_to_out(
+            db, filter_requests(
+                db, holder, requests, status=status, open_only=open_only,
+                search=search, scored=scored, missing_axis=missing_axis, scoring_model=parse_model_keys(scoring_model),
+                pain_points=pain_points,
+            ), scoring_model,
+        )
+
+    return project_scope.collect(
+        db, _project(db, project_id), current_user.id, REQUEST_ARTEFACT_TYPE, rows_for,
+        gate=(PRODUCT_FEEDBACK_MODULE_KEY, REQUEST_SUBCOMPONENT_KEY),
+    )
+
+
+@router.get("/requests/{request_id}", response_model=RequestOut)
+def get_request(
+    project_id: UUID, request_id: UUID, scoring_model: list[str] | None = Query(None),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """One request with its current version.
+    `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
+    being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
+    level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis, and
+    `missing_axis=any` those not rated on every criterion."""
+    return sh.current_request_out(db, _get(db, _holder(db, project_id), request_id), scoring_model)
+
+
+@router.get("/scoring-scheme", response_model=ScoringSchemeOut)
+def get_project_scoring_scheme(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """The `enhancement_request` scoring scheme as it applies to this project: each axis's level ids and weights
+    (what a request's `levels` map takes), the default model and its rating bands. A read-only mirror of the
+    core scoring endpoint under this module's prefix, so a client confined to the module (the MCP server) can
+    discover the level ids."""
+    project = _project(db, project_id)
+    return scoring.build_scheme_config(
+        db, project.organization_id, scoring.get_registered_scheme(REQUEST_SCORING_SCHEME_KEY), project,
+    )
+
+
+@router.post("/score-preview", response_model=ScorePreviewOut)
+def preview_request_scores(
+    project_id: UUID, payload: ScorePreviewIn, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Scores levels still being chosen, under the project's enabled models, without saving anything: what the
+    create and edit forms show as the person picks. `request_id` (an existing request of the project) supplies the
+    weighted demand the derived Demand axis reads; a new request has none."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, payload.request_id) if payload.request_id else None
+    return sh.preview_scores(db, holder, payload, request)
+
+
+@router.put("/requests/{request_id}", response_model=RequestOut)
+def update_request(
+    project_id: UUID, request_id: UUID, payload: RequestUpdate,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Applies a partial update as a new version (fields absent from the body are kept). Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.update_from_payload(db, holder, request, payload, current_user)
+
+
+@router.get("/requests/{request_id}/versions", response_model=list[RequestVersionOut])
+def list_request_versions(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """A request's full version history, oldest first."""
+    return sh.request_versions_out(db, _get(db, _holder(db, project_id), request_id).versions)
+
+
+@router.post("/requests/{request_id}/transition", response_model=RequestOut)
+def transition(
+    project_id: UUID, request_id: UUID, payload: RequestTransitionRequest,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Moves a request along its lifecycle (`RequestOut.allowed_next_statuses` lists the legal targets). Needs
+    the triager role. 409 for an illegal move, an archived request, or declining without a reason in `comment`."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.transition_from_payload(db, holder, request, payload.status, payload.comment, current_user)
+
+
+@router.post("/requests/{request_id}/archive", response_model=RequestOut)
+def archive(project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """Soft-archives a request. Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.set_archived(db, holder, request, current_user, archived=True)
+
+
+@router.post("/requests/{request_id}/unarchive", response_model=RequestOut)
+def unarchive(project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """Restores an archived request. Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.set_archived(db, holder, request, current_user, archived=False)
+
+
+# --- Merging and demand --------------------------------------------------------
+
+
+@router.post("/requests/{request_id}/merge", response_model=RequestOut)
+def merge_request(
+    project_id: UUID, request_id: UUID, payload: RequestMergeRequest, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Marks the request a duplicate of `canonical_id` (another request of this project): its requesters then count
+    toward the canonical request's demand. Needs the triager role; 409 for an illegal merge. Reversible with
+    `unmerge`."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.merge_from_payload(db, holder, request, payload.canonical_id, payload.note, current_user)
+
+
+@router.post("/requests/{request_id}/unmerge", response_model=RequestOut)
+def unmerge_request(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Reverses the merge of a duplicate: it returns to the status it had and stops adding to the canonical
+    request's demand. Needs the triager role; 409 if it is not merged."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.unmerge_from_payload(db, holder, request, current_user)
+
+
+@router.get("/requests/{request_id}/merges", response_model=list[RequestMergeOut])
+def list_request_merges(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """The merges a request took part in (as the canonical request or the duplicate), active and ended, newest first."""
+    return sh.merges_out(db, _get(db, _holder(db, project_id), request_id))
+
+
+@router.get("/requests/{request_id}/demand", response_model=DemandOut)
+def get_request_demand(
+    project_id: UUID, request_id: UUID, limit: int = Query(sh.DEMAND_PAGE_SIZE, ge=1, le=sh.DEMAND_PAGE_MAX),
+    offset: int = Query(0, ge=0), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Who asked for the request: its distinct requesters (Stakeholders and Personas, including those reached through
+    linked Engagements and through requests merged into it), the engagements it was raised in, and the count and
+    weighted demand. Requesters are added with the generic "Requested by" link; names the caller may not view are
+    withheld but still counted. The requesters come a page at a time (`limit`, `offset`; heaviest first); the totals
+    cover them all."""
+    project = _project(db, project_id)
+    return sh.demand_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user, limit=limit, offset=offset)
+
+
+@router.put("/requests/{request_id}/requester-channel", response_model=DemandOut)
+def set_requester_channel(
+    project_id: UUID, request_id: UUID, payload: ChannelUpdate, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Records how requesters asked (their channel from the project's request channel list), or clears it with a null
+    `channel_id`. A requester reached only through an Engagement is shown as an Engagement and needs no channel.
+    Needs the triager role; 409 for an archived request, a party that is not one of its current requesters or a
+    channel the project cannot use. Returns the request's demand view."""
+    project = _project(db, project_id)
+    holder = RecordOwner.of_project(project)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.set_channel_from_payload(db, holder, project, request, payload, current_user)
+
+
+# --- External references -------------------------------------------------------
+
+
+@router.get("/requests/{request_id}/references", response_model=list[ExternalRefOut])
+def list_request_references(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_references), db: Session = Depends(get_db),
+):
+    """The request's references to items in outside tools (Jira, ServiceNow, ...), oldest first."""
+    request = _get(db, _holder(db, project_id), request_id)
+    return references_by_request(db, [request.id])[request.id]
+
+
+@router.post("/requests/{request_id}/references", response_model=ExternalRefOut, status_code=status.HTTP_201_CREATED)
+def add_request_reference(
+    project_id: UUID, request_id: UUID, payload: ExternalRefIn, current_user: User = Depends(_require_references),
+    db: Session = Depends(get_db),
+):
+    """Adds a reference: a system from the project's external system list, a key and/or an http(s) link, and a role
+    (`origin` or `delivery`). Not a new version of the request. Needs the triager role; 409 for an archived request."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.add_reference_from_payload(db, holder, request, payload, current_user)
+
+
+@router.patch("/requests/{request_id}/references/{reference_id}", response_model=ExternalRefOut)
+def update_request_reference(
+    project_id: UUID, request_id: UUID, reference_id: UUID, payload: ExternalRefUpdate,
+    current_user: User = Depends(_require_references), db: Session = Depends(get_db),
+):
+    """Changes a reference (only fields present in the body). Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.update_reference_from_payload(db, holder, request, reference_id, payload, current_user)
+
+
+@router.delete("/requests/{request_id}/references/{reference_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_request_reference(
+    project_id: UUID, request_id: UUID, reference_id: UUID, current_user: User = Depends(_require_references),
+    db: Session = Depends(get_db),
+):
+    """Removes a reference. Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    sh.remove_reference_from_payload(db, holder, request, reference_id, current_user)
+
+
+# --- Closing the loop ------------------------------------------------------------
+
+
+@router.get("/close-the-loop", response_model=list[OpenLoopOut])
+def list_open_loops(project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)):
+    """The delivered or declined requests that still have a requester who has not been told the outcome, with those
+    requesters (names withheld for records the caller may not view). Archived requests are left out."""
+    return sh.open_loops_out(db, _project(db, project_id), current_user)
+
+
+@router.get("/requests/{request_id}/close-the-loop", response_model=CloseTheLoopOut)
+def get_request_close_the_loop(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """What became of a request: its requesters and whether each was told, the Pain Points it addresses (a request with
+    none is flagged by `pain_point_count`), the Requirements that realise it and `suggest_delivered`, the cue that an
+    accepted request's requirements are all complete. Pain Points and Requirements are linked with the generic link
+    tools (link types 'Addresses' and 'Realised by')."""
+    project = _project(db, project_id)
+    return sh.close_the_loop_out(db, project, _get(db, RecordOwner.of_project(project), request_id), current_user)
+
+
+@router.put("/requests/{request_id}/informed", response_model=CloseTheLoopOut)
+def set_requesters_informed(
+    project_id: UUID, request_id: UUID, payload: InformedUpdate, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Records that requesters were told the outcome (or withdraws that record with `informed: false`). Nothing is
+    sent: the triager tells them and ticks them off. Needs the triager role; 409 unless the request is delivered or
+    declined (recording only), is not archived and every party is one of its current requesters."""
+    project = _project(db, project_id)
+    holder = RecordOwner.of_project(project)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return sh.inform_from_payload(db, holder, project, request, payload, current_user)
+
+
+# --- Comments ----------------------------------------------------------------
+
+
+@router.post("/requests/{request_id}/comments", response_model=RequestCommentOut, status_code=status.HTTP_201_CREATED)
+def add_request_comment(
+    project_id: UUID, request_id: UUID, payload: RequestCommentCreate,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Adds a discussion comment. Any project member may comment."""
+    request = _get(db, _holder(db, project_id), request_id)
+    return att.add_comment(db, sh.REQUEST_ATTACHMENTS, request, current_user, payload.body, project_id=project_id)
+
+
+@router.get("/requests/{request_id}/comments", response_model=list[RequestCommentOut])
+def list_request_comments(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """A request's comments, oldest first, with attachments."""
+    return att.list_comments(db, sh.REQUEST_ATTACHMENTS, _get(db, _holder(db, project_id), request_id))
+
+
+@router.patch("/requests/{request_id}/comments/{comment_id}", response_model=RequestCommentOut)
+def edit_request_comment(
+    project_id: UUID, request_id: UUID, comment_id: UUID, payload: RequestCommentUpdate,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Edits a comment. Author only."""
+    request = _get(db, _holder(db, project_id), request_id)
+    return att.edit_comment(db, sh.REQUEST_ATTACHMENTS, request, comment_id, current_user, payload.body, project_id=project_id)
+
+
+@router.post(
+    "/requests/{request_id}/comments/{comment_id}/files", response_model=FileAssetOut, status_code=status.HTTP_201_CREATED,
+)
+async def upload_request_comment_attachment(
+    project_id: UUID, request_id: UUID, comment_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Attaches a file to a comment. Comment author only."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    return await att.attach_to_comment(
+        db, sh.REQUEST_ATTACHMENTS, request, comment_id, current_user, file,
+        organization_id=holder.organization_id, project_id=project_id,
+    )
+
+
+@router.delete("/requests/{request_id}/comments/{comment_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_request_comment_attachment(
+    project_id: UUID, request_id: UUID, comment_id: UUID, file_id: UUID,
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Removes (and deletes) a comment's attachment. Comment author only."""
+    request = _get(db, _holder(db, project_id), request_id)
+    att.remove_comment_attachment(
+        db, sh.REQUEST_ATTACHMENTS, request, comment_id, file_id, current_user, project_id=project_id,
+    )
+
+
+# --- Direct files (evidence) -------------------------------------------------
+
+
+@router.post("/requests/{request_id}/files", response_model=FileAssetOut, status_code=status.HTTP_201_CREATED)
+async def upload_request_file(
+    project_id: UUID, request_id: UUID, file: UploadFile = File(...),
+    current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Uploads evidence directly to a request. Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    return await att.attach_file(
+        db, sh.REQUEST_ATTACHMENTS, request, current_user, file,
+        organization_id=holder.organization_id, project_id=project_id,
+    )
+
+
+@router.get("/requests/{request_id}/files", response_model=list[FileAssetOut])
+def list_request_files(
+    project_id: UUID, request_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db),
+):
+    """Files attached directly to a request."""
+    return att.list_files(db, sh.REQUEST_ATTACHMENTS, _get(db, _holder(db, project_id), request_id))
+
+
+@router.delete("/requests/{request_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_request_file(
+    project_id: UUID, request_id: UUID, file_id: UUID, current_user: User = Depends(_require_view),
+    db: Session = Depends(get_db),
+):
+    """Removes (and deletes) a directly attached file. Needs the triager role."""
+    holder = _holder(db, project_id)
+    request = _get(db, holder, request_id)
+    sh.require_request_manage(db, current_user, holder)
+    att.unlink_file(db, sh.REQUEST_ATTACHMENTS, request, file_id, current_user, project_id=project_id)
