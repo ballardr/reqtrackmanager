@@ -63,6 +63,7 @@ from app.modules.stakeholders.schemas import (
     EngagementUpdate,
     OutcomeCreate,
     OutcomeOut,
+    OutcomeTargetTypeOut,
     RelationshipTargetOut,
     StakeholderEngagementOut,
 )
@@ -79,6 +80,7 @@ from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.principals import principal_labels, validate_principal
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
+from app.services.record_tables import creatable_record_types
 from app.services.relationships import delete_link
 
 ENGAGEMENT_MANAGE_PERMISSION = encode_permission(ENGAGEMENT_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
@@ -514,6 +516,33 @@ def list_outcomes(
                 link_id=link.id, kind=kind.key, target_type=link.target_type, target_id=summary.id, label=summary.label,
             )))
     return sorted(out, key=lambda o: (o.kind, o.label.lower()))
+
+
+def list_outcome_target_types(db: Session, user: User, project: Project) -> list[OutcomeTargetTypeOut]:
+    """The record types an engagement or finding can raise or answer in this project, with the server's answer to
+    whether the caller may create one (the type's own create check, as the Links panel's `can_create`).
+
+    A type whose module is not installed or enabled for the project, or that the caller may not view, is left out,
+    as `list_outcome_targets` refuses it. Types come back in the order the outcome kinds declare them.
+
+    Args:
+        db: Active session (read only).
+        user: The caller.
+        project: The project the outcome would belong to.
+
+    Returns:
+        One entry per available target type.
+    """
+    declared = list(dict.fromkeys(t for kind in eng.OUTCOME_KINDS for t in kind.target_types))
+    held = get_effective_permissions(db, user.id, organization_id=project.organization_id, project_id=project.id)
+    available = [
+        t for t in declared
+        if rel.target_type_available(t) and permission_satisfied(held, encode_permission(t, PermissionLevel.VIEW.value))
+    ]
+    creatable = creatable_record_types(db, user, project, available)
+    return [
+        OutcomeTargetTypeOut(type=t, can_create=t in creatable) for t in available
+    ]
 
 
 def list_outcome_targets(db: Session, user: User, project: Project, target_type: str) -> list[RelationshipTargetOut]:

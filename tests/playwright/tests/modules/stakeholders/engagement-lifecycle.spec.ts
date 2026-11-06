@@ -242,6 +242,27 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByRole("link", { name: `Site visit ${suffix}` })).toBeVisible();
   });
 
+  test("creates a Need from the outcome form and records it as raised in the same flow", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "EngOutcomeNew");
+    const engagement = await post<{ id: string }>(page, `${projectBase(project.id)}/engagements`, adminHeaders, {
+      title: `Workshop ${suffix}`, channel: "workshop", engagement_date: today(),
+    });
+    const needName = `Faster triage ${suffix}`;
+
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
+    await page.getByRole("button", { name: "Add to Raised and answered" }).click();
+    const addOutcome = page.getByRole("dialog", { name: "Record an outcome" });
+    await addOutcome.getByLabel("Outcome type").selectOption({ label: "Stakeholder Need" });
+    await addOutcome.getByRole("button", { name: "Create new Stakeholder Need" }).click();
+    const form = page.getByRole("dialog", { name: "New Stakeholder Need" });
+    await form.getByLabel("Need name").fill(needName);
+    await form.getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByText("Outcome recorded.")).toBeVisible();
+    await expect(page.getByText("Raised · Stakeholder Need:")).toBeVisible();
+    await expect(page.getByRole("link", { name: needName }).first()).toBeVisible();
+  });
+
   test("shows the research extras only when the sub-component is on, and a finding link opens its engagement", async ({ page }) => {
     const { suffix, org, project, adminHeaders } = await setUpOrg(page, "EngResearch");
     const base = projectBase(project.id);

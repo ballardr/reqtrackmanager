@@ -254,8 +254,10 @@ export function EngagementDetailPage() {
 
           <EngagementOutcomesPanel
             projectId={projectId}
+            holderType="engagement"
             holderId={engagement.id}
             api={projectEngagementApi.outcomes}
+            loadCreatableTypes={() => projectEngagementApi.listOutcomeTargetTypes(projectId)}
             loadTargets={(targetType: OutcomeTargetType) => projectEngagementApi.listOutcomeTargets(projectId, targetType)}
             onChanged={linksChanged}
           />

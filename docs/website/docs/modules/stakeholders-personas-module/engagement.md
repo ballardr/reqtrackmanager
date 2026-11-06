@@ -71,7 +71,7 @@ A group's members are **copied at the moment you add it**. The group is recorded
 
 ## What it led to
 
-**Outcomes** link the Engagement to the records it produced: it **raised** a Pain Point, a Stakeholder Need or an Open Question, or **answered** an Open Question. These are ordinary [relationships](./relationships.md), so the Pain Point or Need shows where it came from, and [Engagement & research yield](./reports.md#engagement--research-yield-s5) can count Engagements that reached the backlog against those that did not. Pick the type first, then the record; only records of that type in this project are offered.
+**Outcomes** link the Engagement to the records it produced: it **raised** a Pain Point, a Stakeholder Need or an Open Question, or **answered** an Open Question. These are ordinary [relationships](./relationships.md), so the Pain Point or Need shows where it came from, and [Engagement & research yield](./reports.md#engagement--research-yield-s5) can count Engagements that reached the backlog against those that did not. Pick the type first, then the record; only records of that type in this project are offered. If the record does not exist yet, **Create new** opens that type's own create form and records the outcome as soon as it is saved. The button appears only for types you are permitted to create.
 
 ## Last engaged
 

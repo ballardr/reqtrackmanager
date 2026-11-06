@@ -46,6 +46,7 @@ from app.modules.stakeholders.schemas import (
     EngagementUpdate,
     OutcomeCreate,
     OutcomeOut,
+    OutcomeTargetTypeOut,
     RelationshipTargetOut,
     StakeholderEngagementOut,
 )
@@ -266,6 +267,15 @@ def remove_audience(
 
 
 # --- Raised / answered --------------------------------------------------------
+
+
+@router.get("/engagement-outcome-target-types", response_model=list[OutcomeTargetTypeOut])
+def list_outcome_target_types(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)
+):
+    """The record types an engagement or finding can raise or answer, each with `can_create` (whether the caller
+    may create one from the outcome form)."""
+    return es.list_outcome_target_types(db, current_user, _project(db, project_id))
 
 
 @router.get("/engagement-outcome-targets", response_model=list[RelationshipTargetOut])

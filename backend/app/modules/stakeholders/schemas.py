@@ -776,6 +776,13 @@ class OutcomeOut(BaseModel):
     label: str
 
 
+class OutcomeTargetTypeOut(BaseModel):
+    """A record type an outcome can point at, with whether the caller may create one from the outcome form."""
+
+    type: str
+    can_create: bool
+
+
 class OutcomeCreate(BaseModel):
     kind: Literal["raised", "answered"]
     target_type: str

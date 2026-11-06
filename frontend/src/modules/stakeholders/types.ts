@@ -612,6 +612,12 @@ export interface EngagementOutcome {
   label: string;
 }
 
+/** An outcome target type and whether the caller may create a record of it from the outcome form. */
+export interface OutcomeTargetTypeAccess {
+  type: string;
+  can_create: boolean;
+}
+
 /** One record the outcome picker can offer. */
 export interface OutcomeTarget {
   id: string;

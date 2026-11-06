@@ -33,6 +33,7 @@ import type {
   EngagementPrompt,
   OutcomeKind,
   OutcomeTarget,
+  OutcomeTargetTypeAccess,
   OutcomeTargetType,
   ResearchFinding,
   StakeholderEngagement,
@@ -433,6 +434,9 @@ export const projectEngagementApi = {
     api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/audiences/${groupId}`),
 
   outcomes: buildOutcomeCalls("engagements"),
+  /** The record types an outcome can point at, each with the server's answer to whether the caller may create one. */
+  listOutcomeTargetTypes: (projectId: string) =>
+    api.get<OutcomeTargetTypeAccess[]>(`${projectBase(projectId)}/engagement-outcome-target-types`),
   /** The project's Pain Points / Needs / Open Questions an outcome can point at. */
   listOutcomeTargets: (projectId: string, targetType: OutcomeTargetType) =>
     api.get<OutcomeTarget[]>(`${projectBase(projectId)}/engagement-outcome-targets?target_type=${targetType}`),

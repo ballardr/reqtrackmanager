@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, waitFor, within } from "storybook/test";
+import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { MemoryRouter } from "react-router-dom";
 
-import { withToast } from "../../testing/storybook-helpers";
+import { api } from "../../api/client";
+import { buildUser, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { EngagementOutcomesPanel } from "./EngagementOutcomesPanel";
 import type { EngagementOutcome, OutcomeTarget } from "./types";
 
@@ -30,6 +31,7 @@ const meta: Meta<typeof EngagementOutcomesPanel> = {
   component: EngagementOutcomesPanel,
   decorators: [
     withToast(),
+    withStatefulAuth(buildUser()),
     (Story) => (
       <MemoryRouter>
         <Story />
@@ -37,8 +39,13 @@ const meta: Meta<typeof EngagementOutcomesPanel> = {
     ),
   ],
   args: {
-    projectId: "project-1", holderId: "engagement-1", api: build(),
+    projectId: "project-1", holderType: "engagement", holderId: "engagement-1", api: build(),
     loadTargets: fn(async (targetType: string) => TARGETS[targetType] ?? []),
+    loadCreatableTypes: fn(async () => [
+      { type: "pain_point", can_create: false },
+      { type: "stakeholder_need", can_create: true },
+      { type: "open_question", can_create: false },
+    ]),
   },
 };
 export default meta;
@@ -92,6 +99,45 @@ export const AnsweredOffersOnlyOpenQuestions: Story = {
     await expect(type).toHaveValue("open_question");
     await expect(within(type).queryByRole("option", { name: "Pain Point" })).not.toBeInTheDocument();
     await waitFor(() => expect(modal.getByRole("option", { name: "Who signs off?" })).toBeInTheDocument());
+  },
+};
+
+/** "Create new" is offered only for a type the server says the caller may create. */
+export const OffersCreateNewOnlyForACreatableType: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    const modal = within(within(document.body).getByRole("dialog", { name: "Record an outcome" }));
+    // Pain Point is the starting type and is not creatable by this person.
+    await expect(modal.queryByRole("button", { name: /^Create new/ })).not.toBeInTheDocument();
+    await userEvent.selectOptions(modal.getByRole("combobox", { name: "Outcome type" }), "stakeholder_need");
+    await expect(modal.getByRole("button", { name: "Create new Stakeholder Need" })).toBeInTheDocument();
+  },
+};
+
+/** The new record's own create dialog opens; once it reports the id the outcome is recorded in the same flow. */
+export const CreatesARecordAndRecordsTheOutcome: Story = {
+  args: { api: build() },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/tags")) return { names: [], suggestions: [], restricted: false, can_edit: true } as never;
+      return [] as never;
+    });
+    spyOn(api, "post").mockImplementation(async () => ({ id: "need-new", name: "Faster triage" }) as never);
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Raised and answered" }));
+    const outcome = within(within(document.body).getByRole("dialog", { name: "Record an outcome" }));
+    await userEvent.selectOptions(outcome.getByRole("combobox", { name: "Outcome type" }), "stakeholder_need");
+    await userEvent.click(outcome.getByRole("button", { name: "Create new Stakeholder Need" }));
+    const form = within(await within(document.body).findByRole("dialog", { name: "New Stakeholder Need" }));
+    await userEvent.type(form.getByLabelText("Need name"), "Faster triage");
+    await userEvent.click(form.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(args.api.add).toHaveBeenCalledWith("project-1", "engagement-1", "raised", "stakeholder_need", "need-new"));
+    await waitFor(() => expect(within(document.body).getByText("Outcome recorded.")).toBeInTheDocument());
   },
 };
 

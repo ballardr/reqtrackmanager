@@ -583,6 +583,38 @@ def test_outcome_targets_list_the_projects_records_by_type(client, admin_token):
         assert client.get(f"{url}?target_type={bad}", headers=h).status_code == 404
 
 
+def test_outcome_target_types_flag_what_the_caller_may_create(client, admin_token):
+    """The outcome form offers "Create new" only for a type the caller may create: the flag is the server's answer
+    (the type's own create check), so a plain member is not offered a Pain Point when submission is restricted."""
+    org, project, token = _setup(client, admin_token, "Engagement Create Flag Co")
+    pid = project["id"]
+    _create_pain_point(client, token, org["id"], pid)  # enables Context & Strategy for the organisation
+    _viewer_id, viewer = _add_member(client, token, org["id"], pid, "flag-viewer@engagement.example.com")
+    url = _project_base(pid) + "/engagement-outcome-target-types"
+
+    admin_flags = client.get(url, headers=auth_headers(token))
+    assert admin_flags.status_code == 200, admin_flags.text
+    assert [t["type"] for t in admin_flags.json()] == ["pain_point", "stakeholder_need", "open_question"]
+    assert all(t["can_create"] for t in admin_flags.json())
+
+    # Each flag equals whether the type's own create endpoint accepts this person.
+    member_flags = {t["type"]: t["can_create"] for t in client.get(url, headers=auth_headers(viewer)).json()}
+    base = f"/api/v1/projects/{pid}/modules/context_strategy"
+    pain_type = client.get(base + "/pain-point-types", headers=auth_headers(token)).json()[0]["id"]
+    pain = client.post(
+        base + "/pain-points",
+        json={"title": "Not allowed", "description": "d", "priority": "high", "date_identified": "2026-09-01",
+              "pain_point_type_id": pain_type},
+        headers=auth_headers(viewer),
+    )
+    assert member_flags["pain_point"] == (pain.status_code != 403)
+    need = client.post(_project_base(pid) + "/needs", json={"name": "Nope"}, headers=auth_headers(viewer))
+    assert member_flags["stakeholder_need"] == (need.status_code != 403)
+    question = client.post(
+        base + "/open-questions", json={"question": "Why?"},
+        headers=auth_headers(viewer),
+    )
+    assert member_flags["open_question"] == (question.status_code != 403)
 
 
 def test_outcomes_raised_and_answered(client, admin_token):

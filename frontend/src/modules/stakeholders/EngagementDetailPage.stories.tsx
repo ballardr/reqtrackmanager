@@ -68,6 +68,7 @@ function mockDetailApis(current: Engagement, { researchExtras = false }: Mocks =
     if (path === `${EBASE}/personas`) return PERSONAS;
     if (path === `${EBASE}/audiences`) return AUDIENCES;
     if (path === `${EBASE}/outcomes`) return OUTCOMES;
+    if (path === `${BASE}/engagement-outcome-target-types`) return [{ type: "stakeholder_need", can_create: true }];
     if (path.startsWith(`${BASE}/engagement-outcome-targets`)) return [];
     if (path === `${EBASE}/prompts`) return PROMPTS;
     if (path === `${EBASE}/anonymous-participants`) return ANONYMOUS;

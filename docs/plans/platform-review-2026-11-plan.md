@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 6 done (uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 7 done (uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-7 / 21 phases complete.
+8 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -17,7 +17,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 5 | Links panel: server-side "can create" | `can_create` on each `link-types` record type from `creatable_record_types`; frontend `canCreate` removed; see `docs/decisions.md` | [x] |
 | 5b | Create new from the Links panel for every creatable type | 18 creators (core types extracted to shared modals), `not_creatable_from_links`, replay test of `can_create` against every create endpoint (found and fixed the Change Request divergence); see `docs/decisions.md` | [x] |
 | 6 | Pain Point submission policy (project setting) | `pain_point_submission_settings` (project and organisation default, nearest-ancestor resolution; platform default Pain Point Managers only, existing organisations kept open by migration 0142), one `can_submit_pain_point` for create, import, Links panel and MCP; see `docs/decisions.md` | [x] |
-| 7 | Engagement outcome: create new | Reuses phase 5 | [ ] |
+| 7 | Engagement outcome: create new | Reuses the Links panel creators; `engagement-outcome-target-types` carries `can_create`; see `docs/decisions.md` | [x] |
 | 8 | Engagement participants | Reproduce first | [ ] |
 | 9 | Component/category on every record | Generic table, many per record; settled; adds an agent instruction | [ ] |
 | 9b | Customisable workflows (phases with kinds) for project stages | Project and organisation-template workflows; phase kind drives baseline and change-request lock; migrates the four fixed states; settled | [ ] |
@@ -179,6 +179,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Design:** add "Create new" beside the picker, using `linkedRecordCreators` and the phase 5 `can_create` flag so it works for every outcome target type without importing a module. If a target type declares no creator (for example Needs, which has none today), add one in its module in this phase. After creation the outcome link is made in the same flow.
 - **Create-form rules:** the created record's form is the type's own dialog (`TagField` and every edit field through the shared field group); `QuickLinkField` stays (*Decided by: User*, 2026-11-07, as in phase 5b): the outcome link is made in addition to any quick links.
 - **Outcome:** an engagement logged from a session can record its outcomes without leaving the page.
+- **Done 2026-11-07.** Outcome links are dedicated, so `link-types` has no `can_create` for them; a read-only `engagement-outcome-target-types` endpoint supplies it. The Playwright spec is written but was not run (no compose stack).
 - **Tests:** component story; Playwright creating each target type from an engagement; permission-refused case shows the type unavailable.
 
 ### Phase 8 — Engagement participants
