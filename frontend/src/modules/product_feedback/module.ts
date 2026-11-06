@@ -48,6 +48,8 @@ export const moduleDefinition: TierAModuleDefinition = {
   orgArtefactPaths: {
     enhancement_request: (orgId, id) => `/orgs/${orgId}/modules/product_feedback/requests/${id}`,
   },
+  // Creating a Pain Point (or Requirement) from a request's Links panel links it with the relationship the request means.
+  preferredLinkPhrases: { enhancement_request: { pain_point: "Addresses", requirement: "Realised by" } },
   artefactStatusLabels: { enhancement_request: REQUEST_STATUS_LABEL },
   artefactInactiveStatuses: { enhancement_request: ["declined", "duplicate"] },
   routes: [

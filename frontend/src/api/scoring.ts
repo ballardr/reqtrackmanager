@@ -61,8 +61,10 @@ export interface ScoringLevel {
   name: string;
   description: string | null;
   weight: number;
-  /** Only on a derived axis: the lowest derived value that falls in this level. */
+  /** Only on a derived axis: the lowest derived value that falls in this level, in force for the caller's project. */
   threshold?: number | null;
+  /** Only on a derived axis: the organisation's own threshold (`threshold` is the project's when it sets its own). */
+  org_threshold?: number | null;
 }
 
 export interface ScoringAxis {
@@ -74,6 +76,8 @@ export interface ScoringAxis {
   /** Who defined it: the module (`built_in`), the organisation or a project (`owner_project_id`). */
   origin?: ScoringCriterionOrigin;
   owner_project_id?: string | null;
+  /** Only on a derived axis: where its thresholds in force come from (a project may set its own). */
+  thresholds_source?: "project" | "ancestor" | "organisation" | null;
   /** Ascending weight order; the last is the axis's top level. */
   levels: ScoringLevel[];
 }
@@ -276,6 +280,9 @@ export const projectScoringApi = {
   /** `null` clears the override so the project inherits. */
   setDefaultModel: (projectId: string, scheme: string, model: string | null) =>
     api.put<ScoringScheme>(`${projectBase(projectId, scheme)}/default-model`, { model }),
+  /** A derived axis's own thresholds, by level id (every level, rising with the weights); `null` clears the override so the project inherits. */
+  setAxisThresholds: (projectId: string, scheme: string, axisKey: string, thresholds: Record<string, number> | null) =>
+    api.put<ScoringScheme>(`${projectBase(projectId, scheme)}/axes/${axisKey}/thresholds`, { thresholds }),
   /** `null` clears the override so the project inherits. */
   setBands: (projectId: string, scheme: string, model: string, bands: ScoringBand[] | null) =>
     api.put<ScoringScheme>(`${projectBase(projectId, scheme)}/models/${model}/bands`, { bands }),

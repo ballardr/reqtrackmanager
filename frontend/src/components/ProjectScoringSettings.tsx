@@ -118,6 +118,7 @@ export function ProjectScoringSettings({ projectId, schemeKey }: { projectId: st
             update: (id, body) => projectScoringApi.updateLevel(projectId, schemeKey, id, body),
             remove: (id, reassignToId) => projectScoringApi.deleteLevel(projectId, schemeKey, id, reassignToId),
           }}
+          thresholdCalls={{ save: (axisKey, thresholds) => projectScoringApi.setAxisThresholds(projectId, schemeKey, axisKey, thresholds) }}
         />
       </ScoringSection>
 

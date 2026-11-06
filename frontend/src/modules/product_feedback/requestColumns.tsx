@@ -2,7 +2,7 @@
  * Module: modules/product_feedback/requestColumns
  *
  * The table columns the project list and the organisation inbox share. Demand sits beside the score, never inside it.
- * A request with no Pain Point carries a warning (a solution with no stated problem), never a block.
+ * A request with no Pain Point carries a warning in the optional Pain Points column (a solution with no stated problem), never a block.
  */
 import type { ReactNode } from "react";
 
@@ -27,7 +27,7 @@ const instantText = (iso: string) => new Date(iso).toLocaleString(undefined, { d
  *
  * @param scheme The scoring scheme in effect (model labels for the score columns).
  * @param models The model keys to show a score column for.
- * @param shown The ids of the optional columns the person has chosen (`status`, `demand`, `owner`, `created`, `updated`); the code and title are always on.
+ * @param shown The ids of the optional columns the person has chosen (`status`, `demand`, `pain_points`, `owner`, `created`, `updated`); the code and title are always on.
  * @param titleExtra Extra content after a row's title (the project list adds the scope label).
  * @param codeCell How a row's code is shown (a project code, or the organisation-qualified one for an inbox request).
  * @param showLinkWarnings True on the project tier, where a request can be linked to a Pain Point and have requesters.
@@ -46,6 +46,13 @@ export function requestColumns({
   // A model's label spells out its axes ("ICE (Impact × Confidence × Ease)"); the header keeps the name and the tooltip the rest.
   const shortLabel = (key: string) => modelShortName(modelLabel(key));
   const settled = (r: EnhancementRequest) => r.status === "declined" || r.status === "duplicate";
+  // A request that addresses no Pain Point is a solution with no stated problem: flagged, never blocked, except where
+  // the request is settled (declined or a duplicate) and the gap no longer matters.
+  const painPointCell = (r: EnhancementRequest) => (
+    r.pain_point_count > 0 ? r.pain_point_count
+      : settled(r) ? <span className="text-muted">None</span>
+        : <Badge tone="warning" title="A solution with no stated problem. Link the Pain Point it addresses.">None</Badge>
+  );
   return [
     { key: "code", label: "Code", render: (r) => <span style={NO_WRAP}>{codeCell(r)}</span> },
     {
@@ -55,11 +62,6 @@ export function requestColumns({
           {r.title}
           {titleExtra?.(r)}
           {r.merged_into && <Badge tone="muted" className="badge-after">Duplicate of {r.merged_into.unique_code}</Badge>}
-          {showLinkWarnings && r.pain_point_count === 0 && !settled(r) && (
-            <Badge tone="warning" className="badge-after" title="This is a solution with no stated problem. Link a Pain Point it addresses.">
-              No Pain Point
-            </Badge>
-          )}
           {showLinkWarnings && r.loop_open_count > 0 && (
             <Badge tone="warning" className="badge-after" title="Requesters who have not been told the outcome">
               {r.loop_open_count} to tell
@@ -73,6 +75,7 @@ export function requestColumns({
       render: (r: EnhancementRequest) => <span style={NO_WRAP}><Badge tone={REQUEST_STATUS_TONE[r.status]}>{REQUEST_STATUS_LABEL[r.status]}</Badge></span>,
     }] : []),
     ...(showLinkWarnings && shown.includes("demand") ? [{ key: "demand", label: "Demand", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{demandText(r)}</span> }] : []),
+    ...(showLinkWarnings && shown.includes("pain_points") ? [{ key: "pain_points", label: "Pain Points", sortable: true, render: (r: EnhancementRequest) => <span style={NO_WRAP}>{painPointCell(r)}</span> }] : []),
     ...models.map((key, index) => ({
       key: index === 0 ? "score" : `score:${key}`,
       label: models.length > 1 ? <span title={modelLabel(key)}>Score ({shortLabel(key)})</span> : "Score",

@@ -35,7 +35,17 @@ flowchart LR
 
 ## Demand is derived, and shown beside the score
 
-**Demand** is not rated by hand. The weighted demand is bucketed into a level by thresholds (starting at 0, 3, 8, 15 and 30) that an administrator can edit. The level you can choose by hand always wins: pick one on the form to override, and clear it to go back to the derived level. A calculator icon beside the level explains where it came from. Reach stays a manual level, so the two can be compared.
+**Demand** is not rated manually. The weighted demand is bucketed into a level by thresholds (starting at 0, 3, 8, 15 and 30) that an administrator can edit. A project can set its own thresholds (see [Demand thresholds per project](#demand-thresholds-per-project)). A level you choose manually always wins: pick one on the form to override, and clear it to go back to the derived level. A calculator icon beside the level explains where it came from. Reach stays a manual level, so the two can be compared.
+
+## Demand thresholds per project
+
+The same weighted demand can mean different things in different products: 20 weighted requesters may be **Many** in a small product and only a few in a large one. A project administrator can therefore set the project's own thresholds for the Demand levels, at **Project admin → Request Scoring → Levels → Demand**. The level names and weights stay the organisation's, so a level means the same thing everywhere; only the point at which a project reaches it changes.
+
+- The **Organisation** column keeps the organisation's values beside the project's **From (this project)** column.
+- A project sets a threshold for every level, and each must be above the one before. **Use inherited values** clears them.
+- A child project with none of its own uses its nearest parent project's, then the organisation's.
+- If the organisation adds or deletes a Demand level, the projects' own thresholds for it are cleared, and each project uses the organisation's values until it sets its own again.
+- Thresholds are scoring configuration, so (like rating bands) they do not travel in a project export.
 
 ## Reading and setting scores
 

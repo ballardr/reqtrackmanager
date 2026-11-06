@@ -51,6 +51,13 @@ Documentation should be about the latest state, not old states as this:
 - causes more tokens to be used
 - less readable to humans
 
+## Formal Wording
+
+- Everything a user reads — UI labels, buttons, headings, tooltips, empty states, error messages, toasts, documentation, docs website pages, report text and API descriptions — uses formal, standard terms, never colloquial or idiomatic ones. Write "Manual" and "Automatic", not "by hand" or "worked out"; "manually", not "by hand"; "remove", not "get rid of"; "requesters", not "who asked"; "unavailable", not "greyed out".
+- Prefer the established term of the field over a figure of speech (a "threshold", a "scoring level", an "override"), and use one term for one thing everywhere: check the neighbouring screens and the glossary (`docs/website/docs/reference/glossary.md`) before choosing a word, and reuse the term already there.
+- This applies to code comments and docstrings too, so wording copied from one into the UI is already formal. The user's own casual phrasing in a request is not wording to copy into the product.
+- Reason: informal phrasing reads inconsistently across screens, translates badly, and sounds unprofessional in a tool used for compliance and audit. A reviewer found "By hand" on the scoring panel where "Manual" was meant; this rule is the standing form of that correction (**Decided by: User**).
+
 ## Function Documentation
 
 Every function, method, and class must have documentation explaining:

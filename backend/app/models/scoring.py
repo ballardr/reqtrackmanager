@@ -27,6 +27,9 @@ never a closed core enum a module would need a value added to.
 - `ScoringBand` — rating bands for one (scheme, model): an org set
   (`project_id IS NULL`) and/or per-project override sets. A set is
   all-or-nothing; no rows means "inherit".
+- `ScoringLevelThreshold` — a project's own thresholds for one derived axis's levels (e.g. what weighted demand
+  reaches "Many" in this project): a set covers every level of the axis or none, resolved project → nearest ancestor
+  → the organisation's own `ScoringLevel.threshold` values. Names and weights stay the organisation's.
 - `ScoringCellRating` — explicit per-cell band overrides for a two-axis
   model: an (axis-1 level, axis-2 level) → band label
   mapping, same org/project all-or-nothing set semantics as bands. A cell
@@ -41,7 +44,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -183,6 +186,30 @@ class ScoringBand(UUIDPKMixin, TimestampMixin, Base):
     min_score: Mapped[Decimal] = mapped_column(Numeric(6, 4))
     tone: Mapped[str] = mapped_column(String(20))
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ScoringLevelThreshold(UUIDPKMixin, TimestampMixin, Base):
+    """One level's threshold in a project's own threshold set for a derived axis.
+
+    Attributes:
+        project_id: The overriding project.
+        level_id: The organisation level the threshold replaces (cascade: deleting the level drops the row).
+        threshold: The lowest derived value that falls in the level, in this project.
+    """
+
+    __tablename__ = "scoring_level_thresholds"
+    __table_args__ = (
+        UniqueConstraint("project_id", "level_id", name="uq_scoring_level_thresholds_project_level"),
+        CheckConstraint("threshold >= 0", name="ck_scoring_level_thresholds_non_negative"),
+    )
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    level_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="CASCADE"), index=True
+    )
+    threshold: Mapped[Decimal] = mapped_column(Numeric(12, 4))
 
 
 class ScoringCellRating(UUIDPKMixin, TimestampMixin, Base):

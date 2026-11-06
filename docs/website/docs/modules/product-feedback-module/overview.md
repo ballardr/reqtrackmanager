@@ -10,8 +10,8 @@ A request is a **solution**, not a problem. A Pain Point (from [Context & Strate
 
 | Enhancement requests for the Falcon-3 project |
 | --- |
-| Status, a score per scoring model and the No Pain Point warning on each row |
-| ![Enhancement requests list showing five open requests with status badges, ICE, RICE and other scores, and a No Pain Point warning on one](../../../static/img/screenshots/feedback-request-list.png) |
+| Status and a score per scoring model on each row (the optional Pain Points column flags a request with none) |
+| ![Enhancement requests list showing five open requests with status badges, a Pain Points column with a None warning on one, and ICE, RICE and other scores](../../../static/img/screenshots/feedback-request-list.png) |
 
 ```mermaid
 flowchart LR

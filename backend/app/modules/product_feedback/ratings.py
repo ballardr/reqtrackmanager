@@ -11,8 +11,8 @@ else the project's enabled models), so ICE and RICE can be compared without anyt
 `RatingContext` is loaded per project (or per organisation, for the inbox) and reused for every request in it, so
 a list costs a fixed number of statements however many requests it holds.
 
-The Demand axis is derived (`scoring.WEIGHTED_DEMAND_SOURCE`): with no level chosen by hand it is the level the
-request's weighted demand falls in, by the organisation's thresholds.
+The Demand axis is derived (`scoring.WEIGHTED_DEMAND_SOURCE`): with no level chosen manually it is the level the
+request's weighted demand falls in, by the thresholds in force for its project (the organisation's, unless the project sets its own).
 
 Dependencies: `services.scoring`, `scoring.py` (the scheme).
 """
@@ -34,6 +34,7 @@ from app.services.scoring import (
     BandValue,
     compute_score,
     derived_level,
+    effective_thresholds,
     get_registered_scheme,
     list_levels,
     max_axis_weights,
@@ -76,6 +77,8 @@ class RatingContext:
         max_weights: Each axis's top level weight.
         min_weights: Each axis's lowest level weight.
         bands: Each model's effective rating bands, by model key.
+        thresholds: `{level id: threshold}` in force for each derived axis's levels (the project's own, an
+            ancestor's, or the organisation's).
     """
 
     scheme: ScoringSchemeDefinition
@@ -85,6 +88,7 @@ class RatingContext:
     max_weights: Mapping[str, Decimal]
     min_weights: Mapping[str, Decimal]
     bands: Mapping[str, list[BandValue]]
+    thresholds: Mapping[uuid.UUID, Decimal]
 
     @property
     def model(self) -> ScoringModelDefinition:
@@ -129,11 +133,15 @@ def load_rating_context(
         levels_by_id={level.id: level for levels in levels_by_axis.values() for level in levels},
         max_weights=max_axis_weights(levels_by_axis), min_weights=min_axis_weights(levels_by_axis),
         bands={model.key: resolve_effective_bands(db, organization_id, scheme, model.key, project_id)[0] for model in models},
+        thresholds={
+            level_id: value for axis in effective_thresholds(db, scheme, levels_by_axis, project_id).values()
+            for level_id, value in axis.values.items()
+        },
     )
 
 
 def derived_levels(ctx: RatingContext, levels: Mapping[str, uuid.UUID], demand: float) -> dict[str, uuid.UUID]:
-    """The levels the derived axes resolve to for a request, for each derived axis it has no level chosen by hand
+    """The levels the derived axes resolve to for a request, for each derived axis it has no level chosen manually
     on (a chosen level wins, so it is not listed here).
 
     Args:
@@ -145,7 +153,7 @@ def derived_levels(ctx: RatingContext, levels: Mapping[str, uuid.UUID], demand: 
     for axis in ctx.scheme.axes:
         if axis.derived_source != WEIGHTED_DEMAND_SOURCE or axis.key in levels:
             continue
-        level = derived_level(ctx.levels_by_axis.get(axis.key, []), demand)
+        level = derived_level(ctx.levels_by_axis.get(axis.key, []), demand, ctx.thresholds)
         if level is not None:
             out[axis.key] = level.id
     return out

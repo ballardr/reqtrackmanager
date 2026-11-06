@@ -3269,6 +3269,13 @@ const en = {
         `The record was saved, but its links were not added: ${message} Add them from its Links panel.`,
     },
     groupCount: (count: number) => `${count} ${count === 1 ? "link" : "links"}`,
+    createNew: "Create new",
+    createNewTitle: "Create a record and link it",
+    createNewRelationship: "Relationship",
+    createNewOf: (label: string) => `New ${label}`,
+    createdAndLinked: (label: string) => `${label} created and linked.`,
+    createdNotLinked: (label: string) => `${label} was created but could not be linked. Add the link from this panel.`,
+    createNewLoadFailed: "Could not load what can be created here.",
     removeTitle: "Remove this link?",
     removeConfirm: "The link is removed from both records; the records themselves are unaffected.",
     removeConfirmViaChangeRequest:
@@ -3589,6 +3596,8 @@ const en = {
     // Scoring
     scoringModel: "The formula that combines the scoring axes (for example likelihood and consequence) into one score and band.",
     scoringDefaultModel: "The scoring model used for new scores in this {project} when none is chosen. The model decides how the axes combine into one score.",
+    scoringThresholds:
+      "Where each level starts, in this {project}, for a level worked out from a number (such as Demand).\nLeave them as the organisation's values, or set your own when the same number means more or less here: for example, 20 requesters may be Many in a small product and few in a large one.\nLevel names and weights stay the organisation's. Each level must start above the one before.",
     scoringEnabledModels: "The models whose scores are shown side by side for each record. The default model is always shown. Clear the choice to show every model.",
     scoringAxisName: "What this criterion measures, for example Strategic fit. People see it as a field when they score a record.",
     scoringAxisDescription: "Guidance for the person scoring: what the criterion means and how to choose a level.",

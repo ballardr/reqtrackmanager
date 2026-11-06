@@ -56,6 +56,7 @@ export const CreateRequiresATitleAndSendsTheChosenLevels: Story = {
   play: async ({ args }) => {
     const d = dialog();
     await expect(requiredCaptions(document.body)).toEqual(["Title"]);
+    await expect(await d.findByText("External references")).toBeInTheDocument(); // an enabled system is configured
     await expect(d.getByRole("button", { name: "Save" })).toBeDisabled();
     await userEvent.type(d.getByLabelText("Request title"), "Export to Excel");
     await userEvent.selectOptions(d.getByLabelText("Impact"), "impact-4");
@@ -180,5 +181,17 @@ export const InboxPreviewUsesTheOrganisationEndpoint: Story = {
     await within(await dialog().findByRole("region", { name: "Scores" })).findByLabelText(/Needs Impact/);
     const calls = (api.post as unknown as { mock: { calls: [string][] } }).mock.calls;
     await expect(calls.some(([path]) => path === `/api/v1/orgs/${ORG_ID}/modules/product_feedback/score-preview`)).toBe(true);
+  },
+};
+
+/** With no enabled external system the create form has no References field. */
+export const CreateOffersNoReferencesWithoutAnEnabledSystem: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => (path.endsWith("/subcomponents") ? REFERENCES_ON : []) as never);
+  },
+  play: async () => {
+    const d = dialog();
+    await d.findByLabelText("Request title");
+    await expect(d.queryByText("External references")).not.toBeInTheDocument();
   },
 };

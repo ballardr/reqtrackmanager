@@ -84,6 +84,7 @@ from app.models.scoring import (
     ScoringEnabledModel,
     ScoringHiddenCriterion,
     ScoringLevel,
+    ScoringLevelThreshold,
     ScoringModelDefault,
 )
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
@@ -165,6 +166,7 @@ __all__ = [
     "OrganizationSequenceCounter",
     "ProjectSequenceCounter",
     "ScoringBand",
+    "ScoringLevelThreshold",
     "ScoringCellRating",
     "ScoringCustomAxis",
     "ScoringCustomModel",

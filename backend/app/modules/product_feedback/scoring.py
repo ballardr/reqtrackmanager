@@ -15,7 +15,7 @@ Design decisions:
   run low-to-high. An organisation uses whichever it already estimates (**Decided by: User**).
 - Demand is a *derived* axis (`ScoringAxisDefinition.derived_source`): the weighted demand (`demand.py`) is
   bucketed into levels by org-editable thresholds, so the best case stays defined and bands still normalise.
-  A scorer may pick a demand level by hand, which then wins over the derived one (**Decided by: User**).
+  A scorer may pick a demand level manually, which then wins over the derived one (**Decided by: User**).
 - Reach stays a manual level, never derived from demand: the derived demand is shown beside any score so the two
   can be compared without one silently overriding the other (**Decided by: User**).
 - Impact follows the usual RICE scale (0.25 to 3) and Confidence discounts (0.5 to 1.0), both org-editable
@@ -156,7 +156,7 @@ REQUEST_SCORING_SCHEME = ScoringSchemeDefinition(
         ScoringAxisDefinition(
             key=DEMAND_AXIS_KEY, label="Demand",
             description="How much weighted demand stands behind it, derived from its requesters. A level can be "
-            "chosen by hand to override the derived one.",
+            "chosen manually to override the derived one.",
             derived_source=WEIGHTED_DEMAND_SOURCE,
             default_levels=(
                 ScoringLevelDefault("Single voice", 1, "Up to a couple of requesters.", threshold=0),

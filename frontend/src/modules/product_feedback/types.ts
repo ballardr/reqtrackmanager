@@ -233,12 +233,23 @@ export interface RequestRef {
   title: string;
 }
 
+/** What each requester weight source reads as under the weight. */
+export const REQUESTER_WEIGHT_SOURCE_LABEL: Record<string, string> = {
+  influence: "From Influence level",
+  persona: "Persona's own weight",
+  project: "Set for this project",
+  ancestor_project: "Set for a parent project",
+  none: "Not set, counts as 1",
+};
+
 /** One distinct party behind a request; `label` and `weight` are null (and `hidden` true) for a party the viewer may not see. */
 export interface Requester {
   artefact_type: string;
   id: string;
   label: string | null;
   weight: number | null;
+  /** Where the weight comes from (see `REQUESTER_WEIGHT_SOURCE_LABEL`); empty when the provider does not say. */
+  weight_source?: string;
   effective_weight: number;
   from_merge: boolean;
   via_engagement: boolean;

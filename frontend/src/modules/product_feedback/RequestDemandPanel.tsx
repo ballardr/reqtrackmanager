@@ -2,7 +2,8 @@
  * Module: modules/product_feedback/RequestDemandPanel
  *
  * Who asked for a request: the distinct requesters (Stakeholders and Personas, including those reached through linked
- * Engagements and through requests merged into it) with the weight each carries, the Engagements it was raised in,
+ * Engagements and through requests merged into it) with the weight each carries and where it comes from (an Influence
+ * level, a Persona's own weight, or this or a parent project's override of it), the Engagements it was raised in,
  * the requests merged into it and the merge history. Requesters are authored with the generic "Requested by" link in
  * the Links panel or with this panel's own Add requester button (the same field the request forms use).
  *
@@ -23,7 +24,7 @@ import { Tooltip } from "../../components/Tooltip";
 import { getArtefactPath } from "../../modules/artefactPaths";
 import { demandText } from "./requestListState";
 import { RequesterChannelEdit } from "./RequesterChannelEdit";
-import { REQUEST_STATUS_LABEL } from "./types";
+import { REQUEST_STATUS_LABEL, REQUESTER_WEIGHT_SOURCE_LABEL } from "./types";
 import type { Demand, Requester, RequestMerge } from "./types";
 import type { ListChoice } from "./useFeedbackLists";
 
@@ -118,7 +119,12 @@ export function RequestDemandPanel({
                   <tr key={`${r.artefact_type}:${r.id}`}>
                     <td>{r.hidden ? <span className="text-muted">A requester you can’t view</span> : path ? <Link to={path}>{r.label}</Link> : r.label}</td>
                     <td>{kindLabel(r.artefact_type)}</td>
-                    <td>{formatWeight(r.effective_weight)}</td>
+                    <td>
+                      {formatWeight(r.effective_weight)}
+                      {!r.hidden && r.weight_source && REQUESTER_WEIGHT_SOURCE_LABEL[r.weight_source] && (
+                        <div className="text-muted" style={{ fontSize: "0.75rem" }}>{REQUESTER_WEIGHT_SOURCE_LABEL[r.weight_source]}</div>
+                      )}
+                    </td>
                     <td>
                       <span className="row" style={{ gap: "var(--space-1)", alignItems: "center" }}>
                         {r.channel ? r.channel.name : r.via_engagement ? <span className="text-muted">Engagement</span> : <span className="text-muted">Not recorded</span>}

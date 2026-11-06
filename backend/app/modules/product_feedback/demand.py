@@ -73,6 +73,7 @@ class Requester:
         via_engagement: True when the party is reached through a linked Engagement (alone or as well as directly).
         link_id: The request's own "Requested by" link to this party, which removes it as a requester; `None` when the
             party is reached only through an Engagement or a merged duplicate (remove the Engagement, or undo the merge).
+        weight_source: Where the weight comes from (see `DemandParty.weight_source`), for display.
     """
 
     artefact_type: str
@@ -82,6 +83,7 @@ class Requester:
     from_merge: bool
     via_engagement: bool
     link_id: uuid.UUID | None = None
+    weight_source: str = ""
 
     @property
     def effective_weight(self) -> float:
@@ -208,7 +210,7 @@ def compute_demand(db: Session, project: Project, request_ids: Sequence[uuid.UUI
             expand(duplicate_id, False, found, engagements)
         requesters = sorted(
             (
-                Requester(p.artefact_type, p.id, p.label, p.weight, not own, via_engagement, link_id)
+                Requester(p.artefact_type, p.id, p.label, p.weight, not own, via_engagement, link_id, p.weight_source)
                 for p, own, via_engagement, link_id in found.values()
             ),
             key=lambda r: (-r.effective_weight, r.label.casefold(), str(r.id)),

@@ -133,7 +133,7 @@ export function ScoringCriteria({
             <div key={axis.key} style={{ display: "contents" }}>
               <strong className="definition-grid__cell">{axis.label}</strong>
               <span className="definition-grid__cell">{badges(axis.origin, axis.owner_project_id)}</span>
-              <span className="definition-grid__cell">{axis.derived_source ? <Badge tone="info">Automatic</Badge> : "By hand"}</span>
+              <span className="definition-grid__cell"><Badge tone={axis.derived_source ? "info" : "muted"}>{axis.derived_source ? "Automatic" : "Manual"}</Badge></span>
               {actions(
                 own, axis.label, () => setDialog({ kind: "axis", axis }), () => setDialog({ kind: "delete-axis", axis }),
                 () => setDialog({ kind: "hide", criterion: "axis", key: axis.key, label: axis.label }),

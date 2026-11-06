@@ -22,4 +22,5 @@ export const PRODUCT_FEEDBACK_HELP = {
   mergeNote: "Why these are the same ask. Kept in the merge history so the merge can be understood, and undone, later.",
   informedNote: "How or by whom the requesters were told, for example 'Emailed by support on release day'. Nothing is sent from here.",
   requestStatusFilter: "Open statuses: New, Under review and Accepted, the requests still being decided or built.\nAll statuses: also Delivered, Declined and Duplicate.\nA single status: only requests in that status.",
+  requestPainPointFilter: "Any: every request.\nNone linked: requests that address no Pain Point, a solution with no stated problem.\nAt least one linked: requests that address a Pain Point.",
 } as const;

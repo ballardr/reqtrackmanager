@@ -103,6 +103,35 @@ test.describe("Enhancement requests: requesters, paging, references switch and s
     await expect(page.getByText(/Showing \d+ of/)).toHaveCount(0);
   });
 
+  test("External references are not offered while the project has no enabled external system", async ({ page }) => {
+    const { suffix, project, adminHeaders } = await setUpOrg(page, "FeedbackRefsNoSystem");
+    const request = await createRequest(page, projectBase(project.id), adminHeaders, { title: `Untracked ${suffix}` });
+    const systems = `${API_BASE_URL}/api/v1/projects/${project.id}/modules/product_feedback/external-systems`;
+    const detail = `/projects/${project.id}/modules/product_feedback/requests/${request.id}`;
+
+    await test.step("with the organisation's systems the card is offered", async () => {
+      await page.goto(detail);
+      await expect(page.getByRole("region", { name: "External references" })).toBeVisible();
+    });
+
+    await test.step("hiding every system leaves nothing to add a reference to: no card, no form field", async () => {
+      const listed = await (await page.request.get(systems, { headers: adminHeaders })).json();
+      expect(listed.length).toBeGreaterThan(0);
+      for (const system of listed) {
+        const hidden = await page.request.delete(`${systems}/${system.id}`, { headers: adminHeaders });
+        expect(hidden.ok(), await hidden.text()).toBeTruthy();
+      }
+      await page.goto(detail);
+      await expect(page.getByRole("region", { name: "Demand" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "External references" })).toHaveCount(0);
+      await page.goto(`/projects/${project.id}/modules/product_feedback/requests`);
+      await page.getByRole("button", { name: "New request" }).click();
+      const dialog = page.getByRole("dialog", { name: /New enhancement request/ });
+      await expect(dialog.getByRole("textbox", { name: "Request title" })).toBeVisible();
+      await expect(dialog.getByText("External references")).toHaveCount(0);
+    });
+  });
+
   test("a project can switch External references off and back on", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "FeedbackRefsOff");
     const request = await createRequest(page, projectBase(project.id), adminHeaders, { title: `Tracked ${suffix}` });

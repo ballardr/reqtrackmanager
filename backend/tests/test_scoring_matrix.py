@@ -334,7 +334,7 @@ def test_level_create_update_rules_and_audit(client, admin_token, fake_scoring_m
     resp = client.patch(f"{base}/levels/{level_id}", json={"name": "Critical", "weight": 5, "description": None},
                         headers=auth_headers(token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"id": level_id, "name": "Critical", "description": None, "weight": 5, "threshold": None}
+    assert resp.json() == {"id": level_id, "name": "Critical", "description": None, "weight": 5, "threshold": None, "org_threshold": None}
     names = [lvl["name"] for lvl in _axis(_get(client, base, token), "impact")["levels"]]
     assert names[-1] == "Critical"  # re-weighting reorders, and it is now the top level
 

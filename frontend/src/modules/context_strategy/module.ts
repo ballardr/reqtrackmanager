@@ -7,6 +7,7 @@ import {
   FUTURE_STATE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, OPEN_QUESTION_STATUS_LABEL, PAIN_POINT_STATUS_LABEL,
   STRATEGY_STATUS_LABEL,
 } from "./types";
+import { CreatePainPointDialog } from "./CreatePainPointDialog";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
 import { OpenQuestionDetailPage } from "./OpenQuestionDetailPage";
@@ -101,6 +102,10 @@ export const moduleDefinition: TierAModuleDefinition = {
     pain_point: (projectId, id) => `/projects/${projectId}/modules/context_strategy/pain-points/${id}`,
     guiding_principle: (projectId, id) => `/projects/${projectId}/modules/context_strategy/guiding-principles/${id}`,
     open_question: (projectId, id) => `/projects/${projectId}/modules/context_strategy/open-questions/${id}`,
+  },
+  // A request (or any record a link type reaches Pain Points from) can create and link one from its Links panel.
+  linkedRecordCreators: {
+    pain_point: { label: "Pain Point", render: (props) => createElement(CreatePainPointDialog, props) },
   },
   artefactListPaths: {
     strategy: (projectId) => `/projects/${projectId}/modules/context_strategy/strategies`,

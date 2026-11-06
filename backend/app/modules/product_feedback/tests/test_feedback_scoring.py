@@ -253,7 +253,7 @@ def test_demand_is_bucketed_into_a_level_by_the_thresholds_and_a_chosen_level_wi
     rebucketed = _get(client, token, pid, request["id"], "?scoring_model=rice_demand")
     assert rebucketed["derived_levels"]["demand"] == levels["demand"]["Several"] and rebucketed["score"]["raw"] == 6
 
-    # A level chosen by hand wins, and is then not listed as derived.
+    # A level chosen manually wins, and is then not listed as derived.
     chosen = client.put(
         project_base(pid) + f"/requests/{request['id']}", json={"levels": {"demand": levels["demand"]["Widespread"]}},
         headers=auth_headers(token),

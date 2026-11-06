@@ -22,11 +22,21 @@ const REQUESTS: EnhancementRequest[] = [
   }),
 ];
 
-function mockApis(requests: EnhancementRequest[] = REQUESTS, access: FeedbackAccess = { can_submit: true, can_triage: false }) {
+/** The project's sub-components list that says whether Pain Points are on (the request list reads it by key). */
+function painPointSubComponents(on: boolean) {
+  return [{
+    module_key: "context_strategy", subcomponent_key: "pain_point", name: "Pain Points", effective_enabled: on, enabled: on,
+    org_default_enabled: true, org_hard_enabled: true, has_project_override: false, project_override_enabled: null,
+    default_enabled: true, default_project_enabled: true, has_org_override: false,
+  }];
+}
+
+function mockApis(requests: EnhancementRequest[] = REQUESTS, access: FeedbackAccess = { can_submit: true, can_triage: false }, painPoints = true) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.endsWith("/records/enhancement_request/columns")) return buildRecordColumns({ label: "Enhancement requests" });
     if (path.includes("/scoring-schemes/enhancement_request")) return buildRequestScheme();
     if (path.endsWith("/product_feedback/access")) return access;
+    if (path.endsWith("/modules/context_strategy/subcomponents")) return painPointSubComponents(painPoints);
     if (path.split("?")[0].endsWith("/modules/product_feedback/requests")) return requests;
     if (path.includes("/users")) return ORG_USERS;
     if (path.endsWith("/groups")) return [];
@@ -62,12 +72,11 @@ export const OpensOnOpenRequestsWithScoreAndWarnings: Story = {
     const row = within(within(table).getByRole("link", { name: "ENH-001" }).closest("tr")!);
     await expect(row.getByText("High · 48")).toHaveClass("badge--accent");
     await expect(row.queryByText("1 requester")).not.toBeInTheDocument(); // demand starts hidden
-    await expect(row.getByText("No Pain Point")).toHaveClass("badge--warning");
+    await expect(row.queryByText("No Pain Point")).not.toBeInTheDocument(); // the gap is the optional Pain Points column's, not a title badge
     await expect(within(table).queryByRole("link", { name: "ENH-004" })).not.toBeInTheDocument();
     await userEvent.selectOptions(canvas.getByLabelText("Status"), "all");
     const duplicateRow = within((await within(table).findByRole("link", { name: "ENH-005" })).closest("tr")!);
     await expect(duplicateRow.getByText("Duplicate of ENH-001")).toBeInTheDocument();
-    await expect(duplicateRow.queryByText("No Pain Point")).not.toBeInTheDocument();
     await expect(within(within(table).getByRole("link", { name: "ENH-004" }).closest("tr")!).getByText("2 to tell")).toBeInTheDocument();
   },
 };
@@ -219,5 +228,43 @@ export const CreatedAndUpdatedColumnsSortByTime: Story = {
     await expect(codes()).toEqual(["ENH-011", "ENH-010", "ENH-012"]);
     await userEvent.click(within(table).getByRole("button", { name: /Last updated/ }));
     await expect(codes()).toEqual(["ENH-012", "ENH-010", "ENH-011"]);
+  },
+};
+
+/** Where Pain Points are on, an optional Pain Points column counts them (a warning when none) and a filter narrows to none or some. */
+export const PainPointsColumnAndFilter: Story = {
+  beforeEach: () => mockApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Enhancement requests" });
+    await expect(within(table).queryByRole("columnheader", { name: "Pain Points" })).not.toBeInTheDocument(); // optional, hidden by default
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    await userEvent.click(within(await within(document.body).findByRole("dialog")).getByRole("checkbox", { name: "Pain Points" }));
+    await expect(within(table).getByRole("columnheader", { name: "Pain Points" })).toBeInTheDocument();
+    const bare = within(within(table).getByRole("link", { name: "ENH-001" }).closest("tr")!);
+    await expect(bare.getByText("None")).toHaveClass("badge--warning");
+    const linked = within(within(table).getByRole("link", { name: "ENH-003" }).closest("tr")!);
+    await expect(linked.getByText("2")).toBeInTheDocument();
+
+    await userEvent.selectOptions(canvas.getByLabelText("Pain Points"), "none");
+    await expect(within(table).getByRole("link", { name: "ENH-001" })).toBeInTheDocument();
+    await expect(within(table).queryByRole("link", { name: "ENH-003" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(canvas.getByLabelText("Pain Points"), "some");
+    await expect(within(table).getByRole("link", { name: "ENH-003" })).toBeInTheDocument();
+    await expect(within(table).queryByRole("link", { name: "ENH-001" })).not.toBeInTheDocument();
+  },
+};
+
+/** Where Pain Points are off, there is no Pain Points column or filter to offer, and a stale link parameter is ignored. */
+export const NoPainPointColumnOrFilterWhenPainPointsAreOff: Story = {
+  parameters: { query: "?pain_points=some" },
+  beforeEach: () => mockApis(REQUESTS, { can_submit: true, can_triage: false }, false),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const table = await canvas.findByRole("table", { name: "Enhancement requests" });
+    await expect(canvas.queryByLabelText("Pain Points")).not.toBeInTheDocument();
+    await expect(within(table).getByRole("link", { name: "ENH-001" })).toBeInTheDocument(); // not narrowed by the stale parameter
+    await userEvent.click(canvas.getByRole("button", { name: "Choose columns" }));
+    await expect(within(await within(document.body).findByRole("dialog")).queryByRole("checkbox", { name: "Pain Points" })).not.toBeInTheDocument();
   },
 };

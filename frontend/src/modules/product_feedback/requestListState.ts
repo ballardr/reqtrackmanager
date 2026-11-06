@@ -8,6 +8,10 @@
  * - **Status.** One dropdown: "Open statuses" (New, Under review, Accepted; the default), "All statuses" or a single
  *   status. It is held as the URL's `status` (a single status) and `open=1|0` (open statuses, or all); a link that
  *   names a status or `open=0` starts on that choice, so a link never lands on an empty list.
+ * - **Pain Points.** Where Pain Points are on for the project (`painPointsAvailable`), an optional Pain Points column
+ *   (a count, sortable) and a filter, `pain_points=none|some` (requests addressing none, or at least one), which is
+ *   also sent to the server so Export narrows the same way. Where they are off, neither is offered and a stale
+ *   `pain_points` in the link is ignored.
  * - **Criteria not rated.** `missing=<axis key>` keeps requests with no level on that criterion, and `missing=any` those not
  *   rated on every criterion (any one missing); no value is no filter.
  * - **Unscored filter.** A request is unscored when the primary model has no score for it (a manual axis it needs has
@@ -38,7 +42,8 @@ const SCORED_FILTERS = ["unscored", "scored"] as const;
 export const ANY_CRITERION = "any";
 /** The Status dropdown's two non-status choices. */
 export type StatusChoice = RequestStatus | "open" | "all";
-export const REQUEST_SORT_KEYS = ["demand", "score", "created", "updated"] as const;
+export const REQUEST_SORT_KEYS = ["demand", "score", "created", "updated", "pain_points"] as const;
+const PAIN_POINT_FILTERS = ["none", "some"] as const;
 
 /** The models a list shows until the person chooses: the scheme's enabled models, else its default. */
 export function defaultModels(scheme: ScoringScheme | null): string[] {
@@ -56,12 +61,17 @@ export const scoreColumnId = (modelKey: string) => `score:${modelKey}`;
  * @param scheme The scoring scheme in effect (its models are the score columns on offer).
  * @param list Names the list for the remembered column choice (`project` or `inbox`).
  * @param withDemand True on the project tier, where a request has requesters and so a Demand column.
+ * @param painPointsAvailable True where Pain Points are on for the project (the column and filter are offered).
  */
-export function useRequestListFilters(scheme: ScoringScheme | null, list: "project" | "inbox", withDemand: boolean) {
+export function useRequestListFilters(
+  scheme: ScoringScheme | null, list: "project" | "inbox", withDemand: boolean, painPointsAvailable = false,
+) {
   const initial = useInitialSearchParams();
   const [search, setSearch] = useUrlText("q");
   const [status, setStatus] = useUrlChoice("status", STATUSES);
   const [scored, setScored] = useUrlChoice("scored", SCORED_FILTERS);
+  const [painPointsChoice, setPainPoints] = useUrlChoice("pain_points", PAIN_POINT_FILTERS);
+  const painPoints = painPointsAvailable ? painPointsChoice : "";
   const [missingAxis, setMissingAxis] = useUrlText("missing");
   const [includeArchived, setIncludeArchived] = useUrlFlag("archived");
   const [openOnly, setOpenOnly] = useOpenOnly(initial, STATUSES);
@@ -73,8 +83,11 @@ export function useRequestListFilters(scheme: ScoringScheme | null, list: "proje
     setOpenOnly(choice === "open");
   };
   const columnIds = useMemo(
-    () => ["status", ...(withDemand ? ["demand"] : []), "owner", "created", "updated", ...(scheme?.models.map((m) => scoreColumnId(m.key)) ?? [])],
-    [scheme, withDemand],
+    () => [
+      "status", ...(withDemand ? ["demand"] : []), ...(painPointsAvailable ? ["pain_points"] : []), "owner", "created", "updated",
+      ...(scheme?.models.map((m) => scoreColumnId(m.key)) ?? []),
+    ],
+    [scheme, withDemand, painPointsAvailable],
   );
   const columnDefaults = useMemo(() => ["status", ...defaultModels(scheme).map(scoreColumnId)], [scheme]);
   const columns = useColumnChoice(`product_feedback_requests_${list}`, columnIds, columnDefaults);
@@ -97,6 +110,7 @@ export function useRequestListFilters(scheme: ScoringScheme | null, list: "proje
     if (status && r.status !== status) return false;
     if (skip !== "scored" && scored && isUnscored(r) !== (scored === "unscored")) return false;
     if (missingAxis && !missesAxis(r, missingAxis)) return false;
+    if (painPoints && (r.pain_point_count > 0) !== (painPoints === "some")) return false;
     if (search && !`${r.unique_code} ${r.title} ${r.description}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   }
@@ -110,12 +124,13 @@ export function useRequestListFilters(scheme: ScoringScheme | null, list: "proje
     if (openOnly) params.set("open_only", "true");
     if (scored) params.set("scored", scored);
     if (missingAxis) params.set("missing_axis", missingAxis);
+    if (painPoints) params.set("pain_points", painPoints);
     if (requestedModels.length > 0) params.set("scoring_model", requestedModels.join(","));
     return params;
   }
 
   return {
-    search, setSearch, status, statusChoice, setStatusChoice, scored, setScored, missingAxis, setMissingAxis,
+    search, setSearch, status, statusChoice, setStatusChoice, scored, setScored, painPoints, setPainPoints, painPointsAvailable, missingAxis, setMissingAxis,
     includeArchived, setIncludeArchived, openOnly, sort, setSort, models, requestedModels, primary, columns, columnIds,
     isUnscored, matches, filterParams,
   };
@@ -131,6 +146,7 @@ export function sortRequests(rows: EnhancementRequest[], filters: RequestListFil
     if (sort.key === "demand") return r.weighted_demand;
     if (sort.key === "created") return Date.parse(r.created_at);
     if (sort.key === "updated") return Date.parse(r.updated_at);
+    if (sort.key === "pain_points") return r.pain_point_count;
     return primary ? r.scores[primary]?.normalised ?? null : null;
   };
   return [...rows].sort((a, b) => {

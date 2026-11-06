@@ -1150,7 +1150,7 @@ class ScoringAxisDefinition:
         description: Optional guidance for scorers.
         default_levels: Levels seeded into every organisation (at least 2).
         derived_source: Names the module-computed number this axis is read from (e.g. a weighted demand) instead
-            of being chosen by hand; core only stores the name. Each level then has a `threshold`, and the level
+            of being chosen manually; core only stores the name. Each level then has a `threshold`, and the level
             for a value is the one with the highest threshold not above it (the lowest level takes anything below). A scorer may still pick a level by
             hand, which then wins. `None` = an ordinary, manually chosen axis.
     """
@@ -1362,12 +1362,16 @@ class DemandParty:
         label: Display name.
         weight: The party's resolved importance in the requesting project, or `None` when none is set (the
             counting module then weights it as 1).
+        weight_source: Where the weight comes from, as a short key the counting module passes on for display (the
+            stakeholders provider uses `influence`, `project`, `ancestor_project`, `persona` or `none`); empty when
+            the provider does not say.
     """
 
     artefact_type: str
     id: uuid.UUID
     label: str
     weight: float | None
+    weight_source: str = ""
 
 
 @dataclass(frozen=True)

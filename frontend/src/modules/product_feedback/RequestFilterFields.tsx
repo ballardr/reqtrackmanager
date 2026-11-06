@@ -55,6 +55,18 @@ export function RequestFilterFields({
           </FilterField>
         </>
       )}
+      {filters.painPointsAvailable && (
+        <FilterField label="Pain Points" help={PRODUCT_FEEDBACK_HELP.requestPainPointFilter}>
+          <select
+            className="input" aria-label="Pain Points" value={filters.painPoints}
+            onChange={(e) => filters.setPainPoints(e.target.value as "" | "none" | "some")}
+          >
+            <option value="">Any</option>
+            <option value="none">None linked</option>
+            <option value="some">At least one linked</option>
+          </select>
+        </FilterField>
+      )}
       <FilterCheckbox label="Show archived" checked={filters.includeArchived} onChange={filters.setIncludeArchived} />
     </>
   );

@@ -238,6 +238,27 @@ export interface ReportViewDef {
   ownedParams?: string[];
 }
 
+/** What the Links panel hands a module's create dialog (`TierAModuleDefinition.linkedRecordCreators`). */
+export interface LinkedRecordCreatorProps {
+  projectId: string;
+  /** Called with the new record's id once it is created (the panel then links it and closes the dialog). */
+  onCreated: (id: string) => void;
+  /** Called when the person dismisses the dialog without creating anything. */
+  onCancel: () => void;
+}
+
+/** One record type a module can create from the Links panel. */
+export interface LinkedRecordCreator {
+  /** Names the type in the panel's "Create new" list (e.g. "Pain Point"). */
+  label: string;
+  /** Renders the module's own create dialog; it must create the record itself and report its id. */
+  render: (props: LinkedRecordCreatorProps) => ReactNode;
+  /** Whether the signed-in person may create this type in the project; omit where any project member may (Pain
+   * Points). The panel offers the type only when this resolves true (a failed check offers nothing), so a role-gated
+   * type never shows a control that would be refused. */
+  canCreate?: (projectId: string) => Promise<boolean>;
+}
+
 /**
  * A first-party (or npm-installed third-party) Tier A module's frontend
  * registration — the module ships its own route components and registers
@@ -365,6 +386,18 @@ export interface TierAModuleDefinition {
    * the frontend counterpart of the backend's `artefact_summary_providers`).
    * Omitted for a module whose records nothing else links to. */
   artefactPaths?: Record<string, (projectId: string, id: string) => string>;
+  /** Record types this module can create from another record's Links panel, keyed by artefact type (e.g.
+   * `"pain_point"`): the panel offers "Create new" for a type a link type from the page's record reaches (the
+   * server has already left out types of a module or sub-component that is off), shows the module's own create
+   * dialog and links the new record. The module owns the dialog, its validation and its permission errors, so
+   * core never imports a module's form (`modules/linkedRecordCreators.ts` resolves them). */
+  linkedRecordCreators?: Record<string, LinkedRecordCreator>;
+  /** The relationship this module's records prefer when another record is created and linked from their Links panel
+   * (`linkedRecordCreators`), keyed by this module's artefact type then by the other record's type, as the
+   * relationship reads from this record (its `phrase`, e.g. `"Addresses"`). Several relationships can reach a type
+   * and only the owner of the page's record knows which one carries meaning (a request's Pain Points are the ones
+   * it "Addresses"); the person can still pick another. Omitted where the first specific relationship will do. */
+  preferredLinkPhrases?: Record<string, Record<string, string>>;
   /** Where each of this module's own artefact types has its list page in a project, keyed by artefact type
    * (`modules/artefactPaths.ts`'s `getArtefactListPath`), so core views that summarise records by type (the
    * project overview's total-records chart) can open a type's list without naming a module's URL. A type with no

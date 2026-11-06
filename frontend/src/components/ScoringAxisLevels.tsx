@@ -5,7 +5,8 @@
  * (generic scoring-matrix core): one collapsible block per axis (folded by default, remembered per person) holding
  * that axis's levels as a labelled grid. An axis the tier may edit shows the editable `DefinitionList` grid (name,
  * weight, guidance, and a threshold on a derived axis); any other axis (an organisation axis seen from a project)
- * shows the same columns read-only, so nothing looks editable that is not.
+ * shows the same columns read-only, so nothing looks editable that is not; except that a project may set its own
+ * thresholds for a derived axis (`ScoringAxisThresholds`), the one part of an organisation level it can change.
  *
  * The caller supplies the three level calls for its tier and `onChanged` (to re-fetch the scheme); every mutation
  * reports its outcome through the shared toast, a failure staying in the list's own error line.
@@ -13,6 +14,7 @@
 import { useToast } from "../context/ToastContext";
 import { scoringOriginLabel, type ScoringAxis, type ScoringLevel, type ScoringScheme } from "../api/scoring";
 import { Badge } from "./Badge";
+import { ScoringAxisThresholds } from "./ScoringAxisThresholds";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { DefinitionList } from "./DefinitionList";
 import { levelFields, parseLevel } from "./scoringLevelFields";
@@ -46,17 +48,24 @@ function ReadOnlyLevels({ axis }: { axis: ScoringAxis }) {
   );
 }
 
+/** A project's calls for its own thresholds on a derived axis; `thresholds` is by level id, `null` clears the override. */
+export interface ScoringThresholdCalls {
+  save: (axisKey: string, thresholds: Record<string, number> | null) => Promise<unknown>;
+}
+
 /**
  * @param scheme The tier's effective scheme.
  * @param calls The tier's level calls.
+ * @param thresholdCalls The project's threshold call; omit for the organisation (whose thresholds are the level rows').
  * @param onChanged Called after each successful change, to re-fetch the scheme.
  * @param projectId The project being edited; omit for the organisation (which may edit every axis it sees).
  */
 export function ScoringAxisLevels({
-  scheme, calls, onChanged, projectId,
+  scheme, calls, thresholdCalls, onChanged, projectId,
 }: {
   scheme: ScoringScheme;
   calls: ScoringLevelCalls;
+  thresholdCalls?: ScoringThresholdCalls;
   onChanged: () => void;
   projectId?: string;
 }) {
@@ -69,13 +78,13 @@ export function ScoringAxisLevels({
         return (
           <CollapsibleSection
             key={axis.key} variant="plain" defaultCollapsed sectionKey={`sc_lv:${scheme.key}:${projectId ? "p" : "o"}:${axis.key}`}
-            title={<span className="row" style={{ gap: "var(--space-2)" }}>{axis.label}{origin && <Badge>{origin}</Badge>}</span>}
+            title={<span className="row" style={{ gap: "var(--space-2)" }}>{axis.label}{origin && <Badge>{origin}</Badge>}{projectId && axis.thresholds_source === "project" && <Badge>Own thresholds</Badge>}</span>}
             summary={`${axis.levels.length} levels`}
           >
             {axis.description && <span className="text-muted">{axis.description}</span>}
             {axis.derived_source && (
               <span className="text-muted">
-                Worked out from demand: a record lands in the highest level whose threshold its value reaches. A level chosen by hand wins.
+                Chosen automatically from the demand behind a record: it lands in the highest level whose threshold its value reaches. A level chosen manually wins.
               </span>
             )}
             {editable ? (
@@ -102,6 +111,20 @@ export function ScoringAxisLevels({
                 }}
                 deleteLabel={`Delete ${axis.label} level`}
                 addLabel={`Add ${axis.label} level`}
+              />
+            ) : axis.derived_source && thresholdCalls ? (
+              <ScoringAxisThresholds
+                axis={axis}
+                onSave={async (thresholds) => {
+                  await thresholdCalls.save(axis.key, thresholds);
+                  showToast("Thresholds saved.");
+                  onChanged();
+                }}
+                onReset={async () => {
+                  await thresholdCalls.save(axis.key, null);
+                  showToast("Thresholds reset.");
+                  onChanged();
+                }}
               />
             ) : (
               <ReadOnlyLevels axis={axis} />

@@ -21,7 +21,7 @@ sidebar_position: 48
 - **Nothing is sent to requesters.** [Closing the loop](./relationships-and-closing-the-loop.md#closing-the-loop) records who was told; it does not email anyone.
 - **No free-text requester.** A requester is a Stakeholder, Persona or Engagement, so erasing a person is done in one place. Someone without a record is added as a Stakeholder, or as a participant of an Engagement, first.
 - **No request types.** Use tags. A request's channel and external system are the only lists.
-- **Delivered is set by hand.** A complete Requirement only prompts **Ready to deliver?**.
+- **Delivered is set manually.** A complete Requirement only prompts **Ready to deliver?**.
 - **A merge joins requests of the same owner.** Two requests in one project, or two in the inbox, never one of each. A merge is not a status you can set directly.
 - **Moving from the inbox is one-way.** A moved request cannot go back, and a request that already has links or is in a merge cannot be moved.
 - **An organisation triager is a triager in every project.** A project's "triagers only" setting cannot exclude one.

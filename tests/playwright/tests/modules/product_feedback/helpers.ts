@@ -14,6 +14,12 @@ export async function setUpOrg(page: Page, label: string) {
   return setUpModuleOrg(page, label, false, "Product Feedback");
 }
 
+/** Enables Context & Strategy (which holds the Pain Points) for the organisation, so a request can address one. */
+export async function enablePainPoints(page: Page, orgId: string, headers: Record<string, string>) {
+  const resp = await page.request.put(`${API_BASE_URL}/api/v1/orgs/${orgId}/modules/context_strategy`, { headers, data: { enabled: true } });
+  expect(resp.ok(), await resp.text()).toBeTruthy();
+}
+
 export const projectBase = (projectId: string) => `${API_BASE_URL}/api/v1/projects/${projectId}/modules/product_feedback`;
 export const orgBase = (orgId: string) => `${API_BASE_URL}/api/v1/orgs/${orgId}/modules/product_feedback`;
 

@@ -83,6 +83,7 @@ _LIST_FILTERS = [
         "unscored: only requests missing a level on the first model's manual axes (the ones still to score); "
         "scored: only the fully scored.",
     ),
+    _query("pain_points", "string", "none: only requests that address no Pain Point; some: only those that address at least one."),
     _query("missing_axis", "string", (
         "Only requests with no level on this axis (reach, impact, confidence, ease, effort), or `any` for requests "
         "not rated on every criterion."

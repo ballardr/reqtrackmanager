@@ -14,7 +14,7 @@ export function formAxes(scheme: ScoringScheme | null): ScoringAxis[] {
   return scheme?.axes ?? [];
 }
 
-/** True for an axis whose level is worked out from demand unless chosen by hand. */
+/** True for an axis whose level is worked out from demand unless chosen manually. */
 export function isDerivedAxis(axis: ScoringAxis): boolean {
   return Boolean(axis.derived_source);
 }

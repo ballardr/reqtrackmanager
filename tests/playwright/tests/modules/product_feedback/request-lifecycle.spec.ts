@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { installCleanupHook } from "../../e2e-workflows/helpers";
-import { setUpOrg } from "./helpers";
+import { enablePainPoints, setUpOrg } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -14,7 +14,8 @@ installCleanupHook();
  */
 test.describe("Enhancement requests: submit, score and decide", () => {
   test("submits a scored request, flags the missing Pain Point, declines with a reason and reopens", async ({ page }) => {
-    const { suffix, project } = await setUpOrg(page, "FeedbackLife");
+    const { suffix, project, org, adminHeaders } = await setUpOrg(page, "FeedbackLife");
+    await enablePainPoints(page, org.id, adminHeaders);
     const title = `Export the list to Excel ${suffix}`;
     const list = `/projects/${project.id}/modules/product_feedback/requests`;
 
@@ -36,12 +37,14 @@ test.describe("Enhancement requests: submit, score and decide", () => {
       await expect(page.getByText("Request submitted.")).toBeVisible();
     });
 
-    await test.step("the list shows its code, status, score and the missing-Pain-Point warning", async () => {
+    await test.step("the list shows its code, status and score, and the Pain Points column flags the missing one", async () => {
       const row = page.getByRole("row", { name: new RegExp(title) });
       await expect(row.getByRole("link", { name: "ENH-001" })).toBeVisible();
       await expect(row.getByText("New", { exact: true })).toBeVisible();
-      await expect(row.getByText("No Pain Point")).toBeVisible();
       await expect(row.getByText(/· \d+/).first()).toBeVisible();
+      await page.getByRole("button", { name: "Choose columns" }).click();
+      await page.getByRole("dialog", { name: "Columns" }).getByRole("checkbox", { name: "Pain Points", exact: true }).check();
+      await expect(row.getByText("None", { exact: true })).toBeVisible();
     });
 
     await test.step("the detail page carries the same warning, and starting review moves the status", async () => {

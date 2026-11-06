@@ -8,7 +8,7 @@
  * `/orgs/:organizationId/modules/product_feedback/requests/:requestId`, the latter an always-mounted global route).
  *
  * - **Lifecycle** buttons come from the server's `allowed_next_statuses`; declining needs a reason (a required
- *   comment). Delivered is set by hand: when every Requirement realising an accepted request is complete the page
+ *   comment). Delivered is set manually: when every Requirement realising an accepted request is complete the page
  *   prompts "Ready to deliver?" and never moves the status itself.
  * - **Controls follow `GET .../access`**: someone who may not triage sees no edit, transition, merge or archive
  *   controls (the server refuses them regardless).
@@ -68,7 +68,8 @@ import type {
   Requester, RequestVersion,
 } from "./types";
 import { useExternalReferencesEnabled } from "./useExternalReferences";
-import { useExternalSystemChoices, useRequestChannelChoices } from "./useFeedbackLists";
+import { usePainPointsAvailable } from "./usePainPointsAvailable";
+import { useExternalSystemChoicesState, useRequestChannelChoices } from "./useFeedbackLists";
 
 const SCHEME_KEY = "enhancement_request";
 
@@ -139,10 +140,11 @@ export function RequestDetailPage() {
   const [referenceError, setReferenceError] = useState<string | null>(null);
 
   const organization = projectId ? project?.organization_id : organizationId;
-  const systems = useExternalSystemChoices(projectId, organization);
+  const { choices: systems, loaded: systemsLoaded } = useExternalSystemChoicesState(projectId, organization);
   const channels = useRequestChannelChoices(projectId ?? "");
   const commitRequesters = useCommitQuickLinks(projectId ?? "", "enhancement_request");
-  const referencesOn = useExternalReferencesEnabled(projectId, organization);
+  const referencesEnabled = useExternalReferencesEnabled(projectId, organization);
+  const painPointsAvailable = usePainPointsAvailable(projectId);
 
   useEffect(() => {
     if (!scopeId) return;
@@ -350,6 +352,8 @@ export function RequestDetailPage() {
   const delivering = pending?.to === "delivered";
   const showLoop = Boolean(projectId) && loop !== null && (request.status === "delivered" || request.status === "declined");
   const readyToDeliver = Boolean(loop?.suggest_delivered) && request.status === "accepted" && canTriage;
+  // The card is offered only where there is something to show: references already recorded, or an enabled external system to add one for.
+  const referencesShown = referencesEnabled && (request.external_refs.length > 0 || (systemsLoaded && systems.length > 0));
 
   /** Each arrangeable section's content, keyed as `REQUEST_PAGE_SECTIONS`; an empty one (nothing to show here) is skipped. */
   const sectionNodes: Record<string, ReactNode> = {
@@ -367,7 +371,7 @@ export function RequestDetailPage() {
     ),
     references: (
       <>
-          {referencesOn && (
+          {referencesShown && (
             <RequestReferencesCard
               references={request.external_refs} canEdit={canTriage && !request.is_archived}
               onAdd={() => { setReferenceError(null); setEditingReference("new"); }}
@@ -468,7 +472,7 @@ export function RequestDetailPage() {
       </>
     ),
   };
-  const availableSections = REQUEST_SECTION_KEYS.filter((key) => (key !== "references" || referencesOn) && (key !== "demand" || Boolean(projectId)) && (key !== "loop" || showLoop));
+  const availableSections = REQUEST_SECTION_KEYS.filter((key) => (key !== "references" || referencesShown) && (key !== "demand" || Boolean(projectId)) && (key !== "loop" || showLoop));
   const sectionOrder = resolveSectionOrder(availableSections, personalOrder, projectOrder);
 
   return (
@@ -493,7 +497,7 @@ export function RequestDetailPage() {
           <>
             <Badge tone={REQUEST_STATUS_TONE[request.status]}>{REQUEST_STATUS_LABEL[request.status]}</Badge>
             {request.is_archived && <Badge tone="muted">Archived</Badge>}
-            {projectId && request.pain_point_count === 0 && !isDuplicate && request.status !== "declined" && (
+            {painPointsAvailable && request.pain_point_count === 0 && !isDuplicate && request.status !== "declined" && (
               <Badge tone="warning" title="This is a solution with no stated problem. Link the Pain Point it addresses with “Addresses” in the Links panel.">
                 No Pain Point linked
               </Badge>

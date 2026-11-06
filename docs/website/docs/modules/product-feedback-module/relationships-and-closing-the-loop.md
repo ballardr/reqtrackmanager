@@ -14,7 +14,9 @@ A request connects to the problem behind it, the Requirement that delivers it, a
 
 An Engagement as evidence is a **Requested by** link to that Engagement, so there is no separate evidence link. A merged duplicate's Pain Points and Requirements count for its canonical request, and an inbox request cannot be linked until it is moved into a project.
 
-A request with no Pain Point shows **No Pain Point** in the list and on its page. It is a prompt to find the problem, not a rule: you can accept, score and deliver it regardless.
+A request with no Pain Point is flagged **None** in the list's optional **Pain Points** column (a count otherwise) and **No Pain Point linked** on its page. It is a prompt to find the problem, not a rule: you can accept, score and deliver it regardless. The list's **Pain Points** filter narrows to requests with none or at least one. All of this appears only where Pain Points are enabled for the project.
+
+You do not need to leave the request to make the Pain Point: **Create new → New Pain Point** in its Links panel opens the Pain Point form and links the new record with **Addresses** (choose another relationship from the same menu if one applies).
 
 ```mermaid
 flowchart LR

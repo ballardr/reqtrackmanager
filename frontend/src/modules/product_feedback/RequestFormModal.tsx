@@ -28,7 +28,7 @@ import { referencesPayload } from "./referenceDraft";
 import { initialLevelDraft, levelsPayload, type LevelDraft } from "./requestLevels";
 import { RequestersField } from "./RequestersField";
 import { useExternalReferencesEnabled } from "./useExternalReferences";
-import { useExternalSystemChoices } from "./useFeedbackLists";
+import { useExternalSystemChoicesState } from "./useFeedbackLists";
 import type { EnhancementRequest, EnhancementRequestCreate, EnhancementRequestUpdate, Requester } from "./types";
 
 /** What the form hands back; `changeNote` is set on an edit only. */
@@ -72,7 +72,7 @@ export function RequestFormModal({
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [requesters, setRequesters] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const systems = useExternalSystemChoices(projectId, organizationId);
+  const { choices: systems } = useExternalSystemChoicesState(projectId, organizationId);
   const referencesOn = useExternalReferencesEnabled(projectId, organizationId);
 
   function save() {
@@ -96,7 +96,7 @@ export function RequestFormModal({
           <RequestFields
             draft={draft} onChange={setDraft} scheme={scheme} derivedLevels={initial?.derived_levels}
             orgUsers={orgUsers} organizationId={organizationId} projectId={projectId} savedOwner={initial?.owner}
-            systems={initial || !referencesOn ? undefined : systems} previewScores={scheme ? previewScores : undefined} requestId={initial?.id}
+            systems={initial || !referencesOn || systems.length === 0 ? undefined : systems} previewScores={scheme ? previewScores : undefined} requestId={initial?.id}
             beside={initial
               ? <TextField help={PRODUCT_FEEDBACK_HELP.changeNote} label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />
               : projectId ? <TagField projectId={projectId} artefactType="enhancement_request" value={tags} onChange={setTags} /> : undefined}

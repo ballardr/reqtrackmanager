@@ -17,6 +17,8 @@
  *   hidden what the user may not see and says how many it left out.
  * - Show links to other projects (a parent or child) with a project badge, and flag
  *   a link its link type no longer permits instead of hiding it.
+ * - Offer "Create new" for a record type another module can create and a link type reaches (`CreateLinkedRecord`),
+ *   creating and linking it in one step.
  * - Open the trace (tree and map) of the record's links in a modal.
  * - Remove a link behind a Tier-1 confirmation; route through a change request when
  *   the page says links are locked (`changeRequest`).
@@ -53,6 +55,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { AddPopoverButton } from "./AddPopoverButton";
 import { AddArtefactLinkModal, type LinksChangeRequestMode } from "./AddArtefactLinkModal";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { CreateLinkedRecord } from "./CreateLinkedRecord";
 import { ItemRow } from "./ItemRow";
 import { LinkedRecordSummary } from "./LinkedRecordSummary";
 import { LinkTraceModal } from "./LinkTraceModal";
@@ -267,6 +270,12 @@ export function ArtefactLinksPanel({
                 <Plus /> {strings.artefactLinks.addLink}
               </button>
             )
+          )}
+          {canLink && !changeRequest && (
+            <CreateLinkedRecord
+              projectId={projectId} artefactType={artefactType} artefactId={artefactId} api={api} compact={compactView}
+              onLinked={changed}
+            />
           )}
           {(compactView ? graph !== null : groups.length > 0) && (
             compactView ? (

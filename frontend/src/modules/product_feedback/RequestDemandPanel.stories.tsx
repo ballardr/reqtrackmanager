@@ -24,6 +24,8 @@ export const ListsRequestersWeightsAndEngagements: Story = {
     await expect(within(table).getByText("Persona")).toBeInTheDocument();
     await expect(within(table).getAllByText("Engagement").length).toBeGreaterThan(0);
     await expect(canvas.getByText("2 requesters · 4.5")).toBeInTheDocument();
+    await expect(canvas.getByText("From Influence level")).toBeInTheDocument(); // where each weight comes from
+    await expect(canvas.getByText("Set for this project")).toBeInTheDocument();
     await expect(canvas.getByText("Customer workshop")).toBeInTheDocument();
   },
 };

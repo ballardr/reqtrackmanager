@@ -16,7 +16,7 @@ A request's requesters are Stakeholders, Personas and [Engagements](../stakehold
 | **Persona** | One archetype | The Persona's weight in this project |
 | **Engagement** | Everyone it covers: its participants and the Personas it covers | Each one's own weight |
 
-Someone reached twice (asking directly and through an Engagement, or on two merged requests) counts once. A party with no weight counts as 1, so demand never silently drops someone. **Weighted demand** is the sum of the weights.
+The Demand section shows each requester's weight and where it comes from (an Influence level, the Persona's own weight, or this project's or a parent project's override of it); open the requester to change it. Someone reached twice (asking directly and through an Engagement, or on two merged requests) counts once. A party with no weight counts as 1, so demand never silently drops someone. **Weighted demand** is the sum of the weights.
 
 ```mermaid
 flowchart LR

@@ -24,6 +24,9 @@ class ScoringLevelOut(BaseModel):
     description: str | None
     weight: float
     threshold: float | None = None
+    org_threshold: float | None = Field(
+        default=None, description="A derived axis's organisation threshold; `threshold` is the one in force for the caller's project.",
+    )
 
 
 class ScoringAxisOut(BaseModel):
@@ -35,6 +38,9 @@ class ScoringAxisOut(BaseModel):
     derived_source: str | None = None
     origin: Literal["built_in", "org", "project"] = "built_in"
     owner_project_id: UUID | None = None
+    thresholds_source: Literal["project", "ancestor", "organisation"] | None = Field(
+        default=None, description="Where a derived axis's thresholds in force come from; `None` on an ordinary axis.",
+    )
     levels: list[ScoringLevelOut]
 
 
@@ -144,6 +150,13 @@ class ScoringEnabledModelsIn(BaseModel):
     """Replaces the set of enabled models (by model key); `null` clears the override so it inherits."""
 
     models: list[str] | None
+
+
+class ScoringThresholdsIn(BaseModel):
+    """Replaces a project's thresholds for a derived axis: a threshold for every level (by level id), rising with the
+    levels' weights; `null` clears the override so it inherits."""
+
+    thresholds: dict[UUID, float] | None
 
 
 class ScoringBandsIn(BaseModel):

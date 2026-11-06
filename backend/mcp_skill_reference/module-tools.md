@@ -1758,7 +1758,7 @@ Rules and gotchas:
 
 Lists a project's enhancement requests with status, owner and external references.
 
-Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query), `scored` (string, in query), `missing_axis` (string, in query), `scoring_model` (string, in query)
+Parameters: `project_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query), `scored` (string, in query), `pain_points` (string, in query), `missing_axis` (string, in query), `scoring_model` (string, in query)
 
 #### `product_feedback_get_request` (read)
 
@@ -1902,7 +1902,7 @@ Parameters: `project_id*` (uuid, in path), `request_id*` (uuid, in path), `body*
 
 Lists the organisation's inbox requests (answers 404 when the organisation switched the inbox off).
 
-Parameters: `organization_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query), `scored` (string, in query), `missing_axis` (string, in query), `scoring_model` (string, in query)
+Parameters: `organization_id*` (uuid, in path), `include_archived` (boolean, in query), `status` (string, in query), `open_only` (boolean, in query), `search` (string, in query), `scored` (string, in query), `pain_points` (string, in query), `missing_axis` (string, in query), `scoring_model` (string, in query)
 
 #### `product_feedback_get_inbox_scoring_scheme` (read)
 

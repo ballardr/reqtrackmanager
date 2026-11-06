@@ -82,6 +82,7 @@ def stakeholder_parties(
         sid: [DemandParty(
             STAKEHOLDER_ARTEFACT_TYPE, sid, versions[sid].name,
             weights.get(versions[sid].influence_level_id) if versions[sid].influence_level_id else None,
+            "influence" if versions[sid].influence_level_id else "none",
         )]
         for sid in visible
     }
@@ -109,7 +110,7 @@ def persona_parties(
     versions = current_versions(db, PersonaVersion, "persona_id", visible)
     weights = resolve_persona_weights(db, project_id, {pid: versions[pid].weight for pid in visible})
     return {
-        pid: [DemandParty(PERSONA_ARTEFACT_TYPE, pid, versions[pid].name, weights[pid][0])] for pid in visible
+        pid: [DemandParty(PERSONA_ARTEFACT_TYPE, pid, versions[pid].name, weights[pid][0], weights[pid][1])] for pid in visible
     }
 
 

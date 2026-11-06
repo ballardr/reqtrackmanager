@@ -876,7 +876,7 @@ flowchart LR
   the highest threshold not above the value (the lowest level takes anything
   below every threshold). Bucketing, not the raw number, keeps the best case
   defined so bands still normalise. The module decides which source it feeds
-  and whether a level chosen by hand overrides it; core only stores the name.
+  and whether a level chosen manually overrides it; core only stores the name.
 - **Custom criteria (Module 14 Phase 3c).** A scheme with
   `allow_custom_criteria` lets an organisation, and each project, define its
   own axes (`scoring_custom_axes` + ordinary `scoring_levels`) and models
@@ -1313,6 +1313,26 @@ Read left to right: the same provider defines the columns of the file out and th
 - **PDF and Word: the Record list report.** A provider's table is also a report (`GET /projects/{id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`, `services/record_list_report.py`), listed in the report catalogue under the platform (`module_key` `platform`), not a module, with one `record_type` parameter holding exactly the types the caller may list. It adds no code per type: it renders `build_table`, so it shows the columns and rows the CSV export would. `format=csv` is the export's file byte for byte; a file (not the on-screen run) is audited as `records_exported`. A column colours its cells in PDF and Word with `RecordColumn.tones` (`{cell text: tone}`, tones as `report_model.TONE_FILL`); the text still names the value. The same MCP tool (`get_record_list_report`) serves every type.
 - **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (a Pain Point scored per persona has no single severity). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
 - **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export (no `create`/`update`) and gives a reason in `not_importable`; a core type's reason is in `CORE_NOT_IMPORTABLE` (`services/record_tables_core.py`, change requests). Do not add per-type export or import code to a core file.
+
+### 4l2. Creating and linking a record from the Links panel
+
+The shared Links panel offers **Create new** on every record page: it creates a record of another type and links it in one step. A module opts in with two frontend fields on `TierAModuleDefinition`; core never imports a module's form.
+
+```mermaid
+flowchart LR
+    P["Links panel<br/>(page record)"] -- "link options" --> S["Server: link types reaching<br/>types of enabled modules"]
+    S --> C["linkedRecordCreators[type]<br/>(owning module's dialog)"]
+    C -- "onCreated(id)" --> L["Panel links the new record<br/>(preferredLinkPhrases)"]
+```
+
+| Field | Declared by | Purpose |
+| --- | --- | --- |
+| `linkedRecordCreators[type] = { label, render({ projectId, onCreated, onCancel }), canCreate? }` | The module that owns the *created* type | Its own create dialog; it creates the record itself and reports the id. `canCreate(projectId)` is declared where creating needs more than project membership, so the type is offered only to someone allowed to create it. |
+| `preferredLinkPhrases[type][otherType]` | The module that owns the *page* record | The relationship that carries meaning, e.g. a request's Pain Points are the ones it "Addresses". Other relationships stay selectable. |
+
+- The panel offers only types that a link type from the page record reaches; the server's link options already leave out types of a module or sub-component that is off, so no separate gate is needed.
+- Not offered where links go through a change request, or where the caller cannot link.
+- The server's own create endpoint still enforces permission and shows any refusal in the dialog.
 
 ### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
 

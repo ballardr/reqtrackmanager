@@ -114,6 +114,7 @@ def _level_out(level: ScoringLevel) -> ScoringLevelOut:
     return ScoringLevelOut(
         id=level.id, name=level.name, description=level.description, weight=float(level.weight),
         threshold=None if level.threshold is None else float(level.threshold),
+        org_threshold=None if level.threshold is None else float(level.threshold),
     )
 
 

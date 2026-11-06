@@ -776,7 +776,8 @@ def _requester_out(
     choice = (channels or {}).get((requester.artefact_type, requester.id))
     return RequesterOut(
         artefact_type=requester.artefact_type, id=requester.id, label=requester.label if seen else None,
-        weight=requester.weight if seen else None, effective_weight=requester.effective_weight,
+        weight=requester.weight if seen else None, weight_source=requester.weight_source if seen else "",
+        effective_weight=requester.effective_weight,
         from_merge=requester.from_merge, via_engagement=requester.via_engagement, hidden=not seen, link_id=requester.link_id,
         channel=ChannelOut(id=choice.id, name=choice.name) if choice else None,
     )

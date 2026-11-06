@@ -129,4 +129,50 @@ test.describe("Enhancement requests: scoring administration", () => {
       await expect(page.getByRole("checkbox", { name: /^Show ICE \(/ })).toBeChecked();
     });
   });
+
+  test("a project sets its own demand thresholds beside the organisation's, and goes back to them", async ({ page }) => {
+    const { project, adminHeaders } = await setUpOrg(page, "FeedbackScoringThresholds");
+    await page.goto(`/projects/${project.id}/admin`);
+    await selectProjectAdminGroup(page, "Request Scoring");
+    await expandScoringLevels(page);
+
+    const field = (level: string) => page.getByRole("spinbutton", { name: `Demand ${level} threshold in this project` });
+    const projectScheme = async () => (
+      await page.request.get(`${API_BASE_URL}/api/v1/projects/${project.id}/scoring-schemes/enhancement_request`, { headers: adminHeaders })
+    ).json();
+
+    await test.step("starts on the organisation's values; an ordinary axis offers no threshold", async () => {
+      await expect(page.getByText("Organisation values")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Save thresholds" })).toBeDisabled();
+      await expect(page.getByRole("spinbutton", { name: /^Impact .* threshold/ })).toHaveCount(0);
+    });
+
+    await test.step("thresholds that do not rise are refused before saving", async () => {
+      const many = field("Many");
+      const original = await many.inputValue();
+      await many.fill("1");
+      await expect(page.getByText("Each level must start above the one before.")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Save thresholds" })).toBeDisabled();
+      await many.fill(original);
+    });
+
+    await test.step("saving sets the project's own values and keeps the organisation's visible", async () => {
+      await field("Many").fill("100");
+      await field("Widespread").fill("200");
+      await page.getByRole("button", { name: "Save thresholds" }).click();
+      await expect(page.getByText("Thresholds saved.")).toBeVisible();
+      await expect(page.getByText("Own thresholds")).toBeVisible();
+      const axis = (await projectScheme()).axes.find((a: { key: string }) => a.key === "demand");
+      expect(axis.thresholds_source).toBe("project");
+      expect(axis.levels.map((l: { threshold: number }) => l.threshold).slice(-2)).toEqual([100, 200]);
+      expect(axis.levels.map((l: { org_threshold: number }) => l.org_threshold).slice(-2)).toEqual([15, 30]);
+    });
+
+    await test.step("using the inherited values clears them", async () => {
+      await page.getByRole("button", { name: "Use inherited values" }).click();
+      await expect(page.getByText("Thresholds reset.")).toBeVisible();
+      await expect(page.getByText("Own thresholds")).toHaveCount(0);
+      expect((await projectScheme()).axes.find((a: { key: string }) => a.key === "demand").thresholds_source).toBe("organisation");
+    });
+  });
 });

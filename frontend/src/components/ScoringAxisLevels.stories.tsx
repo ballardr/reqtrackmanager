@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, waitFor, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import { buildCustomCriteriaScheme, buildUser, expandScoringLevels, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { ScoringAxisLevels } from "./ScoringAxisLevels";
@@ -40,5 +40,23 @@ export const OrganisationAxesAreReadOnlyInAProject: Story = {
     await expect(canvas.queryByRole("textbox", { name: /level name/ })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: /Delete .* level/ })).not.toBeInTheDocument();
     await waitFor(() => expect(canvas.getAllByText("Weight").length).toBeGreaterThan(0));
+  },
+};
+
+/** In a project, a derived axis (Demand) is the one organisation axis whose thresholds the project can set, beside the organisation's own. */
+export const ADerivedAxisTakesTheProjectsOwnThresholds: Story = {
+  args: { projectId: PROJECT_ID, thresholdCalls: { save: fn(async () => ({})) } },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expandScoringLevels(canvas);
+    await expect(canvas.getByText("From (this project)")).toBeInTheDocument();
+    const field = canvas.getByRole("spinbutton", { name: "Demand Lots threshold in this project" });
+    await expect(field).toHaveValue(10);
+    await userEvent.clear(field);
+    await userEvent.type(field, "40");
+    await userEvent.click(canvas.getByRole("button", { name: "Save thresholds" }));
+    await waitFor(() => expect(args.thresholdCalls!.save).toHaveBeenCalledWith("demand", { "dem-1": 0, "dem-2": 3, "dem-3": 40 }));
+    // An ordinary organisation axis stays read-only.
+    await expect(canvas.queryByRole("spinbutton", { name: /Impact .* threshold/ })).not.toBeInTheDocument();
   },
 };

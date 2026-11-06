@@ -341,6 +341,7 @@ class RequesterOut(BaseModel):
     id: UUID
     label: str | None = None
     weight: float | None = None
+    weight_source: str = Field(default="", description="Where the weight comes from (influence, persona, project, ancestor_project, none).")
     effective_weight: float
     from_merge: bool
     via_engagement: bool

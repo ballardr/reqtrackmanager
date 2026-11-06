@@ -27,7 +27,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -315,6 +315,9 @@ def list_organization_requests(
     return list(db.scalars(query.order_by(EnhancementRequest.created_at, EnhancementRequest.unique_code)).all())
 
 
+#: The list's Pain Points filter: `none` keeps requests that address no Pain Point, `some` those that address at least one.
+PainPointFilter = Literal["none", "some"]
+
 #: Statuses the list's "Open only" view keeps (mirrors `REQUEST_OPEN_STATUSES` in the frontend types).
 REQUEST_OPEN_STATUSES = frozenset({_S.NEW, _S.UNDER_REVIEW, _S.ACCEPTED})
 
@@ -323,6 +326,7 @@ def filter_requests(
     db: Session, holder: RecordOwner, requests: list[EnhancementRequest], *,
     status: EnhancementRequestStatus | None = None, open_only: bool = False, search: str | None = None,
     scored: ScoredFilter | None = None, missing_axis: str | None = None, scoring_model: Sequence[str] | None = None,
+    pain_points: PainPointFilter | None = None,
 ) -> list[EnhancementRequest]:
     """The requests a list's filters keep, in their given order: one status, only open ones, a
     case-insensitive match on the code, title or description, and/or their scoring state. The list endpoints,
@@ -338,11 +342,20 @@ def filter_requests(
         scored: Keep only requests scored, or not scored, under the first of `scoring_model` (else the default).
         missing_axis: Keep only requests with no level on this scoring axis, or (`any`) on at least one criterion.
         scoring_model: The model keys chosen when viewing.
+        pain_points: `none` keeps requests addressing no Pain Point, `some` those addressing at least one (a merged
+            duplicate's count too, as on the row); ignored for an organisation inbox request, which has no links.
     """
     requests = keep_by_scoring(
         db, holder.organization_id, holder.project_id, requests,
         scored=scored, missing_axis=missing_axis, model_keys=scoring_model,
     )
+    if pain_points and requests and holder.project_id is not None:
+        from app.modules.product_feedback.relationships import compute_links  # relationships imports this module
+
+        project = db.get(Project, holder.project_id)
+        if project is not None:
+            links = compute_links(db, project, [r.id for r in requests])
+            requests = [r for r in requests if bool(links[r.id].pain_point_ids) == (pain_points == "some")]
     if not requests or (status is None and not open_only and not search):
         return requests
     versions = current_versions(db, EnhancementRequestVersion, "request_id", [r.id for r in requests])

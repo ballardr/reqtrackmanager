@@ -92,7 +92,7 @@ export function buildUnscoredRequest(overrides: Partial<EnhancementRequest> = {}
 
 export function buildRequester(overrides: Partial<Requester> = {}): Requester {
   return {
-    artefact_type: "stakeholder", id: "stakeholder-1", label: "Priya Shah", weight: 3, effective_weight: 3,
+    artefact_type: "stakeholder", id: "stakeholder-1", label: "Priya Shah", weight: 3, weight_source: "influence", effective_weight: 3,
     from_merge: false, via_engagement: false, hidden: false, channel: null, link_id: "link-1", ...overrides,
   };
 }
@@ -122,7 +122,7 @@ export function buildExternalRef(overrides: Partial<ExternalRef> = {}): External
 export function buildDemand(overrides: Partial<Demand> = {}): Demand {
   return {
     request_id: REQUEST_ID, requester_count: 2, weighted_demand: 4.5, offset: 0, limit: 25,
-    requesters: [buildRequester(), buildRequester({ artefact_type: "persona", id: "persona-1", label: "Power user", weight: null, effective_weight: 1.5, via_engagement: true, link_id: null })],
+    requesters: [buildRequester(), buildRequester({ artefact_type: "persona", id: "persona-1", label: "Power user", weight: null, weight_source: "project", effective_weight: 1.5, via_engagement: true, link_id: null })],
     engagements: [{ id: "engagement-1", label: "Customer workshop", hidden: false, link_id: "link-e1" }], merged_duplicates: [], ...overrides,
   };
 }

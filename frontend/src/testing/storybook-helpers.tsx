@@ -151,14 +151,14 @@ export function buildCustomCriteriaScheme(overrides: Partial<ScoringScheme> = {}
     { label: "High", min_score: 0.5, tone: "accent" as const },
   ];
   const levels = (prefix: string, names: string[], thresholds?: number[]) => names.map((name, i) => ({
-    id: `${prefix}-${i + 1}`, name, description: null, weight: i + 1, ...(thresholds ? { threshold: thresholds[i] } : {}),
+    id: `${prefix}-${i + 1}`, name, description: null, weight: i + 1, ...(thresholds ? { threshold: thresholds[i], org_threshold: thresholds[i] } : {}),
   }));
   return {
     key: "enhancement_request", label: "Request scoring", module_key: "product_feedback",
     allow_custom_criteria: true, side_by_side_models: true,
     axes: [
       { key: "impact", label: "Impact", description: null, origin: "built_in", levels: levels("imp", ["Low", "Medium", "High"]) },
-      { key: "demand", label: "Demand", description: null, origin: "built_in", derived_source: "weighted_demand", levels: levels("dem", ["None", "Some", "Lots"], [0, 3, 10]) },
+      { key: "demand", label: "Demand", description: null, origin: "built_in", derived_source: "weighted_demand", thresholds_source: "organisation", levels: levels("dem", ["None", "Some", "Lots"], [0, 3, 10]) },
       { key: "c_strategic_fit", label: "Strategic fit", description: "How well it fits the plan.", origin: "org", owner_project_id: null, levels: levels("fit", ["Weak", "Strong"]) },
     ],
     models: [

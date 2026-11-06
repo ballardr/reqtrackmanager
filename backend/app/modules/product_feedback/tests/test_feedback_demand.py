@@ -50,6 +50,7 @@ def test_demand_sums_stakeholder_influence_and_persona_weight_and_counts_the_unw
     assert by_label["Hana High"]["weight"] == 3 and by_label["Lou Low"]["weight"] == 1
     assert by_label["Una Unrated"]["weight"] is None and by_label["Una Unrated"]["effective_weight"] == 1
     assert by_label["Heavy user"]["weight"] == 2.5
+    assert [by_label[n]["weight_source"] for n in ("Hana High", "Una Unrated", "Heavy user")] == ["influence", "none", "persona"]
     assert demand["requester_count"] == 4 and demand["weighted_demand"] == 3 + 1 + 1 + 2.5
     assert [r["label"] for r in demand["requesters"]][0] == "Hana High"  # heaviest first
 

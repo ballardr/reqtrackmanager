@@ -13,7 +13,7 @@
  * a run of requests can be scored in bulk, typically after filtering to the unscored ones. The grid is offered only
  * to someone the server would let save; submitting is offered only where the project's policy allows it.
  *
- * Filters live in the URL (`status`, `open=1|0`, `scored=unscored|scored`, `missing`, `model`, `q`, `archived`) so
+ * Filters live in the URL (`status`, `open=1|0`, `scored=unscored|scored`, `pain_points=none|some`, `missing`, `model`, `q`, `archived`) so
  * the list comes back as it was left after a visit to a record.
  */
 import { useEffect, useState } from "react";
@@ -47,6 +47,7 @@ import { RequestColumnChooser } from "./RequestColumnChooser";
 import { requestColumns } from "./requestColumns";
 import { RequestFilterFields } from "./RequestFilterFields";
 import { sortRequests, useRequestListFilters } from "./requestListState";
+import { usePainPointsAvailable } from "./usePainPointsAvailable";
 import type { EnhancementRequest, FeedbackAccess } from "./types";
 
 const SCHEME_KEY = "enhancement_request";
@@ -71,7 +72,8 @@ export function ProjectRequestsPage() {
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
   const [viewMode, setViewMode] = useViewMode("product_feedback.requests", "list");
 
-  const filters = useRequestListFilters(scheme, "project", true);
+  const painPointsAvailable = usePainPointsAvailable(projectId);
+  const filters = useRequestListFilters(scheme, "project", true, painPointsAvailable);
 
   useEffect(() => {
     if (!projectId) return;

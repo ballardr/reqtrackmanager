@@ -91,7 +91,7 @@ export const GroupsCollapseAndAPageCanStartSomeCollapsed: Story = {
   },
 };
 
-/** The header's buttons keep one order in both layouts: Add, Trace, then View options at the end. */
+/** The header's buttons keep one order in both layouts: Add, Create new, Trace, then View options at the end. */
 export const HeaderButtonsKeepOneOrderInBothLayouts: Story = {
   args: { api: buildLinksApi({ graph: fn(async () => buildGraph([[DECISION]])) }) },
   play: async ({ canvasElement }) => {
@@ -99,10 +99,10 @@ export const HeaderButtonsKeepOneOrderInBothLayouts: Story = {
     await waitFor(() => expect(canvas.getByRole("link", { name: "DEC-001 Use Postgres" })).toBeInTheDocument());
     const order = () =>
       [...canvasElement.querySelectorAll(".artefact-links__buttons > button")].map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim());
-    await expect(order()).toEqual(["Add link", "Trace", "View options"]);
+    await waitFor(() => expect(order()).toEqual(["Add link", "Create a record and link it", "Trace", "View options"]));
     await userEvent.click(canvas.getByRole("button", { name: "View options" }));
     await userEvent.click(within(within(document.body).getByRole("dialog", { name: "View options" })).getByRole("checkbox", { name: "Compact view" }));
-    await expect(order()).toEqual(["Add link", "Trace", "View options"]);
+    await expect(order()).toEqual(["Add link", "Create a record and link it", "Trace", "View options"]);
   },
 };
 

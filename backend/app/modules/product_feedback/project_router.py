@@ -60,6 +60,7 @@ from app.modules.product_feedback.service import (
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
     REQUEST_SUBCOMPONENT_KEY,
+    PainPointFilter,
     RecordOwner,
     filter_requests,
     get_request_page_sections,
@@ -183,7 +184,7 @@ def create_request(
 def list_requests(
     project_id: UUID, include_archived: bool = False, status: EnhancementRequestStatus | None = None,
     open_only: bool = False, search: str | None = None, scoring_model: list[str] | None = Query(None),
-    scored: ScoredFilter | None = None, missing_axis: str | None = None,
+    scored: ScoredFilter | None = None, missing_axis: str | None = None, pain_points: PainPointFilter | None = None,
     tag_filter: TagFilter = Depends(), current_user: User = Depends(_require_view), db: Session = Depends(get_db),
     project_scope: ProjectScope = Depends(),
 ):
@@ -192,7 +193,8 @@ def list_requests(
     `scoring_model` (repeat it, or comma-separate; `ice`, `rice`, `rice_demand`) picks the models scored, the first
     being the primary (default: the project's enabled models). `scored=unscored|scored` keeps requests with no
     level (or all levels) on the first model's manual axes; `missing_axis=<axis key>` keeps those lacking one axis, and
-    `missing_axis=any` those not rated on every criterion."""
+    `missing_axis=any` those not rated on every criterion. `pain_points=none|some` keeps requests that address no Pain
+    Point, or at least one."""
 
     def rows_for(pid: UUID) -> list:
         """This endpoint's rows for one project of the scope."""
@@ -204,6 +206,7 @@ def list_requests(
             db, filter_requests(
                 db, holder, requests, status=status, open_only=open_only,
                 search=search, scored=scored, missing_axis=missing_axis, scoring_model=parse_model_keys(scoring_model),
+                pain_points=pain_points,
             ), scoring_model,
         )
 

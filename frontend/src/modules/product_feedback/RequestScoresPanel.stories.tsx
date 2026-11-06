@@ -29,7 +29,7 @@ export const ShowsEveryModelAndTheWorkedOutDemandLevel: Story = {
 export const AChosenDemandLevelSaysSo: Story = {
   args: { request: buildRequest({ levels: { demand: "demand-3" } }) },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText(/Chosen by hand from 1 requester/)).toBeInTheDocument();
+    await expect(within(canvasElement).getByText(/Chosen manually from 1 requester/)).toBeInTheDocument();
   },
 };
 

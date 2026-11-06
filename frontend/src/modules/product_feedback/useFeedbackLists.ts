@@ -19,10 +19,11 @@ export interface ListChoice {
 /**
  * @param projectId A project request's project; omit for an inbox request.
  * @param organizationId The organisation (used for an inbox request).
- * @returns The external systems the request's tier offers, in order (empty while loading).
+ * @returns The external systems the request's tier offers, in order, and whether the list has loaded (so "none
+ *   offered" is told apart from "not yet known"; the choices are empty until then).
  */
-export function useExternalSystemChoices(projectId?: string, organizationId?: string): ListChoice[] {
-  const [choices, setChoices] = useState<ListChoice[]>([]);
+export function useExternalSystemChoicesState(projectId?: string, organizationId?: string): { choices: ListChoice[]; loaded: boolean } {
+  const [state, setState] = useState<{ choices: ListChoice[]; loaded: boolean }>({ choices: [], loaded: false });
   useEffect(() => {
     let live = true;
     const load: Promise<ListChoice[]> = projectId
@@ -30,10 +31,15 @@ export function useExternalSystemChoices(projectId?: string, organizationId?: st
       : organizationId
         ? systemTypes.org.list(organizationId).then((rows) => rows.filter((e) => e.is_active).map((e) => ({ value: e.id, label: e.name })))
         : Promise.resolve([]);
-    load.then((rows) => { if (live) setChoices(rows); }).catch(() => { if (live) setChoices([]); });
+    load.then((choices) => { if (live) setState({ choices, loaded: true }); }).catch(() => { if (live) setState({ choices: [], loaded: true }); });
     return () => { live = false; };
   }, [projectId, organizationId]);
-  return choices;
+  return state;
+}
+
+/** The choices alone, for a picker that does not need to know whether the list has loaded (see `useExternalSystemChoicesState`). */
+export function useExternalSystemChoices(projectId?: string, organizationId?: string): ListChoice[] {
+  return useExternalSystemChoicesState(projectId, organizationId).choices;
 }
 
 /**

@@ -19,7 +19,7 @@ A request can carry any number of references, each with:
 
 The **External references** card on the request page adds, edits and removes them, and the create form has the same list. A reference is not a version of the request: it is changed on its own and audited, without creating a new version. A reference's system is stored by identity, so renaming a system renames it on every request.
 
-External references are a [sub-component](./overview.md#enabling-the-module). With it off, the card, the form section and the **External Systems** settings are hidden, and stored references are kept for when it is switched back on.
+External references are a [sub-component](./overview.md#enabling-the-module). With it off, the card, the form section and the **External Systems** settings are hidden, and stored references are kept for when it is switched back on. With it on but no enabled external system in the project (every one hidden or switched off), there is nothing to add a reference to, so the card and the form section are not shown either; a request that already has references still shows its card.
 
 ## Request channels
 

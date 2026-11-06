@@ -57,6 +57,7 @@ from app.modules.product_feedback.service import (
     PRODUCT_FEEDBACK_MODULE_KEY,
     REQUEST_ARTEFACT_TYPE,
     REQUEST_SUBCOMPONENT_KEY,
+    PainPointFilter,
     RecordOwner,
     filter_requests,
     list_organization_requests,
@@ -91,7 +92,7 @@ from app.services.scoring_custom import effective_scheme
 IMPORT_NOTE = "Edited by record import."
 
 #: The list's own filters, by the names its export takes.
-REQUEST_FILTERS = frozenset({"include_archived", "status", "open_only", "search", "scored", "missing_axis", "scoring_model"})
+REQUEST_FILTERS = frozenset({"include_archived", "status", "open_only", "search", "scored", "missing_axis", "scoring_model", "pain_points"})
 
 
 def _owner_ids(owner: Project | Organization) -> tuple[uuid.UUID, uuid.UUID | None]:
@@ -163,11 +164,15 @@ def _filtered(
     scored = filters.one("scored")
     if scored not in (None, "scored", "unscored"):
         raise HTTPException(422, "scored is not a valid value.")
+    pain_points = filters.one("pain_points")
+    if pain_points not in (None, "none", "some"):
+        raise HTTPException(422, "pain_points is not a valid value.")
     return filter_requests(
         db, holder, requests, status=enum_filter(filters, "status", EnhancementRequestStatus),
         open_only=bool(filters.flag("open_only")), search=filters.one("search"),
         scored=cast(ScoredFilter | None, scored),
         missing_axis=filters.one("missing_axis"), scoring_model=parse_model_keys(filters.many("scoring_model")),
+        pain_points=cast(PainPointFilter | None, pain_points),
     )
 
 

@@ -16,6 +16,10 @@ interface Mock {
   loop?: CloseTheLoop;
   referencesOn?: boolean;
   projectOrder?: string[] | null;
+  /** The project's enabled external systems (default: the fixtures'); `[]` is a project with none configured. */
+  systems?: typeof SYSTEM_CHOICES;
+  /** Whether Pain Points are on for the project (the "No Pain Point linked" prompt needs them). */
+  painPoints?: boolean;
 }
 
 const TRIAGER: FeedbackAccess = { can_submit: true, can_triage: true };
@@ -26,13 +30,14 @@ const REFERENCES_ON = [{
   project_override_enabled: null, default_enabled: true, default_project_enabled: true, has_org_override: false,
 }];
 
-function mockApis({ request = buildRequest(), access = TRIAGER, loop = buildLoop(), referencesOn = true, projectOrder = null }: Mock = {}) {
+function mockApis({ request = buildRequest(), access = TRIAGER, loop = buildLoop(), referencesOn = true, projectOrder = null, systems = SYSTEM_CHOICES, painPoints = true }: Mock = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     const route = path.split("?")[0];
     if (route.endsWith("/product_feedback/access")) return access;
     if (route.endsWith("/product_feedback/settings")) return { submission_policy: "members", request_page_sections: projectOrder };
+    if (route.endsWith("/context_strategy/subcomponents")) return [{ ...REFERENCES_ON[0], module_key: "context_strategy", subcomponent_key: "pain_point", effective_enabled: painPoints, enabled: painPoints }];
     if (route.endsWith("/subcomponents")) return referencesOn ? REFERENCES_ON : [{ ...REFERENCES_ON[0], effective_enabled: false, enabled: false }];
-    if (route.endsWith("/external-systems")) return SYSTEM_CHOICES.map((c, i) => ({ id: c.value, name: c.label, display_order: i, is_enabled: true, source: "org" }));
+    if (route.endsWith("/external-systems")) return systems.map((c, i) => ({ id: c.value, name: c.label, display_order: i, is_enabled: true, source: "org" }));
     if (route.endsWith("/request-channels")) return CHANNEL_CHOICES.map((c, i) => ({ id: c.value, name: c.label, display_order: i, is_enabled: true, source: "org" }));
     if (route.includes("/scoring-schemes/enhancement_request")) return buildRequestScheme();
     if (route.endsWith("/demand")) return buildDemand();
@@ -68,6 +73,16 @@ export const AWarningFlagsARequestWithNoPainPoint: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("heading", { name: /Export the list to Excel/ })).toBeInTheDocument();
     await expect(canvas.getByText("No Pain Point linked")).toHaveClass("badge--warning");
+  },
+};
+
+/** Where Pain Points are off the prompt is not shown: there is no Pain Point to link. */
+export const NoPainPointPromptWhenPainPointsAreOff: Story = {
+  beforeEach: () => mockApis({ painPoints: false }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("heading", { name: /Export the list to Excel/ })).toBeInTheDocument();
+    await waitFor(() => expect(canvas.queryByText("No Pain Point linked")).not.toBeInTheDocument());
   },
 };
 
@@ -214,6 +229,25 @@ export const ExternalReferencesAreHiddenWhileSwitchedOff: Story = {
     const canvas = within(canvasElement);
     await canvas.findByRole("region", { name: "Demand" });
     await expect(canvas.queryByRole("region", { name: "External references" })).not.toBeInTheDocument();
+  },
+};
+
+/** With no enabled external system there is nothing to add a reference to, so the card is not offered... */
+export const ExternalReferencesAreHiddenWithNoEnabledSystem: Story = {
+  beforeEach: () => mockApis({ systems: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("region", { name: "Demand" });
+    await expect(canvas.queryByRole("region", { name: "External references" })).not.toBeInTheDocument();
+  },
+};
+
+/** ...unless the request already has references, which stay readable. */
+export const ExistingReferencesStayVisibleWithNoEnabledSystem: Story = {
+  beforeEach: () => mockApis({ request: buildRequest({ external_refs: [buildExternalRef()] }), systems: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("region", { name: "External references" })).toBeInTheDocument();
   },
 };
 

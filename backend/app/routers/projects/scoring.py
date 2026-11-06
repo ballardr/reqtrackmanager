@@ -4,7 +4,7 @@ Module: routers.projects.scoring
 Project-level endpoints of the generic scoring-matrix mechanism: read a scheme's effective configuration for a project (levels
 are the org's; default model and bands resolve project → nearest ancestor
 → org → system), and set or clear the project's own default-model, band and
-per-cell rating overrides, plus the project's set of enabled models.
+per-cell rating overrides, plus the project's set of enabled models and its thresholds for a derived axis.
 
 Reads need project view-or-manage; writes need project-settings management
 (project managers/administrators, org admins). Every route 404s unless the
@@ -39,6 +39,7 @@ from app.schemas.scoring import (
     ScoringModelCreate,
     ScoringModelUpdate,
     ScoringSchemeOut,
+    ScoringThresholdsIn,
 )
 from app.services import scoring, scoring_custom
 from app.services.rbac import require_project_manage, require_project_view_or_manage
@@ -125,6 +126,26 @@ def set_project_scoring_bands(
     return scoring.build_scheme_config(db, project.organization_id, registered, project)
 
 
+@router.put("/{project_id}/scoring-schemes/{scheme_key}/axes/{axis_key}/thresholds", response_model=ScoringSchemeOut)
+def set_project_axis_thresholds(
+    project_id: UUID, scheme_key: str, axis_key: str, payload: ScoringThresholdsIn,
+    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Overrides the project's thresholds for a derived axis (where each level starts, e.g. how much weighted demand
+    reaches "Many"), or clears the override (`null`) so it inherits from its ancestors/org. Level names and weights
+    stay the organisation's."""
+    registered = _load_scheme(db, project_id, scheme_key)
+    scheme = _effective(db, project, registered).scheme
+    scoring.set_axis_thresholds(
+        db, project.organization_id, scheme, scoring.list_levels(db, project.organization_id, scheme.key), axis_key,
+        None if payload.thresholds is None else {lid: Decimal(str(v)) for lid, v in payload.thresholds.items()},
+        project_id=project.id, actor_id=current_user.id,
+    )
+    db.commit()
+    return scoring.build_scheme_config(db, project.organization_id, registered, project)
+
+
 @router.put("/{project_id}/scoring-schemes/{scheme_key}/models/{model_key}/cell-ratings", response_model=ScoringSchemeOut)
 def set_project_scoring_cell_ratings(
     project_id: UUID, scheme_key: str, model_key: str, payload: ScoringCellRatingsIn,
@@ -150,6 +171,7 @@ def _level_out(level) -> ScoringLevelOut:
     return ScoringLevelOut(
         id=level.id, name=level.name, description=level.description, weight=float(level.weight),
         threshold=None if level.threshold is None else float(level.threshold),
+        org_threshold=None if level.threshold is None else float(level.threshold),
     )
 
 
