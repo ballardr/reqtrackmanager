@@ -59,9 +59,11 @@ The same weighted demand can mean different things in different products: 20 wei
 An organisation administrator (or Organisation Feedback Triager) edits scoring at **Organisation admin → Request Scoring**, and a project administrator at **Project admin → Request Scoring**:
 
 - **Models shown**: which models are enabled and score every request side by side.
-- **Levels**: names, weights and guidance, and the Demand thresholds.
+- **Levels**: names, weights and guidance, and the Demand thresholds. Levels an administrator inherits are shown read-only in the same columns.
 - **Criteria**: add your own criteria and models. A model either multiplies criteria (with a divisor and an exponent for each) or takes a **weighted sum** (an importance percentage per criterion, with a "lower is better" option that inverts one). A weighted sum scales each criterion to its top level first, so the best possible score is always 100%.
 - **Hide and restore**: the built-in criteria and models can be hidden, never deleted.
+
+Each block on these pages folds, and each criterion's levels start folded with a count, so a long scheme stays short to scan; the open or folded state is remembered per person.
 
 A project's criteria are an **additive layer** over the organisation's, so a software, a hardware and a services team can each score differently without a copy of the whole scheme. A child project with none of its own shows its nearest ancestor's. The organisation inbox uses the organisation's models only, since a project's own model means nothing across projects.
 

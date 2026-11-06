@@ -10,7 +10,7 @@ Product Feedback contributes 34 tools to ReqTrackManager's [MCP server](../../ap
 
 | Category | Count | Covers |
 | --- | --- | --- |
-| Read | 13 | Listing and fetching requests (filters include status, open only, search, scored or unscored, and a missing criterion), versions, comments, the scoring scheme, the demand breakdown (paged), the close-the-loop view, open loops, merges, references, the external system and channel lists, and the project's submission setting. |
+| Read | 13 | Listing and fetching requests (filters include status, open only, search, scored or unscored, requests with or without a linked Pain Point, and a missing criterion), versions, comments, the scoring scheme, the demand breakdown (paged), the close-the-loop view, open loops, merges, references, the external system and channel lists, and the project's submission setting. |
 | Create / update / status | 3 | Creating a request, changing it, and moving it between statuses. Declining needs a reason. |
 | Merge | 2 | Merging a request into another, and undoing it. |
 | Close the loop | 1 | Marking requesters told, or withdrawing it. |
@@ -28,6 +28,7 @@ Requesters, Pain Points and Requirements are linked with the **core link tools**
 | "What are our most-requested enhancements?" | `product_feedback_get_demand_ranking_report` |
 | "Which requests have no Pain Point?" | `product_feedback_get_unlinked_requests_report` |
 | "Which requests are still unscored on Ease?" | `product_feedback_list_requests` (`missing_axis`) |
+| "Which open requests address no Pain Point?" | `product_feedback_list_requests` (`pain_points`) |
 | "Who asked for ENH-001, and how?" | `product_feedback_get_request_demand` |
 | "Merge ENH-004 into ENH-001." | `product_feedback_merge_request` |
 | "Who still needs to hear about the delivered requests?" | `product_feedback_list_open_loops` |
