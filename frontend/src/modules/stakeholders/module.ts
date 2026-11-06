@@ -52,6 +52,10 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  *   `ScoringSchemeEditor` (org) and `ProjectScoringSettings` (project), the
  *   same way Context & Strategy configures Pain Point scoring (configuration).
  */
+
+/** The Persona and Stakeholder settings share one expandable entry in the project and organisation admin menus. */
+const STAKEHOLDER_ADMIN_GROUP = { key: "stakeholders", label: "Personas and Stakeholders" };
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "stakeholders",
   artefactPaths: {
@@ -132,16 +136,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "stakeholders-persona-types",
       label: "Persona Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgPersonaTypesPanel, { orgId }),
     },
     {
       key: "stakeholders-stakeholder-types",
       label: "Stakeholder Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgStakeholderTypesPanel, { orgId }),
     },
     {
       key: "stakeholders-stakeholder-scoring",
       label: "Stakeholder Scoring",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: STAKEHOLDER_SCORING_SCHEME }),
     },
   ],
@@ -149,16 +156,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "stakeholders-persona-types",
       label: "Persona Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectPersonaTypesPanel, { projectId }),
     },
     {
       key: "stakeholders-stakeholder-types",
       label: "Stakeholder Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectStakeholderTypesPanel, { projectId }),
     },
     {
       key: "stakeholders-stakeholder-scoring",
       label: "Stakeholder Scoring",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ projectId }) =>
         createElement(ProjectScoringSettings, { projectId, schemeKey: STAKEHOLDER_SCORING_SCHEME }),
     },

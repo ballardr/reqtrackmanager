@@ -142,7 +142,7 @@ The page never fails on a missing persona.
 
 Levels belong to the organisation; a project can change only the default model, the rating bands and the cell ratings.
 
-| Setting | Organisation (**Org Management → Pain Point Scoring**) | Project (**Project Admin → Pain Point Scoring**) |
+| Setting | Organisation (**Org Management → Pain Points → Pain Point Scoring**) | Project (**Project Admin → Pain Points → Pain Point Scoring**) |
 | --- | --- | --- |
 | Levels per input (name, weight, guidance) | Edit, add, delete (at least two per input; deleting an in-use level asks where to move its scores) | Read-only |
 | Default model | Set, or reset to the module default | Override, or use the inherited value |

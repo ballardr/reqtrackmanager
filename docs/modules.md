@@ -2648,7 +2648,19 @@ that configures one sub-component names it in the optional `subComponent` field
 (on `OrgAdminSectionDef` and `ProjectAdminSectionDef`); the page leaves the
 section out while that sub-component is off for the organisation or project, so
 no one is offered settings for a feature they cannot use (Product Feedback's
-External Systems is the first). See
+External Systems is the first).
+
+A module with several sections groups them with the optional `group`
+(`{ key, label }`, on both definitions). Sections that declare the same group are
+one expandable entry in the menu with the sections as its sub-pages, at
+`/…/admin/:group/:section`; a section with no group, or the only visible section of
+its group, stays one entry at `/…/admin/:section`. The menu has two levels at most.
+A group key must differ from every core group key and every section key, and one
+group key carries one label (a story guards the installed modules).
+`frontend/src/modules/adminMenu.ts` builds the entries and resolves the address for
+both admin pages, so neither names a module. The address used before grouping
+(`/…/admin/<section>`) and a bare group address (`/…/admin/<group>`) redirect to the
+grouped page, so bookmarks keep working. See
 `frontend/src/modules/compliance/module.ts` for a real example
 (`OrgCompliancePanel`, the org-wide compliance dashboard — Compliance's own
 former second section, `ComplianceAdminPanel`, was retired in Phase 18, see

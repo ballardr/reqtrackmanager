@@ -1,19 +1,19 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 3 done (uncommitted), the rest not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 4 done (uncommitted), the rest not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-3 / 17 phases complete.
+4 / 17 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
 | 1 | mypy: remove the baseline, fix every finding | 1,042 findings (606 distinct keys) fixed, 14 existing `# type: ignore` replaced, baseline and `--update` removed; full-suite result in `docs/decisions.md` | [x] |
 | 2 | Storage alert investigation | Cause was SeaweedFS preallocation (already fixed); monitor hardened: restart-safe state, 2-failure threshold, admin email fixed; see `docs/decisions.md` | [x] |
 | 3 | Back link consistency + UI/UX consistency audit | Back link on all 21 `RecordHeader` pages, drawn by the header, guarded by `check_record_header_back.py`; not-found state on three core pages; findings register below | [x] |
-| 4 | Two-level admin navigation | Expandable left menu; settled with the user | [ ] |
+| 4 | Two-level admin navigation | `group` on module admin sections, expandable `ResourceMenu`, `/…/admin/:group/:section` with redirects; see `docs/decisions.md` | [x] |
 | 5 | Links panel: server-side "can create" | Reuses `RecordTableProvider.can_create`, no new hook | [ ] |
 | 6 | Pain Point submission policy (project setting) | Mirrors Product Feedback's `submission_policy`; settled with the user | [ ] |
 | 7 | Engagement outcome: create new | Reuses phase 5 | [ ] |

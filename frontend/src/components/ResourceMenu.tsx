@@ -1,4 +1,5 @@
-import { useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -8,14 +9,31 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 // where "mobile" starts rather than disagreeing at some widths.
 const MOBILE_BREAKPOINT_PX = 860;
 
+/** A sub-page listed under an expandable group. */
+export interface ResourceMenuChildDef {
+  key: string;
+  label: string;
+  /** Full route path of the sub-page, a real URL like a group's own. */
+  href: string;
+}
+
 export interface ResourceMenuGroupDef<K extends string> {
   key: K;
   label: string;
   /** Full route path this group's menu item links to — a real URL, not
    * client-only state, so a bookmark or browser back/forward lands on the
-   * same group. */
+   * same group. For a group with `children` it is the first sub-page's path. */
   href: string;
+  /** Sub-pages. A group with two or more is an expandable entry (a second level, never a third) whose header only
+   * expands and collapses; a group without them is a plain link. */
+  children?: ResourceMenuChildDef[];
 }
+
+/** One focusable row of the menu as currently shown: a plain group link, an expandable group's header, or a sub-page. */
+type VisibleRow =
+  | { id: string; kind: "link"; key: string; href: string }
+  | { id: string; kind: "header"; key: string }
+  | { id: string; kind: "child"; key: string; href: string };
 
 /**
  * A shared, accessible left-hand vertical menu of route-addressable
@@ -41,6 +59,12 @@ export interface ResourceMenuGroupDef<K extends string> {
  * unlike `Tabs` (menu strip only, panel wrapper left to the caller) — since
  * the two are always laid out together here and the caller has no reason
  * to place them independently.
+ *
+ * A group may carry `children` (sub-pages): it then renders as a disclosure button (`aria-expanded`) with its
+ * sub-pages as an indented list of links beneath it. The group holding the active page is open until the person
+ * collapses it, other groups start closed, and `active` may be a group key or a sub-page key. Arrow keys move through
+ * the rows currently shown (headers and the sub-pages of open groups); landing on a link navigates, landing on a
+ * header only moves focus. `Enter`/`Space` on a header (a native button) toggles it.
  *
  * When `groups.length <= 1` the menu strip itself (the `<nav>`/`<ul>` of
  * group links) is skipped entirely and `children` renders directly —
@@ -96,20 +120,64 @@ export function ResourceMenu<K extends string>({
   // Every menu link is always rendered, so the target of an arrow-key move
   // already exists in the DOM — a direct ref-array focus() call here is
   // synchronous and immediate, the same reasoning as Tabs' own buttonRefs.
-  const linkRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const rowRefs = useRef<Record<string, HTMLElement | null>>({});
   const navigate = useNavigate();
   const isNarrow = useNarrowViewport(MOBILE_BREAKPOINT_PX);
 
-  function handleKeyDown(e: KeyboardEvent<HTMLAnchorElement>, index: number) {
+  // The group holding the active page, whether `active` names the group or one of its sub-pages.
+  const activeGroupKey = groups.find((g) => g.key === active || g.children?.some((c) => c.key === active))?.key;
+  // A person's own expand/collapse choice per group; absent means "open only while it holds the active page". Choosing
+  // a new active page clears that group's override so navigating into it always shows it.
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [seenActiveGroup, setSeenActiveGroup] = useState(activeGroupKey);
+  if (seenActiveGroup !== activeGroupKey) {
+    setSeenActiveGroup(activeGroupKey);
+    if (activeGroupKey) {
+      setOverrides((current) => {
+        const next = { ...current };
+        delete next[activeGroupKey];
+        return next;
+      });
+    }
+  }
+  const isOpen = (g: ResourceMenuGroupDef<string>) => overrides[g.key] ?? g.key === activeGroupKey;
+
+  const rows: VisibleRow[] = groups.flatMap((g): VisibleRow[] => {
+    if (!g.children?.length) return [{ id: `g:${g.key}`, kind: "link", key: g.key, href: g.href }];
+    const header: VisibleRow = { id: `g:${g.key}`, kind: "header", key: g.key };
+    return isOpen(g)
+      ? [header, ...g.children.map((c): VisibleRow => ({ id: `c:${c.key}`, kind: "child", key: c.key, href: c.href }))]
+      : [header];
+  });
+
+  function handleKeyDown(e: KeyboardEvent<HTMLElement>, index: number) {
     let nextIndex: number | null = null;
-    if (e.key === "ArrowDown") nextIndex = (index + 1) % groups.length;
-    else if (e.key === "ArrowUp") nextIndex = (index - 1 + groups.length) % groups.length;
+    if (e.key === "ArrowDown") nextIndex = (index + 1) % rows.length;
+    else if (e.key === "ArrowUp") nextIndex = (index - 1 + rows.length) % rows.length;
     else if (e.key === "Home") nextIndex = 0;
-    else if (e.key === "End") nextIndex = groups.length - 1;
+    else if (e.key === "End") nextIndex = rows.length - 1;
     if (nextIndex === null) return;
     e.preventDefault();
-    navigate(groups[nextIndex].href);
-    linkRefs.current[nextIndex]?.focus();
+    const next = rows[nextIndex];
+    if (next.kind !== "header") navigate(next.href);
+    rowRefs.current[next.id]?.focus();
+  }
+
+  function renderLink(row: Extract<VisibleRow, { href: string }>, label: string, index: number) {
+    const isActive = active === row.key;
+    return (
+      <Link
+        ref={(el) => {
+          rowRefs.current[row.id] = el;
+        }}
+        to={row.href}
+        className={`nav-link${isActive ? " active" : ""}`}
+        aria-current={isActive ? "page" : undefined}
+        onKeyDown={(e) => handleKeyDown(e, index)}
+      >
+        {label}
+      </Link>
+    );
   }
 
   return (
@@ -143,34 +211,72 @@ export function ResourceMenu<K extends string>({
               aria-label={ariaLabel}
               value={active}
               onChange={(e) => {
-                const next = groups.find((g) => g.key === e.target.value);
+                const chosen = e.target.value;
+                const next =
+                  groups.find((g) => g.key === chosen) ?? groups.flatMap((g) => g.children ?? []).find((c) => c.key === chosen);
                 if (next) navigate(next.href);
               }}
             >
-              {groups.map((g) => (
-                <option key={g.key} value={g.key}>
-                  {g.label}
-                </option>
-              ))}
+              {groups.map((g) =>
+                g.children?.length ? (
+                  <optgroup key={g.key} label={g.label}>
+                    {g.children.map((c) => (
+                      <option key={c.key} value={c.key}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  <option key={g.key} value={g.key}>
+                    {g.label}
+                  </option>
+                ),
+              )}
             </select>
           ) : (
             <nav aria-label={ariaLabel} className="resource-menu-nav">
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-                {groups.map((g, i) => (
-                  <li key={g.key}>
-                    <Link
-                      ref={(el) => {
-                        linkRefs.current[i] = el;
-                      }}
-                      to={g.href}
-                      className={`nav-link${active === g.key ? " active" : ""}`}
-                      aria-current={active === g.key ? "page" : undefined}
-                      onKeyDown={(e) => handleKeyDown(e, i)}
-                    >
-                      {g.label}
-                    </Link>
-                  </li>
-                ))}
+                {groups.map((g) => {
+                  const rowIndex = rows.findIndex((r) => r.id === `g:${g.key}`);
+                  if (!g.children?.length) {
+                    return <li key={g.key}>{renderLink({ id: `g:${g.key}`, kind: "link", key: g.key, href: g.href }, g.label, rowIndex)}</li>;
+                  }
+                  const open = isOpen(g);
+                  const listId = `resource-menu-${g.key}`;
+                  return (
+                    <li key={g.key}>
+                      <button
+                        ref={(el) => {
+                          rowRefs.current[`g:${g.key}`] = el;
+                        }}
+                        type="button"
+                        className={`nav-link nav-link-button${g.key === activeGroupKey ? " nav-link-parent-active" : ""}`}
+                        aria-expanded={open}
+                        aria-controls={listId}
+                        onClick={() => setOverrides((current) => ({ ...current, [g.key]: !open }))}
+                        onKeyDown={(e) => handleKeyDown(e, rowIndex)}
+                      >
+                        <span className="nav-label">{g.label}</span>
+                        <span className="nav-link-button-chevron" aria-hidden="true">
+                          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </span>
+                      </button>
+                      {open && (
+                        <ul id={listId} className="nav-more-list" style={{ margin: 0, listStyle: "none" }}>
+                          {g.children.map((c) => (
+                            <li key={c.key}>
+                              {renderLink(
+                                { id: `c:${c.key}`, kind: "child", key: c.key, href: c.href },
+                                c.label,
+                                rows.findIndex((r) => r.id === `c:${c.key}`),
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </nav>
           )}

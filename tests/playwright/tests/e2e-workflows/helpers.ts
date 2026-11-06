@@ -190,9 +190,17 @@ export async function openProjectGroupPanel(page: Page, groupName: string) {
  * selected group is otherwise unreachable — unlike `CollapsibleSection`'s
  * own per-user collapse preference, group selection isn't persisted, so
  * this must run before every interaction with a section that isn't in the
- * page's default group.
+ * page's default group. `parentLabel` names the expandable group a sub-page sits under (its header is opened first).
  */
-export async function selectResourceMenuGroup(page: Page, groupLabel: string): Promise<void> {
+export async function selectResourceMenuGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
+  // A sub-page sits under an expandable group header: open that group first when the menu shows it closed. Below the
+  // mobile breakpoint the menu is a <select> with no header button, so there is nothing to open.
+  if (parentLabel) {
+    const header = page.getByRole("button", { name: parentLabel, exact: true });
+    const narrowMenu = page.locator("select").filter({ has: page.getByRole("option", { name: groupLabel, exact: true }) });
+    await expect(header.or(narrowMenu).first()).toBeAttached();
+    if ((await header.count()) > 0 && (await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  }
   const link = page.getByRole("link", { name: groupLabel, exact: true });
   // Below ResourceMenu's own mobile breakpoint (theme.css/useNarrowViewport,
   // 860px) the link list is replaced with a single <select> — same group
@@ -233,8 +241,8 @@ export async function selectResourceMenuGroup(page: Page, groupLabel: string): P
 
 /** `selectResourceMenuGroup` for `OrgAdminPage` — kept as its own name
  * since most call sites predate the generic helper above. */
-export async function selectOrgAdminGroup(page: Page, groupLabel: string): Promise<void> {
-  await selectResourceMenuGroup(page, groupLabel);
+export async function selectOrgAdminGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel, parentLabel);
 }
 
 /** Sets a module's (or, with `moduleName`, a sub-component's) org-level
@@ -285,8 +293,8 @@ export async function selectOrgOverviewGroup(page: Page, groupLabel: string): Pr
 /** `selectResourceMenuGroup` for `ProjectAdminPage`
  * (`/projects/:projectId/admin/:group?`, converted from `Tabs` — see
  * `docs/decisions.md`). */
-export async function selectProjectAdminGroup(page: Page, groupLabel: string): Promise<void> {
-  await selectResourceMenuGroup(page, groupLabel);
+export async function selectProjectAdminGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel, parentLabel);
 }
 
 /**

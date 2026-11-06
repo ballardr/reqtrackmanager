@@ -56,7 +56,7 @@ test.describe("Context & Strategy: Pain Point type definitions", () => {
 
     await test.step("the organisation writes a definition for Market", async () => {
       await page.goto("/orgs");
-      await selectOrgAdminGroup(page, "Pain Point Types");
+      await selectOrgAdminGroup(page, "Pain Point Types", "Pain Points");
       const box = definitionBox(page, "Pain Point type definition").first();
       await box.fill(orgText);
       await page.getByRole("button", { name: "Rename" }).first().click();
@@ -70,7 +70,7 @@ test.describe("Context & Strategy: Pain Point type definitions", () => {
 
     await test.step("the project replaces it for itself", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Pain Point Types");
+      await selectProjectAdminGroup(page, "Pain Point Types", "Pain Points");
       const box = definitionBox(page, "Project Pain Point type definition").first();
       await expect(box).toHaveValue(orgText);
       await box.fill(projectText);
@@ -84,7 +84,7 @@ test.describe("Context & Strategy: Pain Point type definitions", () => {
 
     await test.step("clearing the project's text brings the organisation's back", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Pain Point Types");
+      await selectProjectAdminGroup(page, "Pain Point Types", "Pain Points");
       const box = definitionBox(page, "Project Pain Point type definition").first();
       await box.fill("");
       await page.getByRole("button", { name: "Rename" }).first().click();

@@ -169,7 +169,7 @@ test.describe("Stakeholders & Personas: organisation Stakeholders, types and sco
 
     // --- A new org type, added in Org Management > Stakeholder Types.
     await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Stakeholder Types");
+    await selectOrgAdminGroup(page, "Stakeholder Types", "Personas and Stakeholders");
     await expect(page.locator(`input[value="Customer"]`)).toBeVisible();
     await expect(page.locator(`input[value="Regulator"]`)).toBeVisible();
     await page.getByPlaceholder("Stakeholder type name").fill(typeName);
@@ -178,7 +178,7 @@ test.describe("Stakeholders & Personas: organisation Stakeholders, types and sco
     await expect(page.locator(`input[value="${typeName}"]`)).toHaveCount(1);
 
     // --- Influence and Interest levels are configurable under Stakeholder Scoring.
-    await selectOrgAdminGroup(page, "Stakeholder Scoring");
+    await selectOrgAdminGroup(page, "Stakeholder Scoring", "Personas and Stakeholders");
     await expect(page.getByText("Influence", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Interest", { exact: true }).first()).toBeVisible();
 

@@ -94,6 +94,9 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
 /** Backend scoring-scheme key registered by `modules/context_strategy/scoring.py`. */
 const PAIN_POINT_SCORING_SCHEME = "pain_point";
 
+/** The Pain Point settings share one expandable entry in the project and organisation admin menus. */
+const PAIN_POINT_ADMIN_GROUP = { key: "pain-points", label: "Pain Points" };
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
   artefactPaths: {
@@ -205,11 +208,13 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "context-strategy-pain-point-types",
       label: "Pain Point Types",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgPainPointTypesPanel, { orgId }),
     },
     {
       key: "context-strategy-pain-point-scoring",
       label: "Pain Point Scoring",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: PAIN_POINT_SCORING_SCHEME }),
     },
   ],
@@ -217,11 +222,13 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "context-strategy-pain-point-types",
       label: "Pain Point Types",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectPainPointTypesPanel, { projectId }),
     },
     {
       key: "context-strategy-pain-point-scoring",
       label: "Pain Point Scoring",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ projectId }) =>
         createElement(ProjectScoringSettings, { projectId, schemeKey: PAIN_POINT_SCORING_SCHEME }),
     },

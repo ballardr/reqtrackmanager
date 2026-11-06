@@ -97,7 +97,7 @@ function ProtectedRoutes() {
         <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
         <Route path="/orgs/:orgId/admin/templates-reports" element={<OldOrgReportsRedirect />} />
-        <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
+        <Route path="/orgs/:orgId/admin/:group?/:section?" element={<OrgAdminPage />} />
         <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/orgs/:orgId/report-packs/:packId" element={<ReportPackPage />} />
         {/* "Organisation Overview" —
@@ -132,7 +132,7 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/actions" element={<ProjectActionsPage />} />
         <Route path="/projects/:projectId/actions/:actionId" element={<ActionDetailPage />} />
         <Route path="/projects/:projectId/files" element={<ProjectFilesPage />} />
-        <Route path="/projects/:projectId/admin/:group?" element={<ProjectAdminPage />} />
+        <Route path="/projects/:projectId/admin/:group?/:section?" element={<ProjectAdminPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
         <Route path="/projects/:projectId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/projects/:projectId/report-packs/:packId" element={<ReportPackPage />} />

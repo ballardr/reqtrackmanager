@@ -1,7 +1,7 @@
 import { useMutation } from "../hooks/useMutation";
 import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type {
@@ -64,6 +64,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { refreshProjectEnabledModules, useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import type { ProjectAdminSectionDef } from "../modules/types";
+import { buildAdminMenuEntries, resolveAdminSection } from "../modules/adminMenu";
 import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
@@ -160,7 +161,7 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
 export function ProjectAdminPage() {
   const run = useMutation();
   const strings = useStrings();
-  const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
+  const { projectId, group: groupParam, section: sectionParam } = useParams<{ projectId: string; group?: string; section?: string }>();
   const layoutApi = useMemo(() => (projectId ? reportLayoutApi({ kind: "project", id: projectId }) : null), [projectId]);
   const snippetScope = useMemo(() => ({ kind: "project" as const, id: projectId ?? "" }), [projectId]);
   const packApi = useMemo(() => (projectId ? reportPackApi({ kind: "project", id: projectId }) : null), [projectId]);
@@ -186,12 +187,15 @@ export function ProjectAdminPage() {
       return !section.subComponent || !subs || subs.some((s) => s.subcomponent_key === section.subComponent && s.effective_enabled);
     }))
     .filter((section) => {
-      if ((PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(section.key)) {
+      const coreKeys = PROJECT_ADMIN_GROUP_KEYS as readonly string[];
+      if (coreKeys.includes(section.key) || (section.group && coreKeys.includes(section.group.key))) {
         console.error(`Module-contributed project-admin section "${section.key}" collides with a core group key; ignoring it.`);
         return false;
       }
       return true;
     });
+  const adminBasePath = `/projects/${projectId}/admin`;
+  const moduleRoute = resolveAdminSection(moduleAdminSections, adminBasePath, groupParam, sectionParam);
   const [project, setProject] = useState<Project | null>(null);
   // This project's own
   // Modules tab: every registered module's effective whole-module state
@@ -1295,9 +1299,10 @@ export function ProjectAdminPage() {
   // including the later reversal from `Tabs` to `ResourceMenu` recorded
   // above `ProjectAdminGroupKey`, and the later "groups" -> "members"
   // + "groups" split recorded there too.
-  const activeGroup: ProjectAdminGroupKey =
-    (PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "") ||
-    moduleAdminSections.some((section) => section.key === groupParam)
+  // The active entry is a core group key or a module section key; the menu opens the group holding a section.
+  const activeGroup: ProjectAdminGroupKey = moduleRoute.section
+    ? moduleRoute.section.key
+    : (PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "")
       ? (groupParam as ProjectAdminGroupKey)
       : "overview";
 
@@ -1468,10 +1473,11 @@ export function ProjectAdminPage() {
     { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
     { key: "tags", label: strings.admin.tagsNav, href: `/projects/${projectId}/admin/tags` },
     { key: "modules", label: strings.admin.modulesNav, href: `/projects/${projectId}/admin/modules` },
-    ...moduleAdminSections.map((section) => ({
-      key: section.key, label: section.label, href: `/projects/${projectId}/admin/${section.key}`,
-    })),
+    ...buildAdminMenuEntries(moduleAdminSections, adminBasePath),
   ];
+
+  // An earlier or partial module address (`/admin/<section>`, `/admin/<group>`) is replaced by the current one.
+  if (moduleRoute.redirectTo) return <Navigate to={moduleRoute.redirectTo} replace />;
 
   return (
     <div className="stack">

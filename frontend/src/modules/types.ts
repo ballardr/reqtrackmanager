@@ -32,6 +32,14 @@ export interface TierAModuleRoute {
  * parent a piece of UI to mount with parent-owned data
  * (`ResourceMenuGroupDef`'s own `children`, `DirectoryColumn.render`,
  * `DefinitionList`'s `renderExtra`), rather than inventing a new shape. */
+export interface AdminSectionGroup {
+  /** Menu group key and the `:group` URL segment of every section that declares it. Must differ from every core group
+   * key and every section key. */
+  key: string;
+  /** Formal, user-visible name of the group (the module's own area, for example "Risk Management"). */
+  label: string;
+}
+
 export interface OrgAdminSectionDef {
   /** This section's `ResourceMenu` group key and `/orgs/:orgId/admin/:group`
    * route segment — must be unique across every installed module's
@@ -43,6 +51,10 @@ export interface OrgAdminSectionDef {
   /** The module's sub-component this section configures. The page leaves the section out while that sub-component is
    * switched off for the organisation, so no one is offered settings for a feature they cannot use. */
   subComponent?: string;
+  /** Sections that declare the same group are listed under one expandable menu entry, at
+   * `/orgs/:orgId/admin/:group/:section`. A section without a group, or the only visible section of its group, is one
+   * menu entry at one level. */
+  group?: AdminSectionGroup;
   render: (props: { orgId: string }) => ReactNode;
 }
 
@@ -58,6 +70,8 @@ export interface ProjectAdminSectionDef {
   /** The module's sub-component this section configures. The page leaves the section out while that sub-component is
    * effectively off for the project (its own switch, else the organisation's). */
   subComponent?: string;
+  /** As `OrgAdminSectionDef.group`, at `/projects/:projectId/admin/:group/:section`. */
+  group?: AdminSectionGroup;
   render: (props: { projectId: string }) => ReactNode;
 }
 

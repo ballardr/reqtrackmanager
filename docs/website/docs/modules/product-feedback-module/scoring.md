@@ -39,7 +39,7 @@ flowchart LR
 
 ## Demand thresholds per project
 
-The same weighted demand can mean different things in different products: 20 weighted requesters may be **Many** in a small product and only a few in a large one. A project administrator can therefore set the project's own thresholds for the Demand levels, at **Project admin → Request Scoring → Levels → Demand**. The level names and weights stay the organisation's, so a level means the same thing everywhere; only the point at which a project reaches it changes.
+The same weighted demand can mean different things in different products: 20 weighted requesters may be **Many** in a small product and only a few in a large one. A project administrator can therefore set the project's own thresholds for the Demand levels, at **Project admin → Product Feedback → Request Scoring → Levels → Demand**. The level names and weights stay the organisation's, so a level means the same thing everywhere; only the point at which a project reaches it changes.
 
 - The **Organisation** column keeps the organisation's values beside the project's **From (this project)** column.
 - A project sets a threshold for every level, and each must be above the one before. **Use inherited values** clears them.
@@ -56,7 +56,7 @@ The same weighted demand can mean different things in different products: 20 wei
 
 ## Administering the scheme
 
-An organisation administrator (or Organisation Feedback Triager) edits scoring at **Organisation admin → Request Scoring**, and a project administrator at **Project admin → Request Scoring**:
+An organisation administrator (or Organisation Feedback Triager) edits scoring at **Organisation admin → Product Feedback → Request Scoring**, and a project administrator at **Project admin → Product Feedback → Request Scoring**:
 
 - **Models shown**: which models are enabled and score every request side by side.
 - **Levels**: names, weights and guidance, and the Demand thresholds. Levels an administrator inherits are shown read-only in the same columns.

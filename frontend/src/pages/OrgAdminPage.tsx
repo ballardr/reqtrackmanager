@@ -1,7 +1,7 @@
 import { useMutation } from "../hooks/useMutation";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import { useAuth } from "../context/AuthContext";
@@ -91,6 +91,7 @@ import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { UserAutocomplete } from "../components/UserAutocomplete";
 import { useFederatedModules } from "../hooks/useFederatedModules";
+import { buildAdminMenuEntries, resolveAdminSection } from "../modules/adminMenu";
 import { installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
@@ -208,7 +209,7 @@ type UsersRow = { kind: "user"; user: OrgUser } | { kind: "invited"; invite: Org
 export function OrgAdminPage() {
   const run = useMutation();
   const strings = useStrings();
-  const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
+  const { orgId, group: groupParam, section: sectionParam } = useParams<{ orgId: string; group?: string; section?: string }>();
   const layoutApi = useMemo(() => (orgId ? reportLayoutApi({ kind: "organization", id: orgId }) : null), [orgId]);
   const snippetScope = useMemo(() => ({ kind: "organization" as const, id: orgId ?? "" }), [orgId]);
   const packApi = useMemo(() => (orgId ? reportPackApi({ kind: "organization", id: orgId }) : null), [orgId]);
@@ -2176,12 +2177,14 @@ export function OrgAdminPage() {
     // costs nothing to guard against, unlike a core group silently
     // becoming unreachable.
     .filter((section) => {
-      if (coreGroupKeys.includes(section.key)) {
+      if (coreGroupKeys.includes(section.key) || (section.group && coreGroupKeys.includes(section.group.key))) {
         console.error(`Module-contributed org-admin section "${section.key}" collides with a core group key; ignoring it.`);
         return false;
       }
       return true;
     });
+  const adminBasePath = `/orgs/${orgId}/admin`;
+  const moduleRoute = resolveAdminSection(moduleAdminSections, adminBasePath, groupParam, sectionParam);
 
   const orgAdminGroups: ResourceMenuGroupDef<OrgAdminGroupKey>[] = [
     { key: "overview", label: strings.orgAdmin.groupOverview, href: `/orgs/${orgId}/admin/overview` },
@@ -2196,15 +2199,14 @@ export function OrgAdminPage() {
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
     { key: "tags", label: strings.orgAdmin.groupTags, href: `/orgs/${orgId}/admin/tags` },
     { key: "role-management", label: strings.orgAdmin.groupRoleManagement, href: `/orgs/${orgId}/admin/role-management` },
-    ...moduleAdminSections.map((section) => ({
-      key: section.key,
-      label: section.label,
-      href: `/orgs/${orgId}/admin/${section.key}`,
-    })),
+    ...buildAdminMenuEntries(moduleAdminSections, adminBasePath),
   ];
-  const activeGroup: OrgAdminGroupKey = orgAdminGroups.some((g) => g.key === groupParam)
-    ? (groupParam as OrgAdminGroupKey)
-    : "overview";
+  // The active entry is a core group key or a module section key; the menu opens the group holding a section.
+  const activeGroup: OrgAdminGroupKey = moduleRoute.section
+    ? moduleRoute.section.key
+    : (CORE_ORG_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "")
+      ? (groupParam as OrgAdminGroupKey)
+      : "overview";
 
   // Users table row merge : pending
   // org-only invites are merged client-side into the same `DirectoryTable`
@@ -2438,6 +2440,9 @@ export function OrgAdminPage() {
       render: (g) => strings.admin.memberCount(g.member_user_ids.length),
     },
   ];
+
+  // An earlier or partial module address (`/admin/<section>`, `/admin/<group>`) is replaced by the current one.
+  if (moduleRoute.redirectTo) return <Navigate to={moduleRoute.redirectTo} replace />;
 
   return (
     <div className="stack">

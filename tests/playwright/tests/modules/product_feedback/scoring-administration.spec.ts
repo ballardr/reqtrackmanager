@@ -18,7 +18,7 @@ test.describe("Enhancement requests: scoring administration", () => {
   test("the organisation defines an axis and a model, chooses the models shown, and hides and restores one", async ({ page }) => {
     const { org, adminHeaders } = await setUpOrg(page, "FeedbackScoringOrg");
     await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Request Scoring");
+    await selectOrgAdminGroup(page, "Request Scoring", "Product Feedback");
 
     await test.step("a derived axis edits a threshold per level, a manual axis does not", async () => {
       await expandScoringLevels(page);
@@ -71,7 +71,7 @@ test.describe("Enhancement requests: scoring administration", () => {
       await page.getByRole("checkbox", { name: "Show Weighted value" }).click();
       await expect(page.getByText("Models shown saved.")).toBeVisible();
       await page.reload();
-      await selectOrgAdminGroup(page, "Request Scoring");
+      await selectOrgAdminGroup(page, "Request Scoring", "Product Feedback");
       await expect(page.getByRole("checkbox", { name: "Show Weighted value" })).not.toBeChecked();
     });
 
@@ -95,7 +95,7 @@ test.describe("Enhancement requests: scoring administration", () => {
   test("a project defines its own axis, edits its levels, and hides a model", async ({ page }) => {
     const { project } = await setUpOrg(page, "FeedbackScoringProject");
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Request Scoring");
+    await selectProjectAdminGroup(page, "Request Scoring", "Product Feedback");
 
     await test.step("defines an axis that belongs to this project", async () => {
       await page.getByRole("button", { name: "Add axis" }).click();
@@ -133,7 +133,7 @@ test.describe("Enhancement requests: scoring administration", () => {
   test("a project sets its own demand thresholds beside the organisation's, and goes back to them", async ({ page }) => {
     const { project, adminHeaders } = await setUpOrg(page, "FeedbackScoringThresholds");
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Request Scoring");
+    await selectProjectAdminGroup(page, "Request Scoring", "Product Feedback");
     await expandScoringLevels(page);
 
     const field = (level: string) => page.getByRole("spinbutton", { name: `Demand ${level} threshold in this project` });

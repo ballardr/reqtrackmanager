@@ -39,14 +39,14 @@ test.describe("Enhancement requests: organisation inbox and submission setting",
     const { project } = await setUpOrg(page, "FeedbackPolicy");
 
     await page.goto(`/projects/${project.id}/admin`);
-    await selectProjectAdminGroup(page, "Product Feedback");
+    await selectProjectAdminGroup(page, "Submission policy", "Product Feedback");
     const policy = page.getByLabel("Who can submit a request");
     await expect(policy).toHaveValue("members");
     await policy.selectOption("triagers");
     await expect(page.getByText("Submission setting saved.")).toBeVisible();
 
     await page.reload();
-    await selectProjectAdminGroup(page, "Product Feedback");
+    await selectProjectAdminGroup(page, "Submission policy", "Product Feedback");
     await expect(page.getByLabel("Who can submit a request")).toHaveValue("triagers");
   });
 });

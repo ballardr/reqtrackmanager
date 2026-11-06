@@ -68,7 +68,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
 
     await test.step("org: seeded levels, add a level, set the default model and bands", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Pain Point Scoring");
+      await selectOrgAdminGroup(page, "Pain Point Scoring", "Pain Points");
       await expandScoringLevels(page);
       await expect(inputWithValue(page, "Blocker")).toBeVisible();
       await expect(inputWithValue(page, "Constant")).toBeVisible();
@@ -94,7 +94,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
 
     await test.step("child project inherits from the org, then from its parent's override", async () => {
       await page.goto(`/projects/${child.id}/admin`);
-      await selectProjectAdminGroup(page, "Pain Point Scoring");
+      await selectProjectAdminGroup(page, "Pain Point Scoring", "Pain Points");
       const defaultModel = section(page, "Default model");
       await expect(defaultModel.getByRole("combobox", { name: "Default model" })).toHaveValue("sxf");
       await expect(defaultModel.getByText("Inherited from organisation")).toBeVisible();
@@ -145,7 +145,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
 
     await test.step("org: pin Blocker x Rare to Critical, which its score alone would not earn", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Pain Point Scoring");
+      await selectOrgAdminGroup(page, "Pain Point Scoring", "Pain Points");
       const bands = section(page, "Rating bands");
       await bands.getByRole("combobox", { name: "Model" }).selectOption({ label: "Severity × Frequency" });
       // A cell's text includes its picker options, so check its accessible name (which names the band).
@@ -159,7 +159,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
 
     await test.step("project: inherits the org's set, overrides it, then returns to inheriting", async () => {
       await page.goto(`/projects/${child.id}/admin`);
-      await selectProjectAdminGroup(page, "Pain Point Scoring");
+      await selectProjectAdminGroup(page, "Pain Point Scoring", "Pain Points");
       const bands = section(page, "Rating bands");
       await bands.getByRole("combobox", { name: "Model" }).selectOption({ label: "Severity × Frequency" });
       await expect(bands.getByRole("cell", { name: /Severity Blocker, Frequency Rare: Critical/ })).toBeVisible();
@@ -177,7 +177,7 @@ test.describe("Context & Strategy: Pain Point scoring configuration", () => {
 
     await test.step("org: clearing the set returns the cell to its threshold band", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Pain Point Scoring");
+      await selectOrgAdminGroup(page, "Pain Point Scoring", "Pain Points");
       const bands = section(page, "Rating bands");
       await bands.getByRole("combobox", { name: "Model" }).selectOption({ label: "Severity × Frequency" });
       await bands.getByRole("button", { name: "Reset to module default" }).last().click();

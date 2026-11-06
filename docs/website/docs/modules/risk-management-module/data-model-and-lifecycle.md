@@ -32,8 +32,8 @@ Every change, including every status change and review date change, creates a ne
 
 A **Risk type** categorises a Risk. An organisation starts with twelve: Safety, Technical, Reliability, Performance, Security, Compliance, Operational, Schedule, Cost, Supply chain, Integration and Environmental.
 
-- A **Risk Type Admin** edits the organisation's list under **Organisation admin → Risk Types**.
-- A project can rename, reorder or disable types for itself, add its own, and hide an organisation type it does not want, under **Project admin → Risk Types**. Hiding stops the type being offered in that project only; risks that already use it keep it, and **Add organisation defaults** shows hidden types again. A [child project](../../concepts/organisations-and-projects.md) sees the organisation's list, the same as any other project, rather than inheriting its parent's customisations.
+- A **Risk Type Admin** edits the organisation's list under **Organisation admin → Risk Management → Risk Types**.
+- A project can rename, reorder or disable types for itself, add its own, and hide an organisation type it does not want, under **Project admin → Risk Management → Risk Types**. Hiding stops the type being offered in that project only; risks that already use it keep it, and **Add organisation defaults** shows hidden types again. A [child project](../../concepts/organisations-and-projects.md) sees the organisation's list, the same as any other project, rather than inheriting its parent's customisations.
 
 ## Lifecycle
 

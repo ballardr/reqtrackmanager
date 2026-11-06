@@ -110,7 +110,7 @@ test.describe("Stakeholders & Personas: organisation Personas and types", () => 
 
     // --- A new org type, added in Org Management > Persona Types.
     await page.goto(`/orgs/${org.id}/admin`);
-    await selectOrgAdminGroup(page, "Persona Types");
+    await selectOrgAdminGroup(page, "Persona Types", "Personas and Stakeholders");
     await expect(page.locator(`input[value="Primary"]`)).toBeVisible();
     await expect(page.locator(`input[value="Secondary"]`)).toBeVisible();
     await expect(page.locator(`input[value="Negative"]`)).toBeVisible();

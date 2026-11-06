@@ -3486,3 +3486,9 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .choice-buttons .btn[aria-checked="true"] {
   font-weight: 700;
 }
+
+/* ResourceMenu: the expandable group header that holds the active sub-page keeps a stronger label so the person can
+   see which group they are in while it is collapsed. */
+.nav-link-parent-active {
+  font-weight: 600;
+}
