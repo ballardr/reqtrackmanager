@@ -128,6 +128,7 @@ from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.files import read_file
 from app.services.invites import create_pending_invite
+from app.services.lookups import present
 from app.services.org_membership import external_account_refusal, holds_org_role
 from app.services.project_export import (
     PROJECT_BUNDLE_FORMAT_VERSION,
@@ -267,7 +268,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         "logo_content_type": logo_asset.content_type if logo_asset else None,
         "login_background_file_ref": f"{background_asset.id}_{background_asset.filename}" if background_asset else None,
         "login_background_content_type": background_asset.content_type if background_asset else None,
-        "default_template_project_ref": project_ref_by_id.get(org.default_template_project_id),
+        "default_template_project_ref": (project_ref_by_id.get(org.default_template_project_id) if org.default_template_project_id else None),
         "report_look": report_look, "members": members_json, "org_groups": org_groups_json,
         **module_bundle_json,
     }
@@ -496,11 +497,11 @@ def _import_org_groups(
                 existing_idp_synced_names.add(idp_synced_group_name)
         elif merge_by_name:
             existing_member_ids = set(
-                db.scalars(
+                present(db.scalars(
                     select(OrgGroupMember.user_id).where(
                         OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id.is_not(None)
                     )
-                ).all()
+                ).all())
             )
         for email in g.get("member_emails", []):
             existing = find_user(email)
@@ -518,11 +519,11 @@ def _import_org_groups(
     for g in data.get("org_groups", []):
         group = groups_by_bundle_name[g["name"].strip().lower()]
         existing_nested_ids: set[UUID] = set(
-            db.scalars(
+            present(db.scalars(
                 select(OrgGroupMember.member_org_group_id).where(
                     OrgGroupMember.org_group_id == group.id, OrgGroupMember.member_org_group_id.is_not(None)
                 )
-            ).all()
+            ).all())
         )
         for nested_name in g.get("nested_group_names", []):
             child = groups_by_bundle_name.get(nested_name.strip().lower())

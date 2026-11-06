@@ -41,6 +41,7 @@ from app.modules.stakeholders.schemas import (
     StakeholderGroupUpdate,
 )
 from app.schemas.project import MoveDirection
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
@@ -84,7 +85,7 @@ def list_groups(
         return tag_filter.keep(db, pid, GROUP_ARTEFACT_TYPE, gsh.list_groups(db, _ctx(db, pid)))
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, GROUP_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, GROUP_ARTEFACT_TYPE, rows_for,
         gate=("stakeholders", "stakeholder"),
     )
 

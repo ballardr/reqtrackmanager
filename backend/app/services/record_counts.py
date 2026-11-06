@@ -24,6 +24,7 @@ Dependencies: `modules.registry`, `services.project_scope`, `services.rbac`, `se
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
@@ -54,6 +55,11 @@ class RecordTypeCount:
     type: str
     label: str
     count: int
+
+
+def _counter(db: Session, user: User, provider: RecordTableProvider) -> Callable[[uuid.UUID], int]:
+    """The per-project count function for one record type, bound to its provider."""
+    return lambda project_id: _own_count(db, user, provider, project_id)
 
 
 def _own_count(db: Session, user: User, provider: RecordTableProvider, project_id: uuid.UUID) -> int:
@@ -90,7 +96,7 @@ def count_records_by_type(db: Session, user: User, project: Project, project_sco
         if not permission_satisfied(held, encode_permission(artefact_type, "view")):
             continue
         total = project_scope.total(
-            db, project, user.id, artefact_type, lambda pid, p=provider: _own_count(db, user, p, pid), gate=provider.gate,
+            db, project, user.id, artefact_type, _counter(db, user, provider), gate=provider.gate,
         )
         if total > 0:
             counts.append(RecordTypeCount(type=artefact_type, label=provider.label, count=total))

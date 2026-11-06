@@ -38,7 +38,7 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, TypedDict
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -109,6 +109,13 @@ PAIN_POINT_SCORED_PER_PERSONA = "This Pain Point is scored per persona; edit its
 OPEN_QUESTION_LOCKED = "This Open Question has reached a terminal outcome; its content can no longer be edited."
 
 
+class _AuditPlace(TypedDict, total=False):
+    """The audit-event keyword that places a record (`log_event`'s `project_id` or `organization_id`)."""
+
+    project_id: uuid.UUID
+    organization_id: uuid.UUID
+
+
 @dataclass(frozen=True)
 class RecordOwner:
     """Who owns a record being created or edited: a project, or (without `project_id`) the organisation itself.
@@ -131,7 +138,7 @@ class RecordOwner:
         return self.project_id is not None
 
     @property
-    def audit(self) -> dict[str, uuid.UUID]:
+    def audit(self) -> _AuditPlace:
         """The audit-event field that places the record: its project, or its organisation."""
         return {"project_id": self.project_id} if self.project_id is not None else {"organization_id": self.organization_id}
 

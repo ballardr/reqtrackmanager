@@ -49,6 +49,7 @@ from tests.conftest import (
     create_project_group,
     login,
 )
+from tests.db_helpers import must_get
 
 TODAY = date.today()
 PASSWORD = "Password123!"
@@ -559,11 +560,11 @@ def test_migration_backfills_existing_rows_to_user(client, admin_token, org_id):
         command.upgrade(build_alembic_config(), "head")
 
     with SessionLocal() as db:
-        review = db.get(ComplianceReview, legacy_review)
+        review = must_get(db, ComplianceReview, legacy_review)
         assert (review.owner_type, str(review.owner_id)) == ("user", me)
-        other = db.get(ComplianceReview, uuid.UUID(unowned["id"]))
+        other = must_get(db, ComplianceReview, uuid.UUID(unowned["id"]))
         assert other.owner_type is None and other.owner_id is None
-        owned_standard = db.get(ComplianceStandard, uuid.UUID(standard["id"]))
+        owned_standard = must_get(db, ComplianceStandard, uuid.UUID(standard["id"]))
         assert owned_standard.owner_type == "user" and str(owned_standard.owner_id) == me
     resp = client.get(
         _assessment_url(project["id"], assignment["id"], pcr_id, assessment_id), headers=auth_headers(admin_token),

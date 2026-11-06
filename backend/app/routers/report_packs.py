@@ -228,10 +228,10 @@ def _guard_pack(call: Callable[[], T], *, file_run: bool = False) -> T:
 
 def _preview_out(run: report_pack_run.PackRun) -> ReportPackPreviewOut:
     entries = [
-        ReportPackPreviewEntryOut(
-            position=e.index + 1, kind=e.kind, title=e.title, format=e.format, status=e.status,  # type: ignore[arg-type]
+        ReportPackPreviewEntryOut.model_validate(dict(
+            position=e.index + 1, kind=e.kind, title=e.title, format=e.format, status=e.status,
             reason=e.reason, records=e.records, warnings=e.warnings,
-        )
+        ))
         for e in run.entries
     ]
     return ReportPackPreviewOut(
@@ -438,12 +438,12 @@ def _set_out(
     db: Session, version: ReportPackVersion, item: report_pack_sets.EffectiveSet, project_ids: list[UUID], *,
     editable: bool, overridable: bool,
 ) -> ReportPackSetOut:
-    return ReportPackSetOut(
-        id=item.row.id, name=item.row.name, origin=item.origin,  # type: ignore[arg-type]
+    return ReportPackSetOut.model_validate(dict(
+        id=item.row.id, name=item.row.name, origin=item.origin,
         project_id=item.row.project_id, base=item.base, override=item.own_override, overridden_by=item.overridden_by,
         effective=item.effective, editable=editable, overridable=overridable,
         warnings=report_pack_sets.stale_warnings(db, version, item.effective, project_ids),
-    )
+    ))
 
 
 def _plain(row: ReportPackVariableSet) -> report_pack_sets.EffectiveSet:

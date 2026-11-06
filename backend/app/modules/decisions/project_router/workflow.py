@@ -57,6 +57,7 @@ from app.modules.decisions.service import (
     reject_decision,
     submit_decision_for_review,
 )
+from app.services.lookups import project_or_404
 from app.services.permissions import encode_permission
 from app.services.principals import is_principal_member, principal_ref
 from app.services.rbac import get_effective_permissions, permission_satisfied, require_ai_approvals_enabled
@@ -132,7 +133,7 @@ def propose_decision_endpoint(
     project_id: UUID, decision_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_owner_of_decision_or_role(db, current_user, project, decision)
     _apply_value_error_as_conflict(propose_decision, db, decision, current_user.id)
@@ -146,7 +147,7 @@ def submit_decision_for_review_endpoint(
     project_id: UUID, decision_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_owner_of_decision_or_role(db, current_user, project, decision)
     _apply_value_error_as_conflict(submit_decision_for_review, db, decision, current_user.id)
@@ -181,7 +182,7 @@ def approve_decision_endpoint(
     this project and its organisation to both have explicitly enabled AI
     approval (`require_ai_approvals_enabled`); a plain UI/API call is
     unaffected by that flag either way."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     decision = _get_decision_in_project_for_update(db, project_id, decision_id)
@@ -215,7 +216,7 @@ def reject_decision_endpoint(
     reached through the MCP server."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to reject a Decision.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     decision = _get_decision_in_project_for_update(db, project_id, decision_id)

@@ -40,7 +40,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -50,6 +50,7 @@ from app.models.project import ProjectGroupMember
 from app.models.user import User
 from app.security import hash_pat
 from app.services.audit import log_event
+from app.services.lookups import present
 from app.services.org_membership import assert_may_add_account, belongs_elsewhere, remove_member_from_organization
 from app.services.rbac import get_effective_org_roles
 
@@ -485,7 +486,7 @@ def _add_group_member(db: Session, org: Organization, group: OrgGroup, user_id: 
 
 def _remove_group_member(db: Session, group: OrgGroup, user_id: UUID) -> None:
     db.execute(
-        OrgGroupMember.__table__.delete().where(
+        delete(OrgGroupMember).where(
             OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id == user_id
         )
     )
@@ -509,11 +510,13 @@ def replace_group(
             if isinstance(m, dict) and (parsed := _parse_uuid(m.get("value"))) is not None
         }
         current = set(
-            db.scalars(
-                select(OrgGroupMember.user_id).where(
-                    OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id.is_not(None)
-                )
-            ).all()
+            present(
+                db.scalars(
+                    select(OrgGroupMember.user_id).where(
+                        OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id.is_not(None)
+                    )
+                ).all()
+            )
         )
         for user_id in desired - current:
             _add_group_member(db, org, group, user_id)
@@ -595,8 +598,8 @@ def delete_group(group_id: UUID, org: Organization = Depends(require_scim_org), 
     was_nested_inside_org_group_ids = list(
         db.scalars(select(OrgGroupMember.org_group_id).where(OrgGroupMember.member_org_group_id == group.id)).all()
     )
-    db.execute(OrgGroupMember.__table__.delete().where(OrgGroupMember.org_group_id == group.id))
-    db.execute(OrgGroupMember.__table__.delete().where(OrgGroupMember.member_org_group_id == group.id))
+    db.execute(delete(OrgGroupMember).where(OrgGroupMember.org_group_id == group.id))
+    db.execute(delete(OrgGroupMember).where(OrgGroupMember.member_org_group_id == group.id))
     log_event(
         db, entity_type="org_group", entity_id=group.id, action="scim_deleted", actor_id=None, organization_id=org.id,
         detail={

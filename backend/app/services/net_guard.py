@@ -43,5 +43,5 @@ def assert_public_host(hostname: str) -> None:
     except socket.gaierror as exc:
         raise ValueError(f"Could not resolve host {hostname!r}.") from exc
     for _family, _type, _proto, _canon, sockaddr in infos:
-        if not ipaddress.ip_address(sockaddr[0].split("%", 1)[0]).is_global:
+        if not ipaddress.ip_address(str(sockaddr[0]).split("%", 1)[0]).is_global:
             raise ValueError(f"Host {hostname!r} resolves to a non-public address, which is not permitted here.")

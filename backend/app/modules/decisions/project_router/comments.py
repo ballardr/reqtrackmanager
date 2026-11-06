@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.file import FileAsset
-from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions.models import DecisionComment, DecisionCommentFile
 from app.modules.decisions.project_router._shared import _get_decision_in_project, _require_view
@@ -26,6 +25,7 @@ from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.lookups import project_or_404
 from app.services.module_attachments import comments_out
 
 router = APIRouter(tags=["decisions-comments"])
@@ -101,7 +101,7 @@ async def upload_decision_comment_attachment(
     exactly: author-only, never subject to the Decision's own content lock
     (a comment thread isn't governed content, same reasoning as that
     endpoint's own docstring)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     _get_decision_in_project(db, project_id, decision_id)
     comment = db.get(DecisionComment, comment_id)
     if comment is None or comment.decision_id != decision_id:

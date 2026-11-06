@@ -407,13 +407,13 @@ def import_project_data(
                     f"({t.get('link_type_forward_name')!r}) skipped — the requirement or link type is not available here."
                 )
                 continue
-            ends = (
-                {"source_type": RISK_ARTEFACT_TYPE, "source_id": risk.id, "target_type": _REQUIREMENT, "target_id": requirement_id}
-                if t["risk_is_source"] else
-                {"source_type": _REQUIREMENT, "source_id": requirement_id, "target_type": RISK_ARTEFACT_TYPE, "target_id": risk.id}
+            source_type, source_id, target_type, target_id = (
+                (RISK_ARTEFACT_TYPE, risk.id, _REQUIREMENT, requirement_id) if t["risk_is_source"]
+                else (_REQUIREMENT, requirement_id, RISK_ARTEFACT_TYPE, risk.id)
             )
             link: ArtefactLink = create_link(
-                db, **ends, link_type_id=link_type_id, project_id=project.id, enforce_rules=False,  # replaying existing data
+                db, source_type=source_type, source_id=source_id, target_type=target_type, target_id=target_id,
+                link_type_id=link_type_id, project_id=project.id, enforce_rules=False,  # replaying existing data
                 created_by=users.resolve(t.get("created_by_email"), required=False, context=f"Risk {code} link creator") or current_user.id,
             )
             verdict = t.get("verdict")

@@ -770,8 +770,8 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
         ids.update(db.scalars(select(model.id).where(
             or_(model.organization_id == organization_id, model.project_id.in_(project_ids))
         )).all())
-    for model in (PainPoint, OpenQuestion):
-        ids.update(db.scalars(select(model.id).where(model.project_id.in_(project_ids))).all())
+    for project_only_model in (PainPoint, OpenQuestion):
+        ids.update(db.scalars(select(project_only_model.id).where(project_only_model.project_id.in_(project_ids))).all())
     return ids
 
 

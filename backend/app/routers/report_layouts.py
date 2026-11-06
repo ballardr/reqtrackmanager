@@ -346,7 +346,7 @@ def _apply_snippet(
     )
 
 
-def _draft(body: ReportLayoutPreviewRequest) -> tuple[dict[str, Any] | None, ReportLayoutPreviewOut | None]:
+def _draft(body: ReportLayoutPreviewRequest | ReportLayoutVariablesRequest) -> tuple[dict[str, Any] | None, ReportLayoutPreviewOut | None]:
     """The tree to preview: the given one, or the text's. A draft with problems answers `(None, <not ok outcome>)`.
 
     Raises:
@@ -398,7 +398,7 @@ def _draft_variables(
     db: Session, body: ReportLayoutVariablesRequest, project_ids: list[UUID],
 ) -> ReportLayoutDraftVariablesOut:
     """The run form of a draft over the given projects (its variables, defaults and current options)."""
-    tree, failed = _draft(body)  # type: ignore[arg-type]  # only .text and .tree are read
+    tree, failed = _draft(body)
     if failed is not None or tree is None:
         assert failed is not None
         return ReportLayoutDraftVariablesOut(ok=False, errors=failed.errors)

@@ -438,11 +438,11 @@ def _matrix_point(ctx: ScoringContext, summary: PainPointScoringSummary) -> Matr
     for e in summary.entries:
         if e.target_status is TargetStatus.INACTIVE:
             continue
-        sev = ctx.levels_by_id.get(e.row.severity_level_id)
-        freq = ctx.levels_by_id.get(e.row.frequency_level_id)
+        sev = ctx.levels_by_id.get(e.row.severity_level_id) if e.row.severity_level_id else None
+        freq = ctx.levels_by_id.get(e.row.frequency_level_id) if e.row.frequency_level_id else None
         if sev is None or freq is None:
             continue
-        conf = ctx.levels_by_id.get(e.row.confidence_level_id)
+        conf = ctx.levels_by_id.get(e.row.confidence_level_id) if e.row.confidence_level_id else None
         point = MatrixPoint(
             sev.name, float(sev.weight), freq.name, float(freq.weight),
             conf.name if conf else None, float(conf.weight) if conf else None,
@@ -569,7 +569,8 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
     ])
     ranking, unscored, blockers, intentional, breakdown, matrix = [], [], [], [], [], []
     ranking_items, unscored_items, blocker_items, intentional_items = [], [], [], []
-    breakdown_tones, matrix_tones = [], []
+    breakdown_tones: list[list[str | None]] = []
+    matrix_tones: list[list[str | None]] = []
     open_count = scored = 0
     for group in groups:
         fixable = [i for i in group.items if not i.is_intentional]
@@ -587,7 +588,7 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
                  "Yes" if p.is_blocker else ""]
                 for p in i.personas
             ]
-            breakdown_tones += [[None] * 9 + [p.band_tone, None] for p in i.personas]
+            breakdown_tones += [[*([None] * 9), p.band_tone, None] for p in i.personas]
         open_count += len(fixable)
         scored += len(ranked)
         group_rows, group_tones = _matrix_rows(group, [i for i in fixable if i.matrix is not None])
@@ -1113,7 +1114,7 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
             continue
         overdue = v.target_date is not None and v.target_date < req.today and v.status is not FutureStateStatus.ACTIVE
         items.append({
-            "id": s.id, "project_id": s.project_id, "project_name": names[s.project_id], "title": v.title,
+            "id": s.id, "project_id": s.project_id, "project_name": names.get(s.project_id, "") if s.project_id else "Organisation", "title": v.title,
             "code": _code(req, s), "tags": state_tags.get(s.id, ""),
             "status": v.status.value, "target_date": v.target_date, "is_overdue": overdue,
             "has_success_measures": bool(v.success_measures.strip()),
@@ -1264,7 +1265,7 @@ def collect_change_history(db: Session, req: ReportContext) -> ReportResult:
         f"Active items not revised in {req.params["stale_months"]} months are listed as stale."
         + (f" History from {req.params["since"].isoformat()}." if req.params["since"] else ""),
     ])
-    kinds = [
+    kinds: list[tuple[str, str, Any, Any, str, str, Any, Any]] = [  # (type, label, root model, version model, ..., org scope, active status)
         ("strategy", "Strategy", Strategy, StrategyVersion, "strategy_id", "title", StrategyScope.ORGANIZATION, StrategyStatus.ACTIVE),
         ("future_state", "Future State", FutureState, FutureStateVersion, "future_state_id", "title",
          FutureStateScope.ORGANIZATION, FutureStateStatus.ACTIVE),

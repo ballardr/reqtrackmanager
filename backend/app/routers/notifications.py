@@ -13,7 +13,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -90,7 +90,7 @@ def mark_read(notification_id: UUID, current_user: User = Depends(get_current_us
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT)
 def mark_all_read(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     db.execute(
-        Notification.__table__.update()
+        update(Notification)
         .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
         .values(read_at=datetime.now(UTC))
     )

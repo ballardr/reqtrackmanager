@@ -222,6 +222,12 @@ def build_pdf(story: list, *, footer_text: str | None = None, pagesize=A4, **doc
 _TONED_STYLES: dict[tuple[int, str], tuple[ParagraphStyle, ParagraphStyle]] = {}
 
 
+class TonedParagraph(Paragraph):
+    """A table-cell paragraph that `styled_table` paints with `tone_fill` as the cell background."""
+
+    tone_fill: colors.Color
+
+
 def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None, markup: str | None = None) -> Paragraph:
     """A table-cell paragraph whose cell `styled_table` fills with the tone's colour.
 
@@ -245,8 +251,8 @@ def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None, markup: 
     if cached is None:
         toned = ParagraphStyle(f"{style.name}_{tone}", parent=style, textColor=colors.HexColor(f"#{text_on(TONE_FILL[tone])}"))
         cached = _TONED_STYLES[(id(style), tone)] = (style, toned)  # holds `style` so its id is never reused
-    paragraph = Paragraph(body, cached[1])
-    paragraph.tone_fill = colors.HexColor(f"#{TONE_FILL[tone]}")  # type: ignore[attr-defined]
+    paragraph = TonedParagraph(body, cached[1])
+    paragraph.tone_fill = colors.HexColor(f"#{TONE_FILL[tone]}")
     return paragraph
 
 
@@ -331,7 +337,7 @@ def styled_table(
         ]))
     fills = [
         ("BACKGROUND", (c, r), (c, r), cell.tone_fill)
-        for r, row in enumerate(data) for c, cell in enumerate(row) if getattr(cell, "tone_fill", None) is not None
+        for r, row in enumerate(data) for c, cell in enumerate(row) if isinstance(cell, TonedParagraph)
     ]
     if fills:
         table.setStyle(TableStyle(fills))  # after the zebra rows, so a toned cell overrides its stripe

@@ -21,6 +21,7 @@ from app.modules.context_strategy.tests.test_context_strategy_pain_point_scoring
     _setup,
 )
 from tests.conftest import auth_headers, create_org_user, login
+from tests.db_helpers import must_scalar
 
 
 def _create(client, token, project_id, **extra):
@@ -33,7 +34,7 @@ def _create(client, token, project_id, **extra):
 
 def _count(project_id) -> int:
     with SessionLocal() as db:
-        return db.scalar(select(func.count()).select_from(PainPoint).where(PainPoint.project_id == project_id))
+        return must_scalar(db, select(func.count()).select_from(PainPoint).where(PainPoint.project_id == project_id))
 
 
 def test_create_persists_all_persona_scores(client, admin_token):

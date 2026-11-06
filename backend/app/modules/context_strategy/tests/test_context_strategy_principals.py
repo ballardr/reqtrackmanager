@@ -47,6 +47,7 @@ from tests.conftest import (
     create_project,
     create_project_group,
 )
+from tests.db_helpers import must_get
 
 
 def _user(user_id) -> dict:
@@ -342,9 +343,9 @@ def test_migration_backfills_existing_rows_to_user(client, admin_token):
         command.upgrade(build_alembic_config(), "head")
 
     with SessionLocal() as db:
-        row = db.get(OpenQuestion, owned_id)
+        row = must_get(db, OpenQuestion, owned_id)
         assert (row.owner_type, str(row.owner_id)) == ("user", me)
-        other = db.get(OpenQuestion, uuid.UUID(unowned["id"]))
+        other = must_get(db, OpenQuestion, uuid.UUID(unowned["id"]))
         assert other.owner_type is None and other.owner_id is None
     resp = client.get(f"{_project_base(project['id'])}/open-questions/{owned_id}", headers=auth_headers(token))
     assert resp.status_code == 200 and resp.json()["owner"]["id"] == me

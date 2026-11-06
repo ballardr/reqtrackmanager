@@ -74,6 +74,7 @@ from app.modules.registry import (
     RecordTableProvider,
 )
 from app.services import tags as tag_service
+from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
@@ -177,8 +178,7 @@ def _filtered(
 
 
 def _list_project(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[EnhancementRequest]:
-    project = db.get(Project, project_id)
-    assert project is not None  # the engine has resolved the project
+    project = project_or_404(db, project_id)
     return _filtered(
         db, RecordOwner.of_project(project),
         list_project_requests(db, project_id, include_archived=bool(filters.flag("include_archived"))), filters,

@@ -42,6 +42,7 @@ from app.modules.stakeholders.tests.test_persona_api import (
 from app.services.files import get_storage_backend
 from app.services.permissions import encode_permission
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project
+from tests.db_helpers import must_get
 
 _PAYLOAD = {
     "name": "Pat Regulator",
@@ -465,7 +466,7 @@ def test_erase_leaves_no_rows_files_links_or_personal_data(client, admin_token):
     direct_file = client.post(url + "/files", files={"file": ("secret-cv.txt", b"d", "text/plain")}, headers=h).json()
     uuids = {uuid.UUID(sid), uuid.UUID(comment["id"])}
     with SessionLocal() as db:
-        keys = [db.get(FileAsset, uuid.UUID(f["id"])).storage_key for f in (comment_file, direct_file)]
+        keys = [must_get(db, FileAsset, uuid.UUID(f["id"])).storage_key for f in (comment_file, direct_file)]
     for key in keys:
         assert get_storage_backend().read(key)
 

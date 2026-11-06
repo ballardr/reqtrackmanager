@@ -17,6 +17,7 @@ from __future__ import annotations
 from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from tests.conftest import auth_headers, create_org_user, login
+from tests.db_helpers import audit_detail
 
 
 def _base(org_id: str) -> str:
@@ -313,8 +314,8 @@ def test_manage_gate_audit_logged(client, admin_token, org_id):
             AuditEvent.entity_id == other_id,
         ).first()
         assert event is not None
-        assert event.detail["role_key"] == "standards_manager"
-        assert event.detail["standard_id"] == standard["id"]
+        assert audit_detail(event)["role_key"] == "standards_manager"
+        assert audit_detail(event)["standard_id"] == standard["id"]
     finally:
         db.close()
 
@@ -474,8 +475,8 @@ def test_group_grant_audit_logged(client, admin_token, org_id):
             AuditEvent.entity_id == group_id,
         ).first()
         assert event is not None
-        assert event.detail["role_key"] == "standards_manager"
-        assert event.detail["standard_id"] == standard["id"]
+        assert audit_detail(event)["role_key"] == "standards_manager"
+        assert audit_detail(event)["standard_id"] == standard["id"]
     finally:
         db.close()
 

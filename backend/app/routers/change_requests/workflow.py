@@ -46,6 +46,7 @@ from app.services.actions import generate_unique_code as generate_action_unique_
 from app.services.audit import log_event
 from app.services.change_request_links import build_preview, decline_all, resolve_links
 from app.services.codes import qualify
+from app.services.lookups import get_or_404, project_or_404
 from app.services.principals import revalidated_principal, revalidated_principal_columns
 from app.services.rbac import (
     get_effective_project_roles,
@@ -211,7 +212,7 @@ def preview_change_request_links(
     if cr is None or cr.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request not found.")
     version = _latest_version(db, cr)
-    return ProposedLinkPreviewOut(rows=build_preview(db, db.get(Project, project_id), cr, version, current_user.id))
+    return ProposedLinkPreviewOut(rows=build_preview(db, project_or_404(db, project_id), cr, version, current_user.id))
 
 
 @router.post("/{cr_id}/decide", response_model=ChangeRequestOut)
@@ -234,7 +235,7 @@ def decide_change_request(
     """
     _require_project_manager(db, current_user, project_id)
     if channel == "mcp":
-        require_ai_approvals_enabled(db, db.get(Project, project_id))
+        require_ai_approvals_enabled(db, project_or_404(db, project_id))
 
     # Row-locked (not a plain db.get): two concurrent /decide calls on the
     # same CR (e.g. one approve, one reject) would otherwise both read
@@ -260,7 +261,7 @@ def decide_change_request(
         pending_ids = {row.id for row in version.proposed_links}
         if not chosen <= pending_ids:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "merge_link_ids names a link this change request does not propose.")
-        rows = build_preview(db, db.get(Project, project_id), cr, version, current_user.id)
+        rows = build_preview(db, project_or_404(db, project_id), cr, version, current_user.id)
         if any(row.link.id in chosen and not row.selectable for row in rows):
             raise _stale_selection(ProposedLinkPreviewOut(rows=rows))
     cr.decided_at = datetime.now(UTC)
@@ -271,7 +272,7 @@ def decide_change_request(
     if payload.approve:
         cr.status = ChangeRequestStatus.APPROVED
         if cr.kind == ChangeRequestKind.MODIFY_REQUIREMENT:
-            requirement = db.get(Requirement, cr.requirement_id)
+            requirement = get_or_404(db, Requirement, cr.requirement_id, "Requirement")
             current_version = get_current_version_for_update(db, requirement.id)
             # Only fields actually listed in changed_fields are applied —
             # everything else is left completely untouched (apply_new_version's
@@ -312,12 +313,12 @@ def decide_change_request(
                 review_lead_days=version.proposed_review_lead_days, review_lead_days_explicitly_set="review_lead_days" in changed,
                 reviewer=revalidated_principal(
                     db, version.proposed_reviewer_type, version.proposed_reviewer_id,
-                    organization_id=db.get(Project, project_id).organization_id, project_id=project_id, field="reviewer",
+                    organization_id=project_or_404(db, project_id).organization_id, project_id=project_id, field="reviewer",
                 ),
                 reviewer_explicitly_set="reviewer_id" in changed,
             )
             if "attachments" in changed and version.proposed_attachment_file_ids:
-                project = db.get(Project, project_id)
+                project = project_or_404(db, project_id)
                 for raw_file_id in version.proposed_attachment_file_ids:
                     file_id = UUID(raw_file_id) if isinstance(raw_file_id, str) else raw_file_id
                     asset = db.get(FileAsset, file_id)
@@ -375,16 +376,16 @@ def decide_change_request(
             # requirement version (whose authorship follows the approving
             # PM, since approval is what actually changes the requirement's
             # own content).
-            requirement = db.get(Requirement, cr.requirement_id)
-            project = db.get(Project, project_id)
+            requirement = get_or_404(db, Requirement, cr.requirement_id, "Requirement")
+            project = project_or_404(db, project_id)
             if version.proposed_action_link_id is not None:
                 action = db.get(RequirementAction, version.proposed_action_link_id)
                 if action is not None and action.project_id == project_id:
-                    existing = get_artefact_link_between(
+                    existing_link = get_artefact_link_between(
                         db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
                         target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
                     )
-                    if existing is None:
+                    if existing_link is None:
                         create_artefact_link(
                             db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
                             target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
@@ -433,21 +434,24 @@ def decide_change_request(
             # re-check above: the link could have already been removed
             # directly (before this requirement was re-locked, say) between
             # submission and approval, so re-verify rather than assume.
-            requirement = db.get(Requirement, cr.requirement_id)
-            existing = get_artefact_link_between(
-                db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=version.proposed_action_link_id,
-                target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
+            requirement = get_or_404(db, Requirement, cr.requirement_id, "Requirement")
+            action_link = (
+                get_artefact_link_between(
+                    db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=version.proposed_action_link_id,
+                    target_type=ArtefactType.REQUIREMENT, target_id=requirement.id,
+                )
+                if version.proposed_action_link_id is not None else None
             )
-            if existing is not None:
+            if action_link is not None:
                 log_event(
-                    db, entity_type="requirement_action_link", entity_id=existing.source_id, action="unlinked",
+                    db, entity_type="requirement_action_link", entity_id=action_link.source_id, action="unlinked",
                     actor_id=current_user.id, project_id=project_id,
                     detail={
-                        "requirement_id": str(requirement.id), "action_id": str(existing.source_id),
+                        "requirement_id": str(requirement.id), "action_id": str(action_link.source_id),
                         "via": "change_request", "change_request_id": str(cr.id),
                     },
                 )
-                db.delete(existing)
+                db.delete(action_link)
         elif cr.kind == ChangeRequestKind.ADD_LINK:
             # An add-link request is nothing but its proposed links, which
             # `resolve_links` below merges (re-validated now, as the approver chose).
@@ -469,7 +473,7 @@ def decide_change_request(
                 )
                 db.delete(link)
         else:
-            project = db.get(Project, project_id)
+            project = project_or_404(db, project_id)
             component = db.get(ProjectComponent, version.proposed_component_id)
             category = db.get(ProjectCategory, version.proposed_category_id)
             if component is None or category is None:
@@ -486,6 +490,8 @@ def decide_change_request(
                     raise HTTPException(status.HTTP_400_BAD_REQUEST, "This project has no stages; cannot assign a target.")
                 target_stage_id = default_stage.id
             count = db.scalar(select(func.count()).select_from(Requirement).where(Requirement.project_id == project_id)) or 0
+            if not version.proposed_name:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "The change request proposes no requirement name.")
             requirement = create_requirement(
                 db, project, component, category, current_user,
                 name=version.proposed_name, reasoning=version.proposed_reasoning or "",
@@ -508,7 +514,7 @@ def decide_change_request(
             cr.requirement_id = requirement.id
         if version.proposed_links:
             link_result = resolve_links(
-                db, db.get(Project, project_id), cr, version, approver_id=current_user.id,
+                db, project_or_404(db, project_id), cr, version, approver_id=current_user.id,
                 merge_ids=set(payload.merge_link_ids) if payload.merge_link_ids is not None else None,
             )
         change_requests_approved_total.inc()
@@ -544,7 +550,7 @@ def decide_change_request(
             actor_id=current_user.id,
         )
     if payload.approve:
-        project_name = db.get(Project, project_id).name
+        project_name = project_or_404(db, project_id).name
         for user_id in get_project_member_user_ids(db, project_id):
             user = db.get(User, user_id)
             if user is not None:

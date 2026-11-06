@@ -328,6 +328,7 @@ from app.schemas.type_vocabulary import HiddenTypeOut, RestoreTypesOut, RestoreT
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
 from app.services.files import delete_file, upload_file
+from app.services.lookups import project_or_404
 from app.services.module_attachments import comments_out
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_ai_approvals_enabled, require_project_subcomponent_enabled
@@ -402,7 +403,7 @@ def list_project_strategies(
         return [strategy_to_out(s, versions[s.id]) for s in strategies]
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, STRATEGY_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, STRATEGY_ARTEFACT_TYPE, rows_for,
         gate=("context_strategy", "strategy"),
     )
 
@@ -424,7 +425,7 @@ def update_project_strategy(
     """Direct edit of a Strategy's content (a new `StrategyVersion`, same
     status). 409s once the current version is locked (past `UNDER_REVIEW`
     — see `service.LOCKED_STATUSES`)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     edit_project_strategy_record(
@@ -453,7 +454,7 @@ def archive_project_strategy(
     project_id: UUID, strategy_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     if strategy.is_archived:
@@ -470,7 +471,7 @@ def unarchive_project_strategy(
     project_id: UUID, strategy_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     if not strategy.is_archived:
@@ -490,7 +491,7 @@ def propose_project_strategy(
     project_id: UUID, strategy_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     _require_creator_or_manage(db, current_user, project, strategy)
     current_version = get_current_version_for_update(db, strategy.id)
@@ -504,7 +505,7 @@ def submit_project_strategy_for_review(
     project_id: UUID, strategy_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     _require_creator_or_manage(db, current_user, project, strategy)
     current_version = get_current_version_for_update(db, strategy.id)
@@ -523,7 +524,7 @@ def send_project_strategy_back(
     own docstring). A comment is required."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to send a Strategy back to draft.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     current_version = get_current_version_for_update(db, strategy.id)
@@ -548,7 +549,7 @@ def approve_project_strategy(
     enabled`), mirroring `modules.decisions.project_router.workflow.
     approve_decision_endpoint`'s own docstring/pattern exactly; a plain
     UI/API call is unaffected by that flag either way."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     strategy = _get_strategy(db, project_id, strategy_id)
@@ -566,7 +567,7 @@ def activate_project_strategy(
     project_id: UUID, strategy_id: UUID, payload: StrategyTransitionRequest,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     current_version = get_current_version_for_update(db, strategy.id)
@@ -582,7 +583,7 @@ def supersede_project_strategy(
     project_id: UUID, strategy_id: UUID, payload: StrategyTransitionRequest,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     current_version = get_current_version_for_update(db, strategy.id)
@@ -598,7 +599,7 @@ def retire_project_strategy(
     project_id: UUID, strategy_id: UUID, payload: StrategyTransitionRequest,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     current_version = get_current_version_for_update(db, strategy.id)
@@ -679,7 +680,7 @@ async def upload_project_strategy_comment_attachment(
 ):
     """Author-only, mirrors `modules.decisions.project_router.comments.
     upload_decision_comment_attachment`'s pattern exactly."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     _get_strategy(db, project_id, strategy_id)
     comment = db.get(StrategyComment, comment_id)
     if comment is None or comment.strategy_id != strategy_id:
@@ -740,7 +741,7 @@ async def upload_project_strategy_file(
     `resolve_file_owner_project_id` hook — see this module's own docstring
     for why (contrast `router.py`'s org-scoped, `is_org_resource=True`
     sibling)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     current_version = get_current_version(db, strategy.id)
@@ -780,7 +781,7 @@ def unlink_project_strategy_file(
     project_id: UUID, strategy_id: UUID, file_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     strategy = _get_strategy(db, project_id, strategy_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     link = db.scalar(select(StrategyFile).where(StrategyFile.strategy_id == strategy.id, StrategyFile.file_id == file_id))
@@ -853,7 +854,7 @@ def list_project_future_states(
         return [future_state_to_out(fs, versions[fs.id]) for fs in future_states]
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, FUTURE_STATE_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, FUTURE_STATE_ARTEFACT_TYPE, rows_for,
         gate=("context_strategy", "future_state"),
     )
 
@@ -874,7 +875,7 @@ def update_project_future_state(
 ):
     """Direct edit of a Future State's content (a new `FutureStateVersion`,
     same status). 409s once the current version is locked."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_manage_role(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -904,7 +905,7 @@ def archive_project_future_state(
     project_id: UUID, future_state_id: UUID,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_manage_role(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -923,7 +924,7 @@ def unarchive_project_future_state(
     project_id: UUID, future_state_id: UUID,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_manage_role(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -945,7 +946,7 @@ def propose_project_future_state(
     project_id: UUID, future_state_id: UUID,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     _require_fs_creator_or_manage(db, current_user, project, future_state)
     current_version = get_current_future_state_version_for_update(db, future_state.id)
@@ -959,7 +960,7 @@ def submit_project_future_state_for_review(
     project_id: UUID, future_state_id: UUID,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     _require_fs_creator_or_manage(db, current_user, project, future_state)
     current_version = get_current_future_state_version_for_update(db, future_state.id)
@@ -977,7 +978,7 @@ def send_project_future_state_back(
     rework. A comment is required."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to send a Future State back to draft.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_approve_permission(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -999,7 +1000,7 @@ def approve_project_future_state(
     """Formally approves a Future State (`UNDER_REVIEW` -> `APPROVED`).
     MCP-reachable — same `require_ai_approvals_enabled` gate as
     `approve_project_strategy`, see that endpoint's own docstring."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     future_state = _get_future_state(db, project_id, future_state_id)
@@ -1019,7 +1020,7 @@ def activate_project_future_state(
     project_id: UUID, future_state_id: UUID, payload: FutureStateTransitionRequest,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_approve_permission(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -1037,7 +1038,7 @@ def supersede_project_future_state(
     project_id: UUID, future_state_id: UUID, payload: FutureStateTransitionRequest,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_approve_permission(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -1055,7 +1056,7 @@ def retire_project_future_state(
     project_id: UUID, future_state_id: UUID, payload: FutureStateTransitionRequest,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_approve_permission(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -1141,7 +1142,7 @@ async def upload_project_future_state_comment_attachment(
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
     """Author-only, mirrors Strategy's identical comment-attachment pattern."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     _get_future_state(db, project_id, future_state_id)
     comment = db.get(FutureStateComment, comment_id)
     if comment is None or comment.future_state_id != future_state_id:
@@ -1204,7 +1205,7 @@ async def upload_project_future_state_file(
     `resolve_file_owner_project_id` hook — see this module's own docstring
     for why (contrast `router.py`'s org-scoped, `is_org_resource=True`
     sibling)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_manage_role(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -1250,7 +1251,7 @@ def unlink_project_future_state_file(
     project_id: UUID, future_state_id: UUID, file_id: UUID,
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     future_state = _get_future_state(db, project_id, future_state_id)
     require_future_state_manage_role(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -1456,7 +1457,7 @@ def list_project_pain_points(
         return [pain_point_to_out(db, p, labels, type_names) for p in pain_points]
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, PAIN_POINT_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, PAIN_POINT_ARTEFACT_TYPE, rows_for,
         gate=("context_strategy", "pain_point"),
     )
 
@@ -1482,7 +1483,7 @@ def update_project_pain_point(
     broad-creation model does not extend to a standing creator edit right.
     409s once the Pain Point has reached a terminal outcome (`service.
     PAIN_POINT_LOCKED_STATUSES`)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     edit_project_pain_point_record(
@@ -1500,7 +1501,7 @@ def archive_project_pain_point(
     project_id: UUID, pain_point_id: UUID,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     if pain_point.is_archived:
@@ -1517,7 +1518,7 @@ def unarchive_project_pain_point(
     project_id: UUID, pain_point_id: UUID,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     if not pain_point.is_archived:
@@ -1578,7 +1579,7 @@ def list_project_pain_point_scores(
     roll-up method (both chosen when viewing; the model defaults to the
     project's resolved default). Read-only, so open to any project member
     who can see Pain Points."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     method = _parse_rollup(rollup)
     ctx = load_scoring_context(db, project)
     model = resolve_model(ctx, model_key)
@@ -1599,7 +1600,7 @@ def get_project_pain_point_scoring_targets(
 ):
     """What a create form needs to offer scoring before the Pain Point exists: whether the caller
     may score at all, and the personas it can be scored against."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     can_score = can_manage_pain_points(db, current_user, organization_id=project.organization_id, project_id=project_id)
     targets = list(load_scoring_context(db, project).targets.values()) if can_score else []
     return PainPointScoringTargetsOut(
@@ -1622,7 +1623,7 @@ def get_project_pain_point_scores(
 
 def _scores_out(db: Session, pain_point: PainPoint, model_key: str | None, method: RollupMethod) -> PainPointScoresOut:
     """Builds the single-Pain-Point scoring response."""
-    project = db.get(Project, pain_point.project_id)
+    project = project_or_404(db, pain_point.project_id)
     ctx = load_scoring_context(db, project)
     model = resolve_model(ctx, model_key)
     summary = build_pain_point_scoring(db, ctx, [pain_point], model, method)[0]
@@ -1647,7 +1648,7 @@ def set_project_pain_point_scores(
     a triage-tier action, unlike broad Pain Point creation); 409 once the
     Pain Point has reached a terminal outcome. Returns the new roll-up under
     the requested model and method."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     if is_pain_point_locked(pain_point):
@@ -1675,7 +1676,7 @@ def triage_project_pain_point(
     project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(triage_pain_point, db, pain_point, current_user, comment=payload.comment)
@@ -1691,7 +1692,7 @@ def reject_project_pain_point(
     """`TRIAGED` -> `REJECTED`. A comment is required."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to reject a Pain Point.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(reject_pain_point, db, pain_point, current_user, comment=payload.comment)
@@ -1709,7 +1710,7 @@ def mark_project_pain_point_duplicate(
     canonical Pain Point is noted)."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to mark a Pain Point as a duplicate.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(mark_pain_point_duplicate, db, pain_point, current_user, comment=payload.comment)
@@ -1722,7 +1723,7 @@ def accept_project_pain_point(
     project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(accept_pain_point, db, pain_point, current_user, comment=payload.comment)
@@ -1735,7 +1736,7 @@ def address_project_pain_point(
     project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(address_pain_point, db, pain_point, current_user, comment=payload.comment)
@@ -1748,7 +1749,7 @@ def close_project_pain_point(
     project_id: UUID, pain_point_id: UUID, payload: PainPointTransitionRequest,
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_decide_permission(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(close_pain_point, db, pain_point, current_user, comment=payload.comment)
@@ -1829,7 +1830,7 @@ async def upload_project_pain_point_comment_attachment(
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
     """Author-only, mirrors Strategy's identical comment-attachment pattern."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     _get_pain_point(db, project_id, pain_point_id)
     comment = db.get(PainPointComment, comment_id)
     if comment is None or comment.pain_point_id != pain_point_id:
@@ -1894,7 +1895,7 @@ async def upload_project_pain_point_file(
     evidence" among the broad-creation-model capabilities every project
     member gets for a Pain Point. Still 409s once the Pain Point has
     reached a terminal outcome."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     if is_pain_point_locked(pain_point):
         raise HTTPException(
@@ -1937,7 +1938,7 @@ def unlink_project_pain_point_file(
     """Manager-gated to remove — asymmetric with the open-to-all upload
     above (§6.5 grants broad *adding* of evidence, not broad removal of
     evidence someone else added)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     pain_point = _get_pain_point(db, project_id, pain_point_id)
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     link = db.scalar(
@@ -2013,7 +2014,7 @@ def list_project_guiding_principles(
         return guiding_principles_to_out(db, guiding_principles)
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, GUIDING_PRINCIPLE_ARTEFACT_TYPE, rows_for,
         gate=("context_strategy", "guiding_principle"),
     )
 
@@ -2037,7 +2038,7 @@ def update_project_guiding_principle(
     """Direct edit of a Guiding Principle's content (a new `GuidingPrinciple
     Version`, same status). 409s once the current version is locked (past
     `PROPOSED` — see `service.GUIDING_PRINCIPLE_LOCKED_STATUSES`)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_manage_role(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2068,7 +2069,7 @@ def archive_project_guiding_principle(
     project_id: UUID, guiding_principle_id: UUID,
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_manage_role(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2089,7 +2090,7 @@ def unarchive_project_guiding_principle(
     project_id: UUID, guiding_principle_id: UUID,
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_manage_role(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2113,7 +2114,7 @@ def propose_project_guiding_principle(
     project_id: UUID, guiding_principle_id: UUID,
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     _require_gp_creator_or_manage(db, current_user, project, guiding_principle)
     current_version = get_current_guiding_principle_version_for_update(db, guiding_principle.id)
@@ -2135,7 +2136,7 @@ def send_project_guiding_principle_back(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "A comment is required to send a Guiding Principle back to draft.",
         )
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2156,7 +2157,7 @@ def approve_project_guiding_principle(
     project_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleTransitionRequest,
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2182,7 +2183,7 @@ def activate_project_guiding_principle(
     `require_ai_approvals_enabled`-gated actions are `activate`/`retire`,
     not `approve` (see `service.py`'s relationships docstring for the
     reasoning) — same gate pattern as `approve_project_strategy`."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
@@ -2204,7 +2205,7 @@ def supersede_project_guiding_principle(
     project_id: UUID, guiding_principle_id: UUID, payload: GuidingPrincipleTransitionRequest,
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2228,7 +2229,7 @@ def retire_project_guiding_principle(
     """Retires a Guiding Principle. MCP-reachable — same
     `require_ai_approvals_enabled` gate as `activate_project_guiding_
     principle`, see that endpoint's own docstring."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
@@ -2323,7 +2324,7 @@ async def upload_project_guiding_principle_comment_attachment(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
     """Author-only, mirrors Strategy's identical comment-attachment pattern."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     _get_guiding_principle(db, project_id, guiding_principle_id)
     comment = db.get(GuidingPrincipleComment, comment_id)
     if comment is None or comment.guiding_principle_id != guiding_principle_id:
@@ -2391,7 +2392,7 @@ async def upload_project_guiding_principle_file(
     `resolve_file_owner_project_id` hook — see this module's own docstring
     for why (contrast `router.py`'s org-scoped, `is_org_resource=True`
     sibling)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_manage_role(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2438,7 +2439,7 @@ def unlink_project_guiding_principle_file(
     project_id: UUID, guiding_principle_id: UUID, file_id: UUID,
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
     require_guiding_principle_manage_role(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
@@ -2507,7 +2508,7 @@ def list_project_open_questions(
         return [open_question_to_out(db, oq, labels) for oq in open_questions]
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, OPEN_QUESTION_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, OPEN_QUESTION_ARTEFACT_TYPE, rows_for,
         gate=("context_strategy", "open_question"),
     )
 
@@ -2532,7 +2533,7 @@ def update_project_open_question(
     docstring for why the broad-creation model does not extend to a
     standing creator edit right. 409s once the Open Question has reached a
     terminal outcome (`service.OPEN_QUESTION_LOCKED_STATUSES`)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     edit_project_open_question_record(
@@ -2549,7 +2550,7 @@ def archive_project_open_question(
     project_id: UUID, open_question_id: UUID,
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     if open_question.is_archived:
@@ -2566,7 +2567,7 @@ def unarchive_project_open_question(
     project_id: UUID, open_question_id: UUID,
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     if not open_question.is_archived:
@@ -2588,7 +2589,7 @@ def investigate_project_open_question(
 ):
     """`OPEN` -> `INVESTIGATING`. §9.4's "change status" tier — `open_
     question_owner`-gated."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(investigate_open_question, db, open_question, current_user, comment=payload.comment)
@@ -2602,7 +2603,7 @@ def mark_project_open_question_ready_for_decision(
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
 ):
     """`INVESTIGATING` -> `READY_FOR_DECISION`."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(
@@ -2621,7 +2622,7 @@ def withdraw_project_open_question(
     required — §9.4's "Close" capability, `open_question_owner`-gated."""
     if not (payload.comment or "").strip():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A comment is required to withdraw an Open Question.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     apply_value_error_as_conflict(withdraw_open_question, db, open_question, current_user, comment=payload.comment)
@@ -2643,7 +2644,7 @@ def resolve_project_open_question(
     question`'s own docstring. MCP-reachable — same `require_ai_
     approvals_enabled` gate as `approve_project_strategy`, see that
     endpoint's own docstring."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if channel == "mcp":
         require_ai_approvals_enabled(db, project)
     open_question = _get_open_question(db, project_id, open_question_id)
@@ -2732,7 +2733,7 @@ async def upload_project_open_question_comment_attachment(
 ):
     """Author-only, mirrors Strategy's/Pain Point's identical comment-
     attachment pattern."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     _get_open_question(db, project_id, open_question_id)
     comment = db.get(OpenQuestionComment, comment_id)
     if comment is None or comment.open_question_id != open_question_id:
@@ -2796,7 +2797,7 @@ async def upload_project_open_question_file(
     explicitly lists "Add evidence" among the broad-creation-model
     capabilities every project member gets for an Open Question). Still
     409s once the Open Question has reached a terminal outcome."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     if is_open_question_locked(open_question):
         raise HTTPException(
@@ -2842,7 +2843,7 @@ def unlink_project_open_question_file(
 ):
     """Manager-gated to remove — asymmetric with the open-to-all upload
     above, same as `unlink_project_pain_point_file`."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     open_question = _get_open_question(db, project_id, open_question_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     link = db.scalar(
@@ -2894,7 +2895,7 @@ def create_project_strategy_relationship(
     requiring an edit-capable role to create a traceability relationship,
     not just view access."""
     strategy = _get_strategy(db, project_id, strategy_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_manage_role(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     link = apply_value_error_as_conflict(
         create_strategy_link, db, strategy=strategy, kind=payload.kind, target_id=payload.target_id,
@@ -2921,7 +2922,7 @@ def create_project_strategy_supersession(
     SUPERSEDED` transition on the old Strategy, just also recording which
     Strategy superseded it."""
     new_strategy = _get_strategy(db, project_id, strategy_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_approve_permission(db, current_user, _SCOPE, organization_id=project.organization_id, project_id=project_id)
     old_strategy = db.get(Strategy, payload.old_strategy_id)
     if old_strategy is None:
@@ -2960,7 +2961,7 @@ def create_project_future_state_relationship(
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
     future_state = _get_future_state(db, project_id, future_state_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_future_state_manage_role(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
     )
@@ -2985,7 +2986,7 @@ def create_project_future_state_supersession(
     current_user: User = Depends(_require_future_state_view), db: Session = Depends(get_db),
 ):
     new_future_state = _get_future_state(db, project_id, future_state_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_future_state_approve_permission(
         db, current_user, _FS_SCOPE, organization_id=project.organization_id, project_id=project_id,
     )
@@ -3029,7 +3030,7 @@ def create_project_pain_point_relationship(
     current_user: User = Depends(_require_pain_point_view), db: Session = Depends(get_db),
 ):
     pain_point = _get_pain_point(db, project_id, pain_point_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_pain_point_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     link = apply_value_error_as_conflict(
         create_pain_point_link, db, pain_point=pain_point, kind=payload.kind, target_id=payload.target_id,
@@ -3067,7 +3068,7 @@ def create_project_guiding_principle_relationship(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
     guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_guiding_principle_manage_role(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
     )
@@ -3095,7 +3096,7 @@ def create_project_guiding_principle_supersession(
     current_user: User = Depends(_require_guiding_principle_view), db: Session = Depends(get_db),
 ):
     new_guiding_principle = _get_guiding_principle(db, project_id, guiding_principle_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_guiding_principle_approve_permission(
         db, current_user, _GP_SCOPE, organization_id=project.organization_id, project_id=project_id,
     )
@@ -3139,7 +3140,7 @@ def create_project_open_question_relationship(
     current_user: User = Depends(_require_open_question_view), db: Session = Depends(get_db),
 ):
     open_question = _get_open_question(db, project_id, open_question_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     require_open_question_manage_role(db, current_user, organization_id=project.organization_id, project_id=project_id)
     link = apply_value_error_as_conflict(
         create_open_question_link, db, open_question=open_question, kind=payload.kind, target_id=payload.target_id,

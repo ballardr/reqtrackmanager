@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, TypeVar
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
@@ -121,6 +121,7 @@ from app.modules.stakeholders.service import (
 )
 from app.schemas.principal import PrincipalRef
 from app.services import tags as tag_service
+from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.record_tables import PrincipalCells, find_many_by_code, parse_principal_cell
 from app.services.record_tables_core import (
@@ -141,11 +142,13 @@ MODULE_KEY = "stakeholders"
 LIST_FILTERS = frozenset({"search"})
 PEOPLE_FILTERS = frozenset({"search", "status", "type", "include_archived", "include_org", "include_hidden"})
 
+_Payload = TypeVar("_Payload", bound=BaseModel)
+
 
 # --- building blocks --------------------------------------------------------------------------------------------
 
 
-def payload_of(model: type[BaseModel], values: Mapping[str, Any]) -> BaseModel:
+def payload_of(model: type[_Payload], values: Mapping[str, Any]) -> _Payload:
     """Builds the endpoint's request payload from the parsed cells.
 
     Raises:
@@ -169,7 +172,7 @@ def _allowed(check: Callable[..., None], *args: Any, **kwargs: Any) -> bool:
 
 
 def _project(db: Session, project_id: uuid.UUID) -> Project:
-    return db.get(Project, project_id)
+    return project_or_404(db, project_id)
 
 
 def _search_hit(filters: RecordFilters, *parts: str) -> bool:
@@ -278,7 +281,7 @@ def _persona_owned_by_org(persona: Persona) -> bool:
     return persona.scope == PersonaScope.ORGANIZATION
 
 
-def _prepare_personas(db: Session, project: Project, records: list[Persona]) -> _Prepared:
+def _prepare_personas(db: Session, project: Project | None, records: list[Persona]) -> _Prepared:
     prepared = _Prepared(db, records, PERSONA_ARTEFACT_TYPE, version_model=PersonaVersion, version_fk="persona_id")
     names = PERSONA_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in prepared.versions.values()])
     prepared.extra["types"] = {key: name or "" for key, name in names.items()}
@@ -459,7 +462,7 @@ def _stakeholder_owned_by_org(stakeholder: Stakeholder) -> bool:
     return stakeholder.scope == StakeholderScope.ORGANIZATION
 
 
-def _prepare_stakeholders(db: Session, project: Project, records: list[Stakeholder]) -> _Prepared:
+def _prepare_stakeholders(db: Session, project: Project | None, records: list[Stakeholder]) -> _Prepared:
     prepared = _Prepared(db, records, STAKEHOLDER_ARTEFACT_TYPE, version_model=StakeholderVersion, version_fk="stakeholder_id")
     names = STAKEHOLDER_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in prepared.versions.values()])
     prepared.extra["types"] = {key: name or "" for key, name in names.items()}
@@ -538,7 +541,7 @@ def _stakeholder_columns_for(type_choices: tuple[str, ...]) -> list[RecordColumn
         _text("contact_info", "Contact details", lambda t, r: version(t, r).contact_info, sensitivity="contact"),
         RecordColumn(
             "target_cadence", "Target cadence",
-            lambda t, r: _CADENCE_LABELS[version(t, r).target_cadence.value] if version(t, r).target_cadence else "",
+            lambda t, r: _CADENCE_LABELS[cadence.value] if (cadence := version(t, r).target_cadence) else "",
             enum_parser(TargetCadence, "Target cadence"), kind="enum", editable=True, choices=tuple(_CADENCE_LABELS.values()),
         ),
         _text("availability_constraints", "Availability", lambda t, r: version(t, r).availability_constraints, sensitivity="contact"),
@@ -659,10 +662,15 @@ def _group_context(db: Session, project_id: uuid.UUID) -> group_shared.GroupCont
 
 def _prepare_groups(db: Session, project: Project | None, records: list[StakeholderGroup], organization_id: uuid.UUID | None = None) -> _Prepared:
     prepared = _Prepared(db, records, GROUP_ARTEFACT_TYPE)
-    universe = grp.load_groups(db, project.organization_id if project else organization_id, project.id if project else None)
+    owner_organization_id = project.organization_id if project else organization_id
+    if owner_organization_id is None:
+        raise ValueError("Groups are loaded for a project or an organisation.")
+    universe = grp.load_groups(db, owner_organization_id, project.id if project else None)
 
     def path(group: StakeholderGroup) -> str:
-        names, seen, current = [], set(), group
+        names: list[str] = []
+        seen: set[uuid.UUID] = set()
+        current: StakeholderGroup | None = group
         while current is not None and current.id not in seen:
             seen.add(current.id)
             names.append(current.name)
@@ -671,7 +679,7 @@ def _prepare_groups(db: Session, project: Project | None, records: list[Stakehol
 
     ids = [g.id for g in records]
     member_group = StakeholderGroupMember.group_id
-    counts = dict(db.execute(select(member_group, func.count()).where(member_group.in_(ids)).group_by(member_group)).all()) if ids else {}
+    counts = dict(db.execute(select(member_group, func.count()).where(member_group.in_(ids)).group_by(member_group)).tuples().all()) if ids else {}
     prepared.extra["paths"] = {g.id: path(g) for g in records}
     prepared.extra["members"] = counts
     return prepared
@@ -689,7 +697,7 @@ def _list_org_groups(db: Session, user: User, organization: Organization, filter
     return [g for g in groups if _search_hit(filters, g.unique_code, g.name)]
 
 
-def _group_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _group_columns(db: Session, project: Project | None) -> list[RecordColumn]:
     return [
         _text("name", "Name", lambda t, r: r.name, required=True),
         _text("description", "Description", lambda t, r: r.description),

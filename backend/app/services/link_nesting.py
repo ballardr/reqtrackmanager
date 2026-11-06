@@ -299,6 +299,8 @@ def count_cross_links_violating(
     ).all():
         if not is_link_live(db, link, chain_cache):
             continue
+        if link.source_project_id is None or link.target_project_id is None:
+            continue
         source_is_above = link.source_project_id in chain_cache[link.target_project_id]
         if nesting_violation(probe, source_is_above=source_is_above) is not None:
             count += 1

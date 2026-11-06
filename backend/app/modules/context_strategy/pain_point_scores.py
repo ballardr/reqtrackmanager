@@ -286,8 +286,8 @@ def set_pain_point_scores(
             db.delete(row)
             changed = True
     for target_id, entry in wanted.items():
-        row = existing.get(target_id)
-        if row is None:
+        current = existing.get(target_id)
+        if current is None:
             db.add(PainPointScore(
                 pain_point_id=pain_point.id, target_type=PERSONA_TARGET_TYPE if target_id else None,
                 target_id=target_id, scored_by=actor.id,
@@ -299,11 +299,11 @@ def set_pain_point_scores(
         row_changed = False
         for axis in _AXIS_KEYS:
             column = f"{axis}_level_id"
-            if getattr(row, column) != getattr(entry, column):
-                setattr(row, column, getattr(entry, column))
+            if getattr(current, column) != getattr(entry, column):
+                setattr(current, column, getattr(entry, column))
                 row_changed = True
         if row_changed:
-            row.scored_by = actor.id
+            current.scored_by = actor.id
             changed = True
     try:
         db.flush()
@@ -361,7 +361,7 @@ def _mean_weight_fill(entries: list[EntrySummary]) -> list[Decimal]:
     """Returns each entry's roll-up weight: its own, else the mean of the set
     weights, else 1 for everyone."""
     set_weights = [Decimal(str(e.weight)) for e in entries if e.weight is not None]
-    fill = sum(set_weights) / len(set_weights) if set_weights else Decimal(1)
+    fill = sum(set_weights, Decimal(0)) / len(set_weights) if set_weights else Decimal(1)
     return [Decimal(str(e.weight)) if e.weight is not None else fill for e in entries]
 
 
@@ -374,22 +374,21 @@ def rollup_scores(
     A single scored entry is returned as is, so its explicit cell rating (if
     any) survives; a blend of several entries is not one cell, so it takes
     the threshold bands."""
-    scored = [e for e in entries if e.score is not None]
+    scored = [(e, e.score) for e in entries if e.score is not None]
     if not scored:
         return None
     if len(scored) == 1:
-        return scored[0].score
+        return scored[0][1]
     maximum = Decimal(1)
     for axis_key in model.axis_keys:
         maximum *= ctx.max_weights[axis_key]
     if method is RollupMethod.WORST_CASE:
-        worst = max(scored, key=lambda e: e.score.normalised)  # type: ignore[union-attr]
-        return worst.score
+        return max(scored, key=lambda pair: pair[1].normalised)[1]
     if method is RollupMethod.AVERAGE:
         weights = [Decimal(1)] * len(scored)
     else:
-        weights = _mean_weight_fill(scored)
-    raw = sum((w * e.score.raw for w, e in zip(weights, scored, strict=False)), Decimal(0)) / sum(weights)  # type: ignore[union-attr]
+        weights = _mean_weight_fill([e for e, _ in scored])
+    raw = sum((w * score.raw for w, (_, score) in zip(weights, scored, strict=False)), Decimal(0)) / sum(weights)
     normalised = float(raw / maximum)
     return ScoreResult(raw=raw, normalised=normalised, band=band_for(normalised, bands))
 

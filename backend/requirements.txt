@@ -77,6 +77,7 @@ mypy==2.4.0
 types-boto3[s3]==1.43.118
 types-passlib==1.7.7.20260211
 types-qrcode==8.2.0.20260518
+types-psycopg2==2.9.21.20261030
 types-openpyxl==3.1.5.20261017
 lxml-stubs==0.5.1
 types-reportlab==5.0.0.20261008

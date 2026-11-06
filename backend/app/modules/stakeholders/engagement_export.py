@@ -55,6 +55,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.codes import label_title
+from app.services.lookups import get_or_404
 from app.services.principals import principal_from_bundle, principal_to_bundle
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
@@ -257,7 +258,7 @@ def import_project_data(
         context = f"Engagement {e['title']!r}"
         creator_id = users.resolve(e.get("created_by_email"), required=True, context=f"{context} creator")
         engagement = eng.create_engagement(
-            db, project=project, creator=db.get(User, creator_id),
+            db, project=project, creator=get_or_404(db, User, creator_id, "User"),
             channel=EngagementChannel(e["channel"]), engagement_date=_d(e["engagement_date"]),
             consent_recorded=bool(e.get("consent_recorded")), retain_until=_d(e.get("retain_until")),
             **{f: e.get(f, "") for f in _TEXT_FIELDS},

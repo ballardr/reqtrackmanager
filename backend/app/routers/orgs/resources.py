@@ -14,7 +14,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -70,7 +70,7 @@ def delete_org_resource(
     asset = db.get(FileAsset, file_id)
     if asset is None or asset.organization_id != organization_id or not asset.is_org_resource:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found.")
-    db.execute(RequirementFile.__table__.delete().where(RequirementFile.file_id == file_id))
+    db.execute(delete(RequirementFile).where(RequirementFile.file_id == file_id))
     delete_file(db, asset)
     log_event(db, entity_type="file_asset", entity_id=file_id, action="deleted",
               actor_id=current_user.id, organization_id=organization_id)

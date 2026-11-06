@@ -22,7 +22,6 @@ from app.models.change_request import ReviewComment
 from app.models.enums import ReviewTargetType
 from app.models.file import CommentFile, FileAsset
 from app.models.notification import NotificationType
-from app.models.project import Project
 from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project
 from app.schemas.file import FileAssetOut
@@ -30,6 +29,7 @@ from app.schemas.requirement import CommentCreate, CommentOut, CommentUpdate
 from app.services import engagement, notifications
 from app.services.audit import log_event
 from app.services.files import upload_file
+from app.services.lookups import project_or_404
 from app.services.rbac import require_project_view
 
 router = APIRouter(tags=["requirements-comments"])
@@ -148,7 +148,7 @@ async def upload_comment_attachment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
     if comment.author_id != current_user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may attach a file to it.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     data = await file.read()
     asset = upload_file(
         db, organization_id=project.organization_id, uploaded_by=current_user.id,

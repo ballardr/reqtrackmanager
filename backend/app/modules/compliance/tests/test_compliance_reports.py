@@ -44,6 +44,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
     _setup_published_standard_with_tree,
 )
 from tests.conftest import auth_headers, create_org_user, create_project, login
+from tests.db_helpers import must_get
 
 
 def _find_pcr(client, token, project_id, assignment_id, requirement_id):
@@ -277,7 +278,7 @@ def test_narrative_requirement_paragraph_always_shows_title_and_folds_in_free_te
 
     db = SessionLocal()
     try:
-        data = collect_project_compliance_report(db, db.get(Project, project["id"]))
+        data = collect_project_compliance_report(db, must_get(db, Project, project["id"]))
     finally:
         db.close()
 
@@ -310,7 +311,7 @@ def test_narrative_requirement_paragraph_omits_empty_sections(client, admin_toke
     project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Narrative Omit Project")
     db = SessionLocal()
     try:
-        data = collect_project_compliance_report(db, db.get(Project, project["id"]))
+        data = collect_project_compliance_report(db, must_get(db, Project, project["id"]))
     finally:
         db.close()
 
@@ -348,7 +349,7 @@ def test_project_compliance_report_filters_by_standard_version_and_sub_section(c
 
     db = SessionLocal()
     try:
-        proj = db.get(Project, project["id"])
+        proj = must_get(db, Project, project["id"])
         unfiltered = collect_project_compliance_report(db, proj)
         assert {r.standard_reference for r in unfiltered.requirement_rows} == {standard["reference"], other_standard["reference"]}
 
@@ -521,7 +522,7 @@ def test_collect_project_compliance_report_sets_filtered_flag_from_any_scoping_k
     project, _standard, _version = _project_with_assessment(client, admin_token, org_id, project_name="Filtered Flag Project")
     db = SessionLocal()
     try:
-        proj = db.get(Project, project["id"])
+        proj = must_get(db, Project, project["id"])
         assert collect_project_compliance_report(db, proj).filtered is False
         assert collect_project_compliance_report(db, proj, standard_id=uuid.uuid4()).filtered is True
         assert collect_project_compliance_report(db, proj, standard_version_id=uuid.uuid4()).filtered is True
@@ -565,7 +566,7 @@ def test_report_evidence_carries_its_code_and_tags_and_follows_the_project_code_
         assert client.put(f"/api/v1/orgs/{org_id}/code-policy", json=policy, headers=auth_headers(admin_token)).status_code == 200
         db = SessionLocal()
         try:
-            own = collect_project_compliance_report(db, db.get(Project, uuid.UUID(project["id"])))
+            own = collect_project_compliance_report(db, must_get(db, Project, uuid.UUID(project["id"])))
             whole = collect_org_compliance_report(db, uuid.UUID(org_id))
             return own, whole
         finally:
@@ -584,10 +585,12 @@ def test_report_evidence_carries_its_code_and_tags_and_follows_the_project_code_
 
 def test_evidence_validity_cell_is_filled_in_the_badge_tone_with_readable_text():
     from app.modules.compliance.reports import _validity_cell
+    from app.services.report_document import TonedParagraph
     from app.services.report_model import TONE_FILL, text_on
 
     for state, tone in (("expired", "danger"), ("expiring_soon", "warning"), ("valid", "accent"), ("no_expiry", "muted")):
         cell = _validity_cell(state)
+        assert isinstance(cell, TonedParagraph)
         assert cell.tone_fill.hexval()[2:].upper() == TONE_FILL[tone]
         assert cell.style.textColor.hexval()[2:].upper() == text_on(TONE_FILL[tone])
     assert not hasattr(_validity_cell("unknown_state"), "tone_fill")  # an unmapped state stays plain

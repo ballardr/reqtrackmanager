@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.models.enums import ArtefactType
@@ -33,6 +34,7 @@ from app.modules.decisions.service import (
     create_decision_requirement_link,
 )
 from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
+from tests.db_helpers import must_get, must_scalar
 
 
 def _current_user_id(client, token: str) -> uuid.UUID:
@@ -44,9 +46,7 @@ def _current_user_id(client, token: str) -> uuid.UUID:
 def _first_decision_type_id(project_id: uuid.UUID) -> uuid.UUID:
     db = SessionLocal()
     try:
-        return db.query(DecisionTypeDefinition.id).filter(
-            DecisionTypeDefinition.project_id == project_id
-        ).first()[0]
+        return must_scalar(db, select(DecisionTypeDefinition.id).where(DecisionTypeDefinition.project_id == project_id))
     finally:
         db.close()
 
@@ -93,8 +93,8 @@ def test_create_decision_implements_requirement_link(client, admin_token):
 
     db = SessionLocal()
     try:
-        decision = db.get(Decision, decision_id)
-        requirement_row = db.get(Requirement, uuid.UUID(requirement["id"]))
+        decision = must_get(db, Decision, decision_id)
+        requirement_row = must_get(db, Requirement, uuid.UUID(requirement["id"]))
         link = create_decision_requirement_link(
             db, decision=decision, requirement=requirement_row, kind=DecisionRequirementLinkKind.IMPLEMENTS,
             actor_id=user_id,
@@ -132,8 +132,8 @@ def test_create_decision_affects_requirement_link_creates_link_type_on_first_use
             RequirementLinkTypeDefinition.forward_name == AFFECTS_LINK_TYPE_FORWARD_NAME,
         ).first() is None
 
-        decision = db.get(Decision, decision_id)
-        requirement_row = db.get(Requirement, uuid.UUID(requirement["id"]))
+        decision = must_get(db, Decision, decision_id)
+        requirement_row = must_get(db, Requirement, uuid.UUID(requirement["id"]))
         create_decision_requirement_link(
             db, decision=decision, requirement=requirement_row, kind=DecisionRequirementLinkKind.AFFECTS,
             actor_id=user_id,
@@ -164,8 +164,8 @@ def test_decision_requirement_link_rejects_cross_project(client, admin_token):
 
     db = SessionLocal()
     try:
-        decision = db.get(Decision, decision_id)
-        other_requirement_row = db.get(Requirement, uuid.UUID(other_requirement["id"]))
+        decision = must_get(db, Decision, decision_id)
+        other_requirement_row = must_get(db, Requirement, uuid.UUID(other_requirement["id"]))
         with pytest.raises(ValueError, match="same project"):
             create_decision_requirement_link(
                 db, decision=decision, requirement=other_requirement_row, kind=DecisionRequirementLinkKind.IMPLEMENTS,
@@ -185,16 +185,16 @@ def test_decision_requirement_link_rejects_duplicate(client, admin_token):
 
     db = SessionLocal()
     try:
-        decision = db.get(Decision, decision_id)
-        requirement_row = db.get(Requirement, uuid.UUID(requirement["id"]))
+        decision = must_get(db, Decision, decision_id)
+        requirement_row = must_get(db, Requirement, uuid.UUID(requirement["id"]))
         create_decision_requirement_link(
             db, decision=decision, requirement=requirement_row, kind=DecisionRequirementLinkKind.IMPLEMENTS,
             actor_id=user_id,
         )
         db.commit()
 
-        decision = db.get(Decision, decision_id)
-        requirement_row = db.get(Requirement, uuid.UUID(requirement["id"]))
+        decision = must_get(db, Decision, decision_id)
+        requirement_row = must_get(db, Requirement, uuid.UUID(requirement["id"]))
         with pytest.raises(ValueError, match="already has"):
             create_decision_requirement_link(
                 db, decision=decision, requirement=requirement_row, kind=DecisionRequirementLinkKind.IMPLEMENTS,
@@ -214,7 +214,7 @@ def test_create_decision_decision_depends_on_link(client, admin_token):
     db = SessionLocal()
     try:
         link = create_decision_decision_link(
-            db, source_decision=db.get(Decision, a_id), target_decision=db.get(Decision, b_id),
+            db, source_decision=must_get(db, Decision, a_id), target_decision=must_get(db, Decision, b_id),
             kind=DecisionDecisionLinkKind.DEPENDS_ON, actor_id=user_id,
         )
         db.commit()
@@ -245,7 +245,7 @@ def test_create_decision_decision_conflicts_with_link(client, admin_token):
     db = SessionLocal()
     try:
         create_decision_decision_link(
-            db, source_decision=db.get(Decision, a_id), target_decision=db.get(Decision, b_id),
+            db, source_decision=must_get(db, Decision, a_id), target_decision=must_get(db, Decision, b_id),
             kind=DecisionDecisionLinkKind.CONFLICTS_WITH, actor_id=user_id,
         )
         db.commit()
@@ -269,7 +269,7 @@ def test_decision_decision_link_rejects_self_link(client, admin_token):
 
     db = SessionLocal()
     try:
-        a = db.get(Decision, a_id)
+        a = must_get(db, Decision, a_id)
         with pytest.raises(ValueError, match="cannot link to itself"):
             create_decision_decision_link(
                 db, source_decision=a, target_decision=a, kind=DecisionDecisionLinkKind.DEPENDS_ON, actor_id=user_id,
@@ -292,8 +292,8 @@ def test_decision_decision_link_rejects_cross_project(client, admin_token):
 
     db = SessionLocal()
     try:
-        a = db.get(Decision, a_id)
-        cross = db.get(Decision, cross_id)
+        a = must_get(db, Decision, a_id)
+        cross = must_get(db, Decision, cross_id)
         with pytest.raises(ValueError, match="same project"):
             create_decision_decision_link(
                 db, source_decision=a, target_decision=cross, kind=DecisionDecisionLinkKind.DEPENDS_ON,
@@ -313,14 +313,14 @@ def test_decision_decision_link_rejects_duplicate(client, admin_token):
     db = SessionLocal()
     try:
         create_decision_decision_link(
-            db, source_decision=db.get(Decision, a_id), target_decision=db.get(Decision, b_id),
+            db, source_decision=must_get(db, Decision, a_id), target_decision=must_get(db, Decision, b_id),
             kind=DecisionDecisionLinkKind.DEPENDS_ON, actor_id=user_id,
         )
         db.commit()
 
         with pytest.raises(ValueError, match="already has"):
             create_decision_decision_link(
-                db, source_decision=db.get(Decision, a_id), target_decision=db.get(Decision, b_id),
+                db, source_decision=must_get(db, Decision, a_id), target_decision=must_get(db, Decision, b_id),
                 kind=DecisionDecisionLinkKind.DEPENDS_ON, actor_id=user_id,
             )
         db.rollback()

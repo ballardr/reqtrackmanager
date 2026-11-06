@@ -91,6 +91,7 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
+from fastapi import HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -154,6 +155,7 @@ from app.modules.compliance.schemas import (
 from app.schemas.principal import PrincipalOut
 from app.services import relationships
 from app.services.client_date import effective_today
+from app.services.lookups import get_or_404, project_or_404
 from app.services.permissions import encode_permission
 from app.services.principals import principal_labels, principal_ref
 
@@ -843,9 +845,9 @@ def build_status_out(db: Session, project_compliance: ProjectCompliance) -> Proj
     Compliance Manager) and `project_router.py`'s per-project status
     endpoint (§20, the `compliance_get_project_status` MCP tool) — one
     calculation, two callers, never duplicated."""
-    version = db.get(ComplianceStandardVersion, project_compliance.standard_version_id)
-    standard = db.get(ComplianceStandard, version.standard_id)
-    project = db.get(Project, project_compliance.project_id)
+    version = get_or_404(db, ComplianceStandardVersion, project_compliance.standard_version_id, "Compliance standard version")
+    standard = get_or_404(db, ComplianceStandard, version.standard_id, "Compliance standard")
+    project = project_or_404(db, project_compliance.project_id)
     pcrs, applicability = load_pcrs_and_applicability(
         db, project_compliance_id=project_compliance.id, standard_version_id=version.id
     )
@@ -2080,7 +2082,7 @@ def migrate_project_compliance(
     Returns:
         The `ProjectComplianceMigrationOutcome`.
     """
-    old_version = db.get(ComplianceStandardVersion, old_project_compliance.standard_version_id)
+    old_version = get_or_404(db, ComplianceStandardVersion, old_project_compliance.standard_version_id, "Compliance standard version")
 
     new_project_compliance = ProjectCompliance(
         project_id=old_project_compliance.project_id,
@@ -2160,7 +2162,7 @@ def migrate_project_compliance(
                 and new_pcr.requirement_id in confirmed_replacement_requirement_ids
                 and old_pcr_for_replacement is not None
             )
-            if confirmed_and_eligible:
+            if confirmed_and_eligible and old_pcr_for_replacement is not None:  # the second test narrows the type
                 new_pcr.explicit_applicability = old_pcr_for_replacement.explicit_applicability
                 new_pcr.justification = old_pcr_for_replacement.justification
                 new_pcr.notes = old_pcr_for_replacement.notes
@@ -2379,6 +2381,20 @@ class ComplianceVersionCache:
             self._standards[standard_id] = self._db.get(ComplianceStandard, standard_id)
         return self._standards[standard_id]
 
+    def require_version(self, version_id: uuid.UUID) -> ComplianceStandardVersion:
+        """The standard version an assignment points at (a foreign key, so present), else 404."""
+        version = self.version(version_id)
+        if version is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance standard version not found.")
+        return version
+
+    def require_standard(self, standard_id: uuid.UUID) -> ComplianceStandard:
+        """The standard a version belongs to (a foreign key, so present), else 404."""
+        standard = self.standard(standard_id)
+        if standard is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Compliance standard not found.")
+        return standard
+
     def requirements(self, version_id: uuid.UUID) -> list[ComplianceRequirement]:
         """Every requirement in the version."""
         if version_id not in self._requirements:
@@ -2412,8 +2428,8 @@ def list_non_compliant_requirements_for_project(
     assignments = cache.assignments(project_id)
     results: list[NonCompliantRequirementOut] = []
     for project_compliance in assignments:
-        version = cache.version(project_compliance.standard_version_id)
-        standard = cache.standard(version.standard_id)
+        version = cache.require_version(project_compliance.standard_version_id)
+        standard = cache.require_standard(version.standard_id)
         requirements = cache.requirements(version.id)
         pcrs, applicability = load_pcrs_and_applicability(
             db, project_compliance_id=project_compliance.id, standard_version_id=version.id,
@@ -2459,8 +2475,8 @@ def list_pending_approvals_for_project(
     assignments = cache.assignments(project_id)
     results: list[PendingApprovalOut] = []
     for project_compliance in assignments:
-        version = cache.version(project_compliance.standard_version_id)
-        standard = cache.standard(version.standard_id)
+        version = cache.require_version(project_compliance.standard_version_id)
+        standard = cache.require_standard(version.standard_id)
         requirements = cache.requirements(version.id)
         pcrs, _applicability = load_pcrs_and_applicability(
             db, project_compliance_id=project_compliance.id, standard_version_id=version.id,
@@ -2503,13 +2519,13 @@ def list_outstanding_required_actions_for_project(
     Mirrors `list_non_compliant_requirements_for_project`'s exact loop
     shape, one level deeper (per-PCR required-action assessments rather
     than the PCR itself)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     cache = cache or ComplianceVersionCache(db)
     assignments = cache.assignments(project_id)
     results: list[OutstandingRequiredActionOut] = []
     for project_compliance in assignments:
-        version = cache.version(project_compliance.standard_version_id)
-        standard = cache.standard(version.standard_id)
+        version = cache.require_version(project_compliance.standard_version_id)
+        standard = cache.require_standard(version.standard_id)
         requirements = cache.requirements(version.id)
         pcrs, applicability = load_pcrs_and_applicability(
             db, project_compliance_id=project_compliance.id, standard_version_id=version.id,

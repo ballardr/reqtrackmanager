@@ -30,6 +30,7 @@ from app.schemas.org import ModuleRoleGrantOut
 from app.schemas.project import (
     EffectiveMemberOut,
     MaterializeResultOut,
+    MemberSourceProvenanceOut,
     ProjectAncestorOut,
     ProjectListItemOut,
     ProjectMemberSourceAdd,
@@ -129,7 +130,7 @@ def get_project_children(
             select(Organization.id, Organization.name).where(
                 Organization.id.in_({c.organization_id for c in children})
             )
-        ).all()
+        ).tuples().all()
     )
     out = []
     for c in children:
@@ -412,11 +413,11 @@ def get_effective_members(
             EffectiveMemberOut(
                 user_id=user_id, display_name=user.display_name, email=user.email, effective_role=effective_role,
                 sources=[
-                    {
+                    MemberSourceProvenanceOut.model_validate({
                         "kind": e["kind"], "role": e["role"], "via_project_id": e["via_project_id"],
                         "via_project_name": project_name(e["via_project_id"]), "via_mode": e["via_mode"],
                         "via_group_id": e["via_group_id"], "via_group_name": e["via_group_name"],
-                    }
+                    })
                     for e in entries
                 ],
                 module_roles=module_roles_by_user.get(user_id, []),

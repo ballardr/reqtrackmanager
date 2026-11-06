@@ -82,6 +82,7 @@ from app.services.audit import log_event
 from app.services.current_versions import current_versions, primed_current_version
 from app.services.files import delete_file
 from app.services.link_types import ensure_org_link_type
+from app.services.lookups import get_or_404
 from app.services.project_hierarchy import get_ancestor_chain
 from app.services.relationships import create_link, delete_link, get_all_links, get_link_between
 from app.services.sequences import code_owner, generate_unique_code
@@ -845,8 +846,8 @@ def grid_quadrant(
     validate_scoring_levels(
         db, organization_id, influence_level_id=influence_level_id, interest_level_id=interest_level_id
     )
-    high_influence = _is_high(db, db.get(ScoringLevel, influence_level_id))
-    high_interest = _is_high(db, db.get(ScoringLevel, interest_level_id))
+    high_influence = _is_high(db, get_or_404(db, ScoringLevel, influence_level_id, "Scoring level"))
+    high_interest = _is_high(db, get_or_404(db, ScoringLevel, interest_level_id, "Scoring level"))
     if high_influence and high_interest:
         return "manage_closely"
     if high_influence:

@@ -6,10 +6,10 @@ unnoticed. No approval-gated tool exists, so none is marked as one."""
 
 from __future__ import annotations
 
-from app.modules.registry import build_mcp_tool_manifest
+from app.modules.registry import ResolvedMcpTool, build_mcp_tool_manifest
 
 
-def _tools() -> dict[str, object]:
+def _tools() -> dict[str, ResolvedMcpTool]:
     return {t.name.removeprefix("stakeholders_"): t for t in build_mcp_tool_manifest() if t.name.startswith("stakeholders_")}
 
 

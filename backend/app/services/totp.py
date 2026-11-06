@@ -40,7 +40,7 @@ def provisioning_qr_code_png_base64(secret: str, email: str, issuer: str = "ReqT
     """
     image = qrcode.make(provisioning_uri(secret, email, issuer))
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    image.save(buffer)  # both qrcode image back ends write PNG by default
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 

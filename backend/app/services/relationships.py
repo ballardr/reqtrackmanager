@@ -42,7 +42,7 @@ fails fast here rather than surfacing later as a silent, unqueryable row.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
@@ -217,7 +217,7 @@ def get_links_from_many(
 
 
 def get_links_touching_many(
-    db: Session, frontier: dict[str, Sequence[uuid.UUID]], *, outgoing: bool = True, incoming: bool = True
+    db: Session, frontier: Mapping[str, Sequence[uuid.UUID]], *, outgoing: bool = True, incoming: bool = True
 ) -> list[ArtefactLink]:
     """Returns every `ArtefactLink` row with an artefact of `frontier` (a
     `{artefact_type: ids}` mapping, any mix of types) as its source

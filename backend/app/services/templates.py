@@ -56,6 +56,7 @@ from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
+from app.services.lookups import get_or_404
 from app.services.requirements import get_current_version, get_keywords, set_keywords
 
 
@@ -202,8 +203,8 @@ def clone_project(
 
         seq = new_project.next_requirement_seq
         new_project.next_requirement_seq = seq + 1
-        component = db.get(ProjectComponent, new_component_id)
-        category = db.get(ProjectCategory, new_category_id)
+        component = get_or_404(db, ProjectComponent, new_component_id, "Project component")
+        category = get_or_404(db, ProjectCategory, new_category_id, "Project category")
         unique_code = f"{component.prefix}-{category.prefix}-{seq:03d}"
 
         new_requirement = Requirement(
@@ -246,8 +247,9 @@ def _cloned_owner(version: RequirementVersion, group_id_map: dict[UUID, UUID], c
     """The owner columns for a requirement cloned into a new project. A user or an organisation group carries
     across unchanged; a project group becomes its copy in the new project; a group the template no longer has
     leaves the creator as owner. (Review scheduling is not cloned, so neither is the reviewer.)"""
-    type_value, principal_id = version.owner_type, version.owner_id
-    if type_value == PrincipalType.PROJECT_GROUP.value:
+    type_value = version.owner_type
+    principal_id: UUID | None = version.owner_id
+    if type_value == PrincipalType.PROJECT_GROUP.value and principal_id is not None:
         principal_id = group_id_map.get(principal_id)
     if principal_id is None:
         type_value, principal_id = PrincipalType.USER.value, creator.id

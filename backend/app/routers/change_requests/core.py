@@ -51,6 +51,7 @@ from app.services.change_request_links import ProposedLinkProblem, check_propose
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.lookups import project_or_404
 from app.services.principals import principal_columns, principal_out, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
@@ -119,7 +120,7 @@ def _to_out(
         proposed_name=version.proposed_name, proposed_reasoning=version.proposed_reasoning,
         proposed_clarification=version.proposed_clarification, proposed_description=version.proposed_description,
         proposed_target_stage_id=version.proposed_target_stage_id, proposed_level=version.proposed_level,
-        proposed_attachment_file_ids=version.proposed_attachment_file_ids,
+        proposed_attachment_file_ids=[UUID(file_id) for file_id in version.proposed_attachment_file_ids],
         reason=version.reason,
         custom_fields=version.custom_fields,
         submitted_at=cr.submitted_at, decided_at=cr.decided_at, decided_by=cr.decided_by,
@@ -151,11 +152,14 @@ def _to_out(
 
 def _latest_version(db: Session, cr: ChangeRequest) -> ChangeRequestVersion:
     """Returns the most recently created version row for a change request."""
-    return db.scalars(
+    version = db.scalars(
         select(ChangeRequestVersion)
         .where(ChangeRequestVersion.change_request_id == cr.id)
         .order_by(ChangeRequestVersion.version_number.desc())
     ).first()
+    if version is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request version not found.")
+    return version
 
 
 MAX_PROPOSED_LINKS = 50
@@ -275,7 +279,7 @@ def create_change_request(
                 "Provide either proposed_action_link_id (to link an existing action) or "
                 "proposed_action_title and proposed_action_type_id (to create a new one) — not both, not neither.",
             )
-        if has_link:
+        if payload.proposed_action_link_id is not None:
             action = get_requirement_action_in_project(db, project_id, payload.proposed_action_link_id)
             existing = get_artefact_link_between(
                 db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
@@ -535,7 +539,7 @@ def list_change_requests(
         facts = _list_facts(db, [cr for cr, _version in pairs], current_user.id)
         return [_to_out(db, cr, version, current_user.id, with_links=False, facts=facts) for cr, version in pairs]
 
-    out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "change_request", rows_for)
+    out = project_scope.collect(db, project_or_404(db, project_id), current_user.id, "change_request", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:

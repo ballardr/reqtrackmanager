@@ -40,12 +40,13 @@ Dependencies: `services.rbac` (membership), `services.audit`, `modules.registry`
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, delete, false, func, or_, select, update
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -166,9 +167,12 @@ def validate_principal(
     else:
         if project_id is None:
             raise _bad_request(f"{field} cannot be a project group on an organisation-level record.")
-        group = db.get(ProjectGroup, ref.id)
+        project_group = db.get(ProjectGroup, ref.id)
         project = db.get(Project, project_id)
-        if group is None or project is None or group.project_id != project_id or project.organization_id != organization_id:
+        if (
+            project_group is None or project is None or project_group.project_id != project_id
+            or project.organization_id != organization_id
+        ):
             raise _bad_request(f"{field} must be a group of this project.")
 
 
@@ -318,6 +322,21 @@ def principal_columns(field: str, ref: PrincipalRef | None) -> dict[str, Any]:
         ref: The principal, or None to clear the field.
     """
     return {f"{field}_type": ref.type.value if ref else None, f"{field}_id": ref.id if ref else None}
+
+
+def label_of(
+    labels: Mapping[tuple[str, uuid.UUID], PrincipalOut], principal_type: str | None, principal_id: uuid.UUID | None,
+) -> PrincipalOut | None:
+    """The resolved label of a stored `(type, id)` principal, or None when the field is empty.
+
+    Args:
+        labels: The lookup from `principal_labels`.
+        principal_type: The stored type value (None for an empty field).
+        principal_id: The stored id (None for an empty field).
+    """
+    if principal_type is None or principal_id is None:
+        return None
+    return labels[(principal_type, principal_id)]
 
 
 def principal_text(principal: PrincipalOut | None, *, empty: str = "") -> str:
@@ -521,7 +540,8 @@ def prepare_group_deletion(
     for reference in all_principal_references():
         type_column, id_column = _columns(reference)
         record_column = getattr(reference.model, reference.record_id_field)
-        rows = db.execute(select(reference.model.id, record_column).where(_naming_rows_clause(reference, group))).all()
+        row_id_column = sa_inspect(reference.model).primary_key[0]
+        rows = db.execute(select(row_id_column, record_column).where(_naming_rows_clause(reference, group))).all()
         ids = [row_id for row_id, _ in rows]
         if not ids:
             continue
@@ -534,9 +554,9 @@ def prepare_group_deletion(
             drop = [row_id for row_id, record_id in rows if replacement is None or record_id in already]
             keep = [row_id for row_id in ids if row_id not in drop]
             if drop:
-                db.execute(delete(reference.model).where(reference.model.id.in_(drop)))
-            if keep:
-                db.execute(update(reference.model).where(reference.model.id.in_(keep)).values(
+                db.execute(delete(reference.model).where(row_id_column.in_(drop)))
+            if keep and replacement is not None:
+                db.execute(update(reference.model).where(row_id_column.in_(keep)).values(
                     **{type_column.key: replacement.type.value, id_column.key: replacement.id}
                 ))
         else:
@@ -544,7 +564,7 @@ def prepare_group_deletion(
                 {type_column.key: replacement.type.value, id_column.key: replacement.id}
                 if replacement is not None else {type_column.key: None, id_column.key: None}
             )
-            db.execute(update(reference.model).where(reference.model.id.in_(ids)).values(**values))
+            db.execute(update(reference.model).where(row_id_column.in_(ids)).values(**values))
         for _, record_id in rows:
             log_event(
                 db, entity_type=reference.audit_entity_type, entity_id=record_id,

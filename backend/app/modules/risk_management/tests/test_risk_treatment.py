@@ -35,6 +35,7 @@ from app.modules.risk_management.tests._helpers import (
     user_ref,
 )
 from tests.conftest import auth_headers, create_org_user, create_project
+from tests.db_helpers import audit_detail
 
 
 def _treatments(client, token, project_id, risk_id) -> dict:
@@ -294,7 +295,7 @@ def test_each_assessment_is_audit_logged_with_the_old_and_new_verdict(client, ad
             select(AuditEvent).where(AuditEvent.entity_id == risk["id"],AuditEvent.action == "treatment_assessed")
             .order_by(AuditEvent.created_at)
         ).all()
-        details = [e.detail for e in events]
+        details = [audit_detail(e) for e in events]
     finally:
         db.close()
     assert [(d["from"], d["to"]) for d in details] == [("proposed", "effective"), ("effective", "ineffective")]

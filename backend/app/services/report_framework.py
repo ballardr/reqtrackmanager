@@ -91,6 +91,7 @@ from app.modules.registry import (
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
 from app.services.downloads import file_response, filename_safe
+from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.project_hierarchy import get_descendant_project_ids
 from app.services.rbac import (
@@ -535,7 +536,9 @@ def apply_cell_tones(result: ReportResult, cell_tones: Mapping[str, Mapping[str,
         return result
     sections = []
     for section in result.sections:
-        grid = [list(row) for row in section.tones] if section.tones else [[None] * len(row) for row in section.rows]
+        grid: list[list[str | None]] = (
+            [list(row) for row in section.tones] if section.tones else [[None] * len(row) for row in section.rows]
+        )
         changed = False
         for column, heading in enumerate(section.columns):
             lookup = cell_tones.get(heading)
@@ -841,6 +844,24 @@ class ReportRouters:
     org: APIRouter
 
 
+def _set_signature(endpoint: Callable[..., Any], signature: inspect.Signature) -> None:
+    """Gives a generated route function the signature FastAPI should read (its parameters are built at run time)."""
+    vars(endpoint)["__signature__"] = signature
+
+
+def _holds_org_report_role(
+    db: Session, user: User, module_key: str, definition: ReportDefinition, organization_id: UUID,
+) -> bool:
+    """Whether `user` holds the role the definition requires for an organisation-wide run.
+
+    A definition with no `org_role_key` (a project-only report) is never satisfied.
+    """
+    role_key = definition.org_role_key
+    return role_key is not None and user_satisfies_module_role(
+        db, user, module_key, role_key, organization_id=organization_id, project_id=None,
+    )
+
+
 def _live_definition(module_key: str, definition: ReportDefinition) -> ReportDefinition:
     """The registry-validated `definition`, or 404.
 
@@ -889,10 +910,13 @@ def _route_signature(path_param: str, definition: ReportDefinition, *, project_l
             default=Query(None, description="Narrow the report to this one project (must be in its scope)."),
         ))
     for param in definition.params:
-        bounds = {"ge": param.minimum, "le": param.maximum} if param.type == "integer" else {}
+        is_integer = param.type == "integer"
         params.append(P(
             param.name, P.POSITIONAL_OR_KEYWORD, annotation=_PARAM_PY_TYPE[param.type] | None,
-            default=Query(param.default, description=param.description or None, **bounds),
+            default=Query(
+                param.default, description=param.description or None,
+                ge=param.minimum if is_integer else None, le=param.maximum if is_integer else None,
+            ),
         ))
     params.append(P("current_user", P.POSITIONAL_OR_KEYWORD, annotation=User, default=Depends(dependency)))
     params.append(P("db", P.POSITIONAL_OR_KEYWORD, annotation=Session, default=Depends(get_db)))
@@ -909,7 +933,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
     def endpoint(**kw: Any):
         live = _live_definition(module_key, definition)
         db: Session = kw["db"]
-        project = db.get(Project, kw["project_id"])
+        project = get_or_404(db, Project, kw["project_id"], "Project")
         organization = db.get(Organization, project.organization_id)
         assert organization is not None  # the project's own organisation
         params = validated_params(live, kw)
@@ -926,7 +950,7 @@ def _build_project_route(module_key: str, definition: ReportDefinition) -> Calla
             result, live, kw["format"], project.name, resolve_branding(db, organization), organization, project,
         )
 
-    endpoint.__signature__ = _route_signature("project_id", definition, project_level=True, dependency=dependency)  # type: ignore[attr-defined]
+    _set_signature(endpoint, _route_signature("project_id", definition, project_level=True, dependency=dependency))
     endpoint.__doc__ = (
         f"{definition.title} for this project: {definition.description} `format` is json (default), pdf, docx, html, odt, csv, xlsx or ods; "
         "`include_children` adds readable child projects. The document formats carry the organisation's report look."
@@ -942,9 +966,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
         db: Session = kw["db"]
         current_user: User = kw["current_user"]
         organization_id: UUID = kw["organization_id"]
-        if not user_satisfies_module_role(
-            db, current_user, module_key, live.org_role_key, organization_id=organization_id, project_id=None,
-        ):
+        if not _holds_org_report_role(db, current_user, module_key, live, organization_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not hold the role required for organisation-wide reports.")
         organization = db.get(Organization, organization_id)
         assert organization is not None  # the route dependency has checked the organisation
@@ -967,7 +989,7 @@ def _build_org_route(module_key: str, definition: ReportDefinition) -> Callable[
             result, live, kw["format"], organization.name, resolve_branding(db, organization), organization, None,
         )
 
-    endpoint.__signature__ = _route_signature("organization_id", definition, project_level=False, dependency=dependency)  # type: ignore[attr-defined]
+    _set_signature(endpoint, _route_signature("organization_id", definition, project_level=False, dependency=dependency))
     scope = "every project in the organisation" if definition.org_scope == "all_org_projects" else "projects the caller can read"
     endpoint.__doc__ = (
         f"{definition.title} across the organisation: {definition.description} Needs the module role "
@@ -992,11 +1014,9 @@ def _build_org_breakdown_route(module_key: str, definition: ReportDefinition) ->
         db: Session = kw["db"]
         current_user: User = kw["current_user"]
         organization_id: UUID = kw["organization_id"]
-        if not user_satisfies_module_role(
-            db, current_user, module_key, live.org_role_key, organization_id=organization_id, project_id=None,
-        ):
+        if not _holds_org_report_role(db, current_user, module_key, live, organization_id):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not hold the role required for organisation-wide reports.")
-        organization = db.get(Organization, organization_id)
+        organization = get_or_404(db, Organization, organization_id, "Organisation")
         params = validated_params(live, kw)
         projects = scope_projects(
             db, current_user, definition=live, organization=organization, root_project=None, include_children=False,
@@ -1019,9 +1039,9 @@ def _build_org_breakdown_route(module_key: str, definition: ReportDefinition) ->
         )
 
     full = _route_signature("organization_id", definition, project_level=False, dependency=dependency)
-    endpoint.__signature__ = full.replace(  # type: ignore[attr-defined]
+    _set_signature(endpoint, full.replace(
         parameters=[p for p in full.parameters.values() if p.name not in ("format", "project_id")],
-    )
+    ))
     endpoint.__doc__ = (
         f"{definition.title} headline figures per project: the organisation report's figures evaluated for each "
         f"project in its scope, so a figure can be broken down by project. Needs the module role "
@@ -1048,7 +1068,9 @@ def build_report_routers(module_key: str, definitions: Sequence[ReportDefinition
     """
     valid, _ = validate_report_definitions(definitions)
     routers = ReportRouters(project=APIRouter(prefix="/reports"), org=APIRouter(prefix="/reports"))
-    ok = {"200": {"model": ReportOut, "description": "JSON, or a PDF/CSV file for `format=pdf|csv`."}}
+    ok: dict[int | str, dict[str, Any]] = {
+        200: {"model": ReportOut, "description": "JSON, or a PDF/CSV file for `format=pdf|csv`."},
+    }
     for definition in valid:
         routers.project.add_api_route(
             f"/{definition.slug}", _build_project_route(module_key, definition), methods=["GET"], response_model=None,
@@ -1249,7 +1271,7 @@ def _mounted_path(router: APIRouter, route_name: str, fallback: str) -> str:
     """
     for route in router.routes:
         if getattr(route, "name", None) == route_name:
-            return route.path
+            return getattr(route, "path", fallback)
     return fallback
 
 
@@ -1292,15 +1314,13 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
         Entries in registry order.
     """
     entries: list[ReportCatalogueEntryOut] = []
-    organization = db.get(Organization, organization_id)
+    organization = get_or_404(db, Organization, organization_id, "Organisation")
     scoped: dict[str, list[Project]] = {}  # per `org_scope`: the scope does not depend on the report
     for module_key, definition in get_all_reports():
         module = get_module(module_key)
         if not definition.org_level or module is None or not report_enabled_for_organization(db, organization_id, module_key, definition):
             continue
-        if not user_satisfies_module_role(
-            db, user, module_key, definition.org_role_key, organization_id=organization_id, project_id=None,
-        ):
+        if not _holds_org_report_role(db, user, module_key, definition, organization_id):
             continue
         router = module.get_router()
         if router is None:

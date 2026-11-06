@@ -12,7 +12,7 @@ from collections.abc import Collection
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest, ReviewComment
@@ -123,7 +123,7 @@ def get_comment_counts(db: Session, target_type: ReviewTargetType, target_ids: C
         select(ReviewComment.target_id, func.count(ReviewComment.id)).where(
             ReviewComment.target_type == target_type, ReviewComment.target_id.in_(set(target_ids)),
         ).group_by(ReviewComment.target_id)
-    ).all())
+    ).tuples().all())
 
 
 def _own_subscription(user_id: UUID, entity_type: str, entity_id: UUID):
@@ -271,13 +271,13 @@ def remove_subscriptions_and_favorites_for_projects(db: Session, user_id: UUID, 
     entity_ids = list(requirement_ids) + list(cr_ids)
     if entity_ids:
         db.execute(
-            Subscription.__table__.delete().where(
+            delete(Subscription).where(
                 Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == user_id,
                 Subscription.entity_id.in_(entity_ids),
             )
         )
     db.execute(
-        FavoriteProject.__table__.delete().where(
+        delete(FavoriteProject).where(
             FavoriteProject.user_id == user_id, FavoriteProject.project_id.in_(project_ids)
         )
     )

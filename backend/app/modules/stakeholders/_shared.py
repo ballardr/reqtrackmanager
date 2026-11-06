@@ -111,7 +111,7 @@ def persona_to_out(
         if persona.scope == PersonaScope.ORGANIZATION:
             hidden = visibility_fields(context["visibility"], persona.id)
         effective_weight, weight_source, override = context["weights"][persona.id]
-    return PersonaOut(
+    return PersonaOut.model_validate(dict(
         id=persona.id, scope=persona.scope, organization_id=persona.organization_id, project_id=persona.project_id,
         unique_code=persona.unique_code, creator_id=persona.creator_id, is_archived=persona.is_archived, archived_at=persona.archived_at,
         archived_by=persona.archived_by, name=version.name, description=version.description,
@@ -131,7 +131,7 @@ def persona_to_out(
         version_number=version.version_number, effective_weight=effective_weight, weight_override=override,
         weight_source=weight_source, **hidden,
         created_at=persona.created_at, updated_at=persona.updated_at,
-    )
+    ))
 
 
 def persona_project_context(db: Session, project_id: uuid.UUID, own_weights: dict[uuid.UUID, float | None]) -> dict:
@@ -403,13 +403,12 @@ def get_visible_stakeholder(db: Session, project: Project, stakeholder_id: uuid.
     """A Stakeholder `project` can see (its own, or its organisation's unless
     hidden from the project), else 404."""
     stakeholder = db.get(Stakeholder, stakeholder_id)
-    visible = stakeholder is not None and (
+    if stakeholder is None or not (
         (stakeholder.scope == StakeholderScope.PROJECT and stakeholder.project_id == project.id)
         or (stakeholder.scope == StakeholderScope.ORGANIZATION
             and stakeholder.organization_id == project.organization_id
             and stakeholder.id not in hidden_stakeholder_ids(db, project.id))
-    )
-    if not visible:
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder not found.")
     return stakeholder
 
@@ -418,12 +417,11 @@ def get_visible_persona(db: Session, project: Project, persona_id: uuid.UUID) ->
     """A Persona `project` can see (its own, or its organisation's unless hidden
     from the project), else 404."""
     persona = db.get(Persona, persona_id)
-    visible = persona is not None and (
+    if persona is None or not (
         (persona.scope == PersonaScope.PROJECT and persona.project_id == project.id)
         or (persona.scope == PersonaScope.ORGANIZATION and persona.organization_id == project.organization_id
             and persona.id not in hidden_persona_ids(db, project.id))
-    )
-    if not visible:
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Persona not found.")
     return persona
 

@@ -22,7 +22,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.enums import ArtefactType
-from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
@@ -42,6 +41,7 @@ from app.modules.decisions.service import (
     create_supersession,
 )
 from app.services.audit import log_event
+from app.services.lookups import project_or_404
 from app.services.relationships import get_all_links
 from app.services.requirements import get_current_version
 
@@ -105,7 +105,7 @@ def create_decision_supersession(
     old_decision_id`. Gated on `decision_owner`, mirroring `routers.
     requirements.create_link`'s own precedent of requiring an edit-capable
     role to create a traceability relationship, not just view access."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     new_decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     old_decision = _get_decision_in_project(db, project_id, payload.old_decision_id)
@@ -127,7 +127,7 @@ def create_decision_requirement_link_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionRequirementLinkCreate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     requirement = db.get(Requirement, payload.requirement_id)
@@ -152,7 +152,7 @@ def create_decision_decision_link_endpoint(
     project_id: UUID, decision_id: UUID, payload: DecisionDecisionLinkCreate,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     source_decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     target_decision = _get_decision_in_project(db, project_id, payload.target_decision_id)

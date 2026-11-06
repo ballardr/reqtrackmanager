@@ -20,7 +20,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, UserOrgRole
@@ -258,7 +258,7 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
     roles_to_revoke = (existing_roles & sso_managed_roles) - mapped_roles
     if roles_to_revoke:
         db.execute(
-            UserOrgRole.__table__.delete().where(
+            delete(UserOrgRole).where(
                 UserOrgRole.user_id == user.id,
                 UserOrgRole.organization_id == org.id,
                 UserOrgRole.role.in_(roles_to_revoke),
@@ -311,7 +311,7 @@ def sync_org_groups_from_claims(db: Session, user: User, org: Organization, clai
     groups_to_leave = existing_member_of - should_be_member_of
     if groups_to_leave:
         db.execute(
-            OrgGroupMember.__table__.delete().where(
+            delete(OrgGroupMember).where(
                 OrgGroupMember.user_id == user.id, OrgGroupMember.org_group_id.in_(groups_to_leave)
             )
         )

@@ -322,7 +322,7 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
         ),
         RecordColumn("keywords", "Tags", lambda t, r: list_cell(t.keywords.get(r.id, [])), list_parser, kind="list"),
         RecordColumn(
-            "review_date", "Review date", lambda t, r: version(t, r).review_date.isoformat() if version(t, r).review_date else "",
+            "review_date", "Review date", lambda t, r: review_date.isoformat() if (review_date := version(t, r).review_date) else "",
             date_parser("Review date"), kind="date",
         ),
         RecordColumn(

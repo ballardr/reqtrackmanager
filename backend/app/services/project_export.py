@@ -121,6 +121,7 @@ from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.files import read_file
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.lookups import get_or_404
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
@@ -288,10 +289,10 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     cr_versions = list(db.scalars(select(ChangeRequestVersion).where(ChangeRequestVersion.change_request_id.in_(cr_ids))) if cr_ids else [])
     cr_versions_by_cr: dict[UUID, list[ChangeRequestVersion]] = {}
-    for v in cr_versions:
-        cr_versions_by_cr.setdefault(v.change_request_id, []).append(v)
-    for vs in cr_versions_by_cr.values():
-        vs.sort(key=lambda v: v.version_number)
+    for cr_version in cr_versions:
+        cr_versions_by_cr.setdefault(cr_version.change_request_id, []).append(cr_version)
+    for cr_version_list in cr_versions_by_cr.values():
+        cr_version_list.sort(key=lambda v: v.version_number)
 
     cr_tasks = list(db.scalars(select(ChangeRequestTask).where(ChangeRequestTask.change_request_id.in_(cr_ids))) if cr_ids else [])
     cr_tasks_by_cr: dict[UUID, list[ChangeRequestTask]] = {}
@@ -300,8 +301,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     cr_votes = list(db.scalars(select(ChangeRequestVote).where(ChangeRequestVote.change_request_id.in_(cr_ids))) if cr_ids else [])
     cr_votes_by_cr: dict[UUID, list[ChangeRequestVote]] = {}
-    for v in cr_votes:
-        cr_votes_by_cr.setdefault(v.change_request_id, []).append(v)
+    for cr_vote in cr_votes:
+        cr_votes_by_cr.setdefault(cr_vote.change_request_id, []).append(cr_vote)
 
     cr_comments_by_cr: dict[UUID, list[ReviewComment]] = {}
     for c in cr_comments_raw:
@@ -337,12 +338,12 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         user_ids.add(cr.creator_id)
         if cr.decided_by:
             user_ids.add(cr.decided_by)
-    for v in cr_versions:
-        user_ids.add(v.created_by)
+    for cr_version in cr_versions:
+        user_ids.add(cr_version.created_by)
     for t in cr_tasks:
         user_ids.add(t.created_by)
-    for v in cr_votes:
-        user_ids.add(v.user_id)
+    for cr_vote in cr_votes:
+        user_ids.add(cr_vote.user_id)
     for c in requirement_comments_raw + cr_comments_raw:
         user_ids.add(c.author_id)
     for b in baselines:
@@ -408,7 +409,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         {
             "source_unique_code": req_code_by_id.get(link.source_id),
             "target_unique_code": req_code_by_id.get(link.target_id),
-            "link_type_forward_name": link_type_forward_name_by_id.get(link.link_type_id),
+            "link_type_forward_name": (link_type_forward_name_by_id.get(link.link_type_id) if link.link_type_id else None),
             "created_by_email": email(link.created_by),
         }
         for link in links if link.source_id in req_code_by_id and link.target_id in req_code_by_id
@@ -422,21 +423,22 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     change_requests_json = []
     for cr in change_requests:
         cr_versions_json = []
-        for v in cr_versions_by_cr.get(cr.id, []):
-            proposed_component_prefix = component_prefix_by_id.get(v.proposed_component_id) if v.proposed_component_id else None
-            proposed_category = category_by_id.get(v.proposed_category_id) if v.proposed_category_id else None
+        for cr_version in cr_versions_by_cr.get(cr.id, []):
+            proposed_component_prefix = component_prefix_by_id.get(cr_version.proposed_component_id) if cr_version.proposed_component_id else None
+            proposed_category = category_by_id.get(cr_version.proposed_category_id) if cr_version.proposed_category_id else None
             proposed_category_prefix = proposed_category.prefix if proposed_category else None
             cr_versions_json.append({
-                "version_number": v.version_number, "proposed_name": v.proposed_name, "proposed_reasoning": v.proposed_reasoning,
-                "proposed_clarification": v.proposed_clarification, "proposed_description": v.proposed_description,
+                "version_number": cr_version.version_number, "proposed_name": cr_version.proposed_name,
+                "proposed_reasoning": cr_version.proposed_reasoning,
+                "proposed_clarification": cr_version.proposed_clarification, "proposed_description": cr_version.proposed_description,
                 "proposed_component_prefix": proposed_component_prefix, "proposed_category_prefix": proposed_category_prefix,
-                "proposed_target_stage": stage_name_by_id.get(v.proposed_target_stage_id) if v.proposed_target_stage_id else None,
-                "proposed_level": v.proposed_level.value if v.proposed_level else None,
-                "proposed_review_date": _j(v.proposed_review_date), "proposed_review_lead_days": v.proposed_review_lead_days,
-                "proposed_reviewer": principal_to_bundle(db, v.proposed_reviewer_type, v.proposed_reviewer_id),
-                "changed_fields": v.changed_fields, "reason": v.reason,
-                "custom_fields": custom_fields_by_name(v.custom_fields),
-                "created_by_email": email(v.created_by), "created_at": _j(v.created_at),
+                "proposed_target_stage": stage_name_by_id.get(cr_version.proposed_target_stage_id) if cr_version.proposed_target_stage_id else None,
+                "proposed_level": cr_version.proposed_level.value if cr_version.proposed_level else None,
+                "proposed_review_date": _j(cr_version.proposed_review_date), "proposed_review_lead_days": cr_version.proposed_review_lead_days,
+                "proposed_reviewer": principal_to_bundle(db, cr_version.proposed_reviewer_type, cr_version.proposed_reviewer_id),
+                "changed_fields": cr_version.changed_fields, "reason": cr_version.reason,
+                "custom_fields": custom_fields_by_name(cr_version.custom_fields),
+                "created_by_email": email(cr_version.created_by), "created_at": _j(cr_version.created_at),
             })
         change_requests_json.append({
             "ref": cr_ref_by_id[cr.id], "requirement_unique_code": req_code_by_id.get(cr.requirement_id) if cr.requirement_id else None,
@@ -970,7 +972,7 @@ def apply_project_data(
             version_id = version_id_by_code_and_number.get((r["unique_code"], v["version_number"]))
             cr_id = cr_id_by_ref.get(cr_ref)
             if version_id and cr_id:
-                db.get(RequirementVersion, version_id).change_request_id = cr_id
+                get_or_404(db, RequirementVersion, version_id, "Requirement version").change_request_id = cr_id
 
     for b in data.get("baselines", []):
         stage_id = stage_id_by_name.get(b["stage_name"])

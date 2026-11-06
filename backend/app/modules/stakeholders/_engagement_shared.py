@@ -75,6 +75,7 @@ from app.modules.stakeholders.service import (
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import module_attachments as att
 from app.services.audit import log_event
+from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.principals import principal_labels, validate_principal
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
@@ -464,7 +465,7 @@ def _audience_with_members(
     for member in members:
         if member.stakeholder_id in existing:
             continue
-        stakeholder = db.get(Stakeholder, member.stakeholder_id)
+        stakeholder = get_or_404(db, Stakeholder, member.stakeholder_id, "Stakeholder")
         added.append(participant_to_out(
             db, eng.add_participant(db, engagement, stakeholder.id, actor, organization_id=project.organization_id),
             stakeholder,
@@ -509,9 +510,9 @@ def list_outcomes(
     for link, kind in eng.list_outcome_links(db, holder_type, holder_id, project.organization_id):
         summary = rel.resolve_target(db, project, link.target_type, link.target_id)
         if summary is not None:
-            out.append(OutcomeOut(
+            out.append(OutcomeOut.model_validate(dict(
                 link_id=link.id, kind=kind.key, target_type=link.target_type, target_id=summary.id, label=summary.label,
-            ))
+            )))
     return sorted(out, key=lambda o: (o.kind, o.label.lower()))
 
 
@@ -554,7 +555,7 @@ def add_outcome(
     log(db, engagement.id, actor, project.id, "outcome_added", kind=kind.key, target_type=payload.target_type, target_id=summary.id,
         holder_type=holder_type, holder_id=holder_id)
     db.commit()
-    return OutcomeOut(link_id=link.id, kind=kind.key, target_type=payload.target_type, target_id=summary.id, label=summary.label)
+    return OutcomeOut.model_validate(dict(link_id=link.id, kind=kind.key, target_type=payload.target_type, target_id=summary.id, label=summary.label))
 
 
 def remove_outcome(

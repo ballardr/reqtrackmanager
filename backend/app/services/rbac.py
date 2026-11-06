@@ -144,8 +144,9 @@ from typing import TypeVar
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import DeclarativeBase, Session, aliased
 
 from app.database import get_db
 from app.deps import get_current_user, get_current_user_or_module_frame
@@ -180,6 +181,7 @@ from app.modules.registry import (
     is_org_module_subcomponent_enabled,
     scoped_memo,
 )
+from app.services.lookups import present
 from app.services.permissions import ADMINISTRATIVE_PERMISSIONS, ALL_ARTEFACT_TYPES, encode_permission
 
 # Defensive circuit-breaker for the forward-inheritance and member-source
@@ -500,11 +502,13 @@ def _descendant_org_group_ids(db: Session, group_ids: set[UUID]) -> set[UUID]:
     while frontier and iterations < _ORG_GROUP_CLOSURE_ITERATION_CAP:
         iterations += 1
         children = set(
-            db.scalars(
-                select(OrgGroupMember.member_org_group_id).where(
-                    OrgGroupMember.org_group_id.in_(frontier), OrgGroupMember.member_org_group_id.is_not(None)
-                )
-            ).all()
+            present(
+                db.scalars(
+                    select(OrgGroupMember.member_org_group_id).where(
+                        OrgGroupMember.org_group_id.in_(frontier), OrgGroupMember.member_org_group_id.is_not(None)
+                    )
+                ).all()
+            )
         )
         new = children - visited
         if not new:
@@ -533,11 +537,11 @@ def effective_org_group_member_ids(db: Session, org_group_id: UUID) -> set[UUID]
     """
     all_group_ids = {org_group_id} | _descendant_org_group_ids(db, {org_group_id})
     return set(
-        db.scalars(
+        present(db.scalars(
             select(OrgGroupMember.user_id).where(
                 OrgGroupMember.org_group_id.in_(all_group_ids), OrgGroupMember.user_id.is_not(None)
             )
-        ).all()
+        ).all())
     )
 
 
@@ -571,11 +575,11 @@ def effective_project_group_member_ids(db: Session, project_group_id: UUID) -> s
         if same_org:
             all_group_ids = same_org | _descendant_org_group_ids(db, same_org)
             user_ids.update(
-                db.scalars(
+                present(db.scalars(
                     select(OrgGroupMember.user_id).where(
                         OrgGroupMember.org_group_id.in_(all_group_ids), OrgGroupMember.user_id.is_not(None)
                     )
-                ).all()
+                ).all())
             )
 
     source_ids = {m.source_project_id for m in members if m.source_project_id is not None}
@@ -651,9 +655,13 @@ DIRECT_ROLE_KINDS: tuple[str, ...] = (
 )
 
 
+# Direct role kinds to their holders: bare roles, or (role, group_id, group_name) for group-sourced grants.
+_ByKind = dict[str, set[ProjectRole | tuple[ProjectRole, UUID, str]]]
+
+
 def _direct_effective_project_roles_by_kind(
     db: Session, user_id: UUID, project_id: UUID
-) -> dict[str, set[ProjectRole] | set[tuple[ProjectRole, UUID, str]]]:
+) -> _ByKind:
     """Same resolution as `_direct_effective_project_roles`, but keeping the
     six underlying sources (1-4 and 8 of the module docstring, plus org-wide
     visibility split out on its own) apart instead of collapsing them into
@@ -698,7 +706,6 @@ def _direct_effective_project_roles_by_kind(
     return _direct_effective_project_roles_by_kind_for_projects(db, user_id, [project_id])[project_id]
 
 
-_ByKind = dict[str, set[ProjectRole] | set[tuple[ProjectRole, UUID, str]]]
 
 
 def _direct_effective_project_roles_by_kind_for_projects(
@@ -902,8 +909,8 @@ def prefetch_project_roles(db: Session, user_id: UUID, project_ids: Collection[U
             None if row is None else (row.parent_project_id, row.role_inheritance_mode, row.role_inheritance_filter_role),
         )
     sources: dict[UUID, list] = {project_id: [] for project_id in ids}
-    for row in _member_source_rows(db, ids):
-        sources[row[0]].append(tuple(row))
+    for source_row in _member_source_rows(db, ids):
+        sources[source_row[0]].append(source_row)
     for project_id, project_rows in sources.items():
         memo.setdefault(("member_source_rows", project_id), tuple(project_rows))
 
@@ -964,29 +971,29 @@ def _direct_project_member_ids_base(db: Session, project_id: UUID) -> set[UUID]:
         db.scalars(select(UserProjectRole.user_id).where(UserProjectRole.project_id == project_id)).all()
     )
     user_ids.update(
-        db.scalars(
+        present(db.scalars(
             select(ProjectGroupMember.user_id)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
             .join(ProjectGroupRole, ProjectGroupRole.project_group_id == ProjectGroup.id)
             .where(ProjectGroup.project_id == project_id, ProjectGroupMember.user_id.is_not(None))
-        ).all()
+        ).all())
     )
-    nested_org_group_ids = set(
+    nested_org_group_ids = set(present(
         db.scalars(
             select(ProjectGroupMember.org_group_id)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
             .join(ProjectGroupRole, ProjectGroupRole.project_group_id == ProjectGroup.id)
             .where(ProjectGroup.project_id == project_id, ProjectGroupMember.org_group_id.is_not(None))
         ).all()
-    )
+    ))
     if nested_org_group_ids:
         all_org_group_ids = nested_org_group_ids | _descendant_org_group_ids(db, nested_org_group_ids)
         user_ids.update(
-            db.scalars(
+            present(db.scalars(
                 select(OrgGroupMember.user_id).where(
                     OrgGroupMember.org_group_id.in_(all_org_group_ids), OrgGroupMember.user_id.is_not(None)
                 )
-            ).all()
+            ).all())
         )
     # Source 8: org groups holding *any* role on `project_id` directly
     # (`OrgGroupProjectRole`) — same cross-tenant re-check and
@@ -1004,11 +1011,11 @@ def _direct_project_member_ids_base(db: Session, project_id: UUID) -> set[UUID]:
     if direct_role_group_ids:
         all_direct_role_group_ids = direct_role_group_ids | _descendant_org_group_ids(db, direct_role_group_ids)
         user_ids.update(
-            db.scalars(
+            present(db.scalars(
                 select(OrgGroupMember.user_id).where(
                     OrgGroupMember.org_group_id.in_(all_direct_role_group_ids), OrgGroupMember.user_id.is_not(None)
                 )
-            ).all()
+            ).all())
         )
     return user_ids
 
@@ -1040,7 +1047,7 @@ def _direct_project_member_ids(db: Session, project_id: UUID) -> set[UUID]:
     """
     user_ids = _direct_project_member_ids_base(db, project_id)
     SourceProject = aliased(Project)
-    source_ids = set(
+    source_ids = set(present(
         db.scalars(
             select(ProjectGroupMember.source_project_id)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
@@ -1052,7 +1059,7 @@ def _direct_project_member_ids(db: Session, project_id: UUID) -> set[UUID]:
                 SourceProject.organization_id == Project.organization_id,
             )
         ).all()
-    )
+    ))
     for source_id in source_ids:
         user_ids |= _direct_project_member_ids_base(db, source_id)
     return user_ids
@@ -1084,7 +1091,7 @@ def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: Project
         ).all()
     )
     user_ids.update(
-        db.scalars(
+        present(db.scalars(
             select(ProjectGroupMember.user_id)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
             .join(ProjectGroupRole, ProjectGroupRole.project_group_id == ProjectGroup.id)
@@ -1092,9 +1099,9 @@ def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: Project
                 ProjectGroup.project_id == project_id, ProjectGroupRole.role == role,
                 ProjectGroupMember.user_id.is_not(None),
             )
-        ).all()
+        ).all())
     )
-    nested_org_group_ids = set(
+    nested_org_group_ids = set(present(
         db.scalars(
             select(ProjectGroupMember.org_group_id)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
@@ -1104,15 +1111,15 @@ def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: Project
                 ProjectGroupMember.org_group_id.is_not(None),
             )
         ).all()
-    )
+    ))
     if nested_org_group_ids:
         all_org_group_ids = nested_org_group_ids | _descendant_org_group_ids(db, nested_org_group_ids)
         user_ids.update(
-            db.scalars(
+            present(db.scalars(
                 select(OrgGroupMember.user_id).where(
                     OrgGroupMember.org_group_id.in_(all_org_group_ids), OrgGroupMember.user_id.is_not(None)
                 )
-            ).all()
+            ).all())
         )
 
     # Source 8: org groups holding exactly `role` on `project_id` directly
@@ -1132,11 +1139,11 @@ def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: Project
     if direct_role_group_ids:
         all_direct_role_group_ids = direct_role_group_ids | _descendant_org_group_ids(db, direct_role_group_ids)
         user_ids.update(
-            db.scalars(
+            present(db.scalars(
                 select(OrgGroupMember.user_id).where(
                     OrgGroupMember.org_group_id.in_(all_direct_role_group_ids), OrgGroupMember.user_id.is_not(None)
                 )
-            ).all()
+            ).all())
         )
 
     # Source 7: project-referencing group members granted exactly `role` —
@@ -1144,7 +1151,7 @@ def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: Project
     # direction as `_direct_project_member_ids`'s own third arm.
     SourceProject = aliased(Project)
     project_ref_source_ids = set(
-        db.scalars(
+        present(db.scalars(
             select(ProjectGroupMember.source_project_id)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
             .join(ProjectGroupRole, ProjectGroupRole.project_group_id == ProjectGroup.id)
@@ -1155,7 +1162,7 @@ def _direct_project_role_holder_ids(db: Session, project_id: UUID, role: Project
                 ProjectGroupMember.source_project_id.is_not(None),
                 SourceProject.organization_id == Project.organization_id,
             )
-        ).all()
+        ).all())
     )
     for source_id in project_ref_source_ids:
         user_ids |= _direct_project_member_ids_base(db, source_id)
@@ -1253,8 +1260,9 @@ def _member_source_rows(
     if not frontier:
         return []
     OwnerProject = aliased(Project)
-    return list(
-        db.execute(
+    return [
+        (project_id, source_project_id, mode, filter_role)
+        for project_id, source_project_id, mode, filter_role in db.execute(
             select(
                 ProjectMemberSource.project_id,
                 ProjectMemberSource.source_project_id,
@@ -1269,7 +1277,8 @@ def _member_source_rows(
                 ProjectMemberSource.source_project_id != ProjectMemberSource.project_id,
             )
         ).all()
-    )
+        if source_project_id is not None  # always true: the join above matched it to a project
+    ]
 
 
 def _member_source_rows_cached(
@@ -1631,7 +1640,7 @@ def _direct_project_managers(db: Session, project_id: UUID) -> set[UUID]:
         ).all()
     )
     manager_ids.update(
-        db.scalars(
+        present(db.scalars(
             select(ProjectGroupMember.user_id)
             .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
             .join(ProjectGroupRole, ProjectGroupRole.project_group_id == ProjectGroup.id)
@@ -1640,7 +1649,7 @@ def _direct_project_managers(db: Session, project_id: UUID) -> set[UUID]:
                 ProjectGroupRole.role == ProjectRole.PROJECT_MANAGER,
                 ProjectGroupMember.user_id.is_not(None),
             )
-        ).all()
+        ).all())
     )
     return manager_ids
 
@@ -1782,7 +1791,7 @@ def lock_organization_for_update(db: Session, organization_id: UUID) -> None:
     db.execute(select(Organization.id).where(Organization.id == organization_id).with_for_update(key_share=True))
 
 
-def lock_row_for_update(db: Session, model: type, row_id: UUID) -> None:
+def lock_row_for_update(db: Session, model: type[DeclarativeBase], row_id: UUID) -> None:
     """Acquires a Postgres row lock on one row of `model` (anything with an `id`
     primary key) for the rest of the current transaction.
 
@@ -1798,7 +1807,8 @@ def lock_row_for_update(db: Session, model: type, row_id: UUID) -> None:
     `tests/test_versioned_update_locks.py` fails when a path that writes a next
     version does not take it first, so a new versioned type cannot skip it.
     """
-    db.execute(select(model.id).where(model.id == row_id).with_for_update(key_share=True))
+    primary_key = sa_inspect(model).primary_key[0]
+    db.execute(select(primary_key).where(primary_key == row_id).with_for_update(key_share=True))
 
 
 def get_project_users_by_role(db: Session, project_id: UUID, role: ProjectRole) -> set[UUID]:
@@ -1941,13 +1951,15 @@ def get_effective_project_members_with_provenance(db: Session, project_id: UUID)
         by_kind = _direct_effective_project_roles_by_kind(db, user_id, project_id)
         for kind, roles in by_kind.items():
             for entry in roles:
-                if kind in ("direct_group", "direct_org_group", "direct_org_group_role"):
-                    role, via_group_id, via_group_name = entry
+                via_group_id: UUID | None = None
+                via_group_name: str | None = None
+                if isinstance(entry, tuple):
+                    entry_role, via_group_id, via_group_name = entry
                 else:
-                    role, via_group_id, via_group_name = entry, None, None
+                    entry_role = entry
                 result.setdefault(user_id, []).append(
                     {
-                        "kind": kind, "role": role, "via_project_id": None, "via_mode": None,
+                        "kind": kind, "role": entry_role, "via_project_id": None, "via_mode": None,
                         "via_group_id": via_group_id, "via_group_name": via_group_name,
                     }
                 )
@@ -2969,7 +2981,8 @@ def require_module_role(module_key: str, role_key: str):
     # conventional key `f"{scope}_id"`, then resolved to an owning
     # organisation via the role's own `resolve_entity_organization_id`
     # (required for this branch — see that field's docstring).
-    if role.resolve_entity_organization_id is None:
+    resolve_entity_organization_id = role.resolve_entity_organization_id
+    if resolve_entity_organization_id is None:
         raise ValueError(
             f"require_module_role: module {module_key!r} role {role_key!r} declares scope {scope!r} "
             "but no resolve_entity_organization_id — required for any scope other than 'org'/'project'."
@@ -2987,7 +3000,7 @@ def require_module_role(module_key: str, role_key: str):
         if raw_entity_id is None:
             raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Not found.")
         entity_id = raw_entity_id if isinstance(raw_entity_id, UUID) else UUID(str(raw_entity_id))
-        organization_id = role.resolve_entity_organization_id(db, entity_id)
+        organization_id = resolve_entity_organization_id(db, entity_id)
         if organization_id is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
         _enforce_module_frame_scope(request, organization_id=organization_id)
@@ -3153,9 +3166,9 @@ def _module_role_pairs_for_scope(
     query = select(model.module_key, model.role_key).where(
         identifying_filter, model.organization_id == organization_id, model.scope_entity_id.is_(None)
     )
-    pairs = set(db.execute(query.where(model.project_id.is_(None))).all())
+    pairs = {(module_key, role_key) for module_key, role_key in db.execute(query.where(model.project_id.is_(None)))}
     if project_id is not None:
-        pairs |= set(db.execute(query.where(model.project_id == project_id)).all())
+        pairs |= {(module_key, role_key) for module_key, role_key in db.execute(query.where(model.project_id == project_id))}
     return pairs
 
 
@@ -3180,7 +3193,7 @@ def _module_role_pairs_for_entity(
     query = select(model.module_key, model.role_key).where(
         identifying_filter, model.organization_id == organization_id, model.scope_entity_id == entity_id
     )
-    return set(db.execute(query).all())
+    return {(module_key, role_key) for module_key, role_key in db.execute(query)}
 
 
 def _module_role_permission_grants(
@@ -3483,8 +3496,8 @@ def get_effective_permissions(
 
     if project_id is not None:
         project_roles = get_effective_project_roles(db, user_id, project_id)
-        for role in project_roles:
-            permissions |= _artefact_permissions_for_levels(_PROJECT_ROLE_LEVELS.get(role, ()))
+        for project_role in project_roles:
+            permissions |= _artefact_permissions_for_levels(_PROJECT_ROLE_LEVELS.get(project_role, ()))
         if project_roles & _PERSONAL_DATA_EXPORT_PROJECT_ROLES:
             permissions.add(EXPORT_PERSONAL_DATA)
         if project_roles & _PROJECT_REPORT_LAYOUT_ROLES:

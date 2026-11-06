@@ -51,6 +51,7 @@ from app.modules.stakeholders.schemas import (
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
 from app.schemas.file import FileAssetOut
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_module_enabled
 from app.services.tags import TagFilter
@@ -107,7 +108,7 @@ def list_engagements(
         return tag_filter.keep(db, pid, ENGAGEMENT_ARTEFACT_TYPE, engagements)
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, ENGAGEMENT_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, ENGAGEMENT_ARTEFACT_TYPE, rows_for,
         gate=(STAKEHOLDERS_MODULE_KEY, None),
     )
 

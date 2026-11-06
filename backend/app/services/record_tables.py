@@ -89,6 +89,7 @@ from app.services import pubsub
 from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
+from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.principals import group_ref_from_text, principal_labels, principal_text, validate_principal
 from app.services.project_scope import ProjectScope, gate_open
@@ -250,7 +251,7 @@ def require_org_member(db: Session, user: User, organization: Organization) -> N
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
 
 
-def _org_tier(provider: RecordTableProvider) -> OrganizationRecordTable:
+def org_tier(provider: RecordTableProvider) -> OrganizationRecordTable:
     """The provider's organisation tier (callers have already resolved it through `org_provider_for`)."""
     if provider.organization is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
@@ -491,7 +492,7 @@ def build_table(
 
     records = project_scope.collect(db, project, user.id, artefact_type, rows_for, gate=provider.gate, id_of=provider.id_of)
     prepared = provider.prepare(db, project, records) if provider.prepare is not None else None
-    organization = db.get(Organization, project.organization_id)
+    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
     owners: dict[uuid.UUID, Project] = {project.id: project}
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
     if project_scope.widened:
@@ -501,7 +502,7 @@ def build_table(
     project_ids: list[str | None] = []
     read_only: list[str | None] = []
     cell_locks: list[dict[str, str]] = []
-    lockable = [c for c in columns if c.cell_lock is not None]
+    lockable = [(c.key, c.cell_lock) for c in columns if c.cell_lock is not None]
     for record in records:
         owner_id = getattr(record, "from_project_id", None) or project.id
         if owner_id not in owners:
@@ -516,7 +517,7 @@ def build_table(
         ids.append(str(provider.id_of(record)))
         project_ids.append(None if owned_by_organization else str(owner.id))
         read_only.append(_read_only_reason(provider, prepared, record, owner, project, owned_by_organization))
-        cell_locks.append({c.key: reason for c in lockable if (reason := c.cell_lock(prepared, record))})
+        cell_locks.append({key: reason for key, lock in lockable if (reason := lock(prepared, record))})
     keys = _applied_filter_keys(filters)
     if tag_filter.active:
         keys.append("tag")
@@ -547,7 +548,7 @@ def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, s
     Raises:
         HTTPException: 422 for a parameter the organisation list cannot honour.
     """
-    tier = _org_tier(provider)
+    tier = org_tier(provider)
     allowed = {"format"} | tier.filter_params
     unknown = sorted({k for k, _ in query if k not in allowed})
     if unknown:
@@ -577,7 +578,7 @@ def build_org_table(
         The `RecordTable`; every code is qualified by the organisation's code, as the organisation's records are
         always cited.
     """
-    tier = _org_tier(provider)
+    tier = org_tier(provider)
     columns, omitted = resolve_export_columns(
         db, user, tier.columns(db, organization), organization_id=organization.id, purpose="export",
     )
@@ -791,8 +792,11 @@ def update_row(
                 continue
             if column.required and not text:
                 raise RecordCellError(f"{column.label} is required.")
+            if column.parse is None:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "That column cannot be edited here.")
             values[key] = column.parse(ctx, text)
         if values:
+            assert provider.update is not None  # `import_capability` and `may_update` above ruled out a type with no update
             with db.begin_nested():
                 provider.update(ctx, record, values)
                 db.flush()
@@ -1058,12 +1062,14 @@ def run_import(
     may_create, may_update = import_rights(db, user, project, artefact_type, provider)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
-    provider_find_many = provider.find_many  # bound here so the lambda below keeps the not-None narrowing
+    provider_find_many = provider.find_many  # bound here so the lambdas below keep the not-None narrowing
+    provider_prepare = provider.prepare
     target = _ImportTarget(
-        organization=db.get(Organization, project.organization_id), project=project, columns=list(provider.columns(db, project)),
+        organization=get_or_404(db, Organization, project.organization_id, "Organisation"), project=project,
+        columns=list(provider.columns(db, project)),
         find=lambda code: _find_record(db, project, provider, code),
         find_many=(lambda codes: _find_many_exported(provider_find_many, db, project, codes)) if provider_find_many is not None else None,
-        prepare=(lambda records: provider.prepare(db, project, records)) if provider.prepare is not None else None,
+        prepare=(lambda records: provider_prepare(db, project, records)) if provider_prepare is not None else None,
         create=provider.create if may_create else None, update=provider.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="project",
     )
@@ -1082,19 +1088,20 @@ def run_org_import(
     Raises:
         HTTPException: As `run_import`.
     """
-    tier = _org_tier(provider)
+    tier = org_tier(provider)
     reason = import_capability(provider, artefact_type, organization=True)
     if reason is not None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reason)
     may_create, may_update = org_import_rights(db, user, organization, artefact_type, tier)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
-    tier_find_many = tier.find_many  # bound here so the lambda below keeps the not-None narrowing
+    tier_find_many = tier.find_many  # bound here so the lambdas below keep the not-None narrowing
+    tier_prepare = tier.prepare
     target = _ImportTarget(
         organization=organization, project=None, columns=list(tier.columns(db, organization)),
         find=lambda code: _find_org_record(db, organization, tier, code),
         find_many=(lambda codes: _find_many_exported(tier_find_many, db, organization, codes)) if tier_find_many is not None else None,
-        prepare=(lambda records: tier.prepare(db, organization, records)) if tier.prepare is not None else None,
+        prepare=(lambda records: tier_prepare(db, organization, records)) if tier_prepare is not None else None,
         create=tier.create if may_create else None, update=tier.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="organisation",
     )
@@ -1193,6 +1200,7 @@ def _import_rows(
             continue
         try:
             if record is None:
+                assert create_fn is not None  # a missing create right was rejected above
                 values = {key: parse(ctx, cells[key]) for key, parse in parsers.items()}
                 with db.begin_nested():
                     create_fn(ctx, values)
@@ -1210,6 +1218,7 @@ def _import_rows(
                 if not changes:
                     result.action = "unchanged"
                 else:
+                    assert update_fn is not None  # a missing update right was rejected above
                     values = {c.column: parsers[c.column](ctx, c.after) for c in changes}
                     with db.begin_nested():
                         update_fn(ctx, record, values)

@@ -36,7 +36,7 @@ checks), `services.record_tables_core` (cell helpers), `services.tags`.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from fastapi import HTTPException
@@ -117,6 +117,7 @@ from app.modules.registry import (
 from app.schemas.principal import PrincipalRef
 from app.services import tags as tag_service
 from app.services.client_date import effective_today
+from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.rbac import user_satisfies_module_role
 from app.services.record_tables import PrincipalCells, find_many_by_code
@@ -144,7 +145,7 @@ def _all_may_create(db: Session, user: User, project_id: uuid.UUID) -> bool:
 
 
 def _org_id(db: Session, project_id: uuid.UUID) -> uuid.UUID:
-    return db.get(Project, project_id).organization_id
+    return project_or_404(db, project_id).organization_id
 
 
 def _include_archived(filters: RecordFilters) -> bool:
@@ -266,7 +267,7 @@ def _list_org_strategies(db: Session, user: User, organization: Organization, fi
     return _filter_strategies(db, edits.organization_strategies(db, organization.id, _include_archived(filters)), filters)
 
 
-def _strategy_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _strategy_columns(db: Session, project: Project | None) -> list[RecordColumn]:
     return [
         _text("title", "Title", "title", required=True),
         _text("objective", "Objective", "objective", required=True),
@@ -416,7 +417,7 @@ def _list_org_future_states(db: Session, user: User, organization: Organization,
     return _filter_future_states(db, edits.organization_future_states(db, organization.id, _include_archived(filters)), filters)
 
 
-def _future_state_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _future_state_columns(db: Session, project: Project | None) -> list[RecordColumn]:
     return [
         _text("title", "Title", "title", required=True),
         _text("current_state", "Current state", "current_state"),
@@ -538,7 +539,7 @@ def _list_org_guiding_principles(
     return _filter_guiding_principles(db, edits.organization_guiding_principles(db, organization.id, _include_archived(filters)), filters)
 
 
-def _guiding_principle_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _guiding_principle_columns(db: Session, project: Project | None) -> list[RecordColumn]:
     return [
         _text("name", "Name", "name", required=True),
         _text("principle_statement", "Principle statement", "principle_statement", required=True),
@@ -650,7 +651,7 @@ def _pain_point_type_names(db: Session, type_ids: set[uuid.UUID]) -> dict[uuid.U
     org_names = {
         o.id: o.name for o in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.id.in_(org_ids)))
     } if org_ids else {}
-    return {r.id: r.name_override if r.name_override is not None else org_names.get(r.org_type_id, "") for r in rows}
+    return {r.id: r.name_override if r.name_override is not None else (org_names.get(r.org_type_id, "") if r.org_type_id else "") for r in rows}
 
 
 def _prepare_pain_points(db: Session, project: Project, records: list[PainPoint]) -> _Prepared:
@@ -668,6 +669,11 @@ def _prepare_pain_points(db: Session, project: Project, records: list[PainPoint]
 
 #: The scoring axes of a Pain Point, which are also its three score columns' keys.
 _SCORE_AXES = ("severity", "frequency", "confidence")
+
+
+def _score_getter(axis: str) -> Callable[[_Prepared, PainPoint], str]:
+    """The column getter for one score axis."""
+    return lambda prepared, pain_point: _score_cell(prepared, pain_point, axis)
 
 
 def _score_cell(prepared: _Prepared, pain_point: PainPoint, axis: str) -> str:
@@ -708,7 +714,7 @@ def _score_columns(db: Session, project: Project) -> list[RecordColumn]:
     levels = list_levels(db, project.organization_id, PAIN_POINT_SCORING_SCHEME_KEY)
     return [
         RecordColumn(
-            axis, label, lambda t, r, axis=axis: _score_cell(t, r, axis), _score_level_parser(axis, label), kind="enum",
+            axis, label, _score_getter(axis), _score_level_parser(axis, label), kind="enum",
             editable=True, choices=tuple(level.name for level in levels.get(axis, [])),
             cell_lock=_score_lock,
         )
@@ -735,7 +741,7 @@ def _list_pain_points(db: Session, user: User, project_id: uuid.UUID, filters: R
         method = RollupMethod(filters.one("rollup") or RollupMethod.WEIGHTED_AVERAGE.value)
     except ValueError:
         raise HTTPException(422, "rollup is not a known roll-up method.") from None
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     scoring = load_scoring_context(db, project)
     summaries = {s.pain_point_id: s for s in build_pain_point_scoring(db, scoring, records, resolve_model(scoring, filters.one("model_key")), method)}
     return [

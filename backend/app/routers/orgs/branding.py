@@ -23,10 +23,12 @@ from app.database import get_db
 from app.models.enums import OrgRole
 from app.models.file import FileAsset
 from app.models.organization import Organization
+from app.models.project import Project
 from app.models.user import User
 from app.schemas.org import DefaultTemplateUpdate, OrganizationOut, OrgBrandingUpdate, OrgLoginInfoOut
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.lookups import get_or_404
 from app.services.rbac import require_org_role
 
 router = APIRouter(tags=["organizations-branding"])
@@ -142,9 +144,8 @@ def set_default_template(
 ):
     """Sets (or clears, with `project_id: null`) the default template project used
     when creating a new project in this organisation (C-E-04)."""
-    from app.models.project import Project
 
-    org = db.get(Organization, organization_id)
+    org = get_or_404(db, Organization, organization_id, "Organisation")
     if payload.project_id is not None:
         project = db.get(Project, payload.project_id)
         if project is None or project.organization_id != organization_id or not project.is_template:
@@ -169,7 +170,7 @@ def get_org_login_info(slug: str, db: Session = Depends(get_db)):
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
     return OrgLoginInfoOut(
-        name=org.name, slug=org.slug, logo_file_id=org.logo_file_id,
+        name=org.name, slug=slug, logo_file_id=org.logo_file_id,
         login_background_file_id=org.login_background_file_id,
         sso_enabled=org.sso_enabled, sso_only=org.sso_only,
     )

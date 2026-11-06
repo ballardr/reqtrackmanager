@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -34,6 +34,7 @@ from app.schemas.project import (
 )
 from app.services import engagement, invites
 from app.services.audit import log_event
+from app.services.lookups import get_or_404, present
 from app.services.membership_notifications import (
     actor_bypasses_project_managers,
     notify_managers_of_member_change,
@@ -213,7 +214,7 @@ def assign_project_role_by_email(
     """
     email = payload.email.lower()
     bypass = actor_bypasses_project_managers(db, current_user, project)
-    org = db.get(Organization, project.organization_id)
+    org = get_or_404(db, Organization, project.organization_id, "Organisation")
     existing_user = db.scalar(select(User).where(User.email == email))
 
     if existing_user is not None:
@@ -301,6 +302,8 @@ def _pending_invite_out(invite: PendingInvite) -> PendingInviteOut:
     """Shared status computation for both endpoints below — `status` is
     derived from `expires_at` at read time rather than stored, so it's
     always current."""
+    if invite.project_role is None:
+        raise ValueError("A project's pending invite always carries a project role.")
     return PendingInviteOut(
         id=invite.id,
         email=invite.email,
@@ -369,7 +372,7 @@ def resend_pending_project_invite(
     invite = _get_pending_invite_in_project(db, project.id, invite_id)
     if invite.accepted_at is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "This invite has already been accepted.")
-    org = db.get(Organization, project.organization_id)
+    org = get_or_404(db, Organization, project.organization_id, "Organisation")
     invites.resend_pending_invite(db, invite, organization=org, project=project)
     log_event(
         db, entity_type="pending_invite", entity_id=invite.id, action="invite_resent",
@@ -401,7 +404,7 @@ def revoke_project_role(
         if managers == {user_id} and not is_inherited_manager(db, user_id, project.id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project must have at least one project manager.")
     db.execute(
-        UserProjectRole.__table__.delete().where(
+        delete(UserProjectRole).where(
             UserProjectRole.user_id == user_id, UserProjectRole.project_id == project.id,
             UserProjectRole.role == role,
         )
@@ -481,7 +484,7 @@ def revoke_group_project_role(
     if role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
     removed = db.execute(
-        OrgGroupProjectRole.__table__.delete().where(
+        delete(OrgGroupProjectRole).where(
             OrgGroupProjectRole.org_group_id == org_group_id, OrgGroupProjectRole.project_id == project.id,
             OrgGroupProjectRole.role == role,
         )
@@ -507,12 +510,14 @@ def revoke_group_project_role(
     # role`'s own per-user cleanup, extended to the (potentially many) users
     # a group-level revocation can affect at once.
     affected_user_ids = set(
-        db.scalars(
-            select(OrgGroupMember.user_id).where(
-                OrgGroupMember.org_group_id.in_({org_group_id} | _descendant_org_group_ids(db, {org_group_id})),
-                OrgGroupMember.user_id.is_not(None),
-            )
-        ).all()
+        present(
+            db.scalars(
+                select(OrgGroupMember.user_id).where(
+                    OrgGroupMember.org_group_id.in_({org_group_id} | _descendant_org_group_ids(db, {org_group_id})),
+                    OrgGroupMember.user_id.is_not(None),
+                )
+            ).all()
+        )
     )
     for affected_user_id in affected_user_ids:
         if not get_effective_project_roles(db, affected_user_id, project.id):

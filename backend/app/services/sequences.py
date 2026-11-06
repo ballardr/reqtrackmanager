@@ -58,31 +58,34 @@ def _next_sequence(db: Session, owner: Project | Organization, artefact_type: st
     organisation for an organisation-scoped one."""
     if isinstance(owner, Organization):
         lock_organization_for_update(db, owner.id)
-        counter = db.scalar(
+        org_counter = db.scalar(
             select(OrganizationSequenceCounter).where(
                 OrganizationSequenceCounter.organization_id == owner.id,
                 OrganizationSequenceCounter.artefact_type == artefact_type,
             )
         )
-        if counter is None:
-            counter = OrganizationSequenceCounter(organization_id=owner.id, artefact_type=artefact_type, next_seq=1)
-            db.add(counter)
+        if org_counter is None:
+            org_counter = OrganizationSequenceCounter(organization_id=owner.id, artefact_type=artefact_type, next_seq=1)
+            db.add(org_counter)
             db.flush()
+        seq = org_counter.next_seq
+        org_counter.next_seq = seq + 1
+        return seq
     else:
         lock_project_for_update(db, owner.id)
-        counter = db.scalar(
+        project_counter = db.scalar(
             select(ProjectSequenceCounter).where(
                 ProjectSequenceCounter.project_id == owner.id,
                 ProjectSequenceCounter.artefact_type == artefact_type,
             )
         )
-        if counter is None:
-            counter = ProjectSequenceCounter(project_id=owner.id, artefact_type=artefact_type, next_seq=1)
-            db.add(counter)
+        if project_counter is None:
+            project_counter = ProjectSequenceCounter(project_id=owner.id, artefact_type=artefact_type, next_seq=1)
+            db.add(project_counter)
             db.flush()
-    seq = counter.next_seq
-    counter.next_seq = seq + 1
-    return seq
+        seq = project_counter.next_seq
+        project_counter.next_seq = seq + 1
+        return seq
 
 
 def generate_unique_code(db: Session, owner: Project | Organization, artefact_type: str, prefix: str) -> str:

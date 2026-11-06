@@ -204,8 +204,10 @@ def clean_text(text: str) -> str:
 def _hex(colour: str | None) -> str:
     """The six hex digits of `colour`, or the default accent when it is not a
     plain `#RRGGBB` value (the value ends up in an XML attribute)."""
-    match = _HEX_COLOUR.match(colour or "")
-    return (match or _HEX_COLOUR.match(DEFAULT_ACCENT_COLOR_HEX)).group(1).upper()  # type: ignore[union-attr]
+    match = _HEX_COLOUR.match(colour or "") or _HEX_COLOUR.match(DEFAULT_ACCENT_COLOR_HEX)
+    if match is None:
+        raise ValueError("The default accent colour is not a #RRGGBB value.")
+    return match.group(1).upper()
 
 
 def _shade(cell, fill: str) -> None:

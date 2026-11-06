@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -52,6 +52,7 @@ from app.schemas.org import (
 )
 from app.services import credential_reset, engagement, invites
 from app.services.audit import log_event
+from app.services.lookups import present
 from app.services.notifications import notify
 from app.services.org_membership import (
     assert_account_active,
@@ -605,12 +606,14 @@ def _org_users_with_project_access(db: Session, organization_id: UUID) -> set[UU
         ).all()
     )
     direct_group_ids = set(
-        db.scalars(
-            select(ProjectGroupMember.user_id)
-            .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
-            .join(Project, Project.id == ProjectGroup.project_id)
-            .where(Project.organization_id == organization_id, ProjectGroupMember.user_id.is_not(None))
-        ).all()
+        present(
+            db.scalars(
+                select(ProjectGroupMember.user_id)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
+                .join(Project, Project.id == ProjectGroup.project_id)
+                .where(Project.organization_id == organization_id, ProjectGroupMember.user_id.is_not(None))
+            ).all()
+        )
     )
     return direct_role_ids | direct_group_ids
 
@@ -984,12 +987,12 @@ def leave_organization(
     project_ids = [p.id for p in projects]
     if project_ids:
         db.execute(
-            UserProjectRole.__table__.delete().where(
+            delete(UserProjectRole).where(
                 UserProjectRole.user_id == current_user.id, UserProjectRole.project_id.in_(project_ids)
             )
         )
         db.execute(
-            ProjectGroupMember.__table__.delete().where(
+            delete(ProjectGroupMember).where(
                 ProjectGroupMember.user_id == current_user.id,
                 ProjectGroupMember.project_group_id.in_(
                     select(ProjectGroup.id).where(ProjectGroup.project_id.in_(project_ids))
@@ -997,7 +1000,7 @@ def leave_organization(
             )
         )
     db.execute(
-        OrgGroupMember.__table__.delete().where(
+        delete(OrgGroupMember).where(
             OrgGroupMember.user_id == current_user.id,
             OrgGroupMember.org_group_id.in_(
                 select(OrgGroup.id).where(OrgGroup.organization_id == organization_id)
@@ -1007,7 +1010,7 @@ def leave_organization(
     engagement.remove_subscriptions_and_favorites_for_projects(db, current_user.id, project_ids)
 
     db.execute(
-        UserOrgRole.__table__.delete().where(
+        delete(UserOrgRole).where(
             UserOrgRole.user_id == current_user.id, UserOrgRole.organization_id == organization_id
         )
     )
@@ -1196,11 +1199,11 @@ def deactivate_org_user(
     }
     for project in projects:
         db.execute(
-            UserProjectRole.__table__.delete().where(
+            delete(UserProjectRole).where(
                 UserProjectRole.user_id == user_id, UserProjectRole.project_id == project.id
             )
         )
-    db.execute(ProjectGroupMember.__table__.delete().where(ProjectGroupMember.user_id == user_id))
+    db.execute(delete(ProjectGroupMember).where(ProjectGroupMember.user_id == user_id))
 
     for project in projects:
         if not managers_before_by_project[project.id]:

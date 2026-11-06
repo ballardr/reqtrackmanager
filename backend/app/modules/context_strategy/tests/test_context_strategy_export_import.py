@@ -35,6 +35,7 @@ from app.modules.context_strategy.models import (
 )
 from app.modules.context_strategy.service import PainPointLinkKind, StrategyLinkKind, create_pain_point_link, create_strategy_link
 from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.db_helpers import must_get, must_scalar
 
 CS = "context_strategy"
 SH = "stakeholders"
@@ -135,11 +136,11 @@ def _build(client, token, org, project) -> dict[str, str]:
     try:
         s_id, pp_id = uuid.UUID(strategy["id"]), uuid.UUID(scored["id"])
         create_pain_point_link(
-            db, pain_point=db.get(PainPoint, pp_id), kind=PainPointLinkKind.DRIVES_STRATEGY, target_id=s_id,
+            db, pain_point=must_get(db, PainPoint, pp_id), kind=PainPointLinkKind.DRIVES_STRATEGY, target_id=s_id,
             actor_id=uuid.UUID(me),
         )
         create_strategy_link(
-            db, strategy=db.get(Strategy, s_id), kind=StrategyLinkKind.REQUIRES_RESOLUTION_OF_OPEN_QUESTION,
+            db, strategy=must_get(db, Strategy, s_id), kind=StrategyLinkKind.REQUIRES_RESOLUTION_OF_OPEN_QUESTION,
             target_id=uuid.UUID(question["id"]), actor_id=uuid.UUID(me),
         )
         db.commit()
@@ -171,20 +172,20 @@ def test_project_export_import_round_trips_context_and_strategy(client, admin_to
         assert sorted(p.unique_code for p in pps.values()) == ["PP-001", "PP-002"]  # numbered afresh
         assert db.scalar(select(PainPointFile).where(PainPointFile.pain_point_id == pps["Slow reports"].id)) is not None
 
-        persona_score = db.scalar(select(PainPointScore).where(PainPointScore.pain_point_id == pps["Slow reports"].id))
+        persona_score = must_scalar(db, select(PainPointScore).where(PainPointScore.pain_point_id == pps["Slow reports"].id))
         assert persona_score.target_type == "persona" and persona_score.target_id is not None
         assert persona_score.severity_level_id is not None and persona_score.confidence_level_id is not None
-        all_score = db.scalar(select(PainPointScore).where(PainPointScore.pain_point_id == pps["Confusing menu"].id))
+        all_score = must_scalar(db, select(PainPointScore).where(PainPointScore.pain_point_id == pps["Confusing menu"].id))
         assert all_score.target_id is None and all_score.severity_level_id is not None and all_score.frequency_level_id is None
 
-        strategy = db.scalar(select(Strategy).where(Strategy.project_id == new_id))
-        version = db.scalar(select(StrategyVersion).where(StrategyVersion.strategy_id == strategy.id))
+        strategy = must_scalar(db, select(Strategy).where(Strategy.project_id == new_id))
+        version = must_scalar(db, select(StrategyVersion).where(StrategyVersion.strategy_id == strategy.id))
         assert (version.title, version.objective, version.status.value) == ("Grow", "Double usage", "proposed")
-        future = db.scalar(select(FutureStateVersion).join(FutureState).where(FutureState.project_id == new_id))
+        future = must_scalar(db, select(FutureStateVersion).join(FutureState).where(FutureState.project_id == new_id))
         assert future.target_date == date(2031, 3, 31) and future.outcomes == "More"
-        principle = db.scalar(select(GuidingPrincipleVersion).join(GuidingPrinciple).where(GuidingPrinciple.project_id == new_id))
+        principle = must_scalar(db, select(GuidingPrincipleVersion).join(GuidingPrinciple).where(GuidingPrinciple.project_id == new_id))
         assert principle.name == "Be simple" and principle.owner_id is not None
-        question = db.scalar(select(OpenQuestion).where(OpenQuestion.project_id == new_id))
+        question = must_scalar(db, select(OpenQuestion).where(OpenQuestion.project_id == new_id))
         assert question.question == "Who pays?" and question.due_date == date(2031, 1, 2)
 
         links = db.scalars(select(ArtefactLink).where(ArtefactLink.source_id.in_([strategy.id, pps["Slow reports"].id]))).all()
@@ -225,7 +226,7 @@ def test_score_against_a_persona_the_copy_lacks_is_skipped_with_a_warning(client
     assert any("persona 'Ada Operator' not found" in w for w in imported["warnings"])
     db = SessionLocal()
     try:
-        pp = db.scalar(select(PainPoint).where(PainPoint.project_id == uuid.UUID(imported["project"]["id"]), PainPoint.title == "Slow reports"))
+        pp = must_scalar(db, select(PainPoint).where(PainPoint.project_id == uuid.UUID(imported["project"]["id"]), PainPoint.title == "Slow reports"))
         assert db.scalar(select(PainPointScore).where(PainPointScore.pain_point_id == pp.id)) is None
     finally:
         db.close()
@@ -255,11 +256,14 @@ def test_org_export_import_round_trips_types_and_org_scoped_records(client, admi
             PainPointTypeDefinition.organization_id == new_org, PainPointTypeDefinition.name == "Regulatory",
         ))
         assert type_ is not None and type_.definition == "Legal duties."
-        strategy = db.scalar(select(Strategy).where(Strategy.organization_id == new_org))
-        assert db.scalar(select(StrategyVersion).where(StrategyVersion.strategy_id == strategy.id)).title == "Org strategy"
-        future = db.scalar(select(FutureState).where(FutureState.organization_id == new_org))
-        assert db.scalar(select(FutureStateVersion).where(FutureStateVersion.future_state_id == future.id)).target_date == date(2032, 1, 1)
-        principle = db.scalar(select(GuidingPrinciple).where(GuidingPrinciple.organization_id == new_org))
-        assert db.scalar(select(GuidingPrincipleVersion).where(GuidingPrincipleVersion.guiding_principle_id == principle.id)).name == "Org principle"
+        strategy = must_scalar(db, select(Strategy).where(Strategy.organization_id == new_org))
+        assert must_scalar(db, select(StrategyVersion).where(StrategyVersion.strategy_id == strategy.id)).title == "Org strategy"
+        future = must_scalar(db, select(FutureState).where(FutureState.organization_id == new_org))
+        assert must_scalar(db, select(FutureStateVersion).where(FutureStateVersion.future_state_id == future.id)).target_date == date(2032, 1, 1)
+        principle = must_scalar(db, select(GuidingPrinciple).where(GuidingPrinciple.organization_id == new_org))
+        principle_version = must_scalar(
+            db, select(GuidingPrincipleVersion).where(GuidingPrincipleVersion.guiding_principle_id == principle.id),
+        )
+        assert principle_version.name == "Org principle"
     finally:
         db.close()

@@ -18,12 +18,12 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.file import FileAsset, RequirementFile
-from app.models.project import Project
 from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project, _require_edit_role
 from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.lookups import project_or_404
 from app.services.rbac import require_project_view
 from app.services.requirements import get_current_version, is_locked
 
@@ -53,7 +53,7 @@ async def upload_requirement_attachment(
             status.HTTP_409_CONFLICT,
             "This requirement is approved; new attachments must be added via a change request.",
         )
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     data = await file.read()
     asset = upload_file(
         db, organization_id=project.organization_id, uploaded_by=current_user.id,
@@ -84,7 +84,7 @@ def link_org_resource(
             status.HTTP_409_CONFLICT,
             "This requirement is approved; new attachments must be added via a change request.",
         )
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     asset = db.get(FileAsset, payload.file_id)
     if asset is None or not asset.is_org_resource or asset.organization_id != project.organization_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "file_id must be a shared resource in this project's organisation.")

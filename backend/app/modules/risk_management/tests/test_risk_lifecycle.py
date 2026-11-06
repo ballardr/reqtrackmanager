@@ -33,6 +33,7 @@ from app.modules.risk_management.tests._helpers import (
 )
 from app.services.permissions import encode_permission
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, create_project
+from tests.db_helpers import audit_detail
 from tests.test_ai_approvals_via_mcp import _mcp_headers, _set_org_ai_approvals, _set_project_ai_approvals
 
 
@@ -341,9 +342,9 @@ def test_mcp_acceptance_needs_the_ai_approval_flags_but_other_moves_do_not(clien
         events = db.scalars(
             select(AuditEvent).where(AuditEvent.entity_id == risk["id"], AuditEvent.action == "status_changed")
         ).all()
-    accepted = [e for e in events if e.detail["to"] == "accepted"]
-    assert len(accepted) == 1 and accepted[0].detail["via"] == "mcp" and accepted[0].detail["comment"] == "AI-assisted"
-    assert all("via" not in e.detail for e in events if e.detail["to"] != "accepted")
+    accepted = [e for e in events if audit_detail(e)["to"] == "accepted"]
+    assert len(accepted) == 1 and audit_detail(accepted[0])["via"] == "mcp" and audit_detail(accepted[0])["comment"] == "AI-assisted"
+    assert all("via" not in audit_detail(e) for e in events if audit_detail(e)["to"] != "accepted")
 
 
 def test_ui_acceptance_ignores_the_ai_flags(client, admin_token):

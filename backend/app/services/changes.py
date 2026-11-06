@@ -179,7 +179,7 @@ def get_project_changes(
     if requirement_entries:
         req_ids = {UUID(e.entity_id) for e in requirement_entries}
         unique_codes = dict(
-            db.execute(select(Requirement.id, Requirement.unique_code).where(Requirement.id.in_(req_ids))).all()
+            db.execute(select(Requirement.id, Requirement.unique_code).where(Requirement.id.in_(req_ids))).tuples().all()
         )
         current_names: dict[UUID, tuple[str, int]] = {}
         for req_id, name, version_number in db.execute(
@@ -222,7 +222,7 @@ def get_project_changes(
             cr_to_requirement = dict(
                 db.execute(
                     select(ChangeRequest.id, ChangeRequest.requirement_id).where(ChangeRequest.id.in_(missing_name_cr_ids))
-                ).all()
+                ).tuples().all()
             )
             fallback_requirement_ids = {rid for rid in cr_to_requirement.values() if rid is not None}
             requirement_current_names: dict[UUID, tuple[str, int]] = {}

@@ -763,12 +763,14 @@ class _Run:
         font, size = self.block_look(source)
         colour = source.get("colour")
         self.note_colours(colour)
+        left_width, centre_width, right_width = (source.get(f"{name}_width") for name in SLOT_NAMES)
+        left_valign, centre_valign, right_valign = (source.get(f"{name}_valign") for name in SLOT_NAMES)
         return RunningBand(
             **cells, logo=logo, logo_slot=slot, logo_height_cm=height, first_page=source.get("first_page", "same") != "none",
             font=font, size=size,
             colour=resolve_colour(colour, self.org_values["report_accent"], self.scheme) if colour else None,
-            widths=tuple(source.get(f"{name}_width") for name in SLOT_NAMES),  # type: ignore[arg-type]
-            valigns=tuple(source.get(f"{name}_valign") for name in SLOT_NAMES),  # type: ignore[arg-type]
+            widths=(left_width, centre_width, right_width),
+            valigns=(left_valign, centre_valign, right_valign),
             valign=source.get("valign"), kind=kind,
         )
 

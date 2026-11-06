@@ -135,11 +135,14 @@ def test_a_blank_code_creates_a_record_with_its_own_code(world, record_type):
     header = ["code", TITLE_COLUMN[record_type]]
     row = ["", "From a file"]
     if record_type == STRATEGY:
-        header.append("objective"), row.append("Be the best")
+        header.append("objective")
+        row.append("Be the best")
     if record_type == GUIDING_PRINCIPLE:
-        header.append("principle_statement"), row.append("Be kind")
+        header.append("principle_statement")
+        row.append("Be kind")
     if record_type == PAIN_POINT:
-        header.append("type"), row.append("Market")
+        header.append("type")
+        row.append("Market")
     text = _csv(header, row)
     assert _import(client, token, project, record_type, text).json()["created"] == 1
     assert _rows(_export(client, token, project, record_type)) == [], "a preview must not create"

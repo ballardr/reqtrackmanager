@@ -36,6 +36,7 @@ from tests.conftest import (
     create_project,
     create_project_group,
 )
+from tests.db_helpers import must_get
 
 
 def _user_ref(user_id) -> dict:
@@ -367,7 +368,7 @@ def test_migration_backfills_existing_rows_to_user(client, admin_token):
 
     db = SessionLocal()
     try:
-        row = db.get(Decision, decision_id)
+        row = must_get(db, Decision, decision_id)
         assert (row.owner_type, str(row.owner_id)) == ("user", me)
         assert (row.decision_maker_type, str(row.decision_maker_id)) == ("user", me)
     finally:

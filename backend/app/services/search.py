@@ -394,7 +394,8 @@ def _organisation_surfaces(
             continue
         for artefact_type, provider in surfaces:
             module = artefact_type_module(artefact_type)
-            if module is None or not is_org_module_subcomponent_enabled(db, org_id, module.key, provider.organization_subcomponent):
+            subcomponent = provider.organization_subcomponent
+            if module is None or not subcomponent or not is_org_module_subcomponent_enabled(db, org_id, module.key, subcomponent):
                 continue
             if params.scope == "project" and not any(
                 artefact_type_enabled_for_project(db, artefact_type, pid) for pid, p in projects.items() if p.organization_id == org_id
@@ -864,6 +865,8 @@ def _comment_texts(db: Session, rows: list[_Row], terms: list[str], providers: d
     found: dict[tuple[str, uuid.UUID], str] = {}
     for artefact_type, ids in by_type.items():
         comments = providers[artefact_type].comments
+        if comments is None:
+            continue  # only types with a comment table were collected above
         statement = (
             select(comments.record_id, comments.body)
             .where(comments.record_id.in_(ids), *comments.where, or_(*[_like(comments.body, t) for t in terms]))
@@ -915,6 +918,7 @@ def _shape(row: _Row, providers: dict[str, ArtefactSearchProvider], context: _Co
     provider = providers[row.type]
     owning = context.projects.get(row.project_id) if row.project_id is not None else None
     via = context.projects.get(row.via_project_id) if row.via_project_id is not None else None
+    open_owner = owning or via
     org_id = owning.organization_id if owning else row.organization_id
     organization = context.organizations.get(org_id) if org_id else None
     label = provider.status_labels.get(row.status or "", (row.status or "").replace("_", " ").capitalize()) if row.status else None
@@ -924,7 +928,7 @@ def _shape(row: _Row, providers: dict[str, ArtefactSearchProvider], context: _Co
         status_label=label, is_archived=row.is_archived, updated_at=row.updated_at,
         project_id=row.project_id, project_name=owning.name if owning else None, project_code=owning.code if owning else None,
         organization_id=org_id, organization_code=organization.code if organization else None,
-        open_type=open_type, open_id=open_id, open_project_id=(owning or via).id if (owning or via) else None, snippet=snippet,
+        open_type=open_type, open_id=open_id, open_project_id=open_owner.id if open_owner else None, snippet=snippet,
         tier=row.tier,
     )
 

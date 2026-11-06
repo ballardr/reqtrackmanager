@@ -36,6 +36,7 @@ from app.modules.decisions.tests.test_decisions_api import (
     _setup,
 )
 from tests.conftest import auth_headers
+from tests.db_helpers import audit_detail
 from tests.test_ai_approvals_via_mcp import _mcp_headers, _set_org_ai_approvals, _set_project_ai_approvals
 
 
@@ -133,7 +134,7 @@ def test_mcp_approve_decision_allowed_when_both_flags_on_and_marks_via_mcp(clien
 
     event = _latest_audit_event(decision_id, "approved")
     assert event is not None
-    assert event.detail["via"] == "mcp"
+    assert audit_detail(event)["via"] == "mcp"
 
 
 def test_mcp_reject_decision_blocked_then_allowed(client, admin_token):
@@ -158,7 +159,7 @@ def test_mcp_reject_decision_blocked_then_allowed(client, admin_token):
 
     event = _latest_audit_event(decision_id, "rejected")
     assert event is not None
-    assert event.detail["via"] == "mcp"
+    assert audit_detail(event)["via"] == "mcp"
 
 
 def test_ui_channel_approve_decision_unaffected_by_flags_being_off(client, admin_token):

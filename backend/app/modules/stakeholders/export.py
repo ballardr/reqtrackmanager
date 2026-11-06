@@ -57,6 +57,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.lookups import get_or_404
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
@@ -126,7 +127,7 @@ def _create_persona_from_json(
     org_type_id: UUID | None, project_type_id: UUID | None, users: UserResolver, warnings: BundleImportWarnings,
 ) -> Persona:
     creator_id = users.resolve(data.get("created_by_email"), required=True, context=f"Persona {data['name']!r} creator")
-    creator = db.get(User, creator_id)
+    creator = get_or_404(db, User, creator_id, "User")
     persona = create_persona(
         db, scope=scope, organization_id=organization_id, project_id=project_id, creator=creator,
         org_type_id=org_type_id, project_type_id=project_type_id,

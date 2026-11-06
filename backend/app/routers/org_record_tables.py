@@ -44,6 +44,7 @@ from app.services.record_tables import (
     import_capability,
     org_may_import,
     org_provider_for,
+    org_tier,
     require_org_member,
     resolve_export_columns,
     run_org_import,
@@ -84,7 +85,7 @@ def org_record_columns(
 ) -> RecordColumnsOut:
     """The columns of the organisation's own `record_type` table, which of them the policy lets through, and whether it can be imported."""
     organization, provider = authorise(db, current_user, request, organization_id, record_type)
-    tier = provider.organization
+    tier = org_tier(provider)
     columns = list(tier.columns(db, organization))
     kept, omitted = resolve_export_columns(db, current_user, columns, organization_id=organization.id, purpose="export")
     reason = import_capability(provider, record_type, organization=True)

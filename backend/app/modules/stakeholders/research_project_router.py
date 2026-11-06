@@ -39,6 +39,7 @@ from app.modules.stakeholders.schemas import (
     PromptUpdate,
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
@@ -184,7 +185,7 @@ def list_project_findings(
         return [rs.finding_to_out(f) for f in tag_filter.keep(db, pid, FINDING_ARTEFACT_TYPE, rows)]
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, FINDING_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, FINDING_ARTEFACT_TYPE, rows_for,
         gate=(STAKEHOLDERS_MODULE_KEY, RESEARCH_SUBCOMPONENT),
     )
 

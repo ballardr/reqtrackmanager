@@ -141,7 +141,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "decision_date": _j(d.decision_date), "decision_maker": principal_to_bundle(db, d.decision_maker_type, d.decision_maker_id),
             "owner": principal_to_bundle(db, d.owner_type, d.owner_id), **{f: getattr(d, f) for f in _TEXT_FIELDS},
             "created_by_email": emails.get(d.creator_id), "created_at": _j(d.created_at), "is_archived": d.is_archived,
-            "archived_at": _j(d.archived_at), "archived_by_email": emails.get(d.archived_by),
+            "archived_at": _j(d.archived_at), "archived_by_email": (emails.get(d.archived_by) if d.archived_by else None),
             "tags": record_tag_names(db, DECISION_ARTEFACT_TYPE, d.id),
             "attachments": export_file_links(db, DecisionFile, "decision_id", d.id, assets),
         }

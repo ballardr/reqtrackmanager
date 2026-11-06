@@ -84,6 +84,7 @@ from app.schemas.type_vocabulary import (
     RestoreTypesRequest,
 )
 from app.services.audit import log_event
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_subcomponent_enabled
 from app.services.tags import TagFilter
@@ -292,7 +293,7 @@ def list_project_stakeholders(
         return sh.stakeholders_to_out(db, stakeholders, project_id=pid)
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, STAKEHOLDER_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, STAKEHOLDER_ARTEFACT_TYPE, rows_for,
         gate=("stakeholders", "stakeholder"),
     )
 

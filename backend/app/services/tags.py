@@ -40,7 +40,7 @@ import contextvars
 import re
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -56,6 +56,7 @@ from app.models.tag import MAX_TAG_NAME_LENGTH, ArtefactTag, Tag
 from app.modules.registry import get_all_registered_artefact_types, get_artefact_type_label
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver
+from app.services.lookups import project_or_404
 from app.services.project_hierarchy import get_project_chain_ids
 
 TAG_MODE_FREE = "free"
@@ -454,7 +455,7 @@ class TagFilter:
         return tagged_ids(db, project=project, artefact_type=artefact_type, names=self.names, match_all=self.match_all)
 
     def keep(
-        self, db: Session, project_id: uuid.UUID, artefact_type: str, rows: list[_Row],
+        self, db: Session, project_id: uuid.UUID, artefact_type: str, rows: Sequence[_Row],
         id_of=lambda row: row.id,
     ) -> list[_Row]:
         """`rows` narrowed to the matching records (unchanged when the filter is not active).
@@ -467,7 +468,7 @@ class TagFilter:
             id_of: Reads a row's record id (default `row.id`).
         """
         if not self.active:
-            return rows
+            return list(rows)
         wanted = self.ids(db, project_id, artefact_type)
         return [row for row in rows if id_of(row) in wanted]
 
@@ -540,7 +541,8 @@ def _resolve_names(
                 db, entity_type="tag", entity_id=tag.id, action="created", actor_id=actor_id,
                 organization_id=scope.organization_id, project_id=scope.project_id, detail={"name": name},
             )
-            offered[key] = tag
+            if offered is not None:
+                offered[key] = tag
         resolved[key] = tag
     return list(resolved.values())
 
@@ -1010,7 +1012,7 @@ def set_keywords(
     Raises:
         HTTPException: 422 as `set_record_tags`.
     """
-    project = db.get(Project, requirement.project_id)
+    project = project_or_404(db, requirement.project_id)
     return set_record_tags(
         db, scope=TagScope(project.organization_id, project.id), actor_id=actor_id, artefact_type="requirement",
         artefact_id=requirement.id, names=[k for k in keywords if k and k.strip()], enforce_mode=enforce_mode,

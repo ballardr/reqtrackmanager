@@ -31,6 +31,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import WebSocket
+from psycopg2.extensions import connection as PgConnection
 from sqlalchemy import text
 
 from app.database import engine
@@ -98,6 +99,8 @@ def _listen_forever() -> None:
             # handed back to request traffic.
             connection.detach()
             raw = connection.dbapi_connection  # the psycopg2 connection itself
+            if not isinstance(raw, PgConnection):
+                raise RuntimeError("The pub/sub listener needs a psycopg2 connection.")
             raw.set_isolation_level(0)  # autocommit, required for LISTEN
             raw.cursor().execute(f"LISTEN {CHANNEL}")
             while not _listener_stop.is_set():

@@ -252,8 +252,8 @@ def list_incoming_relationships(
             get_visible_holder(db, project, holder_type, holder.id)
         except HTTPException:
             continue
-        out.append(IncomingRelationshipOut(
+        out.append(IncomingRelationshipOut.model_validate(dict(
             link_id=link.id, kind=kind.key, reverse=kind.reverse, holder_type=holder_type, holder_id=holder.id,
             holder_name=holder_name(db, holder_type, holder), scope=holder.scope.value,
-        ))
+        )))
     return out

@@ -230,7 +230,7 @@ def _decision_summaries(db: Session, decisions) -> list[ArtefactSummary]:
     names = (
         dict(db.execute(select(DecisionTypeDefinition.id, DecisionTypeDefinition.name).where(
             DecisionTypeDefinition.id.in_(type_ids)
-        )).all())
+        )).tuples().all())
         if type_ids else {}
     )
     return [

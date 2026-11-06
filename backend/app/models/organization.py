@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -21,6 +22,9 @@ from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
 from app.models.enums import ExternalUserPolicy, ModuleEntitlementPolicy, OrgRole, ProjectRole, SignupMode
+
+if TYPE_CHECKING:  # the relationship target names the model; importing it at run time would be circular
+    from app.models.user import User
 
 
 class Organization(UUIDPKMixin, TimestampMixin, Base):
@@ -475,7 +479,7 @@ class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):
     )
     role: Mapped[OrgRole] = mapped_column(str_enum(OrgRole))
 
-    user: Mapped[User] = relationship(back_populates="org_roles")  # noqa: F821
+    user: Mapped[User] = relationship(back_populates="org_roles")
 
 
 class OrgGroup(UUIDPKMixin, TimestampMixin, Base):

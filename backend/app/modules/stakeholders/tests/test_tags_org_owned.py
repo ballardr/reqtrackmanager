@@ -17,6 +17,7 @@ from app.modules.stakeholders.tests.test_persona_api import (
 )
 from app.modules.stakeholders.tests.test_stakeholder_api import _create_org_stakeholder
 from tests.conftest import auth_headers
+from tests.db_helpers import must_scalar
 
 PERSONA = "persona"
 
@@ -32,9 +33,9 @@ def test_an_org_owned_persona_takes_organisation_tags_not_project_tags(client, a
     assert resp.status_code == 200, resp.text
     db = SessionLocal()
     try:
-        tag = db.scalar(select(Tag).where(Tag.organization_id == uuid.UUID(org["id"]), Tag.name == "Strategic"))
+        tag = must_scalar(db, select(Tag).where(Tag.organization_id == uuid.UUID(org["id"]), Tag.name == "Strategic"))
         assert tag is not None and tag.project_id is None, "the tag lives in the organisation's vocabulary"
-        row = db.scalar(select(ArtefactTag).where(ArtefactTag.artefact_id == uuid.UUID(persona["id"])))
+        row = must_scalar(db, select(ArtefactTag).where(ArtefactTag.artefact_id == uuid.UUID(persona["id"])))
         assert row.project_id is None
     finally:
         db.close()

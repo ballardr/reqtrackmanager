@@ -24,6 +24,7 @@ from app.modules.decisions.service import (
     create_supersession,
 )
 from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
+from tests.db_helpers import must_get, must_scalar
 
 MODULE_KEY = "decisions"
 
@@ -92,9 +93,9 @@ def test_project_export_import_round_trips_decisions(client, admin_token):
     })
     db = SessionLocal()
     try:
-        d1, d2 = db.get(Decision, uuid.UUID(first["id"])), db.get(Decision, uuid.UUID(second["id"]))
+        d1, d2 = must_get(db, Decision, uuid.UUID(first["id"])), must_get(db, Decision, uuid.UUID(second["id"]))
         create_decision_requirement_link(
-            db, decision=d1, requirement=db.get(Requirement, uuid.UUID(requirement["id"])),
+            db, decision=d1, requirement=must_get(db, Requirement, uuid.UUID(requirement["id"])),
             kind=DecisionRequirementLinkKind.IMPLEMENTS, actor_id=me,
         )
         create_decision_decision_link(
@@ -117,7 +118,7 @@ def test_project_export_import_round_trips_decisions(client, admin_token):
         assert one.decision_statement == "We use PostgreSQL." and one.context == "Needs ACID." and one.rationale == "Known tech."
         assert one.decision_date is not None and one.decision_date.isoformat() == "2031-05-06"
         assert one.decision_maker_id == me and one.owner_id == me
-        assert db.get(DecisionTypeDefinition, one.decision_type_id).name == "Regulatory"
+        assert must_get(db, DecisionTypeDefinition, one.decision_type_id).name == "Regulatory"
         assert decisions["Use Postgres 17"].status.value == "proposed"
         assert decisions["Drop it"].is_archived is True
         assert sorted(d.unique_code for d in decisions.values()) == ["DEC-001", "DEC-002", "DEC-003"]  # numbered afresh
@@ -148,8 +149,8 @@ def test_decision_using_an_inherited_type_gets_that_type_in_the_copy(client, adm
     new_id = uuid.UUID(imported["project"]["id"])
     db = SessionLocal()
     try:
-        decision = db.scalar(select(Decision).where(Decision.project_id == new_id))
-        assert db.get(DecisionTypeDefinition, decision.decision_type_id).name == "Architecture"
+        decision = must_scalar(db, select(Decision).where(Decision.project_id == new_id))
+        assert must_get(db, DecisionTypeDefinition, decision.decision_type_id).name == "Architecture"
     finally:
         db.close()
 

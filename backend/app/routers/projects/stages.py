@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -135,12 +135,12 @@ def delete_stage(
             "This stage has an approved baseline and can't be deleted — baselines are immutable history.",
         )
     db.execute(
-        RequirementVersion.__table__.update()
+        update(RequirementVersion)
         .where(RequirementVersion.target_stage_id == stage_id)
         .values(target_stage_id=reassign_to)
     )
     db.execute(
-        ChangeRequestVersion.__table__.update()
+        update(ChangeRequestVersion)
         .where(ChangeRequestVersion.proposed_target_stage_id == stage_id)
         .values(proposed_target_stage_id=reassign_to)
     )
@@ -248,7 +248,7 @@ def set_stage_review_deadline(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
     if stage.status != StageStatus.REVIEW:
         raise HTTPException(status.HTTP_409_CONFLICT, "A review deadline can only be set while the stage is in review.")
-    db.execute(StageReviewResponse.__table__.delete().where(StageReviewResponse.stage_id == stage.id))
+    db.execute(delete(StageReviewResponse).where(StageReviewResponse.stage_id == stage.id))
     stage.review_deadline = payload.review_deadline
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="review_deadline_set",
               actor_id=current_user.id, project_id=project.id,

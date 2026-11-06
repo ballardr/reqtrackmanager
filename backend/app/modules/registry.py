@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import DeclarativeBase, Session
 
 from app.config import get_settings
 from app.models.enums import LinkFlow, LinkNestingScope
@@ -955,13 +955,13 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
         router_prefixes = [r.prefix for r in routers]
         routes_by_path_and_method: dict[tuple[str, str], object] = {}
         for r in routers:
-            for route in r.routes:
-                path = getattr(route, "path", None)
-                methods = getattr(route, "methods", None) or ()
+            for router_route in r.routes:
+                path = getattr(router_route, "path", None)
+                methods = getattr(router_route, "methods", None) or ()
                 if path is None:
                     continue
                 for method in methods:
-                    routes_by_path_and_method[(path, method.upper())] = route
+                    routes_by_path_and_method[(path, method.upper())] = router_route
 
         # A report that failed registry validation (unknown sub-component or role) answers 404 and is
         # not catalogued; its generated MCP tool (`report_mcp_tools`) must not be offered either.
@@ -2353,7 +2353,7 @@ class PrincipalReference:
             record deletes the row instead of creating a duplicate.
     """
 
-    model: type
+    model: type[DeclarativeBase]
     field: str
     label: str
     audit_entity_type: str
@@ -4065,7 +4065,8 @@ def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
 
     from urllib.parse import urlsplit
 
-    origin = urlsplit(manifest.frame_url).scheme + "://" + urlsplit(manifest.frame_url).netloc
+    frame = urlsplit(manifest.frame_url or "")
+    origin = frame.scheme + "://" + frame.netloc
     settings = get_settings()
     if origin not in settings.module_frame_allowed_origin_list:
         logger.warning(
@@ -4615,16 +4616,19 @@ def list_organization_artefact_summaries(
     the same name) is disabled for the organisation. Used to resolve an
     organisation-qualified record code."""
     found = _summary_provider_for(artefact_type)
-    if found is None or found[1].list_for_organization is None:
+    if found is None:
         return []
     definition, provider = found
+    list_for_organization = provider.list_for_organization
+    if list_for_organization is None:
+        return []
     if not is_module_enabled(db, organization_id, definition.key):
         return []
     if any(sub.key == artefact_type for sub in definition.sub_components) and not is_org_module_subcomponent_enabled(
         db, organization_id, definition.key, artefact_type
     ):
         return []
-    return provider.list_for_organization(db, organization_id)
+    return list_for_organization(db, organization_id)
 
 
 def get_search_providers() -> dict[str, ArtefactSearchProvider]:

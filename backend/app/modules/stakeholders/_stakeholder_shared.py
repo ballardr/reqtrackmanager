@@ -25,12 +25,10 @@ from collections.abc import Sequence
 from datetime import date
 
 from fastapi import HTTPException, UploadFile, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
-from app.models.project import Project
 from app.models.user import User
 from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders._principals import (
@@ -80,6 +78,7 @@ from app.modules.stakeholders.service import (
 from app.services import module_attachments as att
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
+from app.services.lookups import project_or_404
 from app.services.permissions import encode_permission
 from app.services.rbac import get_effective_permissions, lock_row_for_update, permission_satisfied, user_satisfies_module_role
 
@@ -107,9 +106,9 @@ def group_universe(
     project_id = project_id or stakeholder.project_id
     organization_id = stakeholder.organization_id
     if organization_id is None:
-        project = db.get(Project, project_id)
-        assert project is not None
-        organization_id = project.organization_id
+        if project_id is None:
+            raise ValueError("A stakeholder owned by a project needs that project to resolve its groups.")
+        organization_id = project_or_404(db, project_id).organization_id
     return grp.load_groups(db, organization_id, project_id)
 
 
@@ -129,7 +128,7 @@ def stakeholder_to_out(
     `groups` lists its direct groups the viewer can see
     (`group_refs` when the caller batched them, else looked up)."""
     if project_id is not None and last_engaged is _UNRESOLVED:
-        last_engaged = last_engaged_by_stakeholder(db, db.get(Project, project_id), [stakeholder.id]).get(stakeholder.id)
+        last_engaged = last_engaged_by_stakeholder(db, project_or_404(db, project_id), [stakeholder.id]).get(stakeholder.id)
     elif project_id is None:
         last_engaged = None
     if group_refs is None:
@@ -137,7 +136,7 @@ def stakeholder_to_out(
     hidden: dict[str, bool | str | None] = {}
     if project_id is not None and stakeholder.scope == StakeholderScope.ORGANIZATION:
         hidden = visibility_fields(resolve_stakeholder_visibility(db, project_id), stakeholder.id)
-    return StakeholderOut(
+    return StakeholderOut.model_validate(dict(
         id=stakeholder.id, scope=stakeholder.scope, organization_id=stakeholder.organization_id,
         project_id=stakeholder.project_id, unique_code=stakeholder.unique_code, creator_id=stakeholder.creator_id,
         is_archived=stakeholder.is_archived,
@@ -166,7 +165,7 @@ def stakeholder_to_out(
             )
             for r in group_refs
         ],
-    )
+    ))
 
 
 def stakeholders_to_out(
@@ -181,7 +180,7 @@ def stakeholders_to_out(
         refs = grp.group_refs(db, [s.id for s in stakeholders], group_universe(db, stakeholders[0], project_id))
     last: dict[uuid.UUID, date] = {}
     if project_id is not None and stakeholders:
-        last = last_engaged_by_stakeholder(db, db.get(Project, project_id), [s.id for s in stakeholders])
+        last = last_engaged_by_stakeholder(db, project_or_404(db, project_id), [s.id for s in stakeholders])
     type_names = STAKEHOLDER_TYPES.display_names(db, [(v.org_type_id, v.project_type_id) for v in versions])
     return [
         stakeholder_to_out(
@@ -241,7 +240,7 @@ def require_stakeholder_type_admin(db: Session, current_user: User, *, organizat
 
 
 def _validate_refs(
-    db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None, content: dict, payload: BaseModel,
+    db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None, content: dict, payload: StakeholderCreate | StakeholderUpdate,
 ) -> None:
     """Owner/user tenancy and scoring-level checks for a payload's fields. `content` holds the
     fields being written (all of them on create, only those sent on update); the owner is read

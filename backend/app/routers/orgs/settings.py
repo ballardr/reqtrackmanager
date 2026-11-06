@@ -322,13 +322,12 @@ def update_org_module_enablement(
             OrganizationModuleEnablement.module_key == module_key,
         )
     )
-    is_new_row = row is None
     # Copy-before-change (Decided by: User, 2026-10-04): an org default only
     # affects projects created afterwards, so existing projects still
     # reading it live get today's value written in first.
     new_default = (
         payload.default_project_enabled if payload.default_project_enabled is not None
-        else payload.enabled if is_new_row else row.default_project_enabled
+        else payload.enabled if row is None else row.default_project_enabled
     )
     if new_default != resolve_default_project_enabled(db, organization_id, module_key):
         freeze_projects_module_default(db, organization_id, module_key)
@@ -447,10 +446,9 @@ def update_org_module_subcomponent_default(
             OrganizationModuleSubComponentDefault.subcomponent_key == subcomponent_key,
         )
     )
-    is_new_row = row is None
     new_default = (
         payload.default_project_enabled if payload.default_project_enabled is not None
-        else payload.enabled if is_new_row else row.default_project_enabled
+        else payload.enabled if row is None else row.default_project_enabled
     )
     _, current_default = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
     if new_default != current_default:

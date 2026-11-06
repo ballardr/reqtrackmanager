@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -39,6 +39,7 @@ from app.services import engagement
 from app.services import tags as tag_service
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.custom_fields import validate_custom_field_values
+from app.services.lookups import present, project_or_404
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import lock_project_for_update, lock_row_for_update
 
@@ -302,7 +303,9 @@ def apply_new_version(
     return new_version
 
 
-def _announce_change(db: Session, requirement: Requirement, actor: User, kind: str, what: str) -> None:
+def _announce_change(
+    db: Session, requirement: Requirement, actor: User, kind: Literal["content_changed", "archived"], what: str,
+) -> None:
     """Tells the modules a requirement changed (see `notify_artefact_changed`)."""
     notify_artefact_changed(db, ArtefactChange(
         artefact_type="requirement", artefact_id=requirement.id, project_id=requirement.project_id,
@@ -399,9 +402,9 @@ def prefetch_for_list(db: Session, requirement_ids: list[UUID], current_user_id:
         Subscription.entity_id.in_(requirement_ids),
     )).all())
     prefetch.comment_counts = engagement.get_comment_counts(db, ReviewTargetType.REQUIREMENT, requirement_ids)
-    prefetch.open_change_request = set(db.scalars(select(ChangeRequest.requirement_id).where(
+    prefetch.open_change_request = set(present(db.scalars(select(ChangeRequest.requirement_id).where(
         ChangeRequest.requirement_id.in_(requirement_ids), ChangeRequest.status.in_(OPEN_CR_STATUSES),
-    )).all())
+    )).all()))
     return prefetch
 
 
@@ -581,7 +584,7 @@ def filter_requirement_rows(
     if any(t.strip() for t in filters.tag_names):
         conditions.append(Requirement.id.in_(
             tag_service.tagged_ids(
-                db, project=db.get(Project, project_id), artefact_type="requirement",
+                db, project=project_or_404(db, project_id), artefact_type="requirement",
                 names=list(filters.tag_names), match_all=filters.tag_match_all,
             )
         ))

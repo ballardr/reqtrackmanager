@@ -614,7 +614,7 @@ def force_reset_credentials(db_url: str, *, scope: str, reset_2fa: bool, actor: 
     engine = _engine(db_url)
     try:
         with Session(engine) as db:
-            reset_scope = credential_reset.ResetScope(scope)  # type: ignore[arg-type]
+            reset_scope = credential_reset.ResetScope("all" if scope == "all" else "server_admins")  # validated above
             result = credential_reset.force_reset(
                 db, credential_reset.resolve_scope(db, reset_scope), scope=reset_scope, reset_2fa=reset_2fa,
                 actor_id=None, actor_label=actor,

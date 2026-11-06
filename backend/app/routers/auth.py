@@ -256,7 +256,7 @@ def signup(
                     Organization.auto_accept_email_domain.isnot(None),
                 )
             ).all()
-            matches = [o for o in candidates if o.auto_accept_email_domain.lower() == domain]
+            matches = [o for o in candidates if (o.auto_accept_email_domain or "").lower() == domain]
             if len(matches) != 1:
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST, "Self-signup is not available for this email address."
@@ -527,7 +527,7 @@ def _require_valid_totp_code(db: Session, user: User, code: str) -> None:
     """
     if user.failed_2fa_locked_until is not None and user.failed_2fa_locked_until > datetime.now(UTC):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed attempts. Try again later.")
-    if totp.verify_code(user.totp_secret, code):
+    if user.totp_secret is not None and totp.verify_code(user.totp_secret, code):
         user.failed_2fa_attempts = 0
         return
     user.failed_2fa_attempts += 1

@@ -55,6 +55,7 @@ from app.services import notifications
 from app.services.audit import log_event
 from app.services.bundle_common import BundleImportWarnings, UserResolver
 from app.services.downloads import filename_safe
+from app.services.lookups import get_or_404
 from app.services.principals import principal_columns, validate_principal
 
 router = APIRouter(tags=["compliance-org-standards"])
@@ -318,9 +319,9 @@ async def import_standard(
 
     warnings = BundleImportWarnings()
     users = UserResolver(db, current_user, warnings)
-    org = db.get(Organization, organization_id)
+    org = get_or_404(db, Organization, organization_id, "Organisation")
     standard, skipped = import_standard_data(db, org, data, users, warnings, resolution=resolution)
-    if skipped:
+    if skipped or standard is None:
         return StandardImportResult(
             standard=None, skipped=True,
             warnings=["Import skipped: a standard with this reference already exists in this organisation."],

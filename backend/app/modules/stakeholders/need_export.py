@@ -49,6 +49,7 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.lookups import get_or_404
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
@@ -134,7 +135,7 @@ def import_project_data(
     for n in data.get("project_stakeholder_needs", []):
         context = f"Stakeholder Need {n['name']!r}"
         creator_id = users.resolve(n.get("created_by_email"), required=True, context=f"{context} creator")
-        creator = db.get(User, creator_id)
+        creator = get_or_404(db, User, creator_id, "User")
         need = create_need(
             db, project=project, creator=creator,
             **principals_from_bundle(

@@ -50,7 +50,8 @@ from app.services import engagement, pubsub
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
-from app.services.principals import validate_principal
+from app.services.lookups import project_or_404
+from app.services.principals import label_of, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirements import (
@@ -138,7 +139,7 @@ def _to_out(
         has_open_change_request=open_cr,
         requires_approval=version.status in REQUIRES_APPROVAL_STATUSES,
         review_date=version.review_date, review_lead_days=version.review_lead_days,
-        reviewer=people[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
+        reviewer=label_of(people, version.reviewer_type, version.reviewer_id),
     )
 
 
@@ -298,7 +299,7 @@ def list_requirements(
         matching += found.total
         return found.rows
 
-    rows = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
+    rows = project_scope.collect(db, project_or_404(db, project_id), current_user.id, "requirement", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if not single:
@@ -367,7 +368,7 @@ def update_requirement(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     new_version = edit_requirement(
         db, project, requirement, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
@@ -506,12 +507,12 @@ def move_requirement(
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
 
-    siblings = db.scalars(
+    siblings = list(db.scalars(
         select(Requirement).where(
             Requirement.project_id == project_id, Requirement.component_id == requirement.component_id,
             Requirement.category_id == requirement.category_id, Requirement.is_archived.is_(False),
         )
-    ).all()
+    ).all())
     versions = {r.id: get_current_version(db, r.id) for r in siblings}
     siblings.sort(key=lambda r: versions[r.id].sort_order)
     idx = next(i for i, r in enumerate(siblings) if r.id == requirement.id)

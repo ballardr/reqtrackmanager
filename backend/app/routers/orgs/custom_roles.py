@@ -21,7 +21,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -369,7 +369,7 @@ def update_custom_role(
             ).all()
         )
         if new_permissions != current_permissions:
-            db.execute(CustomRolePermission.__table__.delete().where(CustomRolePermission.custom_role_id == role.id))
+            db.execute(delete(CustomRolePermission).where(CustomRolePermission.custom_role_id == role.id))
             for permission in new_permissions:
                 db.add(CustomRolePermission(custom_role_id=role.id, permission=permission))
             changes["permissions"] = new_permissions

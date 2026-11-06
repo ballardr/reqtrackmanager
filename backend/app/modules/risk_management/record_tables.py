@@ -63,6 +63,7 @@ from app.modules.risk_management.service import (
 from app.modules.risk_management.treatment import effective_treatment_counts
 from app.services import tags as tag_service
 from app.services.client_date import effective_today
+from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
@@ -290,7 +291,7 @@ def _fields(values: Mapping[str, Any]) -> dict[str, Any]:
 def _may_manage(db: Session, user: User, project_id: uuid.UUID) -> bool:
     """The edit endpoint's gate: the Risk Manager role or the `(risk, manage)` grant."""
     try:
-        sh.require_risk_manage(db, user, db.get(Project, project_id))
+        sh.require_risk_manage(db, user, project_or_404(db, project_id))
     except HTTPException:
         return False
     return True

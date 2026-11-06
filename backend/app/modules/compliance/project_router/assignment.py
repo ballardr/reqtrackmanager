@@ -54,6 +54,7 @@ from app.modules.compliance.service import (
 )
 from app.services import notifications
 from app.services.audit import log_event
+from app.services.lookups import get_or_404, project_or_404
 from app.services.project_scope import ProjectScope
 
 router = APIRouter(tags=["compliance-project-assignment"])
@@ -207,7 +208,7 @@ def migrate_project_compliance_version(
             status.HTTP_409_CONFLICT,
             "This assignment is archived; unarchive it first, or assign the new version directly instead of migrating.",
         )
-    old_version = db.get(ComplianceStandardVersion, old_project_compliance.standard_version_id)
+    old_version = get_or_404(db, ComplianceStandardVersion, old_project_compliance.standard_version_id, "Compliance standard version")
     new_version = db.get(ComplianceStandardVersion, payload.new_standard_version_id)
     if new_version is None or new_version.standard_id != old_version.standard_id:
         raise HTTPException(
@@ -334,7 +335,7 @@ def get_project_status(
         return [build_status_out(db, pc) for pc in assignments]
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, "project_compliance_requirement", rows_for,
+        db, project_or_404(db, project_id), current_user.id, "project_compliance_requirement", rows_for,
         gate=("compliance", None), id_of=lambda row: row.project_compliance_id,
     )
 
@@ -403,8 +404,7 @@ def get_project_compliance_report(
     docstring — passed by `OutstandingPanel.tsx`'s Export trigger to match
     whatever that panel's own Standard/Standard version/Sub-section filters
     currently show."""
-    project = db.get(Project, project_id)
-    assert project is not None  # the route's view gate has loaded it
+    project = project_or_404(db, project_id)
     data = collect_project_compliance_report(
         db, project, include_archived=include_archived,
         standard_id=standard_id, standard_version_id=standard_version_id, requirement_id=requirement_id,

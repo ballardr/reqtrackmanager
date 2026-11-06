@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import enum
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
@@ -142,7 +143,7 @@ def _date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
-def _emails(db: Session, user_ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]:
+def _emails(db: Session, user_ids: Iterable[uuid.UUID | None]) -> dict[uuid.UUID, str]:
     """`{user id: email}` for the given ids (None ignored)."""
     ids = {u for u in user_ids if u is not None}
     return {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(ids)))} if ids else {}
@@ -169,12 +170,12 @@ class _VersionedSpec:
     key: str
     artefact_type: str
     prefix: str
-    identity: type
-    version: type
-    file_model: type
+    identity: type[Any]  # mapped classes whose columns are read by name (`fk`, `title_field`, ...)
+    version: type[Any]
+    file_model: type[Any]
     fk: str
     file_fk: str
-    scope_enum: type[enum.Enum]
+    scope_enum: type[Any]  # an enum with `PROJECT` and `ORGANIZATION` members
     title_field: str
     text_fields: tuple[str, ...]
     enum_fields: dict[str, type[enum.Enum]]
@@ -399,7 +400,7 @@ def _pain_point_json(
         scores.append({
             "target": target,
             **{axis: levels.get(getattr(score, column)) for axis, column in _SCORE_AXES.items()},
-            "scored_by_email": emails.get(score.scored_by),
+            "scored_by_email": (emails.get(score.scored_by) if score.scored_by else None),
         })
     return {
         "ref": pp.unique_code, "title": pp.title, "description": pp.description, "source": pp.source, "impact": pp.impact,
@@ -407,7 +408,8 @@ def _pain_point_json(
         "type_name": type_name, "type_org_name": org_type_name, "type_is_project_local": type_is_local,
         "owner": principal_to_bundle(db, pp.owner_type, pp.owner_id), "date_identified": _j(pp.date_identified),
         "is_intentional": pp.is_intentional, "created_by_email": emails.get(pp.creator_id), "created_at": _j(pp.created_at),
-        "is_archived": pp.is_archived, "archived_at": _j(pp.archived_at), "archived_by_email": emails.get(pp.archived_by),
+        "is_archived": pp.is_archived, "archived_at": _j(pp.archived_at),
+        "archived_by_email": (emails.get(pp.archived_by) if pp.archived_by else None),
         "tags": record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
         "attachments": export_file_links(db, PainPointFile, "pain_point_id", pp.id, assets),
         "scores": scores,
@@ -493,7 +495,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "ref": q.unique_code, "question": q.question, "context": q.context, "evidence": q.evidence,
             "priority": q.priority.value, "status": q.status.value, "owner": principal_to_bundle(db, q.owner_type, q.owner_id),
             "due_date": _j(q.due_date), "created_by_email": emails.get(q.creator_id), "created_at": _j(q.created_at),
-            "is_archived": q.is_archived, "archived_at": _j(q.archived_at), "archived_by_email": emails.get(q.archived_by),
+            "is_archived": q.is_archived, "archived_at": _j(q.archived_at),
+            "archived_by_email": (emails.get(q.archived_by) if q.archived_by else None),
             "tags": record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
             "attachments": export_file_links(db, OpenQuestionFile, "open_question_id", q.id, assets),
         }
@@ -549,14 +552,15 @@ def _type_row_for(
     name = entry.get("type_name")
     if name in rows:
         return rows[name]
-    org_type = org_types.get(entry.get("type_org_name") or name)
+    org_type = org_types.get(entry.get("type_org_name") or name or "")
     if org_type is not None and org_type.is_active:
         return get_or_create_project_pain_point_type(db, project.id, project.organization_id, org_type.id)
     warnings.add(f"{context}: type {name!r} not found — created as a project-local type.")
-    row = ProjectPainPointType(project_id=project.id, org_type_id=None, name_override=name or "Imported", is_enabled=True)
+    local_name = name or "Imported"
+    row = ProjectPainPointType(project_id=project.id, org_type_id=None, name_override=local_name, is_enabled=True)
     db.add(row)
     db.flush()
-    rows[row.name_override] = row
+    rows[local_name] = row
     return row
 
 

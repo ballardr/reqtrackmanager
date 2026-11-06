@@ -18,7 +18,7 @@ import tempfile
 import zipfile
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import IO, Any
+from typing import IO, Any, Literal, overload
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -153,6 +153,12 @@ class UserResolver:
             self._cache[normalized] = user.id if user else None
         return self._cache[normalized]
 
+    @overload
+    def resolve(self, email: str | None, *, required: Literal[True], context: str) -> UUID: ...
+
+    @overload
+    def resolve(self, email: str | None, *, required: bool, context: str) -> UUID | None: ...
+
     def resolve(self, email: str | None, *, required: bool, context: str) -> UUID | None:
         """Resolves an email to a user id.
 
@@ -233,7 +239,7 @@ def export_file_links(
     return out
 
 
-def _file_link_rows(db: Session, file_model: type, fk: str, record_ids: list[UUID]) -> dict[UUID, list[tuple[FileAsset, str]]]:
+def _file_link_rows(db: Session, file_model: type[Any], fk: str, record_ids: list[UUID]) -> dict[UUID, list[tuple[FileAsset, str]]]:
     """`{record id: [(asset, linker's email)]}` for the records, in one statement."""
     found: dict[UUID, list[tuple[FileAsset, str]]] = {}
     if not record_ids:

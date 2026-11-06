@@ -203,26 +203,29 @@ def _clause_options(
     if level == "version":
         if standard_id is None:
             return []
-        stmt = (
+        version_stmt = (
             select(ComplianceStandardVersion).join(ComplianceStandard, ComplianceStandard.id == ComplianceStandardVersion.standard_id)
             .where(ComplianceStandardVersion.standard_id == standard_id, ComplianceStandard.organization_id == org_id)
         )
         if query:
-            stmt = stmt.where(ComplianceStandardVersion.version_label.ilike(like))
-        return [(str(v.id), _version_label(v)) for v in db.scalars(stmt.order_by(ComplianceStandardVersion.version_number.desc()))]
+            version_stmt = version_stmt.where(ComplianceStandardVersion.version_label.ilike(like))
+        return [
+            (str(v.id), _version_label(v))
+            for v in db.scalars(version_stmt.order_by(ComplianceStandardVersion.version_number.desc()))
+        ]
     version_id = _uuid(selected.get("version"))
     if version_id is None:
         return []
-    stmt = (
+    requirement_stmt = (
         select(ComplianceRequirement).join(ComplianceStandardVersion, ComplianceStandardVersion.id == ComplianceRequirement.standard_version_id)
         .join(ComplianceStandard, ComplianceStandard.id == ComplianceStandardVersion.standard_id)
         .where(ComplianceRequirement.standard_version_id == version_id, ComplianceStandard.organization_id == org_id)
     )
     if query:
-        stmt = stmt.where(ComplianceRequirement.reference.ilike(like) | ComplianceRequirement.name.ilike(like))
+        requirement_stmt = requirement_stmt.where(ComplianceRequirement.reference.ilike(like) | ComplianceRequirement.name.ilike(like))
     return [
         (str(c.id), f"{c.reference} {c.name}" if c.reference else c.name)
-        for c in db.scalars(stmt.order_by(ComplianceRequirement.sort_order, ComplianceRequirement.reference))
+        for c in db.scalars(requirement_stmt.order_by(ComplianceRequirement.sort_order, ComplianceRequirement.reference))
     ]
 
 

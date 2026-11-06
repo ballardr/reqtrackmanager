@@ -71,6 +71,7 @@ from app.services.changes import get_project_changes
 from app.services.codes import assign_project_code, change_project_code
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.downloads import filename_safe
+from app.services.lookups import project_or_404
 from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
 from app.services.project_export import build_project_bundle, import_project_bundle
@@ -471,6 +472,7 @@ def list_projects(
         # organisations", so even server admins only see projects they hold a
         # genuine role in, same as anyone else.
         accessible_ids = _accessible_project_ids(db, current_user.id)
+        projects: list[Project]
         if not accessible_ids:
             projects = []
             response.headers["X-Total-Unfiltered-Count"] = "0"
@@ -506,9 +508,9 @@ def list_projects(
             conditions = list(base_conditions)
             if organization_id is not None:
                 conditions.append(Project.organization_id == organization_id)
-            projects = db.scalars(
+            projects = list(db.scalars(
                 select(Project).join(Organization, Organization.id == Project.organization_id).where(*conditions)
-            ).all()
+            ).all())
 
         if search:
             needle = search.lower()
@@ -522,14 +524,14 @@ def list_projects(
                 select(Organization.id, Organization.name).where(
                     Organization.id.in_({p.organization_id for p in projects})
                 )
-            ).all()
+            ).tuples().all()
         )
         requirement_counts = dict(
             db.execute(
                 select(Requirement.project_id, func.count(Requirement.id))
                 .where(Requirement.project_id.in_({p.id for p in projects}), Requirement.is_archived.is_(False))
                 .group_by(Requirement.project_id)
-            ).all()
+            ).tuples().all()
         )
 
         # Hierarchical projects: parent_project_name/children are populated only
@@ -559,7 +561,7 @@ def list_projects(
             if p.parent_project_id is not None and p.organization_id in admin_org_ids
         }
         parent_names = (
-            dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(visible_parent_ids))).all())
+            dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(visible_parent_ids))).tuples().all())
             if visible_parent_ids
             else {}
         )
@@ -615,7 +617,9 @@ def list_projects(
                     organization_name=org_names.get(p.organization_id, ""),
                     requirement_count=requirement_counts.get(p.id, 0),
                     parent_project_id=p.parent_project_id if parent_visible else None,
-                    parent_project_name=parent_names.get(p.parent_project_id) if parent_visible else None,
+                    parent_project_name=(
+                        parent_names.get(p.parent_project_id) if parent_visible and p.parent_project_id else None
+                    ),
                     role_inheritance_mode=p.role_inheritance_mode,
                     role_inheritance_filter_role=p.role_inheritance_filter_role,
                     can_be_parent=p.can_be_parent,
@@ -905,8 +909,7 @@ def update_project(
 
     parent_changing = "parent_project_id" in payload.model_fields_set and payload.parent_project_id != project.parent_project_id
     new_parent_id = payload.parent_project_id if "parent_project_id" in payload.model_fields_set else project.parent_project_id
-    mode_sent = payload.role_inheritance_mode is not None
-    new_mode = payload.role_inheritance_mode if mode_sent else project.role_inheritance_mode
+    new_mode = payload.role_inheritance_mode if payload.role_inheritance_mode is not None else project.role_inheritance_mode
     new_filter_role = (
         payload.role_inheritance_filter_role if payload.role_inheritance_filter_role is not None
         else project.role_inheritance_filter_role
@@ -1125,7 +1128,7 @@ def get_project_metrics(
     progress stays this project's own: stages and baselines belong to one project.
     """
     per_project = project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, "requirement", lambda pid: [_project_counts(db, pid)],
+        db, project_or_404(db, project_id), current_user.id, "requirement", lambda pid: [_project_counts(db, pid)],
     )
     own = next(c for c in per_project if c.id == project_id)
     requirement_count = sum(c.requirements for c in per_project)
@@ -1142,7 +1145,7 @@ def get_project_metrics(
     own_requirement_count = own.requirements
     # Read-only: each module tier is read once per organisation or project, not once per record type.
     with memoize_module_state():
-        record_counts = count_records_by_type(db, current_user, db.get(Project, project_id), project_scope)
+        record_counts = count_records_by_type(db, current_user, project_or_404(db, project_id), project_scope)
 
     # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
     # been baselined (C-G-10) shows completion across the requirements

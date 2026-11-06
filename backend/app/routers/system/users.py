@@ -299,7 +299,7 @@ def create_system_user(
         if not payload.password or not (payload.display_name or "").strip():
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A name and a password are required to create the account.")
         user = create_native_user(
-            db, email=payload.email, display_name=payload.display_name.strip(), password=payload.password,
+            db, email=payload.email, display_name=(payload.display_name or "").strip(), password=payload.password,
             organization_id=payload.organization_id, role=payload.role, actor_id=current_user.id,
         )
         db.commit()
@@ -353,7 +353,7 @@ def set_server_admin(
         # anyway, so doesn't cover for a revocation.
         active_admin_count = db.scalar(
             select(func.count()).select_from(User).where(User.is_server_admin.is_(True), User.is_active.is_(True))
-        )
+        ) or 0
         if target.is_active and active_admin_count <= 1:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot revoke the deployment's last active server admin.")
     target.is_server_admin = payload.is_server_admin
@@ -543,7 +543,7 @@ def list_system_users(
             org_ids_by_user.setdefault(user_id, set()).add(organization_id)
     all_org_ids = {oid for oids in org_ids_by_user.values() for oid in oids}
     org_names_by_id = (
-        dict(db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(all_org_ids))).all())
+        dict(db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(all_org_ids))).tuples().all())
         if all_org_ids and settings.access_review_show_org_names
         else {}
     )

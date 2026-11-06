@@ -32,7 +32,8 @@ from app.schemas.requirement import (
 )
 from app.services import pubsub
 from app.services.audit import log_event
-from app.services.principals import is_principal_member, principal_ref
+from app.services.lookups import project_or_404
+from app.services.principals import is_principal_member, label_of, principal_ref
 from app.services.rbac import get_effective_project_roles, require_ai_approvals_enabled, require_project_manage, require_project_view
 from app.services.requirements import apply_new_version, get_current_version, get_current_version_for_update
 from app.services.reviews import get_due_reviews_for_project, reviewer_labels
@@ -76,7 +77,7 @@ def list_due_reviews(
     reviewers = reviewer_labels(db, [version for version, _ in due])
     component_ids = {req.component_id for _, req in due}
     component_names = (
-        dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).all())
+        dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).tuples().all())
         if component_ids
         else {}
     )
@@ -85,10 +86,11 @@ def list_due_reviews(
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, unique_code=req.unique_code,
             name=version.name, review_date=version.review_date,
-            reviewer=reviewers[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
+            reviewer=label_of(reviewers, version.reviewer_type, version.reviewer_id),
             component_id=req.component_id, component_name=component_names.get(req.component_id, ""),
         )
         for version, req in due
+        if version.review_date is not None
     ]
 
 
@@ -188,7 +190,7 @@ def approve_requirement(
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
     if channel == "mcp":
-        require_ai_approvals_enabled(db, db.get(Project, project_id))
+        require_ai_approvals_enabled(db, project_or_404(db, project_id))
     current_version = get_current_version_for_update(db, requirement.id)
     if current_version.status not in REQUIRES_APPROVAL_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "Only a draft or reviewed requirement can be approved.")

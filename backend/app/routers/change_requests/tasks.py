@@ -29,6 +29,7 @@ from app.models.user import User
 from app.routers.change_requests._shared import _get_cr_in_project
 from app.schemas.change_request import ChangeRequestTaskCreate, ChangeRequestTaskOut, ChangeRequestTaskUpdate
 from app.services.audit import log_event
+from app.services.lookups import project_or_404
 from app.services.principals import (
     is_principal_member,
     principal_columns,
@@ -110,7 +111,7 @@ def update_task(
     or reschedule it.
     """
     cr = _get_cr_in_project(db, project_id, cr_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     task = db.get(ChangeRequestTask, task_id)
     if task is None or task.change_request_id != cr.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Task not found.")

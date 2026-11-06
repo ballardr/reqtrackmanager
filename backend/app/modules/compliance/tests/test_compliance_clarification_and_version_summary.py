@@ -19,6 +19,7 @@ from app.modules.compliance.tests.test_compliance_standards_api import (
 )
 from app.modules.compliance.tests.test_project_compliance_api import _publish_version
 from tests.conftest import auth_headers, create_org_user, login
+from tests.db_helpers import audit_detail
 
 
 def _grant_standard_role(client, token, org_id, standard_id, user_id, role_key, *, expect=204):
@@ -148,9 +149,9 @@ def test_clarify_audit_logged_with_before_and_after(client, admin_token, org_id)
             AuditEvent.entity_id == requirement["id"],
         ).first()
         assert event is not None
-        assert event.detail["clarification_note"] == "Fixed wording."
-        assert event.detail["before"]["description"] == "Original description."
-        assert event.detail["after"]["description"] == "Corrected description."
+        assert audit_detail(event)["clarification_note"] == "Fixed wording."
+        assert audit_detail(event)["before"]["description"] == "Original description."
+        assert audit_detail(event)["after"]["description"] == "Corrected description."
     finally:
         db.close()
 

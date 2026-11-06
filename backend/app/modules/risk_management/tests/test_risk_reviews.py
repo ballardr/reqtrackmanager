@@ -44,6 +44,7 @@ from app.modules.risk_management.tests._helpers import (
     user_ref,
 )
 from tests.conftest import auth_headers, create_project
+from tests.db_helpers import audit_detail
 
 
 def _url(project_id, risk_id) -> str:
@@ -223,7 +224,7 @@ def test_reviews_are_audited_and_tenant_isolated(client, admin_token):
         events = db.scalars(select(AuditEvent).where(AuditEvent.entity_id == str(risk["id"]), AuditEvent.action == "reviewed")).all()
     finally:
         db.close()
-    assert len(events) == 1 and events[0].detail["review_id"] == review["id"]
+    assert len(events) == 1 and audit_detail(events[0])["review_id"] == review["id"]
     # Another tenant's project cannot see or create reviews against this risk.
     assert client.get(_url(project2["id"], risk["id"]) + "/reviews", headers=auth_headers(token2)).status_code == 404
     assert _review(client, token2, project2["id"], risk["id"]).status_code == 404
@@ -424,8 +425,8 @@ def test_change_detection_leaves_closed_risks_alone_and_audits_the_flag(client, 
             AuditEvent.entity_id == live["id"], AuditEvent.action == "treatment_needs_reassessment")).all()
     finally:
         db.close()
-    assert len(events) == 1 and events[0].detail["change"] == "content_changed"
-    assert events[0].detail["other_id"] == requirement_id and events[0].detail["link_id"] == live_link
+    assert len(events) == 1 and audit_detail(events[0])["change"] == "content_changed"
+    assert audit_detail(events[0])["other_id"] == requirement_id and audit_detail(events[0])["link_id"] == live_link
 
 
 def test_a_change_in_another_project_flags_the_verdict_but_the_notification_does_not_name_it(client, admin_token):

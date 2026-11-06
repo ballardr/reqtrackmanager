@@ -24,6 +24,7 @@ from app.models.enums import PermissionLevel
 from app.modules.decisions.models import Decision
 from app.services.permissions import encode_permission
 from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
+from tests.db_helpers import must_get
 
 MODULE_KEY = "decisions"
 
@@ -543,7 +544,7 @@ def test_decision_type_crud_and_delete_with_reassignment(client, admin_token):
 
     db = SessionLocal()
     try:
-        refreshed = db.get(Decision, uuid.UUID(decision["id"]))
+        refreshed = must_get(db, Decision, uuid.UUID(decision["id"]))
         assert str(refreshed.decision_type_id) == other_type_id
     finally:
         db.close()

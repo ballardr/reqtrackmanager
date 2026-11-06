@@ -21,6 +21,7 @@ cross-tenant 404s.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, UserCustomRoleGrant
 from app.services.permissions import encode_permission
@@ -199,7 +200,7 @@ def test_update_project_guiding_principle_can_assign_and_clear_owner(client, adm
     guiding_principle = _create_project_guiding_principle(client, org_admin_token, project["id"])
     user_id = create_org_user(client, org_admin_token, org["id"], "gp_owner_candidate@example.com")
 
-    payload = {**_PAYLOAD, "owner": {"type": "user", "id": user_id}}
+    payload: dict[str, Any] = {**_PAYLOAD, "owner": {"type": "user", "id": user_id}}
     resp = client.put(
         f"{_project_base(project['id'])}/guiding-principles/{guiding_principle['id']}", json=payload,
         headers=auth_headers(org_admin_token),

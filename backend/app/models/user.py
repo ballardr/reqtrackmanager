@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -21,6 +21,9 @@ from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
 from app.models.notification import DigestMode
+
+if TYPE_CHECKING:  # the relationship target names the model; importing it at run time would be circular
+    from app.models.organization import UserOrgRole
 
 
 class User(UUIDPKMixin, TimestampMixin, Base):
@@ -171,4 +174,4 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     # (stale_since_days / never_logged_in) in routers/orgs.py and system.py.
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    org_roles: Mapped[list[UserOrgRole]] = relationship(back_populates="user")  # noqa: F821
+    org_roles: Mapped[list[UserOrgRole]] = relationship(back_populates="user")

@@ -83,6 +83,8 @@ def start_oidc_login(
     supplied redirect target.
     """
     org = _get_sso_org_by_slug(db, slug)
+    if org.oidc_issuer_url is None or org.oidc_client_id is None:  # `_get_sso_org_by_slug` has already refused this
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "SSO is not configured for this organisation.")
     discovery = oidc_client.discover(org.oidc_issuer_url)
     state = create_oidc_state_token(str(org.id), client_nonce, client=client)
     authorize_url = oidc_client.build_authorize_url(

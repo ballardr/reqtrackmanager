@@ -12,7 +12,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -249,7 +249,7 @@ def delete_category(
     if target is None or target.project_id != project.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "reassign_to must be an existing category in this project.")
     db.execute(
-        Requirement.__table__.update()
+        update(Requirement)
         .where(Requirement.category_id == category_id)
         .values(category_id=reassign_to, component_id=target.component_id)
     )

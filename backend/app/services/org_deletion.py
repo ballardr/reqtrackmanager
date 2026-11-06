@@ -52,7 +52,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest, ReviewComment
@@ -97,8 +97,8 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
         artefact_ids.update(requirement_ids, action_ids)
         entity_ids = [*requirement_ids, *change_request_ids, *action_ids, *module_artefact_ids]
         if entity_ids:
-            db.execute(ReviewComment.__table__.delete().where(ReviewComment.target_id.in_(entity_ids)))
-            db.execute(Subscription.__table__.delete().where(Subscription.entity_id.in_(entity_ids)))
+            db.execute(delete(ReviewComment).where(ReviewComment.target_id.in_(entity_ids)))
+            db.execute(delete(Subscription).where(Subscription.entity_id.in_(entity_ids)))
 
     link_type_ids = select(RequirementLinkTypeDefinition.id).where(
         RequirementLinkTypeDefinition.organization_id == organization_id
@@ -106,11 +106,11 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
     link_conditions = [ArtefactLink.link_type_id.in_(link_type_ids)]
     if artefact_ids:
         link_conditions += [ArtefactLink.source_id.in_(artefact_ids), ArtefactLink.target_id.in_(artefact_ids)]
-    db.execute(ArtefactLink.__table__.delete().where(or_(*link_conditions)))
+    db.execute(delete(ArtefactLink).where(or_(*link_conditions)))
 
     rule_ids = select(ArtefactTypeLinkRule.id).where(ArtefactTypeLinkRule.organization_id == organization_id)
-    db.execute(ArtefactTypeLinkRuleEntry.__table__.delete().where(ArtefactTypeLinkRuleEntry.rule_id.in_(rule_ids)))
-    db.execute(ArtefactTypeLinkRule.__table__.delete().where(ArtefactTypeLinkRule.organization_id == organization_id))
+    db.execute(delete(ArtefactTypeLinkRuleEntry).where(ArtefactTypeLinkRuleEntry.rule_id.in_(rule_ids)))
+    db.execute(delete(ArtefactTypeLinkRule).where(ArtefactTypeLinkRule.organization_id == organization_id))
 
     # Organization.logo_file_id/login_background_file_id are self-referential
     # FKs to file_assets with no ondelete action (models/organization.py) —
@@ -128,7 +128,7 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
     # `Organization` instance in the session identity map and this only
     # needs to affect what's persisted before the row itself is deleted.
     db.execute(
-        Organization.__table__.update()
+        update(Organization)
         .where(Organization.id == organization_id)
         .values(logo_file_id=None, login_background_file_id=None)
     )
@@ -168,6 +168,6 @@ def delete_organization_cascade(db: Session, organization_id: UUID) -> None:
     # fixed: reaching a definition first nulled a project override's FK into
     # a CHECK violation (or was blocked by rows still referencing it), so
     # the org delete failed (found 2026-10-05).
-    db.execute(Project.__table__.delete().where(Project.organization_id == organization_id))
+    db.execute(delete(Project).where(Project.organization_id == organization_id))
 
     db.flush()

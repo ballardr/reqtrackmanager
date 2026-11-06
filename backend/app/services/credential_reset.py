@@ -276,7 +276,7 @@ def send_reset_email(
 
 def delete_unsent_token(db: Session, raw_token: str) -> None:
     """Removes a token whose email could not be sent, so no live link exists that nobody received."""
-    db.execute(CredentialResetToken.__table__.delete().where(CredentialResetToken.token_hash == hash_pat(raw_token)))
+    db.execute(delete(CredentialResetToken).where(CredentialResetToken.token_hash == hash_pat(raw_token)))
 
 
 def send_link_for_administrator(db: Session, target: User, *, admin: User, organization_id: uuid.UUID | None) -> None:

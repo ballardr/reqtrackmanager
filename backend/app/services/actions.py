@@ -35,7 +35,7 @@ from app.schemas.action import RequirementActionOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import engagement
 from app.services.audit import log_event
-from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
+from app.services.principals import label_of, principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.project_hierarchy import resolve_effective_action_types
 from app.services.rbac import lock_project_for_update
 
@@ -48,6 +48,8 @@ def _next_sequence(project: Project) -> int:
     Locks the project row and re-reads the counter first, for the same
     concurrent-create race (2026-10-05)."""
     db = object_session(project)
+    if db is None:
+        raise RuntimeError("The project is not attached to a session.")
     lock_project_for_update(db, project.id)
     db.refresh(project, attribute_names=["next_action_seq"])
     seq = project.next_action_seq
@@ -130,7 +132,7 @@ def action_to_out(
         id=action.id, project_id=action.project_id, unique_code=action.unique_code,
         action_type_id=action.action_type_id, title=action.title, description=action.description,
         outcome_status=action.outcome_status, due_date=action.due_date,
-        assignee=labels[(action.assignee_type, action.assignee_id)] if action.assignee_id else None,
+        assignee=label_of(labels, action.assignee_type, action.assignee_id),
         completed_at=action.completed_at, completed_by=action.completed_by, creator_id=action.creator_id,
         is_archived=action.is_archived, archived_at=action.archived_at, archived_by=action.archived_by,
         created_at=action.created_at, updated_at=action.updated_at,
