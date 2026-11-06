@@ -173,7 +173,7 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     });
 
     // --- Back on the list, the Pain Point shows its final status.
-    await page.getByRole("link", { name: "← Pain Point", exact: true }).click();
+    await page.getByRole("link", { name: "← Pain Points", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points(?:\\?.*)?$`));
     // The list opens on open Pain Points only, so a closed one appears once that filter is cleared.
     await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();

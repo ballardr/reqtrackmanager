@@ -129,7 +129,7 @@ export function ProjectComplianceDetail({
       <RecordHeader
         recordLabel="Compliance assignment"
         headingLevel="h2"
-        back={{ onClick: onBack, label: "← Back" }}
+        back={{ onClick: onBack, label: "Compliance assignments" }}
         title={liveStatus ? `${liveStatus.standard_reference} — ${liveStatus.standard_name}` : "Compliance assignment"}
         subtitle={liveStatus?.version_label}
         actions={[archiveAction.item]}

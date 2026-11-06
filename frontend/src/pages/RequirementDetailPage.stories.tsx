@@ -152,6 +152,18 @@ export const MemberSeesReadOnlyView: Story = {
     await waitFor(() => expect(canvas.getByText(/Users can reset a forgotten password/)).toBeInTheDocument());
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
     await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
+    await expect(canvas.getByRole("link", { name: "← Requirements" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements`);
+  },
+};
+
+/** A record that cannot be loaded says so, instead of leaving the spinner up. */
+export const UnavailableRequirementShowsNotFound: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockRejectedValue(new Error("Not found"));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Not found")).toBeInTheDocument());
   },
 };
 

@@ -242,7 +242,7 @@ export function PainPointDetailPage() {
         title={painPoint.title}
         code={painPoint.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "← Pain Point" }}
+        back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "Pain Points" }}
         badges={
           <>
             {painPoint.is_intentional && <Badge tone="info">Intentional</Badge>}

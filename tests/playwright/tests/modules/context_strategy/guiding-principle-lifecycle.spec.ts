@@ -153,7 +153,7 @@ test.describe("Context & Strategy: create -> propose -> send back -> re-propose 
     await expect(page.getByText("Active", { exact: true })).toBeVisible();
 
     // --- Back on the list, the Guiding Principle shows its final status.
-    await page.getByRole("link", { name: "← Guiding Principle", exact: true }).click();
+    await page.getByRole("link", { name: "← Guiding Principles", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/guiding-principles(?:\\?.*)?$`));
     const row = page.locator("tr", { hasText: guidingPrincipleName });
     await expect(row.getByText("Active", { exact: true })).toBeVisible();

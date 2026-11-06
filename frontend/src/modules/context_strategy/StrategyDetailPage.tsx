@@ -98,7 +98,7 @@ export function StrategyDetailPage() {
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/strategies`
     : `/org-overview`;
-  const backLabel = projectId ? "← Strategy" : "← Organisation overview";
+  const backLabel = projectId ? "Strategies" : "Organisation overview";
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

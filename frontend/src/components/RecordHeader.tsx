@@ -26,6 +26,9 @@ import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { listBackTarget } from "../hooks/useListPosition";
 import { ItemRow } from "./ItemRow";
 
+/** Leading arrow of the back link; drawn here so every page reads the same. */
+const BACK_ARROW = "← ";
+
 /**
  * @param recordLabel Singular record name; the menu is named "{recordLabel} actions".
  * @param title The record's title (heading text).
@@ -36,7 +39,7 @@ import { ItemRow } from "./ItemRow";
  * @param badges Status and scope pills, shown on the line under the title.
  * @param version The record's version number, for a versioned record; shown as "Version n" after the badges, never as its own line.
  * @param tags The record's tags (`RecordTags`), shown under the badges.
- * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself.
+ * @param back Link back to the list: `{ to, label }` (it lands on the list as it was left, filters and scroll position kept), or `{ onClick, label }` inside a page that switches views itself. The label is the destination's plural name ("Pain Points"); the header draws the leading arrow, so pages never type it.
  * @param headingLevel `h1` (default) for a page; `h2` for a record opened inside a page that already has an `h1`.
  * @param onEdit Opens the edit form; omit when the user cannot edit.
  * @param transitions Visible workflow buttons (Submit, Approve, Retire...).
@@ -79,9 +82,9 @@ export function RecordHeader({
   return (
     <header className="stack record-header" style={{ gap: "var(--space-3)" }}>
       {back && ("to" in back ? (
-        <Link {...listBackTarget(back.to)}>{back.label}</Link>
+        <Link {...listBackTarget(back.to)}>{BACK_ARROW}{back.label}</Link>
       ) : (
-        <div><button type="button" className="btn" onClick={back.onClick}>{back.label}</button></div>
+        <div><button type="button" className="btn" onClick={back.onClick}>{BACK_ARROW}{back.label}</button></div>
       ))}
       <ItemRow
         actions={

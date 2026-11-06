@@ -69,6 +69,7 @@ export const Overview: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: /ISO-27001 — ISO 27001/ })).toBeInTheDocument());
     await expect(canvas.getByText("Information security management.")).toBeInTheDocument();
     await expect(canvas.getByText("Issued by ISO")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "← Compliance Standards" })).toHaveAttribute("href", "/standards");
     // The applicability-default panel renders in Overview too.
     await waitFor(() => expect(canvas.getByRole("switch")).toHaveAttribute("aria-checked", "false"));
 

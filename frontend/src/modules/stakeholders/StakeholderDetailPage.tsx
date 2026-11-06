@@ -81,7 +81,7 @@ export function StakeholderDetailPage() {
   const groupApi = projectId ? projectStakeholderGroupApi : orgStakeholderGroupApi;
   const scopeId = projectId ?? organizationId;
   const listPath = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=stakeholder` : "/org-overview";
-  const backLabel = projectId ? "← People" : "← Organisation overview";
+  const backLabel = projectId ? "People" : "Organisation overview";
 
   const [stakeholder, setStakeholder] = useState<Stakeholder | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

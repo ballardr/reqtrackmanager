@@ -1,18 +1,18 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 and 2 done (uncommitted), the rest not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 3 done (uncommitted), the rest not started. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-2 / 17 phases complete.
+3 / 17 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
 | 1 | mypy: remove the baseline, fix every finding | 1,042 findings (606 distinct keys) fixed, 14 existing `# type: ignore` replaced, baseline and `--update` removed; full-suite result in `docs/decisions.md` | [x] |
 | 2 | Storage alert investigation | Cause was SeaweedFS preallocation (already fixed); monitor hardened: restart-safe state, 2-failure threshold, admin email fixed; see `docs/decisions.md` | [x] |
-| 3 | Back link consistency + UI/UX consistency audit | Produces findings that feed phases 4, 9, 10 | [ ] |
+| 3 | Back link consistency + UI/UX consistency audit | Back link on all 21 `RecordHeader` pages, drawn by the header, guarded by `check_record_header_back.py`; not-found state on three core pages; findings register below | [x] |
 | 4 | Two-level admin navigation | Expandable left menu; settled with the user | [ ] |
 | 5 | Links panel: server-side "can create" | Reuses `RecordTableProvider.can_create`, no new hook | [ ] |
 | 6 | Pain Point submission policy (project setting) | Mirrors Product Feedback's `submission_policy`; settled with the user | [ ] |
@@ -43,6 +43,23 @@ flowchart LR
 ```
 
 Phases 2, 11, 15 and 16 have no dependency and can be taken in any order.
+
+## Phase 3 findings register
+
+Method: a static scan of the 21 `RecordHeader` pages (header props, layout, links, activity, comments, confirmation and toast use, load-error handling). *Decided by: Agent*; it replaces the planned live walk, which needs a rebuilt stack and adds only rendered output.
+
+| # | Finding | Outcome |
+| --- | --- | --- |
+| F1 | Requirement, Change request, Action and Compliance standard pages had no back link | Fixed |
+| F2 | Nine module pages labelled the link with the singular record name or a typed arrow | Fixed; the header draws the arrow, callers pass the plural name |
+| F3 | Requirement, Change request and Action pages showed a spinner indefinitely (and an unhandled rejection) when the record could not be loaded | Fixed; same message as the module pages |
+| F4 | `ProjectComplianceDetail` back button read "← Back" | Fixed ("Compliance assignments") |
+| F5 | Engagement has Delete permanently but no Archive | By design (a log entry, documented in the page); no change |
+| F6 | `VersionWorkspace` has a hand-written "← Back to {standard}" button | A view switch inside a page, not a record header; no change |
+| F7 | Compliance standard page has no Links panel, activity or tags | Not a registered artefact type's record page (a navigation workspace); no change |
+| F8 | Report layout designer and pack editor back labels had no arrow | Fixed by F2 (same component) |
+
+Phases 4, 9 and 10 take nothing further from this audit.
 
 ## Challenges to the notes (read before approving)
 

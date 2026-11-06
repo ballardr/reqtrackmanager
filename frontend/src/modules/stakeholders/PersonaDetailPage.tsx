@@ -81,7 +81,7 @@ export function PersonaDetailPage() {
   const scopedApi = projectId ? projectPersonaApi : orgPersonaApi;
   const scopeId = projectId ?? organizationId;
   const backLink = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=persona` : "/org-overview";
-  const backLabel = projectId ? "← People" : "← Organisation overview";
+  const backLabel = projectId ? "People" : "Organisation overview";
 
   const [persona, setPersona] = useState<Persona | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

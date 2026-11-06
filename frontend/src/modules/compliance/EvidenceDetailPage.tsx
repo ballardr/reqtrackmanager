@@ -104,7 +104,7 @@ export function EvidenceDetailPage() {
         title={evidence.title}
         code={evidence.unique_code}
         tags={<RecordTags projectId={projectId} artefactType="compliance_evidence" artefactId={evidence.id} />}
-        back={{ to: projectCompliancePath(projectId, "evidence"), label: "← Evidence" }}
+        back={{ to: projectCompliancePath(projectId, "evidence"), label: "Evidence" }}
         badges={
           <>
             {evidence.is_archived && <Badge tone="muted">Archived</Badge>}

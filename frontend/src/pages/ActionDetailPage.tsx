@@ -75,6 +75,7 @@ export function ActionDetailPage() {
     setForm(updater);
   }
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   async function reload() {
     if (!projectId || !actionId) return;
     const [a, types, comm, fls] = await Promise.all([
@@ -95,7 +96,17 @@ export function ActionDetailPage() {
     }
   }
 
-  useLoadOnChange(reload, [projectId, actionId]);
+  // The initial load reports a missing or inaccessible record instead of leaving the spinner up.
+  async function loadRecord() {
+    try {
+      await reload();
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(toErrorMessage(err, "This action could not be found, or you don't have access to it."));
+    }
+  }
+
+  useLoadOnChange(loadRecord, [projectId, actionId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -221,6 +232,7 @@ export function ActionDetailPage() {
     },
   );
 
+  if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!action) return <Spinner />;
 
   return (
@@ -235,6 +247,7 @@ export function ActionDetailPage() {
     >
       <RecordHeader
         recordLabel={strings.actions.recordLabel}
+        back={projectId ? { to: `/projects/${projectId}/actions`, label: strings.actions.title } : undefined}
         title={action.title}
         code={action.unique_code}
         tags={projectId && actionId ? <RecordTags projectId={projectId} artefactType="requirement_action" artefactId={actionId} /> : undefined}

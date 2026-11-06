@@ -160,7 +160,7 @@ export function EngagementDetailPage() {
         title={engagement.title}
         code={engagement.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="engagement" artefactId={engagement.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/stakeholders/engagements`, label: "← Engagements" }}
+        back={{ to: `/projects/${projectId}/modules/stakeholders/engagements`, label: "Engagements" }}
         badges={
           <>
             <Badge>{ENGAGEMENT_CHANNEL_LABEL[engagement.channel]}</Badge>

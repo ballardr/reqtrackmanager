@@ -100,6 +100,18 @@ export const PendingActionWithLinkedRequirement: Story = {
     );
     await expect(api.get).not.toHaveBeenCalledWith(expect.stringMatching(/\/requirements\/[^/]+\/actions$/));
     await expect(canvas.queryByRole("button", { name: /Remove link/ })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "← Actions" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/actions`);
+  },
+};
+
+/** A record that cannot be loaded says so, instead of leaving the spinner up. */
+export const UnavailableActionShowsNotFound: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockRejectedValue(new Error("Not found"));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Not found")).toBeInTheDocument());
   },
 };
 

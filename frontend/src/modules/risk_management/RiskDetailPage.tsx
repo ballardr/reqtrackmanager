@@ -175,7 +175,7 @@ export function RiskDetailPage() {
         title={risk.title}
         code={risk.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="risk" artefactId={risk.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "← Risks" }}
+        back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "Risks" }}
         badges={
           <>
             {risk.is_review_overdue && <Badge tone="danger">Review overdue</Badge>}

@@ -147,7 +147,7 @@ test.describe("Context & Strategy: create -> propose -> approve -> activate a St
     await expect(page.getByText("Active", { exact: true })).toBeVisible();
 
     // --- Back on the list, the Strategy shows its final status.
-    await page.getByRole("link", { name: "← Strategy", exact: true }).click();
+    await page.getByRole("link", { name: "← Strategies", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/strategies(?:\\?.*)?$`));
     const row = page.locator("tr", { hasText: strategyTitle });
     await expect(row.getByText("Active", { exact: true })).toBeVisible();

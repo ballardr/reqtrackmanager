@@ -175,7 +175,7 @@ export function DecisionDetailPage() {
         title={decision.title}
         code={decision.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="decision" artefactId={decision.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/decisions`, label: "← Decisions" }}
+        back={{ to: `/projects/${projectId}/modules/decisions`, label: "Decisions" }}
         badges={
           <Badge tone={DECISION_STATUS_TONE[decision.status]}>
             {DECISION_STATUS_LABEL[decision.status]}

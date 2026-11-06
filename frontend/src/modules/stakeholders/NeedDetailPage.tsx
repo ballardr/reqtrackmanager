@@ -163,7 +163,7 @@ export function NeedDetailPage() {
         title={need.name}
         code={need.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="stakeholder_need" artefactId={need.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/stakeholders/needs`, label: "← Needs" }}
+        back={{ to: `/projects/${projectId}/modules/stakeholders/needs`, label: "Needs" }}
         badges={
           <>
             <Badge tone={NEED_STATUS_TONE[need.status]}>{NEED_STATUS_LABEL[need.status]}</Badge>

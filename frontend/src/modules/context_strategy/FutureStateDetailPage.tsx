@@ -93,7 +93,7 @@ export function FutureStateDetailPage() {
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/future-states`
     : `/org-overview`;
-  const backLabel = projectId ? "← Future State" : "← Organisation overview";
+  const backLabel = projectId ? "Future States" : "Organisation overview";
 
   const [futureState, setFutureState] = useState<FutureState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

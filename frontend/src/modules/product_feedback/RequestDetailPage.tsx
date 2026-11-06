@@ -491,7 +491,7 @@ export function RequestDetailPage() {
         code={request.unique_code}
         codeOwner={codeOwner}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="enhancement_request" artefactId={request.id} /> : undefined}
-        back={{ to: listPath, label: projectId ? "← Enhancement requests" : "← Organisation overview" }}
+        back={{ to: listPath, label: projectId ? "Enhancement requests" : "Organisation overview" }}
         version={request.version_number}
         badges={
           <>

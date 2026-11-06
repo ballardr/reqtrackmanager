@@ -123,7 +123,7 @@ export function GuidingPrincipleDetailPage() {
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/guiding-principles`
     : `/org-overview`;
-  const backLabel = projectId ? "← Guiding Principle" : "← Organisation overview";
+  const backLabel = projectId ? "Guiding Principles" : "Organisation overview";
 
   const [guidingPrinciple, setGuidingPrinciple] = useState<GuidingPrinciple | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

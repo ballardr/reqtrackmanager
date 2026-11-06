@@ -244,6 +244,7 @@ export function StandardWorkspacePage() {
     <div className="stack">
       <RecordHeader
         recordLabel="Standard"
+        back={{ to: "/standards", label: "Compliance Standards" }}
         title={`${standard.reference} — ${standard.name}`}
         titleAddon={<EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />}
         badges={standard.is_archived ? <Badge>Archived</Badge> : undefined}

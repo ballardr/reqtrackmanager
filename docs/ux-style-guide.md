@@ -336,7 +336,7 @@ Every record detail page (requirement, action, change request, decision, risk, e
 
 | Part | Where | Notes |
 |------|-------|-------|
-| Back link, title, code | Top-left | The code is a small muted suffix beside the title, not inside the heading, so the heading's name stays the title. |
+| Back link, title, code | Top-left | The back link is required and reads "← {plural list name}" (`← Pain Points`); the header draws the arrow, so a page passes only `back={{ to, label: "Pain Points" }}`. Never the record's singular name or a bare "Back". The code is a small muted suffix beside the title, not inside the heading, so the heading's name stays the title. |
 | Edit | Title row, right edge | Icon button (medium, 16px). Omitted when the user cannot edit; there is no disabled Edit. |
 | Object actions | Title row, right edge | One `ActionMenu` named "{Record} actions". Drawn even for a single action (the Q5 exception to the two-or-more floor) so its position never depends on permissions; not drawn at all when the user has none. |
 | Status pills | Line under the title | Status, scope, archived, overdue. |
@@ -354,6 +354,8 @@ flowchart TD
 - **Each menu item keeps its safeguards.** Archive confirms at Tier 1, Delete permanently at Tier 2 (type the name), Restore runs at once, and every mutation ends in a Toast. `useConfirmedAction` / `useArchiveAction` (`components/useConfirmedAction.tsx`) pair an item with its dialog so a page does not hand-roll that state.
 - **No permission, no item.** Pass only what the current user may do; never a disabled item. Where the backend alone enforces a role (Activate/Retire), the control renders and a 403 surfaces as a Toast, as before.
 - **A page inside a page** (the compliance assignment drill-down) passes `headingLevel="h2"` and a `back` callback instead of a link.
+- **Every header has a back link, checked by `scripts/check_record_header_back.py`** (empty baseline): a `RecordHeader` without `back`, a typed arrow, a bare "Back" or the singular record name fails. An organisation-scoped record whose list is the organisation overview is labelled "Organisation overview". A name with one form for singular and plural ("Evidence") is listed in the script's `UNCOUNTABLE`.
+- **A page whose record cannot be loaded says so** ("This {record} could not be found, or you don't have access to it.") instead of showing a spinner indefinitely.
 - **Do not add a bottom-of-page action row.** A new record type uses `RecordHeader`; extend its props rather than building a sibling layout.
 
 ## Pattern: resource picker dialog

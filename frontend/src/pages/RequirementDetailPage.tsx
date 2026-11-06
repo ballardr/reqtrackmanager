@@ -140,6 +140,7 @@ export function RequirementDetailPage() {
   // guide "Pattern: resource picker dialog") — set as soon as the project
   // itself resolves, independent of whether the org-member-only calls
   // right after it (org users, link types) succeed for this user.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [showResourcePicker, setShowResourcePicker] = useState(false);
   // The project's own
@@ -362,7 +363,17 @@ export function RequirementDetailPage() {
     reload();
   }
 
-  useLoadOnChange(reload, [projectId, requirementId]);
+  // The initial load reports a missing or inaccessible record instead of leaving the spinner up.
+  async function loadRecord() {
+    try {
+      await reload();
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(toErrorMessage(err, `This ${strings.requirements.recordLabel.toLowerCase()} could not be found, or you don't have access to it.`));
+    }
+  }
+
+  useLoadOnChange(loadRecord, [projectId, requirementId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -569,6 +580,7 @@ export function RequirementDetailPage() {
     },
   );
 
+  if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!requirement) return <Spinner />;
 
   return (
@@ -595,6 +607,7 @@ export function RequirementDetailPage() {
     >
       <RecordHeader
         recordLabel={strings.requirements.recordLabel}
+        back={projectId ? { to: `/projects/${projectId}/requirements`, label: strings.requirements.title } : undefined}
         title={requirement.name}
         code={requirement.unique_code}
         tags={projectId && requirementId ? <RecordTags projectId={projectId} artefactType="requirement" artefactId={requirementId} /> : undefined}
