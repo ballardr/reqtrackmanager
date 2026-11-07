@@ -562,6 +562,20 @@ def set_project_nav_labels(headers: dict, project_id: str, names: dict[str, str]
     return r.json()
 
 
+def create_announcement(
+    headers: dict, org_id: str, *, title: str, body: str, severity: str = "information", show_on_login: bool = False,
+) -> dict:
+    """Creates an organisation message (Organisation Admin's Messages group), so the manual-demo dataset shows the
+    banner every member sees after signing in. Plain text only, with no web address."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/announcements",
+        json={"title": title, "body": body, "severity": severity, "show_on_login": show_on_login},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_link_type(
     headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
     allowed_source_types: list[str] | None = None, allowed_target_types: list[str] | None = None,
@@ -2210,6 +2224,12 @@ def main() -> None:
     improvement_workflow = create_org_workflow(h_pm, org["id"], "Continuous improvement", [
         ("Scoping", "open"), ("Implementation ready", "locked"), ("Done", "closed"),
     ])
+
+    print("Posting an organisation message...")
+    create_announcement(
+        h_pm, org["id"], title="Demonstration data",
+        body="Everything in this organisation is sample data; edit or delete it freely.",
+    )
 
     print("Setting the organisation's report look...")
     set_report_look(h_pm, org["id"], accent_color_hex="#0F62FE", footer_text="Solstice Robotics — Confidential")

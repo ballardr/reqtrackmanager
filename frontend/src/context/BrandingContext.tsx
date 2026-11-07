@@ -13,6 +13,8 @@ const DARK_BG_HEX = "#14181f";
 const DEFAULT_ACCENT_HEX = "#475569";
 
 export interface Branding {
+  /** The organisation whose branding applies (null when the platform default applies). */
+  organizationId: string | null;
   logoFileId: string | null;
   headerTitle: string;
   accentColorHex: string;
@@ -24,6 +26,7 @@ const DEFAULT_ORG_LABEL = "organisation";
 const DEFAULT_ORG_LABEL_PLURAL = "Organisations";
 
 const DEFAULT_BRANDING: Branding = {
+  organizationId: null,
   logoFileId: null,
   headerTitle: strings.appName,
   accentColorHex: DEFAULT_ACCENT_HEX,
@@ -35,6 +38,7 @@ const BrandingContext = createContext<Branding>(DEFAULT_BRANDING);
 
 function fromOrg(org: Organization, serverDefault: Branding): Branding {
   return {
+    organizationId: org.id,
     logoFileId: org.logo_file_id ?? serverDefault.logoFileId,
     headerTitle: org.header_title || serverDefault.headerTitle,
     accentColorHex: org.accent_color_hex ?? serverDefault.accentColorHex,
@@ -77,6 +81,7 @@ export function BrandingProvider({ projectId, children }: { projectId: string | 
     (async () => {
       const serverSettings = await api.get<ServerSettings>("/api/v1/system/branding");
       const serverDefault: Branding = {
+        organizationId: null,
         logoFileId: serverSettings.default_logo_file_id,
         headerTitle: serverSettings.default_header_title || strings.appName,
         accentColorHex: serverSettings.accent_color_hex,

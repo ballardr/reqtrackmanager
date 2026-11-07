@@ -19,6 +19,7 @@ import { resolveNavIcon } from "../modules/navIcons";
 import type { ProjectNavItem } from "../navigation/projectNav";
 import { installedModules } from "../modules/registry";
 import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
+import { AnnouncementBanner } from "./AnnouncementBanner";
 import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { ReportRunsIndicator } from "./ReportRunsIndicator";
@@ -186,6 +187,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
 
   return (
     <div style={{ minHeight: "100%" }}>
+      {user && <AnnouncementBanner organizationId={branding.organizationId} />}
       <header className="app-header" style={{ justifyContent: "space-between" }}>
         <Link
           to="/projects"

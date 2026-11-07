@@ -17,6 +17,10 @@ For your full notification history — searchable, and not limited to the dropdo
 | Full notification history with search and an unread-only filter |
 | ![Notifications page listing two comment notifications, with search and unread filter](../../static/img/screenshots/notifications-page.png) |
 
+## Announcements
+
+A server administrator or your organisation's administrator can send an [announcement](../reference/glossary.md#announcement) as a notification. It appears here and in the bell like any other, under the type *Announcement from the platform or your organisation*, and follows your preferences for that type.
+
 ## Choosing how you're notified
 
 **Preferences → Notification preferences** sets, per notification type, whether you want it in-app, by email, or both, and whether email notifications go out instantly or are batched into a daily digest. See [Preferences and help](./preferences-and-help.md).

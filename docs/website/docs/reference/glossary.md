@@ -10,6 +10,10 @@ Terminology introduced across this site, gathered into one alphabetical referenc
 
 A visible approve/reject signal a stakeholder can cast on a change request. It never approves or rejects the change itself — only a manager's or administrator's explicit decision does. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
 
+#### Announcement
+
+A short plain-text message written by a server administrator (for the whole platform) or an organisation administrator (for that organisation), with a severity and an optional start and end time. It shows on the login pages when flagged, and as a dismissible banner after sign-in, and can be sent once as a notification. See [Server administration](../workflows/server-administration.md#messages) and [Administering an organisation](../workflows/administering-an-organisation.md#messages).
+
 #### Audit trail
 
 The record of security- and administration-relevant events (logins, permission grants, password changes), independent of any one requirement's own change log — *who did what* across the system. See [Discussions, notifications, and audit](../concepts/discussions-notifications-and-audit.md).

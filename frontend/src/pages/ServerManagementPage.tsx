@@ -26,6 +26,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { AddUserModal, type AddUserMode } from "./AddUserModal";
+import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
 import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
@@ -894,9 +895,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules" | "reportFonts" | "dataPolicy";
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "messages" | "modules" | "reportFonts" | "dataPolicy";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules", "reportFonts", "dataPolicy"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "messages", "modules", "reportFonts", "dataPolicy"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -921,6 +922,7 @@ export function ServerManagementPage() {
     { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
     { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
+    { key: "messages", label: strings.announcements.heading, href: "/server/management/messages" },
     { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
     { key: "reportFonts", label: strings.reportFonts.title, href: "/server/management/reportFonts" },
     { key: "dataPolicy", label: strings.personalDataPolicy.groupTitle, href: "/server/management/dataPolicy" },
@@ -938,6 +940,11 @@ export function ServerManagementPage() {
         {activeGroup === "branding" && <PlatformBrandingTab />}
         {activeGroup === "signup" && <SignupModeTab />}
         {activeGroup === "email" && <TestEmailTab />}
+        {activeGroup === "messages" && (
+          <CollapsibleSection sectionKey="serverManagement.messages" title={strings.announcements.heading}>
+            <AnnouncementsPanel scope={{ kind: "server" }} />
+          </CollapsibleSection>
+        )}
         {activeGroup === "modules" && <ServerModulesTab />}
         {activeGroup === "reportFonts" && <ServerReportFontsTab />}
         {activeGroup === "dataPolicy" && (

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
+import { LoginAnnouncements } from "../components/LoginAnnouncements";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
@@ -129,7 +130,8 @@ export function LoginPage() {
 
   return (
     <div style={backgroundStyle}>
-    <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+    <div className="container stack" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+      <LoginAnnouncements />
       <form className="card stack" onSubmit={handleSubmit}>
         <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.title}</h2>

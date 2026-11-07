@@ -360,6 +360,7 @@ export type CoreNotificationType =
   | "stage_phase_completed"
   | "project_members_changed_by_org"
   | "system_storage_alert"
+  | "system_announcement"
   | "report_run_finished"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
@@ -2434,4 +2435,67 @@ export function principalRef(principal: Principal | null | undefined): Principal
  */
 export function savedPrincipalDisplay(value: PrincipalRef | null, saved: Principal | null | undefined): Principal | undefined {
   return saved && value && value.type === saved.type && value.id === saved.id ? saved : undefined;
+}
+
+/** How prominently an announcement is shown. */
+export type AnnouncementSeverity = "information" | "warning" | "critical";
+export const ANNOUNCEMENT_SEVERITY_LABEL: Record<AnnouncementSeverity, string> = {
+  information: "Information",
+  warning: "Warning",
+  critical: "Critical",
+};
+export const ANNOUNCEMENT_SEVERITIES = Object.keys(ANNOUNCEMENT_SEVERITY_LABEL) as AnnouncementSeverity[];
+export const ANNOUNCEMENT_SEVERITY_TONE: Record<AnnouncementSeverity, BadgeTone> = {
+  information: "info",
+  warning: "warning",
+  critical: "danger",
+};
+
+/** Where an announcement stands in its window, resolved by the server. */
+export type AnnouncementStatus = "scheduled" | "active" | "ended";
+export const ANNOUNCEMENT_STATUS_LABEL: Record<AnnouncementStatus, string> = {
+  scheduled: "Scheduled",
+  active: "Active",
+  ended: "Ended",
+};
+export const ANNOUNCEMENT_STATUS_TONE: Record<AnnouncementStatus, BadgeTone> = {
+  scheduled: "info",
+  active: "accent",
+  ended: "muted",
+};
+
+/** An announcement as its administrators see it (`organization_id` null means platform-wide). */
+export interface Announcement {
+  id: string;
+  organization_id: string | null;
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  starts_at: string | null;
+  ends_at: string | null;
+  show_on_login: boolean;
+  status: AnnouncementStatus;
+  notified_at: string | null;
+  notified_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The fields an administrator sets; the instants are UTC ISO 8601. */
+export interface AnnouncementWrite {
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  starts_at: string | null;
+  ends_at: string | null;
+  show_on_login: boolean;
+}
+
+/** An active announcement as a reader (login page or banner) sees it. */
+export interface AnnouncementNotice {
+  id: string;
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  scope: "server" | "organisation";
 }

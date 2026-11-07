@@ -82,6 +82,7 @@ import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
+import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
@@ -157,6 +158,7 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "security",
   "modules",
   "tags",
+  "messages",
   // Fine-Grained Access Control (core, not a module —): custom-role
   // definition (ORG_ADMIN-only) plus the broader grant_roles-based
   // assignment surface, named "Role Management".
@@ -2200,6 +2202,7 @@ export function OrgAdminPage() {
     { key: "security", label: strings.orgAdmin.groupSecurity, href: `/orgs/${orgId}/admin/security` },
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
     { key: "tags", label: strings.orgAdmin.groupTags, href: `/orgs/${orgId}/admin/tags` },
+    { key: "messages", label: strings.announcements.heading, href: `/orgs/${orgId}/admin/messages` },
     { key: "role-management", label: strings.orgAdmin.groupRoleManagement, href: `/orgs/${orgId}/admin/role-management` },
     ...buildAdminMenuEntries(moduleAdminSections, adminBasePath),
   ];
@@ -3761,6 +3764,14 @@ export function OrgAdminPage() {
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.tags" title={strings.tags.admin.title}>
               <OrgTagsPanel organizationId={orgId} />
+            </CollapsibleSection>
+          </div>
+        )}
+
+        {activeGroup === "messages" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.messages" title={strings.announcements.heading}>
+              <AnnouncementsPanel scope={{ kind: "organisation", organizationId: org.id }} />
             </CollapsibleSection>
           </div>
         )}

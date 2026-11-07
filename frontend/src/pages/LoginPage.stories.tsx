@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { ServerSettings, SignupConfig } from "../api/types";
+import type { AnnouncementNotice, ServerSettings, SignupConfig } from "../api/types";
 import { buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { LoginPage } from "./LoginPage";
 
@@ -14,8 +14,9 @@ const SERVER_SETTINGS: ServerSettings = {
   org_label_singular: null, org_label_plural: null,
 };
 
-function mockBrandingAndSignup(signupMode: SignupConfig["signup_mode"] = "disabled") {
+function mockBrandingAndSignup(signupMode: SignupConfig["signup_mode"] = "disabled", announcements: AnnouncementNotice[] = []) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/announcements/login")) return announcements;
     if (path.includes("signup-config")) return { signup_mode: signupMode, self_signup_organizations: [] } satisfies SignupConfig;
     return SERVER_SETTINGS;
   });
@@ -57,6 +58,19 @@ export const Default: Story = {
     // "Sign in" is both the heading and the submit button — scope to the heading.
     await expect(canvas.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     await expect(canvas.queryByText(/New here/)).not.toBeInTheDocument();
+  },
+};
+
+/** Active platform messages flagged for login show above the form, as plain text. */
+export const ShowsPlatformMessages: Story = {
+  decorators: [withRouter("/login")],
+  beforeEach: () => mockBrandingAndSignup("disabled", [
+    { id: "n1", title: "Demo instance", body: "Sign in with the demo account.", severity: "information", scope: "server" },
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Demo instance")).toBeInTheDocument();
+    await expect(canvas.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   },
 };
 

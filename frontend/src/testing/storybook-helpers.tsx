@@ -27,6 +27,7 @@ import { ThemeProvider } from "../context/ThemeContext";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
   ActionTypeDefinition,
+  Announcement,
   Category,
   ComponentPhases,
   PhasePlan,
@@ -227,6 +228,14 @@ export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): 
 }
 
 /** The organisation's Standard workflow (phase ids `phase-scoping`, `phase-review`, ...), as a new organisation has it. */
+export function buildAnnouncement(overrides: Partial<Announcement> = {}): Announcement {
+  return {
+    id: "announcement-1", organization_id: null, title: "Planned maintenance", body: "The service restarts at night.",
+    severity: "warning", starts_at: null, ends_at: null, show_on_login: true, status: "active", notified_at: null,
+    notified_count: null, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...overrides,
+  };
+}
+
 export function buildStageWorkflow(overrides: Partial<StageWorkflow> = {}): StageWorkflow {
   return {
     id: "workflow-1", name: "Standard", scope: "organisation", sort_order: 0, in_use: true,

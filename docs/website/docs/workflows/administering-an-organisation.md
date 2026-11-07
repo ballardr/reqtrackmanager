@@ -97,6 +97,14 @@ A default only applies to projects created afterwards — changing it never swit
 
 See [Administering a project → Modules](./administering-a-project.md#modules) for the per-project switch, and [Modules → Overview](../modules/overview.md) for the full gating mechanics.
 
+## Messages
+
+Under **Messages**, write announcements for the people of your organisation: a closure, a change of process, a reminder. A message has a **title**, a plain-text **message**, a **severity** (Information, Warning or Critical) and an optional **Show from** and **Show until** time in your local time. It appears as a dismissible banner above the top bar for members of the organisation, beside any [platform message](./server-administration.md#messages), and, with **Show on the login pages**, on the organisation's branded login page (`/login/<slug>`) before anyone signs in, so keep it free of anything confidential.
+
+- A message is plain text and cannot contain a web address, so it cannot be used to send people to another site.
+- **Send as notification** sends the message once to every active member of the organisation (each person's notification preferences apply, and you are not notified of your own send). The row records how many people it reached, and it cannot be sent again.
+- You see and change only your organisation's messages. Messages are included when you export the organisation (without the record of the send) and again when you import it; platform messages are not.
+
 ## Role management
 
 Under **Role management**, define custom roles and grant fixed, module, or custom roles to users and groups — see [Core Features → Role Management](../core-features/role-management.md).

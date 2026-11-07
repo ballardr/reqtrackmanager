@@ -34,6 +34,7 @@ from app.modules.registry import get_module_registry, sync_module_role_definitio
 from app.routers import (
     action_types,
     actions,
+    announcements,
     artefact_links,
     auth,
     auth_oidc,
@@ -380,6 +381,9 @@ app.include_router(artefact_links.router)
 app.include_router(placements.router)
 app.include_router(stage_workflows.org_router)
 app.include_router(stage_workflows.project_router)
+app.include_router(announcements.system_router)
+app.include_router(announcements.org_router)
+app.include_router(announcements.reader_router)
 app.include_router(nav_labels.router)
 app.include_router(nav_labels.org_router)
 app.include_router(tags.router)

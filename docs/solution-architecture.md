@@ -899,6 +899,9 @@ The architecture is designed to support increasing user counts and project compl
 
 The backend scales vertically and horizontally without new infrastructure: each container runs `BACKEND_WORKERS` uvicorn processes, and processes (including those in other replicas) coordinate through PostgreSQL — an advisory lock serialises startup, a leader-election lock ensures scheduled jobs, digests and the disk monitor run once, and `LISTEN`/`NOTIFY` fans WebSocket events out to every process (`app/services/process_coordination.py`, `app/services/pubsub.py`). Prometheus metrics use multi-process mode per container. See `docs/deployment.md`'s scaling section for sizing.
 
+### Announcements
+A server administrator or an organisation administrator can publish a short plain-text message, shown on the login pages (when flagged) and as a banner after sign-in, and sendable once as a notification. One `announcements` table with a nullable organisation serves both scopes; `services.announcements` enforces scope on every lookup. The only unauthenticated path is `GET /api/v1/announcements/login`, which returns active login-flagged messages without an author, an organisation id or send data, throttled per client address. An organisation message cannot contain a web address. See `docs/decisions.md`'s "Server and organisation messages" entry.
+
 ### Maintainability
 The modular domain structure, containerization, and documented deployment model keep the solution maintainable for future contributors.
 

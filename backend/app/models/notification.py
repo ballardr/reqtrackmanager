@@ -52,6 +52,8 @@ class NotificationType(str, enum.Enum):
     PROJECT_MEMBERS_CHANGED_BY_ORG = "project_members_changed_by_org"
     # Deployment health alert sent to server admins (services/storage_health.py, services/disk_monitor.py).
     SYSTEM_STORAGE_ALERT = "system_storage_alert"
+    # A server-wide or organisation announcement sent as a notification (services/announcements.py).
+    SYSTEM_ANNOUNCEMENT = "system_announcement"
     # A background custom report finished or failed (services/report_run_jobs.py).
     REPORT_RUN_FINISHED = "report_run_finished"
 

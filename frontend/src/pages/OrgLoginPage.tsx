@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api, apiUrl, fileUrl } from "../api/client";
 import type { OrgLoginInfo } from "../api/types";
+import { LoginAnnouncements } from "../components/LoginAnnouncements";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
@@ -107,7 +108,8 @@ export function OrgLoginPage() {
 
   return (
     <div style={backgroundStyle}>
-      <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+      <div className="container stack" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+        <LoginAnnouncements organizationSlug={slug} />
         <div className="card stack">
           <LoginBrandHeader logoFileId={info.logo_file_id} title={info.name} />
 

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { OrgLoginInfo } from "../api/types";
+import type { AnnouncementNotice, OrgLoginInfo } from "../api/types";
 import { withAuth, withRouter } from "../testing/storybook-helpers";
 import { OrgLoginPage } from "./OrgLoginPage";
 
@@ -12,6 +12,11 @@ function info(overrides: Partial<OrgLoginInfo>): OrgLoginInfo {
     sso_enabled: false, sso_only: false,
     ...overrides,
   };
+}
+
+/** Answers the login-info read with `value` and the announcements read with `announcements` (none by default). */
+function mockLoginInfo(value: OrgLoginInfo, announcements: AnnouncementNotice[] = []) {
+  spyOn(api, "get").mockImplementation(async (path: string) => (path.includes("/announcements/login") ? announcements : value));
 }
 
 // Stable mock reference, reconfigured per-story via `beforeEach` — see
@@ -30,7 +35,7 @@ type Story = StoryObj<typeof OrgLoginPage>;
 
 export const NativeLoginOnly: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({}));
+    mockLoginInfo(info({}));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -40,9 +45,25 @@ export const NativeLoginOnly: Story = {
   },
 };
 
+/** The branded page shows the organisation's messages with the platform's and sends its slug. */
+export const ShowsPlatformAndOrganisationMessages: Story = {
+  beforeEach: () => {
+    mockLoginInfo(info({}), [
+      { id: "n1", title: "Platform notice", body: "", severity: "warning", scope: "server" },
+      { id: "n2", title: "Acme notice", body: "Badges are collected at reception.", severity: "information", scope: "organisation" },
+    ]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Platform notice")).toBeInTheDocument();
+    await expect(canvas.getByText("Acme notice")).toBeInTheDocument();
+    await expect(api.get).toHaveBeenCalledWith("/api/v1/announcements/login?organization_slug=acme");
+  },
+};
+
 export const SsoAndNativeBothOffered: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({ sso_enabled: true, sso_only: false }));
+    mockLoginInfo(info({ sso_enabled: true, sso_only: false }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -56,7 +77,7 @@ export const SsoAndNativeBothOffered: Story = {
  * the only way in. */
 export const SsoOnlyHidesNativeForm: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({ sso_enabled: true, sso_only: true }));
+    mockLoginInfo(info({ sso_enabled: true, sso_only: true }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -78,7 +99,7 @@ export const OrgNotFound: Story = {
 
 export const NativeLoginError: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({}));
+    mockLoginInfo(info({}));
     loginMock.mockRejectedValue(new ApiError(401, "Invalid email or password."));
   },
   play: async ({ canvasElement }) => {

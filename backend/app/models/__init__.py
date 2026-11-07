@@ -6,6 +6,7 @@ Alembic autogeneration and for `Base.metadata.create_all()` in tests.
 """
 
 from app.models.action_type import ActionTypeDefinition
+from app.models.announcement import Announcement
 from app.models.audit import AuditEvent, LoginEvent
 from app.models.change_request import (
     ChangeRequest,
@@ -99,6 +100,7 @@ __all__ = [
     "ArtefactPlacement",
     "ArtefactTag",
     "Tag",
+    "Announcement",
     "AuditEvent",
     "LoginEvent",
     "ChangeRequest",

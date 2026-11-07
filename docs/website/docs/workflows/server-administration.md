@@ -23,7 +23,7 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 | Server management |
 | --- |
-| Access review, platform branding, public sign-up, email, module, report font and data policy settings |
+| Access review, platform branding, public sign-up, email, messages, module, report font and data policy settings |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
 - **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators. **Add user** creates a person from here (see [Adding a user](#adding-a-user)).
@@ -31,9 +31,28 @@ Opening any one org's admin page from here as a server admin (rather than an org
 - **Platform branding** — the deployment's own logo and login-page styling, distinct from an organisation's own branding.
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
 - **Email** — deployment-wide outbound email configuration.
+- **Messages** — platform-wide announcements (see [below](#messages)).
 - **Data policy** — the deployment default for personal data in record exports and imports (see [below](#personal-data-in-exports-and-imports)).
 - **Modules** — which [modules](../modules/overview.md) exist for whom: the default entitlement policy (open or closed), what an organisation gets for a module it has not chosen itself (available, and on for new projects), an **Apply to all organisations** action that writes those defaults into existing organisations (type the word shown to confirm), and a per-organisation list to grant or withdraw a module. A module withdrawn from an organisation disappears from its administrators' and projects' module lists. A fresh install starts with every module available; an upgraded one changes only when you choose.
 - **Report fonts** — the fonts report authors can choose. The four bundled fonts are always offered. A house typeface is added by putting its `.ttf` files in the font directory the deployment mounts (see [Extra report fonts](../installation-deployment/production-deployment.md#extra-report-fonts)) and pressing **Rescan**. For each provided family you can switch **Offered to authors** off (layouts already using it keep working), set the **Name in Word and OpenDocument** and a **Generic fallback** (sans-serif, serif or monospace) for readers who lack the font. The page lists the faces found with each font's licence permission, and every file that was skipped with the reason (for example, a font whose licence forbids embedding). You are responsible for the licence of every font you provide. PDF reports always carry the real font; Word and OpenDocument files name it.
+
+## Messages
+
+**Server Management → Messages** holds announcements for everyone on the deployment: a planned outage, a release, or a hint on a demonstration instance. Each message has a **title**, a plain-text **message**, a **severity** (Information, Warning or Critical) and an optional **Show from** and **Show until** time, entered in your local time. Leave both empty to show it at once until it is deleted. A scheduled message shows its status as Scheduled, Active or Ended.
+
+```mermaid
+flowchart LR
+    A["Message written in Server Management"] --> B{"Within its start and end?"}
+    B -->|yes| C["Banner above the top bar after sign-in"]
+    B -->|"yes, and flagged"| D["Login pages before sign-in"]
+    A --> E["Send as notification, once"]
+    E --> F["Notifications of every active user"]
+```
+
+- **Show on the login pages** also shows the message on the platform login page and on every organisation's branded login page, before anyone signs in. Anyone who can open those pages can read it, so keep it free of anything confidential.
+- A message is plain text: it is shown exactly as typed, with no links or formatting. The banner stays above the top bar while the page scrolls, and people can dismiss each message in their own browser; a dismissed message returns if their browser data is cleared.
+- **Send as notification** sends the message once to every active user. Each person's [notification preferences](./notifications.md#choosing-how-youre-notified) apply, and you are not notified of your own send. The row then records how many people it reached, and it cannot be sent again. An ended message cannot be sent.
+- Organisation administrators write messages for their own organisation only; they cannot see or change yours.
 
 ## Personal data in exports and imports
 
