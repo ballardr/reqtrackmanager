@@ -33,7 +33,9 @@ An Engagement belongs to **one project**. There is no organisation-wide Engageme
 | Consent recorded | Tick once participants have agreed to being recorded here. |
 | Retain until | A date after which the record should be reviewed for disposal; see [Retention and deletion](#retention-and-deletion). |
 | Facilitators | Who ran or logged it: any number of users, organisation groups or project groups. Set from the Engagement's page. |
-| Participants, Personas covered, outcomes | Set from the detail page; see below. |
+| Participants | The Stakeholders who took part. Added with the (+) beside the caption when the Engagement is logged, and listed beneath it as on the detail page; managed from the detail page afterwards; see below. |
+| Anonymous participants | People with no Stakeholder record, recorded by a label. While the [research extras](./research-extras.md) are on, open the (+) beside **Participants** and type the label: text that matches no Stakeholder is offered as **Add “…” as an anonymous participant**. It is listed with the other participants. The Persona it represents is chosen on the logging form and, later, on the Engagement's edit form (for example once someone's role is known); the page lists it without one and shows the Persona under **Personas covered**. |
+| Personas covered, outcomes | Set from the detail page; see below. |
 
 Comments and file attachments (for example an exported email) sit on the Engagement as they do on other records. An Engagement has no version history and no approval step. It is edited in place and every change is audit-logged.
 
@@ -56,8 +58,8 @@ A Stakeholder's or Persona's own page (opened from a project) has an **Engagemen
 
 On the Engagement's page, each list has a **(+)** beside its heading that opens the picker, and an **x** on each item removes it (after a confirmation for linked records). **Facilitators** work the same way: add as many people or groups as ran it, and remove one with its x (no confirmation, since it only changes the list).
 
-- **Participants.** Add any Stakeholder visible to the project. A Stakeholder [hidden from the project](./stakeholder.md#hiding-an-organisation-stakeholder-from-a-project) cannot be added.
-- **Personas covered.** The Personas the session was about, even when no one represents them in person.
+- **Participants.** Add any Stakeholder visible to the project, either when logging the Engagement (the **Participants** field), in the same field when editing it (to add someone who arrived late, or to remove someone), or with the **(+)** on the page. A Stakeholder [hidden from the project](./stakeholder.md#hiding-an-organisation-stakeholder-from-a-project) cannot be added. Anonymous participants are in the same list (see the table above). In a project with no Stakeholders, and with the research extras off, the **(+)** is unavailable and a message links to the Stakeholders page. Record codes beside participants and Personas covered are hidden by default; **Show codes** in the Engagement actions menu (**⋮**) reveals them, and the choice is remembered for your account.
+- **Personas covered.** The Personas the session was about, even when no one represents them in person. The list also shows, marked **via a participant** or **via an anonymous participant**, every Persona that a Stakeholder participant represents or an anonymous participant was recorded against. Those are shown for information and are not removed here; the recorded ones are. Listing a Persona this way does not record it as covered, so the list filter and reports that count covered Personas only count the recorded ones.
 - **Audience groups.** Choose one or more [Stakeholder groups](./stakeholder-groups.md) from the tree. Everyone in the group, and in the groups beneath it, who is not archived or hidden is added as a participant.
 
 :::note

@@ -25,12 +25,16 @@ from app.modules.stakeholders.tests.test_engagement_api import (
 from app.modules.stakeholders.tests.test_persona_api import (
     MODULE_KEY,
     _add_member,
+    _create_org_persona,
     _create_project_persona,
     _grant_project_role,
+    _org_base,
     _project_base,
     _setup,
 )
+from app.modules.stakeholders.tests.test_persona_visibility import _hide as _hide_persona
 from app.modules.stakeholders.tests.test_relationship_api import _create_pain_point
+from app.modules.stakeholders.tests.test_stakeholder_api import _create_org_stakeholder
 from app.services.permissions import encode_permission
 from tests.conftest import auth_headers, create_project
 
@@ -107,6 +111,44 @@ def test_prompts_order_edit_move_and_delete(client, admin_token):
     other = _create(client, token, project["id"], title="Other")
     other_url = f"{_engagements(project['id'])}/{other['id']}/prompts"
     assert client.patch(f"{other_url}/{ids['Warm-up']}", json={"prompt": "x"}, headers=h).status_code == 404  # not this engagement's
+
+
+def test_an_engagement_is_logged_with_anonymous_participants_in_one_request(client, admin_token):
+    org, project, token = _setup(client, admin_token, "Research Log Anonymous Co")
+    sibling = create_project(client, token, org["id"], "Research Log Anonymous Sibling")
+    h = auth_headers(token)
+    pid = project["id"]
+    persona = _create_project_persona(client, token, pid, name="Field technician")
+    foreign = _create_project_persona(client, token, sibling["id"], name="Elsewhere")
+    body = {
+        "title": "Focus group", "channel": "focus_group", "engagement_date": "2026-03-01",
+        "anonymous_participants": [{"label": " Participant 1 ", "persona_id": persona["id"]}, {"label": "Participant 2"}],
+    }
+
+    # Off by default: refused, and nothing is stored.
+    refused = client.post(_engagements(pid), json=body, headers=h)
+    assert refused.status_code == 409, refused.text
+    assert client.get(_engagements(pid), headers=h).json() == []
+
+    _set_extras(client, token, org["id"], True)
+    created = client.post(_engagements(pid), json=body, headers=h)
+    assert created.status_code == 201, created.text
+    assert created.json()["anonymous_participant_count"] == 2
+    listed = client.get(f"{_engagements(pid)}/{created.json()['id']}/anonymous-participants", headers=h).json()
+    assert [(p["label"], p["persona_name"]) for p in listed] == [("Participant 1", "Field technician"), ("Participant 2", None)]
+
+    # A persona of another project or a blank label rejects the whole request: no engagement is left behind.
+    before = len(client.get(_engagements(pid), headers=h).json())
+    bad_persona = {**body, "anonymous_participants": [{"label": "P3", "persona_id": foreign["id"]}]}
+    assert client.post(_engagements(pid), json=bad_persona, headers=h).status_code == 404
+    blank = {**body, "anonymous_participants": [{"label": "   "}]}
+    assert client.post(_engagements(pid), json=blank, headers=h).status_code == 422
+    assert len(client.get(_engagements(pid), headers=h).json()) == before
+
+    # Without any anonymous participants the switch is irrelevant.
+    _set_extras(client, token, org["id"], False)
+    plain = {k: v for k, v in body.items() if k != "anonymous_participants"}
+    assert client.post(_engagements(pid), json=plain, headers=h).status_code == 201
 
 
 def test_anonymous_participants_label_and_persona(client, admin_token):
@@ -369,3 +411,57 @@ def test_finding_manage_grant_is_honoured_without_conferring_engagement_manageme
     assert client.post(url + "/prompts", json={"prompt": "x"}, headers=h).status_code == 403
     assert client.put(url, json={"summary": "x"}, headers=h).status_code == 403
     assert client.post(_engagements(pid), json={"title": "x", "channel": "call", "engagement_date": "2026-01-01"}, headers=h).status_code == 403
+
+
+def test_personas_reached_combines_covered_participant_and_anonymous_personas(client, admin_token):
+    org, project, token = _setup(client, admin_token, "Personas Reached Co")
+    h = auth_headers(token)
+    pid = project["id"]
+    covered = _create_org_persona(client, token, org["id"], name="Covered directly")
+    represented = _create_org_persona(client, token, org["id"], name="Represented by a participant")
+    anonymous = _create_org_persona(client, token, org["id"], name="Represented anonymously")
+    hidden = _create_org_persona(client, token, org["id"], name="Hidden persona")
+    both = _create_org_persona(client, token, org["id"], name="Covered and represented")
+    holder = _create_org_stakeholder(client, token, org["id"], name="Regulator")
+    for persona in (represented, hidden, both):
+        link = client.post(f"{_org_base(org['id'])}/stakeholders/{holder['id']}/personas", json={"persona_id": persona["id"]}, headers=h)
+        assert link.status_code == 201, link.text
+    engagement = _create(
+        client, token, pid, stakeholder_ids=[holder["id"]], persona_ids=[covered["id"], both["id"]],
+    )
+    url = f"{_engagements(pid)}/{engagement['id']}"
+    reached_url = url + "/personas-reached"
+
+    def reached() -> dict[str, tuple[bool, bool, bool]]:
+        rows = client.get(reached_url, headers=h)
+        assert rows.status_code == 200, rows.text
+        return {r["name"]: (r["covered"], r["via_participants"], r["via_anonymous"]) for r in rows.json()}
+
+    # Extras off: anonymous participants cannot exist or count; covered and participant-represented Personas do.
+    assert reached() == {
+        "Covered directly": (True, False, False),
+        "Represented by a participant": (False, True, False),
+        "Hidden persona": (False, True, False),
+        "Covered and represented": (True, True, False),
+    }
+    rows = client.get(reached_url, headers=h).json()
+    assert {r["name"]: r["link_id"] is not None for r in rows} == {
+        "Covered directly": True, "Represented by a participant": False, "Hidden persona": False, "Covered and represented": True,
+    }
+
+    _set_extras(client, token, org["id"], True)
+    assert client.post(url + "/anonymous-participants", json={"label": "Participant 1", "persona_id": anonymous["id"]}, headers=h).status_code == 201
+    assert client.post(url + "/anonymous-participants", json={"label": "Participant 2", "persona_id": covered["id"]}, headers=h).status_code == 201
+    assert client.post(url + "/anonymous-participants", json={"label": "Participant 3"}, headers=h).status_code == 201
+    assert reached()["Represented anonymously"] == (False, False, True)
+    assert reached()["Covered directly"] == (True, False, True)
+
+    # A Persona hidden from the project is left out, and nothing was stored by reading.
+    assert _hide_persona(client, token, pid, hidden["id"]).status_code == 200
+    assert "Hidden persona" not in reached()
+    assert [p["name"] for p in client.get(url + "/personas", headers=h).json()] == ["Covered and represented", "Covered directly"]
+
+    # Switching the extras off again drops the anonymous source without touching their rows.
+    _set_extras(client, token, org["id"], False)
+    assert reached()["Covered directly"] == (True, False, False)
+    assert "Represented anonymously" not in reached()

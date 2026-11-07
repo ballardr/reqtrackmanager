@@ -6,9 +6,14 @@
  * (distinguished by whether `initial` is passed) and the "Log contact" quick
  * add. `compact` keeps only title, channel, date and summary for the quick add;
  * the rest (purpose, notes, consent, retain-until) is filled in from the detail
- * page. The facilitators and the people involved are assigned from the detail
- * page, so the form never needs a picker. Fields sit in a `FormGrid`: short ones in pairs, long ones full width. Channel renders through its label
- * map and every control has a visible label (principle 13).
+ * page. A full form also holds the participants (`ParticipantsField`): a new engagement sends them as
+ * `stakeholder_ids` and `anonymous_participants`; an edit is given the recorded ones as
+ * `initialParticipants` and returns the complete edited lists, which the caller compares with
+ * what was recorded. Quick links and tags are for a new engagement only; facilitators, covered
+ * Personas and audience groups are assigned from the detail page.
+ * Fields sit in a `FormGrid`: short ones in pairs, long ones full width. Channel
+ * renders through its label map and every control has a visible label
+ * (principle 13).
  */
 import { useState } from "react";
 
@@ -19,15 +24,18 @@ import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import { CheckboxField, DateField, TextAreaField, TextField } from "../../components/FormFields";
-import type { Engagement, EngagementChannel, EngagementFieldValues } from "./types";
+import type { EngagementCreateValues } from "./api";
+import type { AnonymousParticipantEntry, Engagement, EngagementChannel, EngagementFieldValues, ParticipantEntries } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { FormActions } from "../../components/FormActions";
+import { ParticipantsField } from "./ParticipantsField";
 import { localToday } from "../../utils/localDate";
 
 const CHANNEL_OPTIONS = Object.entries(ENGAGEMENT_CHANNEL_LABEL).map(([value, label]) => ({ value, label }));
 
 export function EngagementFormModal({
   initial,
+  initialParticipants,
   projectId,
   defaults,
   heading,
@@ -37,7 +45,9 @@ export function EngagementFormModal({
   onSave,
 }: {
   initial?: Engagement;
-  /** The project a new engagement is logged in; with it a full create form offers the quick-link field (the compact quick add does not). */
+  /** An edit only: the participants recorded now. Without it (they could not be read) the edit form has no Participants field. */
+  initialParticipants?: ParticipantEntries;
+  /** The project of the engagement. For a new engagement is logged in; with it a full create form offers the quick-link field (the compact quick add does not). */
   projectId?: string;
   /** Starting values for a new engagement (e.g. the quick add's suggested title). */
   defaults?: Partial<EngagementFieldValues>;
@@ -47,7 +57,7 @@ export function EngagementFormModal({
   compact?: boolean;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: EngagementFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
+  onSave: (values: EngagementCreateValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const seed = initial ?? defaults;
   const [title, setTitle] = useState(seed?.title ?? "");
@@ -60,6 +70,10 @@ export function EngagementFormModal({
   const [retainUntil, setRetainUntil] = useState(seed?.retain_until ?? "");
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [participantIds, setParticipantIds] = useState<string[]>(initialParticipants?.stakeholderIds ?? []);
+  const [anonymous, setAnonymous] = useState<AnonymousParticipantEntry[]>(initialParticipants?.anonymous ?? []);
+  const offersCreateFields = !initial && !compact && !!projectId;
+  const offersParticipants = !compact && !!projectId && (!initial || !!initialParticipants);
 
   return (
     <Modal title={heading ?? (initial ? `Edit ${initial.title}` : "Log engagement")} onClose={onCancel} size="lg">
@@ -99,11 +113,19 @@ export function EngagementFormModal({
               />
             </>
           )}
-          {!initial && !compact && projectId && (
+          {offersParticipants && (
             <FormGridFull>
               <div className="stack">
-                <QuickLinkField projectId={projectId} artefactType="engagement" preferredType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
-                <TagField projectId={projectId} artefactType="engagement" value={tags} onChange={setTags} />
+                <ParticipantsField
+                  projectId={projectId} value={participantIds} onChange={setParticipantIds}
+                  anonymous={anonymous} onAnonymousChange={setAnonymous}
+                />
+                {offersCreateFields && (
+                  <>
+                    <QuickLinkField projectId={projectId} artefactType="engagement" preferredType="stakeholder" value={quickLinks} onChange={setQuickLinks} />
+                    <TagField projectId={projectId} artefactType="engagement" value={tags} onChange={setTags} />
+                  </>
+                )}
               </div>
             </FormGridFull>
           )}
@@ -115,6 +137,8 @@ export function EngagementFormModal({
             onSave({
               title: title.trim(), channel, engagement_date: date, purpose, summary, notes,
               consent_recorded: consent, retain_until: retainUntil === "" ? null : retainUntil,
+              ...(offersParticipants && (initialParticipants || participantIds.length > 0) ? { stakeholder_ids: participantIds } : {}),
+              ...(offersParticipants && (initialParticipants || anonymous.length > 0) ? { anonymous_participants: anonymous } : {}),
             }, quickLinks, tags)}
         saveDisabled={title.trim() === "" || date === ""}
         />

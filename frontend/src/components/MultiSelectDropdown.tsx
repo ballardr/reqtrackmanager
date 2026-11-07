@@ -15,7 +15,8 @@
  * Reuses `Popover` for the revealed checkbox list, the same way `ActionMenu`
  * and `SplitButtonTrigger` already do — positioning, focus trap, and
  * outside-click/Escape close all come from there rather than a second
- * implementation.
+ * implementation. Opened from the dropdown trigger the list lines up with it and is as wide as it, like a
+ * native select list; the icon-only trigger opens the fixed-width panel to its right.
  */
 import { ChevronDown } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
@@ -48,6 +49,8 @@ export function MultiSelectDropdown({
   summaryLimit,
   id,
   icon,
+  addFromFilter,
+  disabled = false,
 }: {
   /** Accessible name for the closed trigger button and the opened list's title. */
   triggerLabel: string;
@@ -62,23 +65,42 @@ export function MultiSelectDropdown({
   id?: string;
   /** Renders the trigger as an icon-only button (named and given a tooltip by `triggerLabel`) instead of a dropdown showing the summary. */
   icon?: ReactNode;
+  /**
+   * With `filterable`: when the typed text matches no option's label exactly, offers a button (and Enter,
+   * while nothing else matches) that hands the text to `onAdd`, so a value that is not in the list can be
+   * added from the same box. `label` is the button's text for the typed value; `note` is muted text under it
+   * for a caution needed each time a value is added.
+   */
+  addFromFilter?: { label: (text: string) => string; onAdd: (text: string) => void; note?: string };
+  /** Disables the icon-only trigger, e.g. while there is nothing to choose or add. */
+  disabled?: boolean;
 }) {
   const strings = useStrings();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
   const checked = options.filter((o) => o.checked);
   const summary =
     summaryLimit !== undefined && checked.length > summaryLimit
       ? strings.common.nSelected(checked.length)
       : checked.map((o) => o.label).join(", ") || emptyLabel;
   const needle = filter.trim().toLowerCase();
+  const typed = filter.trim();
+  const canAdd = !!addFromFilter && filterable && needle !== "" && !options.some((o) => o.label.trim().toLowerCase() === needle);
+  const addTyped = () => {
+    if (!addFromFilter || !canAdd) return;
+    addFromFilter.onAdd(typed);
+    setFilter("");
+    // The button that was clicked disappears with the typed text; keep focus in the list so Escape still closes it.
+    filterRef.current?.focus();
+  };
   const visible = needle ? options.filter((o) => `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(needle)) : options;
 
   const trigger = icon ? (
     <Tooltip label={triggerLabel}>
       <button
-        id={id} ref={triggerRef} type="button" className="btn btn-icon" aria-label={triggerLabel} aria-haspopup="true" aria-expanded={open}
+        id={id} ref={triggerRef} type="button" className="btn btn-icon" aria-label={triggerLabel} aria-haspopup="true" aria-expanded={open} disabled={disabled}
         onClick={() => { setFilter(""); setOpen((o) => !o); }}
       >
         {icon}
@@ -119,16 +141,23 @@ export function MultiSelectDropdown({
     <>
       {trigger}
       {open && (
-        <Popover anchorRef={triggerRef} title={triggerLabel} onClose={() => setOpen(false)}>
+        <Popover anchorRef={triggerRef} title={triggerLabel} matchAnchor={!icon} placement={icon ? "side" : "below"} onClose={() => setOpen(false)}>
           <div className="stack" style={{ gap: "var(--space-3)" }}>
             {filterable && (
               <input
+                ref={filterRef}
                 type="search"
                 className="input"
                 aria-label={strings.common.filterOptions(triggerLabel)}
                 placeholder={strings.common.filterPlaceholder}
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (visible.length === 0) addTyped();
+                  }
+                }}
               />
             )}
             <div
@@ -158,7 +187,15 @@ export function MultiSelectDropdown({
                   </span>
                 </label>
               ))}
-              {filterable && visible.length === 0 && (
+              {canAdd && addFromFilter && (
+                <button type="button" className="btn" style={{ justifyContent: "flex-start" }} onClick={addTyped}>
+                  {addFromFilter.label(typed)}
+                </button>
+              )}
+              {canAdd && addFromFilter?.note && (
+                <span className="text-muted" style={{ fontSize: "0.8rem" }}>{addFromFilter.note}</span>
+              )}
+              {filterable && visible.length === 0 && !canAdd && (
                 <span className="text-muted" style={{ fontSize: "0.85rem" }}>
                   {strings.common.noMatchingOptions}
                 </span>

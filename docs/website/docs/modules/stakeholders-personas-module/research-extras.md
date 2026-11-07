@@ -29,7 +29,7 @@ An organisation admin switches **Research extras** on or off from the organisati
 
 With the extras on, three more blocks appear on an [Engagement](./engagement.md):
 
-- **Anonymous participants.** Press **(+)** and enter a label and, optionally, the **Persona represented**. They count towards the participant total and towards the Persona's evidence in [Persona validation](./reports.md#persona-validation-s2). Use a label, not a name: the record is anonymous only if you keep it so.
+- **Anonymous participants.** They share the Engagement's **Participants** list with the Stakeholders. Press its **(+)**, type a label and choose **Add “…” as an anonymous participant**, then pick the **Persona represented** on the new entry, in the logging form or later in the Engagement's edit form (for example when a participant's role becomes known). The Engagement's page lists the entry without a Persona select. They count towards the participant total and towards the Persona's evidence in [Persona validation](./reports.md#persona-validation-s2). Use a label, not a name: the record is anonymous only if you keep it so.
 - **Session prompts.** Press **(+)** to add a prompt, then edit it to record **response notes**. Use the arrows to reorder.
 - **Findings.** Press **(+)** to add a finding with a title and description. Each gets a project-scoped code (**FND-001**, never reused, even after a delete). A finding has its own **Links** panel with the same **Add link** dialog as every other record: link what it **raised** or **answered**, or anything else the project allows. A finding can quote participants.
 

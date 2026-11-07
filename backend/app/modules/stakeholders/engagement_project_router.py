@@ -43,6 +43,7 @@ from app.modules.stakeholders.schemas import (
     EngagementParticipantOut,
     EngagementPersonaCreate,
     EngagementPersonaOut,
+    EngagementPersonaReachedOut,
     EngagementUpdate,
     OutcomeCreate,
     OutcomeOut,
@@ -200,6 +201,15 @@ def list_personas(
 ):
     project = _project(db, project_id)
     return es.list_personas(db, _get(db, project_id, engagement_id), project)
+
+
+@router.get("/engagements/{engagement_id}/personas-reached", response_model=list[EngagementPersonaReachedOut])
+def list_personas_reached(
+    project_id: UUID, engagement_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)
+):
+    """Every Persona reached: recorded as covered, or represented by a Stakeholder or anonymous participant."""
+    project = _project(db, project_id)
+    return es.list_personas_reached(db, _get(db, project_id, engagement_id), project)
 
 
 @router.post(

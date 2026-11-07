@@ -9,6 +9,9 @@
  * until someone actually adds to it (docs/ux-style-guide.md, "Pattern: compact forms and
  * add-on-demand").
  *
+ * The popover opens to the right of the button (below it when there is no room), so it does not cover the
+ * list the button belongs to.
+ *
  * One or two fields fit a `Popover`. A control that itself opens a popover (a `TreeSelect`) or a
  * form of three or more fields belongs in a `Modal` instead, because Popovers do not nest.
  */
@@ -61,7 +64,7 @@ export function AddPopoverButton({
         {text && <span style={{ marginLeft: "var(--space-1)" }}>{text}</span>}
       </button>
       {open && (
-        <Popover anchorRef={triggerRef} title={label} onClose={() => setOpen(false)}>
+        <Popover anchorRef={triggerRef} title={label} placement="side" onClose={() => setOpen(false)}>
           {children(() => setOpen(false))}
         </Popover>
       )}

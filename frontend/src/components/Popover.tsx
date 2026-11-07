@@ -6,6 +6,8 @@ import { DialogSlotContext } from "./dialogSlots";
 
 const VIEWPORT_MARGIN_PX = 8;
 const VERTICAL_GAP_PX = 6.4; // 0.4rem
+const HORIZONTAL_GAP_PX = 6.4; // 0.4rem
+const MATCH_ANCHOR_MIN_WIDTH_PX = 280;
 
 /**
  * A small anchored panel for a one- or two-field create flow — the other
@@ -43,18 +45,28 @@ const VERTICAL_GAP_PX = 6.4; // 0.4rem
  * `fit` sizes the panel to its content instead of the fixed 280px (up to the
  * viewport width less a margin, `.popover-bubble`'s `max-width`), for a menu
  * whose longest label would otherwise clip.
+ *
+ * `placement="side"` opens the panel to the right of the anchor with their top edges level, for a small
+ * (+) button whose panel should not cover the field it sits beside; it opens below when the width does not fit.
+ *
+ * `matchAnchor` makes the panel open like a native select list: its left edge on the anchor's and at least
+ * as wide as the anchor (never under 280px), for an anchor that is a form control and not a small button.
  */
 export function Popover({
   anchorRef,
   onClose,
   title,
   fit = false,
+  matchAnchor = false,
+  placement = "below",
   children,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
   title: string;
   fit?: boolean;
+  matchAnchor?: boolean;
+  placement?: "below" | "side";
   children: ReactNode;
 }) {
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -70,24 +82,36 @@ export function Popover({
       const scrolled = bubble.scrollTop;
       bubble.style.maxHeight = "";
       const anchorRect = anchor.getBoundingClientRect();
+      if (matchAnchor) bubble.style.width = `${Math.max(MATCH_ANCHOR_MIN_WIDTH_PX, anchorRect.width)}px`;
       const bubbleRect = bubble.getBoundingClientRect();
 
-      let left = anchorRect.right - bubbleRect.width;
+      let left = matchAnchor ? anchorRect.left : anchorRect.right - bubbleRect.width;
       left = Math.max(VIEWPORT_MARGIN_PX, Math.min(left, window.innerWidth - bubbleRect.width - VIEWPORT_MARGIN_PX));
+
+      // `side`: to the right of the anchor, top edges level, when the whole width fits there; otherwise it
+      // falls back to opening below like any other popover.
+      const sideRoom = window.innerWidth - anchorRect.right - HORIZONTAL_GAP_PX - VIEWPORT_MARGIN_PX;
+      const beside = placement === "side" && bubbleRect.width <= sideRoom;
 
       // Open on the side with room for the whole bubble, else on the roomier side, capped to that room
       // and scrolling inside, so every control in it can be reached however low the anchor sits.
       const spaceBelow = window.innerHeight - anchorRect.bottom - VERTICAL_GAP_PX - VIEWPORT_MARGIN_PX;
       const spaceAbove = anchorRect.top - VERTICAL_GAP_PX - VIEWPORT_MARGIN_PX;
       const below = bubbleRect.height <= spaceBelow || spaceBelow >= spaceAbove;
-      const room = Math.max(0, below ? spaceBelow : spaceAbove);
+      const room = Math.max(0, beside ? window.innerHeight - 2 * VIEWPORT_MARGIN_PX : below ? spaceBelow : spaceAbove);
       const height = Math.min(bubbleRect.height, room);
       if (bubbleRect.height > room) {
         bubble.style.maxHeight = `${room}px`;
         bubble.style.overflowY = "auto";
         bubble.scrollTop = scrolled;
       }
-      const top = below ? anchorRect.bottom + VERTICAL_GAP_PX : anchorRect.top - height - VERTICAL_GAP_PX;
+      let top: number;
+      if (beside) {
+        left = anchorRect.right + HORIZONTAL_GAP_PX;
+        top = Math.max(VIEWPORT_MARGIN_PX, Math.min(anchorRect.top, window.innerHeight - VIEWPORT_MARGIN_PX - height));
+      } else {
+        top = below ? anchorRect.bottom + VERTICAL_GAP_PX : anchorRect.top - height - VERTICAL_GAP_PX;
+      }
 
       bubble.style.top = `${top}px`;
       bubble.style.left = `${left}px`;
@@ -111,7 +135,7 @@ export function Popover({
       window.removeEventListener("resize", measure);
       window.removeEventListener("scroll", onScroll, true);
     };
-  }, [anchorRef]);
+  }, [anchorRef, matchAnchor, placement]);
 
   useEffect(() => {
     function onPointerDown(e: MouseEvent) {
@@ -135,7 +159,7 @@ export function Popover({
         // The same layer as Modal and SidePanel, so whichever opened last is on top (DOM order): a popover opened
         // inside a dialog sits over it, and a confirm dialog opened from a popover sits over the popover.
         zIndex: 1100,
-        width: fit ? "max-content" : 280,
+        width: matchAnchor ? undefined : fit ? "max-content" : 280,
         visibility: "hidden",
       }}
     >

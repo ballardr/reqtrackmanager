@@ -19,6 +19,8 @@ export interface RemovableItem {
   content: ReactNode;
   /** The name of the remove button, e.g. "Remove Dana Whitfield". */
   removeLabel: string;
+  /** False for an item shown for information that cannot be removed here (default true). */
+  removable?: boolean;
 }
 
 /**
@@ -48,7 +50,7 @@ export function RemovableItemList({
           {shown.map((item) => (
             <li key={item.id} className="removable-item">
               {item.content}
-              {onRemove && (
+              {onRemove && item.removable !== false && (
                 <button type="button" className="removable-item__remove" aria-label={item.removeLabel} title={item.removeLabel} onClick={() => onRemove(item.id)}>
                   <X size={12} aria-hidden="true" />
                 </button>

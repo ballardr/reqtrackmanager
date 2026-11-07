@@ -63,3 +63,16 @@ export const ShowsAWordBesideThePlus: Story = {
     await expect(trigger).not.toHaveClass("btn-icon");
   },
 };
+
+/** The panel opens to the right of the (+) with their top edges level, so it does not cover the list the button belongs to. */
+export const OpensBesideTheButton: Story = {
+  play: async ({ canvasElement }) => {
+    const trigger = within(canvasElement).getByRole("button", { name: "Add to Participants" });
+    await userEvent.click(trigger);
+    const panel = within(document.body).getByRole("dialog", { name: "Add to Participants" });
+    const triggerBox = trigger.getBoundingClientRect();
+    const panelBox = panel.getBoundingClientRect();
+    await expect(panelBox.left).toBeGreaterThanOrEqual(triggerBox.right);
+    await expect(Math.abs(panelBox.top - triggerBox.top)).toBeLessThan(1);
+  },
+};

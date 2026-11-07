@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 7 done (uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 8 done (uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-8 / 21 phases complete.
+9 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -18,7 +18,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 5b | Create new from the Links panel for every creatable type | 18 creators (core types extracted to shared modals), `not_creatable_from_links`, replay test of `can_create` against every create endpoint (found and fixed the Change Request divergence); see `docs/decisions.md` | [x] |
 | 6 | Pain Point submission policy (project setting) | `pain_point_submission_settings` (project and organisation default, nearest-ancestor resolution; platform default Pain Point Managers only, existing organisations kept open by migration 0142), one `can_submit_pain_point` for create, import, Links panel and MCP; see `docs/decisions.md` | [x] |
 | 7 | Engagement outcome: create new | Reuses the Links panel creators; `engagement-outcome-target-types` carries `can_create`; see `docs/decisions.md` | [x] |
-| 8 | Engagement participants | Reproduce first | [ ] |
+| 8 | Engagement participants | Participants field on the create form (`stakeholder_ids`), empty-state notice in the form and on the detail page; the detail add control already worked; see `docs/decisions.md` | [x] |
 | 9 | Component/category on every record | Generic table, many per record; settled; adds an agent instruction | [ ] |
 | 9b | Customisable workflows (phases with kinds) for project stages | Project and organisation-template workflows; phase kind drives baseline and change-request lock; migrates the four fixed states; settled | [ ] |
 | 9c | Component phases (per-component, per-stage workflow) | Each component follows a workflow per stage; project switch, off means the project stage governs; lock rule to confirm | [ ] |

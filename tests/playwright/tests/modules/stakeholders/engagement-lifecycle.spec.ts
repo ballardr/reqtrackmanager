@@ -93,6 +93,87 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await expect(page.getByText("No engagements logged for this project yet.")).toBeVisible();
   });
 
+  test("names participants when logging, and explains a project with no Stakeholders", async ({ page }) => {
+    const { suffix, org, project, adminHeaders } = await setUpOrg(page, "EngLogPeople");
+    const base = projectBase(project.id);
+    const emptyTitle = `Solo call ${suffix}`;
+
+    // --- No Stakeholders yet: the form and the detail page say so instead of offering an empty control.
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
+    await page.getByRole("button", { name: "Log engagement" }).click();
+    const first = page.getByRole("dialog", { name: "Log engagement" });
+    await expect(first.getByText(/No Stakeholders exist in this project yet\./)).toBeVisible();
+    await first.getByLabel("Engagement title").fill(emptyTitle);
+    await first.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await page.getByRole("button", { name: emptyTitle }).click();
+    await expect(page.getByText(/No Stakeholders exist in this project yet\./)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add to Participants" })).toBeDisabled();
+    await expect(page.getByRole("link", { name: "Add a Stakeholder" })).toBeVisible();
+
+    // --- With Stakeholders, the chosen ones are recorded with the engagement.
+    const patName = `Pat Regulator ${suffix}`;
+    const samName = `Sam Client ${suffix}`;
+    await post(page, `${base}/stakeholders`, adminHeaders, { name: patName });
+    await post(page, `${base}/stakeholders`, adminHeaders, { name: samName });
+    const title = `Workshop ${suffix}`;
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
+    await page.getByRole("button", { name: "Log engagement" }).click();
+    const dialog = page.getByRole("dialog", { name: "Log engagement" });
+    await dialog.getByLabel("Engagement title").fill(title);
+    await dialog.getByRole("button", { name: "Add to Participants" }).click();
+    await page.getByRole("checkbox", { name: `Participant ${patName}` }).check();
+    await page.getByRole("checkbox", { name: `Participant ${samName}` }).check();
+    await page.keyboard.press("Escape");
+    await expect(dialog.getByRole("button", { name: `Remove ${patName}` })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: `Remove ${samName}` })).toBeVisible();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await page.getByRole("button", { name: title }).click();
+    // The participants list and the Links panel both name each person, so take the first.
+    await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: samName }).first()).toBeVisible();
+
+    // --- Codes beside participants are hidden by default, like Facilitators, and a menu item shows them.
+    const patRow = page.locator("li.removable-item", { has: page.getByRole("link", { name: patName }) });
+    await expect(patRow.getByText(/STK-\d+/)).toHaveCount(0);
+    await chooseRecordAction(page, "Engagement", "Show codes");
+    await expect(patRow.getByText(/STK-\d+/)).toBeVisible();
+    await chooseRecordAction(page, "Engagement", "Hide codes");
+    await expect(patRow.getByText(/STK-\d+/)).toHaveCount(0);
+
+    // --- Typed text becomes an anonymous participant only while the research extras are on.
+    await page.goto(`/projects/${project.id}/modules/stakeholders/engagements`);
+    await page.getByRole("button", { name: "Log engagement" }).click();
+    const offStatus = page.getByRole("dialog", { name: "Log engagement" });
+    await offStatus.getByRole("button", { name: "Add to Participants" }).click();
+    await page.getByRole("searchbox").fill("Participant 1");
+    await expect(page.getByRole("button", { name: /as an anonymous participant/ })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    const extras = await page.request.put(
+      `${API_BASE_URL}/api/v1/orgs/${org.id}/modules/stakeholders/subcomponents/research_extras`,
+      { headers: adminHeaders, data: { enabled: true } },
+    );
+    expect(extras.ok(), await extras.text()).toBeTruthy();
+    await page.reload();
+    const groupTitle = `Focus group ${suffix}`;
+    await page.getByRole("button", { name: "Log engagement" }).click();
+    const focus = page.getByRole("dialog", { name: "Log engagement" });
+    await focus.getByLabel("Engagement title").fill(groupTitle);
+    await focus.getByRole("button", { name: "Add to Participants" }).click();
+    await page.getByRole("searchbox").fill("Participant 1");
+    await page.getByRole("button", { name: "Add “Participant 1” as an anonymous participant" }).click();
+    await page.keyboard.press("Escape");
+    await expect(focus.getByLabel("Persona represented by Participant 1")).toBeVisible();
+    await focus.getByLabel("Persona represented by Participant 1").selectOption({ index: 0 });
+    await focus.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Engagement logged.")).toBeVisible();
+    await page.getByRole("button", { name: groupTitle }).click();
+    await expect(page.getByText("Participant 1")).toBeVisible();
+    await expect(page.getByLabel("Persona represented by Participant 1")).toHaveCount(0);
+  });
+
   test("adds and removes participants and covered Personas, and the list filters by participant", async ({ page }) => {
     const { suffix, project, adminHeaders } = await setUpOrg(page, "EngPeople");
     const base = projectBase(project.id);
@@ -108,17 +189,18 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await post(page, `${base}/engagements`, adminHeaders, { title: other, channel: "call", engagement_date: today() });
 
     await page.goto(`/projects/${project.id}/modules/stakeholders/engagements/${engagement.id}`);
-    await expect(page.getByText("No Stakeholders are recorded as taking part.")).toBeVisible();
+    await expect(page.getByText("Nobody is recorded as taking part.")).toBeVisible();
 
     await page.getByRole("button", { name: "Add to Participants" }).click();
-    const addParticipant = page.getByRole("dialog", { name: "Add to Participants" });
-    await addParticipant.getByLabel("Stakeholder to add").selectOption({ label: patName });
-    await addParticipant.getByRole("button", { name: "Add", exact: true }).click();
+    // Choosing adds at once and the option then leaves the list, so click rather than `check`.
+    await page.getByRole("checkbox", { name: `Participant ${patName}` }).click();
+    await page.keyboard.press("Escape");
     // The participants list and the Links panel both name Pat, so take the first.
     await expect(page.getByRole("link", { name: patName }).first()).toBeVisible();
     // Pat takes part, so is no longer offered.
     await page.getByRole("button", { name: "Add to Participants" }).click();
-    await expect(page.getByRole("dialog", { name: "Add to Participants" }).getByLabel("Stakeholder to add").locator("option", { hasText: patName })).toHaveCount(0);
+    await expect(page.getByRole("checkbox", { name: `Participant ${samName}` })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: `Participant ${patName}` })).toHaveCount(0);
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: "Add to Personas covered" }).click();
@@ -139,7 +221,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await page.getByRole("button", { name: `Remove ${patName}` }).click();
     await page.getByRole("dialog", { name: `Remove ${patName}?` }).getByRole("button", { name: "Remove" }).click();
     await expect(page.getByText("Link removed.")).toBeVisible();
-    await expect(page.getByText("No Stakeholders are recorded as taking part.")).toBeVisible();
+    await expect(page.getByText("Nobody is recorded as taking part.")).toBeVisible();
   });
 
   test("aiming at a Stakeholder group copies its members in as a snapshot", async ({ page }) => {
@@ -256,7 +338,7 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     await addOutcome.getByRole("button", { name: "Create new Stakeholder Need" }).click();
     const form = page.getByRole("dialog", { name: "New Stakeholder Need" });
     await form.getByLabel("Need name").fill(needName);
-    await form.getByRole("button", { name: "Save" }).click();
+    await form.getByRole("button", { name: "Save", exact: true }).click();
 
     await expect(page.getByText("Outcome recorded.")).toBeVisible();
     await expect(page.getByText("Raised · Stakeholder Need:")).toBeVisible();
@@ -306,13 +388,31 @@ test.describe("Stakeholders & Personas: Engagements", () => {
     expect(await edges("Delete Walk me through an inspection"))
       .toBe(await edges("Delete What would make the checklist worth opening, if anything at all?"));
 
-    // --- An anonymous participant with a Persona, labelled rather than named.
-    await page.getByRole("button", { name: "Add to Anonymous participants" }).click();
-    const addAnonymous = page.getByRole("dialog", { name: "Add to Anonymous participants" });
-    await addAnonymous.getByLabel("Participant label").fill("Participant 1");
-    await addAnonymous.getByLabel("Persona represented").selectOption({ label: personaName });
-    await addAnonymous.getByRole("button", { name: "Add participant" }).click();
-    await expect(page.getByText(`Participant 1 · ${personaName}`)).toBeVisible();
+    // --- An anonymous participant joins the Participants list, typed into its (+); the page offers no Persona select for it.
+    await page.getByRole("button", { name: "Add to Participants" }).click();
+    await page.getByRole("searchbox").fill("Participant 1");
+    await page.getByRole("button", { name: "Add “Participant 1” as an anonymous participant" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByText("Participant added.")).toBeVisible();
+    await expect(page.getByLabel("Persona represented by Participant 1")).toHaveCount(0);
+
+    // --- The edit form gives the participant a Persona later and adds someone who arrived late.
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    const editParticipants = page.getByRole("dialog", { name: /^Edit / });
+    await editParticipants.getByLabel("Persona represented by Participant 1").selectOption({ label: personaName });
+    await editParticipants.getByRole("button", { name: "Add to Participants" }).click();
+    await page.getByRole("searchbox").fill("Participant 2");
+    await page.getByRole("button", { name: "Add “Participant 2” as an anonymous participant" }).click();
+    await page.keyboard.press("Escape");
+    await editParticipants.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByText("Engagement updated.")).toBeVisible();
+    await expect(page.getByText("Participant 2").first()).toBeVisible();
+    await expect(page.getByText("via an anonymous participant")).toBeVisible();
+    await page.reload();
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: /^Edit / }).getByLabel("Persona represented by Participant 1").locator("option:checked")).toHaveText(personaName);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: /^Edit / })).toHaveCount(0);
 
     // --- A finding.
     await page.getByRole("button", { name: "Add finding" }).click();

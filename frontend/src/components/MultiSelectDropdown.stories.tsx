@@ -53,6 +53,23 @@ export const OpensToShowAllOptions: Story = {
   },
 };
 
+/** The opened list lines up with the trigger and is at least as wide as it, like a native select list, so
+ * in a form it sits directly under the field and not offset to its right. */
+export const OpenListLinesUpWithTheTrigger: Story = {
+  decorators: [(Story) => <div style={{ width: 520 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: "Alex Morgan's roles" });
+    await userEvent.click(trigger);
+
+    const panel = within(document.body).getByRole("dialog", { name: "Alex Morgan's roles" });
+    const triggerBox = trigger.getBoundingClientRect();
+    const panelBox = panel.getBoundingClientRect();
+    await expect(Math.abs(panelBox.left - triggerBox.left)).toBeLessThan(1);
+    await expect(panelBox.width).toBeGreaterThanOrEqual(triggerBox.width - 1);
+  },
+};
+
 /** Toggling one option calls that option's own `onToggle` immediately —
  * there's no separate "apply"/"save" step, matching every other immediate
  * toggle in the app (Principle 7, feedback on every mutation is the
