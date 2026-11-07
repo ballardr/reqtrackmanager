@@ -118,20 +118,29 @@ class ProjectVisibility(str, enum.Enum):
     ORG_WIDE = "org_wide"
 
 
-class StageStatus(str, enum.Enum):
-    """Lifecycle states for a project stage (introduction, C-G-08).
+class StagePhaseKind(str, enum.Enum):
+    """What a stage workflow phase does, whatever it is called.
 
-    ARCHIVED is a terminal state a stage can be moved to manually (e.g. via
-    `transition_stage`); it carries no special gating logic of its own —
-    unlike APPROVED it doesn't write a baseline or require the project
-    manager role, it's purely a display/filtering state.
+    The phase name is free text; this closed vocabulary carries the behaviour,
+    so the baseline, the edit lock and completion never read a name.
+
+    OPEN: requirements are editable and may be reordered.
+    REVIEW: requirements are editable; a review deadline and stakeholder
+        responses apply, and a passed deadline with no objection moves the
+        stage to the workflow's locked phase.
+    LOCKED: entering it writes an immutable baseline; requirement edits then
+        go through change requests only. Entering or leaving it needs the
+        project manager role.
+    ON_HOLD: paused or archived; no gating of its own.
+    CLOSED: the stage is complete; entering it records who and when and can
+        cascade to the stage's approved requirements. Edits stay locked.
     """
 
-    SCOPING = "scoping"
+    OPEN = "open"
     REVIEW = "review"
-    APPROVED = "approved"
-    COMPLETED = "completed"
-    ARCHIVED = "archived"
+    LOCKED = "locked"
+    ON_HOLD = "on_hold"
+    CLOSED = "closed"
 
 
 class RequirementLevel(str, enum.Enum):

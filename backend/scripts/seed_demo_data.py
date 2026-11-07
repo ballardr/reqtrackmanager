@@ -202,16 +202,37 @@ def create_categories_for_components(
     }
 
 
-def create_stage(headers: dict, project_id: str, name: str) -> dict:
-    r = httpx.post(f"{BASE}/projects/{project_id}/stages", json={"name": name}, headers=headers, timeout=30)
+def create_stage(headers: dict, project_id: str, name: str, workflow_id: str | None = None) -> dict:
+    body = {"name": name, **({"workflow_id": workflow_id} if workflow_id else {})}
+    r = httpx.post(f"{BASE}/projects/{project_id}/stages", json=body, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
-def transition_stage(headers: dict, project_id: str, stage_id: str, new_status: str) -> None:
+def create_org_workflow(headers: dict, org_id: str, name: str, phases: list[tuple[str, str]]) -> dict:
+    """Creates an organisation stage workflow from `(phase name, kind)` pairs, in order."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/stage-workflows",
+        json={"name": name, "phases": [{"name": phase, "kind": kind} for phase, kind in phases]},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def transition_stage(headers: dict, project_id: str, stage_id: str, phase_name: str) -> None:
+    """Moves a stage to the phase called `phase_name` (case-insensitive) in its own workflow."""
+    stage = next(
+        st for st in httpx.get(f"{BASE}/projects/{project_id}/stages", headers=headers, timeout=30).json() if st["id"] == stage_id
+    )
+    workflow = next(
+        w for w in httpx.get(f"{BASE}/projects/{project_id}/stage-workflows", headers=headers, timeout=30).json()
+        if w["id"] == stage["workflow_id"]
+    )
+    phase = next(p for p in workflow["phases"] if p["name"].lower() == phase_name.lower())
     r = httpx.post(
         f"{BASE}/projects/{project_id}/stages/{stage_id}/transition",
-        params={"new_status": new_status}, headers=headers, timeout=30,
+        json={"phase_id": phase["id"], "cascade_to_requirements": False}, headers=headers, timeout=30,
     )
     r.raise_for_status()
 
@@ -2114,6 +2135,15 @@ def main() -> None:
 
     h_pm = h(login("demo.admin@example.com", PASSWORD))
 
+    print("Creating the organisation's stage workflows...")
+    outsourced_workflow = create_org_workflow(h_pm, org["id"], "Outsourced work", [
+        ("Scoping", "open"), ("Technical scoping", "open"), ("Review board", "review"), ("Tendering", "on_hold"),
+        ("Awarded", "locked"), ("In progress", "locked"), ("Completion", "closed"),
+    ])
+    improvement_workflow = create_org_workflow(h_pm, org["id"], "Continuous improvement", [
+        ("Scoping", "open"), ("Implementation ready", "locked"), ("Done", "closed"),
+    ])
+
     print("Setting the organisation's report look...")
     set_report_look(h_pm, org["id"], accent_color_hex="#0F62FE", footer_text="Solstice Robotics — Confidential")
 
@@ -2182,7 +2212,7 @@ def main() -> None:
     )
     create_custom_field(h_pm, drone["id"], "requirement", "Risk Level", "list", ["Low", "Medium", "High"])
     drone_design = create_stage(h_pm, drone["id"], "Detailed Design")
-    create_stage(h_pm, drone["id"], "Verification & Validation")
+    create_stage(h_pm, drone["id"], "Verification & Validation", outsourced_workflow["id"])
     transition_stage(h_pm, drone["id"], drone_design["id"], "review")
 
     print("Seeding Falcon-3 requirements...")
@@ -2503,7 +2533,7 @@ def main() -> None:
     )
     create_custom_field(h_pm, cloud["id"], "requirement", "Compliance Tag", "short_text")
     cloud_dev = create_stage(h_pm, cloud["id"], "Development")
-    create_stage(h_pm, cloud["id"], "Hardening")
+    create_stage(h_pm, cloud["id"], "Hardening", improvement_workflow["id"])
     transition_stage(h_pm, cloud["id"], cloud_dev["id"], "review")
 
     print("Seeding Solstice Cloud Platform requirements...")

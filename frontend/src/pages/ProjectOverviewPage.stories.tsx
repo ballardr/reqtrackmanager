@@ -18,8 +18,8 @@ const metrics: ProjectMetrics = {
   // (requirement_count) the same as before, just without that bucket.
   requirements_by_status: { draft: 4, reviewed: 3, approved: 15, archived: 2 },
   stage_progress: [
-    { stage_id: "s1", name: "Scoping", status: "completed", requirement_count: 10, completed_percent: 100 },
-    { stage_id: "s2", name: "Build", status: "scoping", requirement_count: 14, completed_percent: 30 },
+    { stage_id: "s1", name: "Scoping", phase_name: "Completed", phase_kind: "closed", requirement_count: 10, completed_percent: 100 },
+    { stage_id: "s2", name: "Build", phase_name: "Scoping", phase_kind: "open", requirement_count: 14, completed_percent: 30 },
   ],
   scope_project_count: 1,
   records_by_type: [

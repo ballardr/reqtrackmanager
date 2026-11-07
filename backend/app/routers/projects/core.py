@@ -31,7 +31,7 @@ from app.models.enums import (
     OrgRole,
     ProjectRole,
     ProjectRoleInheritanceMode,
-    StageStatus,
+    StagePhaseKind,
 )
 from app.models.file import RequirementFile
 from app.models.organization import Organization
@@ -93,6 +93,7 @@ from app.services.rbac import (
     require_project_view_or_manage,
 )
 from app.services.record_counts import count_records_by_type
+from app.services.stage_workflows import new_stage, phase_index
 from app.services.templates import clone_project
 
 router = APIRouter(tags=["projects-core"])
@@ -301,7 +302,7 @@ def create_project(
         db.add(project)
         db.flush()
 
-        db.add(ProjectStage(project_id=project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True))
+        new_stage(db, project, "Scoping", 0, is_current=True)
 
         # C-U-10: the creator becomes the project's initial manager via a
         # direct grant — no group is auto-created any more (docs/decisions.md). This project
@@ -430,7 +431,7 @@ def list_projects(
     archived: bool = False,
     search: str | None = None,
     role: ProjectRole | None = None,
-    stage_status: StageStatus | None = None,
+    stage_phase_kind: StagePhaseKind | None = None,
     organization_id: UUID | None = None,
     favorite_only: bool = False,
     limit: int | None = Query(None, ge=1),
@@ -447,8 +448,8 @@ def list_projects(
     first no more or less than the unfiltered list already gets below).
 
     Supports an optional `role` filter (only projects where the caller holds
-    the given effective project role), `stage_status` filter (only projects
-    whose current stage is in the given status) for U-E-05, and
+    the given effective project role), `stage_phase_kind` filter (only projects
+    whose current stage is in a phase of the given kind) for U-E-05, and
     `organization_id` (only projects in that organisation — for a user
     belonging to more than one, this replaces having to visit each
     organisation separately to see just its projects). Results are sorted
@@ -459,7 +460,7 @@ def list_projects(
     `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory accessible-projects + default
     archived-visibility scope, before `organization_id`/`search`/`role`/
-    `stage_status`/`favorite_only` narrow it further — unlike
+    `stage_phase_kind`/`favorite_only` narrow it further — unlike
     `X-Total-Count`, it does not change when the caller applies one of
     those filters.
     """
@@ -586,6 +587,7 @@ def list_projects(
                 select(ProjectStage).where(ProjectStage.project_id.in_(project_ids), ProjectStage.is_current.is_(True))
             ).all()
         } if project_ids else {}
+        phases = phase_index(db, {s.phase_id for s in current_stages.values()})
 
         # Bulk-loads each listed project's role inputs into the request memo,
         # so the per-row `get_effective_project_roles` below doesn't query.
@@ -594,7 +596,8 @@ def list_projects(
         out = []
         for p in projects:
             stage = current_stages.get(p.id)
-            if stage_status is not None and (stage is None or stage.status != stage_status):
+            phase = phases.get(stage.phase_id) if stage else None
+            if stage_phase_kind is not None and (phase is None or phase.kind != stage_phase_kind):
                 continue
             roles = sorted(get_effective_project_roles(db, current_user.id, p.id), key=lambda r: r.value)
             if role is not None and role not in roles:
@@ -611,7 +614,8 @@ def list_projects(
                     visibility=p.visibility,
                     terminology=p.terminology, status_id=p.status_id,
                     current_stage_name=stage.name if stage else None,
-                    current_stage_status=stage.status if stage else None,
+                    current_stage_phase_name=phase.name if phase else None,
+                    current_stage_phase_kind=phase.kind if phase else None,
                     my_roles=list(roles),
                     is_favorite=p.id in favorite_ids,
                     organization_name=org_names.get(p.organization_id, ""),
@@ -1155,6 +1159,7 @@ def get_project_metrics(
     stages = db.scalars(
         select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
     ).all()
+    stage_phases = phase_index(db, {s.phase_id for s in stages})
     stage_progress: list[StageProgressOut] = []
     # One query for every baselined stage: items captured and how many of them are now completed (the
     # oldest baseline of a stage when it somehow has several).
@@ -1179,7 +1184,8 @@ def get_project_metrics(
             stage_percent = 0.0
         stage_progress.append(
             StageProgressOut(
-                stage_id=stage.id, name=stage.name, status=stage.status,
+                stage_id=stage.id, name=stage.name, phase_name=stage_phases[stage.phase_id].name,
+                phase_kind=stage_phases[stage.phase_id].kind,
                 requirement_count=stage_requirement_count, completed_percent=round(stage_percent, 1),
             )
         )

@@ -71,6 +71,7 @@ import { FileDetailsToggle } from "../components/FileDetailsPanel";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
+import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
 import { AddUserMenu } from "../components/AddUserMenu";
@@ -3156,6 +3157,10 @@ export function OrgAdminPage() {
                 deleteLabel={strings.orgAdmin.deleteProjectStatus}
                 addLabel={strings.orgAdmin.newProjectStatus}
               />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.stageWorkflows" title={strings.stageWorkflows.heading}>
+              <StageWorkflowsPanel scope={{ kind: "organisation", organizationId: org.id }} />
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes}>

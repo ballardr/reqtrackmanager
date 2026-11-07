@@ -15,14 +15,14 @@ sidebar_position: 6
 
 ## Moving a stage through review to approval
 
-A stage progresses through a fixed sequence — it can't skip a step or move backwards:
+Each stage row has a phase picker listing the phases of its workflow (with the standard workflow: Scoping, Review, Approved, Completed, Archived). Choose any phase; moves are free in either direction.
 
-1. **Start review** — moves a stage from Scoping into Review. Optionally set a **review deadline**.
-2. While in review, stakeholders record an explicit approve/reject response. If the deadline passes with no rejection, the stage auto-approves — silence is treated as approval. An explicit rejection blocks the auto-approval and leaves it for a manager to resolve.
-3. **Approve stage** — baselines every non-archived requirement still in draft or reviewed status (snapshotting its current version) and locks them: from this point, they can only change via a [change request](./change-requests.md).
-4. Once the stage's work is delivered, a project manager can mark the **stage itself completed**, optionally cascading completion to every approved requirement targeting it.
+1. Choose a Review phase (**Review** in the standard workflow). Optionally set a **review deadline**.
+2. While in review, stakeholders record an explicit approve/reject response. If the deadline passes with no rejection, the stage moves to the next Locked phase — silence is treated as approval. An explicit rejection blocks it and leaves it for a manager to resolve.
+3. Choose a Locked phase (**Approved**) — baselines every non-archived requirement still in draft or reviewed status (snapshotting its current version) and locks them: from this point, they can only change via a [change request](./change-requests.md).
+4. Once the stage's work is delivered, choose a Closed phase (**Completed**). The dialog offers to mark every approved requirement targeting the stage as completed too.
 
-Only a project manager or administrator can approve a stage; a plain member's attempt is rejected server-side even if they try it directly against the API rather than through the UI.
+Only a project manager can move a stage into or out of a Locked phase; a plain member's attempt is rejected server-side even if they try it directly against the API rather than through the UI. See [Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases) for defining your own phases.
 
 ## Renaming and deleting a stage
 

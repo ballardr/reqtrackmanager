@@ -69,6 +69,7 @@ from app.services.org_deletion import delete_organization_cascade
 from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
 from app.services.rbac import get_effective_org_roles, memoize_user_lookups, require_org_role, require_server_admin
 from app.services.report_starters import add_starter_layouts
+from app.services.stage_workflows import seed_stage_workflow
 
 router = APIRouter(tags=["organizations-core"])
 
@@ -103,6 +104,7 @@ def create_organization(
     db.flush()
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    seed_stage_workflow(db, org.id)
     seed_custom_role_presets(db, org.id)
     # Generic module-contributed org-creation seeding (e.g. Compliance's
     # `seed_compliance_action_types`, or a module's opt-in `org_creation_

@@ -83,7 +83,6 @@ from app.models.enums import (
     RequirementReviewOutcome,
     RequirementStatus,
     ReviewTargetType,
-    StageStatus,
 )
 from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.organization import Organization
@@ -136,6 +135,12 @@ from app.services.report_pack_bundle import export_project_packs, import_project
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
 from app.services.sequences import generate_unique_code
+from app.services.stage_workflow_bundle import (
+    export_project_stage_workflows,
+    export_stage_phases,
+    import_project_stage_workflows,
+    import_stage,
+)
 from app.services.tags import (
     export_vocabulary,
     import_vocabulary,
@@ -184,6 +189,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         A `(project_json, file_assets_by_id)` pair.
     """
     stages = list(db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id).order_by(ProjectStage.sort_order)))
+    stage_phases = export_stage_phases(db, stages)
     components = list(
         db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project.id).order_by(ProjectComponent.sort_order))
     )
@@ -530,7 +536,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "tags": export_vocabulary(db, project),
-        "stages": [{"name": s.name, "sort_order": s.sort_order} for s in stages],
+        **export_project_stage_workflows(db, project),
+        "stages": [{"name": s.name, "sort_order": s.sort_order, **stage_phases[s.id]} for s in stages],
         "components": [
             {
                 "name": c.name, "prefix": c.prefix, "sort_order": c.sort_order,
@@ -705,14 +712,10 @@ def apply_project_data(
 
     import_vocabulary(db, project, data.get("tags"), current_user.id)
 
+    import_project_stage_workflows(db, project, data, warnings)
     stage_id_by_name: dict[str, UUID] = {}
     for i, s in enumerate(data.get("stages", []) or [{"name": "Scoping", "sort_order": 0}]):
-        stage = ProjectStage(
-            project_id=project.id, name=s["name"], sort_order=s.get("sort_order", 0),
-            status=StageStatus.SCOPING, is_current=(i == 0),
-        )
-        db.add(stage)
-        db.flush()
+        stage = import_stage(db, project, s["name"], s.get("sort_order", 0), i == 0, s, warnings)
         stage_id_by_name[s["name"]] = stage.id
     fallback_stage_id = next(iter(stage_id_by_name.values()))
 

@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { ProjectListItem, ProjectTreeNode, StageStatus } from "../api/types";
-import { collapseProjectRoles, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import type { ProjectListItem, ProjectTreeNode } from "../api/types";
+import { collapseProjectRoles, PROJECT_ROLE_LABEL } from "../api/types";
+import { stageBadgeText } from "../utils/stageBadge";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { ProjectTree } from "../components/ProjectTree";
@@ -19,11 +20,6 @@ import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
 const PAGE_SIZE = 30;
-
-function stageBadgeText(stageName: string, status: StageStatus | null): string {
-  if (!status || stageName.toLowerCase() === status) return stageName;
-  return `${stageName} · ${STAGE_STATUS_LABEL[status]}`;
-}
 
 /** Only shown in the nav when the user has favourited at least one active
  * project (Layout.tsx) — a quick jump list, not a filtered view of
@@ -137,7 +133,7 @@ export function FavouritesPage() {
               <ProjectHierarchyLabels project={p} />
               {p.current_stage_name && (
                 <Badge>
-                  {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                  {stageBadgeText(p.current_stage_name, p.current_stage_phase_name)}
                 </Badge>
               )}
               <p className="text-muted" style={{ margin: 0, flex: 1 }}>
@@ -189,7 +185,7 @@ export function FavouritesPage() {
                   <td className="text-muted">{p.organization_name}</td>
                   <td>
                     {p.current_stage_name && (
-                      <Badge>{stageBadgeText(p.current_stage_name, p.current_stage_status)}</Badge>
+                      <Badge>{stageBadgeText(p.current_stage_name, p.current_stage_phase_name)}</Badge>
                     )}
                   </td>
                   <td className="text-muted">{collapseProjectRoles(p.my_roles).map((r) => PROJECT_ROLE_LABEL[r]).join(", ") || "—"}</td>

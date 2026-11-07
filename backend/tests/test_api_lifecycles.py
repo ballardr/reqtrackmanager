@@ -13,6 +13,7 @@ from tests.conftest import (
     create_org_user,
     create_project,
 )
+from tests.stage_helpers import move_stage
 
 
 def test_organization_create_and_get_lifecycle(client, admin_token):
@@ -242,60 +243,40 @@ def test_project_stage_lifecycle_create_get_transition(client, admin_token, org_
     )
     assert created.status_code == 201, created.text
     stage_id = created.json()["id"]
-    assert created.json()["status"] == "scoping"
+    assert created.json()["phase_name"] == "Scoping"
+    assert created.json()["phase_kind"] == "open"
 
     listing = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()
     assert stage_id in [s["id"] for s in listing]
 
-    transitioned = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=review",
-        headers=auth_headers(admin_token),
+    transitioned = move_stage(client, project['id'], stage_id, "review", headers=auth_headers(admin_token),
     )
     assert transitioned.status_code == 200, transitioned.text
-    assert transitioned.json()["status"] == "review"
+    assert transitioned.json()["phase_kind"] == "review"
 
 
-def test_stage_transition_rejects_skipping_and_backwards_moves(client, admin_token, org_id):
+def test_stage_moves_freely_but_locked_phase_needs_a_project_manager(client, admin_token, org_id):
+    """Moves are free in either direction; entering or leaving a locked phase needs the project manager role."""
     project = create_project(client, admin_token, org_id)
-    stage_id = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()[0]["id"]
+    headers = auth_headers(admin_token)
+    stage_id = client.get(f"/api/v1/projects/{project['id']}/stages", headers=headers).json()[0]["id"]
 
-    skip = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=approved",
-        headers=auth_headers(admin_token),
-    )
-    assert skip.status_code == 409, skip.text
-
-    skip_to_completed = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=completed",
-        headers=auth_headers(admin_token),
-    )
-    assert skip_to_completed.status_code == 409, skip_to_completed.text
-
-    review = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=review",
-        headers=auth_headers(admin_token),
-    )
-    assert review.status_code == 200, review.text
-
-    approved = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=approved",
-        headers=auth_headers(admin_token),
-    )
+    approved = move_stage(client, project["id"], stage_id, "approved", headers=headers)
     assert approved.status_code == 200, approved.text
+    assert approved.json()["phase_kind"] == "locked"
+    assert approved.json()["approved_at"] is not None
 
-    backwards = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=scoping",
-        headers=auth_headers(admin_token),
-    )
-    assert backwards.status_code == 409, backwards.text
+    again = move_stage(client, project["id"], stage_id, "approved", headers=headers)
+    assert again.status_code == 409, again.text
 
-    # ARCHIVED remains reachable from any non-terminal status regardless of
-    # the forward-only rule (see StageStatus's own docstring).
-    archived = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=archived",
-        headers=auth_headers(admin_token),
-    )
+    backwards = move_stage(client, project["id"], stage_id, "scoping", headers=headers)
+    assert backwards.status_code == 200, backwards.text
+    assert backwards.json()["phase_kind"] == "open"
+    assert backwards.json()["approved_at"] is None
+
+    archived = move_stage(client, project["id"], stage_id, "archived", headers=headers)
     assert archived.status_code == 200, archived.text
+    assert archived.json()["phase_kind"] == "on_hold"
 
 
 def test_org_user_deactivate_then_archive_lifecycle(client, admin_token, org_id):

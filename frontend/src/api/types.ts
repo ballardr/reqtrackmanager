@@ -16,21 +16,46 @@ export type OrgRole = "org_admin" | "project_creator" | "member";
 // existing `/server-admin` boolean endpoint.
 export type ServerRole = "server_admin" | "module_administrator";
 export type ModuleEntitlementPolicy = "open" | "closed";
-export type StageStatus = "scoping" | "review" | "approved" | "completed" | "archived";
+/** What a stage workflow phase does, whatever it is called (backend `StagePhaseKind`). */
+export type StagePhaseKind = "open" | "review" | "locked" | "on_hold" | "closed";
 // Hierarchical projects: forward (parent -> child) RBAC-cascade mode — see
 // backend/app/models/enums.py::ProjectRoleInheritanceMode and
 // docs/decisions.md's "Hierarchical projects" entry.
 export type ProjectRoleInheritanceMode = "none" | "mirror_all" | "mirror_role" | "member_only";
 
-// Display-only wording (matches the design mocks); the underlying API value
-// stays unchanged since it gates real approval/locking logic server-side.
-export const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
-  scoping: "Scoping",
-  review: "In review",
-  approved: "Ready for use",
-  completed: "Implemented",
-  archived: "Archived",
+/** Kind labels; a phase's own name is free text, so the kind is what a filter or a legend shows. */
+export const STAGE_PHASE_KIND_LABEL: Record<StagePhaseKind, string> = {
+  open: "Open",
+  review: "Review",
+  locked: "Locked",
+  on_hold: "On hold",
+  closed: "Closed",
 };
+export const STAGE_PHASE_KINDS = Object.keys(STAGE_PHASE_KIND_LABEL) as StagePhaseKind[];
+
+export interface StageWorkflowPhase {
+  id: string;
+  name: string;
+  kind: StagePhaseKind;
+  sort_order: number;
+}
+
+/** A stage workflow: `scope` says whether the organisation or only this project defines it. */
+export interface StageWorkflow {
+  id: string;
+  name: string;
+  scope: "organisation" | "project";
+  sort_order: number;
+  phases: StageWorkflowPhase[];
+  in_use: boolean;
+}
+
+/** A phase as saved: `id` is set for an existing phase so it keeps its identity. */
+export interface StageWorkflowPhaseWrite {
+  id?: string;
+  name: string;
+  kind: StagePhaseKind;
+}
 // C-G-11: completion is an overlay marker independent of lifecycle status
 // (`Requirement.is_completed`, below), not a `RequirementStatus` value —
 // see docs/decisions.md's entry on this rework. `"completed"` deliberately
@@ -1264,7 +1289,8 @@ export interface ProjectImportResult {
 
 export interface ProjectListItem extends Project {
   current_stage_name: string | null;
-  current_stage_status: StageStatus | null;
+  current_stage_phase_name: string | null;
+  current_stage_phase_kind: StagePhaseKind | null;
   my_roles: ProjectRole[];
   is_favorite: boolean;
   organization_name: string;
@@ -1307,7 +1333,11 @@ export interface ProjectStage {
   id: string;
   project_id: string;
   name: string;
-  status: StageStatus;
+  workflow_id: string;
+  workflow_name: string;
+  phase_id: string;
+  phase_name: string;
+  phase_kind: StagePhaseKind;
   sort_order: number;
   is_current: boolean;
   approved_at: string | null;
@@ -1382,7 +1412,8 @@ export interface ProjectGroup {
 export interface StageProgress {
   stage_id: string;
   name: string;
-  status: StageStatus;
+  phase_name: string;
+  phase_kind: StagePhaseKind;
   requirement_count: number;
   completed_percent: number;
 }

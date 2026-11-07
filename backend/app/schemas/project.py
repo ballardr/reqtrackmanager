@@ -18,8 +18,8 @@ from app.models.enums import (
     ProjectRole,
     ProjectRoleInheritanceMode,
     ProjectVisibility,
+    StagePhaseKind,
     StageReviewResponseChoice,
-    StageStatus,
 )
 from app.models.project import MAX_REPORT_NAME_LENGTH
 
@@ -356,7 +356,8 @@ class ProjectListItemOut(ProjectOut):
     """Project list view row (U-E-03): includes stage and role context."""
 
     current_stage_name: str | None = None
-    current_stage_status: StageStatus | None = None
+    current_stage_phase_name: str | None = None
+    current_stage_phase_kind: StagePhaseKind | None = None
     my_roles: list[ProjectRole] = []
     is_favorite: bool = False
     organization_name: str = ""
@@ -372,10 +373,12 @@ class ProjectListItemOut(ProjectOut):
 
 class ProjectStageCreate(BaseModel):
     name: str
+    workflow_id: UUID | None = None  # default: the project's default workflow
 
 
 class ProjectStageUpdate(BaseModel):
     name: str
+    workflow_id: UUID | None = None  # moves the stage to the start of another workflow while it is still open
 
 
 class ProjectStageOut(BaseModel):
@@ -384,7 +387,11 @@ class ProjectStageOut(BaseModel):
     id: UUID
     project_id: UUID
     name: str
-    status: StageStatus
+    workflow_id: UUID
+    workflow_name: str = ""
+    phase_id: UUID
+    phase_name: str = ""
+    phase_kind: StagePhaseKind
     sort_order: int
     is_current: bool
     approved_at: datetime | None = None
@@ -409,10 +416,6 @@ class StageReviewResponseOut(BaseModel):
     response: StageReviewResponseChoice
     comment: str | None = None
     responded_at: datetime
-
-
-class StageCompleteRequest(BaseModel):
-    cascade_to_requirements: bool = False
 
 
 class ComponentCreate(BaseModel):
@@ -593,7 +596,8 @@ class StageProgressOut(BaseModel):
 
     stage_id: UUID
     name: str
-    status: StageStatus
+    phase_name: str
+    phase_kind: StagePhaseKind
     requirement_count: int
     completed_percent: float
 

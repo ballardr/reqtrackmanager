@@ -82,9 +82,9 @@ def test_favorite_project_sorts_first_and_toggles(client, admin_token, org_id):
     assert all(not p["is_favorite"] for p in listing)
 
 
-def test_project_list_role_and_stage_status_filters(client, admin_token, org_id):
+def test_project_list_role_and_stage_phase_kind_filters(client, admin_token, org_id):
     """U-E-05: the project list can be filtered by the caller's effective role
-    and by the project's current stage status."""
+    and by the kind of the project's current stage phase."""
     project = create_project(client, admin_token, org_id, name="Filter Target")
 
     member_token = _make_member(client, admin_token, org_id, project["id"], "filter_member@example.com")
@@ -105,12 +105,12 @@ def test_project_list_role_and_stage_status_filters(client, admin_token, org_id)
     assert project["id"] not in [p["id"] for p in member_as_manager_role]
 
     scoping = client.get(
-        "/api/v1/projects?archived=false&stage_status=scoping", headers=auth_headers(admin_token)
+        "/api/v1/projects?archived=false&stage_phase_kind=open", headers=auth_headers(admin_token)
     ).json()
     assert project["id"] in [p["id"] for p in scoping]
 
     approved = client.get(
-        "/api/v1/projects?archived=false&stage_status=approved", headers=auth_headers(admin_token)
+        "/api/v1/projects?archived=false&stage_phase_kind=locked", headers=auth_headers(admin_token)
     ).json()
     assert project["id"] not in [p["id"] for p in approved]
 

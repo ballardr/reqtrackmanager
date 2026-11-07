@@ -27,6 +27,7 @@ import {
   buildProjectLinkType,
   buildProjectListItem,
   buildProjectStatus,
+  buildStageWorkflow,
   buildUser,
   withRouter,
   withStatefulAuth,
@@ -40,7 +41,7 @@ import { ProjectAdminPage } from "./ProjectAdminPage";
 const PROJECT_ID = "project-1";
 
 const stages: ProjectStage[] = [
-  { id: "s1", project_id: PROJECT_ID, name: "Scoping", status: "scoping", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+  { id: "s1", project_id: PROJECT_ID, name: "Scoping", workflow_id: "workflow-1", workflow_name: "Standard", phase_id: "phase-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
 ];
 const components: Component[] = [{ id: "c1", project_id: PROJECT_ID, name: "Authentication", prefix: "AUTH", sort_order: 0 }];
 const categories: Category[] = [{ id: "cat1", project_id: PROJECT_ID, component_id: "c1", name: "Login", prefix: "LOG", sort_order: 0 }];
@@ -108,6 +109,8 @@ function mockProjectAdminApis(
     // Checked before the "/orgs/" + "/groups"/"/users" branches below,
     // which this bare org-detail path doesn't match (no further segment).
     if (path === `/api/v1/orgs/${project.organization_id}`) return organization;
+    if (path.endsWith("/stage-workflows")) return [buildStageWorkflow()];
+    if (path.endsWith("/stage-workflows/hidden")) return [];
     if (path.includes("/stages")) return overrides.stages ?? stages;
     if (path.includes("/components")) return components;
     if (path.includes("/categories")) return overrides.categories ?? categories;
@@ -463,7 +466,7 @@ export const StagesTabAddAndTransition: Story = {
     // `CollapsibleSection` that's expanded by default — no separate expand
     // step needed.
     await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
-    await waitFor(() => expect(canvas.getByRole("button", { name: "Start review" })).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByRole("combobox", { name: "Phase of Scoping" })).toBeInTheDocument());
     // Scoped to the "Project stages" section specifically: the sibling
     // "Components & categories" section (now mounted alongside it on the
     // same merged "Structure" tab) also has exactly one category in this
@@ -472,8 +475,29 @@ export const StagesTabAddAndTransition: Story = {
     const stagesSection = within(canvas.getByRole("button", { name: "Project stages section" }).closest(".card")!);
     // Deleting the only stage is blocked — there's nothing else to reassign to.
     await expect(stagesSection.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
-    await userEvent.click(canvas.getByRole("button", { name: "Start review" }));
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition?new_status=review`));
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Phase of Scoping" }), "Review");
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition`, { phase_id: "phase-review", cascade_to_requirements: false }),
+    );
+  },
+};
+
+/** Moving a stage into a closed phase first asks whether to complete its approved requirements too. */
+export const StagesTabClosingAPhaseOffersToCompleteRequirements: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Phase of Scoping" }), "Completed");
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await userEvent.click(dialog.getByRole("checkbox"));
+    await userEvent.click(dialog.getByRole("button", { name: "Completed" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition`, { phase_id: "phase-completed", cascade_to_requirements: true }),
+    );
   },
 };
 
@@ -484,7 +508,7 @@ export const StagesTabDeleteReassignsViaDialog: Story = {
     mockProjectAdminApis({
       stages: [
         ...stages,
-        { id: "s2", project_id: PROJECT_ID, name: "Design", status: "scoping", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+        { id: "s2", project_id: PROJECT_ID, name: "Design", workflow_id: "workflow-1", workflow_name: "Standard", phase_id: "phase-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
       ],
     });
     spyOn(api, "delete").mockResolvedValue(undefined);

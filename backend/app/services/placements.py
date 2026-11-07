@@ -607,7 +607,7 @@ def placed_ids(
     category_ids: Sequence[uuid.UUID],
 ) -> set[uuid.UUID]:
     """Ids of the project's records of `artefact_type` with a placement in any of the components or any of the
-    categories."""
+    categories (a requirement's own component and category, for a `COLUMN_PLACED_TYPES` type)."""
     conditions = []
     if component_ids:
         conditions.append(ArtefactPlacement.component_id.in_(component_ids))
@@ -615,6 +615,14 @@ def placed_ids(
         conditions.append(ArtefactPlacement.category_id.in_(category_ids))
     if not conditions:
         return set()
+    if artefact_type in COLUMN_PLACED_TYPES:
+        # A requirement keeps its one component and category on the record itself, so it matches through them.
+        own = []
+        if component_ids:
+            own.append(Requirement.component_id.in_(component_ids))
+        if category_ids:
+            own.append(Requirement.category_id.in_(category_ids))
+        return set(db.scalars(select(Requirement.id).where(Requirement.project_id == project_id, or_(*own))).all())
     return set(
         db.scalars(
             select(ArtefactPlacement.artefact_id).where(

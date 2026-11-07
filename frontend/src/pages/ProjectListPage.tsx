@@ -11,9 +11,10 @@ import type {
   ProjectRole,
   ProjectRoleInheritanceMode,
   ProjectTreeNode,
-  StageStatus,
+  StagePhaseKind,
 } from "../api/types";
-import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
+import { stageBadgeText } from "../utils/stageBadge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
@@ -48,11 +49,6 @@ const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", 
 
 const PAGE_SIZE = 30;
 
-function stageBadgeText(stageName: string, status: StageStatus | null): string {
-  if (!status || stageName.toLowerCase() === status) return stageName;
-  return `${stageName} · ${STAGE_STATUS_LABEL[status]}`;
-}
-
 /**
  * Project list view (U-E-03): active projects across all organisations the
  * user can access, with an archived filter (U-E-04), search, project
@@ -78,7 +74,7 @@ export function ProjectListPage() {
   const [showArchived, setShowArchived] = useUrlFlag("archived");
   const [search, setSearch] = useUrlText("q");
   const [roleFilter, setRoleFilter] = useUrlChoice("role", Object.keys(PROJECT_ROLE_LABEL) as ProjectRole[]);
-  const [stageStatusFilter, setStageStatusFilter] = useUrlChoice("stage_status", Object.keys(STAGE_STATUS_LABEL) as StageStatus[]);
+  const [stagePhaseKindFilter, setStagePhaseKindFilter] = useUrlChoice("stage_phase_kind", STAGE_PHASE_KINDS);
   const [orgFilter, setOrgFilter] = useUrlText("org");
   const [favoriteOnly, setFavoriteOnly] = useUrlFlag("favourites");
   const limitFor = useRestoredRowCount(PAGE_SIZE);
@@ -155,7 +151,7 @@ export function ProjectListPage() {
     const params = new URLSearchParams({ archived: String(showArchived), limit: String(limitFor(offset)), offset: String(offset) });
     if (search) params.set("search", search);
     if (roleFilter) params.set("role", roleFilter);
-    if (stageStatusFilter) params.set("stage_status", stageStatusFilter);
+    if (stagePhaseKindFilter) params.set("stage_phase_kind", stagePhaseKindFilter);
     if (orgFilter) params.set("organization_id", orgFilter);
     // Same `favorite_only` param `FavouritesPage.tsx` already uses server-side
     // — filtering here rather than
@@ -210,7 +206,7 @@ export function ProjectListPage() {
     if (!newOrgId && activeOrgs[0]) setNewOrgId(activeOrgs[0].id);
   }
 
-  useLoadOnChange(reload, [showArchived, search, roleFilter, stageStatusFilter, orgFilter, favoriteOnly]);
+  useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly]);
 
   // C-E-04: pre-select the organisation's default template project (if
   // one is configured) whenever the target org changes, rather than
@@ -239,9 +235,9 @@ export function ProjectListPage() {
   const templateOptions = allProjects.filter((p) => p.is_template && p.organization_id === newOrgId);
   const showOrgColumn = orgs.length > 1 || !!user?.is_server_admin;
 
-  function toggleStageStatusFilter(status: StageStatus | null) {
+  function toggleStagePhaseKindFilter(status: StagePhaseKind | null) {
     if (!status) return;
-    setStageStatusFilter((current) => (current === status ? "" : status));
+    setStagePhaseKindFilter((current) => (current === status ? "" : status));
   }
 
   async function createProject() {
@@ -362,18 +358,16 @@ export function ProjectListPage() {
                 <option value="member">{PROJECT_ROLE_LABEL.member}</option>
               </select>
             </FilterField>
-            <FilterField label={strings.projects.stageStatusLabel}>
+            <FilterField label={strings.projects.stagePhaseKindLabel} help={strings.help.stagePhaseKindFilter}>
               <select
                 className="input"
-                value={stageStatusFilter}
-                onChange={(e) => setStageStatusFilter(e.target.value as StageStatus | "")}
+                value={stagePhaseKindFilter}
+                onChange={(e) => setStagePhaseKindFilter(e.target.value as StagePhaseKind | "")}
               >
                 <option value="">{strings.projects.allStages}</option>
-                <option value="scoping">{STAGE_STATUS_LABEL.scoping}</option>
-                <option value="review">{STAGE_STATUS_LABEL.review}</option>
-                <option value="approved">{STAGE_STATUS_LABEL.approved}</option>
-                <option value="completed">{STAGE_STATUS_LABEL.completed}</option>
-                <option value="archived">{STAGE_STATUS_LABEL.archived}</option>
+                {STAGE_PHASE_KINDS.map((kind) => (
+                  <option key={kind} value={kind}>{STAGE_PHASE_KIND_LABEL[kind]}</option>
+                ))}
               </select>
             </FilterField>
           </FilterPanel>
@@ -592,11 +586,11 @@ export function ProjectListPage() {
                     <ProjectHierarchyLabels project={p} />
                     {p.current_stage_name && (
                       <FilterBadge
-                        active={stageStatusFilter === p.current_stage_status}
-                        onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                        active={stagePhaseKindFilter === p.current_stage_phase_kind}
+                        onClick={() => toggleStagePhaseKindFilter(p.current_stage_phase_kind)}
                         style={{ alignSelf: "flex-start" }}
                       >
-                        {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                        {stageBadgeText(p.current_stage_name, p.current_stage_phase_name)}
                       </FilterBadge>
                     )}
                     <p
@@ -665,10 +659,10 @@ export function ProjectListPage() {
                         <td>
                           {p.current_stage_name && (
                             <FilterBadge
-                              active={stageStatusFilter === p.current_stage_status}
-                              onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                              active={stagePhaseKindFilter === p.current_stage_phase_kind}
+                              onClick={() => toggleStagePhaseKindFilter(p.current_stage_phase_kind)}
                             >
-                              {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                              {stageBadgeText(p.current_stage_name, p.current_stage_phase_name)}
                             </FilterBadge>
                           )}
                         </td>

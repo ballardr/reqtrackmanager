@@ -93,7 +93,7 @@ def test_projects_list_paginates_and_reports_total(client, admin_token, org_id):
 
 def test_projects_list_reports_unfiltered_count_alongside_filtered_total(client, admin_token, org_id):
     """Same contract as the requirements-list test above, but for
-    `ProjectListPage` — `organization_id`/`search`/`role`/`stage_status`/
+    `ProjectListPage` — `organization_id`/`search`/`role`/`stage_phase_kind`/
     `favorite_only` all narrow `X-Total-Count` without moving
     `X-Total-Unfiltered-Count`, which stays at the caller's full
     accessible/`archived`-scope count."""

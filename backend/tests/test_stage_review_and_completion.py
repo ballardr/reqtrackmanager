@@ -7,6 +7,7 @@ from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from app.services.stages import auto_approve_overdue_stage_reviews
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.stage_helpers import move_stage
 
 
 def _current_stage_id(client, token, project_id) -> str:
@@ -27,10 +28,7 @@ def test_stage_review_deadline_requires_stage_to_be_in_review(client, admin_toke
 def test_overdue_stage_review_auto_approves_when_no_rejection(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
     stage_id = _current_stage_id(client, admin_token, project["id"])
-    client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition",
-        params={"new_status": "review"}, headers=auth_headers(admin_token),
-    )
+    move_stage(client, project['id'], stage_id, "review", headers=auth_headers(admin_token))
     client.post(
         f"/api/v1/projects/{project['id']}/stages/{stage_id}/review-deadline",
         json={"review_deadline": (datetime.now(UTC) - timedelta(days=1)).isoformat()}, headers=auth_headers(admin_token),
@@ -44,17 +42,14 @@ def test_overdue_stage_review_auto_approves_when_no_rejection(client, admin_toke
 
     resp = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token))
     stage = next(s for s in resp.json() if s["id"] == stage_id)
-    assert stage["status"] == "approved"
+    assert stage["phase_kind"] == "locked"
     assert stage["approved_at"] is not None
 
 
 def test_overdue_stage_review_does_not_auto_approve_after_explicit_rejection(client, admin_token, org_id):
     project = create_project(client, admin_token, org_id)
     stage_id = _current_stage_id(client, admin_token, project["id"])
-    client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition",
-        params={"new_status": "review"}, headers=auth_headers(admin_token),
-    )
+    move_stage(client, project['id'], stage_id, "review", headers=auth_headers(admin_token))
     client.post(
         f"/api/v1/projects/{project['id']}/stages/{stage_id}/review-deadline",
         json={"review_deadline": (datetime.now(UTC) - timedelta(days=1)).isoformat()}, headers=auth_headers(admin_token),
@@ -78,7 +73,7 @@ def test_overdue_stage_review_does_not_auto_approve_after_explicit_rejection(cli
 
     resp = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token))
     stage = next(s for s in resp.json() if s["id"] == stage_id)
-    assert stage["status"] == "review"
+    assert stage["phase_name"] == "Review"
 
 
 def test_mark_requirement_completed_requires_approved_status(client, admin_token, org_id):
@@ -186,9 +181,7 @@ def test_non_manager_cannot_complete_a_stage(client, admin_token, org_id):
         headers=auth_headers(admin_token),
     )
     member_token = login(client, "member2@example.com", "Password123!")
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/complete",
-        json={"cascade_to_requirements": False}, headers=auth_headers(member_token),
+    resp = move_stage(client, project['id'], stage_id, "completed", headers=auth_headers(member_token), cascade=False,
     )
     assert resp.status_code == 403
 
@@ -217,9 +210,7 @@ def test_completing_stage_with_cascade_completes_approved_requirements_targeting
         f"/api/v1/projects/{project['id']}/requirements/{req['id']}/history", headers=auth_headers(admin_token)
     ).json()
 
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/complete",
-        json={"cascade_to_requirements": True}, headers=auth_headers(admin_token),
+    resp = move_stage(client, project['id'], stage_id, "completed", headers=auth_headers(admin_token), cascade=True,
     )
     assert resp.status_code == 200
 
@@ -255,9 +246,7 @@ def test_cascade_completion_is_still_gated_on_approved_status(client, admin_toke
         headers=auth_headers(admin_token),
     ).json()
 
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/complete",
-        json={"cascade_to_requirements": True}, headers=auth_headers(admin_token),
+    resp = move_stage(client, project['id'], stage_id, "completed", headers=auth_headers(admin_token), cascade=True,
     )
     assert resp.status_code == 200
 
@@ -286,9 +275,7 @@ def test_completing_stage_without_cascade_leaves_requirements_uncompleted(client
         headers=auth_headers(admin_token),
     )
 
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/complete",
-        json={"cascade_to_requirements": False}, headers=auth_headers(admin_token),
+    resp = move_stage(client, project['id'], stage_id, "completed", headers=auth_headers(admin_token), cascade=False,
     )
     assert resp.status_code == 200
 

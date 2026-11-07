@@ -2,8 +2,8 @@
 Module: services.baseline
 
 Implements stage-approval baselining (C-G-10) and the resulting
-direct-edit lock on requirements (C-G-12): once a project has any stage that
-has reached APPROVED (or COMPLETED), its requirements may only be modified
+direct-edit lock on requirements (C-G-12): entering a locked phase approves
+the project's requirements, and an approved requirement may only be modified
 through an approved change request.
 """
 
@@ -12,22 +12,11 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.enums import RequirementStatus, StageStatus
+from app.models.enums import RequirementStatus
 from app.models.project import Project, ProjectStage
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.user import User
 from app.services.requirements import apply_new_version, get_current_version_for_update
-
-
-def project_is_locked(db: Session, project_id) -> bool:
-    """Returns True if the project has ever approved a stage (C-G-12)."""
-    locked_stage = db.scalar(
-        select(ProjectStage).where(
-            ProjectStage.project_id == project_id,
-            ProjectStage.status.in_([StageStatus.APPROVED, StageStatus.COMPLETED]),
-        )
-    )
-    return locked_stage is not None
 
 
 def create_baseline_for_stage(db: Session, project: Project, stage: ProjectStage, actor: User) -> Baseline:

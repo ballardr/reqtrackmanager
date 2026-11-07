@@ -109,7 +109,12 @@ PM adds a task (a plain member's attempt 403s server-side); a task assigned to a
 ### 10. Stage review deadlines and completion
 **Personas:** Org Admin AlphaBeta (PM), Stakeholder Alpha, Member AlphaBeta. **Spec:** `stage-review-and-completion.spec.ts` (C-R-05, C-P-02, C-P-03).
 
-Full stage lifecycle: scoping → PM starts review and sets a deadline → a plain member's direct-API approve attempt 403s → a stakeholder responds through the real UI → PM approves (locks requirements, writes a baseline) → a locked requirement is marked completed directly (no change request needed) and reverted → PM completes the stage with `cascade_to_requirements`, which also completes its still-approved requirements.
+Full stage lifecycle: scoping → PM moves the stage to the Review phase and sets a deadline → a plain member's direct-API move into the Approved phase 403s → a stakeholder responds through the real UI → PM moves it to Approved (locks requirements, writes a baseline) → a locked requirement is marked completed directly (no change request needed) and reverted → PM moves the stage to Completed with `cascade_to_requirements`, which also completes its still-approved requirements.
+
+### 10b. Stage workflows
+**Persona:** Org Admin AlphaBeta. **Spec:** `stage-workflows.spec.ts`.
+
+An organisation administrator builds a workflow with a custom locked phase in Organisation Admin → a project stage follows it, and entering the locked phase baselines the requirements whatever the phase is called → leaving it is allowed for the project manager → the project hides the organisation workflow and restores it.
 
 ### 11. Project Admin: structural rename/delete/archive
 **Persona:** Org Admin AlphaBeta (PM). **Spec:** `project-admin-structural.spec.ts` (C-G-07, C-E-01/02, C-P-01).

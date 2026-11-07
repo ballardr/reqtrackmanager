@@ -1,6 +1,6 @@
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
-import { installCleanupHook, loginAs, logout, onCleanup, openProject, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
+import { installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openProject, PASSWORD, PERSONAS, PROJECT_NAMES } from "./helpers";
 
 /**
  * Job to be done: a project stage's full lifecycle — scoping, a review
@@ -74,6 +74,9 @@ test.describe("stage review deadlines and completion", () => {
     // auto-waits for the stage row, so nothing relies on that wait.
     let structureUrl = "";
 
+    /** The phase picker of this run's stage; its name is the stage's, so the row is found without its container. */
+    const phasePicker = () => page.getByRole("combobox", { name: `Phase of ${stageName}` });
+
     function stageContainer() {
       // Scoped to this run's own stage row (by its rename `<input>` value):
       // Alpha-2 keeps every earlier run's completed stage alongside it.
@@ -130,8 +133,8 @@ test.describe("stage review deadlines and completion", () => {
 
     await test.step("PM starts the stage's review and sets a deadline", async () => {
       await page.goto(structureUrl);
-      await stageContainer().getByRole("button", { name: "Start review" }).click();
-      await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
+      await phasePicker().selectOption({ label: "Review" });
+      await expect(phasePicker().locator("option:checked")).toHaveText("Review");
 
       const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
       await stageContainer().locator('input[type="datetime-local"]').fill(future.toISOString().slice(0, 16));
@@ -150,9 +153,8 @@ test.describe("stage review deadlines and completion", () => {
         data: { email: PERSONAS.memberAlphaBeta.email, password: PASSWORD },
       });
       const memberToken = (await login.json()).access_token;
-      const resp = await page.request.post(
-        `${API}/projects/${projectId}/stages/${stageId}/transition?new_status=approved`,
-        { headers: { Authorization: `Bearer ${memberToken}` } },
+      const resp = await moveStageToPhase(
+        page.request, { Authorization: `Bearer ${memberToken}` }, projectId, stageId, "Approved",
       );
       expect(resp.status()).toBe(403);
     });
@@ -165,15 +167,15 @@ test.describe("stage review deadlines and completion", () => {
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
       await page.goto(structureUrl);
       await stageContainer().getByRole("button", { name: "Approve", exact: true }).click();
-      await expect(stageContainer().getByText("In review", { exact: true })).toBeVisible();
+      await expect(phasePicker().locator("option:checked")).toHaveText("Review");
     });
 
     await test.step("PM approves the stage, which locks its requirements and writes a baseline", async () => {
       await logout(page);
       await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
       await page.goto(structureUrl);
-      await stageContainer().getByRole("button", { name: "Approve stage" }).click();
-      await expect(stageContainer().getByRole("button", { name: "Approve stage" })).toHaveCount(0);
+      await phasePicker().selectOption({ label: "Approved" });
+      await expect(phasePicker().locator("option:checked")).toHaveText("Approved");
 
       await page.goto(reqUrl[reqNameA]);
       await expect(page.getByText("Status: Approved")).toBeVisible();
@@ -195,9 +197,11 @@ test.describe("stage review deadlines and completion", () => {
 
     await test.step("PM completes the stage with cascade, which also completes its still-approved requirements", async () => {
       await page.goto(structureUrl);
-      await stageContainer().getByLabel("Also mark this stage's approved requirements as completed").check();
-      await stageContainer().getByRole("button", { name: "Mark stage completed" }).click();
-      await expect(stageContainer().getByText("Implemented", { exact: true })).toBeVisible();
+      await phasePicker().selectOption({ label: "Completed" });
+      const dialog = page.getByRole("dialog", { name: "Mark stage completed" });
+      await dialog.getByLabel("Also mark this stage's approved requirements as completed").check();
+      await dialog.getByRole("button", { name: "Completed", exact: true }).click();
+      await expect(phasePicker().locator("option:checked")).toHaveText("Completed");
 
       // reqNameB was never manually completed — only the cascade marked it.
       await page.goto(reqUrl[reqNameB]);

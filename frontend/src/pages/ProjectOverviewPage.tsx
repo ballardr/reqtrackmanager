@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
-import { activityEntityLabel, activityEntryLink, activityEntryNotes, describeActivityEntry, REQUIREMENT_STATUS_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { activityEntityLabel, activityEntryLink, activityEntryNotes, describeActivityEntry, REQUIREMENT_STATUS_LABEL } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { MetricTile } from "../components/MetricTile";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
@@ -229,7 +229,7 @@ export function ProjectOverviewPage() {
             >
               <div className="row" style={{ justifyContent: "space-between", fontSize: "0.85rem" }}>
                 <span>
-                  {s.name} <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
+                  {s.name} <Badge>{s.phase_name}</Badge>
                 </span>
                 <span className="text-muted">{s.completed_percent}%</span>
               </div>

@@ -145,6 +145,7 @@ from app.services.report_pack_bundle import export_org_packs, import_org_packs
 from app.services.report_placement_bundle import export_org_placements, import_org_placements
 from app.services.report_snippet_bundle import export_org_snippets, import_org_snippets
 from app.services.scoring import seed_missing_scoring_levels
+from app.services.stage_workflow_bundle import export_org_stage_workflows, import_org_stage_workflows
 
 ORG_BUNDLE_KIND = "org-export"
 ORG_BUNDLE_FORMAT_VERSION = 1
@@ -206,6 +207,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **export_org_layouts(db, org.id, file_assets_by_id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
         **export_org_snippets(db, org.id, file_assets_by_id),
         **export_org_folders(db, org.id),
+        **export_org_stage_workflows(db, org.id),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -681,6 +683,8 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     # exist before it creates this org's first imported project.
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    # The bundle's workflows (a customised Standard included); the default only when it carried none.
+    import_org_stage_workflows(db, org.id, data, warnings, seed_if_empty=True)
     seed_custom_role_presets(db, org.id)
     # Scoring levels likewise start at registry defaults.
     seed_missing_scoring_levels(db, org.id)
@@ -847,6 +851,7 @@ def merge_org_bundle(
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_snippets(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_placements(db, target_org.id, data, current_user, warnings)
+    import_org_stage_workflows(db, target_org.id, data, warnings, seed_if_empty=False)
     import_org_folders(db, target_org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():

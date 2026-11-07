@@ -24,12 +24,17 @@ Dependencies: the core models and `services.search_core` (the joins), `services.
 
 from __future__ import annotations
 
+from typing import Any
+
+from sqlalchemy import select
+
 from app.models.action_type import ActionTypeDefinition
 from app.models.change_request import ChangeRequest
-from app.models.enums import ChangeRequestKind, RequirementLevel
+from app.models.enums import ChangeRequestKind, RequirementLevel, StagePhaseKind
 from app.models.project import ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.stage_workflow import StageWorkflowPhase
 from app.modules.registry import ReportFieldProvider
 from app.services.report_fields import (
     bool_field,
@@ -39,8 +44,20 @@ from app.services.report_fields import (
     instant_field,
     name_lookup_field,
     principal_field,
+    text_field,
 )
 from app.services.search_core import CORE_SEARCH_PROVIDERS
+
+
+def _target_stage_phase(column: Any) -> Any:
+    """A correlated subquery for `column` of the phase the requirement's target stage is in."""
+    return (
+        select(column)
+        .join(ProjectStage, ProjectStage.phase_id == StageWorkflowPhase.id)
+        .where(ProjectStage.id == RequirementVersion.target_stage_id)
+        .scalar_subquery()
+    )
+
 
 CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
     "requirement": from_search(
@@ -57,6 +74,10 @@ CORE_REPORT_FIELDS: dict[str, ReportFieldProvider] = {
             "target_stage", "Target stage", ProjectStage.name, ProjectStage.id, RequirementVersion.target_stage_id,
             ProjectStage.project_id,
         ),
+        # The phase the target stage is in, and its kind (what that phase does): a requirement's stage is a name
+        # a project chooses, so the kind is what a filter can rely on across projects.
+        text_field("target_stage_phase", "Target stage phase", _target_stage_phase(StageWorkflowPhase.name)),
+        enum_field("target_stage_phase_kind", "Target stage phase kind", _target_stage_phase(StageWorkflowPhase.kind), StagePhaseKind),
         enum_field("level", "Level", RequirementVersion.level, RequirementLevel),
         principal_field("owner", "Owner", RequirementVersion.owner_type, RequirementVersion.owner_id),
         principal_field("reviewer", "Reviewer", RequirementVersion.reviewer_type, RequirementVersion.reviewer_id),

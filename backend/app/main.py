@@ -67,6 +67,7 @@ from app.routers import (
     reviews,
     scim,
     search,
+    stage_workflows,
     system,
     tags,
     ws,
@@ -376,6 +377,8 @@ app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
 app.include_router(placements.router)
+app.include_router(stage_workflows.org_router)
+app.include_router(stage_workflows.project_router)
 app.include_router(tags.router)
 app.include_router(tags.org_router)
 app.include_router(project_link_types.router)

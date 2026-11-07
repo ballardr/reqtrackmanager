@@ -1,10 +1,11 @@
 """
 Module: routers.projects.stages
 
-Project stage lifecycle (C-G-08): create/list/rename/delete, the forward-
-only status state machine (scoping -> review -> approved, C-R-05/C-G-10/
-C-G-12), review-deadline scheduling and stakeholder responses, and
-completion (C-P-02/C-P-03).
+Project stage lifecycle (C-G-08): create/list/rename/delete, movement between
+the phases of the stage's workflow (`services.stage_workflows`; entering a
+locked phase baselines and locks, C-R-05/C-G-10/C-G-12; entering a closed one
+completes the stage, C-P-02/C-P-03), and review-deadline scheduling and
+stakeholder responses.
 """
 
 from __future__ import annotations
@@ -19,27 +20,75 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.change_request import ChangeRequestVersion
-from app.models.enums import ProjectRole, StageStatus
+from app.models.enums import ProjectRole, StagePhaseKind
 from app.models.notification import NotificationType
 from app.models.project import Project, ProjectStage, StageReviewResponse
 from app.models.requirement import Baseline, RequirementVersion
+from app.models.stage_workflow import StageWorkflow, StageWorkflowPhase
 from app.models.user import User
 from app.schemas.project import (
     ProjectStageCreate,
     ProjectStageOut,
     ProjectStageUpdate,
-    StageCompleteRequest,
     StageReviewDeadlineSet,
     StageReviewResponseCreate,
     StageReviewResponseOut,
 )
+from app.schemas.stage_workflow import StageTransitionRequest
 from app.services.audit import log_event
-from app.services.baseline import create_baseline_for_stage
 from app.services.notifications import notify
 from app.services.rbac import get_effective_project_roles, get_project_member_user_ids, require_project_manage, require_project_view
-from app.services.stages import complete_stage
+from app.services.stage_workflows import (
+    WorkflowConflict,
+    default_workflow,
+    effective_workflows,
+    move_stage,
+    new_stage,
+    phase_index,
+    phase_kind_of,
+    start_phase,
+)
 
 router = APIRouter(tags=["projects-stages"])
+
+
+def _stages_out(db: Session, stages: list[ProjectStage]) -> list[ProjectStageOut]:
+    """Stage responses with each stage's workflow and phase names, read in two queries."""
+    phases = phase_index(db, {s.phase_id for s in stages})
+    workflow_ids = {s.workflow_id for s in stages}
+    workflows = {
+        w.id: w.name for w in db.scalars(select(StageWorkflow).where(StageWorkflow.id.in_(workflow_ids))).all()
+    } if workflow_ids else {}
+    out = []
+    for stage in stages:
+        phase = phases[stage.phase_id]
+        out.append(ProjectStageOut(
+            id=stage.id, project_id=stage.project_id, name=stage.name, workflow_id=stage.workflow_id,
+            workflow_name=workflows.get(stage.workflow_id, ""), phase_id=phase.id, phase_name=phase.name,
+            phase_kind=phase.kind, sort_order=stage.sort_order, is_current=stage.is_current,
+            approved_at=stage.approved_at, completed_at=stage.completed_at, completed_by=stage.completed_by,
+            review_deadline=stage.review_deadline,
+        ))
+    return out
+
+
+def _stage_out(db: Session, stage: ProjectStage) -> ProjectStageOut:
+    return _stages_out(db, [stage])[0]
+
+
+def _get_stage(db: Session, project: Project, stage_id: UUID) -> ProjectStage:
+    stage = db.get(ProjectStage, stage_id)
+    if stage is None or stage.project_id != project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
+    return stage
+
+
+def _usable_workflow(db: Session, project: Project, workflow_id: UUID) -> StageWorkflow:
+    """The workflow if the project may use it (effective set), else a 400."""
+    for workflow in effective_workflows(db, project):
+        if workflow.id == workflow_id:
+            return workflow
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "workflow_id must be a workflow available to this project.")
 
 
 @router.post("/{project_id}/stages", response_model=ProjectStageOut, status_code=status.HTTP_201_CREATED)
@@ -49,30 +98,30 @@ def create_stage(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Adds a new project stage (C-G-08), starting in scoping status.
+    """Adds a new project stage (C-G-08), at the starting phase of the chosen
+    workflow (default: the project's default workflow).
 
-    Notifies project members that a new stage has entered scoping (C-N-01)
+    Notifies project members that a new stage has entered its starting phase (C-N-01)
     — this is never the "brand new project" case the requirement excludes,
     since a project's very first stage is created directly in
     `create_project`, not through this endpoint.
     """
     count = len(db.scalars(select(ProjectStage.id).where(ProjectStage.project_id == project.id)).all())
-    stage = ProjectStage(project_id=project.id, name=payload.name, status=StageStatus.SCOPING, sort_order=count)
-    db.add(stage)
-    db.flush()
+    workflow = _usable_workflow(db, project, payload.workflow_id) if payload.workflow_id else default_workflow(db, project)
+    stage = new_stage(db, project, payload.name, count, workflow=workflow)
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="created",
               actor_id=current_user.id, project_id=project.id)
     _notify_stage_transition(db, project, stage, current_user.id)
     db.commit()
     db.refresh(stage)
-    return stage
+    return _stage_out(db, stage)
 
 
 @router.get("/{project_id}/stages", response_model=list[ProjectStageOut])
 def list_stages(project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db)):
-    return db.scalars(
+    return _stages_out(db, list(db.scalars(
         select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
-    ).all()
+    ).all()))
 
 
 @router.patch("/{project_id}/stages/{stage_id}", response_model=ProjectStageOut)
@@ -81,9 +130,12 @@ def rename_stage(
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stage = db.get(ProjectStage, stage_id)
-    if stage is None or stage.project_id != project.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
+    """Renames a stage and, optionally, moves it to the start of another workflow.
+
+    A workflow change is refused unless the stage is still in an open phase with no baseline: moving a
+    locked or closed stage to another workflow's start would unlock it outside the change-request process.
+    """
+    stage = _get_stage(db, project, stage_id)
     existing = db.scalar(
         select(ProjectStage.id).where(
             ProjectStage.project_id == project.id, ProjectStage.name == payload.name, ProjectStage.id != stage_id
@@ -92,11 +144,22 @@ def rename_stage(
     if existing is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A stage with this name already exists.")
     stage.name = payload.name
+    if payload.workflow_id is not None and payload.workflow_id != stage.workflow_id:
+        workflow = _usable_workflow(db, project, payload.workflow_id)
+        has_baseline = db.scalar(select(Baseline.id).where(Baseline.stage_id == stage.id)) is not None
+        if has_baseline or phase_kind_of(db, stage) != StagePhaseKind.OPEN:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "A stage can change workflow only while it is in an open phase and has no baseline."
+            )
+        stage.workflow_id = workflow.id
+        stage.phase_id = start_phase(db, workflow.id).id
+        log_event(db, entity_type="project_stage", entity_id=stage.id, action="workflow_changed",
+                  actor_id=current_user.id, project_id=project.id, detail={"workflow": workflow.name})
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="renamed",
               actor_id=current_user.id, project_id=project.id)
     db.commit()
     db.refresh(stage)
-    return stage
+    return _stage_out(db, stage)
 
 
 @router.delete("/{project_id}/stages/{stage_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -152,82 +215,45 @@ def delete_stage(
     db.commit()
 
 
-#: Explicit forward-only lifecycle transitions this endpoint permits, keyed
-#: by the stage's *current* status. COMPLETED is deliberately absent as a
-#: value here — it's only reachable via the dedicated `/stages/{id}/complete`
-#: endpoint (C-P-02), which also handles the `cascade_to_requirements` flag
-#: and doesn't belong in a generic status-setter. ARCHIVED is reachable from
-#: any non-terminal status, matching its own documented purpose as a manual,
-#: no-special-gating display/filtering state (see `StageStatus`'s docstring).
-_ALLOWED_STAGE_TRANSITIONS: dict[StageStatus, set[StageStatus]] = {
-    StageStatus.SCOPING: {StageStatus.REVIEW, StageStatus.ARCHIVED},
-    StageStatus.REVIEW: {StageStatus.APPROVED, StageStatus.ARCHIVED},
-    StageStatus.APPROVED: {StageStatus.ARCHIVED},
-}
-
-
 @router.post("/{project_id}/stages/{stage_id}/transition", response_model=ProjectStageOut)
 def transition_stage(
     project_id: UUID,
     stage_id: UUID,
-    new_status: StageStatus,
+    payload: StageTransitionRequest,
     project: Project = Depends(require_project_manage),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Transitions a stage's lifecycle status.
+    """Moves a stage to another phase of its own workflow.
 
-    Approving a stage (-> APPROVED) writes an immutable baseline (C-G-10)
-    and, from that point on, locks direct requirement edits project-wide
-    until further change requests are approved (C-G-12). This transition
-    requires the project manager role specifically (C-U-03 clarification),
-    not just general settings-management access.
-
-    Only the forward transitions in `_ALLOWED_STAGE_TRANSITIONS` are
-    accepted (plus the always-available move to ARCHIVED) — a stage can't
-    skip a step (e.g. straight from SCOPING to APPROVED, bypassing the
-    review-deadline/stakeholder-response workflow, C-R-05) or move
-    backwards (e.g. APPROVED back to SCOPING, which would silently unlock
-    already-locked requirements outside the change-request process,
-    C-G-12). COMPLETED is intentionally not settable here at all; see
-    `/stages/{stage_id}/complete`.
+    Moves are free in either direction; the phase kind decides what happens
+    (`services.stage_workflows.move_stage`). Entering a locked phase writes an
+    immutable baseline (C-G-10), from which direct requirement edits are limited
+    to change requests (C-G-12); entering a closed phase completes the stage
+    (C-P-02) and, with `cascade_to_requirements`, its approved requirements
+    (C-P-03). Entering or leaving a locked phase requires the project manager
+    role (C-U-03 clarification), checked before the state so an unauthorised
+    caller always gets a uniform 403 rather than a 409 that would leak the
+    stage's current phase.
     """
-    stage = db.get(ProjectStage, stage_id)
-    if stage is None or stage.project_id != project.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
-
-    # Role check before state-machine check for APPROVED specifically, so an
-    # unauthorized caller always gets a uniform 403 rather than a 409 that
-    # would leak the stage's current status to someone who can't act on it
-    # anyway (matches C-U-03's PM-only approval gate being checked first
-    # everywhere else in this file).
-    if new_status == StageStatus.APPROVED:
-        if ProjectRole.PROJECT_MANAGER not in get_effective_project_roles(db, current_user.id, project.id):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only a project manager can approve a stage.")
-
-    allowed = _ALLOWED_STAGE_TRANSITIONS.get(stage.status, set())
-    if new_status not in allowed:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Cannot transition a stage from '{stage.status.value}' to '{new_status.value}'.",
+    stage = _get_stage(db, project, stage_id)
+    phase = db.get(StageWorkflowPhase, payload.phase_id)
+    if phase is None or phase.workflow_id != stage.workflow_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "phase_id must be a phase of the stage's workflow.")
+    try:
+        move_stage(
+            db, project, stage, phase, current_user,
+            actor_roles=get_effective_project_roles(db, current_user.id, project.id),
+            cascade_to_requirements=payload.cascade_to_requirements,
         )
-
-    if new_status == StageStatus.APPROVED:
-        stage.status = StageStatus.APPROVED
-        stage.approved_at = datetime.now(UTC)
-        stage.approved_by = current_user.id
-        create_baseline_for_stage(db, project, stage, current_user)
-        log_event(db, entity_type="project_stage", entity_id=stage.id, action="approved",
-                   actor_id=current_user.id, project_id=project.id)
-    else:
-        stage.status = new_status
-        log_event(db, entity_type="project_stage", entity_id=stage.id, action="status_changed",
-                   actor_id=current_user.id, project_id=project.id, detail={"status": new_status.value})
-
+    except PermissionError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
+    except WorkflowConflict as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     _notify_stage_transition(db, project, stage, current_user.id)
     db.commit()
     db.refresh(stage)
-    return stage
+    return _stage_out(db, stage)
 
 
 @router.post("/{project_id}/stages/{stage_id}/review-deadline", response_model=ProjectStageOut)
@@ -238,16 +264,14 @@ def set_stage_review_deadline(
 ):
     """Sets (or clears) a stage's review-response deadline (C-R-05).
 
-    Only meaningful while the stage is in REVIEW; the daily scheduler sweep
+    Only meaningful while the stage is in a review phase; the daily scheduler sweep
     (services/stages.py) auto-approves the stage once the deadline passes
     with no stakeholder rejection. Setting a new deadline clears any
     responses from a prior review cycle so they don't leak into this one.
     """
-    stage = db.get(ProjectStage, stage_id)
-    if stage is None or stage.project_id != project.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
-    if stage.status != StageStatus.REVIEW:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A review deadline can only be set while the stage is in review.")
+    stage = _get_stage(db, project, stage_id)
+    if phase_kind_of(db, stage) != StagePhaseKind.REVIEW:
+        raise HTTPException(status.HTTP_409_CONFLICT, "A review deadline can only be set while the stage is in a review phase.")
     db.execute(delete(StageReviewResponse).where(StageReviewResponse.stage_id == stage.id))
     stage.review_deadline = payload.review_deadline
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="review_deadline_set",
@@ -255,7 +279,7 @@ def set_stage_review_deadline(
               detail={"review_deadline": payload.review_deadline.isoformat() if payload.review_deadline else None})
     db.commit()
     db.refresh(stage)
-    return stage
+    return _stage_out(db, stage)
 
 
 @router.post("/{project_id}/stages/{stage_id}/review-response", response_model=StageReviewResponseOut)
@@ -267,7 +291,7 @@ def submit_stage_review_response(
     stage = db.get(ProjectStage, stage_id)
     if stage is None or stage.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
-    if stage.status != StageStatus.REVIEW or stage.review_deadline is None:
+    if phase_kind_of(db, stage) != StagePhaseKind.REVIEW or stage.review_deadline is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "This stage has no open review deadline.")
     if ProjectRole.STAKEHOLDER not in get_effective_project_roles(db, current_user.id, project_id):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only stakeholders or managers may respond to a stage review.")
@@ -295,29 +319,12 @@ def submit_stage_review_response(
     return response
 
 
-@router.post("/{project_id}/stages/{stage_id}/complete", response_model=ProjectStageOut)
-def complete_stage_endpoint(
-    project_id: UUID, stage_id: UUID, payload: StageCompleteRequest,
-    project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Marks a stage completed (C-P-02), optionally cascading to its
-    approved requirements (C-P-03, defaults to off per the requirement's
-    clarification)."""
-    stage = db.get(ProjectStage, stage_id)
-    if stage is None or stage.project_id != project.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Stage not found.")
-    complete_stage(db, project, stage, current_user, cascade_to_requirements=payload.cascade_to_requirements)
-    db.commit()
-    db.refresh(stage)
-    return stage
-
-
+#: A phase kind's notification; a paused or archived phase announces nothing.
 _STAGE_NOTIFICATION_TYPES = {
-    StageStatus.SCOPING: NotificationType.STAGE_SCOPING,
-    StageStatus.REVIEW: NotificationType.STAGE_REVIEW,
-    StageStatus.APPROVED: NotificationType.STAGE_APPROVED,
-    StageStatus.COMPLETED: NotificationType.STAGE_COMPLETED,
+    StagePhaseKind.OPEN: NotificationType.STAGE_SCOPING,
+    StagePhaseKind.REVIEW: NotificationType.STAGE_REVIEW,
+    StagePhaseKind.LOCKED: NotificationType.STAGE_APPROVED,
+    StagePhaseKind.CLOSED: NotificationType.STAGE_COMPLETED,
 }
 
 
@@ -336,8 +343,9 @@ def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage,
     excluded from this broadcast so they're not told about the very change
     they just made (e.g. the project manager who approved the stage).
     """
-    notification_type = _STAGE_NOTIFICATION_TYPES.get(stage.status)
-    if notification_type is None:
+    phase = db.get(StageWorkflowPhase, stage.phase_id)
+    notification_type = _STAGE_NOTIFICATION_TYPES.get(phase.kind) if phase is not None else None
+    if phase is None or notification_type is None:
         return
     member_ids = get_project_member_user_ids(db, project.id)
     for user_id in member_ids:
@@ -345,7 +353,7 @@ def _notify_stage_transition(db: Session, project: Project, stage: ProjectStage,
         if user is not None:
             notify(
                 db, user, notification_type=notification_type,
-                title=f"{project.name}: {stage.name} is now {stage.status.value}",
+                title=f"{project.name}: {stage.name} is now {phase.name}",
                 project_id=project.id, entity_type="project_stage", entity_id=str(stage.id),
                 actor_id=actor_id,
             )

@@ -42,6 +42,7 @@ import type {
   ProjectFile,
   ProjectListItem,
   ProjectStage,
+  StageWorkflow,
   ProjectStatusDefinition,
   Requirement,
   RequirementAction,
@@ -210,7 +211,8 @@ export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): 
   return {
     ...buildProject(),
     current_stage_name: "Build",
-    current_stage_status: "scoping",
+    current_stage_phase_name: "Scoping",
+    current_stage_phase_kind: "open",
     my_roles: ["project_manager"],
     is_favorite: false,
     organization_name: "Acme Corp",
@@ -220,12 +222,31 @@ export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): 
   };
 }
 
+/** The organisation's Standard workflow (phase ids `phase-scoping`, `phase-review`, ...), as a new organisation has it. */
+export function buildStageWorkflow(overrides: Partial<StageWorkflow> = {}): StageWorkflow {
+  return {
+    id: "workflow-1", name: "Standard", scope: "organisation", sort_order: 0, in_use: true,
+    phases: [
+      { id: "phase-scoping", name: "Scoping", kind: "open", sort_order: 0 },
+      { id: "phase-review", name: "Review", kind: "review", sort_order: 1 },
+      { id: "phase-approved", name: "Approved", kind: "locked", sort_order: 2 },
+      { id: "phase-completed", name: "Completed", kind: "closed", sort_order: 3 },
+      { id: "phase-archived", name: "Archived", kind: "on_hold", sort_order: 4 },
+    ],
+    ...overrides,
+  };
+}
+
 export function buildStage(overrides: Partial<ProjectStage> = {}): ProjectStage {
   return {
     id: nextId("stage"),
     project_id: "project-1",
     name: "Build",
-    status: "scoping",
+    workflow_id: "workflow-1",
+    workflow_name: "Standard",
+    phase_id: "phase-scoping",
+    phase_name: "Scoping",
+    phase_kind: "open",
     sort_order: 0,
     is_current: true,
     approved_at: null,

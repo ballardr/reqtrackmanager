@@ -225,8 +225,8 @@ const en = {
     unfavorite: "Remove from favourites",
     favouritesOnly: "Favourites only",
     allRoles: "All roles",
-    stageStatusLabel: "{Stage} status",
-    allStages: "All {stage} statuses",
+    stagePhaseKindLabel: "{Stage} phase kind",
+    allStages: "All {stage} phase kinds",
     allOrganisations: (orgPlural: string) => `All ${orgPlural.toLowerCase()}`,
     requirementCount: "{Requirements}",
     organisation: (orgCap: string) => orgCap,
@@ -639,8 +639,6 @@ const en = {
     structure: "Structure",
     fieldsAndActions: "Fields & actions",
     stages: "{Project} stages",
-    startReview: "Start review",
-    approveStage: "Approve {stage}",
     completeStage: "Mark {stage} completed",
     cascadeToRequirements: "Also mark this {stage}'s approved {requirements} as completed",
     setReviewDeadline: "Set review deadline",
@@ -3570,6 +3568,17 @@ const en = {
     fieldPickerSummaryLimit: 3,
   },
   help: {
+    // Stage workflows
+    stagePhaseKindFilter:
+      "Open: requirements can be edited and reordered.\nReview: a review deadline and stakeholder responses apply.\nLocked: a baseline was written; requirements change through change requests.\nOn hold: paused or archived, with no special rules.\nClosed: the {stage} is complete.",
+    workflowPhases:
+      "The phases a {stage} moves through, in order. The first phase is where a new {stage} starts. A {stage} can move to any phase of its workflow, in either direction.",
+    workflowPhaseKind:
+      "Open: requirements can be edited and reordered.\nReview: a review deadline and stakeholder responses apply; when the deadline passes with no objection the {stage} moves to the next Locked phase.\nLocked: entering writes a baseline and approves the requirements, after which changes need a change request; a project manager must enter or leave it.\nOn hold: paused or archived, with no special rules.\nClosed: the {stage} is complete; entering records who completed it and can mark its approved requirements completed.",
+    stageWorkflowChoice:
+      "The workflow this {stage} follows. It can be changed only while the {stage} is in an Open phase and has no baseline.",
+    stagePhaseChoice:
+      "Moves the {stage} to another phase of its workflow. Entering or leaving a Locked phase needs the project manager role.",
     // Components on any record
     recordComponents: "The components and categories this record belongs to, for example Hardware or Hardware / Cooling. A record can belong to several, and every list can be filtered by them.",
     recordComponentsFilter: "Shows records placed in any chosen component or category.\nA component chosen alone matches the record whatever its category.",
@@ -3726,6 +3735,39 @@ const en = {
     success: (noun: string, past: string) =>
       `${noun.replace(/^\{?\w/, (head) => head.toUpperCase())} ${past}.`,
     failure: (verb: string, noun: string) => `Could not ${verb} the ${noun}.`,
+  },
+  stageWorkflows: {
+    heading: "{Stage} workflows",
+    newWorkflow: "New workflow",
+    editWorkflow: "Edit workflow",
+    workflowName: "Workflow name",
+    phases: "Phases",
+    phaseName: "Phase name",
+    phaseKind: "Kind",
+    addPhase: "Add phase",
+    removePhase: (name: string) => `Remove phase ${name}`,
+    movePhaseUp: (name: string) => `Move phase ${name} up`,
+    movePhaseDown: (name: string) => `Move phase ${name} down`,
+    startBadge: "Start",
+    inUseBadge: "In use",
+    scopeOrganisation: "Organisation",
+    scopeProject: "This {project}",
+    editAria: (name: string) => `Edit workflow ${name}`,
+    deleteAria: (name: string) => `Delete workflow ${name}`,
+    hideAria: (name: string) => `Hide workflow ${name}`,
+    deleteTitle: (name: string) => `Delete the workflow ${name}?`,
+    hideTitle: (name: string) => `Hide the workflow ${name} in this {project}?`,
+    deleteBody: "Phases and the workflow are removed. This cannot be undone.",
+    hideConfirm: "Hide",
+    hideBody: "The organisation keeps it; stages already following it are unaffected. It can be restored from Add organisation defaults.",
+    noWorkflows: "No workflows yet.",
+    nounSingular: "workflow",
+    nounPlural: "workflows",
+    workflow: "Workflow",
+    phase: "Phase",
+    changeWorkflowAria: (stage: string) => `Workflow of ${stage}`,
+    changePhaseAria: (stage: string) => `Phase of ${stage}`,
+    loadFailed: "Could not load the workflows.",
   },
   recordTables: {
     menuLabel: "List actions",

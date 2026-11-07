@@ -25,7 +25,6 @@ from app.models.enums import (
     ProjectRoleInheritanceMode,
     ProjectVisibility,
     StageReviewResponseChoice,
-    StageStatus,
 )
 
 #: Longest Project report name: the same as `Project.name`, so the short name is never stricter than the name it stands for
@@ -203,7 +202,8 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     """One lifecycle horizon of a project (C-G-08, C-G-10).
 
     Attributes:
-        status: scoping -> review -> approved -> completed.
+        workflow_id / phase_id: The workflow the stage follows and its current phase; the
+            phase's kind (not its name) drives the baseline, edit lock and completion.
         sort_order: Display/sequence order among a project's stages.
         approved_at / approved_by: Set when the stage transitions to
             approved; this is also when a baseline snapshot is written
@@ -216,7 +216,8 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
-    status: Mapped[StageStatus] = mapped_column(str_enum(StageStatus, 20), default=StageStatus.SCOPING)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stage_workflows.id"), index=True)
+    phase_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stage_workflow_phases.id"), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
 

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
+import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, moveStageToPhase, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -172,14 +172,8 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       });
       const stages: { id: string; name: string }[] = await stagesResp.json();
       const milestone1 = stages.find((s) => s.name === "Milestone 1")!;
-      await page.request.post(
-        `http://localhost:8000/api/v1/projects/${projectId}/stages/${milestone1.id}/transition?new_status=review`,
-        { headers: authHeaders }
-      );
-      await page.request.post(
-        `http://localhost:8000/api/v1/projects/${projectId}/stages/${milestone1.id}/transition?new_status=approved`,
-        { headers: authHeaders }
-      );
+      await moveStageToPhase(page.request, authHeaders, projectId, milestone1.id, "Review");
+      await moveStageToPhase(page.request, authHeaders, projectId, milestone1.id, "Approved");
       // ProjectAdminPage's group is now a real route segment
       // (`ResourceMenu`, converted from `Tabs`), so a full page reload no
       // longer resets it to the default (Overview) the way client-only tab

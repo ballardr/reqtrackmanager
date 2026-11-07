@@ -33,7 +33,7 @@ from app.models.enums import (
     ProjectRole,
     RequirementStatus,
     ReviewTargetType,
-    StageStatus,
+    StagePhaseKind,
 )
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
@@ -71,6 +71,7 @@ from app.services.requirements import (
     unarchive_requirement,
     version_people,
 )
+from app.services.stage_workflows import current_stage_kind
 
 router = APIRouter(tags=["requirements-core"])
 
@@ -497,11 +498,8 @@ def move_requirement(
 ):
     """Reorders a requirement within its list. Scoping-stage only (C-E-03)."""
     _require_edit_role(db, current_user, project_id)
-    current_stage = db.scalar(
-        select(ProjectStage).where(ProjectStage.project_id == project_id, ProjectStage.is_current.is_(True))
-    )
-    if current_stage is None or current_stage.status != StageStatus.SCOPING:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Requirements can only be reordered during scoping.")
+    if current_stage_kind(db, project_id) != StagePhaseKind.OPEN:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Requirements can only be reordered while the current stage is in an open phase.")
 
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:

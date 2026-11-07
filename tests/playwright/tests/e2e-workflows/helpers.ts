@@ -512,6 +512,26 @@ export async function apiHeaders(
   return { Authorization: `Bearer ${(await resp.json()).access_token}` };
 }
 
+/**
+ * Moves a stage to the named phase of its own workflow (`POST .../transition`) and returns the response, so a
+ * caller can assert a refusal. The phase is found by name in the stage's workflow, whatever the ids are.
+ */
+export async function moveStageToPhase(
+  request: APIRequestContext, headers: Record<string, string>, projectId: string, stageId: string, phaseName: string,
+  cascadeToRequirements = false,
+) {
+  const base = `http://localhost:8000/api/v1/projects/${projectId}`;
+  const stages: { id: string; workflow_id: string }[] = await (await request.get(`${base}/stages`, { headers })).json();
+  const stage = stages.find((s) => s.id === stageId)!;
+  const workflows: { id: string; phases: { id: string; name: string }[] }[] = await (
+    await request.get(`${base}/stage-workflows`, { headers })
+  ).json();
+  const phase = workflows.find((w) => w.id === stage.workflow_id)!.phases.find((p) => p.name === phaseName)!;
+  return request.post(`${base}/stages/${stageId}/transition`, {
+    headers, data: { phase_id: phase.id, cascade_to_requirements: cascadeToRequirements },
+  });
+}
+
 type Cleanup = (request: APIRequestContext) => Promise<void>;
 const pendingCleanups: Cleanup[] = [];
 

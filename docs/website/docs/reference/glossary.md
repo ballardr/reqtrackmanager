@@ -116,7 +116,7 @@ A role governing what someone can do inside one specific project (`project_manag
 
 #### Project stage
 
-One step in a project's sequence (e.g. Scoping → Development → Hardening). Approving a stage creates a [baseline](#baseline) and locks the requirements it captured. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md).
+One step in a project's sequence (e.g. Scoping → Development → Hardening). It follows a [stage workflow](#stage-workflow); entering a Locked phase creates a [baseline](#baseline) and locks the requirements it captured. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md).
 
 #### Project template
 
@@ -141,6 +141,10 @@ One historical or current state of a requirement's content (name, reasoning, des
 #### Risk treatment verdict
 
 A Risk owner's judgement of whether one linked Requirement or Action actually reduces the Risk: Proposed, Effective, Ineffective or Needs reassessment. Only Effective counts. See [Risk Management → Treatment and relationships](../modules/risk-management-module/treatment-and-relationships.md).
+
+#### Stage workflow
+
+A named, ordered list of phases a project stage moves through. Each phase has a free-text name and a kind (Open, Review, Locked, On hold or Closed) that decides what entering it does. Defined by the organisation (available to every project, which can hide it) or by one project. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
 
 #### Task (change request task)
 

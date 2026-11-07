@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 
 from app.models.action_type import ActionTypeDefinition
 from app.models.custom_field import CustomFieldDefinition
-from app.models.enums import PrincipalType, RequirementStatus, StageStatus
+from app.models.enums import PrincipalType, RequirementStatus
 from app.models.project import (
     Project,
     ProjectCategory,
@@ -49,15 +49,16 @@ from app.models.project import (
     ProjectGroup,
     ProjectGroupMember,
     ProjectGroupRole,
-    ProjectStage,
     UserProjectRole,
 )
 from app.models.requirement import Requirement, RequirementVersion
+from app.models.stage_workflow import StageWorkflow
 from app.models.user import User
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
 from app.services.lookups import get_or_404
 from app.services.requirements import get_current_version, get_keywords, set_keywords
+from app.services.stage_workflows import PhaseInput, new_stage, phases_of, write_workflow
 
 
 def clone_project(
@@ -101,11 +102,14 @@ def clone_project(
     db.add(new_project)
     db.flush()
 
-    new_scoping_stage = ProjectStage(
-        project_id=new_project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True
-    )
-    db.add(new_scoping_stage)
-    db.flush()
+    # The template's own workflows come along (the organisation's are shared already); stages and their
+    # phases are lifecycle state and are not copied, so the first stage starts in the default workflow.
+    for workflow in db.scalars(select(StageWorkflow).where(StageWorkflow.project_id == source.id).order_by(StageWorkflow.sort_order)).all():
+        write_workflow(
+            db, organization_id=source.organization_id, project_id=new_project.id, name=workflow.name,
+            phases=[PhaseInput(name=p.name, kind=p.kind) for p in phases_of(db, workflow.id)],
+        )
+    new_scoping_stage = new_stage(db, new_project, "Scoping", 0, is_current=True)
 
     component_id_map = {}
     for component in db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == source.id)).all():

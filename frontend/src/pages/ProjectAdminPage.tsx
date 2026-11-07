@@ -1,5 +1,5 @@
 import { useMutation } from "../hooks/useMutation";
-import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -32,14 +32,18 @@ import type {
   ProjectRole,
   ProjectRoleInheritanceMode,
   ProjectStage,
+  StageWorkflow,
+  StageWorkflowPhase,
   ProjectStatusDefinition,
 } from "../api/types";
-import { CUSTOM_FIELD_TYPE_LABEL, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_TYPE_LABEL, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { stagePhaseLabel } from "../utils/stageBadge";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -206,6 +210,10 @@ export function ProjectAdminPage() {
   // unconditionally" comment).
   const [projectModules, setProjectModules] = useState<ProjectModuleEnablement[]>([]);
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
+  const [stageWorkflows, setStageWorkflows] = useState<StageWorkflow[]>([]);
+  // A stage being moved into a closed phase: asks first whether to complete its approved requirements too.
+  const [closingStage, setClosingStage] = useState<{ stage: ProjectStage; phase: StageWorkflowPhase } | null>(null);
+  const [newStageWorkflowId, setNewStageWorkflowId] = useState("");
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
@@ -437,9 +445,10 @@ export function ProjectAdminPage() {
     // invoked — not whenever it happens to reach the `loadGroups` line
     // near the bottom. See `loadGroupsRequestIdRef`'s own comment.
     const groupsRequestId = ++loadGroupsRequestIdRef.current;
-    const [p, s, c, cat, cf, at] = await Promise.all([
+    const [p, s, wf, c, cat, cf, at] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
+      api.get<StageWorkflow[]>(`/api/v1/projects/${projectId}/stage-workflows`),
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
@@ -465,6 +474,7 @@ export function ProjectAdminPage() {
     }
     if (!terminologyDirtyRef.current) setTerminology(p.terminology);
     setStages(s);
+    setStageWorkflows(wf);
     setComponents(c);
     setCategories(cat);
     await loadGroups(groupSearch, 0, false, groupSort, groupsRequestId);
@@ -798,18 +808,33 @@ export function ProjectAdminPage() {
 
   async function addStage() {
     if (!newStageName.trim()) return;
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, { name: newStageName }), "add", "{stage}"))) return;
+    const body = { name: newStageName, workflow_id: newStageWorkflowId || undefined };
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, body), "add", "{stage}"))) return;
     setNewStageName("");
     reload();
   }
 
-  async function startStageReview(stageId: string) {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=review`), "start", "{stage} review"))) return;
+  /** Moves a stage to a phase of its workflow; a closed phase first asks whether to complete its requirements. */
+  async function moveStage(stage: ProjectStage, phaseId: string, cascade = false) {
+    const body = { phase_id: phaseId, cascade_to_requirements: cascade };
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stage.id}/transition`, body), "move", "{stage}"))) return;
     reload();
   }
 
-  async function approveStage(stageId: string) {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`), "approve", "{stage}"))) return;
+  function requestStageMove(stage: ProjectStage, phaseId: string) {
+    const phase = stageWorkflows.find((w) => w.id === stage.workflow_id)?.phases.find((p) => p.id === phaseId);
+    if (!phase || phase.id === stage.phase_id) return;
+    if (phase.kind === "closed") {
+      setCascadeInputs((c) => ({ ...c, [stage.id]: false }));
+      setClosingStage({ stage, phase });
+      return;
+    }
+    void moveStage(stage, phase.id);
+  }
+
+  async function changeStageWorkflow(stage: ProjectStage, workflowId: string) {
+    if (!workflowId || workflowId === stage.workflow_id) return;
+    if (!(await run(() => api.patch(`/api/v1/projects/${projectId}/stages/${stage.id}`, { name: stage.name, workflow_id: workflowId }), "change", "{stage} workflow"))) return;
     reload();
   }
 
@@ -822,11 +847,6 @@ export function ProjectAdminPage() {
 
   async function respondToStageReview(stageId: string, response: "approved" | "rejected") {
     if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-response`, { response }), "respond", "{stage} review"))) return;
-    reload();
-  }
-
-  async function completeStage(stageId: string, cascade: boolean) {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/complete`, { cascade_to_requirements: cascade }), "complete", "{stage}"))) return;
     reload();
   }
 
@@ -1838,7 +1858,7 @@ export function ProjectAdminPage() {
                     <Pencil />
                   </button>
                 )}
-                <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
+                <Badge>{stagePhaseLabel(s.phase_name, s.phase_kind)}</Badge>
                 {s.review_deadline && <Badge>{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</Badge>}
                 {s.completed_at && <Badge>{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</Badge>}
                 <button
@@ -1851,30 +1871,24 @@ export function ProjectAdminPage() {
                   <Trash2 />
                 </button>
               </div>
-              {s.status === "scoping" && (
-                <button className="btn" onClick={() => startStageReview(s.id)}>
-                  {strings.admin.startReview}
-                </button>
-              )}
-              {s.status === "review" && (
-                <button className="btn" onClick={() => approveStage(s.id)}>
-                  <Check /> {strings.admin.approveStage}
-                </button>
-              )}
-              {s.status === "approved" && (
-                <div className="row">
-                  <CheckboxField helpNotNeeded
-                    label={strings.admin.cascadeToRequirements}
-                    checked={cascadeInputs[s.id] ?? false}
-                    onChange={(next) => setCascadeInputs((c) => ({ ...c, [s.id]: next }))}
+              <div className="row">
+                {stageWorkflows.length > 1 && (
+                  <InlineSelect
+                    ariaLabel={strings.stageWorkflows.changeWorkflowAria(s.name)} value={s.workflow_id} placeholder={null}
+                    disabled={s.phase_kind !== "open"} maxWidth={200}
+                    onChange={(next) => changeStageWorkflow(s, next)}
+                    options={stageWorkflows.map((w) => ({ value: w.id, label: w.name }))}
                   />
-                  <button className="btn" onClick={() => completeStage(s.id, cascadeInputs[s.id] ?? false)}>
-                    {strings.admin.completeStage}
-                  </button>
-                </div>
-              )}
+                )}
+                <InlineSelect
+                  ariaLabel={strings.stageWorkflows.changePhaseAria(s.name)} value={s.phase_id} placeholder={null} maxWidth={220}
+                  onChange={(next) => requestStageMove(s, next)}
+                  options={(stageWorkflows.find((w) => w.id === s.workflow_id)?.phases ?? [{ id: s.phase_id, name: s.phase_name }])
+                    .map((p) => ({ value: p.id, label: p.name }))}
+                />
+              </div>
             </div>
-            {s.status === "review" && (
+            {s.phase_kind === "review" && (
               <div className="row">
                 <InlineTextInput
                   type="datetime-local" maxWidth={220} ariaLabel={`${strings.admin.reviewDeadline}: ${s.name}`}
@@ -1904,10 +1918,21 @@ export function ProjectAdminPage() {
         })}
         <div className="row" style={{ alignItems: "flex-end" }}>
           <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
+          {stageWorkflows.length > 1 && (
+            <LabeledSelect
+              label={strings.stageWorkflows.workflow} help={strings.help.stageWorkflowChoice} placeholder={null}
+              value={newStageWorkflowId || stageWorkflows[0]?.id || ""} onChange={setNewStageWorkflowId}
+              options={stageWorkflows.map((w) => ({ value: w.id, label: w.name }))}
+            />
+          )}
           <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
             <Plus /> {strings.admin.newStage}
           </button>
         </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection sectionKey="projectAdmin.structure.stageWorkflows" title={strings.stageWorkflows.heading} defaultCollapsed>
+          {projectId && <StageWorkflowsPanel scope={{ kind: "project", projectId }} onChanged={reload} />}
         </CollapsibleSection>
 
         {/* Audit finding: the tab bar used to call this "Categories" while
@@ -2783,6 +2808,25 @@ export function ProjectAdminPage() {
             {section.render({ projectId: project.id })}
           </div>
         ))}
+      {closingStage && (
+        <ConfirmDialog
+          title={strings.admin.completeStage}
+          message={
+            <CheckboxField helpNotNeeded
+              label={strings.admin.cascadeToRequirements}
+              checked={cascadeInputs[closingStage.stage.id] ?? false}
+              onChange={(next) => setCascadeInputs((c) => ({ ...c, [closingStage.stage.id]: next }))}
+            />
+          }
+          confirmLabel={closingStage.phase.name}
+          onConfirm={() => {
+            const { stage, phase } = closingStage;
+            setClosingStage(null);
+            void moveStage(stage, phase.id, cascadeInputs[stage.id] ?? false);
+          }}
+          onCancel={() => setClosingStage(null)}
+        />
+      )}
       {deletingStageId && stages.some((st) => st.id === deletingStageId) && (
         <DeleteInUseDialog
           title={strings.admin.deleteInUseTitle(stages.find((st) => st.id === deletingStageId)!.name)}
