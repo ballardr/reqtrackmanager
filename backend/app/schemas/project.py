@@ -28,6 +28,7 @@ from app.models.project import MAX_REPORT_NAME_LENGTH
 # than duplicated — the reverse direction of the existing `orgs.py`
 # importing `MoveDirection` from this very module.
 from app.schemas.org import ModuleRoleGrantOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
 # freeform key-value store — terminology only covers these nouns.
@@ -379,6 +380,8 @@ class ProjectStageCreate(BaseModel):
 class ProjectStageUpdate(BaseModel):
     name: str
     workflow_id: UUID | None = None  # moves the stage to the start of another workflow while it is still open
+    #: Sent (even as null) to set or clear the owner reminded about the stage's phase schedule; absent leaves it unchanged.
+    owner: PrincipalRef | None = None
 
 
 class ProjectStageOut(BaseModel):
@@ -398,6 +401,7 @@ class ProjectStageOut(BaseModel):
     completed_at: datetime | None = None
     completed_by: UUID | None = None
     review_deadline: datetime | None = None
+    owner: PrincipalOut | None = None
 
 
 class StageReviewDeadlineSet(BaseModel):

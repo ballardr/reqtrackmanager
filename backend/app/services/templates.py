@@ -73,6 +73,7 @@ def copy_component_tracks(
     new project's), and the "not applicable" flag is.
     """
     new_project.component_phases_mode = source.component_phases_mode
+    new_project.phase_reminder_lead_days = source.phase_reminder_lead_days
     template_stage = db.scalar(select(ProjectStage).where(ProjectStage.project_id == source.id, ProjectStage.name == new_stage_row.name))
     if template_stage is None:
         return

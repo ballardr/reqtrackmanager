@@ -25,8 +25,8 @@ const categories: Category[] = [
   { id: "cat2", project_id: PROJECT_ID, component_id: "c2", name: "Export", prefix: "EXP", sort_order: 0 },
 ];
 const stages: ProjectStage[] = [
-  { id: "s1", project_id: PROJECT_ID, name: "Build", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
-  { id: "s2", project_id: PROJECT_ID, name: "Test", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+  { id: "s1", project_id: PROJECT_ID, name: "Build", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, owner: null, review_deadline: null },
+  { id: "s2", project_id: PROJECT_ID, name: "Test", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, owner: null, review_deadline: null },
 ];
 
 /** The quick-link field's finder reads: the link types usable from a new requirement and the records a search finds. */

@@ -137,9 +137,11 @@ from app.services.report_snippet_bundle import export_project_snippets, import_p
 from app.services.sequences import generate_unique_code
 from app.services.stage_workflow_bundle import (
     export_component_phases,
+    export_phase_schedule,
     export_project_stage_workflows,
     export_stage_phases,
     import_component_phases,
+    import_phase_schedule,
     import_project_stage_workflows,
     import_stage,
 )
@@ -541,6 +543,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "tags": export_vocabulary(db, project),
         **export_project_stage_workflows(db, project),
         **export_component_phases(db, project, components, stages),
+        **export_phase_schedule(db, project, components, stages),
         "stages": [{"name": s.name, "sort_order": s.sort_order, **stage_phases[s.id]} for s in stages],
         "components": [
             {
@@ -1022,6 +1025,7 @@ def apply_project_data(
                 db.add(BaselineItem(baseline_id=baseline.id, requirement_id=requirement_id, requirement_version_id=version_id))
 
     import_component_phases(db, project, data, component_id_by_prefix, stage_id_by_name, users, warnings)
+    import_phase_schedule(db, project, data, component_id_by_prefix, stage_id_by_name, users, warnings)
 
     for rr in data.get("requirement_reviews", []):
         requirement_id = requirement_id_by_code.get(rr["unique_code"])

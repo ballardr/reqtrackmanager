@@ -121,6 +121,11 @@ An organisation administrator builds a workflow with a custom locked phase in Or
 
 On a disposable project the manager turns Component phases on in Project Admin → moves Software's track into its Approved phase, which approves only the Software requirement (the Hardware requirement stays a draft) → marks a stage Not applicable to Hardware.
 
+### 10d. Phase schedule
+**Persona:** Org Admin AlphaBeta. **Spec:** `phase-schedule.spec.ts`.
+
+On a disposable project the manager gives the current phase an expected range that has already ended in Project Admin → Stage schedule, and the phase is marked Overdue → an end before the start is refused in the dialog → moving the stage on records the phase as completed, shown as completed late.
+
 ### 11. Project Admin: structural rename/delete/archive
 **Persona:** Org Admin AlphaBeta (PM). **Spec:** `project-admin-structural.spec.ts` (C-G-07, C-E-01/02, C-P-01).
 

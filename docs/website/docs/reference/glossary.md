@@ -150,6 +150,10 @@ A named, ordered list of phases a project stage moves through. Each phase has a 
 
 A per-project setting under which each component follows its own [stage workflow](#stage-workflow) for each stage. A component's Locked phase approves only its own requirements for that stage. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#component-phases).
 
+#### Phase schedule
+
+The expected range (an expected start and end, both calendar dates) of a phase of a stage or of a component's track, with its actual start and completion and the upcoming, overdue and completed reminders sent about it. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#phase-schedule-and-reminders).
+
 #### Task (change request task)
 
 A short follow-up item tied to a change request, with an optional assignee and due date. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).

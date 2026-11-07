@@ -29,6 +29,8 @@ import type {
   ActionTypeDefinition,
   Category,
   ComponentPhases,
+  PhasePlan,
+  PhasePlans,
   ComponentTrack,
   ChangeEntry,
   ChangeRequest,
@@ -253,6 +255,19 @@ export function buildComponentPhases(overrides: Partial<ComponentPhases> = {}): 
   return { mode: "on", own_mode: "on", inherited: false, tracks: [buildComponentTrack()], ...overrides };
 }
 
+/** One phase's schedule row (the stage's own Scoping phase, unscheduled unless overridden). */
+export function buildPhasePlan(overrides: Partial<PhasePlan> = {}): PhasePlan {
+  return {
+    stage_id: "stage-1", component_id: null, phase_id: "phase-scoping", expected_from: null, expected_to: null,
+    started_at: null, completed_at: null, ...overrides,
+  };
+}
+
+/** The phase schedule a project returns: the lead time that applies and its stored plan rows. */
+export function buildPhasePlans(overrides: Partial<PhasePlans> = {}): PhasePlans {
+  return { lead_days: 7, own_lead_days: null, inherited: true, plans: [], ...overrides };
+}
+
 export function buildStage(overrides: Partial<ProjectStage> = {}): ProjectStage {
   return {
     id: nextId("stage"),
@@ -268,6 +283,7 @@ export function buildStage(overrides: Partial<ProjectStage> = {}): ProjectStage 
     approved_at: null,
     completed_at: null,
     completed_by: null,
+    owner: null,
     review_deadline: null,
     ...overrides,
   };

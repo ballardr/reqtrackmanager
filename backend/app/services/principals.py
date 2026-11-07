@@ -54,7 +54,7 @@ from app.models.change_request import ChangeRequest, ChangeRequestTask, ChangeRe
 from app.models.engagement import Subscription
 from app.models.enums import ChangeRequestStatus, PrincipalType
 from app.models.organization import OrgGroup
-from app.models.project import Project, ProjectGroup
+from app.models.project import Project, ProjectGroup, ProjectStage
 from app.models.requirement import RequirementVersion
 from app.models.requirement_action import RequirementAction
 from app.models.stage_workflow import ComponentStageState
@@ -112,6 +112,7 @@ CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
     PrincipalReference(
         model=ComponentStageState, field="owner", label="component stage owners", audit_entity_type="component_stage_state",
     ),
+    PrincipalReference(model=ProjectStage, field="owner", label="stage owners", audit_entity_type="project_stage"),
     PrincipalReference(
         model=ChangeRequestTask, field="assignee", label="change request task assignees",
         audit_entity_type="change_request_task", live_filter=lambda: ChangeRequestTask.is_done.is_(False),

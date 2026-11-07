@@ -45,6 +45,10 @@ class NotificationType(str, enum.Enum):
     COMMENT_ADDED = "comment_added"
     REQUIREMENT_REVIEW_DUE = "requirement_review_due"
     STAGE_REVIEW_AUTO_APPROVED = "stage_review_auto_approved"
+    # Phase schedule reminders for a stage or a component's track (services/stage_phase_plans.py).
+    STAGE_PHASE_UPCOMING = "stage_phase_upcoming"
+    STAGE_PHASE_OVERDUE = "stage_phase_overdue"
+    STAGE_PHASE_COMPLETED = "stage_phase_completed"
     PROJECT_MEMBERS_CHANGED_BY_ORG = "project_members_changed_by_org"
     # Deployment health alert sent to server admins (services/storage_health.py, services/disk_monitor.py).
     SYSTEM_STORAGE_ALERT = "system_storage_alert"

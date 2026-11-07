@@ -259,6 +259,34 @@ def move_component_track(headers: dict, project_id: str, component_id: str, stag
     r.raise_for_status()
 
 
+def schedule_phase(
+    headers: dict, project_id: str, stage_id: str, phase_name: str, start: date | None, end: date | None,
+    component_id: str | None = None,
+) -> None:
+    """Sets the expected range of the phase called `phase_name` in the workflow that applies to the stage,
+    or to the component's track within it."""
+    stage = next(
+        st for st in httpx.get(f"{BASE}/projects/{project_id}/stages", headers=headers, timeout=30).json() if st["id"] == stage_id
+    )
+    workflow_id = stage["workflow_id"]
+    if component_id is not None:
+        tracks = httpx.get(f"{BASE}/projects/{project_id}/component-stages", headers=headers, timeout=30).json()["tracks"]
+        workflow_id = next(t for t in tracks if t["component_id"] == component_id and t["stage_id"] == stage_id)["workflow_id"]
+    workflow = next(
+        w for w in httpx.get(f"{BASE}/projects/{project_id}/stage-workflows", headers=headers, timeout=30).json() if w["id"] == workflow_id
+    )
+    phase = next(p for p in workflow["phases"] if p["name"].lower() == phase_name.lower())
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/stages/{stage_id}/phase-plan",
+        json={
+            "phase_id": phase["id"], "component_id": component_id,
+            "expected_from": start.isoformat() if start else None, "expected_to": end.isoformat() if end else None,
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def mark_component_track_not_applicable(headers: dict, project_id: str, component_id: str, stage_id: str) -> None:
     """Marks a stage as not applicable to one component."""
     r = httpx.patch(
@@ -2250,6 +2278,16 @@ def main() -> None:
     enable_component_phases(h_pm, drone["id"])
     move_component_track(h_pm, drone["id"], drone_components["AF"]["id"], drone_design["id"], "review")
     mark_component_track_not_applicable(h_pm, drone["id"], drone_components["FW"]["id"], drone_validation["id"])
+    # Phase schedule: the design review has run past its expected end (an overdue reminder), the next phase starts
+    # within the lead time (an upcoming reminder), Airframe's own review has a range, and the outsourced
+    # validation stage is planned through tendering.
+    today = date.today()
+    schedule_phase(h_pm, drone["id"], drone_design["id"], "review", today - timedelta(days=14), today - timedelta(days=2))
+    schedule_phase(h_pm, drone["id"], drone_design["id"], "approved", today + timedelta(days=3), today + timedelta(days=10))
+    airframe = drone_components["AF"]["id"]
+    schedule_phase(h_pm, drone["id"], drone_design["id"], "review", today - timedelta(days=7), today + timedelta(days=4), airframe)
+    schedule_phase(h_pm, drone["id"], drone_validation["id"], "technical scoping", today, today + timedelta(days=14))
+    schedule_phase(h_pm, drone["id"], drone_validation["id"], "tendering", today + timedelta(days=15), today + timedelta(days=45))
 
     print("Seeding Falcon-3 requirements...")
     drone_reqs = seed_project(h_pm, drone, drone_components, drone_categories, DRONE_REQUIREMENTS, demo_admin["user_id"])

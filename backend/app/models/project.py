@@ -26,6 +26,7 @@ from app.models.enums import (
     ProjectVisibility,
     StageReviewResponseChoice,
 )
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 #: Longest Project report name: the same as `Project.name`, so the short name is never stricter than the name it stands for
 #: (how much fits in a header is the layout's concern, and wraps with the page size).
@@ -201,6 +202,9 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # nearest ancestor's setting, else "off" (services.component_stages.resolve_mode); off leaves the
     # project stage as the only phase.
     component_phases_mode: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    # Days before a phase's expected start that its "upcoming" reminder is sent; NULL inherits the nearest
+    # ancestor's, else `services.stage_phase_plans.DEFAULT_LEAD_DAYS`.
+    phase_reminder_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
@@ -217,7 +221,7 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "project_stages"
-    __table_args__ = (UniqueConstraint("project_id", "name"),)
+    __table_args__ = (UniqueConstraint("project_id", "name"), principal_check_constraint("owner", nullable=True))
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
@@ -225,6 +229,9 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     phase_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stage_workflow_phases.id"), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Optional principal (a user or a group) reminded about the stage's phase schedule; with none, the project managers.
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
 
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

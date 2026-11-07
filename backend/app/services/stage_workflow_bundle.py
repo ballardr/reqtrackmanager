@@ -18,11 +18,16 @@ Design decisions:
 - Component phases travel as the switch plus one entry per stored track (component prefix, stage name,
   workflow, phase, owner, applicability); the same rule holds: a track never lands in a locked or closed
   phase, and its approval and completion stamps are not carried.
+- The phase schedule travels as the reminder lead time, each stage's owner (by name or email) and one entry per
+  plan row (stage, component prefix or null, phase name, expected range, actual dates). An import keeps the
+  actual dates as history; the "notified for" markers are derived and not carried, so an import re-arms every
+  reminder. Owners and plans resolve after the project's groups and component tracks exist.
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -30,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import StagePhaseKind
 from app.models.project import Project, ProjectComponent, ProjectStage
-from app.models.stage_workflow import ComponentStageState, StageWorkflow, StageWorkflowPhase
+from app.models.stage_workflow import ComponentStageState, StagePhasePlan, StageWorkflow, StageWorkflowPhase
 from app.services import definition_suppression
 from app.services.bundle_common import BundleImportWarnings, UserResolver
 from app.services.principals import principal_columns, principal_from_bundle, principal_to_bundle
@@ -238,5 +243,112 @@ def import_component_phases(
         db.add(ComponentStageState(
             project_id=project.id, component_id=component_id, stage_id=stage_id, workflow_id=workflow.id, phase_id=phase.id,
             not_applicable=bool(entry.get("not_applicable")), **principal_columns("owner", ref),
+        ))
+    db.flush()
+
+
+PHASE_LEAD_DAYS_KEY = "phase_reminder_lead_days"
+STAGE_OWNERS_KEY = "stage_owners"
+PHASE_PLANS_KEY = "stage_phase_plans"
+
+
+def export_phase_schedule(
+    db: Session, project: Project, components: list[ProjectComponent], stages: list[ProjectStage],
+) -> dict[str, Any]:
+    """The project's reminder lead time, stage owners (by stage name) and every plan row, as `project.json` sections."""
+    prefix = {c.id: c.prefix for c in components}
+    stage_name = {s.id: s.name for s in stages}
+    phase_ids: set[uuid.UUID] = set()
+    rows = [
+        r for r in db.scalars(select(StagePhasePlan).where(StagePhasePlan.project_id == project.id)).all()
+        if r.stage_id in stage_name and (r.component_id is None or r.component_id in prefix)
+    ]
+    phase_ids = {r.phase_id for r in rows}
+    phases = phase_index(db, phase_ids)
+    entries = [
+        {
+            "stage": stage_name[r.stage_id], "component": prefix[r.component_id] if r.component_id else None,
+            "phase": phases[r.phase_id].name,
+            "expected_from": r.expected_from.isoformat() if r.expected_from else None,
+            "expected_to": r.expected_to.isoformat() if r.expected_to else None,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+        }
+        for r in rows if r.phase_id in phases
+    ]
+    owners = {
+        s.name: principal_to_bundle(db, s.owner_type, s.owner_id) for s in stages if s.owner_type is not None
+    }
+    return {
+        PHASE_LEAD_DAYS_KEY: project.phase_reminder_lead_days,
+        STAGE_OWNERS_KEY: {name: owner for name, owner in owners.items() if owner},
+        PHASE_PLANS_KEY: entries,
+    }
+
+
+def _bundle_date(value: Any) -> date | None:
+    return date.fromisoformat(value) if isinstance(value, str) else None
+
+
+def _bundle_instant(value: Any) -> datetime | None:
+    return datetime.fromisoformat(value) if isinstance(value, str) else None
+
+
+def import_phase_schedule(
+    db: Session, project: Project, data: dict[str, Any], component_id_by_prefix: dict[str, uuid.UUID],
+    stage_id_by_name: dict[str, uuid.UUID], users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """Imports the lead time, stage owners and plan rows, resolving stages, components and phases by name.
+
+    An entry whose stage, component or phase is not found, or whose dates are malformed, is skipped with a
+    warning; the phase is looked up in the workflow that applies to the stage (or the component's track).
+    """
+    lead = data.get(PHASE_LEAD_DAYS_KEY)
+    project.phase_reminder_lead_days = lead if isinstance(lead, int) and not isinstance(lead, bool) and 0 <= lead <= 365 else None
+    stages = {s.id: s for s in db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id)).all()}
+    owners = data.get(STAGE_OWNERS_KEY)
+    for name, entry in (owners.items() if isinstance(owners, dict) else []):
+        stage_id = stage_id_by_name.get(str(name))
+        if stage_id is None:
+            continue
+        ref, warning = principal_from_bundle(
+            db, entry, organization_id=project.organization_id, project_id=project.id,
+            fallback_user_id=users.importing_user_id, required=False,
+        )
+        if warning:
+            warnings.add(f"Stage {name!r} owner: {warning}")
+        for key, value in principal_columns("owner", ref).items():
+            setattr(stages[stage_id], key, value)
+    tracks = {
+        (s.component_id, s.stage_id): s
+        for s in db.scalars(select(ComponentStageState).where(ComponentStageState.project_id == project.id)).all()
+    }
+    seen: set[tuple[uuid.UUID, uuid.UUID | None, uuid.UUID]] = set()
+    for entry in data.get(PHASE_PLANS_KEY) or []:
+        if not isinstance(entry, dict):
+            continue
+        label = f"Phase {entry.get('phase')!r} of stage {entry.get('stage')!r}"
+        stage_id = stage_id_by_name.get(str(entry.get("stage")))
+        component_id = component_id_by_prefix.get(str(entry.get("component"))) if entry.get("component") else None
+        if stage_id is None or (entry.get("component") and component_id is None):
+            warnings.add(f"{label} schedule was not imported: its stage or component is not available here.")
+            continue
+        stage = stages[stage_id]
+        track = tracks.get((component_id, stage_id)) if component_id else None
+        workflow_id = track.workflow_id if track is not None else stage.workflow_id
+        phase = next((p for p in phases_by_workflow(db, [workflow_id])[workflow_id] if p.name.casefold() == str(entry.get("phase")).casefold()), None)
+        try:
+            expected_from, expected_to = _bundle_date(entry.get("expected_from")), _bundle_date(entry.get("expected_to"))
+            started_at, completed_at = _bundle_instant(entry.get("started_at")), _bundle_instant(entry.get("completed_at"))
+        except ValueError:
+            warnings.add(f"{label} schedule was not imported: a date is not valid.")
+            continue
+        if phase is None or (expected_from and expected_to and expected_from > expected_to) or (stage_id, component_id, phase.id) in seen:
+            warnings.add(f"{label} schedule was not imported: the phase or its dates are not valid here.")
+            continue
+        seen.add((stage_id, component_id, phase.id))
+        db.add(StagePhasePlan(
+            project_id=project.id, stage_id=stage_id, component_id=component_id, phase_id=phase.id,
+            expected_from=expected_from, expected_to=expected_to, started_at=started_at, completed_at=completed_at,
         ))
     db.flush()

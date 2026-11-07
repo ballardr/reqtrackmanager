@@ -15,7 +15,7 @@ const PROJECT_ID = "project-1";
 const components: Component[] = [{ id: "c1", project_id: PROJECT_ID, name: "Authentication", prefix: "AUTH", sort_order: 0 }];
 const categories: Category[] = [{ id: "cat1", project_id: PROJECT_ID, component_id: "c1", name: "Login", prefix: "LOG", sort_order: 0 }];
 const stages: ProjectStage[] = [
-  { id: "s1", project_id: PROJECT_ID, name: "Build", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+  { id: "s1", project_id: PROJECT_ID, name: "Build", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, owner: null, review_deadline: null },
 ];
 // "approved" (locked): a modify change request can only target an
 // already-locked requirement — a

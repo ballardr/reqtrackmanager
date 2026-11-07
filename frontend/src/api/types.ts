@@ -355,6 +355,9 @@ export type CoreNotificationType =
   | "comment_added"
   | "requirement_review_due"
   | "stage_review_auto_approved"
+  | "stage_phase_upcoming"
+  | "stage_phase_overdue"
+  | "stage_phase_completed"
   | "project_members_changed_by_org"
   | "system_storage_alert"
   | "report_run_finished"
@@ -1344,6 +1347,8 @@ export interface ProjectStage {
   completed_at: string | null;
   completed_by: string | null;
   review_deadline: string | null;
+  /** Who is reminded about the stage's phase schedule; null means the project managers. */
+  owner: Principal | null;
 }
 
 export type StageReviewResponseChoice = "approved" | "rejected";
@@ -1366,6 +1371,27 @@ export interface ComponentTrack {
   previous_closed: boolean;
   /** Whether the caller may move the track (a project manager, or its owner). */
   can_move: boolean;
+}
+
+/** The expected range (calendar dates) and actual dates (UTC instants) of one phase of a stage, or of a component's track. */
+export interface PhasePlan {
+  stage_id: string;
+  /** Null for the stage's own phase. */
+  component_id: string | null;
+  phase_id: string;
+  expected_from: string | null;
+  expected_to: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+/** The project's phase schedule and the reminder lead time that applies. */
+export interface PhasePlans {
+  lead_days: number;
+  /** The project's own lead time; null when it follows an ancestor (or the default). */
+  own_lead_days: number | null;
+  inherited: boolean;
+  plans: PhasePlan[];
 }
 
 export type ComponentPhasesMode = "on" | "off";

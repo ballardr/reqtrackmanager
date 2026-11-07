@@ -11,6 +11,7 @@ Responsibilities:
   phases through one function, applying the behaviour of the phase kind: baseline and approval
   on entering a locked phase, completion on entering a closed one.
 - Answer the questions other code asks of a phase kind: may requirements be reordered.
+- Hand every move to `services.stage_phase_plans.record_move`, which keeps the phase's actual dates.
 
 Design decisions:
 - Behaviour is read from `StagePhaseKind`, never from a phase name (Decided by: User).
@@ -363,6 +364,7 @@ def apply_phase_move(
         WorkflowConflict: `phase` is the current phase.
     """
     from app.services.baseline import create_baseline_for_stage  # deferred: baseline imports this module's callers
+    from app.services.stage_phase_plans import record_move
     from app.services.stages import complete_stage
 
     what = "stage" if holder is stage else "component's track"
@@ -377,6 +379,7 @@ def apply_phase_move(
         raise WorkflowConflict(f"The {what} is already in this phase.")
 
     entity_type, entity_id = ("project_stage", stage.id) if holder is stage else ("component_stage_state", holder.id)
+    old_phase_id = holder.phase_id
     holder.phase_id = phase.id
     detail: dict[str, str | None] = {"phase": phase.name, "kind": phase.kind.value}
     if component_id is not None:
@@ -403,3 +406,4 @@ def apply_phase_move(
     else:
         log_event(db, entity_type=entity_type, entity_id=entity_id, action="status_changed", actor_id=actor.id,
                   project_id=project.id, detail=detail)
+    record_move(db, project, stage, holder, old_phase_id, phase, actor, component_id=component_id)

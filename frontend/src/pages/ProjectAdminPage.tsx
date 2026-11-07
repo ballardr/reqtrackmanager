@@ -45,6 +45,7 @@ import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
+import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -1939,6 +1940,12 @@ export function ProjectAdminPage() {
         <CollapsibleSection sectionKey="projectAdmin.structure.componentPhases" title={strings.componentPhases.heading} defaultCollapsed>
           {projectId && project && (
             <ComponentPhasesPanel projectId={projectId} organizationId={project.organization_id} orgUsers={orgUsers} onChanged={reload} />
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection sectionKey="projectAdmin.structure.phaseSchedule" title={strings.phaseSchedule.heading} defaultCollapsed>
+          {projectId && project && (
+            <PhaseSchedulePanel projectId={projectId} organizationId={project.organization_id} orgUsers={orgUsers} onChanged={reload} />
           )}
         </CollapsibleSection>
 

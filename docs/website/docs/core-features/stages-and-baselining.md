@@ -61,6 +61,30 @@ flowchart TD
 
 Turning the setting Off leaves stored tracks in place but ignores them, so the stage governs again.
 
+## Phase schedule and reminders
+
+A phase can carry an **expected range** (an expected start and an expected end, both calendar dates) under **Project Admin → Structure → Stage schedule**. Each stage lists the phases of its workflow; with component phases on, a chosen component's own track can be scheduled the same way. The table also shows the actual start and completion of each phase and, for a completed phase, whether it finished on time, early or late. Moving a stage (or a track) forward out of a phase, or into a Closed phase, records that phase as completed; moving back to a phase reopens it.
+
+Reminders are sent once per date, by a daily check:
+
+- **Upcoming:** a phase not yet reached whose expected start falls within the **Reminder lead time** (default 7 days; set on the project or follow the parent project).
+- **Overdue:** the current phase whose expected end has passed everywhere.
+- **Completed:** sent as soon as a phase that had a range is completed, never to the person who moved it.
+
+The recipient is the stage's **owner** (a user, or every member of a group) or, for a component's track, the track's owner first; with no owner, the project managers. Each type can be switched off per person under **Preferences**. Changing a date sends its reminder again.
+
+```mermaid
+flowchart LR
+    Plan["Expected range set on a phase"] --> Sweep["Daily check"]
+    Sweep --> Up{"Starts within the lead time?"}
+    Sweep --> Over{"Current phase past its expected end?"}
+    Up -- "Yes" --> N1["Upcoming reminder, once per start date"]
+    Over -- "Yes" --> N2["Overdue reminder, once per end date"]
+    Move["Stage or track moves forward"] --> N3["Completed reminder to the owner"]
+```
+
+Requirement reports can include the expected end and the start of the target stage's current phase.
+
 ## Renaming and deleting stages
 
 Anyone who can create a stage can also rename it inline or delete it. Deleting a stage requires picking another existing stage to reassign everything currently targeting it to — every requirement (and its full history, not just its current version) and every pending change request proposing that stage moves to the one picked. A stage with an approved baseline can't be deleted at all, since that would rewrite a permanent record of what was approved; if it's the project's only stage, there's nothing to reassign to either, so deletion is blocked either way.

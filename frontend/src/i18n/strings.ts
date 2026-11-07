@@ -37,6 +37,9 @@ const en = {
       comment_added: "New comment on a followed item",
       requirement_review_due: "{Requirement} review due",
       stage_review_auto_approved: "{Stage} review deadline passed — auto-approved",
+      stage_phase_upcoming: "{Stage} phase starting soon",
+      stage_phase_overdue: "{Stage} phase overdue",
+      stage_phase_completed: "{Stage} phase completed",
       project_members_changed_by_org: "Project members changed by someone who is not a project manager",
       system_storage_alert: "File storage alert (server admins)",
       report_run_finished: "Background report ready or failed",
@@ -3585,6 +3588,16 @@ const en = {
       "A user or group who may move this track, including into a locked phase. A project manager always may.",
     componentTrackNotApplicable:
       "The {component} takes no part in this {stage}, so its phase does not change and the {stage}'s own lock applies to its {requirement}s.",
+    phaseScheduleLeadDays:
+      "How many days before a phase's expected start its reminder is sent. Follow the parent {project} uses the nearest parent {project}'s setting, otherwise 7 days.",
+    phaseScheduleScope:
+      "{Stage}: the phases of the {stage}'s own workflow.\nA {component}: the phases of that {component}'s workflow for this {stage}; available when component phases are on.",
+    phaseScheduleOwner:
+      "A user or group reminded when a phase of this {stage} is about to start, is overdue or completes. With no owner, the project managers are reminded.",
+    phaseExpectedFrom:
+      "The day the phase is expected to start. A reminder is sent this many days before, as set in the reminder lead time, while the phase has not been reached.",
+    phaseExpectedTo:
+      "The day the phase is expected to end. When it is still the current phase after this day everywhere, an overdue reminder is sent once. Leave both dates empty to remove the schedule.",
     stagePhaseChoice:
       "Moves the {stage} to another phase of its workflow. Entering or leaving a Locked phase needs the project manager role.",
     // Components on any record
@@ -3804,6 +3817,39 @@ const en = {
     loadFailed: "Could not load the component phases.",
     nounSingular: "component phase",
     nounModeSetting: "component phases setting",
+  },
+  phaseSchedule: {
+    heading: "{Stage} schedule",
+    leadDays: "Reminder lead time",
+    leadDaysOption: (days: number) => (days === 1 ? "1 day" : `${days} days`),
+    leadDaysInherit: "Follow the parent {project}",
+    inheritedNote: (days: number) => `Following the parent {project}: ${days === 1 ? "1 day" : `${days} days`}.`,
+    scope: "Schedule of",
+    scopeStage: "The {stage} itself",
+    owner: "Owner",
+    ownerAria: (stage: string) => `Owner of ${stage}`,
+    unassign: "Clear",
+    phase: "Phase",
+    expected: "Expected",
+    actual: "Actual",
+    notScheduled: "Not scheduled",
+    expectedFrom: "Expected start",
+    expectedTo: "Expected end",
+    reversed: "The expected end must not be before the expected start.",
+    editPhase: (phase: string) => `Schedule phase ${phase}`,
+    editTitle: (stage: string, phase: string) => `${stage}: ${phase}`,
+    currentBadge: "Current",
+    overdueBadge: "Overdue",
+    started: (date: string) => `Started ${date}`,
+    completed: (date: string) => `Completed ${date}`,
+    daysLate: (days: number) => (days === 1 ? "1 day late" : `${days} days late`),
+    daysEarly: (days: number) => (days === 1 ? "1 day early" : `${days} days early`),
+    onTime: "On time",
+    noStages: "This {project} has no {stage}s yet.",
+    loadFailed: "Could not load the phase schedule.",
+    nounPlan: "phase schedule",
+    nounLeadDays: "reminder lead time",
+    nounOwner: "{stage} owner",
   },
   recordTables: {
     menuLabel: "List actions",

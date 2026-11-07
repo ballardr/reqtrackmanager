@@ -37,6 +37,7 @@ from app.schemas.project import (
 from app.schemas.stage_workflow import StageTransitionRequest
 from app.services.audit import log_event
 from app.services.notifications import notify
+from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import get_effective_project_roles, get_project_member_user_ids, require_project_manage, require_project_view
 from app.services.stage_workflows import (
     WorkflowConflict,
@@ -59,15 +60,18 @@ def _stages_out(db: Session, stages: list[ProjectStage]) -> list[ProjectStageOut
     workflows = {
         w.id: w.name for w in db.scalars(select(StageWorkflow).where(StageWorkflow.id.in_(workflow_ids))).all()
     } if workflow_ids else {}
+    labels = principal_labels(db, [principal_ref(s.owner_type, s.owner_id) for s in stages])
     out = []
     for stage in stages:
         phase = phases[stage.phase_id]
+        owner_ref = principal_ref(stage.owner_type, stage.owner_id)
         out.append(ProjectStageOut(
             id=stage.id, project_id=stage.project_id, name=stage.name, workflow_id=stage.workflow_id,
             workflow_name=workflows.get(stage.workflow_id, ""), phase_id=phase.id, phase_name=phase.name,
             phase_kind=phase.kind, sort_order=stage.sort_order, is_current=stage.is_current,
             approved_at=stage.approved_at, completed_at=stage.completed_at, completed_by=stage.completed_by,
             review_deadline=stage.review_deadline,
+            owner=labels.get((owner_ref.type.value, owner_ref.id)) if owner_ref is not None else None,
         ))
     return out
 
@@ -130,7 +134,7 @@ def rename_stage(
     project: Project = Depends(require_project_manage), current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Renames a stage and, optionally, moves it to the start of another workflow.
+    """Renames a stage and, optionally, moves it to the start of another workflow or changes its owner.
 
     A workflow change is refused unless the stage is still in an open phase with no baseline: moving a
     locked or closed stage to another workflow's start would unlock it outside the change-request process.
@@ -155,6 +159,13 @@ def rename_stage(
         stage.phase_id = start_phase(db, workflow.id).id
         log_event(db, entity_type="project_stage", entity_id=stage.id, action="workflow_changed",
                   actor_id=current_user.id, project_id=project.id, detail={"workflow": workflow.name})
+    if "owner" in payload.model_fields_set:
+        validate_principal(db, payload.owner, organization_id=project.organization_id, project_id=project.id, field="owner")
+        for key, value in principal_columns("owner", payload.owner).items():
+            setattr(stage, key, value)
+        log_event(db, entity_type="project_stage", entity_id=stage.id, action="owner_changed", actor_id=current_user.id,
+                  project_id=project.id, detail={"owner_type": payload.owner.type.value if payload.owner else None,
+                                                 "owner_id": str(payload.owner.id) if payload.owner else None})
     log_event(db, entity_type="project_stage", entity_id=stage.id, action="renamed",
               actor_id=current_user.id, project_id=project.id)
     db.commit()

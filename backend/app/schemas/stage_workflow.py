@@ -7,7 +7,7 @@ transition request (`routers.projects.stages`).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -111,3 +111,40 @@ class ComponentPhasesOut(BaseModel):
     own_mode: Literal["on", "off"] | None
     inherited: bool
     tracks: list[ComponentTrackOut]
+
+
+class PhasePlanSet(BaseModel):
+    """Set or clear the expected range of one phase of a stage (`component_id` null) or of a component's track.
+    Both dates null clears the range."""
+
+    phase_id: UUID
+    component_id: UUID | None = None
+    expected_from: date | None = None
+    expected_to: date | None = None
+
+
+class PhasePlanOut(BaseModel):
+    """A phase's expected range (calendar dates) and actual start and completion (UTC instants)."""
+
+    stage_id: UUID
+    component_id: UUID | None
+    phase_id: UUID
+    expected_from: date | None
+    expected_to: date | None
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+class PhaseReminderSettingSet(BaseModel):
+    """Set the project's own reminder lead time in days; `null` follows the nearest ancestor."""
+
+    lead_days: int | None = Field(default=None, ge=0, le=365)
+
+
+class PhasePlansOut(BaseModel):
+    """The project's phase schedule: every stored plan and the reminder lead time that applies."""
+
+    lead_days: int
+    own_lead_days: int | None
+    inherited: bool
+    plans: list[PhasePlanOut]

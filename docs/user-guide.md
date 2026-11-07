@@ -106,6 +106,8 @@ Each stage follows a **workflow** of named phases, each with a kind (Open, Revie
 
 A project manager can also turn on **Component phases** (**Project Admin → Structure**), so each component follows its own workflow per stage: a component's Locked phase approves only its own requirements for that stage, the stage's own Locked phase approves the components with no applicable track, and a track's owner (a user or a group) may move it as well as a project manager. See [Stages and baselining](website/docs/core-features/stages-and-baselining.md#component-phases).
 
+Each phase can also be given an expected range under **Project Admin → Structure → Stage schedule**; the stage's owner (or the project managers) is reminded before a phase starts, when the current phase is overdue and when a scheduled phase completes. See [Stages and baselining](website/docs/core-features/stages-and-baselining.md#phase-schedule-and-reminders).
+
 A stage in a Review phase can also be given a **review deadline**: stakeholders record an explicit approve/reject response before it passes, and if the deadline passes with no rejection, the stage moves to the workflow's next Locked phase (silence is treated as approval) — an explicit rejection blocks it and leaves it for a manager to resolve manually. Once a stage's work is delivered, a project manager moves it to a Closed phase, optionally marking every approved requirement targeting it as completed.
 
 ## Templates
