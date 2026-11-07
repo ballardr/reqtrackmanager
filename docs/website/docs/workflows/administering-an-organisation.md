@@ -47,6 +47,10 @@ Under **Projects & workflow → Link types**, define the vocabulary of links bet
 
 Under **Projects & workflow → Stage workflows**, define the phases a project stage can move through. A workflow is a name and an ordered list of phases; each phase has a name of your choosing and a **kind** (Open, Review, Locked, On hold or Closed) that decides what entering it does. The first phase is where a new stage starts. New organisations begin with a **Standard** workflow (Scoping, Review, Approved, Completed, Archived), which you can edit or replace. Every project can use your workflows, hide the ones it does not want and add its own; a workflow that a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind. See [Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
 
+## Navigation names
+
+Under **Projects & workflow → Navigation names**, set the name each project navigation entry uses by default (for example Decisions as ADRs). A project uses the organisation's name unless a parent project or the project itself names the entry differently, and a project manager can still override it under **Project Admin → Settings**. The entries listed are the core entries and those of the modules the organisation has enabled. A name affects the navigation, the page title and the back link of that entry's records only; **Restore** returns a row to its built-in name.
+
 ## Project codes
 
 Under **Projects & workflow → Project codes**, decide how a project's short code is formed: which **characters** (letters, digits, or both), the **shortest** and **longest** length, and whether the code is **assigned automatically** (from the project's name, with a number added on a clash) or **chosen by the creator**. A code is unique within the organisation, never equal to the organisation's own code, and never contains a hyphen. A change applies to codes created from now on; existing codes are never rewritten.

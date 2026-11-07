@@ -107,6 +107,7 @@ from app.models.requirement import (
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks
+from app.services import nav_labels
 from app.services.audit import log_event
 from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
@@ -541,6 +542,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "tags": export_vocabulary(db, project),
+        **nav_labels.export_names(project.nav_label_overrides),
         **export_project_stage_workflows(db, project),
         **export_component_phases(db, project, components, stages),
         **export_phase_schedule(db, project, components, stages),
@@ -719,6 +721,7 @@ def apply_project_data(
 
     import_vocabulary(db, project, data.get("tags"), current_user.id)
 
+    project.nav_label_overrides = nav_labels.import_names(data, warnings)
     import_project_stage_workflows(db, project, data, warnings)
     stage_id_by_name: dict[str, UUID] = {}
     for i, s in enumerate(data.get("stages", []) or [{"name": "Scoping", "sort_order": 0}]):

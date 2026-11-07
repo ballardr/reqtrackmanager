@@ -113,6 +113,7 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, User
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
+from app.services import nav_labels
 from app.services.audit import log_event
 from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
@@ -208,6 +209,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **export_org_snippets(db, org.id, file_assets_by_id),
         **export_org_folders(db, org.id),
         **export_org_stage_workflows(db, org.id),
+        **nav_labels.export_names(org.nav_label_overrides),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -673,6 +675,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     import_org_snippets(db, org.id, data, current_user, warnings, merge=False, file_bytes_by_ref=file_bytes_by_ref)
     import_org_placements(db, org.id, data, current_user, warnings)
     import_org_folders(db, org.id, data, current_user, warnings)
+    org.nav_label_overrides = nav_labels.import_names(data, warnings)
     _warn_legacy_report_content(data, warnings)
     # Default project statuses/link types, same as any other new
     # organisation (`routers/orgs.py::create_organization`) — a bundle
@@ -853,6 +856,8 @@ def merge_org_bundle(
     import_org_placements(db, target_org.id, data, current_user, warnings)
     import_org_stage_workflows(db, target_org.id, data, warnings, seed_if_empty=False)
     import_org_folders(db, target_org.id, data, current_user, warnings)
+    # A merge keeps the organisation's own names and adds only those it has not set.
+    target_org.nav_label_overrides = {**nav_labels.import_names(data, warnings), **(target_org.nav_label_overrides or {})}
     _warn_legacy_report_content(data, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, target_org, data, users, warnings, resolutions)

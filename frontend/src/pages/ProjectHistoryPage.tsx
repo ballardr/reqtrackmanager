@@ -7,6 +7,7 @@ import { ActivityPanel } from "../components/ActivityPanel";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
+import { useCurrentNavLabelOverride } from "../context/NavLabelValue";
 import { useStrings } from "../context/TerminologyContext";
 import { CheckboxField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -26,6 +27,7 @@ const ENTITY_TYPE_FILTER_OPTIONS = [...Object.keys(ENTITY_TYPE_LABEL), "organiza
  */
 export function ProjectHistoryPage() {
   const strings = useStrings();
+  const navName = useCurrentNavLabelOverride();
   const { projectId } = useParams<{ projectId: string }>();
   const orgLabelCap = useOrgLabelCapitalized();
   const [changes, setChanges] = useState<ChangeEntry[] | null>(null);
@@ -74,7 +76,7 @@ export function ProjectHistoryPage() {
 
   return (
     <div className="stack">
-      <h1 style={{ margin: 0 }}>{strings.history.title}</h1>
+      <h1 style={{ margin: 0 }}>{navName ?? strings.history.title}</h1>
       <div className="row">
         <label className="row">
           {strings.history.since}

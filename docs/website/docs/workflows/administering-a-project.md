@@ -35,6 +35,10 @@ sidebar_position: 12
 
 **Project Admin → Terminology** renames how a fixed set of nouns (project, stage, component, category, requirement, change request) are labelled in this project's UI, for a team with different internal vocabulary — the override reaches the nav, list-page headings, and every other surface those words appear on, not just the settings page itself.
 
+## Navigation names
+
+Under **Project Admin → Settings**, below Terminology, **Navigation names** renames an entry of the project navigation (for example Decisions to ADRs). The new name is shown in the navigation, as the page title and as the back link from that entry's records; the nouns inside sentences are unchanged, and are set under Terminology. Each row shows the built-in name and a box for the name to use instead. A name inherited from a parent project or from the organisation appears in the box as a grey suggestion with its source, and is replaced by typing your own. **Restore** empties a row, and **Save names** applies the change at once. A name has at most 40 characters of plain text, and only project managers can change it.
+
 ## Project groups
 
 **Project Admin → Project groups** lists the project's four fixed role groups — Members, Project Administrators, Project Managers, Stakeholders — each showing its actual members by name/email, with a picker to add and a button to remove. Rather than assigning roles one person at a time, add someone (or a whole organisation-level group) to the group matching the access they need.

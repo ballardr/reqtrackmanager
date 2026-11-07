@@ -8,6 +8,8 @@ import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
+import { NavLabelProvider } from "../context/NavLabelContext";
+import { useNavLabeler } from "../context/NavLabelValue";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useClientConfig } from "../hooks/useClientConfig";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -70,9 +72,11 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <TerminologyProvider projectId={projectId}>
       <BrandingProvider projectId={projectId}>
-        <FavouritesProvider>
-          <LayoutShell>{children}</LayoutShell>
-        </FavouritesProvider>
+        <NavLabelProvider projectId={projectId}>
+          <FavouritesProvider>
+            <LayoutShell>{children}</LayoutShell>
+          </FavouritesProvider>
+        </NavLabelProvider>
       </BrandingProvider>
     </TerminologyProvider>
   );
@@ -81,6 +85,7 @@ export function Layout({ children }: { children: ReactNode }) {
 function LayoutShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const strings = useStrings();
+  const navLabel = useNavLabeler();
   const location = useLocation();
   const [railCollapsed, setRailCollapsed] = useUiPreference<boolean>("nav_rail_collapsed", false);
   const isNarrowViewport = useNarrowViewport(MOBILE_BREAKPOINT_PX);
@@ -136,12 +141,12 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // the user's order/"More" preference to this list without knowing what any item is.
   const projectNavItems: ProjectNavItem[] = projectId
     ? [
-        { key: "overview", to: `/projects/${projectId}`, exact: true, label: strings.nav.overview, icon: <LayoutDashboard size={16} /> },
-        { key: "requirements", to: `/projects/${projectId}/requirements`, label: strings.nav.requirements, icon: <ListChecks size={16} /> },
-        { key: "change-requests", to: `/projects/${projectId}/change-requests`, label: strings.nav.changeRequests, icon: <GitPullRequest size={16} /> },
-        { key: "actions", to: `/projects/${projectId}/actions`, label: strings.nav.actions, icon: <CheckSquare size={16} /> },
-        { key: "files", to: `/projects/${projectId}/files`, label: strings.files.title, icon: <Files size={16} /> },
-        { key: "reviews-due", to: `/projects/${projectId}/reviews-due`, label: strings.reviews.projectTitle, icon: <Clock size={16} /> },
+        { key: "overview", to: `/projects/${projectId}`, exact: true, label: navLabel(`/projects/${projectId}`, strings.nav.overview), icon: <LayoutDashboard size={16} /> },
+        { key: "requirements", to: `/projects/${projectId}/requirements`, label: navLabel(`/projects/${projectId}/requirements`, strings.nav.requirements), icon: <ListChecks size={16} /> },
+        { key: "change-requests", to: `/projects/${projectId}/change-requests`, label: navLabel(`/projects/${projectId}/change-requests`, strings.nav.changeRequests), icon: <GitPullRequest size={16} /> },
+        { key: "actions", to: `/projects/${projectId}/actions`, label: navLabel(`/projects/${projectId}/actions`, strings.nav.actions), icon: <CheckSquare size={16} /> },
+        { key: "files", to: `/projects/${projectId}/files`, label: navLabel(`/projects/${projectId}/files`, strings.files.title), icon: <Files size={16} /> },
+        { key: "reviews-due", to: `/projects/${projectId}/reviews-due`, label: navLabel(`/projects/${projectId}/reviews-due`, strings.reviews.projectTitle), icon: <Clock size={16} /> },
         ...enabledModules.flatMap((moduleEntry) => {
           const manifest = moduleEntry.frontend_manifest;
           if (!manifest) return [];
@@ -164,13 +169,13 @@ function LayoutShell({ children }: { children: ReactNode }) {
             return {
               key: `${moduleEntry.module_key}:${entry.nav_path}`,
               to: entry.nav_path,
-              label: entry.nav_label,
+              label: navLabel(entry.nav_path, entry.nav_label),
               icon: <EntryIcon size={16} />,
             };
           });
         }),
-        { key: "history", to: `/projects/${projectId}/history`, label: strings.history.title, icon: <History size={16} /> },
-        { key: "admin", to: `/projects/${projectId}/admin`, label: strings.nav.admin, icon: <Settings size={16} /> },
+        { key: "history", to: `/projects/${projectId}/history`, label: navLabel(`/projects/${projectId}/history`, strings.history.title), icon: <History size={16} /> },
+        { key: "admin", to: `/projects/${projectId}/admin`, label: navLabel(`/projects/${projectId}/admin`, strings.nav.admin), icon: <Settings size={16} /> },
       ]
     : [];
 

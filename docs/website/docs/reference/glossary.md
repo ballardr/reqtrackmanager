@@ -82,6 +82,10 @@ What happens once a requirement reaches Approved or Completed: its edit form dis
 
 A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
 
+#### Navigation name
+
+A name a project or organisation gives an entry of the project navigation (for example "ADRs" for Decisions), shown in the navigation, as the page title and as the back link of that entry's records. A project's own name takes precedence over its parent's, which takes precedence over the organisation's. See [Administering a project](../workflows/administering-a-project.md#navigation-names).
+
 #### Organisation
 
 The top-level container, owning users, groups, branding, SSO configuration, and every project underneath it. See [Organisations and projects](../concepts/organisations-and-projects.md).

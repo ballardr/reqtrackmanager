@@ -126,6 +126,7 @@ def clone_project(
         require_change_request_for_approved_links=source.require_change_request_for_approved_links,
         exempt_from_org_link_lock=source.exempt_from_org_link_lock,
         terminology=dict(source.terminology),
+        nav_label_overrides=dict(source.nav_label_overrides or {}),
         status_id=get_default_project_status_id(db, source.organization_id),
         parent_project_id=parent_project_id,
     )

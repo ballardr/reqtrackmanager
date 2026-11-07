@@ -3578,6 +3578,8 @@ const en = {
       "The phases a {stage} moves through, in order. The first phase is where a new {stage} starts. A {stage} can move to any phase of its workflow, in either direction.",
     workflowPhaseKind:
       "Open: requirements can be edited and reordered.\nReview: a review deadline and stakeholder responses apply; when the deadline passes with no objection the {stage} moves to the next Locked phase.\nLocked: entering writes a baseline and approves the requirements, after which changes need a change request; a project manager must enter or leave it.\nOn hold: paused or archived, with no special rules.\nClosed: the {stage} is complete; entering records who completed it and can mark its approved requirements completed.",
+    navLabelName:
+      "The name shown for this entry in the navigation, as the page title and as the back link from its records. Leave it empty to use the name inherited from the parent {project} or the organisation, or the built-in name. Record names such as {requirement} are set under Terminology.",
     stageWorkflowChoice:
       "The workflow this {stage} follows. It can be changed only while the {stage} is in an Open phase and has no baseline.",
     componentPhasesMode:
@@ -3756,6 +3758,18 @@ const en = {
     success: (noun: string, past: string) =>
       `${noun.replace(/^\{?\w/, (head) => head.toUpperCase())} ${past}.`,
     failure: (verb: string, noun: string) => `Could not ${verb} the ${noun}.`,
+  },
+  navLabels: {
+    heading: "Navigation names",
+    entry: "Navigation entry",
+    name: "Name",
+    nameOf: (entry: string) => `Name for ${entry}`,
+    restoreAria: (entry: string) => `Restore the default name of ${entry}`,
+    fromParent: "Parent {project}",
+    fromOrganisation: "Organisation default",
+    save: "Save names",
+    noun: "navigation names",
+    loadFailed: "Could not load the navigation names.",
   },
   stageWorkflows: {
     heading: "{Stage} workflows",

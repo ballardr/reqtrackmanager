@@ -1339,6 +1339,10 @@ flowchart LR
 - Not offered where links go through a change request, or where the caller cannot link; then "Add link" is the plain button that opens the finder.
 - The server's own create endpoint still enforces permission and shows any refusal in the dialog.
 
+### 4l4. Navigation names: a module's entry is renameable with no code
+
+A project or organisation can rename any project navigation entry (`services/nav_labels.py`, `routers/nav_labels.py`, `NavLabelsPanel`). A module does nothing to take part: each entry of its frontend manifest (`ModuleFrontendManifest.all_nav_entries()`) gets the stable key `<module key>:<path below the module root>` (`decisions:`, `risk_management:risks`), so the key never holds a project id. The browser looks a name up by the route the entry opens, so the navigation rail, a `ListPageLayout` title and a `RecordHeader` back link whose `to` is that route show the name with no per-page code; a page that draws its own `h1` calls `useCurrentNavLabelOverride()`. Renaming a module's path changes its key, and a name stored under the old key is then ignored.
+
 ### 4l3. Components on every record
 
 Any registered artefact type can sit in the project's component/category tree through one shared table, `artefact_placements`, with no per-module code (`services/placements.py`, `routers/placements.py`). A module adds nothing except declaring a type that cannot be placed.

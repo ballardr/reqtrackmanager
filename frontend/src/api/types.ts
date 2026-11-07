@@ -1396,6 +1396,23 @@ export interface PhasePlans {
 
 export type ComponentPhasesMode = "on" | "off";
 
+/** One navigation entry with the names that apply to it (`GET .../nav-labels`); `path` is absent in the organisation view. */
+export interface NavLabelItem {
+  key: string;
+  label: string;
+  path?: string | null;
+  module_key?: string | null;
+  own?: string | null;
+  inherited?: string | null;
+  inherited_from?: "ancestor" | "organisation" | null;
+  effective?: string | null;
+}
+
+/** The entries a project's navigation can show (or an organisation can name), in navigation order. */
+export interface NavLabels {
+  items: NavLabelItem[];
+}
+
 /** The project's component-phases switch and, when it is on, every track. */
 export interface ComponentPhases {
   mode: ComponentPhasesMode;

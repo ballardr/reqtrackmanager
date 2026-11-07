@@ -42,6 +42,7 @@ from app.routers import (
     custom_reports,
     files,
     health,
+    nav_labels,
     notifications,
     org_record_tables,
     orgs,
@@ -379,6 +380,8 @@ app.include_router(artefact_links.router)
 app.include_router(placements.router)
 app.include_router(stage_workflows.org_router)
 app.include_router(stage_workflows.project_router)
+app.include_router(nav_labels.router)
+app.include_router(nav_labels.org_router)
 app.include_router(tags.router)
 app.include_router(tags.org_router)
 app.include_router(project_link_types.router)

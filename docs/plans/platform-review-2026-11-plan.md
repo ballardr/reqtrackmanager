@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 9, 9b, 9c and 9d done (9d uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 10, 9b, 9c and 9d done (10 uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-13 / 21 phases complete.
+14 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -23,7 +23,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 9b | Customisable workflows (phases with kinds) for project stages | Organisation and project workflows with phase kinds; kind drives baseline and completion; Standard workflow replaces the fixed states; see `docs/decisions.md` | [x] |
 | 9c | Component phases (per-component, per-stage workflow) | Each component follows a workflow per stage; project switch, off means the project stage governs; component lock approves its own requirements for the stage; owner may move a track; list column/filter, report field and per-component review deadlines not built (see `docs/decisions.md`) | [x] |
 | 9d | Phase schedule and reminders | `stage_phase_plans`, stage owner, lead time; actual dates on every move, daily upcoming and overdue sweep, completed on the move; report fields for the expected end and start; overview metric left to phase 14; see `docs/decisions.md` | [x] |
-| 10 | Rename navigation items, with organisation defaults | Navigation, title, breadcrumb, back link; settled | [ ] |
+| 10 | Rename navigation items, with organisation defaults | `nav_label_overrides` on project and organisation (per-key: project, ancestor, organisation), stable keys from the registry, looked up by route path; navigation, title and back link; see `docs/decisions.md` | [x] |
 | 11 | Server and organisation messages (login pages and notification) | One mechanism, two scopes; settled with the user | [ ] |
 | 12 | Pain Point scoring on the Product Feedback model (custom criteria, Cost of Delay) | General row plus persona overrides; settled | [ ] |
 | 13 | Template projects | Partly built; module configuration is the gap | [ ] |
@@ -268,6 +268,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Outcome:** a project or organisation shows "ADRs" wherever the module's navigation, title and back link appear.
 - **Tests:** backend validation (unknown key rejected, length), resolution order incl. ancestor, round-trip bundle; Playwright rename and restore; story.
 - **Risk:** accessibility names and Playwright locators that use the built-in label; tests use stable keys or `data-nav-key`.
+- **Done 2026-11-07.** Resolution is per key rather than whole-map; lookup is by route path, so no module or page names a key; the administration menus of a module are not renamed. The Playwright spec ran against a rebuilt stack. See `docs/decisions.md`.
 
 ### Phase 11 — Server and organisation messages
 

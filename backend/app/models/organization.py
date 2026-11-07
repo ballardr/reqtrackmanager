@@ -185,6 +185,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             code even inside its own project, overriding each user's preference.
         tag_mode: `"free"` or `"restricted"`: whether organisation-owned records may take a tag
             nobody listed in the organisation's tag vocabulary.
+        nav_label_overrides: The organisation's default navigation names by stable navigation key
+            (`services.nav_labels`); a project's own or inherited name takes precedence.
     """
 
     __tablename__ = "organizations"
@@ -200,6 +202,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     tag_mode: Mapped[str] = mapped_column(String(12), default="free", server_default=text("'free'"))
+    nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     require_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_self_signup: Mapped[bool] = mapped_column(Boolean, default=False)

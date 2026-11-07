@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -205,6 +205,9 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # Days before a phase's expected start that its "upcoming" reminder is sent; NULL inherits the nearest
     # ancestor's, else `services.stage_phase_plans.DEFAULT_LEAD_DAYS`.
     phase_reminder_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # This project's own navigation names, keyed by stable navigation key (`services.nav_labels`); a key
+    # with no entry follows the nearest ancestor's name, then the organisation's, then the built-in one.
+    nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
 
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):

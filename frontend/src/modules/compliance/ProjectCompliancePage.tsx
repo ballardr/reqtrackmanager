@@ -56,6 +56,7 @@ import { Modal } from "../../components/Modal";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
+import { useCurrentNavLabelOverride } from "../../context/NavLabelValue";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
@@ -84,6 +85,7 @@ interface AssignmentRow {
 }
 
 export function ProjectCompliancePage() {
+  const navName = useCurrentNavLabelOverride();
   const { projectId } = useParams<{ projectId: string }>();
   const { showToast } = useToast();
   const initialParams = useInitialSearchParams();
@@ -186,7 +188,7 @@ export function ProjectCompliancePage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Compliance</h1>
+      <h1 style={{ margin: 0 }}>{navName ?? "Compliance"}</h1>
       <Tabs<ComplianceTabKey>
         idPrefix="project-compliance"
         active={tab}

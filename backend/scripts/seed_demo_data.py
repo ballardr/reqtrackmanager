@@ -554,6 +554,14 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
     return r.json()
 
 
+def set_project_nav_labels(headers: dict, project_id: str, names: dict[str, str]) -> dict:
+    """Sets a project's own navigation names (Project Admin's Navigation names panel), keyed by stable navigation
+    key, so the manual-demo dataset shows a renamed entry in the navigation, page title and back link."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/nav-labels", json={"names": names}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
 def create_link_type(
     headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
     allowed_source_types: list[str] | None = None, allowed_target_types: list[str] | None = None,
@@ -2255,6 +2263,8 @@ def main() -> None:
     # so the demo also shows a *partial* override (not every one of the six
     # keys has to be set).
     set_project_terminology(h_pm, drone["id"], {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"})
+    # A renamed navigation entry (its name shows in the navigation and as the page title).
+    set_project_nav_labels(h_pm, drone["id"], {"reviews-due": "Scheduled reviews"})
     assign_project_role(h_pm, drone["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, drone["id"], demo_stakeholder["user_id"], "stakeholder")
     drone_components = {

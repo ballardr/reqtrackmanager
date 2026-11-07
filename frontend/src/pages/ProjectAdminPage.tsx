@@ -45,6 +45,7 @@ import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
+import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
@@ -1832,6 +1833,9 @@ export function ProjectAdminPage() {
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveTerminology}
         </button>
+        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "var(--space-1) 0" }} />
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.navLabels.heading}</h2>
+        {projectId && <NavLabelsPanel scope={{ kind: "project", projectId }} />}
       </div>
       )}
 

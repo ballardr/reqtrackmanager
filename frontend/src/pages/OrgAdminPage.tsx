@@ -82,6 +82,7 @@ import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { OverridePill } from "../components/OverridePill";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
+import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
@@ -3142,6 +3143,10 @@ export function OrgAdminPage() {
 
             <CollapsibleSection sectionKey="orgAdmin.organizationCode" title={strings.orgAdmin.organizationCode}>
               <OrganizationCodePanel org={org} onSaved={setOrg} />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.navLabels" title={strings.navLabels.heading}>
+              <NavLabelsPanel scope={{ kind: "organisation", organizationId: org.id }} />
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>
