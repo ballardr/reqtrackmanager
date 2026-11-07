@@ -83,7 +83,7 @@ export function ProjectOpenQuestionsPage() {
   async function reloadOpenQuestions() {
     if (!projectId) return;
     try {
-      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -185,6 +185,7 @@ export function ProjectOpenQuestionsPage() {
           columns={columns}
           rows={filtered}
           rowKey={(q) => q.id}
+          placements={{ projectId, artefactType: "open_question", rowId: (q) => q.id }}
           onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}
           emptyState={
             <p className="text-muted">

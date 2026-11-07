@@ -59,7 +59,7 @@ export function NeedsPage() {
       if (!projectId || !loaded || !hasNeeds) return;
       const mine = ++loadSeq.current;
       projectNeedApi
-        .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
+        .list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope })
         .then((list) => {
           if (mine !== loadSeq.current) return;
           setNeeds(list);

@@ -46,6 +46,7 @@ from app.routers import (
     org_record_tables,
     orgs,
     pats,
+    placements,
     project_link_types,
     projects,
     record_list_report,
@@ -374,6 +375,7 @@ app.include_router(custom_fields.router)
 app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
+app.include_router(placements.router)
 app.include_router(tags.router)
 app.include_router(tags.org_router)
 app.include_router(project_link_types.router)

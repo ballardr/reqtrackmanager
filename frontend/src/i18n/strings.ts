@@ -3380,6 +3380,20 @@ const en = {
     coversProjects: (count: number) => `Counts cover ${count} ${count === 1 ? "project" : "projects"}; stage progress is this project's own.`,
   },
   /** Feedback for a mutation run through `useMutation`: "Stage added." / "Could not add the stage." from a verb and a noun. */
+  /** Where a record sits in the project's component/category tree (`ComponentField`, `RecordPlacements`, `ComponentFilterField`). */
+  placements: {
+    label: "Components",
+    none: "Not placed in a component",
+    choose: "Choose components…",
+    filterLabel: "Component and category",
+    pickerLabel: "Components and categories",
+    filterPlaceholder: "Filter components",
+    removeLabel: (place: string) => `Remove ${place}`,
+    saveFailed: (message: string) => `Could not save the components: ${message}`,
+    create: {
+      failed: (message: string) => `The record was saved, but its components were not set: ${message} Set them from the record.`,
+    },
+  },
   tags: {
     label: "Tags",
     none: "No tags",
@@ -3556,6 +3570,9 @@ const en = {
     fieldPickerSummaryLimit: 3,
   },
   help: {
+    // Components on any record
+    recordComponents: "The components and categories this record belongs to, for example Hardware or Hardware / Cooling. A record can belong to several, and every list can be filtered by them.",
+    recordComponentsFilter: "Shows records placed in any chosen component or category.\nA component chosen alone matches the record whatever its category.",
     // Report layout designer
     layoutAutosave: "Writes your changes to the layout's shared draft a few seconds after you stop editing, so nothing is lost. Turn it off to try changes out freely: nothing is stored until you press Save draft, and Discard changes puts the editor back. This setting is yours and applies to every layout.",
     // Server Management → Force a credential reset

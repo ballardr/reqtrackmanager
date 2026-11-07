@@ -127,6 +127,14 @@ NOT_CREATABLE_FROM_LINKS = {
     ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT: "A required-action assessment is produced when a standard is assigned; it is not authored.",
 }
 
+#: Types that exist only inside an assigned standard's own structure (its requirements, clauses and actions), which
+#: is their classification; a project's component/category tree does not apply to them.
+NOT_PLACEABLE = {
+    ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT: "A standard's requirements are classified by the standard's own structure.",
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT: "An assessment follows the standard's requirement it assesses.",
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT: "A required-action assessment follows the standard's required action.",
+}
+
 #: The filters of the assessment-side lists, by the names their exports take. `assignment` is a project compliance
 #: (one standard version assigned to the project); `standard` and `version` narrow to a standard or one of its
 #: versions, and `section` to one top-level requirement and everything beneath it (the outstanding panel's filters).

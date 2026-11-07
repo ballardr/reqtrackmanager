@@ -62,7 +62,7 @@ export function ProjectGuidingPrinciplesPage() {
   async function reloadGuidingPrinciples() {
     if (!projectId) return;
     try {
-      setGuidingPrinciples(await projectGuidingPrincipleApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setGuidingPrinciples(await projectGuidingPrincipleApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -151,6 +151,7 @@ export function ProjectGuidingPrinciplesPage() {
           columns={columns}
           rows={filtered}
           rowKey={(g) => g.id}
+          placements={{ projectId, artefactType: "guiding_principle", rowId: (g) => g.id }}
           onRowClick={(g) => navigate(`/projects/${rowProjectId(g, projectId)}/modules/context_strategy/guiding-principles/${g.id}`)}
           emptyState={<p className="text-muted">No Guiding Principle recorded for this project yet.</p>}
         />

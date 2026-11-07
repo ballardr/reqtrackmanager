@@ -66,7 +66,7 @@ export function ProjectStrategiesPage() {
   async function reloadStrategies() {
     if (!projectId) return;
     try {
-      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -155,6 +155,7 @@ export function ProjectStrategiesPage() {
           columns={columns}
           rows={filtered}
           rowKey={(s) => s.id}
+          placements={{ projectId, artefactType: "strategy", rowId: (s) => s.id }}
           onRowClick={(s) => navigate(`/projects/${rowProjectId(s, projectId)}/modules/context_strategy/strategies/${s.id}`)}
           emptyState={<p className="text-muted">No Strategy recorded for this project yet.</p>}
         />

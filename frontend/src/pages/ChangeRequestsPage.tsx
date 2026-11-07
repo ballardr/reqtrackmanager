@@ -16,6 +16,8 @@ import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { TagFilterField } from "../components/TagFilterField";
+import { placementsText } from "../api/placements";
+import { usePagePlacements } from "../hooks/usePagePlacements";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { SortableHeader } from "../components/SortableHeader";
@@ -74,6 +76,8 @@ export function ChangeRequestsPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [crs, setCrs] = useState<ChangeRequest[] | null>(null);
+  const placed = usePagePlacements(projectId, "change_request", (crs ?? []).map((cr) => cr.id));
+  const showPlaces = Object.keys(placed).length > 0;
   const [total, setTotal] = useState(0);
   // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
@@ -307,6 +311,7 @@ export function ChangeRequestsPage() {
                         label="Created" sortKey="created_at" sort={sort}
                         onSort={(key) => setSort((s) => cycleSort(s, key))}
                       />
+                      {showPlaces && <th>{strings.placements.label}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -333,6 +338,7 @@ export function ChangeRequestsPage() {
                         <td className="text-muted">{crTargetLabel(cr)}</td>
                         <td className="text-muted">{crLevelLabel(cr)}</td>
                         <td>{new Date(cr.created_at).toLocaleString()}</td>
+                        {showPlaces && <td className="text-muted">{placementsText(placed[cr.id])}</td>}
                       </tr>
                     ))}
                   </tbody>

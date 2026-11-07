@@ -39,6 +39,7 @@ from app.models.organization import (
     UserOrgRole,
 )
 from app.models.pat import PersonalAccessToken
+from app.models.placement import ArtefactPlacement
 from app.models.project import (
     FavoriteProject,
     OrgGroupProjectRole,
@@ -94,6 +95,7 @@ from app.models.user import User
 
 __all__ = [
     "ActionTypeDefinition",
+    "ArtefactPlacement",
     "ArtefactTag",
     "Tag",
     "AuditEvent",

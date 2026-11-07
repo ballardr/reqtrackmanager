@@ -15,6 +15,9 @@ target one: requirements by `unique_code`, change requests by `ref` (their
 definitions by name, and every user reference by email (resolved on import
 via `services.bundle_common.UserResolver`).
 
+Requirement actions travel too (`services.project_actions_bundle`): the project's action types, each action with its
+comments, attachments, tags and places, and its links to requirements, by `unique_code`.
+
 Deliberately out of scope (documented rather than silently dropped):
 `Notification`/`NotificationPreference`/`Subscription` (per-user, per-
 deployment inbox state that's meaningless once ids change) and `LoginEvent`
@@ -118,11 +121,13 @@ from app.services.bundle_common import (
 )
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
-from app.services.definitions import get_default_project_status_id, seed_action_types
+from app.services.definitions import get_default_project_status_id
 from app.services.files import read_file
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
+from app.services.project_actions_bundle import export_project_actions, import_project_action_types, import_project_actions
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
 from app.services.report_folder_bundle import export_project_folders, import_project_folders
@@ -131,7 +136,15 @@ from app.services.report_pack_bundle import export_project_packs, import_project
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
 from app.services.sequences import generate_unique_code
-from app.services.tags import export_vocabulary, import_vocabulary, keywords_for_requirements, set_keywords
+from app.services.tags import (
+    export_vocabulary,
+    import_vocabulary,
+    keywords_for_requirements,
+    prime_record_tag_names,
+    record_tag_names,
+    restore_record_tags,
+    set_keywords,
+)
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -420,6 +433,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         for c in requirement_comments_raw if c.target_id in req_code_by_id
     ]
 
+    prime_record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
+    prime_record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
     change_requests_json = []
     for cr in change_requests:
         cr_versions_json = []
@@ -445,6 +460,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
             "kind": cr.kind.value, "status": cr.status.value, "creator_email": email(cr.creator_id),
             "submitted_at": _j(cr.submitted_at), "decided_at": _j(cr.decided_at), "decided_by_email": email(cr.decided_by),
             "decision_note": cr.decision_note, "versions": cr_versions_json,
+            "tags": record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
+            "placements": record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
             "tasks": [
                 {
                     "description": t.description, "assignee": principal_to_bundle(db, t.assignee_type, t.assignee_id),
@@ -499,6 +516,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         **export_project_layouts(db, project, file_assets_by_id), **export_project_packs(db, project), **export_project_placements(db, project),
         **export_project_snippets(db, project, file_assets_by_id),
         **export_project_folders(db, project),
+        **export_project_actions(db, project, file_assets_by_id),
     }
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         module_json, module_file_assets = hooks.export(db, project)
@@ -674,13 +692,9 @@ def apply_project_data(
     """
     organization_id = project.organization_id
 
-    # Default action types (Review, Test) — a bundle doesn't currently carry
-    # its source project's action-type customisations across (unlike custom
-    # field definitions below), so every imported project simply starts
-    # with the same defaults a brand-new project would get. Matches
-    # `routers/projects.py::create_project`'s own default-seeding call for
-    # a manually-created (non-template) project.
-    seed_action_types(db, project.id)
+    # The bundle's own action types; a bundle that lists none (one written before action types were carried)
+    # starts with the defaults a brand-new project gets, as `routers/projects.py::create_project` does.
+    import_project_action_types(db, project, data)
     import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)
@@ -899,6 +913,8 @@ def apply_project_data(
         if req_id:
             import_comment(c, ReviewTargetType.REQUIREMENT, req_id, "uploaded_by_email")
 
+    import_project_actions(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+
     cr_id_by_ref: dict[str, UUID] = {}
     for cr in data.get("change_requests", []):
         requirement_id = requirement_id_by_code.get(cr["requirement_unique_code"]) if cr.get("requirement_unique_code") else None
@@ -915,6 +931,14 @@ def apply_project_data(
         db.add(change_request)
         db.flush()
         cr_id_by_ref[cr["ref"]] = change_request.id
+        restore_record_tags(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, names=cr.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=current_user.id,
+            artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, entries=cr.get("placements"),
+        )
 
         for v in cr.get("versions", []):
             proposed_component_id = component_id_by_prefix.get(v["proposed_component_prefix"]) if v.get("proposed_component_prefix") else None

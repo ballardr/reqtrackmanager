@@ -50,6 +50,7 @@ from app.modules.stakeholders.service import (
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
 from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
@@ -84,6 +85,7 @@ def _need_json(db: Session, need: StakeholderNeed, project: Project, emails: dic
         **principals_to_bundle(db, v, NEED_PRINCIPAL_FIELDS), "created_by_email": emails.get(need.creator_id), "is_archived": need.is_archived,
         "archived_at": _j(need.archived_at), "created_at": _j(need.created_at), "holders": holders,
         "requirement_unique_codes": codes, "tags": record_tag_names(db, NEED_ARTEFACT_TYPE, need.id),
+        "placements": record_placements(db, NEED_ARTEFACT_TYPE, need.id),
     }
 
 
@@ -99,6 +101,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_current_versions(db, StakeholderNeedVersion, "need_id", ids)
     prime_links(db, NEED_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, NEED_ARTEFACT_TYPE, ids)
+    prime_record_placements(db, NEED_ARTEFACT_TYPE, ids)
     prime_file_links(db, StakeholderNeedFile, "need_id", ids)
     out = []
     for need in needs:
@@ -154,6 +157,10 @@ def import_project_data(
         restore_record_tags(
             db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
             artefact_type=NEED_ARTEFACT_TYPE, artefact_id=need.id, names=n.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator_id,
+            artefact_type=NEED_ARTEFACT_TYPE, artefact_id=need.id, entries=n.get("placements"),
         )
         for holder in n.get("holders", []):
             lookup = stakeholders if holder["kind"] == STAKEHOLDER_ARTEFACT_TYPE else personas

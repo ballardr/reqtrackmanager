@@ -26,7 +26,8 @@ Design decisions:
   cheap: a minimum query length, a per-type row cap of `offset + limit`, a depth limit of
   `MAX_DEPTH`, a project cap, and a per-search `statement_timeout`.
 - Fields are opt-in per provider; ID (the record's code, qualified or not), Title and Tags are
-  built here, so every taggable type is searched on tags with no provider work.
+  built here, so every taggable type is searched on tags with no provider work. Component and category
+  names (`placements`) are built here the same way, opt-in and never a default.
 - A record owned by the organisation (a shared persona) is found only through a project that is
   allowed to see it, using the owning module's `get_many_in_project` rule (per-project hiding),
   and its count is taken after that check.
@@ -53,7 +54,9 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization, UserOrgRole
-from app.models.project import Project
+from app.models.placement import ArtefactPlacement
+from app.models.project import Project, ProjectCategory, ProjectComponent
+from app.models.requirement import Requirement
 from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 from app.modules.registry import (
@@ -63,6 +66,7 @@ from app.modules.registry import (
     artefact_type_module,
     get_artefact_summaries_in_project,
     get_artefact_type_label,
+    get_not_placeable_types,
     get_search_providers,
     get_search_scopes,
     is_module_enabled_for_project,
@@ -71,6 +75,7 @@ from app.modules.registry import (
     prefetch_project_module_state,
 )
 from app.services.permissions import encode_permission
+from app.services.placements import COLUMN_PLACED_TYPES, placement_text, placements_for_records
 from app.services.project_access import accessible_project_ids
 from app.services.rbac import (
     get_effective_org_roles,
@@ -101,7 +106,9 @@ _SNIPPET_AFTER = 100
 PROJECT_TYPE = "project"
 
 DEFAULT_FIELDS = ("id", "title", "tags")
-_RESERVED_FIELDS = {"id": "ID", "title": "Title", "tags": "Tags"}
+#: The reserved key for a record's component and category names (opt-in, never a default).
+PLACEMENTS_FIELD = "placements"
+_RESERVED_FIELDS = {"id": "ID", "title": "Title", "tags": "Tags", PLACEMENTS_FIELD: "Component and category"}
 #: The reserved key for a record's comments: available only to the types that declare a comment table, and
 #: only ever chosen for one search, never a default (an `EXISTS` over a table per type is much dearer than
 #: matching the record's own columns).
@@ -547,6 +554,35 @@ def _tag_exists(artefact_type: str, id_column: Any, term: str) -> Any:
     )
 
 
+def _placement_exists(artefact_type: str, id_column: Any, term: str) -> Any:
+    """Whether the record sits in a component or category whose name contains `term`.
+
+    A requirement keeps its own component and category columns, so it is matched through them; every other type
+    through `artefact_placements`."""
+    component_name = func.lower(ProjectComponent.name).like(f"%{_escape_like(term)}%", escape="\\")
+    category_name = func.lower(ProjectCategory.name).like(f"%{_escape_like(term)}%", escape="\\")
+    if artefact_type in COLUMN_PLACED_TYPES:
+        return exists(
+            select(1)
+            .select_from(
+                Requirement.__table__.join(ProjectComponent.__table__, ProjectComponent.id == Requirement.component_id)
+                .outerjoin(ProjectCategory.__table__, ProjectCategory.id == Requirement.category_id)
+            )
+            .where(Requirement.id == id_column, or_(component_name, category_name))
+        )
+    return exists(
+        select(1)
+        .select_from(
+            ArtefactPlacement.__table__.join(ProjectComponent.__table__, ProjectComponent.id == ArtefactPlacement.component_id)
+            .outerjoin(ProjectCategory.__table__, ProjectCategory.id == ArtefactPlacement.category_id)
+        )
+        .where(
+            ArtefactPlacement.artefact_type == artefact_type, ArtefactPlacement.artefact_id == id_column,
+            or_(component_name, category_name),
+        )
+    )
+
+
 def _comment_exists(comments: Any, id_column: Any, term: str) -> Any:
     """Whether the record has a comment whose text contains `term`."""
     return exists(
@@ -592,6 +628,8 @@ def _text_condition(artefact_type: str, provider: ArtefactSearchProvider, fields
             alternatives.append(_like(columns.title, term))
         if "tags" in fields:
             alternatives.append(_tag_exists(artefact_type, columns.id, term))
+        if PLACEMENTS_FIELD in fields and artefact_type not in get_not_placeable_types():
+            alternatives.append(_placement_exists(artefact_type, columns.id, term))
         if COMMENTS_FIELD in fields and provider.comments is not None:
             alternatives.append(_comment_exists(provider.comments, columns.id, term))
         alternatives.extend(_like(carried[k].column, term) for k in fields if k in carried)
@@ -856,6 +894,23 @@ def _tag_names(db: Session, rows: list[_Row]) -> dict[tuple[str, uuid.UUID], lis
     return found
 
 
+def _placement_names(db: Session, rows: list[_Row]) -> dict[tuple[str, uuid.UUID], list[str]]:
+    """The component and category names of the given records (`Component / Category`), one pass per type."""
+    by_type: dict[str, list[uuid.UUID]] = {}
+    for r in rows:
+        if r.type != PROJECT_TYPE and r.type not in get_not_placeable_types():
+            by_type.setdefault(r.type, []).append(r.id)
+    found: dict[tuple[str, uuid.UUID], list[str]] = {}
+    for artefact_type, ids in by_type.items():
+        if artefact_type in COLUMN_PLACED_TYPES:
+            continue  # a requirement's own component and category are not searched as a snippet
+        rows_by_id = placements_for_records(db, artefact_type, ids)
+        flat = [(record_id, placement) for record_id, rows in rows_by_id.items() for placement in rows]
+        for (record_id, _), name in zip(flat, placement_text(db, [placement for _, placement in flat]), strict=True):
+            found.setdefault((artefact_type, record_id), []).append(name)
+    return found
+
+
 def _comment_texts(db: Session, rows: list[_Row], terms: list[str], providers: dict[str, ArtefactSearchProvider]) -> dict[tuple[str, uuid.UUID], str]:
     """The earliest comment containing a term, for each of the given records, one query per type."""
     by_type: dict[str, list[uuid.UUID]] = {}
@@ -880,8 +935,9 @@ def _comment_texts(db: Session, rows: list[_Row], terms: list[str], providers: d
 def _snippet(
     row: _Row, fields: list[str], terms: list[str], tags: dict[tuple[str, uuid.UUID], list[str]], labels: dict[str, str],
     comment_texts: dict[tuple[str, uuid.UUID], str] | None = None,
+    placements: dict[tuple[str, uuid.UUID], list[str]] | None = None,
 ) -> Snippet | None:
-    """The first of Tags and the declared fields (in selection order) that contains a term."""
+    """The first of Tags, the placement names and the declared fields (in selection order) that contains a term."""
     if "tags" in fields:
         matching = [n for n in tags.get((row.type, row.id), []) if any(t in n.lower() for t in terms)]
         if matching:
@@ -889,6 +945,11 @@ def _snippet(
             windowed = _window(joined, terms)
             if windowed:
                 return Snippet("tags", labels.get("tags", "Tags"), windowed[0], windowed[1])
+    if PLACEMENTS_FIELD in fields:
+        matching = [n for n in (placements or {}).get((row.type, row.id), []) if any(t in n.lower() for t in terms)]
+        windowed = _window("; ".join(matching), terms) if matching else None
+        if windowed:
+            return Snippet(PLACEMENTS_FIELD, labels.get(PLACEMENTS_FIELD, "Component and category"), windowed[0], windowed[1])
     for key in fields:
         value = row.field_values.get(key)
         if not value:
@@ -1046,7 +1107,11 @@ def _run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
     tag_names = _tag_names(db, page) if "tags" in fields else {}
     field_labels = {k: v[0] for k, v in merged.items()}
     comment_texts = _comment_texts(db, page, terms, providers) if COMMENTS_FIELD in fields else {}
-    hits = [_shape(r, providers, context, _snippet(r, fields, terms, tag_names, field_labels, comment_texts)) for r in page]
+    placement_names = _placement_names(db, page) if PLACEMENTS_FIELD in fields else {}
+    hits = [
+        _shape(r, providers, context, _snippet(r, fields, terms, tag_names, field_labels, comment_texts, placement_names))
+        for r in page
+    ]
     total = None
     total_capped = False
     if params.counts:

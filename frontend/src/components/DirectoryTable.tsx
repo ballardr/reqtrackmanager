@@ -46,6 +46,10 @@
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { placementsText, type RecordPlacementsApi } from "../api/placements";
+import { useStrings } from "../context/TerminologyContext";
+import { usePagePlacements } from "../hooks/usePagePlacements";
+
 import { LoadMoreButton } from "./LoadMoreButton";
 import { SortableHeader } from "./SortableHeader";
 import type { SortState } from "./sortState";
@@ -83,6 +87,7 @@ export function DirectoryTable<Row>({
   onRowClick,
   rowHref,
   emptyState,
+  placements,
 }: {
   /** Accessible name for the `<table>` itself. */
   ariaLabel: string;
@@ -120,7 +125,14 @@ export function DirectoryTable<Row>({
    * "nothing here yet" vs. "no results match this search/filter" copy —
    * only it knows whether a filter is currently active. */
   emptyState: ReactNode;
+  /** Adds a Components column showing where each row's record sits in the project's component tree, read for the
+   * whole page at once. The column appears only when a row on the page is placed somewhere, so a project that does
+   * not use components sees no new column. `api` is injectable for stories. */
+  placements?: { projectId: string | undefined; artefactType: string; rowId: (row: Row) => string; api?: RecordPlacementsApi };
 }): JSX.Element {
+  const strings = useStrings();
+  const placed = usePagePlacements(placements?.projectId, placements?.artefactType, rows.map((r) => placements?.rowId(r) ?? ""), placements?.api);
+  const showPlacements = placements !== undefined && rows.some((r) => (placed[placements.rowId(r)] ?? []).length > 0);
   if (rows.length === 0) {
     return <>{emptyState}</>;
   }
@@ -140,6 +152,7 @@ export function DirectoryTable<Row>({
                   </th>
                 )
               )}
+              {showPlacements && <th>{strings.placements.label}</th>}
             </tr>
           </thead>
           <tbody>
@@ -152,6 +165,9 @@ export function DirectoryTable<Row>({
                       : column.render(row)}
                   </td>
                 ))}
+                {showPlacements && placements && (
+                  <td>{placementsText(placed[placements.rowId(row)])}</td>
+                )}
               </tr>
             ))}
           </tbody>

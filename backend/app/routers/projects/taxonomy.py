@@ -23,6 +23,8 @@ from app.models.user import User
 from app.schemas.project import CategoryCreate, CategoryOut, CategoryUpdate, ComponentCreate, ComponentOut, ComponentUpdate, MoveDirection
 from app.services.audit import log_event
 from app.services.ordering import move_ordered
+from app.services.placements import component_placement_count
+from app.services.placements import reassign_category as reassign_category_placements
 from app.services.rbac import require_project_manage, require_project_view
 
 router = APIRouter(tags=["projects-taxonomy"])
@@ -118,8 +120,9 @@ def delete_component(
     at creation), so emptying a component of its categories first (deleting
     or reassigning each one via `delete_category`, which can target a
     category under a *different* component) always empties it of
-    requirements too, making this a simple, unconditional delete rather
-    than needing its own reassignment step."""
+    requirements too. Records of other types placed in the component (with
+    or without a category) are not moved anywhere, so they block the delete
+    until their placements are removed."""
     component = db.get(ProjectComponent, component_id)
     if component is None or component.project_id != project.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Component not found.")
@@ -127,6 +130,10 @@ def delete_component(
     if has_categories:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "This component still has categories — delete or reassign them first."
+        )
+    if component_placement_count(db, component_id):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Records are still placed in this component — remove their placements first."
         )
     log_event(db, entity_type="project_component", entity_id=component_id, action="deleted",
               actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id)
@@ -238,7 +245,8 @@ def delete_category(
     invariant that a requirement's component always matches its category's
     component. `reassign_to` must be a different, existing category in the
     same project — if this is the project's only remaining category, no
-    valid target exists and deletion is refused.
+    valid target exists and deletion is refused. Placements of other record
+    types in the category move to `reassign_to` the same way.
     """
     category = db.get(ProjectCategory, category_id)
     if category is None or category.project_id != project.id:
@@ -253,6 +261,7 @@ def delete_category(
         .where(Requirement.category_id == category_id)
         .values(category_id=reassign_to, component_id=target.component_id)
     )
+    reassign_category_placements(db, category_id, target)
     log_event(db, entity_type="project_category", entity_id=category_id, action="deleted",
               actor_id=current_user.id, project_id=project.id, organization_id=project.organization_id,
               detail={"reassigned_to": str(reassign_to)})

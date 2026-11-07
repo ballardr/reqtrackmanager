@@ -46,6 +46,9 @@ Design decisions:
   grid) goes through it, so the rule cannot be bypassed on one of them. A tagged column needs the organisation's
   policy (`services.record_policy`) to allow its tag and the person to hold `export_personal_data`; otherwise it
   is left out and the response says so.
+- Placement: every type except the requirement (which has its own component and category columns) gets one
+  shared `placements` column (`services.placements.placement_column`), added here, never by a provider. An import
+  writes it after the type's own create or update path, through `set_record_placements`.
 
 Dependencies: `modules.registry` (the provider shapes), `services.rbac` and `services.permissions` (access),
 `services.project_scope` and `services.tags` (the shared list filters), `services.codes`, `services.audit`.
@@ -89,8 +92,10 @@ from app.services import pubsub
 from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
+from app.services.link_graph import ArtefactResolver
 from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
+from app.services.placements import PLACEMENT_COLUMN_KEY, apply_imported_placements, can_place, placement_column
 from app.services.principals import group_ref_from_text, principal_labels, principal_text, validate_principal
 from app.services.project_scope import ProjectScope, gate_open
 from app.services.rbac import get_effective_org_roles, get_effective_permissions, permission_satisfied
@@ -104,7 +109,7 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024
 CODE_COLUMN = "code"
 PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
-GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode"})
+GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode", "component_id", "category_id"})
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
 REPORT_PARAMS = frozenset({"record_type"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
@@ -516,8 +521,10 @@ def build_table(
     Returns:
         The `RecordTable`; rows from a related project are labelled in a trailing `project` column.
     """
+    shared = placement_column(db, project, artefact_type, may_place=False, id_of=provider.id_of)
     columns, omitted = resolve_export_columns(
-        db, user, provider.columns(db, project), organization_id=project.organization_id, project_id=project.id, purpose="export",
+        db, user, [*provider.columns(db, project), *([shared[0]] if shared else [])],
+        organization_id=project.organization_id, project_id=project.id, purpose="export",
     )
 
     def rows_for(project_id: uuid.UUID) -> list[Any]:
@@ -526,6 +533,8 @@ def build_table(
 
     records = project_scope.collect(db, project, user.id, artefact_type, rows_for, gate=provider.gate, id_of=provider.id_of)
     prepared = provider.prepare(db, project, records) if provider.prepare is not None else None
+    if shared:
+        shared[1].expect(provider.id_of(record) for record in records)
     organization = get_or_404(db, Organization, project.organization_id, "Organisation")
     owners: dict[uuid.UUID, Project] = {project.id: project}
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
@@ -553,8 +562,7 @@ def build_table(
         read_only.append(_read_only_reason(provider, prepared, record, owner, project, owned_by_organization))
         cell_locks.append({key: reason for key, lock in lockable if (reason := lock(prepared, record))})
     keys = _applied_filter_keys(filters)
-    if tag_filter.active:
-        keys.append("tag")
+    keys.extend(tag_filter.applied_keys)
     if project_scope.widened:
         keys.append("project_scope")
     return RecordTable(
@@ -1098,12 +1106,23 @@ def run_import(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
     provider_find_many = provider.find_many  # bound here so the lambdas below keep the not-None narrowing
     provider_prepare = provider.prepare
+    shared = placement_column(
+        db, project, artefact_type, id_of=provider.id_of,
+        may_place=can_place(ArtefactResolver(db, project, user.id), artefact_type),
+    )
+
+    def prepare(records: list[Any]) -> Any:
+        """The provider's lookups, with the shared placement cells of the same records loaded together."""
+        if shared:
+            shared[1].expect(provider.id_of(record) for record in records)
+        return provider_prepare(db, project, records) if provider_prepare is not None else None
+
     target = _ImportTarget(
         organization=get_or_404(db, Organization, project.organization_id, "Organisation"), project=project,
-        columns=list(provider.columns(db, project)),
+        columns=[*provider.columns(db, project), *([shared[0]] if shared else [])],
         find=lambda code: _find_record(db, project, provider, code),
         find_many=(lambda codes: _find_many_exported(provider_find_many, db, project, codes)) if provider_find_many is not None else None,
-        prepare=(lambda records: provider_prepare(db, project, records)) if provider_prepare is not None else None,
+        prepare=prepare if shared or provider_prepare is not None else None,
         create=provider.create if may_create else None, update=provider.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="project",
     )
@@ -1236,9 +1255,12 @@ def _import_rows(
             if record is None:
                 assert create_fn is not None  # a missing create right was rejected above
                 values = {key: parse(ctx, cells[key]) for key, parse in parsers.items()}
+                placed = values.pop(PLACEMENT_COLUMN_KEY, None)
                 with db.begin_nested():
-                    create_fn(ctx, values)
+                    created = create_fn(ctx, values)
                     db.flush()
+                    if placed:
+                        apply_imported_placements(ctx, artefact_type, created, placed)
                 result.action = "create"
                 result.code = ""
             else:
@@ -1254,8 +1276,12 @@ def _import_rows(
                 else:
                     assert update_fn is not None  # a missing update right was rejected above
                     values = {c.column: parsers[c.column](ctx, c.after) for c in changes}
+                    placed = values.pop(PLACEMENT_COLUMN_KEY, None)
                     with db.begin_nested():
-                        update_fn(ctx, record, values)
+                        if values:
+                            update_fn(ctx, record, values)
+                        if placed is not None:
+                            apply_imported_placements(ctx, artefact_type, record, placed)
                         db.flush()
                     result.action = "update"
                     result.changes = changes

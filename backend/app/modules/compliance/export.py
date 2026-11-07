@@ -113,8 +113,10 @@ from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.sequences import generate_unique_code
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -1223,6 +1225,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
 
     evidence_json = []
     evidence_ids = [e.id for e in evidence_rows]
+    prime_record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
+    prime_record_placements(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
     revalidations_by_evidence: dict[UUID, list[ComplianceEvidenceRevalidation]] = {}
     files_by_evidence: dict[UUID, list[tuple]] = {}
     if evidence_ids:
@@ -1252,6 +1256,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "expiry_date": _j(e.expiry_date), "_provided_by": e.provided_by, "provided_at": _j(e.provided_at),
             "notes": e.notes, "is_archived": e.is_archived, "archived_at": _j(e.archived_at),
             "_archived_by": e.archived_by, "attachments": attachments,
+            "tags": record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, e.id),
+            "placements": record_placements(db, ARTEFACT_TYPE_EVIDENCE, e.id),
             "revalidations": [
                 {
                     "_revalidated_by": r.revalidated_by, "revalidated_at": _j(r.revalidated_at),
@@ -1497,6 +1503,14 @@ def import_project_data(
         db.add(evidence)
         db.flush()
         evidence_id_by_ref[e["ref"]] = evidence.id
+        restore_record_tags(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, names=e.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=current_user.id,
+            artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, entries=e.get("placements"),
+        )
 
         for att in e.get("attachments", []):
             att_bytes = file_bytes_by_ref.get(att["file_ref"])

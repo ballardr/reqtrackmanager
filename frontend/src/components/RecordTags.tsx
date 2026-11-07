@@ -2,7 +2,8 @@
  * Module: components/RecordTags
  *
  * The tags of one existing record, in its header: chips for everyone who can open the record,
- * and, for someone who may tag it, the tag picker so a tag is added or removed in place.
+ * and, for someone who may tag it, the tag picker so a tag is added or removed in place. The record's components
+ * (`RecordPlacements`) are shown beside them, so every page that shows tags shows places too.
  *
  * Responsibilities:
  * - Load the record's tags, the vocabulary to pick from, the project's mode and `can_edit`
@@ -19,6 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { recordTagsApi, type RecordTags as RecordTagsData, type RecordTagsApi } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
+import { RecordPlacements } from "./RecordPlacements";
 import { TagChip } from "./TagChip";
 import { TagInput } from "./TagInput";
 
@@ -37,6 +39,24 @@ export function RecordTags({
   artefactId: string;
   onChanged?: () => void;
   api?: RecordTagsApi;
+}) {
+  return (
+    <>
+      <RecordTagList projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} api={api} />
+      <RecordPlacements projectId={projectId} artefactType={artefactType} artefactId={artefactId} onChanged={onChanged} />
+    </>
+  );
+}
+
+/** The tag chips or tag picker of {@link RecordTags}. */
+function RecordTagList({
+  projectId, artefactType, artefactId, onChanged, api,
+}: {
+  projectId: string;
+  artefactType: string;
+  artefactId: string;
+  onChanged?: () => void;
+  api: RecordTagsApi;
 }) {
   const strings = useStrings();
   const { showToast } = useToast();

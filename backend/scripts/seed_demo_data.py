@@ -289,6 +289,20 @@ def tag_record(headers: dict, project_id: str, artefact_type: str, artefact_id: 
     return r.json()
 
 
+def place_record(
+    headers: dict, project_id: str, artefact_type: str, artefact_id: str, places: list[tuple[dict, dict | None]],
+) -> dict:
+    """Places a record (any type but a requirement, which has its own component) in `(component, category)` pairs."""
+    body = {"placements": [
+        {"component_id": component["id"], "category_id": category["id"] if category else None} for component, category in places
+    ]}
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/placements", json=body, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def complete_requirement(headers: dict, project_id: str, requirement_id: str) -> dict:
     """Marks an already-approved requirement completed (C-G-11 overlay
     marker) — returns the updated requirement so callers can refresh their
@@ -3717,6 +3731,16 @@ def main() -> None:
     create_tag_org.raise_for_status()
     tag_record(h_pm, drone["id"], "persona", persona_inspector["id"], ["Strategic"])
 
+    print("Seeding component placements — a Pain Point and a Risk in more than one component or category, and a Persona"
+          " in one component, so the Components column, the component filter and the header chips have content...")
+    place_record(h_pm, drone["id"], "pain_point", pp_accepted["id"], [
+        (drone_components["FW"], drone_categories["FW"]["SAF"]), (drone_components["AV"], None),
+    ])
+    place_record(h_pm, drone["id"], "risk", risk_single_controller["id"], [
+        (drone_components["AV"], drone_categories["AV"]["SAF"]),
+    ])
+    place_record(h_pm, drone["id"], "persona", drone_operator_persona["id"], [(drone_components["PR"], None)])
+
     print("Seeding a restricted tag vocabulary — Solstice Cloud Platform lists its tags and allows no others,"
           " so its tag field only offers the list (Falcon-3 stays free)...")
     for name, colour in (("Security", "#c53030"), ("Performance", "#b7791f"), ("Availability", "#2b6cb0")):
@@ -3775,6 +3799,8 @@ def main() -> None:
           " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot); plus 3 Falcon-3 Engagements (a"
           " quick email log; a focus group aimed at a Stakeholder group, with anonymous participants, prompts and a finding;"
           " and a March briefing that leaves Pat Okafor overdue on a quarterly cadence)")
+    print("  Components: on Falcon-3, one Pain Point sits in Firmware / Safety and Avionics, one Risk in Avionics / Safety"
+          " and one Persona in Propulsion (a requirement keeps its own component and category)")
     print("  Tags: Falcon-3 has a free vocabulary with colours (inherited by the Avionics sub-project); Solstice Cloud"
           " Platform is restricted to three listed tags")
     print("  Risk Management (enabled org-wide): 4 Risks on Falcon-3 (RSK-001 flight controller failure — High inherent,"

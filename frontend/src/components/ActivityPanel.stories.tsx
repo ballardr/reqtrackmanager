@@ -36,6 +36,23 @@ export const Entries: Story = {
   },
 };
 
+/** Tag and component changes read as sentences naming the tag or the place, not as a bare action word. */
+export const TagAndComponentChanges: Story = {
+  args: {
+    entries: [
+      buildChangeEntry({ action: "tagged", actor_display_name: "Alex Morgan", detail: { tag: "Safety" } }),
+      buildChangeEntry({ action: "placed", actor_display_name: "Alex Morgan", detail: { place: "Hardware / Cooling" } }),
+      buildChangeEntry({ action: "unplaced", actor_display_name: "Jamie Lee", detail: { place: "Software" } }),
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('Alex Morgan added the tag "Safety"')).toBeInTheDocument();
+    await expect(canvas.getByText("Alex Morgan placed this in Hardware / Cooling")).toBeInTheDocument();
+    await expect(canvas.getByText("Jamie Lee removed this from Software")).toBeInTheDocument();
+  },
+};
+
 /** The comment given at a workflow step (`detail.comment`) shows under the sentence, once, as text. */
 export const TransitionComments: Story = {
   args: {

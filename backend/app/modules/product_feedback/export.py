@@ -102,6 +102,7 @@ from app.services.bundle_common import BundleImportWarnings, UserResolver, expor
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.codes import label_title
 from app.services.link_types import ensure_org_link_type
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.rbac import lock_row_for_update
 from app.services.relationships import create_link
@@ -155,6 +156,7 @@ def _export_requests(
     stored = version_levels(db, [v.id for _, v in pairs])
     references = refs.references_by_request(db, ids)
     prime_record_tag_names(db, REQUEST_ARTEFACT_TYPE, ids)
+    prime_record_placements(db, REQUEST_ARTEFACT_TYPE, ids)
     if assets is not None:
         prime_file_links(db, EnhancementRequestFile, "request_id", ids)
     emails = _emails(db, {u for r, v in pairs for u in (r.creator_id, r.archived_by, v.created_by)})
@@ -173,6 +175,7 @@ def _export_requests(
             "is_archived": request.is_archived, "archived_at": _j(request.archived_at),
             "archived_by_email": emails.get(request.archived_by) if request.archived_by else None,
             "tags": record_tag_names(db, REQUEST_ARTEFACT_TYPE, request.id),
+            "placements": record_placements(db, REQUEST_ARTEFACT_TYPE, request.id),
         }
         if assets is not None:
             entry["attachments"] = export_file_links(db, EnhancementRequestFile, "request_id", request.id, assets)
@@ -269,6 +272,10 @@ def _import_request(
     restore_record_tags(
         db, organization_id=holder.organization_id, record_project_id=holder.project_id, actor_id=creator_id,
         artefact_type=REQUEST_ARTEFACT_TYPE, artefact_id=request.id, names=entry.get("tags"),
+    )
+    restore_record_placements(
+        db, project_id=holder.project_id, actor_id=creator_id,
+        artefact_type=REQUEST_ARTEFACT_TYPE, artefact_id=request.id, entries=entry.get("placements"),
     )
     for attachment in entry.get("attachments", []):
         data = (file_bytes_by_ref or {}).get(attachment["file_ref"])

@@ -395,7 +395,7 @@ export const projectEngagementApi = {
   list: (projectId: string, filters: EngagementListFilters = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
-      if (key === "tags" || key === "tag_mode" || key === "project_scope") continue;
+      if (key === "tags" || key === "tag_mode" || key === "component_ids" || key === "category_ids" || key === "project_scope") continue;
       if (value !== undefined && value !== "") params.set(key, String(value));
     }
     appendTagParams(params, filters);

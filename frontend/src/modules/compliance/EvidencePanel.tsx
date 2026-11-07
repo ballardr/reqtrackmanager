@@ -98,6 +98,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           columns={columns}
           rows={filtered}
           rowKey={(e) => e.id}
+          placements={{ projectId, artefactType: "compliance_evidence", rowId: (e) => e.id }}
           rowHref={(e) => evidencePath(projectId, e.id)}
           emptyState={<p className="text-muted">No evidence recorded for this project yet.</p>}
         />

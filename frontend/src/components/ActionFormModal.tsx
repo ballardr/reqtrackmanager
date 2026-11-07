@@ -51,12 +51,14 @@ export function ActionFormModal({
   });
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const valid = values.title.trim() !== "" && values.actionTypeId !== "";
+  // The types may finish loading after the form opens; until one is chosen the select shows (and a save uses) the first.
+  const actionTypeId = values.actionTypeId || actionTypes[0]?.id || "";
+  const valid = values.title.trim() !== "" && actionTypeId !== "";
   return (
     <Modal title={strings.actions.newAction} onClose={onCancel} size="lg">
       <div className="stack">
         <ActionFields
-          values={values} onChange={setValues} actionTypes={actionTypes} orgUsers={orgUsers}
+          values={{ ...values, actionTypeId }} onChange={setValues} actionTypes={actionTypes} orgUsers={orgUsers}
           organizationId={organizationId} projectId={projectId}
         />
         <QuickLinkField projectId={projectId} artefactType="requirement_action" preferredType="requirement" value={quickLinks} onChange={setQuickLinks} />
@@ -64,7 +66,7 @@ export function ActionFormModal({
         <FormActions
           error={error} onCancel={onCancel} saveLabel={strings.common.create} saveDisabled={!valid}
           onSave={() => onSave({
-            title: values.title, description: values.description, action_type_id: values.actionTypeId,
+            title: values.title, description: values.description, action_type_id: actionTypeId,
             assignee: values.assignee, due_date: values.dueDate || null,
           }, quickLinks, tags)}
         />

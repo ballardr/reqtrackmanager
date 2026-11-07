@@ -1012,6 +1012,17 @@ Rules:
 - **An inherited list is read-only** with a notice that the parent manages it.
 - Tag filters and chips use the shared components above; a list that builds its own tag control repeats the debt this section exists to stop.
 
+## Pattern: components on a record
+
+Any record can sit in the project's component/category tree; the UI is the same three shared pieces as tags, rendered by the tag components, so no page builds its own:
+
+- **`RecordPlacements`** (rendered by `RecordTags`, in `RecordHeader`'s `tags` slot): a chip per place, and for someone who may place the record the picker (`PlacementPicker`, a filterable multi-select of every component with its categories) in place. A change saves at once with the whole set; a refusal puts the chips back and says why in a toast. It renders nothing for a requirement (which keeps its own component), for a record with no places that the viewer cannot place, or when the read fails.
+- **`ComponentField`** (rendered by `TagField`) in a create form: collects places, which `useCommitTags` applies once the record exists (`hooks/pendingPlacements`). It asks the server about a draft record, so a form never offers a field the server would refuse.
+- **`ComponentFilterField`** (rendered by `TagFilterField`) in a list's filter panel: tick components and categories; a record in any of them matches. Hidden while the project has no components. A list with its own component filter passes `components={false}`.
+- **A Components column** on a list: `DirectoryTable`'s `placements` prop reads the page's places in one request and shows the column only when a row is placed; a hand-written table (Actions, Change requests) uses `usePagePlacements` and `placementsText`.
+
+Rules: the caption has a `(?)` help (`strings.help.recordComponents`), never permanent explanatory text; the picker lists every place as `Component` or `Component / Category` so a person sees the full path; a list never shows a component or category by raw id.
+
 ## Pattern: create and edit share one field group
 
 A create form accepts every field the edit form edits, and both render the **same field-group component**, so a field added later appears in both. Reason: a create form that is narrower than its edit form leaves records that look complete but are not (a Pain Point created unscored, a requirement with no reviewer), and two hand-built copies drift.

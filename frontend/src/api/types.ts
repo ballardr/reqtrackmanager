@@ -1738,6 +1738,9 @@ export function describeActivityEntry(entry: ChangeEntry): string {
   if ((entry.action === "tagged" || entry.action === "untagged") && typeof entry.detail?.tag === "string") {
     return `${who} ${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
   }
+  if ((entry.action === "placed" || entry.action === "unplaced") && typeof entry.detail?.place === "string") {
+    return `${who} ${entry.action === "placed" ? "placed this in" : "removed this from"} ${entry.detail.place}`;
+  }
   const action = activityActionLabel(entry.action);
   // AI approval via MCP (docs/decisions.md): every approval/decision/
   // completion performed through the MCP server carries `detail.via ===

@@ -102,8 +102,7 @@ export function ProjectDecisionsPage() {
         decision_type_id: decisionTypeFilter || undefined,
         include_archived: includeArchived,
         owner_mine: ownedByMe,
-        tags: tagFilter.tags,
-        tag_mode: tagFilter.mode,
+        ...tagFilter.listFilters,
         project_scope: projectScope.scope,
       }));
       setLoadError(null);
@@ -206,6 +205,7 @@ export function ProjectDecisionsPage() {
           columns={columns}
           rows={rows}
           rowKey={(d) => d.id}
+          placements={{ projectId, artefactType: "decision", rowId: (d) => d.id }}
           onRowClick={setSelected}
           emptyState={
             <p className="text-muted">

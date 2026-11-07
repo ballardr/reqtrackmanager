@@ -30,6 +30,10 @@ The only way to modify a locked (Approved or Completed) requirement: a proposal 
 
 Recording that the people who asked for an [enhancement request](#enhancement-request) were told its outcome once it was delivered or declined. Nothing is sent to them. See [Product Feedback → Relationships and closing the loop](../modules/product-feedback-module/relationships-and-closing-the-loop.md#closing-the-loop).
 
+#### Component placement
+
+The place a record sits in the project's component and category tree. A record other than a requirement can hold several, for example *Hardware / Cooling* and *Software*, and lists, search, reports and exports can be filtered by them. A requirement keeps its own single component and category. See [Core Features → Components on every record](../core-features/components-on-records.md).
+
 #### Custom field
 
 A project-defined attribute (short text, long text, checkbox, or option list) attached to requirements or change requests, versioned alongside every built-in field. See [Custom fields, terminology, and templates](../concepts/custom-fields-terminology-and-templates.md).

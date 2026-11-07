@@ -70,7 +70,7 @@ export function ProjectEngagementsPage() {
     if (!projectId || findingId) return;
     let active = true;
     projectEngagementApi
-      .list(projectId, { ...filters, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
+      .list(projectId, { ...filters, ...tagFilter.listFilters, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setEngagements(list.map((e) => ({ ...e, name: e.title })));
@@ -82,7 +82,7 @@ export function ProjectEngagementsPage() {
     return () => {
       active = false;
     };
-  }, [projectId, findingId, filters, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
+  }, [projectId, findingId, filters, refreshKey, tagFilter.listFilters, projectScope.scope]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -155,6 +155,7 @@ export function ProjectEngagementsPage() {
         }
         onOpen={(e) => navigate(`/projects/${rowProjectId(e, projectId)}/modules/stakeholders/engagements/${e.id}`)}
         tagFilter={{ projectId, filter: tagFilter }}
+        placementType="engagement"
         projectScope={projectScope}
         onCreate={async (values, quickLinks, tags) => {
           const created = await projectEngagementApi.create(projectId, values);

@@ -71,7 +71,7 @@ export function ProjectFutureStatesPage() {
   async function reloadFutureStates() {
     if (!projectId) return;
     try {
-      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -160,6 +160,7 @@ export function ProjectFutureStatesPage() {
           columns={columns}
           rows={filtered}
           rowKey={(fs) => fs.id}
+          placements={{ projectId, artefactType: "future_state", rowId: (fs) => fs.id }}
           onRowClick={(fs) => navigate(`/projects/${rowProjectId(fs, projectId)}/modules/context_strategy/future-states/${fs.id}`)}
           emptyState={<p className="text-muted">No Future State recorded for this project yet.</p>}
         />

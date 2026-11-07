@@ -56,6 +56,7 @@ from app.modules.stakeholders.service import (
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.codes import label_title
 from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_from_bundle, principal_to_bundle
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
@@ -118,6 +119,7 @@ def _engagement_json(
             "unique_code": f.unique_code, "title": f.title, "description": f.description, "created_by_email": emails.get(f.creator_id),
             "created_at": _j(f.created_at), "outcomes": _outcomes_json(db, project, FINDING_ARTEFACT_TYPE, f.id),
             "tags": record_tag_names(db, FINDING_ARTEFACT_TYPE, f.id),
+            "placements": record_placements(db, FINDING_ARTEFACT_TYPE, f.id),
         }
         for f in extras["findings"].get(engagement.id, [])
     ]
@@ -146,6 +148,7 @@ def _engagement_json(
         ],
         "anonymous_participants": anonymous, "findings": findings,
         "tags": record_tag_names(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id),
+        "placements": record_placements(db, ENGAGEMENT_ARTEFACT_TYPE, engagement.id),
     }
 
 
@@ -182,7 +185,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     prime_links(db, ENGAGEMENT_ARTEFACT_TYPE, ids)
     prime_links(db, FINDING_ARTEFACT_TYPE, [f.id for f in findings])
     prime_record_tag_names(db, ENGAGEMENT_ARTEFACT_TYPE, ids)
+    prime_record_placements(db, ENGAGEMENT_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, FINDING_ARTEFACT_TYPE, [f.id for f in findings])
+    prime_record_placements(db, FINDING_ARTEFACT_TYPE, [f.id for f in findings])
     prime_file_links(db, EngagementFile, "engagement_id", [e.id for e in engagements])
     out = []
     for engagement in engagements:
@@ -280,6 +285,10 @@ def import_project_data(
             db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
             artefact_type=ENGAGEMENT_ARTEFACT_TYPE, artefact_id=engagement.id, names=e.get("tags"),
         )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator_id,
+            artefact_type=ENGAGEMENT_ARTEFACT_TYPE, artefact_id=engagement.id, entries=e.get("placements"),
+        )
         for participant in e.get("participants", []):
             stakeholder_id = stakeholders.get((participant["name"], participant["scope"]))
             if stakeholder_id is None:
@@ -332,6 +341,10 @@ def import_project_data(
             restore_record_tags(
                 db, organization_id=organization_id, record_project_id=project.id, actor_id=finding_creator,
                 artefact_type=FINDING_ARTEFACT_TYPE, artefact_id=finding.id, names=f.get("tags"),
+            )
+            restore_record_placements(
+                db, project_id=project.id, actor_id=finding_creator,
+                artefact_type=FINDING_ARTEFACT_TYPE, artefact_id=finding.id, entries=f.get("placements"),
             )
             _import_outcomes(
                 db, engagement, FINDING_ARTEFACT_TYPE, finding.id, f.get("outcomes", []), resolve, current_user,

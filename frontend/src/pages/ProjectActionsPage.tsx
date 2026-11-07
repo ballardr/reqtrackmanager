@@ -26,6 +26,8 @@ import { t } from "../i18n/strings";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../hooks/useCommitTags";
 import { useProjectScope } from "../hooks/useProjectScope";
+import { placementsText } from "../api/placements";
+import { usePagePlacements } from "../hooks/usePagePlacements";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
@@ -165,6 +167,9 @@ export function ProjectActionsPage() {
     return sort.direction === "desc" ? sorted.reverse() : sorted;
   }, [actions, sort]);
 
+  const placed = usePagePlacements(projectId, "requirement_action", (actions ?? []).map((a) => a.id));
+  const showPlaces = Object.keys(placed).length > 0;
+
   function actionTypeName(id: string) {
     return actionTypes.find((t2) => t2.id === id)?.name ?? "—";
   }
@@ -240,6 +245,7 @@ export function ProjectActionsPage() {
                         label={strings.actions.dueDate} sortKey="due_date" sort={sort}
                         onSort={(key) => setSort((s) => cycleSort(s, key))}
                       />
+                      {showPlaces && <th>{strings.placements.label}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -267,6 +273,7 @@ export function ProjectActionsPage() {
                         </td>
                         <td className="text-muted"><PrincipalBadge principal={a.assignee} placeholder={strings.reviews.unassigned} /></td>
                         <td className="text-muted">{a.due_date ?? "—"}</td>
+                        {showPlaces && <td className="text-muted">{placementsText(placed[a.id])}</td>}
                       </tr>
                     ))}
                   </tbody>

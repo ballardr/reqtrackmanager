@@ -151,7 +151,7 @@ export function ProjectRisksPage() {
     if (!projectId) return;
     let active = true;
     riskApi
-      .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
+      .list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setRisks(list);
@@ -163,7 +163,7 @@ export function ProjectRisksPage() {
     return () => {
       active = false;
     };
-  }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
+  }, [projectId, includeArchived, refreshKey, tagFilter.listFilters, projectScope.scope]);
 
   /** The register's filters by the names its export takes; the server applies the same rules the page does. */
   function filterParams(): URLSearchParams {
@@ -293,6 +293,7 @@ export function ProjectRisksPage() {
                 columns={columns}
                 rows={filtered}
                 rowKey={(r) => r.id}
+                placements={{ projectId, artefactType: "risk", rowId: (r) => r.id }}
                 rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
                 emptyState={
                   <p className="text-muted">

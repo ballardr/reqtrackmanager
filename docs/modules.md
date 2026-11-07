@@ -1339,6 +1339,35 @@ flowchart LR
 - Not offered where links go through a change request, or where the caller cannot link; then "Add link" is the plain button that opens the finder.
 - The server's own create endpoint still enforces permission and shows any refusal in the dialog.
 
+### 4l3. Components on every record
+
+Any registered artefact type can sit in the project's component/category tree through one shared table, `artefact_placements`, with no per-module code (`services/placements.py`, `routers/placements.py`). A module adds nothing except declaring a type that cannot be placed.
+
+```mermaid
+flowchart LR
+    R["Record (any type)"] --> T["artefact_placements<br/>(type, id, component, category?)"]
+    T --> F["List filter<br/>(TagFilter: component_id, category_id)"]
+    T --> E["Shared export/import column<br/>placements"]
+    T --> S["Search field, report field"]
+    T --> B["Bundle: record_placements<br/>beside tags"]
+```
+
+| Piece | Where | Rule |
+| --- | --- | --- |
+| Table | `models/placement.py` | A plain registry-validated type string like `artefact_tags`, project-scoped, cascading with the project; unique per record, component and category. |
+| Requirement | `COLUMN_PLACED_TYPES` | Keeps its own `component_id`/`category_id` (the prefix forms its code); `pairs_for_records` gives one resolved view for every type. |
+| `ModuleDefinition.not_placeable[type] = reason` | The module that owns the type | A type that exists only inside a structure of its own (the three Compliance assessment types). The API answers 422; no column, filter, search field or bundle entry is offered. |
+| Organisation-owned records | | Cannot be placed: a component belongs to one project. |
+| Authority | `placements.can_place` | The authority to tag the type; an approved requirement's lock does not apply. |
+| List filter | `TagFilter` | `component_id` and `category_id`, repeatable, matching any, composed into the tag filter so every list, its export and the record-list report take one dependency. |
+| Export and import | `services/record_tables.py` | The engine adds a shared `placements` column (prefixes, `;`-separated) to every type's table except the requirement's, and applies an import through `set_record_placements` after the type's own create or update. A module adds no column. |
+| Bundles | `record_placements` / `restore_record_placements` | Carried by prefix in each bundle row beside the tags; a test fails when a file bundles tags without placements. |
+| Search and reports | `placements` field | Reserved in search (opt-in); a normal text field in `field_catalogue` for every placeable type. |
+| Frontend | `TagField`, `RecordTags`, `TagFilterField`, `DirectoryTable` | `ComponentField`, `RecordPlacements` and `ComponentFilterField` are rendered by the tag components, so every form, record page and list with tags has them; a list passes `placements` to `DirectoryTable` for the Components column. A page with its own component filter (the requirements list) passes `components={false}` to `TagFilterField`. |
+| Scaling | | Placements are read for a page at once (`placements_for_records`, `GET .../placements/{type}`); `perf_dataset.records.add_tags` also places each batch, so generators need no extra call. |
+
+The taxonomy endpoints keep the tree consistent: deleting a category moves its placements to the replacement, and deleting a component that records sit in is refused.
+
 ### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
 
 A custom report layout (a tree a person authors) reads records through two core pieces, so a layout never

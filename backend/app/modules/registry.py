@@ -2827,6 +2827,9 @@ class ModuleDefinition:
             it cannot be imported in `not_importable` (and still registers a provider for export).
         not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
             test fails for a type that has neither a provider able to import nor a reason.
+        not_placeable: `{artefact type: reason}` for a type that cannot be placed in the project's component/category
+            tree (a record that exists only as part of a structure of its own). Every other registered type is placed
+            through the shared `artefact_placements` table with no module code. Read via `get_not_placeable_types`.
         not_creatable_from_links: `{artefact type: reason}` for a type a person cannot author, so the Links panel's
             "Create new" never offers it (a record derived from an assigned standard). Every other type declares a
             `linkedRecordCreators` entry on the frontend; a backend test fails when
@@ -2946,6 +2949,7 @@ class ModuleDefinition:
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
     not_creatable_from_links: dict[str, str] = field(default_factory=dict)
+    not_placeable: dict[str, str] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
@@ -4748,6 +4752,15 @@ def get_not_importable_types() -> dict[str, str]:
     reasons: dict[str, str] = dict(CORE_NOT_IMPORTABLE)
     for definition in get_module_registry().values():
         reasons.update(definition.not_importable)
+    return reasons
+
+
+def get_not_placeable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared cannot be placed in a component (no core type is
+    among them)."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_placeable)
     return reasons
 
 

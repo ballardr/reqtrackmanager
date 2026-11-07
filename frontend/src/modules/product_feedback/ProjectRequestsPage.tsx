@@ -91,7 +91,7 @@ export function ProjectRequestsPage() {
     try {
       setRequests(await projectRequestApi.list(projectId, {
         include_archived: filters.includeArchived, scoring_model: filters.requestedModels,
-        tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope,
+        ...tagFilter.listFilters, project_scope: projectScope.scope,
       }));
       setLoadError(null);
     } catch (err) {
@@ -172,6 +172,7 @@ export function ProjectRequestsPage() {
             sort={filters.sort}
             onSort={(key) => filters.setSort((current) => cycleSort(current, key))}
             rowKey={(r) => r.id}
+            placements={{ projectId, artefactType: "enhancement_request", rowId: (r) => r.id }}
             rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/product_feedback/requests/${r.id}`}
             emptyState={
               <p className="text-muted">

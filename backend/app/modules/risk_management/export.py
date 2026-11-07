@@ -78,6 +78,7 @@ from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_
 from app.modules.risk_management.service import RISK_ARTEFACT_TYPE, RISK_TYPES
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.relationships import create_link, get_links_from_many, get_links_to_many
 from app.services.scoring import list_levels, seed_missing_scoring_levels
@@ -213,6 +214,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     }
     RISK_TYPES.prime_display_names(db, [(None, v.project_type_id) for _r, v in pairs])
     prime_record_tag_names(db, RISK_ARTEFACT_TYPE, risk_ids)
+    prime_record_placements(db, RISK_ARTEFACT_TYPE, risk_ids)
     prime_file_links(db, RiskFile, "risk_id", risk_ids)
     user_ids: set[UUID | None] = set()
     for risk, version in pairs:
@@ -240,6 +242,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": risk.is_archived, "archived_at": _j(risk.archived_at), "archived_by_email": emails.get(risk.archived_by),
             "review_notified_for": {"due": _j(risk.review_due_notified_for), "overdue": _j(risk.review_overdue_notified_for)},
             "tags": record_tag_names(db, RISK_ARTEFACT_TYPE, risk.id),
+            "placements": record_placements(db, RISK_ARTEFACT_TYPE, risk.id),
         }
         entry["attachments"] = export_file_links(db, RiskFile, "risk_id", risk.id, assets)
         entry["reviews"] = [
@@ -372,6 +375,10 @@ def import_project_data(
         restore_record_tags(
             db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
             artefact_type=RISK_ARTEFACT_TYPE, artefact_id=risk.id, names=entry.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator_id,
+            artefact_type=RISK_ARTEFACT_TYPE, artefact_id=risk.id, entries=entry.get("placements"),
         )
 
         for att in entry.get("attachments", []):

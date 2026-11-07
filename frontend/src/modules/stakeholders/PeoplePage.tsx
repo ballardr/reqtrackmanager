@@ -111,11 +111,11 @@ export function PeoplePage() {
       const mine = ++loadSeq.current;
       const on = (k: PeopleKind) => enabled.includes(k);
       Promise.all([
-        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
+        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, ...tagFilter.listFilters, project_scope: projectScope.scope }) : [],
         on("persona") ? projectPersonaApi.listTypes(projectId) : [],
-        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
+        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, ...tagFilter.listFilters, project_scope: projectScope.scope }) : [],
         on("stakeholder") ? projectStakeholderApi.listTypes(projectId) : [],
-        on("group") ? projectStakeholderGroupApi.list(projectId, { tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }).catch(() => [] as StakeholderGroup[]) : [],
+        on("group") ? projectStakeholderGroupApi.list(projectId, { ...tagFilter.listFilters, project_scope: projectScope.scope }).catch(() => [] as StakeholderGroup[]) : [],
       ])
         .then(([p, pt, s, st, g]) => {
           if (mine !== loadSeq.current) return;

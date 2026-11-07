@@ -336,11 +336,11 @@ export const LeavingWithUnsavedChangesAsksFirst: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const editor = await editorOf(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Report layouts" }));
+    await userEvent.click(canvas.getByRole("button", { name: "← Report layouts" }));
     await expect(screen.queryByRole("dialog", { name: "Leave without saving?" })).not.toBeInTheDocument();
     editor.focus();
     await userEvent.keyboard("x");
-    await userEvent.click(canvas.getByRole("button", { name: "Report layouts" }));
+    await userEvent.click(canvas.getByRole("button", { name: "← Report layouts" }));
     await expect(await screen.findByRole("dialog", { name: "Leave without saving?" })).toBeInTheDocument();
   },
 };
@@ -1088,7 +1088,7 @@ export const LeavingAsksOnlyWhileChangesAreNotInTheDraft: Story = {
     const editor = await editorOf(canvasElement);
     await typeAtEnd(editor, "Saved by autosave.");
     await waitFor(() => expect(canvas.getByRole("status", { name: STATUS })).toHaveTextContent(/^Draft saved/), { timeout: TEXT_CHECKED_MS });
-    await userEvent.click(canvas.getByRole("button", { name: "Report layouts" }));
+    await userEvent.click(canvas.getByRole("button", { name: "← Report layouts" }));
     await expect(screen.queryByRole("dialog", { name: "Leave without saving?" })).not.toBeInTheDocument();
   },
 };
@@ -1100,7 +1100,7 @@ export const LeavingWithAutosaveOffAsksWhileEditsAreNotInADraft: Story = {
     const canvas = within(canvasElement);
     const editor = await editorOf(canvasElement);
     await typeAtEnd(editor, "Not kept.");
-    await userEvent.click(canvas.getByRole("button", { name: "Report layouts" }));
+    await userEvent.click(canvas.getByRole("button", { name: "← Report layouts" }));
     await expect(await screen.findByRole("dialog", { name: "Leave without saving?" })).toBeInTheDocument();
   },
 };

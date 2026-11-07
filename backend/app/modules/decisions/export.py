@@ -53,6 +53,7 @@ from app.modules.decisions.models import Decision, DecisionFile, DecisionTemplat
 from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
@@ -133,6 +134,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     user_ids = {d.creator_id for d in decisions} | {d.archived_by for d in decisions}
     emails = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_({u for u in user_ids if u})))} if decisions else {}
     prime_record_tag_names(db, DECISION_ARTEFACT_TYPE, [d.id for d in decisions])
+    prime_record_placements(db, DECISION_ARTEFACT_TYPE, [d.id for d in decisions])
     prime_file_links(db, DecisionFile, "decision_id", [d.id for d in decisions])
     entries = [
         {
@@ -143,6 +145,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "created_by_email": emails.get(d.creator_id), "created_at": _j(d.created_at), "is_archived": d.is_archived,
             "archived_at": _j(d.archived_at), "archived_by_email": (emails.get(d.archived_by) if d.archived_by else None),
             "tags": record_tag_names(db, DECISION_ARTEFACT_TYPE, d.id),
+            "placements": record_placements(db, DECISION_ARTEFACT_TYPE, d.id),
             "attachments": export_file_links(db, DecisionFile, "decision_id", d.id, assets),
         }
         for d in decisions
@@ -206,6 +209,10 @@ def import_project_data(
         restore_record_tags(
             db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
             artefact_type=DECISION_ARTEFACT_TYPE, artefact_id=decision.id, names=entry.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator_id,
+            artefact_type=DECISION_ARTEFACT_TYPE, artefact_id=decision.id, entries=entry.get("placements"),
         )
         import_file_links(
             db, organization_id=organization_id, file_model=DecisionFile, fk="decision_id", record_id=decision.id,

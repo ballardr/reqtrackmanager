@@ -124,6 +124,7 @@ export function RecordListView<R extends ListedRecord, V>({
   toolbar,
   extraFilters,
   tagFilter,
+  placementType,
   projectScope,
   includeArchived = false,
   onIncludeArchivedChange,
@@ -169,6 +170,9 @@ export function RecordListView<R extends ListedRecord, V>({
   extraFilters?: ReactNode;
   /** Offers the project's tag filter; the page keeps the state (`useTagFilter`) and sends it with its list read. */
   tagFilter?: { projectId: string; filter: TagFilterState };
+  /** The record type shown, to add the Components column to a project list (needs `tagFilter` for the project). A list
+   * that mixes kinds omits it. */
+  placementType?: string;
   /** The project page's list scope; offers the scope filter and labels rows of related projects. */
   projectScope?: ProjectScopeState;
   includeArchived?: boolean;
@@ -316,6 +320,7 @@ export function RecordListView<R extends ListedRecord, V>({
           columns={columns}
           rows={filtered}
           rowKey={(r) => r.id}
+          placements={tagFilter && placementType ? { projectId: tagFilter.projectId, artefactType: placementType, rowId: (r) => r.id } : undefined}
           onRowClick={(r) => { if (!r.project_hidden) onOpen(r); }}
           emptyState={<p className="text-muted">{emptyText}</p>}
         />

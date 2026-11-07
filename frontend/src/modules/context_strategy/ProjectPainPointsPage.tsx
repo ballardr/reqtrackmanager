@@ -137,7 +137,7 @@ export function ProjectPainPointsPage() {
   async function reloadPainPoints() {
     if (!projectId) return;
     try {
-      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
@@ -355,6 +355,7 @@ export function ProjectPainPointsPage() {
             sort={sort}
             onSort={(key) => setSort((current) => cycleSort(current, key))}
             rowKey={(p) => p.id}
+            placements={{ projectId, artefactType: "pain_point", rowId: (p) => p.id }}
             onRowClick={(p) => navigate(`/projects/${rowProjectId(p, projectId)}/modules/context_strategy/pain-points/${p.id}`)}
             emptyState={
               <p className="text-muted">

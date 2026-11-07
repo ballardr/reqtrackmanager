@@ -12,7 +12,8 @@ Responsibilities:
 - Attach, detach and replace the tags of a record (`set_record_tags`, `add_record_tag`,
   `remove_record_tag`), writing the audit events the record's Activity tab reads.
 - Answer "which records carry these tags" for list endpoints (`tagged_ids`) and the usage tables
-  (`usage_by_type`).
+  (`usage_by_type`). `TagFilter` is also the list filter for component/category placements
+  (`services.placements`), so every list takes one filter dependency.
 - Vocabulary maintenance for a project or the organisation (`create_tag`, `update_tag`,
   `merge_tags`, `delete_tag`, `reclassify`).
 - Keep requirement keywords (`get_keywords`, `set_keywords`): a keyword is a tag.
@@ -57,6 +58,7 @@ from app.modules.registry import get_all_registered_artefact_types, get_artefact
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver
 from app.services.lookups import project_or_404
+from app.services.placements import PlacementFilter
 from app.services.project_hierarchy import get_project_chain_ids
 
 TAG_MODE_FREE = "free"
@@ -425,40 +427,65 @@ _Row = TypeVar("_Row")
 
 
 class TagFilter:
-    """The `?tag=a&tag=b&tag_mode=any|all` list filter, as a FastAPI dependency
-    (`tag_filter: TagFilter = Depends()`), so every list endpoint offers the same parameters.
+    """The shared list filter, as a FastAPI dependency (`tag_filter: TagFilter = Depends()`), so every list
+    endpoint offers the same parameters: `?tag=a&tag=b&tag_mode=any|all` and
+    `?component_id=…&category_id=…` (`services.placements.PlacementFilter`). Both narrow the same rows, so one
+    dependency and one `keep` call serve a list, its export and its record-list report; a record must satisfy
+    every filter that is active.
 
     Attributes:
         names: The requested tag names (blank entries dropped).
         match_all: True for `tag_mode=all`.
+        placements: The component/category part of the filter.
     """
 
     def __init__(
         self,
         tag: list[str] = Query([], description="Only records carrying these tags (case-insensitive)."),
         tag_mode: Literal["any", "all"] = Query("any", description="Whether a record needs any or all of the `tag`s."),
+        component_id: list[uuid.UUID] = Query([], description="Only records placed in these components."),
+        category_id: list[uuid.UUID] = Query([], description="Only records placed in these categories."),
     ) -> None:
-        """Reads the `tag` and `tag_mode` query parameters (blank names are ignored)."""
+        """Reads the `tag`, `tag_mode`, `component_id` and `category_id` query parameters (blank names are ignored)."""
         self.names = [t for t in tag if t and t.strip()]
         self.match_all = tag_mode == "all"
+        self.placements = PlacementFilter(list(component_id), list(category_id))
 
     @property
     def active(self) -> bool:
         """Whether the caller asked to filter."""
-        return bool(self.names)
+        return bool(self.names) or self.placements.active
+
+    @property
+    def applied_keys(self) -> list[str]:
+        """The query parameters in force (`tag`, `component`, `category`), for the export's audit event."""
+        keys = ["tag"] if self.names else []
+        if self.placements.component_ids:
+            keys.append("component")
+        if self.placements.category_ids:
+            keys.append("category")
+        return keys
 
     def ids(self, db: Session, project_id: uuid.UUID, artefact_type: str) -> set[uuid.UUID]:
-        """Ids of the project's records of `artefact_type` that satisfy the filter."""
-        project = db.get(Project, project_id)
-        if project is None:
-            return set()
-        return tagged_ids(db, project=project, artefact_type=artefact_type, names=self.names, match_all=self.match_all)
+        """Ids of the project's records of `artefact_type` that satisfy every active filter."""
+        wanted: set[uuid.UUID] | None = None
+        if self.names:
+            project = db.get(Project, project_id)
+            wanted = (
+                tagged_ids(db, project=project, artefact_type=artefact_type, names=self.names, match_all=self.match_all)
+                if project is not None
+                else set()
+            )
+        if self.placements.active:
+            placed = self.placements.ids(db, project_id, artefact_type)
+            wanted = placed if wanted is None else wanted & placed
+        return wanted or set()
 
     def keep(
         self, db: Session, project_id: uuid.UUID, artefact_type: str, rows: Sequence[_Row],
         id_of=lambda row: row.id,
     ) -> list[_Row]:
-        """`rows` narrowed to the matching records (unchanged when the filter is not active).
+        """`rows` narrowed to the matching records (unchanged when no filter is active).
 
         Args:
             db: Active session (read only).

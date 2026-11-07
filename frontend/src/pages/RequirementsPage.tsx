@@ -461,7 +461,7 @@ export function RequirementsPage() {
                 status value — a separate checkbox alongside the Status
                 <select> above rather than one of its options. */}
             <ProjectScopeFilter scope={projectScope} />
-            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} components={false} />}
             <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
             <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
             <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
