@@ -90,7 +90,7 @@ from app.models.scoring import (
 )
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
 from app.models.server_role import UserServerRole
-from app.models.stage_workflow import StageWorkflow, StageWorkflowPhase
+from app.models.stage_workflow import ComponentStageState, StageWorkflow, StageWorkflowPhase
 from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 
@@ -152,6 +152,7 @@ __all__ = [
     "ProjectMemberSource",
     "ProjectStage",
     "ProjectStatusDefinition",
+    "ComponentStageState",
     "StageWorkflow",
     "StageWorkflowPhase",
     "StageReviewResponse",

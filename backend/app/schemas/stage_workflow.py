@@ -7,6 +7,7 @@ transition request (`routers.projects.stages`).
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from app.models.enums import StagePhaseKind
 from app.models.stage_workflow import MAX_WORKFLOW_NAME_LENGTH
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 
 class PhaseWrite(BaseModel):
@@ -66,3 +68,46 @@ class StageTransitionRequest(BaseModel):
 
     phase_id: UUID
     cascade_to_requirements: bool = False
+
+
+class ComponentPhasesSettingSet(BaseModel):
+    """Set the project's own component-phases switch; `null` follows the nearest ancestor."""
+
+    mode: Literal["on", "off"] | None = None
+
+
+class ComponentTrackUpdate(BaseModel):
+    """Change one component's track for a stage. Only the fields sent change: `workflow_id` null returns to the
+    stage's workflow, `owner` null clears the owner."""
+
+    workflow_id: UUID | None = None
+    not_applicable: bool | None = None
+    owner: PrincipalRef | None = None
+
+
+class ComponentTrackOut(BaseModel):
+    """One component's standing in one stage (a component with no stored row shows the stage's defaults)."""
+
+    component_id: UUID
+    stage_id: UUID
+    workflow_id: UUID
+    workflow_name: str
+    phase_id: UUID
+    phase_name: str
+    phase_kind: StagePhaseKind
+    not_applicable: bool
+    customised: bool
+    owner: PrincipalOut | None = None
+    approved_at: datetime | None = None
+    completed_at: datetime | None = None
+    previous_closed: bool
+    can_move: bool
+
+
+class ComponentPhasesOut(BaseModel):
+    """The project's component-phases state: the effective mode, its own setting and, when on, every track."""
+
+    mode: Literal["on", "off"]
+    own_mode: Literal["on", "off"] | None
+    inherited: bool
+    tracks: list[ComponentTrackOut]

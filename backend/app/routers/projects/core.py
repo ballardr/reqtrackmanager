@@ -1162,19 +1162,25 @@ def get_project_metrics(
     stage_phases = phase_index(db, {s.phase_id for s in stages})
     stage_progress: list[StageProgressOut] = []
     # One query for every baselined stage: items captured and how many of them are now completed (the
-    # oldest baseline of a stage when it somehow has several).
+    # oldest baseline of a stage when it somehow has several). A component's own baseline (component phases)
+    # holds that component's requirements only, so the oldest one per component is added to its stage's.
     baselined: dict[UUID, tuple[int, int]] = {}
-    for stage_id, total, done in db.execute(
-        select(Baseline.stage_id, func.count(BaselineItem.requirement_id),
+    seen_component_baselines: set[tuple[UUID, UUID | None]] = set()
+    for stage_id, component_id, total, done in db.execute(
+        select(Baseline.stage_id, Baseline.component_id, func.count(BaselineItem.requirement_id),
                func.count(Requirement.id).filter(Requirement.is_completed.is_(True)))
         .select_from(Baseline)
         .outerjoin(BaselineItem, BaselineItem.baseline_id == Baseline.id)
         .outerjoin(Requirement, Requirement.id == BaselineItem.requirement_id)
         .where(Baseline.project_id == project_id)
-        .group_by(Baseline.id, Baseline.stage_id, Baseline.created_at)
+        .group_by(Baseline.id, Baseline.stage_id, Baseline.component_id, Baseline.created_at)
         .order_by(Baseline.created_at, Baseline.id)
     ).all():
-        baselined.setdefault(stage_id, (total, done))
+        if (stage_id, component_id) in seen_component_baselines:
+            continue
+        seen_component_baselines.add((stage_id, component_id))
+        previous_total, previous_done = baselined.get(stage_id, (0, 0))
+        baselined[stage_id] = (previous_total + total, previous_done + done)
     for stage in stages:
         if stage.id in baselined:
             stage_requirement_count, stage_completed = baselined[stage.id]

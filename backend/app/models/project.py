@@ -197,6 +197,11 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # setting, else "free" (services.tags.resolve_tag_mode).
     tag_mode: Mapped[str | None] = mapped_column(String(12), nullable=True)
 
+    # Whether each component follows its own workflow per stage: "on" or "off". NULL inherits the
+    # nearest ancestor's setting, else "off" (services.component_stages.resolve_mode); off leaves the
+    # project stage as the only phase.
+    component_phases_mode: Mapped[str | None] = mapped_column(String(3), nullable=True)
+
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     """One lifecycle horizon of a project (C-G-08, C-G-10).

@@ -44,6 +44,7 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
+import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -1933,6 +1934,12 @@ export function ProjectAdminPage() {
 
         <CollapsibleSection sectionKey="projectAdmin.structure.stageWorkflows" title={strings.stageWorkflows.heading} defaultCollapsed>
           {projectId && <StageWorkflowsPanel scope={{ kind: "project", projectId }} onChanged={reload} />}
+        </CollapsibleSection>
+
+        <CollapsibleSection sectionKey="projectAdmin.structure.componentPhases" title={strings.componentPhases.heading} defaultCollapsed>
+          {projectId && project && (
+            <ComponentPhasesPanel projectId={projectId} organizationId={project.organization_id} orgUsers={orgUsers} onChanged={reload} />
+          )}
         </CollapsibleSection>
 
         {/* Audit finding: the tab bar used to call this "Categories" while

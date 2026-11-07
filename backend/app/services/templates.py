@@ -49,16 +49,45 @@ from app.models.project import (
     ProjectGroup,
     ProjectGroupMember,
     ProjectGroupRole,
+    ProjectStage,
     UserProjectRole,
 )
 from app.models.requirement import Requirement, RequirementVersion
-from app.models.stage_workflow import StageWorkflow
+from app.models.stage_workflow import ComponentStageState, StageWorkflow
 from app.models.user import User
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
 from app.services.lookups import get_or_404
 from app.services.requirements import get_current_version, get_keywords, set_keywords
-from app.services.stage_workflows import PhaseInput, new_stage, phases_of, write_workflow
+from app.services.stage_workflows import PhaseInput, effective_workflows, new_stage, phases_of, start_phase, write_workflow
+
+
+def copy_component_tracks(
+    db: Session, source: Project, new_project: Project, new_stage_row: ProjectStage, component_id_map: dict[UUID, UUID],
+) -> None:
+    """Copies the template's own component-phases switch and the workflow each component followed for the stage
+    that the new project starts with (matched by name), resetting every track to its workflow's starting phase.
+
+    Stages are lifecycle state and are not cloned, so only the new project's first stage can receive a choice.
+    A workflow the new project cannot use is skipped; owners are not copied (a template's people are not the
+    new project's), and the "not applicable" flag is.
+    """
+    new_project.component_phases_mode = source.component_phases_mode
+    template_stage = db.scalar(select(ProjectStage).where(ProjectStage.project_id == source.id, ProjectStage.name == new_stage_row.name))
+    if template_stage is None:
+        return
+    usable = {w.name.casefold(): w for w in effective_workflows(db, new_project)}
+    source_workflows = {w.id: w for w in db.scalars(select(StageWorkflow).where(StageWorkflow.organization_id == source.organization_id)).all()}
+    for state in db.scalars(select(ComponentStageState).where(ComponentStageState.stage_id == template_stage.id)).all():
+        workflow = usable.get(source_workflows[state.workflow_id].name.casefold()) if state.workflow_id in source_workflows else None
+        component_id = component_id_map.get(state.component_id)
+        if workflow is None or component_id is None:
+            continue
+        db.add(ComponentStageState(
+            project_id=new_project.id, component_id=component_id, stage_id=new_stage_row.id, workflow_id=workflow.id,
+            phase_id=start_phase(db, workflow.id).id, not_applicable=state.not_applicable,
+        ))
+    db.flush()
 
 
 def clone_project(
@@ -119,6 +148,8 @@ def clone_project(
         db.add(new_component)
         db.flush()
         component_id_map[component.id] = new_component.id
+
+    copy_component_tracks(db, source, new_project, new_scoping_stage, component_id_map)
 
     category_id_map = {}
     for category in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == source.id)).all():

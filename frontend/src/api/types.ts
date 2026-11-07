@@ -1348,6 +1348,37 @@ export interface ProjectStage {
 
 export type StageReviewResponseChoice = "approved" | "rejected";
 
+/** One component's standing in one stage (a component never customised shows the stage's defaults). */
+export interface ComponentTrack {
+  component_id: string;
+  stage_id: string;
+  workflow_id: string;
+  workflow_name: string;
+  phase_id: string;
+  phase_name: string;
+  phase_kind: StagePhaseKind;
+  not_applicable: boolean;
+  customised: boolean;
+  owner: Principal | null;
+  approved_at: string | null;
+  completed_at: string | null;
+  /** Whether the previous stage has reached a closed phase for this component; advisory only. */
+  previous_closed: boolean;
+  /** Whether the caller may move the track (a project manager, or its owner). */
+  can_move: boolean;
+}
+
+export type ComponentPhasesMode = "on" | "off";
+
+/** The project's component-phases switch and, when it is on, every track. */
+export interface ComponentPhases {
+  mode: ComponentPhasesMode;
+  /** The project's own setting; null when it follows an ancestor. */
+  own_mode: ComponentPhasesMode | null;
+  inherited: boolean;
+  tracks: ComponentTrack[];
+}
+
 export interface StageReviewResponseEntry {
   id: string;
   stage_id: string;

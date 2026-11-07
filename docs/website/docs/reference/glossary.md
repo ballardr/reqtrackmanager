@@ -146,6 +146,10 @@ A Risk owner's judgement of whether one linked Requirement or Action actually re
 
 A named, ordered list of phases a project stage moves through. Each phase has a free-text name and a kind (Open, Review, Locked, On hold or Closed) that decides what entering it does. Defined by the organisation (available to every project, which can hide it) or by one project. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
 
+#### Component phases
+
+A per-project setting under which each component follows its own [stage workflow](#stage-workflow) for each stage. A component's Locked phase approves only its own requirements for that stage. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#component-phases).
+
 #### Task (change request task)
 
 A short follow-up item tied to a change request, with an optional assignee and due date. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).

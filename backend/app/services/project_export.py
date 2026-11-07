@@ -136,8 +136,10 @@ from app.services.report_placement_bundle import export_project_placements, impo
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
 from app.services.sequences import generate_unique_code
 from app.services.stage_workflow_bundle import (
+    export_component_phases,
     export_project_stage_workflows,
     export_stage_phases,
+    import_component_phases,
     import_project_stage_workflows,
     import_stage,
 )
@@ -486,6 +488,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     baselines_json = [
         {
             "stage_name": stage_name_by_id.get(b.stage_id), "label": b.label, "created_by_email": email(b.created_by),
+            "component": component_prefix_by_id.get(b.component_id) if b.component_id else None,
             "created_at": _j(b.created_at),
             "items": [
                 {"unique_code": req_code_by_id.get(item.requirement_id), "version_number": next(
@@ -537,6 +540,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "tags": export_vocabulary(db, project),
         **export_project_stage_workflows(db, project),
+        **export_component_phases(db, project, components, stages),
         "stages": [{"name": s.name, "sort_order": s.sort_order, **stage_phases[s.id]} for s in stages],
         "components": [
             {
@@ -1006,7 +1010,7 @@ def apply_project_data(
         if stage_id is None:
             continue
         baseline = Baseline(
-            project_id=project.id, stage_id=stage_id, label=b["label"],
+            project_id=project.id, stage_id=stage_id, label=b["label"], component_id=component_id_by_prefix.get(b.get("component") or ""),
             created_by=users.resolve(b.get("created_by_email"), required=True, context=f"Baseline '{b['label']}' creator"),
         )
         db.add(baseline)
@@ -1016,6 +1020,8 @@ def apply_project_data(
             version_id = version_id_by_code_and_number.get((item["unique_code"], item["version_number"]))
             if requirement_id and version_id:
                 db.add(BaselineItem(baseline_id=baseline.id, requirement_id=requirement_id, requirement_version_id=version_id))
+
+    import_component_phases(db, project, data, component_id_by_prefix, stage_id_by_name, users, warnings)
 
     for rr in data.get("requirement_reviews", []):
         requirement_id = requirement_id_by_code.get(rr["unique_code"])

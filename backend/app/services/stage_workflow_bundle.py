@@ -15,6 +15,9 @@ Design decisions:
 - The organisation import adds the bundle's workflows and then seeds Standard only if the
   organisation still has none, so a customised Standard is not replaced by the default.
 - A merge into an existing organisation adds workflows missing by name and leaves existing ones alone.
+- Component phases travel as the switch plus one entry per stored track (component prefix, stage name,
+  workflow, phase, owner, applicability); the same rule holds: a track never lands in a locked or closed
+  phase, and its approval and completion stamps are not carried.
 """
 
 from __future__ import annotations
@@ -26,15 +29,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import StagePhaseKind
-from app.models.project import Project, ProjectStage
-from app.models.stage_workflow import StageWorkflow, StageWorkflowPhase
+from app.models.project import Project, ProjectComponent, ProjectStage
+from app.models.stage_workflow import ComponentStageState, StageWorkflow, StageWorkflowPhase
 from app.services import definition_suppression
-from app.services.bundle_common import BundleImportWarnings
+from app.services.bundle_common import BundleImportWarnings, UserResolver
+from app.services.principals import principal_columns, principal_from_bundle, principal_to_bundle
 from app.services.stage_workflows import (
     WORKFLOW_KIND,
     PhaseInput,
     WorkflowConflict,
     effective_workflows,
+    phase_index,
     phases_by_workflow,
     seed_stage_workflow,
     start_phase,
@@ -167,3 +172,71 @@ def import_stage(
         else:
             stage.phase_id = phase.id
     return stage
+
+
+COMPONENT_MODE_KEY = "component_phases_mode"
+COMPONENT_STATES_KEY = "component_stage_states"
+
+
+def export_component_phases(
+    db: Session, project: Project, components: list[ProjectComponent], stages: list[ProjectStage],
+) -> dict[str, Any]:
+    """The project's component-phases switch and every stored track, as `project.json` sections."""
+    rows = list(db.scalars(select(ComponentStageState).where(ComponentStageState.project_id == project.id)).all())
+    prefix = {c.id: c.prefix for c in components}
+    stage_name = {s.id: s.name for s in stages}
+    workflow_ids, phase_ids = {r.workflow_id for r in rows}, {r.phase_id for r in rows}
+    workflows = (
+        {w.id: w for w in db.scalars(select(StageWorkflow).where(StageWorkflow.id.in_(workflow_ids))).all()} if rows else {}
+    )
+    phases = {p.id: p for p in phase_index(db, phase_ids).values()}
+    entries = [
+        {
+            "component": prefix[r.component_id], "stage": stage_name[r.stage_id], "workflow": workflows[r.workflow_id].name,
+            "workflow_scope": "project" if workflows[r.workflow_id].project_id else "organisation",
+            "phase": phases[r.phase_id].name, "not_applicable": r.not_applicable,
+            "owner": principal_to_bundle(db, r.owner_type, r.owner_id),
+        }
+        for r in rows if r.component_id in prefix and r.stage_id in stage_name
+    ]
+    return {COMPONENT_MODE_KEY: project.component_phases_mode, COMPONENT_STATES_KEY: entries}
+
+
+def import_component_phases(
+    db: Session, project: Project, data: dict[str, Any], component_id_by_prefix: dict[str, uuid.UUID],
+    stage_id_by_name: dict[str, uuid.UUID], users: UserResolver, warnings: BundleImportWarnings,
+) -> None:
+    """Imports the switch and the tracks, resolving components, stages, workflows and phases by name.
+
+    A track whose component, stage or workflow cannot be found is skipped with a warning; a phase that is
+    gone or is locked or closed starts at the workflow's first phase instead (see the module docstring).
+    """
+    mode = data.get(COMPONENT_MODE_KEY)
+    project.component_phases_mode = mode if mode in ("on", "off") else None
+    available = {w.name.casefold(): w for w in effective_workflows(db, project)}
+    for entry in data.get(COMPONENT_STATES_KEY) or []:
+        if not isinstance(entry, dict):
+            continue
+        component_id = component_id_by_prefix.get(str(entry.get("component")))
+        stage_id = stage_id_by_name.get(str(entry.get("stage")))
+        workflow = available.get(str(entry.get("workflow")).casefold())
+        label = f"Component {entry.get('component')!r} in stage {entry.get('stage')!r}"
+        if component_id is None or stage_id is None or workflow is None:
+            warnings.add(f"{label} was not imported: its component, stage or workflow is not available here.")
+            continue
+        phases = phases_by_workflow(db, [workflow.id])[workflow.id]
+        phase = next((p for p in phases if p.name.casefold() == str(entry.get("phase")).casefold()), None)
+        if phase is None or phase.kind in _NOT_IMPORTED_KINDS:
+            warnings.add(f"{label}: phase {entry.get('phase')!r} was not carried; the track starts in the first phase.")
+            phase = start_phase(db, workflow.id)
+        ref, warning = principal_from_bundle(
+            db, entry.get("owner"), organization_id=project.organization_id, project_id=project.id,
+            fallback_user_id=users.importing_user_id, required=False,
+        )
+        if warning:
+            warnings.add(f"{label} owner: {warning}")
+        db.add(ComponentStageState(
+            project_id=project.id, component_id=component_id, stage_id=stage_id, workflow_id=workflow.id, phase_id=phase.id,
+            not_applicable=bool(entry.get("not_applicable")), **principal_columns("owner", ref),
+        ))
+    db.flush()

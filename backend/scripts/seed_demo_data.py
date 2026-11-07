@@ -237,6 +237,37 @@ def transition_stage(headers: dict, project_id: str, stage_id: str, phase_name: 
     r.raise_for_status()
 
 
+def enable_component_phases(headers: dict, project_id: str) -> None:
+    """Turns component phases on, so each component follows its own workflow per stage."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/component-phases-settings", json={"mode": "on"}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
+def move_component_track(headers: dict, project_id: str, component_id: str, stage_id: str, phase_name: str) -> None:
+    """Moves one component's track in a stage to the phase called `phase_name` in the track's own workflow."""
+    tracks = httpx.get(f"{BASE}/projects/{project_id}/component-stages", headers=headers, timeout=30).json()["tracks"]
+    track = next(t for t in tracks if t["component_id"] == component_id and t["stage_id"] == stage_id)
+    workflow = next(
+        w for w in httpx.get(f"{BASE}/projects/{project_id}/stage-workflows", headers=headers, timeout=30).json()
+        if w["id"] == track["workflow_id"]
+    )
+    phase = next(p for p in workflow["phases"] if p["name"].lower() == phase_name.lower())
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/components/{component_id}/stages/{stage_id}/transition",
+        json={"phase_id": phase["id"], "cascade_to_requirements": False}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def mark_component_track_not_applicable(headers: dict, project_id: str, component_id: str, stage_id: str) -> None:
+    """Marks a stage as not applicable to one component."""
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/components/{component_id}/stages/{stage_id}/track",
+        json={"not_applicable": True}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
 def create_custom_field(headers: dict, project_id: str, entity_kind: str, name: str, field_type: str, options: list | None = None) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/custom-fields",
@@ -2212,8 +2243,13 @@ def main() -> None:
     )
     create_custom_field(h_pm, drone["id"], "requirement", "Risk Level", "list", ["Low", "Medium", "High"])
     drone_design = create_stage(h_pm, drone["id"], "Detailed Design")
-    create_stage(h_pm, drone["id"], "Verification & Validation", outsourced_workflow["id"])
+    drone_validation = create_stage(h_pm, drone["id"], "Verification & Validation", outsourced_workflow["id"])
     transition_stage(h_pm, drone["id"], drone_design["id"], "review")
+    # Component phases: Airframe is already in review for the design stage, and the firmware has no
+    # separate validation stage of its own (its checks run with the avionics).
+    enable_component_phases(h_pm, drone["id"])
+    move_component_track(h_pm, drone["id"], drone_components["AF"]["id"], drone_design["id"], "review")
+    mark_component_track_not_applicable(h_pm, drone["id"], drone_components["FW"]["id"], drone_validation["id"])
 
     print("Seeding Falcon-3 requirements...")
     drone_reqs = seed_project(h_pm, drone, drone_components, drone_categories, DRONE_REQUIREMENTS, demo_admin["user_id"])

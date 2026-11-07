@@ -28,6 +28,8 @@ import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
   ActionTypeDefinition,
   Category,
+  ComponentPhases,
+  ComponentTrack,
   ChangeEntry,
   ChangeRequest,
   Comment,
@@ -235,6 +237,20 @@ export function buildStageWorkflow(overrides: Partial<StageWorkflow> = {}): Stag
     ],
     ...overrides,
   };
+}
+
+/** One component's track in one stage, as a component that was never customised shows it (Standard workflow, Scoping). */
+export function buildComponentTrack(overrides: Partial<ComponentTrack> = {}): ComponentTrack {
+  return {
+    component_id: "component-1", stage_id: "stage-1", workflow_id: "workflow-1", workflow_name: "Standard",
+    phase_id: "phase-scoping", phase_name: "Scoping", phase_kind: "open", not_applicable: false, customised: false,
+    owner: null, approved_at: null, completed_at: null, previous_closed: false, can_move: true, ...overrides,
+  };
+}
+
+/** The component-phases state a project returns: the switch and, when on, its tracks. */
+export function buildComponentPhases(overrides: Partial<ComponentPhases> = {}): ComponentPhases {
+  return { mode: "on", own_mode: "on", inherited: false, tracks: [buildComponentTrack()], ...overrides };
 }
 
 export function buildStage(overrides: Partial<ProjectStage> = {}): ProjectStage {

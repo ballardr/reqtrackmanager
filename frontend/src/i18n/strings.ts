@@ -3577,6 +3577,14 @@ const en = {
       "Open: requirements can be edited and reordered.\nReview: a review deadline and stakeholder responses apply; when the deadline passes with no objection the {stage} moves to the next Locked phase.\nLocked: entering writes a baseline and approves the requirements, after which changes need a change request; a project manager must enter or leave it.\nOn hold: paused or archived, with no special rules.\nClosed: the {stage} is complete; entering records who completed it and can mark its approved requirements completed.",
     stageWorkflowChoice:
       "The workflow this {stage} follows. It can be changed only while the {stage} is in an Open phase and has no baseline.",
+    componentPhasesMode:
+      "Off: the {stage} phase applies to every {component}.\nOn: each {component} follows its own workflow for each {stage}; a {component}'s locked phase approves only its own {requirement}s for that {stage}.\nFollow the parent {project}: uses the setting of the nearest parent {project}, otherwise Off.",
+    componentTrackWorkflow:
+      "The workflow this {component} follows for this {stage}. It can be changed only while the track is in an Open phase and has no baseline of its own.",
+    componentTrackOwner:
+      "A user or group who may move this track, including into a locked phase. A project manager always may.",
+    componentTrackNotApplicable:
+      "The {component} takes no part in this {stage}, so its phase does not change and the {stage}'s own lock applies to its {requirement}s.",
     stagePhaseChoice:
       "Moves the {stage} to another phase of its workflow. Entering or leaving a Locked phase needs the project manager role.",
     // Components on any record
@@ -3768,6 +3776,34 @@ const en = {
     changeWorkflowAria: (stage: string) => `Workflow of ${stage}`,
     changePhaseAria: (stage: string) => `Phase of ${stage}`,
     loadFailed: "Could not load the workflows.",
+  },
+  componentPhases: {
+    heading: "{Component} phases",
+    mode: "{Component} phases",
+    modeOff: "Off",
+    modeOn: "On",
+    modeInherit: "Follow the parent {project}",
+    inheritedNote: (mode: string) => `Following the parent {project}: ${mode}.`,
+    off: "Component phases are off. The {stage} phase applies to every {component}.",
+    noTracks: "This {project} has no {component}s or {stage}s yet.",
+    component: "{Component}",
+    track: (component: string, stage: string) => `Phase of ${component} in ${stage}`,
+    editTrack: (component: string, stage: string) => `Edit ${component} in ${stage}`,
+    editTitle: (component: string, stage: string) => `${component}: ${stage}`,
+    workflow: "Workflow",
+    owner: "Owner",
+    ownerAria: "Owner of the track",
+    unassign: "Clear",
+    notApplicable: "Not applicable",
+    notApplicableBadge: "Not applicable",
+    customisedBadge: "Customised",
+    previousClosedBadge: "Previous {stage} closed",
+    completeStage: "Complete the {component}'s {stage}",
+    cascadeToRequirements: "Also mark this {component}'s approved {requirement}s for this {stage} as completed",
+    lockedNote: "Moving into or out of a locked phase needs a project manager or the owner.",
+    loadFailed: "Could not load the component phases.",
+    nounSingular: "component phase",
+    nounModeSetting: "component phases setting",
   },
   recordTables: {
     menuLabel: "List actions",

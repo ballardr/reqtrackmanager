@@ -38,6 +38,29 @@ Every organisation starts with the **Standard** workflow above. A stage can move
 
 Organisation administrators define more workflows under **Organisation Admin → Projects & workflow → Stage workflows** (for example Scoping, Technical scoping, Review board, Tendering, Awarded, In progress, Completion for outsourced work). Project managers add workflows of their own under **Project Admin → Structure → Stage workflows**, and can hide an organisation workflow in the project and add it back later. A stage changes workflow only while it is in an Open phase with no baseline. A workflow a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind.
 
+## Component phases
+
+By default one phase governs the whole stage. A project manager can turn on **Project Admin → Structure → Component phases** so that each component follows its own workflow for each stage (for example an outsourced component through Tendering and Awarded while an in-house component goes straight from Scoping to Done). The setting is **Off**, **On**, or **Follow the parent project**; a project with no setting is Off.
+
+With the setting on:
+
+- Every component has a track per stage, starting in the first phase of the stage's workflow. A project manager can choose another workflow for the track, mark the stage **Not applicable** to the component, and name an owner (a user or a group).
+- Moving a track into a Locked phase approves and baselines only that component's requirements that target the stage; its other requirements and every other component stay editable. Moving into a Closed phase completes the track and, if chosen, those requirements.
+- The stage's own Locked phase approves the requirements of components that have no applicable track for the stage; the others are left to their tracks.
+- A project manager or the track's owner can move a track, including into or out of a Locked phase. Anyone else sees the track read-only.
+- Progression is advisory: a track can start the next stage at any time, and a badge shows when the previous stage has closed for the component.
+
+```mermaid
+flowchart TD
+    A["Component track enters a Locked phase"] --> B["Approve that component's requirements for that stage"]
+    B --> C["Write a baseline labelled with the stage and the component"]
+    D["Stage enters a Locked phase"] --> E{"Component has an applicable track?"}
+    E -- "No" --> F["Approve the component's requirements"]
+    E -- "Yes" --> G["Leave them to the component's track"]
+```
+
+Turning the setting Off leaves stored tracks in place but ignores them, so the stage governs again.
+
 ## Renaming and deleting stages
 
 Anyone who can create a stage can also rename it inline or delete it. Deleting a stage requires picking another existing stage to reassign everything currently targeting it to — every requirement (and its full history, not just its current version) and every pending change request proposing that stage moves to the one picked. A stage with an approved baseline can't be deleted at all, since that would rewrite a permanent record of what was approved; if it's the project's only stage, there's nothing to reassign to either, so deletion is blocked either way.

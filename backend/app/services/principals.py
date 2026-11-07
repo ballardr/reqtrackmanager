@@ -57,6 +57,7 @@ from app.models.organization import OrgGroup
 from app.models.project import Project, ProjectGroup
 from app.models.requirement import RequirementVersion
 from app.models.requirement_action import RequirementAction
+from app.models.stage_workflow import ComponentStageState
 from app.models.user import User
 from app.modules.registry import PrincipalReference, get_module_principal_references, scoped_memo
 from app.schemas.principal import PrincipalOut, PrincipalRef, PrincipalUsageItem, PrincipalUsageOut
@@ -107,6 +108,9 @@ CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
         model=ChangeRequestVersion, field="proposed_reviewer", label="change request reviewers",
         audit_entity_type="change_request", live_filter=_open_change_request_versions,
         record_id_field="change_request_id",
+    ),
+    PrincipalReference(
+        model=ComponentStageState, field="owner", label="component stage owners", audit_entity_type="component_stage_state",
     ),
     PrincipalReference(
         model=ChangeRequestTask, field="assignee", label="change request task assignees",

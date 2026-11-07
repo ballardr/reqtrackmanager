@@ -116,6 +116,11 @@ Full stage lifecycle: scoping → PM moves the stage to the Review phase and set
 
 An organisation administrator builds a workflow with a custom locked phase in Organisation Admin → a project stage follows it, and entering the locked phase baselines the requirements whatever the phase is called → leaving it is allowed for the project manager → the project hides the organisation workflow and restores it.
 
+### 10c. Component phases
+**Persona:** Org Admin AlphaBeta. **Spec:** `component-phases.spec.ts`.
+
+On a disposable project the manager turns Component phases on in Project Admin → moves Software's track into its Approved phase, which approves only the Software requirement (the Hardware requirement stays a draft) → marks a stage Not applicable to Hardware.
+
 ### 11. Project Admin: structural rename/delete/archive
 **Persona:** Org Admin AlphaBeta (PM). **Spec:** `project-admin-structural.spec.ts` (C-G-07, C-E-01/02, C-P-01).
 

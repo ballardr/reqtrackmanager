@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 9 and 9b done (uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 9, 9b and 9c done (uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-11 / 21 phases complete.
+12 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -21,7 +21,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 8 | Engagement participants | Participants field on the create form (`stakeholder_ids`), empty-state notice in the form and on the detail page; the detail add control already worked; see `docs/decisions.md` | [x] |
 | 9 | Component/category on every record | Generic table, many per record; shared field, filter, column, export/import, bundles, search, report field; adds an agent instruction; see `docs/decisions.md` | [x] |
 | 9b | Customisable workflows (phases with kinds) for project stages | Organisation and project workflows with phase kinds; kind drives baseline and completion; Standard workflow replaces the fixed states; see `docs/decisions.md` | [x] |
-| 9c | Component phases (per-component, per-stage workflow) | Each component follows a workflow per stage; project switch, off means the project stage governs; lock rule to confirm | [ ] |
+| 9c | Component phases (per-component, per-stage workflow) | Each component follows a workflow per stage; project switch, off means the project stage governs; component lock approves its own requirements for the stage; owner may move a track; list column/filter, report field and per-component review deadlines not built (see `docs/decisions.md`) | [x] |
 | 9d | Phase schedule and reminders | Expected completion range per phase (stage and component), upcoming, overdue and completed notifications | [ ] |
 | 10 | Rename navigation items, with organisation defaults | Navigation, title, breadcrumb, back link; settled | [ ] |
 | 11 | Server and organisation messages (login pages and notification) | One mechanism, two scopes; settled with the user | [ ] |
@@ -228,13 +228,11 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Why:** a project that plans by component (for example a product requirements document per component, outsourced work beside in-house improvement) needs each component to progress on its own workflow.
 - **Risk addressed:** a second, component-level lock could contradict the project stage lock, or leave a requirement locked by one and open under the other.
 - **Design:**
-  - `component_stage_states(component_id, stage_id, workflow_id, phase_id, not_applicable, approved_at/by, completed_at/by, review_deadline)`, unique per component and stage, created when a component first picks or moves; no row means the stage's default workflow at its starting phase. Reuses the transition, approval and review-deadline logic from phase 9b, not a second implementation.
+  - `component_stage_states(component_id, stage_id, workflow_id, phase_id, not_applicable, owner, approved_at/by, completed_at/by)`, unique per component and stage, created when a component first picks or moves; no row means the stage's default workflow at its starting phase. Reuses the transition, approval and review-deadline logic from phase 9b, not a second implementation.
   - A nullable project setting `component_phases_mode` (`on`/`off`, NULL inherits the nearest ancestor, else `off`; the `tag_mode` shape). Off: nothing is shown or stored and the project stage is the effective phase. One read helper returns the effective phase for any (component, stage) so lists, reports and filters do not branch on the switch.
   - A requirement targets a stage (`target_stage_id`) and has one component, so its governing component phase is that component's phase in that stage. Other record types have no single component and are never locked by component phases.
-- **To confirm at the start of the phase (ask with `AskUserQuestion`, do not assume):**
-  1. *Edit lock.* Proposed: the stricter of the project stage lock and the component's phase lock wins for a requirement.
-  2. *Baseline.* Proposed: entering a `locked` phase writes a baseline of that component's requirements for that stage only.
-  3. *Role.* Proposed: the same roles as for project stages.
+- **Confirmed with the user at the start of the phase (2026-11-07):** a requirement's edit lock is its approved status, so the question became what each lock approves. A component's locked phase approves and baselines only that component's requirements for that stage; the stage's own locked phase approves only components with no applicable track; a project manager or the track's owner (a user or group) may move a track, including into a locked phase. The owner field therefore ships in this phase (phase 9d reuses it).
+- **Done 2026-11-07.** Not built, recorded in `docs/decisions.md` for the user to veto: the phase column and filter in lists and the report field (the inherited switch cannot be resolved cheaply in report SQL), per-component review deadlines and responses, and stage-review notifications for tracks.
 - **Surfaces:** per-component stage track on the component in project administration (workflow picker per stage, current phase, not-applicable); phase column and filter in the lists using `ComponentFilterField` (phase 9); report field; stage review notifications; bundles carry the states and the setting (an imported locked state never bypasses the approval gate); template cloning (phase 13) copies the setting and workflow choices and resets every state to its starting phase.
 - **Nested projects:** a state, not a definition table, so no fallback; only the switch inherits. State this in `docs/decisions.md`.
 - **Outcome:** with the switch on, each component is planned and approved independently per stage; with it off nothing changes.
@@ -252,7 +250,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
   - **Sweep:** extends the daily stage sweep (`services/stages.py`, leader singleton via the lifespan's `start_singletons`), following the Risk Management review sweep: notify once per date (`*_notified_for` stores the `expected_to` that was notified, so a rescheduled phase re-arms itself), harmless to re-run. **Upcoming:** `expected_from` is within the project's lead days (default 7, `phase_reminder_lead_days`, nullable, inherits the nearest ancestor). **Overdue:** the current phase is past `expected_to`. *Decided by: Agent*, because the sweep has no caller's day: "upcoming" compares against the latest calendar day anywhere (UTC+14), so nobody is reminded late; "overdue" requires the date to have passed everywhere (UTC-12), so nobody is told a deadline was missed while it is still the day. Tests cover both boundaries.
   - **Completed** is event-driven, not a sweep: sent from the transition itself, in the same transaction, and never to the person who made it.
   - **Notification types** `stage_phase_upcoming`, `stage_phase_overdue`, `stage_phase_completed`, core (the stage code is core), so per-user preferences and the digest apply. The text carries the stage, component and phase names and dates, never a record body.
-  - **Recipients** (*Decided by: User*, 2026-11-07): the owner, else the project managers. An optional owner on the stage and on a component's stage state (a user or a group, through the shared principal picker; group members are notified via `principal_recipients`); with no owner, the project's project managers, as the risk sweep does. Addressing, not authorisation. The owner field is part of this phase (it does not exist on stages or components today).
+  - **Recipients** (*Decided by: User*, 2026-11-07): the owner, else the project managers. An optional owner on the stage and on a component's stage state (a user or a group, through the shared principal picker; group members are notified via `principal_recipients`); with no owner, the project's project managers, as the risk sweep does. Addressing, not authorisation. The component state's owner exists from phase 9c (where it also lets the owner move the track); this phase adds the owner on the stage itself.
 - **Surfaces:** expected range fields on the phase in the stage form and on the component stage track (a date range field, `(?)` help describing lead days and overdue); date badge and "overdue" on the phase; lead-days setting in project settings; report fields (expected, actual, variance); the project overview (phase 14) gets a metric for phases upcoming and overdue through the generic metric catalogue; project and organisation bundles carry ranges and actual dates (the `*_notified_for` markers are derived and not exported, so an import re-arms); template cloning copies lead days and clears dates.
 - **Nested projects:** plan rows are state, no fallback; only the lead-days setting inherits.
 - **Outcome:** a manager sets when each phase is expected to complete and is reminded before, at completion and when late.

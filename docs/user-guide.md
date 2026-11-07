@@ -104,6 +104,8 @@ Anyone who can create a stage can also **rename** it (edit its name inline) or *
 
 Each stage follows a **workflow** of named phases, each with a kind (Open, Review, Locked, On hold or Closed) that decides what it does; every organisation starts with the Standard workflow (Scoping, Review, Approved, Completed, Archived), and administrators can define others (**Organisation Admin → Projects & workflow → Stage workflows**, **Project Admin → Structure → Stage workflows**). A stage moves to any phase of its workflow in either direction; entering or leaving a Locked phase needs the project manager role.
 
+A project manager can also turn on **Component phases** (**Project Admin → Structure**), so each component follows its own workflow per stage: a component's Locked phase approves only its own requirements for that stage, the stage's own Locked phase approves the components with no applicable track, and a track's owner (a user or a group) may move it as well as a project manager. See [Stages and baselining](website/docs/core-features/stages-and-baselining.md#component-phases).
+
 A stage in a Review phase can also be given a **review deadline**: stakeholders record an explicit approve/reject response before it passes, and if the deadline passes with no rejection, the stage moves to the workflow's next Locked phase (silence is treated as approval) — an explicit rejection blocks it and leaves it for a manager to resolve manually. Once a stage's work is delivered, a project manager moves it to a Closed phase, optionally marking every approved requirement targeting it as completed.
 
 ## Templates

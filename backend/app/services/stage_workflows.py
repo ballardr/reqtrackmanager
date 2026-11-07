@@ -7,7 +7,8 @@ Responsibilities:
 - Resolve a project's effective workflow set (own, else nearest ancestor's, plus the
   organisation's minus the ones the project hid) and seed the organisation's "Standard" one.
 - Validate and write a workflow with its ordered phases.
-- Move a stage between phases, applying the behaviour of the phase kind: baseline and approval
+- Move a stage, or one component's track within a stage (`services.component_stages`), between
+  phases through one function, applying the behaviour of the phase kind: baseline and approval
   on entering a locked phase, completion on entering a closed one.
 - Answer the questions other code asks of a phase kind: may requirements be reordered.
 
@@ -35,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import ProjectRole, StagePhaseKind
 from app.models.project import Project, ProjectStage
-from app.models.stage_workflow import MAX_WORKFLOW_NAME_LENGTH, StageWorkflow, StageWorkflowPhase
+from app.models.stage_workflow import MAX_WORKFLOW_NAME_LENGTH, ComponentStageState, StageWorkflow, StageWorkflowPhase
 from app.models.user import User
 from app.services import definition_suppression
 from app.services.audit import log_event
@@ -189,12 +190,18 @@ def current_stage_kind(db: Session, project_id: uuid.UUID) -> StagePhaseKind | N
 
 
 def workflow_in_use(db: Session, workflow_id: uuid.UUID) -> bool:
-    """True when any stage follows the workflow."""
-    return db.scalar(select(ProjectStage.id).where(ProjectStage.workflow_id == workflow_id).limit(1)) is not None
+    """True when any stage, or any component's track within a stage, follows the workflow."""
+    return (
+        db.scalar(select(ProjectStage.id).where(ProjectStage.workflow_id == workflow_id).limit(1)) is not None
+        or db.scalar(select(ComponentStageState.id).where(ComponentStageState.workflow_id == workflow_id).limit(1)) is not None
+    )
 
 
 def _phase_in_use(db: Session, phase_id: uuid.UUID) -> bool:
-    return db.scalar(select(ProjectStage.id).where(ProjectStage.phase_id == phase_id).limit(1)) is not None
+    return (
+        db.scalar(select(ProjectStage.id).where(ProjectStage.phase_id == phase_id).limit(1)) is not None
+        or db.scalar(select(ComponentStageState.id).where(ComponentStageState.phase_id == phase_id).limit(1)) is not None
+    )
 
 
 def _clean_name(name: str, what: str) -> str:
@@ -308,6 +315,9 @@ def first_phase_of_kind(phases: Sequence[StageWorkflowPhase], kind: StagePhaseKi
     return chosen[0] if chosen else None
 
 
+PhaseHolder = ProjectStage | ComponentStageState
+
+
 def move_stage(
     db: Session, project: Project, stage: ProjectStage, phase: StageWorkflowPhase, actor: User, *,
     actor_roles: frozenset[ProjectRole] | set[ProjectRole], cascade_to_requirements: bool = False,
@@ -324,35 +334,72 @@ def move_stage(
         PermissionError: A locked phase is entered or left without the project manager role.
         WorkflowConflict: `phase` is the current phase.
     """
+    apply_phase_move(
+        db, project, stage, stage, phase, actor, can_lock=ProjectRole.PROJECT_MANAGER in actor_roles,
+        cascade_to_requirements=cascade_to_requirements, reason=reason,
+    )
+
+
+def apply_phase_move(
+    db: Session, project: Project, stage: ProjectStage, holder: PhaseHolder, phase: StageWorkflowPhase, actor: User, *,
+    can_lock: bool, cascade_to_requirements: bool = False, reason: str | None = None, component_id: uuid.UUID | None = None,
+) -> None:
+    """Moves `holder` (the stage itself, or one component's state within it) to another phase of its workflow.
+
+    The one implementation of what a phase kind does, shared by a stage and a component's track: a locked phase
+    writes a baseline (the whole stage's, or only `component_id`'s requirements for the stage) and records the
+    approval; a closed phase records completion; leaving either clears the stamp and keeps the baseline as history.
+
+    Args:
+        stage: The project stage (for a component state, the stage the state belongs to).
+        holder: The `ProjectStage` or `ComponentStageState` being moved.
+        can_lock: Whether the actor may enter or leave a locked phase (a project manager, or for a component the
+            track's owner).
+        component_id: Set when `holder` is a component state.
+
+    Raises:
+        ValueError: `phase` is not in the holder's workflow.
+        PermissionError: A locked phase is entered or left without `can_lock`.
+        WorkflowConflict: `phase` is the current phase.
+    """
     from app.services.baseline import create_baseline_for_stage  # deferred: baseline imports this module's callers
     from app.services.stages import complete_stage
 
-    if phase.workflow_id != stage.workflow_id:
-        raise ValueError("The phase is not part of the stage's workflow.")
-    old_kind = phase_kind_of(db, stage)
-    if (phase.kind == StagePhaseKind.LOCKED or old_kind == StagePhaseKind.LOCKED) and ProjectRole.PROJECT_MANAGER not in actor_roles:
-        raise PermissionError("Only a project manager can move a stage into or out of a locked phase.")
-    if phase.id == stage.phase_id:
-        raise WorkflowConflict("The stage is already in this phase.")
+    what = "stage" if holder is stage else "component's track"
+    if phase.workflow_id != holder.workflow_id:
+        raise ValueError(f"The phase is not part of the {what}'s workflow." if holder is stage else "The phase is not part of the track's workflow.")
+    old_kind = db.scalar(select(StageWorkflowPhase.kind).where(StageWorkflowPhase.id == holder.phase_id))
+    if old_kind is None:
+        raise ValueError("The current phase no longer exists.")
+    if (phase.kind == StagePhaseKind.LOCKED or old_kind == StagePhaseKind.LOCKED) and not can_lock:
+        raise PermissionError(f"Only a project manager can move a {what} into or out of a locked phase.")
+    if phase.id == holder.phase_id:
+        raise WorkflowConflict(f"The {what} is already in this phase.")
 
-    stage.phase_id = phase.id
+    entity_type, entity_id = ("project_stage", stage.id) if holder is stage else ("component_stage_state", holder.id)
+    holder.phase_id = phase.id
     detail: dict[str, str | None] = {"phase": phase.name, "kind": phase.kind.value}
+    if component_id is not None:
+        detail["component_id"] = str(component_id)
+        detail["stage_id"] = str(stage.id)
     if reason:
         detail["reason"] = reason
     if old_kind == StagePhaseKind.CLOSED and phase.kind != StagePhaseKind.CLOSED:
-        stage.completed_at = None
-        stage.completed_by = None
+        holder.completed_at = None
+        holder.completed_by = None
     if old_kind == StagePhaseKind.LOCKED and phase.kind != StagePhaseKind.LOCKED:
-        stage.approved_at = None
-        stage.approved_by = None
+        holder.approved_at = None
+        holder.approved_by = None
     if phase.kind == StagePhaseKind.LOCKED:
-        stage.approved_at = datetime.now(UTC)
-        stage.approved_by = actor.id
-        create_baseline_for_stage(db, project, stage, actor)
-        log_event(db, entity_type="project_stage", entity_id=stage.id, action="approved", actor_id=actor.id,
+        holder.approved_at = datetime.now(UTC)
+        holder.approved_by = actor.id
+        create_baseline_for_stage(db, project, stage, actor, component_id=component_id)
+        log_event(db, entity_type=entity_type, entity_id=entity_id, action="approved", actor_id=actor.id,
                   project_id=project.id, detail=detail)
     elif phase.kind == StagePhaseKind.CLOSED:
-        complete_stage(db, project, stage, actor, cascade_to_requirements=cascade_to_requirements)
+        complete_stage(
+            db, project, stage, actor, cascade_to_requirements=cascade_to_requirements, holder=holder, component_id=component_id,
+        )
     else:
-        log_event(db, entity_type="project_stage", entity_id=stage.id, action="status_changed", actor_id=actor.id,
+        log_event(db, entity_type=entity_type, entity_id=entity_id, action="status_changed", actor_id=actor.id,
                   project_id=project.id, detail=detail)

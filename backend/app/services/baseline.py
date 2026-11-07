@@ -3,24 +3,30 @@ Module: services.baseline
 
 Implements stage-approval baselining (C-G-10) and the resulting
 direct-edit lock on requirements (C-G-12): entering a locked phase approves
-the project's requirements, and an approved requirement may only be modified
-through an approved change request.
+the project's requirements (with component phases on, a component's own locked
+phase approves only that component's requirements for the stage), and an
+approved requirement may only be modified through an approved change request.
 """
 
 from __future__ import annotations
+
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import RequirementStatus
-from app.models.project import Project, ProjectStage
+from app.models.project import Project, ProjectComponent, ProjectStage
 from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
 from app.models.user import User
+from app.services.component_stages import tracked_component_ids
 from app.services.requirements import apply_new_version, get_current_version_for_update
 
 
-def create_baseline_for_stage(db: Session, project: Project, stage: ProjectStage, actor: User) -> Baseline:
-    """Snapshots every non-archived requirement's current version into a baseline.
+def create_baseline_for_stage(
+    db: Session, project: Project, stage: ProjectStage, actor: User, *, component_id: UUID | None = None,
+) -> Baseline:
+    """Snapshots non-archived requirements' current versions into a baseline.
 
     Args:
         db: An active database session (changes are flushed, not committed;
@@ -28,6 +34,9 @@ def create_baseline_for_stage(db: Session, project: Project, stage: ProjectStage
         project: The project whose requirements are being baselined.
         stage: The stage being approved.
         actor: The user performing the approval.
+        component_id: When set (a component entering a locked phase), only that component's requirements
+            that target `stage` are baselined and approved. When not set and component phases are on, the
+            requirements of components that have their own track for `stage` are left to those tracks.
 
     Returns:
         The created Baseline.
@@ -36,15 +45,32 @@ def create_baseline_for_stage(db: Session, project: Project, stage: ProjectStage
     status, since baselining a stage is the formal act of turning scoped
     requirements into the project's approved requirement set.
     """
-    baseline = Baseline(project_id=project.id, stage_id=stage.id, label=f"{stage.name} baseline", created_by=actor.id)
-    db.add(baseline)
-    db.flush()
-
-    requirements = db.scalars(
+    label = f"{stage.name} baseline"
+    query = (
         select(Requirement)
         .where(Requirement.project_id == project.id, Requirement.is_archived.is_(False))
         .order_by(Requirement.id)
-    ).all()
+    )
+    if component_id is not None:
+        component = db.get(ProjectComponent, component_id)
+        label = f"{stage.name} / {component.name if component else 'component'} baseline"
+        query = query.where(
+            Requirement.component_id == component_id,
+            Requirement.id.in_(
+                select(RequirementVersion.requirement_id).where(
+                    RequirementVersion.valid_to.is_(None), RequirementVersion.target_stage_id == stage.id
+                )
+            ),
+        )
+    else:
+        tracked = tracked_component_ids(db, project, stage)
+        if tracked:
+            query = query.where(Requirement.component_id.not_in(tracked))
+    baseline = Baseline(project_id=project.id, stage_id=stage.id, component_id=component_id, label=label, created_by=actor.id)
+    db.add(baseline)
+    db.flush()
+
+    requirements = db.scalars(query).all()
     for requirement in requirements:
         current_version = db.scalar(
             select(RequirementVersion).where(
