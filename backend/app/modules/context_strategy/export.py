@@ -134,6 +134,7 @@ from app.services.scoring import list_levels, seed_missing_scoring_levels
 from app.services.scoring_custom import export_definitions, import_definitions
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _LINKS_KEY = "context_strategy_links"
 _PENDING_SCORES = "context_strategy_pending_scores"
@@ -631,6 +632,15 @@ def _type_row_for(
     db.flush()
     rows[local_name] = row
     return row
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Strategies, Future States and Guiding Principles become
+    drafts, Pain Points submitted (unscored) and Open Questions open with no due date."""
+    for spec in _SPECS:
+        fresh_drafts(data.get(spec.key, []), status="draft")
+    fresh_drafts(data.get("pain_points", []), status=PainPointStatus.SUBMITTED.value, empty=("scores",))
+    fresh_drafts(data.get("open_questions", []), status=OpenQuestionStatus.OPEN.value, clear=("due_date",))
 
 
 def import_project_data(

@@ -22,6 +22,7 @@ import { getInstalledModule } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { ActivityNote } from "../components/ActivityNote";
 import { Badge } from "../components/Badge";
+import { Tooltip } from "../components/Tooltip";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
 /** Project overview dashboard (U-P-05): key metrics, a total-records chart
@@ -163,6 +164,11 @@ export function ProjectOverviewPage() {
         <div>
           <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
             <h1 style={{ margin: 0 }}>{project.name}</h1>
+            {project.is_template && (
+              <Tooltip label={strings.projects.templateReadOnlyHelp} wrap>
+                <Badge>{strings.projects.template}</Badge>
+              </Tooltip>
+            )}
             <EntitySwitcher
               label="Switch project"
               currentId={project.id}

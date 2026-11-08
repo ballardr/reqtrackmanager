@@ -86,6 +86,9 @@ class ProjectCreate(BaseModel):
     #: Short display name for reports (`{{project_report_name}}`); blank means "use the project name".
     report_name: str | None = None
     template_project_id: UUID | None = None  # C-E-05: create from an existing template project
+    #: With no `template_project_id`: `True` falls back to the organisation's default template (C-E-04), `False`
+    #: creates a blank project even when a default exists ("None" in the New project form).
+    use_template: bool = True
     # The project's short code. Required when the organisation's policy is manual assignment,
     # rejected when it is automatic (`services.codes.assign_project_code`).
     code: str | None = None

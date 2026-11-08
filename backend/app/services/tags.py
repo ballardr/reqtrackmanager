@@ -588,7 +588,7 @@ def _audit_record(
 
 def set_record_tags(
     db: Session, *, scope: TagScope, actor_id: uuid.UUID | None, artefact_type: str, artefact_id: uuid.UUID,
-    names: list[str], enforce_mode: bool = True,
+    names: list[str], enforce_mode: bool = True, new_record: bool = False,
 ) -> TagChange:
     """Makes the record carry exactly `names`.
 
@@ -600,6 +600,8 @@ def set_record_tags(
         names: The wanted tag names.
         enforce_mode: False for a bundle import, which keeps the tags it was exported with even
             in a restricted project (an administrator is restoring them, not coining them).
+        new_record: True when the record was created in this request and so carries no tags yet, which
+            saves reading them (a bundle import or template copy creates many records).
 
     Returns:
         The tags added and removed.
@@ -608,7 +610,7 @@ def set_record_tags(
         HTTPException: 422 for an invalid name, a name not on the list in restricted mode, or
             more than `MAX_TAGS_PER_RECORD` tags.
     """
-    current = get_record_tags(db, artefact_type, artefact_id)
+    current = [] if new_record else get_record_tags(db, artefact_type, artefact_id)
     attached = {t.name_key: t for t in current}
     wanted = _resolve_names(
         db, scope=scope, actor_id=actor_id, names=names, attached=attached, enforce_mode=enforce_mode,
@@ -1022,6 +1024,7 @@ def get_keywords(db: Session, requirement_id: uuid.UUID) -> list[str]:
 
 def set_keywords(
     db: Session, requirement, keywords: list[str], actor_id: uuid.UUID | None = None, enforce_mode: bool = True,
+    new_record: bool = False,
 ) -> TagChange:
     """Makes a requirement carry exactly `keywords` as tags in its project.
 
@@ -1035,6 +1038,7 @@ def set_keywords(
         keywords: The wanted names.
         actor_id: The acting user, for the audit trail.
         enforce_mode: False for a bundle import (see `set_record_tags`).
+        new_record: True for a requirement created in this request (see `set_record_tags`).
 
     Raises:
         HTTPException: 422 as `set_record_tags`.
@@ -1043,6 +1047,7 @@ def set_keywords(
     return set_record_tags(
         db, scope=TagScope(project.organization_id, project.id), actor_id=actor_id, artefact_type="requirement",
         artefact_id=requirement.id, names=[k for k in keywords if k and k.strip()], enforce_mode=enforce_mode,
+        new_record=new_record,
     )
 
 

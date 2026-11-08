@@ -770,6 +770,7 @@ _REVIEWED_LINK_READERS = {
     "services/bundle_links.py": "same-project links only (source_project_id is null); a cross-level link is not exported",
     "services/link_graph.py": "authorises every end in its own project",
     "services/link_nesting.py": "counts links a type's scope would flag",
+    "services/templates.py": "copies same-project requirement-to-requirement links only (source_project_id is null)",
     "modules/compliance/export.py": "same-project requirement -> clause links only (source_project_id is null)",
     "modules/product_feedback/demand.py": "same-project requester links only (source_project_id is null)",
     "modules/product_feedback/export.py": "same-project links only (source_project_id is null); a cross-level link is not exported",

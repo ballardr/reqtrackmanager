@@ -74,6 +74,7 @@ from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _TEXT_FIELDS = (
     "name", "description", "role", "organisation_group", "interests", "responsibilities", "goals_needs",
@@ -426,6 +427,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "project_stakeholder_visibility": visibility_json,
         "project_stakeholder_groups": _export_groups(db, project.organization_id, project.id, StakeholderScope.PROJECT),
     }, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """Starter Stakeholders become drafts."""
+    fresh_drafts(data.get("project_stakeholders", []), status=StakeholderStatus.DRAFT.value)
 
 
 def import_project_data(

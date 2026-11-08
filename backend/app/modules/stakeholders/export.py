@@ -61,6 +61,7 @@ from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _TEXT_FIELDS = (
     "name", "description", "role_title", "goals", "needs", "behaviours", "context_environment",
@@ -250,6 +251,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "project_personas": personas_json,
         "project_persona_weights": weights_json, "project_persona_visibility": visibility_json,
     }, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Personas become drafts."""
+    fresh_drafts(data.get("project_personas", []), status=PersonaStatus.DRAFT.value)
 
 
 def import_project_data(

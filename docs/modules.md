@@ -1294,6 +1294,18 @@ Rules for a hook (reference implementations: `modules/risk_management/export.py`
 - A type vocabulary carries its project overrides, project-only types and the organisation defaults the project has hidden (`ProjectDefinitionSuppression`).
 - An imported status is never an approval by someone else: no approver identity is carried, and project import is limited to organisation admins and project creators.
 - Add the export and import for a new table or column in the same change, with a round-trip test (export, import into a fresh project or organisation, compare).
+- Classify every key the project export returns for **template projects**: `template_configuration_keys` (vocabularies, hidden defaults, scoring definitions, settings), `template_record_keys` (starter records and the links among them) or `template_excluded` with a reason (the template's own lifecycle state or people). A project created from a template (`services/template_content.py`) exports through these hooks, keeps the configuration and record keys, calls `template_reset` (`services.template_reset.fresh_drafts` plus the module's initial status; no approval, review, vote or score state) and imports the result, so a module needs no clone code. `backend/tests/test_template_content.py` fails for an unclassified key, a key in two classes, record keys with no reset and an exclusion with no reason.
+
+```mermaid
+flowchart LR
+    T["Template project"] --> E["Hook export"]
+    E --> F["Keep configuration\nand record keys"]
+    F --> R["template_reset:\nfresh drafts"]
+    R --> I["Hook import_ and import_late"]
+    I --> N["New project"]
+```
+
+Read left to right: the template's own bundle export is filtered to its declared keys, the records are returned to drafts, and the module's ordinary import writes them into the new project.
 
 ### 4l. Record tables: export and import of every list (List data and form UX, Phase 8)
 

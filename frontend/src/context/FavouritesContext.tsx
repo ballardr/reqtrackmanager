@@ -50,7 +50,7 @@ export function FavouritesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
-    api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(
+    api.get<ProjectListItem[]>("/api/v1/projects?archived=false&include_templates=true").then(
       (list) => setHasFavourites(list.some((p) => p.is_favorite))
     );
   }, [user, refreshToken]);

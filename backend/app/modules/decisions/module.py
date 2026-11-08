@@ -301,6 +301,9 @@ MODULE_DEFINITION = ModuleDefinition(
     org_bundle_hooks=ModuleOrgBundleHooks(export=bundle_export.export_org_data, import_=bundle_export.import_org_data),
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
+        template_configuration_keys=frozenset({"decision_types"}),
+        template_record_keys=frozenset({"decisions", "decision_links"}),
+        template_reset=bundle_export.reset_for_template,
     ),
     org_creation_choices=_ORG_CREATION_CHOICES,
     on_org_created_with_choices=_seed_org_templates,

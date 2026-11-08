@@ -413,6 +413,12 @@ def _import_project_data(
     import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
 
+def _reset_for_template(data: dict[str, Any]) -> None:
+    from app.modules.compliance.export import reset_for_template
+
+    reset_for_template(data)
+
+
 def _run_evidence_expiry_notifications(db: Session) -> None:
     from app.modules.compliance.scheduler import send_evidence_expiry_notifications
 
@@ -537,6 +543,9 @@ MODULE_DEFINITION = ModuleDefinition(
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=_export_project_data,
         import_=_import_project_data,
+        template_configuration_keys=frozenset({"compliance_default_exclusions"}),
+        template_record_keys=frozenset({"compliance_project_compliances", "compliance_evidence", "compliance_requirement_links"}),
+        template_reset=_reset_for_template,
     ),
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",

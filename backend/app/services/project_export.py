@@ -861,7 +861,7 @@ def apply_project_data(
             db.flush()
             version_id_by_code_and_number[(r["unique_code"], v["version_number"])] = version.id
         if r.get("keywords"):
-            set_keywords(db, requirement, r["keywords"], current_user.id, enforce_mode=False)
+            set_keywords(db, requirement, r["keywords"], current_user.id, enforce_mode=False, new_record=True)
         for att in r.get("attachments", []):
             asset = import_file_ref(att, "linked_by_email")
             if asset:

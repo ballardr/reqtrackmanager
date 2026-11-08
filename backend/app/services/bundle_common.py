@@ -138,6 +138,8 @@ class UserResolver:
         self._importing_user = importing_user
         self._warnings = warnings
         self._cache: dict[str, UUID | None] = {}
+        #: Organisation members found for a bundled principal's email, shared by `principal_from_bundle`.
+        self.principal_user_cache: dict[tuple[UUID, str], UUID | None] = {}
 
     @property
     def importing_user_id(self) -> UUID:

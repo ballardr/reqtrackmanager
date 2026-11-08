@@ -110,6 +110,7 @@ from app.services.scoring import list_levels, seed_missing_scoring_levels
 from app.services.scoring_custom import effective_scheme, export_definitions, import_definitions
 from app.services.sequences import code_owner, generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _PENDING_CODES = "product_feedback_imported_codes"
 _LINKS_KEY = "enhancement_request_links"
@@ -503,6 +504,15 @@ def _add_merges(db: Session, requests: list[EnhancementRequest], entries: list[d
             }
             if merge is not None and canonical_code is not None else None
         )
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter requests become new, with no decline reason, merge,
+    requesters, informed parties or external references (people and systems of the template's own history)."""
+    fresh_drafts(
+        data.get("enhancement_requests", []), status=EnhancementRequestStatus.NEW.value, clear=("decline_reason", "merged_into"),
+        empty=("requested_by", "requester_channels", "informed", "references"),
+    )
 
 
 def import_project_data(

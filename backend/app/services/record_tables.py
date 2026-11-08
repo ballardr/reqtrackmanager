@@ -98,7 +98,7 @@ from app.services.permissions import encode_permission
 from app.services.placements import PLACEMENT_COLUMN_KEY, apply_imported_placements, can_place, placement_column
 from app.services.principals import group_ref_from_text, principal_labels, principal_text, validate_principal
 from app.services.project_scope import ProjectScope, gate_open
-from app.services.rbac import get_effective_org_roles, get_effective_permissions, permission_satisfied
+from app.services.rbac import can_manage_project_settings, get_effective_org_roles, get_effective_permissions, permission_satisfied
 from app.services.record_policy import REASON_PERMISSION, tag_decisions
 from app.services.tags import TagFilter
 
@@ -174,6 +174,8 @@ def creatable_record_types(db: Session, user: User, project: Project, artefact_t
     Returns:
         The types the person may create.
     """
+    if project.is_template and not can_manage_project_settings(db, user, project):
+        return set()  # a template is read-only below project administrator (`services.template_guard`)
     providers = get_record_table_providers()
     held: set[str] | None = None
     allowed: set[str] = set()

@@ -17,7 +17,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -85,6 +85,7 @@ from app.services.report_run_jobs import run_job_loop
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.scoring import sync_scoring_levels
 from app.services.storage_health import run_storage_health_loop
+from app.services.template_guard import enforce_template_read_only
 from app.version import APP_VERSION
 
 settings = get_settings()
@@ -191,6 +192,7 @@ app = FastAPI(
     # being frozen at the value set when the app was first scaffolded.
     version=APP_VERSION,
     lifespan=lifespan,
+    dependencies=[Depends(enforce_template_read_only)],
 )
 
 # Added before CORS so it ends up inside it (middleware added last runs first): a 413 still carries the CORS

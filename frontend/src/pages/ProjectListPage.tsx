@@ -16,6 +16,7 @@ import type {
 import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
 import { stageBadgeText } from "../utils/stageBadge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Badge } from "../components/Badge";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
@@ -77,6 +78,7 @@ export function ProjectListPage() {
   const [stagePhaseKindFilter, setStagePhaseKindFilter] = useUrlChoice("stage_phase_kind", STAGE_PHASE_KINDS);
   const [orgFilter, setOrgFilter] = useUrlText("org");
   const [favoriteOnly, setFavoriteOnly] = useUrlFlag("favourites");
+  const [showTemplates, setShowTemplates] = useUrlFlag("templates");
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -91,6 +93,7 @@ export function ProjectListPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
+  const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
   const [storedViewMode, setViewMode] = useViewMode("projects");
   // Hierarchical projects (docs/decisions.md).
   const [parentProjectId, setParentProjectId] = useState("");
@@ -159,6 +162,7 @@ export function ProjectListPage() {
     // page, all of which narrow the paginated result set itself rather
     // than hiding already-loaded rows.
     if (favoriteOnly) params.set("favorite_only", "true");
+    if (showTemplates) params.set("include_templates", "true");
     return params;
   }
 
@@ -186,13 +190,15 @@ export function ProjectListPage() {
 
   async function reload() {
     setProjects(null);
-    const [orgList, everyProject] = await Promise.all([
+    const [orgList, everyProject, templates] = await Promise.all([
       // `mine=true`: a server admin otherwise sees every organisation in the
       // deployment here (the plain `GET /orgs` directory-listing bypass,
       // meant for the platform-level org directory) rather than just the
       // ones they can actually create a project in or usefully filter by.
       api.get<Organization[]>("/api/v1/orgs?mine=true"),
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
+      // The template picker reads its own list: the default list leaves templates out.
+      api.get<ProjectListItem[]>("/api/v1/projects?archived=false&templates_only=true"),
       loadProjects(0, false),
     ]);
     // A disabled org can't hold any (newly) visible projects (the list
@@ -203,10 +209,11 @@ export function ProjectListPage() {
     const activeOrgs = orgList.filter((o) => o.is_active);
     setOrgs(activeOrgs);
     setAllProjects(everyProject);
+    setTemplateProjects(templates);
     if (!newOrgId && activeOrgs[0]) setNewOrgId(activeOrgs[0].id);
   }
 
-  useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly]);
+  useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly, showTemplates]);
 
   // C-E-04: pre-select the organisation's default template project (if
   // one is configured) whenever the target org changes, rather than
@@ -232,7 +239,15 @@ export function ProjectListPage() {
   }
 
   const newOrg = orgs.find((o) => o.id === newOrgId);
-  const templateOptions = allProjects.filter((p) => p.is_template && p.organization_id === newOrgId);
+  // The organisation's default template is offered even when the caller cannot see it in the list (an
+  // administrator chose it for every new project), under a generic name so nothing of it is revealed.
+  const defaultTemplateId = newOrg?.default_template_project_id ?? null;
+  const templateOptions: { id: string; name: string }[] = templateProjects
+    .filter((p) => p.organization_id === newOrgId)
+    .map((p) => ({ id: p.id, name: p.name }));
+  if (defaultTemplateId && !templateOptions.some((p) => p.id === defaultTemplateId)) {
+    templateOptions.push({ id: defaultTemplateId, name: strings.projects.organisationDefaultTemplate });
+  }
   const showOrgColumn = orgs.length > 1 || !!user?.is_server_admin;
 
   function toggleStagePhaseKindFilter(status: StagePhaseKind | null) {
@@ -264,6 +279,8 @@ export function ProjectListPage() {
         report_name: newReportName.trim() || null,
         code: newOrg?.project_code_policy.assignment === "manual" ? normaliseProjectCode(newCode) : null,
         template_project_id: templateProjectId || null,
+        // "None" is an explicit choice: without it the organisation's default template would apply.
+        use_template: templateProjectId !== "",
         visibility: newVisibility,
         parent_project_id: parentProjectId || null,
         role_inheritance_mode: roleInheritanceMode,
@@ -333,6 +350,7 @@ export function ProjectListPage() {
             searchPlaceholder={strings.projects.search}
           >
             <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
+            <FilterCheckbox label={strings.projects.showTemplates} checked={showTemplates} onChange={setShowTemplates} />
             <FilterField label="Status">
               <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
                 <option value="active">{strings.projects.active}</option>
@@ -572,6 +590,7 @@ export function ProjectListPage() {
                       >
                         {p.name}
                       </Link>
+                      {p.is_template && <Badge className="badge-after">{strings.projects.template}</Badge>}
                       <button
                         className="btn"
                         onClick={() => toggleFavorite(p)}
@@ -644,6 +663,7 @@ export function ProjectListPage() {
                         </td>
                         <td>
                           <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                          {p.is_template && <Badge className="badge-after">{strings.projects.template}</Badge>}
                           <div
                             className="text-muted"
                             style={{

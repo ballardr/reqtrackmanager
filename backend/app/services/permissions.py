@@ -32,6 +32,7 @@ ADMINISTRATIVE_PERMISSIONS: tuple[str, ...] = (
     "export_personal_data",
     "manage_org_report_layouts",
     "manage_project_report_layouts",
+    "publish_organization_templates",
 )
 """Short, explicit list of non-artefact administrative permissions — hand-maintained here rather than derived from any registry, since
 these describe fixed organisational admin actions, not a per-artefact-type
@@ -53,6 +54,10 @@ delete and (for a project) hide or restore custom report layouts at the organisa
 They are two atoms, not one scoped by grant, so a person can be trusted with a project's layouts without
 being able to change the ones every project in the organisation inherits. Running a layout needs neither.
 Organisation admins hold both; project administrators hold the project one in their project.
+
+`publish_organization_templates` lets its holder make a project both a template and visible to the whole
+organisation (`services.template_guard.ensure_may_publish_template`); either setting alone needs only the
+project's own management. Organisation admins hold it; it can be given to others through a custom role.
 """
 
 

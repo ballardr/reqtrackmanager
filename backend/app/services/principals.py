@@ -626,8 +626,12 @@ def principal_from_bundle(
     project_id: uuid.UUID | None,
     fallback_user_id: uuid.UUID,
     required: bool = True,
+    user_cache: dict[tuple[uuid.UUID, str], uuid.UUID | None] | None = None,
 ) -> tuple[PrincipalRef | None, str | None]:
     """Resolves a bundled principal in the importing organisation.
+
+    `user_cache` (one per import, `UserResolver.principal_user_cache`) remembers the organisation member an
+    email names, so an import of many records looks each person up once.
 
     A user is matched by email among the organisation's members, an org group by name, a project group
     by name within `project_id`. Anything that cannot be matched falls back to `fallback_user_id`
@@ -643,9 +647,14 @@ def principal_from_bundle(
     kind, name = data.get("type"), data.get("email") or data.get("name")
     found: uuid.UUID | None = None
     if kind == PrincipalType.USER.value and data.get("email"):
-        candidate = db.scalar(select(User.id).where(func.lower(User.email) == str(data["email"]).lower()))
-        if candidate is not None and get_effective_org_roles(db, candidate, organization_id):
-            found = candidate
+        cache_key = (organization_id, str(data["email"]).lower())
+        if user_cache is not None and cache_key in user_cache:
+            found = user_cache[cache_key]
+        else:
+            candidate = db.scalar(select(User.id).where(func.lower(User.email) == cache_key[1]))
+            found = candidate if candidate is not None and get_effective_org_roles(db, candidate, organization_id) else None
+            if user_cache is not None:
+                user_cache[cache_key] = found
     elif kind == PrincipalType.ORG_GROUP.value and data.get("name"):
         matches = db.scalars(
             select(OrgGroup.id).where(OrgGroup.organization_id == organization_id, OrgGroup.name == data["name"])
@@ -691,7 +700,7 @@ def principal_columns_from_bundle(
         entry = {"type": PrincipalType.USER.value, "email": data[f"{field}_email"]}
     ref, warning = principal_from_bundle(
         db, entry, organization_id=organization_id, project_id=project_id,
-        fallback_user_id=users.importing_user_id, required=required,
+        fallback_user_id=users.importing_user_id, required=required, user_cache=users.principal_user_cache,
     )
     if warning:
         warnings.add(f"{context}: {warning}")

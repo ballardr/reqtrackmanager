@@ -477,6 +477,10 @@ export function OrgAdminPage() {
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [patToRevoke, setPatToRevoke] = useState<string | null>(null);
   const [orgProjects, setOrgProjects] = useState<OrgProjectSummary[] | null>(null);
+  // The full directory lists every template in the organisation, including ones the administrator holds no role in.
+  const defaultTemplateOptions: { id: string; name: string }[] = orgProjects
+    ? orgProjects.filter((p) => p.is_template && !p.is_archived)
+    : templateProjects;
   // "Manage users" (docs/decisions.md): the old inline expand-in-place
   // (`expandedProjectId`/`expandedProjectGroups`/`toggleExpandedProject`/
   // `addExpandedProjectGroupMember`/`removeExpandedProjectGroupMember`) is
@@ -646,7 +650,7 @@ export function OrgAdminPage() {
         api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
         // Scoped to this org server-side: only its projects are used below,
         // and the unscoped list spanned every org the caller belongs to.
-        api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&organization_id=${orgId}`),
+        api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&include_templates=true&organization_id=${orgId}`),
         api.get<ProjectStatusDefinition[]>(`/api/v1/orgs/${orgId}/project-statuses`),
         // Open to any real org role
         // (backend `_VIEW_ROLES`), same tier as every other call in this
@@ -3300,13 +3304,13 @@ export function OrgAdminPage() {
               </button>
             </CollapsibleSection>
 
-            {templateProjects.length > 0 && (
+            {defaultTemplateOptions.length > 0 && (
               <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate}>
                 <InlineSelect
                   ariaLabel={strings.orgAdmin.defaultTemplate}
                   placeholder={strings.projects.noTemplate}
                   value={org.default_template_project_id ?? ""}
-                  options={templateProjects.map((p) => ({ value: p.id, label: p.name }))}
+                  options={defaultTemplateOptions.map((p) => ({ value: p.id, label: p.name }))}
                   onChange={setDefaultTemplate}
                 />
               </CollapsibleSection>

@@ -810,6 +810,13 @@ MODULE_DEFINITION = ModuleDefinition(
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
         import_late=bundle_export.import_late_project_data,
+        template_configuration_keys=frozenset({
+            "pain_point_project_types", "pain_point_submission_policy", "pain_point_hidden_org_types", "pain_point_scoring_definitions",
+        }),
+        template_record_keys=frozenset({
+            "strategies", "future_states", "guiding_principles", "pain_points", "open_questions", "context_strategy_links",
+        }),
+        template_reset=bundle_export.reset_for_template,
     ),
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",

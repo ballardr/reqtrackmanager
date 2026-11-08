@@ -1319,6 +1319,23 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     }, file_assets_by_id
 
 
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter assignments keep their assessments and evidence, with every
+    approval returned to `assessed` (no decision, decider or note) and no revalidation history; archived assignments
+    and evidence are left out."""
+    assignments = [pc for pc in data.get("compliance_project_compliances", []) if not pc.get("is_archived")]
+    for assignment in assignments:
+        for requirement in assignment.get("requirements", []):
+            if requirement.get("approval_state") not in (None, ComplianceApprovalState.NOT_ASSESSED.value):
+                requirement["approval_state"] = ComplianceApprovalState.ASSESSED.value
+            requirement.update(approval_decided_at=None, approval_decided_by_email=None, decision_note="")
+    data["compliance_project_compliances"] = assignments
+    evidence = [e for e in data.get("compliance_evidence", []) if not e.get("is_archived")]
+    for entry in evidence:
+        entry["revalidations"] = []
+    data["compliance_evidence"] = evidence
+
+
 def _export_default_exclusions(db: Session, project: Project) -> list[dict[str, Any]]:
     """The standards this project is excepted out of the "applies to all projects" default for, each by
     portable standard reference with its reason and who recorded it."""

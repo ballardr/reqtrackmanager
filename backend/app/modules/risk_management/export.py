@@ -83,6 +83,7 @@ from app.services.principals import principal_columns_from_bundle, principal_to_
 from app.services.relationships import create_link, get_links_from_many, get_links_to_many
 from app.services.scoring import list_levels, seed_missing_scoring_levels
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _TEXT_FIELDS = ("title", "statement", "cause", "risk_event", "consequence", "acceptance_criteria")
 _REQUIREMENT = "requirement"
@@ -264,6 +265,15 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "risk_hidden_org_types": RISK_TYPES.hidden_names(db, project.id, project.organization_id),
         "risks": risks_json,
     }, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Risks become newly identified, with no review history or
+    review date. Treatments (links to requirements, which keep their codes in a clone) are kept."""
+    fresh_drafts(
+        data.get("risks", []), status=RiskStatus.IDENTIFIED.value, clear=("review_date", "review_notified_for"),
+        empty=("reviews",),
+    )
 
 
 # --- Project level: import ---------------------------------------------------

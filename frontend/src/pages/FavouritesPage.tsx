@@ -54,7 +54,7 @@ export function FavouritesPage() {
 
   function listParams(offset: number): URLSearchParams {
     const params = new URLSearchParams({
-      archived: "false", favorite_only: "true", limit: String(PAGE_SIZE), offset: String(offset),
+      archived: "false", favorite_only: "true", include_templates: "true", limit: String(PAGE_SIZE), offset: String(offset),
     });
     if (search) params.set("search", search);
     return params;

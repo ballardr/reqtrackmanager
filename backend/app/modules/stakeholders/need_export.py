@@ -53,6 +53,7 @@ from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _TEXT_FIELDS = ("name", "description", "rationale")
 
@@ -109,6 +110,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         entry["attachments"] = export_file_links(db, StakeholderNeedFile, "need_id", need.id, assets)
         out.append(entry)
     return {"project_stakeholder_needs": out}, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """Starter Needs become drafts."""
+    fresh_drafts(data.get("project_stakeholder_needs", []), status=NeedStatus.DRAFT.value)
 
 
 def import_project_data(

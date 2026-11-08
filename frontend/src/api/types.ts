@@ -1453,6 +1453,7 @@ export interface OrgProjectSummary {
   id: string;
   name: string;
   is_archived: boolean;
+  is_template: boolean;
 }
 
 /** `pages/OrgOverviewPage.tsx`'s stats header.

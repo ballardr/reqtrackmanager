@@ -117,6 +117,7 @@ from app.modules.stakeholders.service import (
 )
 from app.modules.stakeholders.summaries import ARTEFACT_SUMMARY_PROVIDERS, ARTEFACT_TYPE_LABELS
 from app.services.report_framework import report_mcp_tools
+from app.services.template_reset import fresh_drafts
 
 _PROJECT_ROUTER_PREFIX = f"/api/v1/projects/{{project_id}}/modules/{STAKEHOLDERS_MODULE_KEY}"
 
@@ -243,6 +244,15 @@ def _export_project(db: Session, project):
         {**persona_data, **stakeholder_data, **need_data, **relationship_data, **engagement_data},
         {**persona_assets, **stakeholder_assets, **need_assets, **engagement_assets},
     )
+
+
+def _reset_for_template(data: dict) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Personas, Stakeholders and Needs become drafts and
+    engagements are kept as logged; archived records are left out."""
+    persona_export.reset_for_template(data)
+    stakeholder_export.reset_for_template(data)
+    need_export.reset_for_template(data)
+    fresh_drafts(data.get("project_engagements", []))
 
 
 def _import_project(db, project, data, file_bytes_by_ref, current_user, users, warnings) -> None:
@@ -955,7 +965,18 @@ MODULE_DEFINITION = ModuleDefinition(
         ENGAGEMENT_ARTEFACT_TYPE: engagement_parties,
     },
     org_bundle_hooks=ModuleOrgBundleHooks(export=_export_org, import_=_import_org),
-    project_bundle_hooks=ModuleProjectBundleHooks(export=_export_project, import_=_import_project),
+    project_bundle_hooks=ModuleProjectBundleHooks(
+        export=_export_project, import_=_import_project,
+        template_configuration_keys=frozenset({
+            "project_persona_types", "project_persona_hidden_org_types", "project_persona_visibility",
+            "project_stakeholder_types", "project_stakeholder_hidden_org_types", "project_stakeholder_visibility",
+        }),
+        template_record_keys=frozenset({
+            "project_personas", "project_persona_weights", "project_stakeholders", "project_stakeholder_groups",
+            "project_stakeholder_needs", "project_stakeholder_relationships", "project_engagements",
+        }),
+        template_reset=_reset_for_template,
+    ),
     roles=(
         ModuleRoleDefinition(
             role_key="persona_owner", name="Persona Owner",

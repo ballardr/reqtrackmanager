@@ -912,6 +912,9 @@ class OrgProjectSummaryOut(BaseModel):
     id: UUID
     name: str
     is_archived: bool
+    #: Whether the project is a template (a flag, not content), so an organisation administrator can choose the
+    #: default template among every template in the organisation, including ones they hold no role in.
+    is_template: bool = False
 
 
 class OrgOverviewStatsOut(BaseModel):

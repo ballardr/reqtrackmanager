@@ -57,6 +57,7 @@ from app.services.placements import prime_record_placements, record_placements, 
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 DECISION_CODE_PREFIX = "DEC"
 _TEXT_FIELDS = ("context", "options_considered", "chosen_option", "rationale", "consequences", "assumptions", "constraints")
@@ -155,6 +156,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "decisions": entries,
         _LINKS_KEY: export_artefact_links(db, project, {DECISION_ARTEFACT_TYPE: {d.id: d.unique_code for d in decisions}}),
     }, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Decisions become fresh drafts with no decision date."""
+    fresh_drafts(data.get("decisions", []), status=DecisionStatus.DRAFT.value, clear=("decision_date",))
 
 
 def import_project_data(

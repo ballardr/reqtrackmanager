@@ -72,6 +72,24 @@ export const Dashboard: Story = {
   },
 };
 
+/** A template carries a Template badge whose tooltip says only managers and administrators can change it. */
+export const TemplateBadge: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/metrics")) return metrics;
+      if (path.endsWith("/changes")) return activity;
+      if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
+      return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements.", is_template: true });
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Template")).toBeInTheDocument();
+    await userEvent.hover(canvas.getByText("Template"));
+    await expect(await within(document.body).findByText(/Only project managers and project administrators can change it/)).toBeInTheDocument();
+  },
+};
+
 /** A project with no records shows words, not an empty ring. */
 export const NoRecords: Story = {
   beforeEach: () => {

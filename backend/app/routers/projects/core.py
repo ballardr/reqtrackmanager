@@ -31,6 +31,7 @@ from app.models.enums import (
     OrgRole,
     ProjectRole,
     ProjectRoleInheritanceMode,
+    ProjectVisibility,
     StagePhaseKind,
 )
 from app.models.file import RequirementFile
@@ -94,6 +95,7 @@ from app.services.rbac import (
 )
 from app.services.record_counts import count_records_by_type
 from app.services.stage_workflows import new_stage, phase_index
+from app.services.template_guard import ensure_may_publish_template
 from app.services.templates import clone_project
 
 router = APIRouter(tags=["projects-core"])
@@ -270,11 +272,10 @@ def create_project(
         parent_required = True
 
     template_project_id = payload.template_project_id
-    if template_project_id is None:
+    if template_project_id is None and payload.use_template:
         # C-E-04: fall back to the organisation's configured default template
-        # when the caller didn't specify one. The frontend's "New project"
-        # form pre-selects this same default in its template dropdown so a
-        # user can still explicitly override it before submitting.
+        # when the caller didn't specify one and did not ask for none
+        # (`use_template=False` creates a blank project even when a default exists).
         template_project_id = org.default_template_project_id
 
     project_code = assign_project_code(db, payload.organization_id, payload.name, payload.code)
@@ -287,6 +288,17 @@ def create_project(
             or not template.is_template
         ):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "template_project_id must be a template project in this organisation.")
+        # A template is used by reading it, so the caller must be able to: a hidden template is not usable by
+        # guessing its id. The organisation's default template is the exception: an organisation administrator
+        # chose it to be the starting point for every new project, so its creators may use it without access.
+        is_org_default = template.id == org.default_template_project_id  # an administrator's deliberate offer to creators
+        if not is_org_default and not get_effective_project_roles(db, current_user.id, template.id) and not can_manage_project_settings(
+            db, current_user, template,
+        ):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "You cannot view that template project. Choose another template, or choose none to create a blank project.",
+            )
         project = clone_project(
             db, template, name=payload.name, summary=payload.summary, creator=current_user,
             parent_project_id=payload.parent_project_id, code=project_code, report_name=payload.report_name,
@@ -330,6 +342,10 @@ def create_project(
     # default never flips this project (Decided by: User, 2026-10-04).
     snapshot_project_module_state(db, project.id, project.organization_id)
 
+    ensure_may_publish_template(
+        db, current_user, payload.organization_id, is_template=payload.is_template, visibility=payload.visibility,
+        already_published=False,
+    )
     if payload.terminology:
         project.terminology = payload.terminology
     if payload.is_template:
@@ -434,12 +450,18 @@ def list_projects(
     stage_phase_kind: StagePhaseKind | None = None,
     organization_id: UUID | None = None,
     favorite_only: bool = False,
+    include_templates: bool = False,
+    templates_only: bool = False,
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Project list view (U-E-03, U-E-04): active/archived projects the user can access.
+
+    Template projects (`is_template`) are left out unless `include_templates` is set;
+    `templates_only` returns only templates (the "New project" template picker and the
+    organisation default-template setting use it), and overrides `include_templates`.
 
     `favorite_only` powers `FavouritesPage`, the same shape as every other
     filter here rather than a separate endpoint — a favourited-projects
@@ -512,6 +534,11 @@ def list_projects(
             projects = list(db.scalars(
                 select(Project).join(Organization, Organization.id == Project.organization_id).where(*conditions)
             ).all())
+
+        if templates_only:
+            projects = [p for p in projects if p.is_template]
+        elif not include_templates:
+            projects = [p for p in projects if not p.is_template]
 
         if search:
             needle = search.lower()
@@ -899,6 +926,12 @@ def update_project(
         # ever sending `allow_ai_approvals=true`, same as the org-level
         # counterpart in update_advanced_settings.
         project.allow_ai_approvals = payload.allow_ai_approvals
+    ensure_may_publish_template(
+        db, current_user, project.organization_id,
+        is_template=project.is_template if payload.is_template is None else payload.is_template,
+        visibility=project.visibility if payload.visibility is None else payload.visibility,
+        already_published=project.is_template and project.visibility == ProjectVisibility.ORG_WIDE,
+    )
     if payload.is_template is not None:
         project.is_template = payload.is_template
     if payload.can_be_parent is not None:

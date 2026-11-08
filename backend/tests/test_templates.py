@@ -119,7 +119,7 @@ def test_cloning_a_template_with_zero_managers_still_produces_a_valid_manager(cl
     as manager of the new project — C-U-08 must never regress just because
     the *mechanism* a manager grant is expressed through changed."""
     from app.database import SessionLocal
-    from app.models.project import UserProjectRole
+    from app.models.project import Project, UserProjectRole
 
     template = create_project(client, admin_token, org_id, "Zero-Manager Template")
     me = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()
@@ -130,6 +130,8 @@ def test_cloning_a_template_with_zero_managers_still_produces_a_valid_manager(cl
             UserProjectRole.project_id == template["id"], UserProjectRole.user_id == me["id"],
             UserProjectRole.role == "project_manager",
         ).delete()
+        # Visible to the whole organisation, so the cloning user can still read it (a template is used by reading it).
+        db.query(Project).filter(Project.id == template["id"]).update({"visibility": "org_wide"})
         db.commit()
     finally:
         db.close()

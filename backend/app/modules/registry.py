@@ -860,6 +860,18 @@ class ModuleProjectBundleHooks:
             Strategy's per-persona Pain Point scores refer to Personas, which
             a later-registered module creates). `None` when `import_` alone
             suffices.
+        template_configuration_keys: The `export` keys that are project configuration (type
+            vocabularies, hidden organisation defaults, scoring definitions, settings), copied
+            unchanged when a project is created from a template.
+        template_record_keys: The `export` keys that hold starter records (and the links among
+            them), copied when a project is created from a template after `template_reset` has
+            returned them to their starting state.
+        template_excluded: `{export key: reason}` for each remaining key, which a template never
+            copies (lifecycle state of the template, such as assessments). Every key `export`
+            returns is in exactly one of the three sets; a test fails otherwise.
+        template_reset: Called on the filtered export before import: edits the starter records in
+            place to fresh drafts (initial status, no archive, review, vote or history state).
+            `None` for a module with no record keys.
     """
 
     export: Callable[[Session, Project], tuple[dict[str, Any], dict[uuid.UUID, FileAsset]]]
@@ -869,6 +881,10 @@ class ModuleProjectBundleHooks:
     import_late: (
         Callable[[Session, Project, dict[str, Any], dict[str, bytes], User, UserResolver, BundleImportWarnings], None] | None
     ) = None
+    template_configuration_keys: frozenset[str] = frozenset()
+    template_record_keys: frozenset[str] = frozenset()
+    template_excluded: Mapping[str, str] = field(default_factory=dict)
+    template_reset: Callable[[dict[str, Any]], None] | None = None
 
 
 #: `openapi_extra` key a route's own author sets to mark it as an

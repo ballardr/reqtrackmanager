@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 12, 9b, 9c and 9d done (10, 11 and 12 uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 13, 9b, 9c and 9d done (13 uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-16 / 21 phases complete.
+17 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -26,7 +26,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 10 | Rename navigation items, with organisation defaults | `nav_label_overrides` on project and organisation (per-key: project, ancestor, organisation), stable keys from the registry, looked up by route path; navigation, title and back link; see `docs/decisions.md` | [x] |
 | 11 | Server and organisation messages (login pages and notification) | One `announcements` table (NULL organisation is platform-wide); login pages, banner and a one-time notification; organisation text may not contain a web address; see `docs/decisions.md` | [x] |
 | 12 | Pain Point scoring on the Product Feedback model (custom criteria, Cost of Delay) | Read helper, one row per axis (migrations 0149, 0150), General row plus persona overrides, custom criteria, Cost of Delay and WSJF (weighted sum that divides); Playwright and perf scenarios not run; see `docs/decisions.md` | [x] |
-| 13 | Template projects | Partly built; module configuration is the gap | [ ] |
+| 13 | Template projects | Declared template keys on bundle hooks, fresh-draft starter records, module switches, tags, report setup; list filter, badge, explicit "None"; Playwright spec not run; see `docs/decisions.md` | [x] |
 | 14 | Project overview widgets | Configurable widgets, catalogue metrics with allowed filters; settled | [ ] |
 | 15 | Organisation overview settings shortcut | Small | [ ] |
 | 16 | Organisation-wide files list | Mirrors the project files page | [ ] |
@@ -320,6 +320,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Template labelling:** a template shows a "Template" badge; its name is not offered as a parent unless chosen deliberately.
 - **Outcome:** a project created from a template has the template's modules, vocabularies and scoring, and templates are hidden from the default list.
 - **Tests:** clone round trip comparing module state and vocabularies with the template; list default hides templates and the filter shows them; explicit "no template" overrides the organisation default; Playwright create from template.
+- **Done 2026-11-08.** *Decided by: User* (2026-11-08): the mechanism is declared configuration keys on the existing bundle hooks, and module records are copied as fresh drafts (the spike found the hooks mix vocabularies and records, so a key classification replaced a records flag). *Decided by: User* (2026-11-08, reversing the first version): Stakeholders, Compliance assessments, links (requirements keep their codes) and `allow_ai_approvals` are copied too; a template is read-only below project administrator (`services/template_guard.py`, *Decided by: User*); creating from a template requires being able to view it. The Playwright spec `template-projects.spec.ts` was written but not run. See `docs/decisions.md`.
 
 ### Phase 14 — Project overview widgets
 

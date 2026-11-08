@@ -27,10 +27,14 @@ const singleOrgProjects = [
 function mockProjectListApis(opts: { orgs: Organization[]; projects: ReturnType<typeof buildProjectListItem>[] }) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/orgs?mine=true")) return opts.orgs;
-    if (path.startsWith("/api/v1/projects?archived=false") && !path.includes("limit")) return opts.projects;
-    return opts.projects;
+    // The template picker reads its own list; the default list leaves templates out.
+    if (path.includes("templates_only=true")) return opts.projects.filter((p) => p.is_template);
+    return opts.projects.filter((p) => !p.is_template);
   });
-  spyOn(api, "getPage").mockResolvedValue({ items: opts.projects, total: opts.projects.length });
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    const items = path.includes("include_templates=true") ? opts.projects : opts.projects.filter((p) => !p.is_template);
+    return { items, total: items.length };
+  });
 }
 
 const meta: Meta<typeof ProjectListPage> = {
@@ -364,6 +368,77 @@ export const CreateProjectImportFileHidesTemplateWithNote: Story = {
     await expect(
       within(dialog).getByText("A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.")
     ).toBeInTheDocument();
+  },
+};
+
+/** Templates are left out of the list until "Show templates" is ticked, and a template carries a badge. */
+export const TemplatesShowOnlyWhenAskedAndAreBadged: Story = {
+  beforeEach: () =>
+    mockProjectListApis({
+      orgs: [org({})],
+      projects: [
+        ...singleOrgProjects,
+        buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
+      ],
+    }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await expect(canvas.queryByText("Standard Template")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Show templates" }));
+    await waitFor(() => expect(canvas.getByText("Standard Template")).toBeInTheDocument());
+    await expect(canvas.getByText("Template")).toBeInTheDocument();
+    await expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("include_templates=true"));
+  },
+};
+
+/** An organisation default template the person cannot see in the list is still offered, under a generic name. */
+export const UnseenDefaultTemplateIsOffered: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({ default_template_project_id: "hidden-tpl" })], projects: singleOrgProjects });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    const select = within(dialog).getByLabelText("Create from template") as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("hidden-tpl"));
+    await expect(within(select).getByRole("option", { name: "Organisation default template" })).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText("Name"), "From Default");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ template_project_id: "hidden-tpl", use_template: true })),
+    );
+  },
+};
+
+/** Choosing "None" for the template is explicit: the organisation's default template would otherwise apply. */
+export const NoTemplateChoiceIsSentExplicitly: Story = {
+  beforeEach: () => {
+    mockProjectListApis({
+      orgs: [org({ default_template_project_id: "tpl1" })],
+      projects: [
+        ...singleOrgProjects,
+        buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
+      ],
+    });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Blank One");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Create from template"), "");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/api/v1/projects", expect.objectContaining({ template_project_id: null, use_template: false }),
+      ),
+    );
   },
 };
 

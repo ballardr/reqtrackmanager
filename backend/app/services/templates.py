@@ -9,7 +9,9 @@ project configuration (components, categories, terminology, custom field
 definitions, action type definitions), and requirements — deliberately not
 stages/baselines/change-request history, since a template is a starting
 point for a new project's own lifecycle, not a copy of the source
-project's current lifecycle state.
+project's current lifecycle state. Module switches, tag vocabulary, report setup
+and every module's configuration and starter records are copied by
+`services.template_content` (starter records as fresh drafts).
 
 Direct `UserProjectRole` grants are copied 2026-08-31 (2026-08-31, docs/decisions.md): once a project's initial manager
 (and any other directly-granted role) is normally established via a direct
@@ -41,7 +43,7 @@ from sqlalchemy.orm import Session
 
 from app.models.action_type import ActionTypeDefinition
 from app.models.custom_field import CustomFieldDefinition
-from app.models.enums import PrincipalType, RequirementStatus
+from app.models.enums import ArtefactType, PrincipalType, RequirementStatus
 from app.models.project import (
     Project,
     ProjectCategory,
@@ -52,14 +54,19 @@ from app.models.project import (
     ProjectStage,
     UserProjectRole,
 )
+from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
+from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.stage_workflow import ComponentStageState, StageWorkflow
 from app.models.user import User
+from app.services.bundle_common import BundleImportWarnings
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
-from app.services.lookups import get_or_404
+from app.services.link_type_scope import resolve_link_type_scope
+from app.services.relationships import create_link as create_artefact_link
 from app.services.requirements import get_current_version, get_keywords, set_keywords
 from app.services.stage_workflows import PhaseInput, effective_workflows, new_stage, phases_of, start_phase, write_workflow
+from app.services.template_content import copy_module_content, copy_module_enablement, copy_project_setup
 
 
 def copy_component_tracks(
@@ -122,7 +129,7 @@ def clone_project(
     new_project = Project(
         organization_id=source.organization_id, name=name, summary=summary, report_name=report_name,
         code=code or generate_project_code(db, source.organization_id, name),
-        allow_member_change_requests=source.allow_member_change_requests,
+        allow_member_change_requests=source.allow_member_change_requests, allow_ai_approvals=source.allow_ai_approvals,
         require_change_request_for_approved_links=source.require_change_request_for_approved_links,
         exempt_from_org_link_lock=source.exempt_from_org_link_lock,
         terminology=dict(source.terminology),
@@ -238,15 +245,11 @@ def clone_project(
         if new_component_id is None or new_category_id is None:
             continue
 
-        seq = new_project.next_requirement_seq
-        new_project.next_requirement_seq = seq + 1
-        component = get_or_404(db, ProjectComponent, new_component_id, "Project component")
-        category = get_or_404(db, ProjectCategory, new_category_id, "Project category")
-        unique_code = f"{component.prefix}-{category.prefix}-{seq:03d}"
-
+        # The template's own code is kept (components and categories keep their prefixes), so a link from a
+        # copied record to a requirement, which names it by code, still reaches the same requirement.
         new_requirement = Requirement(
             project_id=new_project.id, component_id=new_component_id, category_id=new_category_id,
-            unique_code=unique_code, creator_id=creator.id,
+            unique_code=requirement.unique_code, creator_id=creator.id,
         )
         db.add(new_requirement)
         db.flush()
@@ -277,7 +280,64 @@ def clone_project(
         if keywords:
             set_keywords(db, new_requirement, keywords, creator.id)
 
+    new_project.next_requirement_seq = source.next_requirement_seq
+    copy_requirement_links(db, source, new_project, creator, {r.id: r.unique_code for r in requirements})
+
+    # Everything beyond the core records: module switches first (a module the template has off stays off), then
+    # settings, tags and report setup, then each module's configuration and starter records (`template_content`).
+    warnings = BundleImportWarnings()
+    copy_module_enablement(db, source, new_project)
+    copy_project_setup(db, source, new_project, creator, warnings)
+    copy_module_content(db, source, new_project, creator, warnings)
+
     return new_project
+
+
+def copy_requirement_links(
+    db: Session, source: Project, new_project: Project, creator: User, copied_codes: dict[UUID, str],
+) -> None:
+    """Recreates the template's links between the requirements that were copied.
+
+    A link's type is matched by name among the types the new project can use; a link whose type is not
+    available to it (a type local to the template) is left out rather than given a different meaning.
+
+    Args:
+        db: An active database session; flushed by the caller.
+        source: The template project.
+        new_project: The new project, whose requirements already exist with the template's codes.
+        creator: The user creating the project (creator of every recreated link).
+        copied_codes: `{template requirement id: code}` for the requirements that were copied.
+    """
+    if not copied_codes:
+        return
+    new_ids = {r.unique_code: r.id for r in db.scalars(select(Requirement).where(Requirement.project_id == new_project.id))}
+    links = db.scalars(select(ArtefactLink).where(
+        ArtefactLink.source_type == ArtefactType.REQUIREMENT, ArtefactLink.source_id.in_(list(copied_codes)),
+        ArtefactLink.target_type == ArtefactType.REQUIREMENT, ArtefactLink.target_id.in_(list(copied_codes)),
+        ArtefactLink.source_project_id.is_(None),
+    )).all()
+    type_ids = {link.link_type_id for link in links if link.link_type_id}
+    type_names = {
+        t.id: t.forward_name
+        for t in db.scalars(select(RequirementLinkTypeDefinition).where(RequirementLinkTypeDefinition.id.in_(type_ids)))
+    } if type_ids else {}
+    usable = {
+        scoped.link_type.forward_name: scoped.link_type.id
+        for scoped in resolve_link_type_scope(db, new_project) if scoped.shadowed_by is None
+    }
+    for link in links:
+        if copied_codes[link.source_id] not in new_ids or copied_codes[link.target_id] not in new_ids:
+            continue  # an end that was not copied (it had no component or category in the new project)
+        link_type_id = None
+        if link.link_type_id:
+            link_type_id = usable.get(type_names.get(link.link_type_id, ""))
+            if link_type_id is None:
+                continue
+        create_artefact_link(
+            db, source_type=ArtefactType.REQUIREMENT, source_id=new_ids[copied_codes[link.source_id]],
+            target_type=ArtefactType.REQUIREMENT, target_id=new_ids[copied_codes[link.target_id]],
+            link_type_id=link_type_id, created_by=creator.id, enforce_rules=False,
+        )
 
 
 def _cloned_owner(version: RequirementVersion, group_id_map: dict[UUID, UUID], creator: User) -> dict:
