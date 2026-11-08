@@ -208,6 +208,19 @@ export const ReportsMenuHiddenWithoutOrganisationReports: Story = {
   },
 };
 
+/** The settings icon link beside the title opens the organisation admin page; it is named for the
+ * organisation and shown whether or not a Reports menu is present. */
+export const SettingsShortcutOpensOrganisationAdmin: Story = {
+  beforeEach: () => mockOrgOverviewApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "Organisation settings" });
+    await expect(link).toHaveAttribute("href", `/orgs/${ORG_ID}/admin`);
+    await expect(link).toHaveAttribute("title", "Organisation settings");
+    await expect(canvas.queryByRole("button", { name: "Reports" })).not.toBeInTheDocument();
+  },
+};
+
 /** With more than one organisation to switch between, a chevron
  * next to the org name opens a popover listing the others as plain links
  * to their own Organisation Overview page. */

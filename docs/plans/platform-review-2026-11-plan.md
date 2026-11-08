@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 14, 14b, 9b, 9c and 9d done (14 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 15 (including 14b, 9b, 9c and 9d) done (14 and 15 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-19 / 24 phases complete.
+20 / 24 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -29,7 +29,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 13 | Template projects | Declared template keys on bundle hooks, fresh-draft starter records, module switches, tags, report setup; list filter, badge, explicit "None"; Playwright spec not run; see `docs/decisions.md` | [x] |
 | 14 | Project overview widgets | Layout as JSON on project and organisation (own, ancestor, organisation, built-in), bounded metric catalogue with filters, one batched read-only metrics request, side-panel editor shared with the organisation default, module metric and widget extension points, bundles and templates; see `docs/decisions.md` | [x] |
 | 14b | Overview widgets: on-page editing, grid size, scope and text | UX review of the overview and its editor (findings register in `docs/decisions.md`): the page is the editor, 12-column flow grid with width and height, project scope as an overview setting with a widget override, text widget; Playwright run on a rebuilt stack | [x] |
-| 15 | Organisation overview settings shortcut | Small | [ ] |
+| 15 | Organisation overview settings shortcut | Settings icon link on the title row for every member who can see the overview (User: no role predicate); story, Playwright spec written and not run; see `docs/decisions.md` | [x] |
 | 16 | Organisation-wide files list | Mirrors the project files page | [ ] |
 | 17 | Demo seed data | Last, because it exercises phases 9, 12 and 13 | [ ] |
 | 18 | UI/UX style guide review (whole product) | Read-only audit of every page and dialog against `docs/ux-style-guide.md`; findings register with severity; ends in a user sign-off | [ ] |
@@ -355,6 +355,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Why:** a person on the organisation overview who may change settings has to find the admin page by another route.
 - **Work:** a "Settings" icon button in the organisation overview header linking to the organisation admin page, rendered only when the caller can open it. The visibility check must be the same predicate the admin page itself uses (extract it to one hook; do not duplicate role logic in the page). A caller who cannot see the admin page does not see the button.
 - **Outcome:** a shortcut visible only to those allowed.
+- **Done 2026-11-08.** *Decided by: User* (2026-11-08): shown to anyone who can visit the overview and view settings, with no new role predicate (the admin page loads for every member), so the plain-member test shows the button instead of hiding it. The Playwright spec was written but not run (no compose stack). See `docs/decisions.md`.
 - **Tests:** story for both states; Playwright as an organisation administrator and as a plain member.
 
 ### Phase 16 — Organisation-wide files list

@@ -1,8 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Settings } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
+import { useOrgLabelCapitalized } from "../context/BrandingContext";
+import { useStrings } from "../context/TerminologyContext";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { ReportsButton } from "../components/ReportsButton";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -33,6 +36,10 @@ const OVERVIEW_GROUP_KEY = "overview";
  * A "Reports" button beside the title opens the Reports dialog (`ReportsButton`), shown only when the caller can
  * run at least one organisation report or pack.
  *
+ * A "settings" icon link beside the title opens the organisation admin page. It is shown to everyone who
+ * can see this page, because the admin page itself loads for every member (its settings sections gate
+ * themselves by role), so no separate role check is needed here (`docs/decisions.md`).
+ *
  * A stats header (project/requirement/member counts, total file storage —
  * `GET /orgs/{id}/overview-stats` — plus any installed, currently-enabled
  * module's own `orgOverviewTiles`, e.g. Compliance's overall-compliance-
@@ -60,6 +67,8 @@ const OVERVIEW_GROUP_KEY = "overview";
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
+  const strings = useStrings();
+  const orgLabelCap = useOrgLabelCapitalized();
   const [org, setOrg] = useState<Organization | null>(null);
   const [stats, setStats] = useState<OrgOverviewStats | null>(null);
   const [modules, setModules] = useState<OrgModule[]>([]);
@@ -136,11 +145,15 @@ export function OrgOverviewPage() {
           currentId={orgId}
           loadOptions={() => loadOrgSwitcherOptions("overview")}
         />
-        {hasReports && (
-          <div style={{ marginLeft: "auto" }}>
-            <ReportsButton scope={{ kind: "organization", id: orgId }} organizationId={orgId} />
-          </div>
-        )}
+        <div className="row" style={{ marginLeft: "auto", alignItems: "center", gap: "var(--space-1)" }}>
+          {hasReports && <ReportsButton scope={{ kind: "organization", id: orgId }} organizationId={orgId} />}
+          <Link
+            to={`/orgs/${orgId}/admin`} className="btn btn-icon"
+            aria-label={strings.nav.orgSettings(orgLabelCap)} title={strings.nav.orgSettings(orgLabelCap)}
+          >
+            <Settings />
+          </Link>
+        </div>
       </div>
 
       <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={active}>

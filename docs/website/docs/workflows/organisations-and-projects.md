@@ -10,7 +10,7 @@ Click **My organisations** in the nav's Global section (or reach the same admin 
 
 ## Organisation overview
 
-**Organisation overview** in the nav (visible to any member, not just admins) is a read-only stats dashboard for one organisation — project, requirement, and member counts, and total file storage used — the general-purpose equivalent of a project's own Overview page, one level up. Like the organisations list above, it resolves straight to your one organisation if that's all you belong to.
+**Organisation overview** in the nav (visible to any member, not just admins) is a read-only stats dashboard for one organisation — project, requirement, and member counts, and total file storage used — the general-purpose equivalent of a project's own Overview page, one level up. Like the organisations list above, it resolves straight to your one organisation if that's all you belong to. The **Organisation settings** icon beside the title opens [Organisation administration](./administering-an-organisation.md); the settings sections there are available according to your role.
 
 ## Browsing and finding projects
 

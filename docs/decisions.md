@@ -16845,3 +16845,12 @@ A project created from a template now receives everything the template is config
 - **Models offered (Agent).** `effective_scheme(...).models` for the project (built-in, organisation-defined and project-defined models, with their names), or for the organisation (built-in and organisation-defined) in an organisation-wide catalogue. A model only one project defines is therefore not listed in the organisation-wide dialog; it can still be passed through the API.
 - **Limit.** The layout designer's widget parameter list has no project, so there the key stays a text box.
 - **Tests.** `test_context_strategy_pain_point_criteria.py` (built-in models with names, an organisation-defined model in a project and in the organisation list, a project-only model offered in that project only, a failing provider, the registration rule); `test_scoring_report_parameters_declare_labelled_choices` now expects the list; Playwright `reports-ui.spec.ts` "a generic report offers the scoring model as a labelled select" passes.
+
+## Organisation overview settings shortcut (2026-11-08)
+
+*Decided by: User* (2026-11-08, answering a question during the phase): the shortcut is shown to anyone who can visit the organisation overview and can view organisation settings, and it needs no new role predicate.
+
+- **Who sees it (User).** Every member who can see the overview. The plan's wording ("only when the caller can open the admin page, using the page's own predicate") assumed a role check, but the admin page loads for every member (its calls are at the read tier) and gates only its settings sections by role (`advanced-settings` is ORG_ADMIN). There is therefore no administrator-only predicate to share, and none was added; the overview already loads only for a member. The plan's "plain member does not see it" test was replaced by a test that a plain member does see it and reaches the page.
+- **Control (Agent).** An icon link (`btn btn-icon`, `Settings` icon, accessible name and title "Organisation settings") at the right-hand end of the title row, beside Reports, to `/orgs/{id}/admin`. Name from `strings.nav.orgSettings`.
+- **Tests.** Story `SettingsShortcutOpensOrganisationAdmin`; Playwright `org-overview-settings-shortcut.spec.ts` (organisation administrator and plain member; written, not run: no compose stack). No backend change.
+- **Docs.** The docs website Organisation overview section.

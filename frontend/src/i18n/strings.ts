@@ -170,6 +170,7 @@ const en = {
     myReviews: "My reviews due",
     myOrganizations: (orgPlural: string) => `My ${orgPlural.toLowerCase()}`,
     orgOverview: (orgCap: string) => `${orgCap} overview`,
+    orgSettings: (orgCap: string) => `${orgCap} settings`,
     favourites: "Favourites",
     serverManagement: "Server management",
     help: "Help",
