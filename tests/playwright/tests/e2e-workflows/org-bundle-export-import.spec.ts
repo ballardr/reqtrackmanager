@@ -92,15 +92,15 @@ test.describe("organisation bundle export/import", () => {
       deleteOrgOnCleanup({ nameContains: newOrgName });
       await page.getByRole("link", { name: "Organisations", exact: true }).click();
       await expect(page).toHaveURL(/\/server\/organisations$/);
-      // "New organisation" opens a Modal (style guide "Pattern: modal
-      // dialog for entity create/rename") — scoped to it rather than the
-      // whole page.
-      await page.getByRole("button", { name: "New organisation" }).click();
-      const dialog = page.getByRole("dialog", { name: "New organisation" });
+      // Import is the second door beside "New organisation": the split button's chevron offers it and it
+      // opens its own dialog, scoped here rather than the whole page.
+      await page.getByRole("button", { name: "More options" }).click();
+      await page.getByRole("button", { name: "Import organisation" }).click();
+      const dialog = page.getByRole("dialog", { name: "Import organisation" });
       await dialog.getByLabel(/Organisation name/).fill(newOrgName);
       const fileInput = dialog.locator('input[type="file"][accept*="zip"]');
       await fileInput.setInputFiles(exportedPath);
-      await dialog.getByRole("button", { name: "Create" }).click();
+      await dialog.getByRole("button", { name: "Import", exact: true }).click();
 
       await expect(page.getByText(newOrgName)).toBeVisible({ timeout: 15000 });
       // Style guide "Pattern: action menu" — the row's Edit/Disable-Enable/

@@ -7,18 +7,20 @@ import { useNavigate } from "react-router-dom";
 import { ApiError, api } from "../api/client";
 import type { Organization, OrgCreationChoice, OrgImportResult } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
+import { BundleImportDialog } from "../components/BundleImportDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
+import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { useToast } from "../context/ToastContext";
 import { FormActions } from "../components/FormActions";
 import { FormGrid } from "../components/FormGrid";
-import { FileField, TextField, CheckboxField } from "../components/FormFields";
+import { TextField, CheckboxField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
 
@@ -56,7 +58,7 @@ export function ServerOrganisationsPage() {
   const setStatusFilter = (next: StatusFilter) => setStatusParam(next === "active" ? "" : next);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [showImportForm, setShowImportForm] = useState(false);
   // Every registered module's
   // optional org-creation seeding choices (e.g. Decision Management's ADR
   // template packs), fetched once and rendered generically; this page has
@@ -103,23 +105,6 @@ export function ServerOrganisationsPage() {
   async function createOrg() {
     setCreateError(null);
     try {
-      if (importFile) {
-        // Full-fidelity organisation bundle import (`services.org_export`)
-        // — creates a brand-new organisation from an exported bundle
-        // (settings, members, report templates, and every project's
-        // structure/history), for backup restore, offboarding, or
-        // cross-instance migration. Module-contributed org-creation
-        // choices don't apply here — an imported bundle carries its own
-        // already-existing settings, there is nothing fresh to seed.
-        const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", importFile, { name: newName });
-        if (result.warnings.length > 0) setImportWarnings(result.warnings);
-        setNewName("");
-        setImportFile(null);
-        setShowNewForm(false);
-        reload();
-        showToast(strings.serverOrgs.createdToast(orgLabelCap));
-        return;
-      }
       await api.post("/api/v1/orgs", {
         name: newName,
         module_choice_keys: selectedChoiceKeys ? Array.from(selectedChoiceKeys) : undefined,
@@ -129,8 +114,24 @@ export function ServerOrganisationsPage() {
       reload();
       showToast(strings.serverOrgs.createdToast(orgLabelCap));
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Something went wrong.");
+      setCreateError(err instanceof Error ? err.message : strings.common.error);
     }
+  }
+
+  /**
+   * Full-fidelity organisation bundle import (`services.org_export`): creates a brand-new organisation from an
+   * exported bundle (settings, members, report layouts and every project's structure and history), for backup
+   * restore, offboarding or cross-instance migration. Module-contributed creation choices do not apply: the
+   * bundle carries its own settings, so there is nothing fresh to seed. An error is thrown to
+   * `BundleImportDialog`, which shows it.
+   */
+  async function importOrg(file: File) {
+    const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", file, { name: newName });
+    if (result.warnings.length > 0) setImportWarnings(result.warnings);
+    setNewName("");
+    setShowImportForm(false);
+    reload();
+    showToast(strings.serverOrgs.createdToast(orgLabelCap));
   }
 
   async function runAction(action: () => Promise<void>, successMessage?: string) {
@@ -187,9 +188,14 @@ export function ServerOrganisationsPage() {
       <ListPageLayout
         title={strings.orgAdmin.organizations(orgLabelPlural)}
         actions={
-          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-            <Plus /> New {orgLabel}
-          </button>
+          <SplitButtonTrigger
+            icon={<Plus />}
+            label={strings.serverOrgs.newOrganization(orgLabel)}
+            onDefaultAction={() => setShowNewForm(true)}
+            menuTitle={strings.serverOrgs.newOrganization(orgLabel)}
+            moreOptionsLabel={strings.common.moreOptions}
+            alternatives={[{ label: strings.serverOrgs.importOrganization(orgLabel), onSelect: () => setShowImportForm(true) }]}
+          />
         }
         filter={
           <FilterPanel sectionKey="serverOrganisationsFilters">
@@ -210,24 +216,18 @@ export function ServerOrganisationsPage() {
           <Modal title={strings.serverOrgs.newOrganization(orgLabel)} onClose={() => setShowNewForm(false)} size="lg">
             <div className="stack">
               <FormGrid minColumn="18rem">
-                <TextField helpNotNeeded required={!importFile}
+                <TextField helpNotNeeded required
                   label={strings.serverOrgs.organizationName(orgLabelCap)}
-                  hint={importFile ? strings.serverOrgs.importedNameDefault : undefined}
                   value={newName}
                   onChange={setNewName}
                   inputProps={{ autoFocus: true }}
-                />
-                <FileField helpNotNeeded
-                  label={strings.serverOrgs.importFromBundle(orgLabel)} accept=".zip,application/zip"
-                  onChange={setImportFile}
                 />
               </FormGrid>
               {/* Every registered
                   module's optional org-creation seeding choices, grouped by
                   `group_label`; this page has no hardcoded knowledge of what
-                  any of them are. Hidden for the import path (above), which
-                  carries its own already-existing settings instead. */}
-              {!importFile && creationChoices && creationChoices.length > 0 && (
+                  any of them are. */}
+              {creationChoices && creationChoices.length > 0 && (
                 <div className="stack" style={{ gap: "var(--space-3)" }}>
                   {[...new Set(creationChoices.map((c) => c.group_label))].map((groupLabel) => (
                     <div key={groupLabel} className="stack" style={{ gap: "var(--space-1)" }}>
@@ -252,10 +252,26 @@ export function ServerOrganisationsPage() {
                 onCancel={() => setShowNewForm(false)}
                 onSave={createOrg}
                 saveLabel={strings.common.create}
-                saveDisabled={!importFile && !newName}
+                saveDisabled={!newName}
               />
             </div>
           </Modal>
+        )}
+        {showImportForm && (
+          <BundleImportDialog
+            title={strings.serverOrgs.importOrganization(orgLabel)}
+            fileLabel={strings.serverOrgs.bundleFile(orgLabelCap)}
+            fileHelp={strings.help.importOrganizationBundle(orgLabel)}
+            onClose={() => setShowImportForm(false)}
+            onImport={importOrg}
+          >
+            <TextField help={strings.help.importOrganizationName(orgLabel)}
+              label={strings.serverOrgs.organizationName(orgLabelCap)}
+              value={newName}
+              onChange={setNewName}
+              inputProps={{ autoFocus: true }}
+            />
+          </BundleImportDialog>
         )}
         <ImportWarnings warnings={importWarnings} title={strings.projects.importWarnings} />
 

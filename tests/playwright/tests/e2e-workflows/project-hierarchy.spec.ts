@@ -111,6 +111,11 @@ test.describe("hierarchical (parent/child) projects", () => {
     await test.step("'Add sub-project' from the parent's own admin page pre-fills the parent and opens the create modal", async () => {
       await page.getByRole("button", { name: "Add sub-project" }).click();
       const dialog = page.getByRole("dialog", { name: "New project" });
+      // Parent, inheritance and mirrored role sit in one "Nesting" group that starts collapsed (the
+      // choice is remembered per person, so open it only when it is closed).
+      const nesting = dialog.getByRole("button", { name: "Nesting section" });
+      await expect(nesting).toBeVisible();
+      if (!(await dialog.getByLabel("Parent project").isVisible())) await nesting.click();
       // The parent select's current selection resolves to the parent
       // project's own name as its chosen <option> text.
       await expect(dialog.getByLabel("Parent project").locator("option:checked")).toHaveText(parentName);

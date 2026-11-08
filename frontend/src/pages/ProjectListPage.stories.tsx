@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
 import { buildProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { ProjectListPage } from "./ProjectListPage";
 
 function org(overrides: Partial<Organization>): Organization {
@@ -342,33 +343,63 @@ export const CreateProjectModalCancel: Story = {
   },
 };
 
-/** Picking an import file replaces the (otherwise silently-disappearing)
- * template picker with an explanatory note, rather than the field simply
- * vanishing with no indication of why. */
-export const CreateProjectImportFileHidesTemplateWithNote: Story = {
-  beforeEach: () =>
+/** Import is its own dialog, reached from the New project split button: it takes the organisation, name,
+ * summary and file, shows none of the create-only fields, and creates nothing through the create endpoint. */
+export const ImportProjectIsASeparateDialog: Story = {
+  beforeEach: () => {
     mockProjectListApis({
       orgs: [org({ default_template_project_id: null })],
       projects: [
         ...singleOrgProjects,
         buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
       ],
-    }),
+    });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+    spyOn(api, "postFile").mockResolvedValue({ project: { id: "imported" }, warnings: [] });
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
-    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
-    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
-
-    await expect(within(dialog).getByText("Create from template")).toBeInTheDocument();
-    const fileInput = dialog.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["fake zip content"], "bundle.zip", { type: "application/zip" });
-    await userEvent.upload(fileInput, file);
+    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Import project" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Import project" });
 
     await expect(within(dialog).queryByText("Create from template")).not.toBeInTheDocument();
-    await expect(
-      within(dialog).getByText("A bundle brings its own structure, so template selection does not apply once a file is chosen above.")
-    ).toBeInTheDocument();
+    await expect(within(dialog).queryByLabelText("Project report name")).not.toBeInTheDocument();
+    const importButton = within(dialog).getByRole("button", { name: "Import" });
+    await expect(importButton).toBeDisabled();
+    await expect(requiredCaptions(dialog)).toEqual(["Name", "Project bundle (.zip)"]);
+
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Restored Project");
+    const fileInput = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(fileInput, new File(["zip"], "bundle.zip", { type: "application/zip" }));
+    await expect(importButton).toBeEnabled();
+    await userEvent.click(importButton);
+    await waitFor(() =>
+      expect(api.postFile).toHaveBeenCalledWith(
+        "/api/v1/projects/import", expect.any(File), expect.objectContaining({ organization_id: "org-1", name: "Restored Project" }),
+      ),
+    );
+    await expect(api.post).not.toHaveBeenCalled();
+  },
+};
+
+/** An import the server refuses stays open and shows the error. */
+export const ImportProjectShowsTheError: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
+    spyOn(api, "postFile").mockRejectedValue(new Error("The file is not a project export."));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Import project" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Import project" });
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Broken");
+    await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, new File(["x"], "bad.zip", { type: "application/zip" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Import" }));
+    await expect(await within(dialog).findByText("The file is not a project export.")).toBeInTheDocument();
   },
 };
 
@@ -457,6 +488,7 @@ export const CreateProjectHidesParentFieldWithNoEligibleCandidates: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
     await expect(within(dialog).queryByText("Parent project")).not.toBeInTheDocument();
+    await expect(within(dialog).queryByText("Nesting")).not.toBeInTheDocument();
   },
 };
 
@@ -475,6 +507,9 @@ export const CreateProjectOffersEligibleParent: Story = {
     await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    // Parent, inheritance and mirrored role sit in one group that starts collapsed.
+    await expect(within(dialog).queryByText("Parent project")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Nesting section" }));
     await expect(within(dialog).getByText("Parent project")).toBeInTheDocument();
     // Not offered: opted-out sibling projects.
     await expect(within(dialog).queryByRole("option", { name: "Beacon Mobile" })).not.toBeInTheDocument();

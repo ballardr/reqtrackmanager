@@ -14,8 +14,10 @@ import type {
   ProjectTreeNode,
   StagePhaseKind,
 } from "../api/types";
-import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
+import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
 import { stageBadgeText } from "../utils/stageBadge";
+import { BundleImportDialog } from "../components/BundleImportDialog";
+import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Badge } from "../components/Badge";
 import { FilterBadge } from "../components/FilterBadge";
@@ -24,8 +26,12 @@ import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
+import { ProjectIdentityFields } from "../components/ProjectIdentityFields";
+import { ProjectNestingFields } from "../components/ProjectNestingFields";
+import { MODES_NEEDING_CONFIRMATION } from "../utils/projectInheritance";
 import { ProjectTree } from "../components/ProjectTree";
 import { Spinner } from "../components/Spinner";
+import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
@@ -35,7 +41,7 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
-import { FileField, TextAreaField, TextField } from "../components/FormFields";
+import { TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
@@ -43,11 +49,6 @@ import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
-
-// MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
-// MEMBER_ONLY, which caps at baseline MEMBER — parity with
-// visibility=ORG_WIDE, no confirmation needed) — see docs/decisions.md.
-const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", "mirror_role"];
 
 const PAGE_SIZE = 30;
 
@@ -83,6 +84,7 @@ export function ProjectListPage() {
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [showImportForm, setShowImportForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSummary, setNewSummary] = useState("");
   const [newReportName, setNewReportName] = useState("");
@@ -90,7 +92,6 @@ export function ProjectListPage() {
   const [newOrgId, setNewOrgId] = useState("");
   const [templateProjectId, setTemplateProjectId] = useState("");
   const [newVisibility, setNewVisibility] = useState<"only_specified" | "org_wide">("only_specified");
-  const [importFile, setImportFile] = useState<File | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
@@ -259,20 +260,6 @@ export function ProjectListPage() {
   async function createProject() {
     setCreateError(null);
     try {
-      if (importFile) {
-        // Full-fidelity project bundle import (`services.project_export`) —
-        // a distinct path from template cloning: the bundle carries its own
-        // structure/history and may have been exported from a different
-        // organisation entirely, so it goes to a dedicated endpoint rather
-        // than reusing `template_project_id`.
-        const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", importFile, {
-          organization_id: newOrgId, name: newName, summary: newSummary,
-        });
-        if (result.warnings.length > 0) setImportWarnings(result.warnings);
-        showToast(strings.projects.created);
-        navigate(`/projects/${result.project.id}`);
-        return;
-      }
       const project = await api.post<Project>("/api/v1/projects", {
         organization_id: newOrgId,
         name: newName,
@@ -292,6 +279,24 @@ export function ProjectListPage() {
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : strings.common.error);
     }
+  }
+
+  /**
+   * Full-fidelity project bundle import (`services.project_export`): a distinct path from template cloning, since
+   * the bundle carries its own structure and history and may come from a different organisation entirely.
+   * An error is thrown to `BundleImportDialog`, which shows it.
+   */
+  async function importProject(file: File) {
+    const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", file, {
+      organization_id: newOrgId, name: newName, summary: newSummary,
+    });
+    if (result.warnings.length > 0) setImportWarnings(result.warnings);
+    showToast(strings.projects.created);
+    navigate(`/projects/${result.project.id}`);
+  }
+
+  function closeImportForm() {
+    setShowImportForm(false);
   }
 
   function closeNewForm() {
@@ -337,9 +342,14 @@ export function ProjectListPage() {
         loadedRows={projects?.length}
         title={strings.projects.title}
         actions={
-          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-            <Plus /> {strings.projects.newProject}
-          </button>
+          <SplitButtonTrigger
+            icon={<Plus />}
+            label={strings.projects.newProject}
+            onDefaultAction={() => setShowNewForm(true)}
+            menuTitle={strings.projects.newProject}
+            moreOptionsLabel={strings.common.moreOptions}
+            alternatives={[{ label: strings.projects.importProject, onSelect: () => setShowImportForm(true) }]}
+          />
         }
         filter={
           <FilterPanel
@@ -399,44 +409,29 @@ export function ProjectListPage() {
           <Modal title={strings.projects.newProject} onClose={closeNewForm} size="lg">
             <div className="stack">
               <FormGrid minColumn="18rem">
-                {orgs.length > 1 && (
-                  <LabeledSelect help={strings.help.newProjectOrganization} required
-                    label={orgLabelCap}
-                    value={newOrgId}
-                    onChange={setNewOrgId}
-                    options={orgs.map((o) => ({ value: o.id, label: o.name }))}
-                    placeholder={null}
-                    inputProps={{ autoFocus: true }}
-                  />
-                )}
-                <TextField required
-                  help={newOrg?.project_code_policy.assignment === "auto" ? strings.help.newProjectNameAutoCode : undefined}
-                  label={strings.projects.name}
-                  value={newName}
-                  onChange={setNewName}
-                  inputProps={{ autoFocus: orgs.length <= 1 }}
-                />
-                {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
-                  <TextField helpNotNeeded required
-                    label={strings.projects.code}
-                    value={newCode}
-                    onChange={(next) => setNewCode(next.toUpperCase())}
-                    hint={strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
-                    inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
-                  />
-                )}
-                {!importFile && (
+                <ProjectIdentityFields
+                  orgs={orgs} orgLabelCap={orgLabelCap} orgId={newOrgId} onOrgChange={setNewOrgId}
+                  name={newName} onNameChange={setNewName}
+                  nameHelp={newOrg?.project_code_policy.assignment === "auto" ? strings.help.newProjectNameAutoCode : undefined}
+                  summary={newSummary} onSummaryChange={setNewSummary}
+                >
+                  {newOrg?.project_code_policy.assignment === "manual" && (
+                    <TextField helpNotNeeded required
+                      label={strings.projects.code}
+                      value={newCode}
+                      onChange={(next) => setNewCode(next.toUpperCase())}
+                      hint={strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
+                      inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
+                    />
+                  )}
                   <TextField help={strings.help.projectReportName}
                     label={strings.projects.reportName}
                     value={newReportName}
                     onChange={setNewReportName}
                     inputProps={{ maxLength: MAX_PROJECT_REPORT_NAME_LENGTH }}
                   />
-                )}
-                <FormGridFull>
-                  <TextAreaField helpNotNeeded label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
-                </FormGridFull>
-                {!importFile && templateOptions.length > 0 && (
+                </ProjectIdentityFields>
+                {templateOptions.length > 0 && (
                   <LabeledSelect help={strings.help.useTemplate}
                     label={strings.projects.useTemplate}
                     value={templateProjectId}
@@ -452,75 +447,57 @@ export function ProjectListPage() {
                   options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
                   placeholder={null}
                 />
-                {/* Small usability fix: picking an import file below used to silently hide
-                    the template picker above with no explanation — this note
-                    replaces the silent disappearance, rather than a bigger
-                    redesign of the two fields' relationship. */}
-                {importFile && templateOptions.length > 0 && (
+                {/* can_be_parent-gated (docs/decisions.md) — hidden entirely when there's nothing eligible to pick,
+                    rather than showing a picker with only "None" in it. Parent, inheritance and mirrored role are
+                    one collapsed group: most projects are top-level, so the default dialog stays short. */}
+                {showParentField && (
                   <FormGridFull>
-                    <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.importIgnoresTemplate}</p>
+                    <CollapsibleSection
+                      sectionKey="newProjectNesting"
+                      variant="plain"
+                      defaultCollapsed
+                      title={strings.projects.nesting}
+                      summary={selectedParent?.name}
+                      marked={!!selectedParent}
+                    >
+                      <ProjectNestingFields
+                        parentProjectId={parentProjectId}
+                        parentOptions={parentOptions}
+                        onParentChange={setParentProjectId}
+                        mode={roleInheritanceMode}
+                        onModeChange={requestInheritModeChange}
+                        filterRole={roleInheritanceFilterRole}
+                        onFilterRoleChange={setRoleInheritanceFilterRole}
+                      />
+                    </CollapsibleSection>
                   </FormGridFull>
                 )}
-                {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
-                    when there's nothing eligible to pick, rather than showing a
-                    picker with only "None" in it. */}
-                {showParentField && (
-                  <>
-                    <LabeledSelect help={strings.help.projectParent}
-                      label={strings.projects.parentProject}
-                      value={parentProjectId}
-                      onChange={(next) => {
-                        setParentProjectId(next);
-                        // Same reasoning as ProjectAdminPage.tsx's parent select:
-                        // don't let a mode confirmed for one candidate parent
-                        // silently carry over to a different one before submit.
-                        if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
-                          setRoleInheritanceMode("none");
-                        }
-                      }}
-                      options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
-                      placeholder={strings.projects.noParent}
-                    />
-                    {parentProjectId && (
-                      <>
-                        <LabeledSelect help={strings.help.projectInheritAccess}
-                          label={strings.projects.inheritFromParent}
-                          value={roleInheritanceMode}
-                          onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
-                          options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
-                            value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
-                          }))}
-                          placeholder={null}
-                        />
-                        {roleInheritanceMode === "mirror_role" && (
-                          <LabeledSelect help={strings.help.projectRoleToMirror}
-                            label={strings.projects.inheritModeFilterRole}
-                            value={roleInheritanceFilterRole}
-                            onChange={(next) => setRoleInheritanceFilterRole(next as ProjectRole)}
-                            options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
-                            placeholder={null}
-                          />
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-                <FormGridFull>
-                  <FileField helpNotNeeded
-                    label={strings.projects.importFromBundle} accept=".zip,application/zip"
-                    onChange={setImportFile}
-                  />
-                </FormGridFull>
               </FormGrid>
               <FormActions
                 error={createError}
                 onCancel={closeNewForm}
                 onSave={createProject}
                 saveLabel={strings.common.create}
-                saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !importFile && !newCode)}
+                saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !newCode)}
               />
             </div>
           </Modal>
+        )}
+        {showImportForm && (
+          <BundleImportDialog
+            title={strings.projects.importProject}
+            fileLabel={strings.projects.bundleFile}
+            fileHelp={strings.help.importProjectBundle}
+            onClose={closeImportForm}
+            onImport={importProject}
+            canImport={!!newName && !!newOrgId}
+          >
+            <ProjectIdentityFields
+              orgs={orgs} orgLabelCap={orgLabelCap} orgId={newOrgId} onOrgChange={setNewOrgId}
+              name={newName} onNameChange={setNewName} nameHelp={strings.help.importProjectName}
+              summary={newSummary} onSummaryChange={setNewSummary}
+            />
+          </BundleImportDialog>
         )}
         {pendingInheritMode && selectedParent && (
           <ConfirmDialog

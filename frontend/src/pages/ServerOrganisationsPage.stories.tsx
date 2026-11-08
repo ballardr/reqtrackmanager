@@ -4,6 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import type { Organization, OrgCreationChoice } from "../api/types";
 import { withRouter, withToast } from "../testing/storybook-helpers";
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { ServerOrganisationsPage } from "./ServerOrganisationsPage";
 
 function org(overrides: Partial<Organization>): Organization {
@@ -176,24 +177,32 @@ export const CreateOrganisationWithTemplateChoices: Story = {
   },
 };
 
-/** The picker is hidden entirely for the bundle-import path — an imported
- * organisation carries its own already-existing settings, there is
- * nothing fresh to seed. */
-export const CreateOrganisationImportHidesTemplateChoices: Story = {
+/** Import is its own dialog, reached from the New organisation split button: it takes a name (optional), the
+ * file and nothing else, so no module creation choices appear, and it creates nothing through the create endpoint. */
+export const ImportOrganisationIsASeparateDialog: Story = {
   beforeEach: () => {
     mockOrgsGet([org({})], DECISION_TEMPLATE_CHOICES);
+    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "postFile").mockResolvedValue({ warnings: [] });
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: /New organisation/ }));
-    const dialog = within(document.body).getByRole("dialog", { name: "New organisation" });
-    const dialogScope = within(dialog);
-    await expect(dialogScope.getByText("Decision Templates")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Import organisation" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Import organisation" });
+    await expect(within(dialog).queryByText("Decision Templates")).not.toBeInTheDocument();
+    const importButton = within(dialog).getByRole("button", { name: "Import" });
+    await expect(importButton).toBeDisabled();
+    await expect(requiredCaptions(dialog)).toEqual(["Organisation bundle (.zip)"]);
 
     const file = new File(["{}"], "bundle.zip", { type: "application/zip" });
-    await userEvent.upload(dialogScope.getByLabelText(/Or import from an exported/), file);
-
-    await expect(dialogScope.queryByText("Decision Templates")).not.toBeInTheDocument();
+    await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, file);
+    // The name is optional here: the bundle's own name is used when it is blank.
+    await expect(importButton).toBeEnabled();
+    await userEvent.click(importButton);
+    await waitFor(() => expect(api.postFile).toHaveBeenCalledWith("/api/v1/orgs/import", expect.any(File), { name: "" }));
+    await expect(api.post).not.toHaveBeenCalled();
+    await expect(within(document.body).getByText("Organisation created")).toBeInTheDocument();
   },
 };
 

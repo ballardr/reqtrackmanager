@@ -88,11 +88,8 @@ import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
-
-// MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
-// MEMBER_ONLY, which caps at baseline MEMBER — parity with
-// visibility=ORG_WIDE, no confirmation needed) — see docs/decisions.md.
-const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", "mirror_role"];
+import { ProjectNestingFields } from "../components/ProjectNestingFields";
+import { MODES_NEEDING_CONFIRMATION } from "../utils/projectInheritance";
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
@@ -1703,55 +1700,21 @@ export function ProjectAdminPage() {
             pick and no parent currently set — an empty "Parent project"
             picker with only "None" in it is confusing, not useful. */}
         {showParentField && (
-          <>
-            <FormGrid minColumn="18rem">
-              <LabeledSelect help={strings.help.projectParent}
-                label={strings.projects.parentProject}
-                value={parentProjectId}
-                onChange={(next) => {
-                  settingsDirtyRef.current = true;
-                  setParentProjectId(next);
-                  // Changing the parent while an elevated inheritance mode is
-                  // set must not silently carry that mode's confirmation over
-                  // to a *different* parent's role-holders — reset to "none"
-                  // (the safe default) so re-selecting MIRROR_ALL/MIRROR_ROLE
-                  // for the new parent goes back through
-                  // requestInheritModeChange's own confirmation dialog, which
-                  // will then correctly name the new parent.
-                  if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
-                    setRoleInheritanceMode("none");
-                  }
-                }}
-                options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
-                placeholder={strings.projects.noParent}
-              />
-              {parentProjectId && (
-                <>
-                  <LabeledSelect help={strings.help.projectInheritAccess}
-                    label={strings.projects.inheritFromParent}
-                    value={roleInheritanceMode}
-                    onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
-                    options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
-                      value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
-                    }))}
-                    placeholder={null}
-                  />
-                  {roleInheritanceMode === "mirror_role" && (
-                    <LabeledSelect help={strings.help.projectRoleToMirror}
-                      label={strings.projects.inheritModeFilterRole}
-                      value={roleInheritanceFilterRole}
-                      onChange={(next) => {
-                        settingsDirtyRef.current = true;
-                        setRoleInheritanceFilterRole(next as ProjectRole);
-                      }}
-                      options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
-                      placeholder={null}
-                    />
-                  )}
-                </>
-              )}
-            </FormGrid>
-          </>
+          <ProjectNestingFields
+            parentProjectId={parentProjectId}
+            parentOptions={parentOptions}
+            onParentChange={(next) => {
+              settingsDirtyRef.current = true;
+              setParentProjectId(next);
+            }}
+            mode={roleInheritanceMode}
+            onModeChange={requestInheritModeChange}
+            filterRole={roleInheritanceFilterRole}
+            onFilterRoleChange={(next) => {
+              settingsDirtyRef.current = true;
+              setRoleInheritanceFilterRole(next);
+            }}
+          />
         )}
         {settingsError && <div style={{ color: "var(--color-danger)" }}>{settingsError}</div>}
         {pendingInheritMode && selectedParent && (
