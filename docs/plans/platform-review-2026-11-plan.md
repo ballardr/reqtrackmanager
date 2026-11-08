@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 16 (including 14b, 9b, 9c and 9d) done (14, 15 and 16 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 17 (including 14b, 9b, 9c and 9d) done (14, 15, 16 and 17 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-21 / 24 phases complete.
+22 / 24 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -31,7 +31,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 14b | Overview widgets: on-page editing, grid size, scope and text | UX review of the overview and its editor (findings register in `docs/decisions.md`): the page is the editor, 12-column flow grid with width and height, project scope as an overview setting with a widget override, text widget; Playwright run on a rebuilt stack | [x] |
 | 15 | Organisation overview settings shortcut | Settings icon link on the title row for every member who can see the overview (User: no role predicate); story, Playwright spec written and not run; see `docs/decisions.md` | [x] |
 | 16 | Organisation-wide files list | `POST /orgs/{id}/files/search`, shared table and filters with the project page; only projects the caller holds a role in; Playwright spec written and not run; see `docs/decisions.md` | [x] |
-| 17 | Demo seed data | Last, because it exercises phases 9, 12 and 13 | [ ] |
+| 17 | Demo seed data | Requirement statements, pictures and diagram, links, evidence layout, two templates and a project from one, WSJF scoring; scoring configuration now travels in bundles and templates; PDF equation line height fixed; see `docs/decisions.md` | [x] |
 | 18 | UI/UX style guide review (whole product) | Read-only audit of every page and dialog against `docs/ux-style-guide.md`; findings register with severity; ends in a user sign-off | [ ] |
 | 19 | UI/UX fixes from the review | Implements the findings the user approves in phase 18; may split into sub-phases by finding group | [ ] |
 
@@ -373,6 +373,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Work:** extend `backend/scripts/seed_demo_data.py` (through the API, as it does) so the BRD starter has enough substance: requirements across components and categories, with links (Pain Points, Needs, Decisions, Risks as the enabled modules allow), attached photos and diagrams on records (small bundled images, including one SVG) and a few formulas in record text and report layouts. Add the two template projects (Product Design, Project Management) with different modules enabled and different Pain Point types (uses phase 13), the Cost of Delay model on one project (phase 12) and component/category placement on non-requirement records (phase 9). Keep `seed_e2e_dataset.py` in step with any schema change the phases make.
 - **Verification (rule: a generated document is not done until read):** run the BRD for the demo project and read the output text, not only the structure; run the seed on a fresh database once (the recipe in the earlier close-out notes).
 - **Tests:** the seed runs end to end on a fresh database; a test asserts the demo BRD contains links, an image and an equation.
+- **Done 2026-11-08.** Reading the generated document found two defects, both fixed (the seed's status edit blanked every requirement statement; an inline fraction overlapped the next line in a PDF cell), and a gap the user chose to close: a project's scoring configuration is now carried by project bundles and templates. The seed ran on a fresh database (a second backend on its own database). The Playwright suite and the full backend suite were not run. See `docs/decisions.md`.
 
 ### Phase 18 — UI/UX style guide review (whole product)
 

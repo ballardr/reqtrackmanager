@@ -13,8 +13,8 @@ rather than those core files importing this module.
 Design decisions (all Decided by: Agent):
 - A request's scoring levels (one per axis) travel by *axis and name* and are matched to the target organisation's
   `enhancement_request` levels; one the target lacks is left unset with a warning, so the request is "not
-  scored" on that axis rather than silently re-scored. The score is derived and never exported; scoring
-  configuration (levels, bands) is not part of a bundle.
+  scored" on that axis rather than silently re-scored. The score is derived and never exported; a project's
+  own scoring configuration travels in the core project bundle (`services.scoring_config`); the organisation's levels do not.
 - A request travels as its *current* content and status only. Version history, comments and comment
   attachments are not carried: a bundle is a migration artefact, and the imported request starts at version 1
   attributed to the importer where the author cannot be matched.

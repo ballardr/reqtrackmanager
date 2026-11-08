@@ -103,13 +103,15 @@ from app.services.report_table_alignment import column_needs
 _CAPTION_ALIGN: dict[str, Any] = {"left": TA_LEFT, "center": TA_CENTER, "right": TA_RIGHT}
 _CAPTIONS = {
     align: ParagraphStyle(f"report_caption_{align}", parent=STYLES["BodyText"], fontSize=9, leading=12, alignment=value,
-                          textColor=colors.HexColor("#444444"))
+                          textColor=colors.HexColor("#444444"), autoLeading="max")
     for align, value in _CAPTION_ALIGN.items()
 }
-_NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#555555"))
-_CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5)
+_NOTE = ParagraphStyle("report_note", parent=STYLES["BodyText"], fontSize=8.5, leading=11, textColor=colors.HexColor("#555555"),
+                    autoLeading="max")
+# `autoLeading="max"` lets a line grow to hold a tall inline equation (a fraction) instead of overlapping the next line.
+_CELL = ParagraphStyle("report_cell", parent=STYLES["BodyText"], fontSize=7.5, leading=9.5, autoLeading="max")
 _HEAD = ParagraphStyle("report_head", parent=_CELL, fontName="Helvetica-Bold")
-_PLAIN_CELL = ParagraphStyle("cell", parent=STYLES["BodyText"], fontSize=8, leading=10)
+_PLAIN_CELL = ParagraphStyle("cell", parent=STYLES["BodyText"], fontSize=8, leading=10, autoLeading="max")
 #: Space after a table that is followed by another table, in cm (the gap Word gives between them).
 TABLE_GAP_CM = 0.4
 _FOOTER_SIZE = 7
@@ -126,7 +128,9 @@ def _helvetica(bold: bool, italic: bool) -> str:
 
 
 def _derive(name: str, parent: ParagraphStyle, **changes: Any) -> ParagraphStyle:
-    """A paragraph style that is `parent` with `changes` (ReportLab style attributes by name)."""
+    """A paragraph style that is `parent` with `changes` (ReportLab style attributes by name); a line grows to hold a tall
+    inline equation unless `changes` says otherwise."""
+    changes.setdefault("autoLeading", "max")
     return ParagraphStyle(name, parent=parent, **changes)
 
 

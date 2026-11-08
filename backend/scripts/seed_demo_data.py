@@ -2,8 +2,9 @@
 Module: scripts.seed_demo_data
 
 Seeds a realistic, presentable demo dataset — a fictional engineering
-company ("Solstice Robotics") with three projects (one a sub-project of
-another, demonstrating hierarchical projects), requirements at varied
+company ("Solstice Robotics") with three working projects (one a sub-project of
+another, demonstrating hierarchical projects), two template projects and one
+project created from a template, requirements at varied
 lifecycle stages, an in-review and an approved change request, discussion
 comments, custom fields, and a report look. Intended for
 screenshots, demos, and (eventually) a public demo instance.
@@ -80,9 +81,13 @@ def create_org_user(headers: dict, org_id: str, email: str, display_name: str, r
 def create_project(
     headers: dict, org_id: str, name: str, summary: str,
     *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None, can_be_parent: bool = False,
-    report_name: str | None = None,
+    report_name: str | None = None, template_project_id: str | None = None, is_template: bool = False,
 ) -> dict:
     payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
+    if template_project_id is not None:
+        payload["template_project_id"] = template_project_id
+    if is_template:
+        payload["is_template"] = True
     if report_name is not None:
         payload["report_name"] = report_name
     if parent_project_id is not None:
@@ -308,12 +313,12 @@ def create_custom_field(headers: dict, project_id: str, entity_kind: str, name: 
 
 def create_requirement(
     headers: dict, project_id: str, *, name: str, reasoning: str, component_id: str, category_id: str,
-    custom_fields: dict | None = None,
+    description: str = "", custom_fields: dict | None = None,
 ) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements",
         json={
-            "name": name, "reasoning": reasoning, "component_id": component_id, "category_id": category_id,
+            "name": name, "reasoning": reasoning, "description": description, "component_id": component_id, "category_id": category_id,
             "keywords": [], "custom_fields": custom_fields or {},
         },
         headers=headers, timeout=30,
@@ -333,7 +338,7 @@ def set_requirement_status(
     `owner` / `reviewer` are `{"type": "user" | "org_group" | "project_group", "id": ...}`; `reviewer_id` is the
     shorthand for a user reviewer. The owner is carried over from the requirement when omitted."""
     body = {
-        "name": requirement["name"], "reasoning": requirement["reasoning"],
+        "name": requirement["name"], "reasoning": requirement["reasoning"], "description": requirement.get("description", ""),
         "clarification": requirement.get("clarification", ""),
         "component_id": requirement["component_id"], "category_id": requirement["category_id"],
         "owner": owner or requirement.get("owner") or {"type": "user", "id": requirement["creator_id"]},
@@ -443,6 +448,26 @@ def upload_comment_attachment(
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments/{comment_id}/files",
         files={"file": (filename, content, content_type)}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+#: Small bundled pictures the demo attaches to records (illustrations drawn for the demo, not photographs of real equipment).
+DATA_DIR = Path(__file__).parent / "data"
+TRIAL_SITE_PICTURE = (DATA_DIR / "test-site.png", "bvlos-trial-site.png", "image/png")
+BENCH_RIG_PICTURE = (DATA_DIR / "gust-rig.jpg", "bench-test-rig.jpg", "image/jpeg")
+ARCHITECTURE_DIAGRAM = (DATA_DIR / "flight-controller-architecture.svg", "flight-controller-architecture.svg", "image/svg+xml")
+
+
+def attach_picture(headers: dict, project_id: str, record_path: str, picture: tuple[Path, str, str]) -> dict:
+    """Attaches one of the bundled pictures to a record. `record_path` is the record's own route below `/projects/{id}`
+    (`modules/context_strategy/pain-points/{record id}`); the record must still accept attachments (a Pain Point at a
+    terminal outcome, or an approved requirement, does not)."""
+    source, filename, content_type = picture
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/{record_path}/files", files={"file": (filename, source.read_bytes(), content_type)},
+        headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -760,6 +785,66 @@ PAIN_POINTS_WITH_PICTURES_LAYOUT = {
     ],
 }
 """A custom report layout with an images column: each Pain Point's attached pictures beside its code and title (a share of the column wide)."""
+
+
+def evidence_nodes() -> list[dict]:
+    """The blocks appended to the Business Requirements Document starter to make the demo version: every Pain Point,
+    Decision and Risk with the pictures attached to it and the requirements it is linked to, so the document shows links, pictures
+    and (through the requirement text in its own tables) equations. Each part sits in an `if` on its module, as the
+    starters' module parts do."""
+    def traced(record_type: str, alias: str, module_key: str, heading_text: str, requirement_empty: str) -> dict:
+        return {
+            "type": "if", "when": {"module": module_key}, "children": [
+                {"type": "heading", "level": 2, "text": heading_text},
+                {
+                    "type": "each", "source": {"record_type": record_type, "sort": [{"field": "code"}]}, "as": alias,
+                    "children": [
+                        {"type": "heading", "level": 3, "text": "{{" + alias + ".code}} {{" + alias + ".title}}"},
+                        {
+                            "type": "record_images", "types": ["png", "jpg", "svg"], "max_count": 3, "width": 10, "width_unit": "cm",
+                            "caption_source": "file_name", "numbering": "auto",
+                        },
+                        {
+                            "type": "table", "source": {"record_type": "requirement", "linked_from": alias, "sort": [{"field": "code"}]},
+                            "columns": [
+                                {"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"},
+                                {"field": "status", "label": "Status"},
+                            ],
+                            "empty_text": requirement_empty,
+                        },
+                    ],
+                },
+            ],
+        }
+
+    return [
+        {"type": "heading", "text": "Evidence and traceability"},
+        {"type": "text", "text": "The pictures and diagrams attached to each record, with the requirements it is linked to."},
+        traced("pain_point", "pp", "context_strategy", "Pain Points", "No requirement is linked to this Pain Point."),
+        traced("decision", "dc", "decisions", "Decisions", "No requirement is linked to this Decision."),
+        traced("risk", "rk", "risk_management", "Risks", "No requirement is linked to this Risk."),
+    ]
+
+
+def illustrated_brd_tree(starter_tree: dict) -> dict:
+    """The Business Requirements Document starter's tree with `evidence_nodes` after its own sections."""
+    return {**starter_tree, "nodes": [*starter_tree["nodes"], *evidence_nodes()]}
+
+
+def create_illustrated_brd(headers: dict, org_id: str) -> dict:
+    """Creates the organisation layout 'Business Requirements Document (with evidence)': a copy of the starter Business
+    Requirements Document with `evidence_nodes` after its own sections."""
+    layouts = httpx.get(f"{BASE}/orgs/{org_id}/report-layouts", headers=headers, timeout=30)
+    layouts.raise_for_status()
+    starter = next(layout for layout in layouts.json() if layout["name"] == "Business Requirements Document")
+    detail = httpx.get(f"{BASE}/orgs/{org_id}/report-layouts/{starter['id']}", headers=headers, timeout=30)
+    detail.raise_for_status()
+    return create_report_layout(
+        headers, f"/orgs/{org_id}", "Business Requirements Document (with evidence)",
+        "The Business Requirements Document with each Pain Point, Decision and Risk, its attached pictures and diagrams, and the "
+        "requirements linked to it.",
+        illustrated_brd_tree(detail.json()["current"]["tree"]), folder="Handover",
+    )
 
 
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict, folder: str = "") -> dict:
@@ -1316,14 +1401,19 @@ DRONE_REQUIREMENTS = [
     ("Autonomously return to launch point when battery charge falls below 15%",
      "Loss-of-aircraft incidents from battery exhaustion are the single largest driver of hull "
      "insurance claims across the fleet to date; an automatic return-to-home at a conservative "
-     "threshold removes reliance on the operator noticing in time.", "FW", "SAF", "approved", {}),
+     "threshold removes reliance on the operator noticing in time. The threshold must cover the return energy "
+     "\\(E_{rth} = P_{cruise} \\cdot \\frac{d}{v}\\) from the furthest point of the route, plus the reserve.",
+     "FW", "SAF", "approved", {}),
     ("Provide a minimum flight time of 42 minutes at an 800g payload",
      "42 minutes covers the median inspection route length (per Q3 fleet telemetry) with enough "
-     "margin for a return-to-home from the furthest point on the route without requiring a battery swap.",
+     "margin for a return-to-home from the furthest point on the route without requiring a battery swap. "
+     "Hover endurance follows from the battery energy and the hover power draw, \\(t = \\frac{E_{batt}}{P_{hover}}\\), "
+     "so the target \\(t \\geq 42\\) min fixes the battery capacity for a given airframe.",
      "PR", "PERF", "approved", {}),
     ("Withstand sustained wind gusts of up to 45 km/h without loss of stability",
      "Coastal and offshore inspection sites regularly see gusts in this range; grounding the fleet "
-     "below this threshold would make several existing customer sites unviable.", "AF", "FN", "reviewed", {}),
+     "below this threshold would make several existing customer sites unviable. The gust load scales with the "
+     "dynamic pressure \\(q = \\tfrac{1}{2}\\rho v^{2}\\), and 45 km/h is \\(v = 12.5\\) m/s.", "AF", "FN", "reviewed", {}),
     ("Stream live video telemetry to the ground station at a minimum of 24fps",
      "Below 24fps, operators reported difficulty judging distance to structures during close-approach "
      "inspection manoeuvres in the beta program.", "AV", "FN", "reviewed", {}),
@@ -1409,6 +1499,75 @@ AVIONICS_REQUIREMENTS = [
 ]
 
 
+REQUIREMENT_DESCRIPTIONS: dict[str, str] = {
+    # The requirement statement (what the document prints in its Description column), keyed by requirement name. Formulas
+    # are written between \\( and \\), as in any record text.
+    "Acquire GPS position lock within 5 seconds of power-on in open-sky conditions":
+        "The aircraft shall report a valid three-dimensional position fix no later than \\(t_{fix} = 5\\) s after power-on, "
+        "with at least 8 satellites in view and an unobstructed sky.",
+    "Autonomously return to launch point when battery charge falls below 15%":
+        "When the remaining charge \\(C\\) falls below \\(0.15\\,C_{full}\\), the flight controller shall abandon the "
+        "mission and fly the aircraft back to the launch point without operator input.",
+    "Provide a minimum flight time of 42 minutes at an 800g payload":
+        "With an 800 g payload the aircraft shall hover for at least \\(t = \\frac{E_{batt}}{P_{hover}} \\geq 42\\) minutes "
+        "at sea level and 20 \u00b0C.",
+    "Withstand sustained wind gusts of up to 45 km/h without loss of stability":
+        "The aircraft shall hold its position within 1 m in gusts up to \\(v = 12.5\\) m/s (45 km/h), a dynamic pressure of "
+        "\\(q = \\tfrac{1}{2}\\rho v^{2} \\approx 96\\) Pa.",
+    "Stream live video telemetry to the ground station at a minimum of 24fps":
+        "The video link shall deliver at least 24 frames per second to the ground station for the whole flight.",
+    "Log all flight-critical state transitions to onboard non-volatile storage":
+        "Every change of flight mode, arming state and failsafe shall be written with its time to non-volatile storage "
+        "before the change takes effect.",
+    "Support geofencing with a configurable no-fly boundary":
+        "The operator shall be able to load a polygonal no-fly boundary, and the aircraft shall refuse to cross it.",
+    "Trigger an audible and visual alert prior to autonomous landing":
+        "The aircraft shall sound a tone and flash its lights for at least 5 s before any landing it starts without operator input.",
+    "Operate in ambient temperatures between -10C and 45C":
+        "The aircraft shall meet every performance requirement for ambient temperatures \\(T\\) with "
+        "\\(-10 \\leq T \\leq 45\\) \u00b0C.",
+    "Support firmware updates over a secure, authenticated wireless connection":
+        "The aircraft shall accept a firmware image over the wireless link only when the image is signed by the manufacturer.",
+    "Complete pre-flight diagnostic checks in under 20 seconds":
+        "The pre-flight diagnostic sequence shall finish and report its result within \\(t = 20\\) s of the operator starting it.",
+    "Broadcast Part 107 remote identification per FAA requirements":
+        "The aircraft shall broadcast its identity, position and control-station location at least once per second, as the "
+        "FAA remote identification rule requires.",
+    "Authenticate all API requests using short-lived, signed access tokens":
+        "Every API request shall carry a signed access token that expires within 15 minutes of issue.",
+    "Respond to authenticated read requests within 200ms at the 95th percentile under nominal load":
+        "At nominal load, 95% of authenticated read requests shall complete within 200 ms.",
+    "Ingest telemetry from up to 500 concurrent drones without data loss":
+        "The platform shall accept telemetry from 500 aircraft at once and lose no accepted message.",
+    "Display live drone telemetry with end-to-end latency under 2 seconds":
+        "A telemetry value shall appear in the web dashboard within 2 s of the aircraft sending it.",
+    "Retain raw flight telemetry for a minimum of 12 months":
+        "Raw telemetry shall remain retrievable for at least 12 months after the flight.",
+    "Provide role-based access control scoped to individual fleets":
+        "A user shall see and control only the fleets their role grants.",
+    "Support exporting flight logs in CSV and KML formats":
+        "A user shall be able to export a flight log as a CSV file or as a KML file.",
+    "Maintain 99.9% API availability measured monthly":
+        "The API shall be available for at least 99.9% of each calendar month, which allows no more than about 43 minutes of downtime.",
+    "Automatically flag telemetry anomalies indicative of sensor failure":
+        "The platform shall flag a flight whose sensor readings leave the expected range for the sensor.",
+    "Encrypt all telemetry data at rest":
+        "All stored telemetry shall be encrypted with keys the organisation manages.",
+    "Support two-factor authentication for all user accounts":
+        "Every account shall be able to require a second factor at sign-in.",
+    "Provide a status page reflecting real-time system health":
+        "A public page shall show the current state of each platform service, updated within 1 minute of a change.",
+    "Fuse GPS, IMU, and barometric altitude into a single position estimate at 50Hz":
+        "The estimator shall publish one fused position and altitude estimate at \\(f = 50\\) Hz, a period of "
+        "\\(T = 1/f = 20\\) ms.",
+    "Detect and flag GPS spoofing via cross-check against IMU dead-reckoning":
+        "The estimator shall flag the GPS fix as suspect when it differs from the dead-reckoned position by more than the "
+        "expected drift.",
+    "Report sensor self-test results to the ground station on every power-on":
+        "At every power-on the aircraft shall send the result of each sensor's self-test to the ground station.",
+}
+
+
 def seed_project(
     headers: dict, project: dict, components: dict[str, dict], categories: dict[str, dict[str, dict]],
     specs: list[tuple], demo_admin_id: str,
@@ -1416,7 +1575,7 @@ def seed_project(
     by_name = {}
     for name, reasoning, comp_key, cat_key, status_value, extra in specs:
         req = create_requirement(
-            headers, project["id"], name=name, reasoning=reasoning,
+            headers, project["id"], name=name, reasoning=reasoning, description=REQUIREMENT_DESCRIPTIONS.get(name, ""),
             component_id=components[comp_key]["id"], category_id=categories[comp_key][cat_key]["id"],
         )
         if status_value != "draft":
@@ -1637,6 +1796,34 @@ PAIN_POINT_TYPE_DEFINITIONS: dict[str, str] = {
     "User": "A problem for the people who use the product directly: tasks that are slow, confusing or error-prone.",
     "Operator": "A problem for the people who run, deploy or maintain the product: setup, monitoring, support, upgrades.",
 }
+
+
+def set_project_module(headers: dict, project_id: str, module_key: str, enabled: bool) -> None:
+    """Sets a project's own switch for a module (a project starts with the organisation's defaults)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/{module_key}/enablement", json={"enabled": enabled}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def hide_pain_point_types(headers: dict, project_id: str, names: list[str]) -> None:
+    """Hides the organisation's default Pain Point types of these names in one project."""
+    effective = list_effective_pain_point_types(headers, project_id)
+    for name in names:
+        r = httpx.delete(
+            f"{BASE}/projects/{project_id}/modules/context_strategy/pain-point-types/{effective[name]['id']}", headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+
+
+def add_pain_point_types(headers: dict, project_id: str, definitions: dict[str, str]) -> None:
+    """Adds project-only Pain Point types, each with its definition (the text shown under the Type picker)."""
+    for name, definition in definitions.items():
+        r = httpx.post(
+            f"{BASE}/projects/{project_id}/modules/context_strategy/pain-point-types",
+            json={"name": name, "definition": definition}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
 
 
 def set_pain_point_type_definitions(headers: dict, org_id: str, types_by_name: dict[str, dict], definitions: dict[str, str]) -> None:
@@ -3457,6 +3644,9 @@ def main() -> None:
     )
     triage_pain_point(h_pm, drone["id"], pp_scored["id"])
     accept_pain_point(h_pm, drone["id"], pp_scored["id"])
+    # Evidence pictures on a Pain Point that is still open (a Pain Point at a terminal outcome takes no more attachments).
+    for picture in (TRIAL_SITE_PICTURE, ARCHITECTURE_DIAGRAM):
+        attach_picture(h_pm, drone["id"], f"modules/context_strategy/pain-points/{pp_scored['id']}", picture)
     set_pain_point_scores(h_pm, drone["id"], pp_scored["id"], [
         score_entry(pp_levels, drone_operator_persona["id"], severity="Blocker", frequency="Occasional", confidence="High"),
         score_entry(pp_levels, persona_inspector["id"], severity="Minor", frequency="Rare", confidence="Medium"),
@@ -3633,6 +3823,8 @@ def main() -> None:
         acceptance_criteria="Dual-redundant architecture certified; no single fault leads to loss of control.",
         inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
     )
+    for picture in (BENCH_RIG_PICTURE, ARCHITECTURE_DIAGRAM):
+        attach_picture(h_pm, drone["id"], f"modules/risk_management/risks/{risk_single_controller['id']}", picture)
     risk_modem = create_risk(
         h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner={"type": "user", "id": demo_admin["user_id"]},
         title="Cellular modem supplier misses delivery",
@@ -3878,6 +4070,119 @@ def main() -> None:
           " Requirement yet) and 2 organisation inbox requests; reports: Demand ranking, Unlinked requests, Close the"
           " loop, Triage ageing (set 'Waiting longer than' to 0) and Problem demand")
 
+    print("Linking Pain Points, a Risk and a Decision to the requirements they drive (Motivates, Impacts, Affects)...")
+    video_req = drone_reqs["Stream live video telemetry to the ground station at a minimum of 24fps"]
+    for pain_point, requirement in ((pp_scored, flight_log_req), (pp_scored, video_req), (pp_accepted, flight_log_req)):
+        create_artefact_link(
+            h_pm, drone["id"], "pain_point", pain_point["id"], link_type_id=chain_link_types["Motivates"]["id"],
+            other_type="requirement", other_id=requirement["id"],
+        )
+    for requirement in (return_to_home_req, gps_req):
+        create_artefact_link(
+            h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=chain_link_types["Impacts"]["id"],
+            other_type="requirement", other_id=requirement["id"],
+        )
+    create_artefact_link(
+        h_pm, drone["id"], "decision", dual_fc_decision["id"], link_type_id=chain_link_types["Affects"]["id"],
+        other_type="requirement", other_id=return_to_home_req["id"],
+    )
+
+    print("Seeding the Business Requirements Document with evidence: every Pain Point and Risk with its pictures and linked requirements...")
+    create_illustrated_brd(h_pm, org["id"])
+
+    print("Seeding two template projects (Product Design, Project Management) and a project created from one, with Cost of Delay scoring...")
+    product_design = create_project(
+        h_pm, org["id"], "Product Design template",
+        "Starting point for a product design project: feedback, personas and decisions, with Usability and Accessibility Pain Points.",
+        is_template=True,
+    )
+    for module_key, enabled in (("risk_management", False), ("compliance", False)):
+        set_project_module(h_pm, product_design["id"], module_key, enabled)
+    hide_pain_point_types(h_pm, product_design["id"], ["Market", "Operator"])
+    add_pain_point_types(h_pm, product_design["id"], {
+        "Usability": "A task is slow, confusing or error-prone for the people who use the product.",
+        "Accessibility": "A person cannot use the product because of a disability, a device or a setting.",
+    })
+    # Pain Points on this template are ranked by Cost of Delay divided by job size (WSJF) instead of the platform default.
+    set_project_scoring_default_model(h_pm, product_design["id"], "pain_point", "wsjf")
+    design_components = {
+        "RS": create_component(h_pm, product_design["id"], "Research", "RS"),
+        "UI": create_component(h_pm, product_design["id"], "Interface", "UI"),
+    }
+    design_categories = create_categories_for_components(h_pm, product_design["id"], design_components, {"RS": ["FN"], "UI": ["FN", "PERF"]})
+    create_stage(h_pm, product_design["id"], "Discovery")
+    create_stage(h_pm, product_design["id"], "Release", improvement_workflow["id"])
+    for name, reasoning, comp_key, cat_key in (
+        ("Record every usability session with the participant's consent",
+         "Sessions that are not recorded cannot be reviewed by people who were not in the room.", "RS", "FN"),
+        ("Load the main screen in under 2 seconds on a mid-range phone",
+         "A slow first screen is the most common reason a person abandons a task.", "UI", "PERF"),
+        ("Offer every action from the keyboard",
+         "People who cannot use a pointing device must reach every action.", "UI", "FN"),
+    ):
+        create_requirement(
+            h_pm, product_design["id"], name=name, reasoning=reasoning, component_id=design_components[comp_key]["id"],
+            category_id=design_categories[comp_key][cat_key]["id"],
+        )
+
+    project_management = create_project(
+        h_pm, org["id"], "Project Management template",
+        "Starting point for delivering work through suppliers: risks, decisions and compliance, with Schedule, Budget and Resourcing Pain Points.",
+        is_template=True,
+    )
+    for module_key, enabled in (("product_feedback", False), ("stakeholders", False)):
+        set_project_module(h_pm, project_management["id"], module_key, enabled)
+    hide_pain_point_types(h_pm, project_management["id"], ["Market", "User", "Operator"])
+    add_pain_point_types(h_pm, project_management["id"], {
+        "Schedule": "Work is late, or its dates cannot be trusted.",
+        "Budget": "Spending is above plan, or the cost of the work is not known.",
+        "Resourcing": "The people or suppliers the work needs are not available.",
+    })
+    delivery_components = {
+        "PL": create_component(h_pm, project_management["id"], "Planning", "PL"),
+        "DL": create_component(h_pm, project_management["id"], "Delivery", "DL"),
+    }
+    delivery_categories = create_categories_for_components(
+        h_pm, project_management["id"], delivery_components, {"PL": ["FN", "REG"], "DL": ["FN", "PERF"]},
+    )
+    create_stage(h_pm, project_management["id"], "Initiation")
+    create_stage(h_pm, project_management["id"], "Tendering and delivery", outsourced_workflow["id"])
+    for name, reasoning, comp_key, cat_key in (
+        ("Name an accountable owner for every deliverable",
+         "A deliverable with no owner has no one to ask when it is late.", "PL", "FN"),
+        ("Agree the acceptance criteria with each supplier before work starts",
+         "Criteria agreed after the work starts are argued over, not applied.", "PL", "REG"),
+        ("Report progress against the plan every two weeks",
+         "A fixed reporting rhythm makes a slipping date visible while it can still be recovered.", "DL", "PERF"),
+    ):
+        create_requirement(
+            h_pm, project_management["id"], name=name, reasoning=reasoning, component_id=delivery_components[comp_key]["id"],
+            category_id=delivery_categories[comp_key][cat_key]["id"],
+        )
+
+    operator_app = create_project(
+        h_pm, org["id"], "Falcon-3 Operator App",
+        "The tablet app pilots use at the launch site, created from the Product Design template.",
+        template_project_id=product_design["id"],
+    )
+    app_pain_point_types = list_effective_pain_point_types(h_pm, operator_app["id"])
+    app_levels = get_pain_point_levels(h_pm, operator_app["id"])
+    for title, description, point_type, scores in (
+        ("Pilots cannot read the status screen in direct sunlight",
+         "The tablet's status screen washes out at the launch site, so pilots shade it with a hand or guess.", "Usability",
+         {"value": "High", "time_criticality": "Substantial", "risk_reduction": "High", "job_size": "Small"}),
+        ("Colour alone separates a warning from a fault on the status screen",
+         "A pilot who cannot tell red from amber cannot tell a warning from a fault.", "Accessibility",
+         {"value": "Substantial", "time_criticality": "Low", "risk_reduction": "Moderate", "job_size": "Large"}),
+    ):
+        pain_point = create_pain_point(
+            h_pm, operator_app["id"], pain_point_type_id=app_pain_point_types[point_type]["id"], title=title,
+            description=description, source="Pilot debrief — launch-site trial", priority="medium",
+        )
+        triage_pain_point(h_pm, operator_app["id"], pain_point["id"])
+        accept_pain_point(h_pm, operator_app["id"], pain_point["id"])
+        set_pain_point_scores(h_pm, operator_app["id"], pain_point["id"], [score_entry(app_levels, None, **scores)])
+
     print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
           " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"
           " sub-project following Falcon-3's list...")
@@ -3973,6 +4278,12 @@ def main() -> None:
     print("  Risk Management (enabled org-wide): 4 Risks on Falcon-3 (RSK-001 flight controller failure — High inherent,"
           " Medium residual; a supply-chain risk; the regulator risk, whose Rare x Catastrophic cell is pinned to High; and one"
           " Identified risk with no assessment), with the Likelihood x Consequence matrix and 12 default Risk types")
+    print("  Evidence: every Falcon-3 requirement has a statement (six with equations); a Pain Point and the flight-controller Risk"
+          " carry pictures and an SVG diagram; Pain Points, a Risk and a Decision are linked to requirements, so the"
+          " 'Business Requirements Document (with evidence)' layout prints links, pictures and equations")
+    print("  Templates: 'Product Design template' (Usability and Accessibility Pain Point types, Cost of Delay ÷ job size scoring,"
+          " no Risk Management or Compliance) and 'Project Management template' (Schedule, Budget and Resourcing Pain Point types,"
+          " no Product Feedback or Stakeholders); 'Falcon-3 Operator App' was created from the first, with two Pain Points scored by WSJF")
 
 
 if __name__ == "__main__":

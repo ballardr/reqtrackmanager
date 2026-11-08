@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="320" viewBox="0 0 640 320">
+  <rect width="640" height="320" fill="#ffffff"/>
+  <g font-family="sans-serif" font-size="13" text-anchor="middle" fill="#1f2933">
+    <rect x="20" y="40" width="130" height="50" rx="6" fill="#e6f0ff" stroke="#0f62fe" stroke-width="2"/>
+    <text x="85" y="70">GPS receiver</text>
+    <rect x="20" y="135" width="130" height="50" rx="6" fill="#e6f0ff" stroke="#0f62fe" stroke-width="2"/>
+    <text x="85" y="165">IMU</text>
+    <rect x="20" y="230" width="130" height="50" rx="6" fill="#e6f0ff" stroke="#0f62fe" stroke-width="2"/>
+    <text x="85" y="260">Barometer</text>
+
+    <rect x="240" y="60" width="140" height="70" rx="6" fill="#fff4e0" stroke="#b7791f" stroke-width="2"/>
+    <text x="310" y="90">Estimator A</text>
+    <text x="310" y="110">(primary)</text>
+    <rect x="240" y="190" width="140" height="70" rx="6" fill="#fff4e0" stroke="#b7791f" stroke-width="2"/>
+    <text x="310" y="220">Estimator B</text>
+    <text x="310" y="240">(independent)</text>
+
+    <rect x="470" y="125" width="150" height="70" rx="6" fill="#e3f6ea" stroke="#2f855a" stroke-width="2"/>
+    <text x="545" y="155">Voter</text>
+    <text x="545" y="175">and flight control</text>
+
+    <g stroke="#52606d" stroke-width="2" fill="none">
+      <path d="M150 65 L240 85"/>
+      <path d="M150 160 L240 100"/>
+      <path d="M150 160 L240 220"/>
+      <path d="M150 255 L240 235"/>
+      <path d="M380 95 L470 150"/>
+      <path d="M380 225 L470 170"/>
+    </g>
+  </g>
+  <text x="320" y="305" font-family="sans-serif" font-size="12" text-anchor="middle" fill="#52606d">Dual-redundant sensor fusion with a voting stage</text>
+</svg>

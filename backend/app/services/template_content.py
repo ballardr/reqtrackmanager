@@ -8,7 +8,8 @@ The configuration and starter content a project created from a template receives
 - module enablement (which modules and sub-components the template has on, still capped by what
   the organisation allows),
 - report setup (layouts, packs, snippets, placements, folders),
-- every module's configuration and starter records, through its `ModuleProjectBundleHooks`.
+- every module's configuration and starter records, through its `ModuleProjectBundleHooks`,
+- the project's own scoring configuration (`services.scoring_config`).
 
 Design decisions:
 - Modules are copied by re-using their bundle export and import (the same round-trip code a project
@@ -47,6 +48,7 @@ from app.services.report_layout_bundle import export_project_layouts, import_pro
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
+from app.services.scoring_config import export_project_scoring, import_project_scoring
 from app.services.tags import export_vocabulary, import_vocabulary
 
 
@@ -156,4 +158,7 @@ def copy_module_content(
     for hooks, data in prepared:
         if hooks.import_late is not None:
             hooks.import_late(db, new_project, data, file_bytes, creator, users, warnings)
+    # The template's own scoring configuration (default model, offered models, bands, thresholds, cell ratings), once
+    # the custom models and axes it names exist in the new project.
+    import_project_scoring(db, new_project, export_project_scoring(db, source), warnings)
     db.flush()

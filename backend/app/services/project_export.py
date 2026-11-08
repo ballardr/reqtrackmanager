@@ -135,6 +135,7 @@ from app.services.report_layout_bundle import export_project_layouts, import_pro
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
+from app.services.scoring_config import export_project_scoring, import_project_scoring
 from app.services.sequences import generate_unique_code
 from app.services.stage_workflow_bundle import (
     export_component_phases,
@@ -542,6 +543,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "tags": export_vocabulary(db, project),
+        **export_project_scoring(db, project),
         **nav_labels.export_names(project.nav_label_overrides),
         **overview_widgets.export_layout(project.overview_widgets),
         **export_project_stage_workflows(db, project),
@@ -1048,6 +1050,8 @@ def apply_project_data(
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         if hooks.import_late is not None:
             hooks.import_late(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    # After every module: the project's custom scoring models and axes exist by now, and the configuration names them.
+    import_project_scoring(db, project, data, warnings)
 
     # Replays the source project's structural audit trail as its own
     # events (rather than trying to preserve original ids/timestamps

@@ -20,6 +20,8 @@ flowchart LR
 
 Owners, reviewers and task assignees are written as a user's email or a group's name and matched in the importing organisation; one that cannot be matched becomes the importing user (an owner) or is left empty (a reviewer or assignee), with a warning.
 
+A project's own scoring configuration (default model, offered models, rating bands, thresholds and cell ratings) travels with the project; the organisation's scoring levels do not, and a level the target organisation lacks is skipped with a warning.
+
 Every module's records travel with the project, and its organisation-level records and vocabularies travel with the organisation. A module must do this, or say why it has nothing to carry:
 
 | Module | In a project bundle | In an organisation bundle |

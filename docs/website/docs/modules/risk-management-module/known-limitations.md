@@ -9,7 +9,7 @@ sidebar_position: 38
 - **No organisation-wide risk view.** The four [reports](./reports.md) are per project (use *Include child projects* to cover a hierarchy), and there is no organisation-wide risk dashboard or project-overview tile.
 - **Change detection covers Requirements only.** Editing or archiving a Requirement flags the treatments resting on it; changing a linked Action, or (once installed) a Design, does not yet.
 - **No Design or System Element links.** Reserved for the Engineering Design module. See [Treatment and relationships](./treatment-and-relationships.md#relationship-types).
-- **Export carries less than the live record.** Version history, comments, scoring configuration and links to anything but same-project Requirements are not carried; see [Export and import](./export-and-import.md).
+- **Export carries less than the live record.** Version history, comments, the organisation's scoring levels and links to anything but same-project Requirements are not carried; see [Export and import](./export-and-import.md).
 - **Change Impact analysis** isn't available; the planned module for it will read Risks when it exists.
 
 ## By design

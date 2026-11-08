@@ -697,8 +697,8 @@ def restore_criterion(
 
 def export_definitions(db: Session, organization_id: uuid.UUID, scheme: ScoringSchemeDefinition, project_id: uuid.UUID | None) -> dict[str, Any]:
     """The custom axes (with levels), custom models and hidden registered criteria this tier owns, as bundle data.
-    Bands, defaults, enabled models and the registered axes' levels are scoring configuration, which a bundle does
-    not carry."""
+    A project's bands, defaults and enabled models travel with the core project bundle
+    (`services.scoring_config`); the registered axes' levels belong to the organisation and are not carried."""
     if not scheme.allow_custom_criteria:
         return {}
     levels = list_levels(db, organization_id, scheme.key)

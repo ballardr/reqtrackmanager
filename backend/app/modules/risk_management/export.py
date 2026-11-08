@@ -23,7 +23,8 @@ Design decisions (all Decided by: Agent):
   name* and matched to the target organisation's `risk` scoring levels; one the
   target lacks (renamed or deleted) is left unset with a warning, so the
   imported Risk is "not rated" on that axis rather than silently re-rated.
-  Scoring configuration (levels, bands, cell ratings) is not part of a bundle.
+  A project's own scoring configuration (default model, bands, cell ratings) travels in the core project bundle
+  (`services.scoring_config`); the organisation's levels do not.
 - Only treatment-family and impact links *to Requirements in the same project*
   travel (matched by requirement code, as the core requirement links are).
   Links to Actions, Decisions, other Risks or another project cannot, because
