@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { InlineSelect, type InlineSelectOption } from "./LabeledSelect";
 
 // Matches FilterPanel.tsx's and Layout.tsx's own mobile breakpoint
 // (theme.css, `@media (max-width: 860px)`) — all three should agree on
@@ -206,33 +207,21 @@ export function ResourceMenu<K extends string>({
             component's first rollout). */
         <div className="resource-menu">
           {isNarrow ? (
-            <select
-              className="input"
-              aria-label={ariaLabel}
+            <InlineSelect
+              ariaLabel={ariaLabel}
               value={active}
-              onChange={(e) => {
-                const chosen = e.target.value;
+              placeholder={null}
+              onChange={(chosen) => {
                 const next =
                   groups.find((g) => g.key === chosen) ?? groups.flatMap((g) => g.children ?? []).find((c) => c.key === chosen);
                 if (next) navigate(next.href);
               }}
-            >
-              {groups.map((g) =>
-                g.children?.length ? (
-                  <optgroup key={g.key} label={g.label}>
-                    {g.children.map((c) => (
-                      <option key={c.key} value={c.key}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : (
-                  <option key={g.key} value={g.key}>
-                    {g.label}
-                  </option>
-                ),
+              options={groups.flatMap((g): InlineSelectOption[] =>
+                g.children?.length
+                  ? g.children.map((c) => ({ value: c.key, label: c.label, group: g.label }))
+                  : [{ value: g.key, label: g.label }],
               )}
-            </select>
+            />
           ) : (
             <nav aria-label={ariaLabel} className="resource-menu-nav">
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.15rem" }}>

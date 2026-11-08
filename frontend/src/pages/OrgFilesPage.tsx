@@ -21,7 +21,8 @@ import { api } from "../api/client";
 import type { OrganizationFileProject, ProjectFile, ProjectFileUploader } from "../api/types";
 import { FileFilterFields } from "../components/FileFilterFields";
 import { FilesTable } from "../components/FilesTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Spinner } from "../components/Spinner";
@@ -93,14 +94,13 @@ export function OrgFilesPage() {
           searchPlaceholder={strings.files.searchPlaceholder}
           searchAriaLabel={strings.files.searchLabel}
         >
-          <FilterField label={strings.files.filterProject}>
-            <select className="input" value={project} onChange={(e) => setProject(e.target.value)}>
-              <option value="">{strings.files.allProjects}</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={strings.files.filterProject}
+            value={project}
+            onChange={setProject}
+            allLabel={strings.files.allProjects}
+            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+          />
           <FileFilterFields filters={filters} uploaders={uploaders} />
           <FilterCheckbox label={strings.files.includeArchivedProjects} checked={archived} onChange={setArchived} />
         </FilterPanel>

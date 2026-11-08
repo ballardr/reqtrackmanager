@@ -40,7 +40,8 @@ import type { BadgeTone } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListActions, ListActionsMenu } from "../../components/ListActions";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { ProjectScopeFilter } from "../../components/ProjectScopeFilter";
@@ -54,6 +55,7 @@ import { toErrorMessage } from "../../context/ToastContext";
 import { HIDDEN_SOURCE_LABEL, type HiddenSource } from "./types";
 import { Badge } from "../../components/Badge";
 import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 /** One record kind a list page offers Export and Import for. */
 export interface ExportRecords {
@@ -286,24 +288,22 @@ export function RecordListView<R extends ListedRecord, V>({
           search={search} onSearchChange={setSearch} searchPlaceholder={`Search ${noun}s…`} searchAriaLabel={`Search ${ariaLabel}`}
         >
           {statusLabel && (
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="">All statuses</option>
-                {Object.entries(statusLabel).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(statusLabel)}
+            />
           )}
           {typeName && (
-            <FilterField label={typeLabel}>
-              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="">{typeLabel === "Type" ? "All types" : `All ${typeLabel.toLowerCase()}s`}</option>
-                {typeNames.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={typeLabel}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              allLabel={typeLabel === "Type" ? "All types" : `All ${typeLabel.toLowerCase()}s`}
+              options={typeNames.map((name) => ({ value: name, label: name }))}
+            />
           )}
           {extraFilters}
           {projectScope && <ProjectScopeFilter scope={projectScope} />}

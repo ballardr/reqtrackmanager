@@ -22,7 +22,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
@@ -45,6 +46,7 @@ import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function ProjectFutureStatesPage() {
   const strings = useStrings();
@@ -140,14 +142,13 @@ export function ProjectFutureStatesPage() {
             sectionKey="context_strategy.futureStates.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Future State…" searchAriaLabel="Search Future State"
           >
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FutureStateStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(FUTURE_STATE_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(FUTURE_STATE_STATUS_LABEL)}
+            />
             <FilterCheckbox label="On the roadmap only" checked={roadmapOnly} onChange={setRoadmapOnly} />
             <FilterCheckbox label="Target date passed" checked={targetPassedOnly} onChange={setTargetPassedOnly} />
             <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />

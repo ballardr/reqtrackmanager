@@ -13,7 +13,8 @@ import {
 } from "../api/types";
 import { ChangeRequestCreateModal } from "../components/ChangeRequestCreateModal";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { TagFilterField } from "../components/TagFilterField";
 import { placementsText } from "../api/placements";
@@ -250,27 +251,19 @@ export function ChangeRequestsPage() {
             onSearchChange={setSearch}
             searchPlaceholder={strings.changeRequests.search}
           >
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as CrStatusFilterValue)}>
-                <option value="active">Active</option>
-                <option value="">All statuses</option>
-                {CR_STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {CHANGE_REQUEST_STATUS_LABEL[s]}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.filters.targetVersion}>
-              <select className="input" value={targetStageFilter} onChange={(e) => setTargetStageFilter(e.target.value)}>
-                <option value="">All versions</option>
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[{ value: "active", label: "Active" }, { value: "", label: "All statuses" }, ...CR_STATUS_OPTIONS.map((s) => ({ value: s, label: CHANGE_REQUEST_STATUS_LABEL[s] }))]}
+            />
+            <FilterSelect
+              label={strings.filters.targetVersion}
+              value={targetStageFilter}
+              onChange={setTargetStageFilter}
+              allLabel="All versions"
+              options={stages.map((s) => ({ value: s.id, label: s.name }))}
+            />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
           </FilterPanel>

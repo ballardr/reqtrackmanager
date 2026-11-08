@@ -5,7 +5,8 @@
  * after them: project scope, tags). State and matching are `useRequestListFilters`.
  */
 import type { ScoringScheme } from "../../api/scoring";
-import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
+import { FilterCheckbox } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { PRODUCT_FEEDBACK_HELP } from "./help";
 import { isDerivedAxis } from "./requestLevels";
 import { ANY_CRITERION, type RequestListFilters, type StatusChoice } from "./requestListState";
@@ -29,45 +30,44 @@ export function RequestFilterFields({
   const manualAxes = (scheme?.axes ?? []).filter((a) => !isDerivedAxis(a));
   return (
     <>
-      <FilterField label={strings.filters.status} help={PRODUCT_FEEDBACK_HELP.requestStatusFilter}>
-        <select className="input" aria-label="Status" value={filters.statusChoice} onChange={(e) => filters.setStatusChoice(e.target.value as StatusChoice)}>
-          <option value="open">Open statuses</option>
-          <option value="all">All statuses</option>
-          {STATUSES.map((value) => <option key={value} value={value}>{REQUEST_STATUS_LABEL[value]}</option>)}
-        </select>
-      </FilterField>
+      <FilterSelect<StatusChoice>
+        label={strings.filters.status}
+        help={PRODUCT_FEEDBACK_HELP.requestStatusFilter}
+        value={filters.statusChoice}
+        onChange={filters.setStatusChoice}
+        options={[
+          { value: "open", label: "Open statuses" },
+          { value: "all", label: "All statuses" },
+          ...STATUSES.map((value) => ({ value, label: REQUEST_STATUS_LABEL[value] })),
+        ]}
+      />
       {scheme && (
         <>
-          <FilterField label={strings.filters.scoring}>
-            <select
-              className="input" value={filters.scored}
-              onChange={(e) => filters.setScored(e.target.value as "" | "unscored" | "scored")}
-            >
-              <option value="">Any scoring</option>
-              <option value="unscored">{`Unscored (${unscoredCount})`}</option>
-              <option value="scored">Scored</option>
-            </select>
-          </FilterField>
-          <FilterField label="Criteria not rated">
-            <select className="input" value={filters.missingAxis} onChange={(e) => filters.setMissingAxis(e.target.value)}>
-              <option value="">No filter</option>
-              <option value={ANY_CRITERION}>Any criterion</option>
-              {manualAxes.map((axis) => <option key={axis.key} value={axis.key}>{axis.label}</option>)}
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={strings.filters.scoring}
+            value={filters.scored}
+            onChange={filters.setScored}
+            allLabel="Any scoring"
+            options={[{ value: "unscored", label: `Unscored (${unscoredCount})` }, { value: "scored", label: "Scored" }]}
+          />
+          <FilterSelect
+            label="Criteria not rated"
+            value={filters.missingAxis}
+            onChange={filters.setMissingAxis}
+            allLabel="No filter"
+            options={[{ value: ANY_CRITERION, label: "Any criterion" }, ...manualAxes.map((axis) => ({ value: axis.key, label: axis.label }))]}
+          />
         </>
       )}
       {filters.painPointsAvailable && (
-        <FilterField label="Pain Points" help={PRODUCT_FEEDBACK_HELP.requestPainPointFilter}>
-          <select
-            className="input" aria-label="Pain Points" value={filters.painPoints}
-            onChange={(e) => filters.setPainPoints(e.target.value as "" | "none" | "some")}
-          >
-            <option value="">Any</option>
-            <option value="none">None linked</option>
-            <option value="some">At least one linked</option>
-          </select>
-        </FilterField>
+        <FilterSelect
+          label="Pain Points"
+          help={PRODUCT_FEEDBACK_HELP.requestPainPointFilter}
+          value={filters.painPoints}
+          onChange={filters.setPainPoints}
+          allLabel="Any"
+          options={[{ value: "none", label: "None linked" }, { value: "some", label: "At least one linked" }]}
+        />
       )}
       <FilterCheckbox label="Show archived" checked={filters.includeArchived} onChange={filters.setIncludeArchived} />
     </>

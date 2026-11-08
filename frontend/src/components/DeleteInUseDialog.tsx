@@ -4,6 +4,7 @@ import { t } from "../i18n/strings";
 import { toErrorMessage } from "../context/ToastContext";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Modal } from "./Modal";
+import { InlineSelect } from "./LabeledSelect";
 
 const strings = t();
 
@@ -180,21 +181,19 @@ export function DeleteInUseDialog({
                 {renderMovePicker ? (
                   renderMovePicker({ value: replacementId, onChange: setReplacementId, disabled: busy })
                 ) : (
-                  <select
-                    className="input"
-                    style={{ maxWidth: 360 }}
-                    aria-label={strings.admin.reassignExistingTo}
+                  <InlineSelect
+                    maxWidth={360}
+                    ariaLabel={strings.admin.reassignExistingTo}
                     value={replacementId}
-                    onChange={(e) => setReplacementId(e.target.value)}
+                    placeholder="—"
+                    onChange={setReplacementId}
                     disabled={busy}
-                  >
-                    <option value="">—</option>
-                    {candidates.map((c) => (
-                      <option key={c.id} value={c.id} disabled={c.disabledReason !== undefined}>
-                        {c.disabledReason ? strings.admin.deleteInUseCandidateBlocked(c.label, c.disabledReason) : c.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={candidates.map((c) => ({
+                      value: c.id,
+                      label: c.disabledReason ? strings.admin.deleteInUseCandidateBlocked(c.label, c.disabledReason) : c.label,
+                      disabled: c.disabledReason !== undefined,
+                    }))}
+                  />
                 )}
                 <button
                   className="btn btn-danger"

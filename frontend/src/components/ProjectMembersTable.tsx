@@ -158,7 +158,8 @@ import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "./FilterPanel";
+import { FilterCheckbox, FilterPanel } from "./FilterPanel";
+import { FilterSelect } from "./FilterSelect";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { Popover } from "./Popover";
 import { cycleSort, type SortState } from "./sortState";
@@ -698,20 +699,13 @@ export function ProjectMembersTable({
         onSearchChange={setSearch}
         searchPlaceholder={strings.membersTable.search}
       >
-        <FilterField label={strings.membersTable.roleFilterLabel}>
-          <select
-            className="input"
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}
-          >
-            <option value="">{strings.membersTable.allRoles}</option>
-            {PROJECT_ROLES.map((role) => (
-              <option key={role} value={role}>
-                {PROJECT_ROLE_LABEL[role]}
-              </option>
-            ))}
-          </select>
-        </FilterField>
+        <FilterSelect
+          label={strings.membersTable.roleFilterLabel}
+          value={roleFilter}
+          onChange={setRoleFilter}
+          allLabel={strings.membersTable.allRoles}
+          options={PROJECT_ROLES.map((role) => ({ value: role, label: PROJECT_ROLE_LABEL[role] }))}
+        />
         <FilterCheckbox label={strings.membersTable.showInvited} checked={showInvited} onChange={setShowInvited} />
       </FilterPanel>
       <DirectoryTable

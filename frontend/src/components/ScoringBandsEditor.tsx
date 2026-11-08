@@ -19,6 +19,7 @@ import { SCORING_BAND_TONE_LABEL, type ScoringBand } from "../api/scoring";
 import type { BadgeTone } from "../api/types";
 import { OverridePill } from "./OverridePill";
 import { Badge } from "./Badge";
+import { InlineSelect } from "./LabeledSelect";
 
 interface DraftBand {
   label: string;
@@ -121,10 +122,11 @@ export function ScoringBandsEditor({
                 onChange={(e) => update(i, { percent: e.target.value })} />
             </div>
             <div className="definition-grid__cell">
-              <select className="input" aria-label={`Band ${i + 1} colour`} value={band.tone}
-                onChange={(e) => update(i, { tone: e.target.value as BadgeTone })}>
-                {TONES.map((tone) => <option key={tone} value={tone}>{SCORING_BAND_TONE_LABEL[tone]}</option>)}
-              </select>
+              <InlineSelect<BadgeTone>
+                ariaLabel={`Band ${i + 1} colour`} value={band.tone} placeholder={null}
+                onChange={(tone) => update(i, { tone })}
+                options={TONES.map((tone) => ({ value: tone, label: SCORING_BAND_TONE_LABEL[tone] }))}
+              />
             </div>
             <div className="definition-grid__cell"><Badge tone={band.tone}>{band.label || "—"}</Badge></div>
             <div className="definition-grid__actions">

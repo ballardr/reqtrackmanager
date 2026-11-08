@@ -30,6 +30,7 @@ import { Spinner } from "./Spinner";
 import { Tabs, tabPanelProps, type TabDef } from "./Tabs";
 import { ToggleSwitch } from "./ToggleSwitch";
 import { Badge } from "./Badge";
+import { InlineSelect } from "./LabeledSelect";
 
 type PanelTab = "types" | "rules";
 
@@ -337,18 +338,15 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
       addLabel={strings.orgAdmin.newLinkType}
       minItems={isProject ? 0 : 1}
       renderExtra={(item) => (
-        <select
+        <InlineSelect<LinkFlow>
           key="flow"
-          className="input"
-          style={{ maxWidth: 180 }}
-          aria-label={strings.orgAdmin.linkTypeFlowLabel(item.forward_name)}
+          maxWidth={180}
+          ariaLabel={strings.orgAdmin.linkTypeFlowLabel(item.forward_name)}
           value={item.flow}
-          onChange={(e) => void setFlow(item, e.target.value as LinkFlow)}
-        >
-          {LINK_FLOW_VALUES.map((flow) => (
-            <option key={flow} value={flow}>{LINK_FLOW_LABEL[flow]}</option>
-          ))}
-        </select>
+          placeholder={null}
+          onChange={(flow) => void setFlow(item, flow)}
+          options={LINK_FLOW_VALUES.map((flow) => ({ value: flow, label: LINK_FLOW_LABEL[flow] }))}
+        />
       )}
       renderDetails={(item) =>
         item.dedicated_endpoint ? (
@@ -373,19 +371,18 @@ export function LinkTypesPanel({ scope }: { scope: LinkTypesScope }) {
             </div>
             <span className="text-muted">{strings.orgAdmin.linkTypeNesting}</span>
             <div className="stack" style={{ gap: "0.125rem", maxWidth: 280 }}>
-              <select
-                className="input"
-                aria-label={strings.orgAdmin.linkTypeNestingLabel(item.forward_name)}
-                aria-describedby={`nesting-hint-${item.id}`}
+              <InlineSelect<LinkNestingScope>
+                ariaLabel={strings.orgAdmin.linkTypeNestingLabel(item.forward_name)}
+                inputProps={{ "aria-describedby": `nesting-hint-${item.id}` }}
                 value={item.nesting_scope}
-                onChange={(e) => void setNestingScope(item, e.target.value as LinkNestingScope)}
-              >
-                {LINK_NESTING_SCOPE_VALUES.map((value) => (
-                  <option key={value} value={value} disabled={value === "upstream_in_ancestor" && item.flow === "none"}>
-                    {LINK_NESTING_SCOPE_LABEL[value]}
-                  </option>
-                ))}
-              </select>
+                placeholder={null}
+                onChange={(scope) => void setNestingScope(item, scope)}
+                options={LINK_NESTING_SCOPE_VALUES.map((value) => ({
+                  value,
+                  label: LINK_NESTING_SCOPE_LABEL[value],
+                  disabled: value === "upstream_in_ancestor" && item.flow === "none",
+                }))}
+              />
               <span id={`nesting-hint-${item.id}`} className="text-muted">
                 {item.flow === "none" && item.nesting_scope !== "upstream_in_ancestor"
                   ? `${strings.orgAdmin.linkTypeNestingExample[item.nesting_scope]} ${strings.orgAdmin.linkTypeNestingNeedsFlow}`

@@ -62,6 +62,7 @@ import { ReportSnippetMenu } from "./ReportSnippetMenu";
 import { ReportSnippetPicker, type SnippetPlace } from "./ReportSnippetPicker";
 import type { SnippetNoticeData } from "../hooks/useSnippetToast";
 import type { ColourContext, ColourEntry } from "../utils/reportColours";
+import { InlineSelect } from "./LabeledSelect";
 
 /** Maps each block of the workspace to its tree path (`nodes[1].children[0]`). */
 function indexPaths(ws: Blockly.WorkspaceSvg): Map<string, string> {
@@ -483,12 +484,11 @@ export function ReportLayoutBlocks({
               />
             )}
             {targets.length > 1 ? (
-              <select
-                className="input blocks-target" aria-label={text.addWhere} value={targets.indexOf(target)}
-                onChange={(e) => setChosenTarget({ selected, index: Number(e.target.value) })}
-              >
-                {targets.map((option, index) => <option key={index} value={index}>{option.label}</option>)}
-              </select>
+              <InlineSelect
+                className="blocks-target" ariaLabel={text.addWhere} value={String(targets.indexOf(target))} placeholder={null}
+                onChange={(index) => setChosenTarget({ selected, index: Number(index) })}
+                options={targets.map((option, index) => ({ value: String(index), label: option.label }))}
+              />
             ) : (
               <span className="text-muted" role="status">{target.label}</span>
             )}

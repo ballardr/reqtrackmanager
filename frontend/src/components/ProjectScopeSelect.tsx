@@ -18,6 +18,7 @@ import { useStrings } from "../context/TerminologyContext";
 import type { ProjectScope } from "../api/projectScope";
 import type { ProjectScopeState } from "../hooks/useProjectScope";
 import { Tooltip } from "./Tooltip";
+import { InlineSelect } from "./LabeledSelect";
 
 /**
  * @param scope The page's scope state (`useProjectScope`).
@@ -36,19 +37,15 @@ export function ProjectScopeSelect({
         .filter(Boolean).join(" ")
     : strings.projectScope.selectHint;
   const select = (
-    <select
-      className={`input${compact ? " project-scope-select" : ""}${compact && scope.widened ? " project-scope-select-widened" : ""}`}
-      aria-label={strings.projectScope.label}
-      aria-describedby={compact ? descriptionId : undefined}
+    <InlineSelect<ProjectScope>
+      className={`${compact ? "project-scope-select" : ""}${compact && scope.widened ? " project-scope-select-widened" : ""}`.trim() || undefined}
+      ariaLabel={strings.projectScope.label}
+      inputProps={{ "aria-describedby": compact ? descriptionId : undefined }}
       value={scope.scope}
-      onChange={(e) => scope.setScope(e.target.value as ProjectScope)}
-    >
-      {scope.available.map((option) => (
-        <option key={option} value={option}>
-          {strings.projectScope.options[option]}
-        </option>
-      ))}
-    </select>
+      placeholder={null}
+      onChange={scope.setScope}
+      options={scope.available.map((option) => ({ value: option, label: strings.projectScope.options[option] }))}
+    />
   );
   if (!compact) return select;
   return (

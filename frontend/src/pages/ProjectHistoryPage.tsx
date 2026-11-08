@@ -11,6 +11,7 @@ import { useCurrentNavLabelOverride } from "../context/NavLabelValue";
 import { useStrings } from "../context/TerminologyContext";
 import { CheckboxField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { InlineSelect } from "../components/LabeledSelect";
 
 const PAGE_SIZE = 30;
 
@@ -88,14 +89,11 @@ export function ProjectHistoryPage() {
         </label>
         <label className="row">
           {strings.history.entityType}
-          <select className="input" value={entityTypeFilter} onChange={(e) => setEntityTypeFilter(e.target.value)}>
-            <option value="">{strings.history.allEntityTypes}</option>
-            {ENTITY_TYPE_FILTER_OPTIONS.map((key) => (
-              <option key={key} value={key}>
-                {activityEntityLabel(key, orgLabelCap)}
-              </option>
-            ))}
-          </select>
+          <InlineSelect
+            ariaLabel={strings.history.entityType} value={entityTypeFilter} placeholder={strings.history.allEntityTypes}
+            onChange={setEntityTypeFilter}
+            options={ENTITY_TYPE_FILTER_OPTIONS.map((key) => ({ value: key, label: activityEntityLabel(key, orgLabelCap) }))}
+          />
         </label>
         <CheckboxField helpNotNeeded
           label={strings.history.includeComments}

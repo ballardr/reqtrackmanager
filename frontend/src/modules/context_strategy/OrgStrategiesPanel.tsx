@@ -35,7 +35,8 @@ import { useNavigate } from "react-router-dom";
 
 import { ListActions } from "../../components/ListActions";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -47,6 +48,7 @@ import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { filterString } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
   const strings = useStrings();
@@ -118,22 +120,20 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
           sectionKey="context_strategy.orgStrategies.list" total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search Strategy…" searchAriaLabel="Search organisation Strategy"
         >
-          <FilterField label={strings.filters.status}>
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StrategyStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(STRATEGY_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label={strings.filters.priority}>
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as StrategyPriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={strings.filters.status}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            allLabel="All statuses"
+            options={labelOptions(STRATEGY_STATUS_LABEL)}
+          />
+          <FilterSelect
+            label={strings.filters.priority}
+            value={priorityFilter}
+            onChange={setPriorityFilter}
+            allLabel="All priorities"
+            options={labelOptions(STRATEGY_PRIORITY_LABEL)}
+          />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

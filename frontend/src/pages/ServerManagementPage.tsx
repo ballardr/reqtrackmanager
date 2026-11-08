@@ -13,7 +13,8 @@ import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { ForceCredentialResetModal } from "../components/ForceCredentialResetModal";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { Modal } from "../components/Modal";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -444,13 +445,12 @@ function AccessReviewTab() {
               onSearchChange={setSearch}
               searchPlaceholder={strings.system.searchUsers}
             >
-              <FilterField label={strings.system.view}>
-                <select className="input" value={view} onChange={(e) => setView(e.target.value as ReviewView)}>
-                  <option value="orphaned">{strings.system.viewOrphaned}</option>
-                  <option value="server_admins">{strings.system.viewServerAdmins}</option>
-                  <option value="all">{strings.system.viewAll}</option>
-                </select>
-              </FilterField>
+              <FilterSelect
+                label={strings.system.view}
+                value={view}
+                onChange={setView}
+                options={[{ value: "orphaned", label: strings.system.viewOrphaned }, { value: "server_admins", label: strings.system.viewServerAdmins }, { value: "all", label: strings.system.viewAll }]}
+              />
               <FilterCheckbox
                 label={strings.system.includeDeactivated}
                 checked={includeDeactivated}

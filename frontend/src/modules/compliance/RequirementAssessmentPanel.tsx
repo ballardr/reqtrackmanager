@@ -60,7 +60,7 @@ import {
   userDisplayName,
 } from "./types";
 import { TextAreaField } from "../../components/FormFields";
-import { LabeledSelect } from "../../components/LabeledSelect";
+import { InlineSelect, LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { COMPLIANCE_HELP } from "./help";
@@ -464,12 +464,11 @@ export function RequirementAssessmentPanel({
           <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
             {linkableEvidence.length > 0 && (
               <>
-                <select className="input" value={linkEvidenceId} onChange={(e) => setLinkEvidenceId(e.target.value)} aria-label="Link existing evidence">
-                  <option value="">Select evidence to link…</option>
-                  {linkableEvidence.map((e) => (
-                    <option key={e.id} value={e.id}>{e.title}</option>
-                  ))}
-                </select>
+                <InlineSelect
+                  ariaLabel="Link existing evidence" value={linkEvidenceId} placeholder="Select evidence to link…"
+                  onChange={setLinkEvidenceId}
+                  options={linkableEvidence.map((e) => ({ value: e.id, label: e.title }))}
+                />
                 <button className="btn" disabled={!linkEvidenceId} onClick={linkEvidence}>Link</button>
               </>
             )}

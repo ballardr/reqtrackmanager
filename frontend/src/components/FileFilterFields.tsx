@@ -6,10 +6,10 @@
  *
  * The state lives in the page (`useFileFilters`), so each page adds its own scope control beside these fields.
  */
-import { PROJECT_FILE_SOURCES, type ProjectFileKind, type ProjectFileSource, type ProjectFileUploader } from "../api/types";
+import { PROJECT_FILE_SOURCES, type ProjectFileUploader } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { FILE_KINDS, type FileFilterState } from "../hooks/useFileFilters";
-import { FilterField } from "./FilterPanel";
+import { FilterSelect } from "./FilterSelect";
 import { DateField } from "./FormFields";
 
 /**
@@ -20,30 +20,27 @@ export function FileFilterFields({ filters, uploaders }: { filters: FileFilterSt
   const strings = useStrings();
   return (
     <>
-      <FilterField label={strings.files.filterSource}>
-        <select className="input" value={filters.source} onChange={(e) => filters.setSource(e.target.value as ProjectFileSource | "")}>
-          <option value="">{strings.files.allSources}</option>
-          {PROJECT_FILE_SOURCES.map((s) => (
-            <option key={s} value={s}>{strings.files.sources[s]}</option>
-          ))}
-        </select>
-      </FilterField>
-      <FilterField label={strings.files.filterKind}>
-        <select className="input" value={filters.kind} onChange={(e) => filters.setKind(e.target.value as ProjectFileKind | "")}>
-          <option value="">{strings.files.allKinds}</option>
-          {FILE_KINDS.map((k) => (
-            <option key={k} value={k}>{strings.files.kinds[k]}</option>
-          ))}
-        </select>
-      </FilterField>
-      <FilterField label={strings.files.filterUploader}>
-        <select className="input" value={filters.uploader} onChange={(e) => filters.setUploader(e.target.value)}>
-          <option value="">{strings.files.allUploaders}</option>
-          {uploaders.map((u) => (
-            <option key={u.id} value={u.id}>{u.display_name}</option>
-          ))}
-        </select>
-      </FilterField>
+      <FilterSelect
+        label={strings.files.filterSource}
+        value={filters.source}
+        onChange={filters.setSource}
+        allLabel={strings.files.allSources}
+        options={PROJECT_FILE_SOURCES.map((s) => ({ value: s, label: strings.files.sources[s] }))}
+      />
+      <FilterSelect
+        label={strings.files.filterKind}
+        value={filters.kind}
+        onChange={filters.setKind}
+        allLabel={strings.files.allKinds}
+        options={FILE_KINDS.map((k) => ({ value: k, label: strings.files.kinds[k] }))}
+      />
+      <FilterSelect
+        label={strings.files.filterUploader}
+        value={filters.uploader}
+        onChange={filters.setUploader}
+        allLabel={strings.files.allUploaders}
+        options={uploaders.map((u) => ({ value: u.id, label: u.display_name }))}
+      />
       <DateField helpNotNeeded label={strings.files.uploadedFrom} value={filters.from} onChange={filters.setFrom} inputProps={{ max: filters.to || undefined }} />
       <DateField helpNotNeeded label={strings.files.uploadedTo} value={filters.to} onChange={filters.setTo} inputProps={{ min: filters.from || undefined }} />
     </>

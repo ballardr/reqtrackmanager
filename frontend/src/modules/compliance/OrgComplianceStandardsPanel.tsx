@@ -63,7 +63,8 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
-import { FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -394,66 +395,50 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
       </div>
 
       <FilterPanel sectionKey="orgCompliance.standards" matching={filteredRows.length} total={statusRows.length}>
-        <FilterField label={strings.filters.groupBy}>
-          <select
-            className="input"
-            value={groupBy}
-            onChange={(e) => {
-              setGroupBy(e.target.value as GroupBy);
+        <FilterSelect
+          label={strings.filters.groupBy}
+          value={groupBy}
+          onChange={(v) => {
+              setGroupBy(v);
               // Different group keys (project ids vs standard ids) can
               // coincidentally overlap in value; simplest to just start
               // collapsed again rather than risk a stale expand carrying
               // over onto an unrelated group under the new pivot.
               setExpandedGroupKeys(new Set());
             }}
-          >
-            <option value="standard">Standard</option>
-            <option value="project">Project</option>
-          </select>
-        </FilterField>
-        <FilterField label={COMPLIANCE_FILTER_LABEL.standard}>
-          <select
-            className="input"
-            value={standardFilter}
-            onChange={(e) => {
-              setStandardFilter(e.target.value);
+          options={[{ value: "standard", label: "Standard" }, { value: "project", label: "Project" }]}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standard}
+          value={standardFilter}
+          onChange={(v) => {
+              setStandardFilter(v);
               setVersionFilter("");
             }}
-          >
-            <option value="">All standards</option>
-            {standards.map((s) => (
-              <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label={COMPLIANCE_FILTER_LABEL.standardVersion}>
-          <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)}>
-            <option value="">All versions</option>
-            {versions.map((v) => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label={strings.filters.project}>
-          <select className="input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">{strings.filters.allProjects}</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label="Compliance state">
-          <select
-            className="input"
-            value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value as ComplianceOverallState | "")}
-          >
-            <option value="">All states</option>
-            {(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => (
-              <option key={state} value={state}>{COMPLIANCE_OVERALL_STATE_LABEL[state]}</option>
-            ))}
-          </select>
-        </FilterField>
+          allLabel="All standards"
+          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standardVersion}
+          value={versionFilter}
+          onChange={setVersionFilter}
+          allLabel="All versions"
+          options={versions.map((v) => ({ value: v.id, label: v.label }))}
+        />
+        <FilterSelect
+          label={strings.filters.project}
+          value={projectFilter}
+          onChange={setProjectFilter}
+          allLabel={strings.filters.allProjects}
+          options={projects.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <FilterSelect
+          label="Compliance state"
+          value={stateFilter}
+          onChange={setStateFilter}
+          allLabel="All states"
+          options={(Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[]).map((state) => ({ value: state, label: COMPLIANCE_OVERALL_STATE_LABEL[state] }))}
+        />
       </FilterPanel>
     </div>
   );

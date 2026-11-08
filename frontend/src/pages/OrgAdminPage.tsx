@@ -71,7 +71,8 @@ import { DirectoryTable } from "../components/DirectoryTable";
 import { EntitySwitcher } from "../components/EntitySwitcher";
 import { FileDetailsToggle } from "../components/FileDetailsPanel";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
@@ -2671,18 +2672,13 @@ export function OrgAdminPage() {
                       while this page stays mounted behind it, so an
                       unscoped `getByLabel("Role")` while both are visible
                       would otherwise be ambiguous. */}
-                  <FilterField label={strings.orgAdmin.orgRole(orgLabelCap)}>
-                    <select
-                      className="input"
-                      value={userRoleFilter}
-                      onChange={(e) => applyUserFilters({ role: e.target.value as OrgRole | "" })}
-                    >
-                      <option value="">{strings.orgAdmin.allRoles}</option>
-                      <option value="member">{ORG_ROLE_LABEL.member}</option>
-                      <option value="project_creator">{ORG_ROLE_LABEL.project_creator}</option>
-                      <option value="org_admin">{ORG_ROLE_LABEL.org_admin}</option>
-                    </select>
-                  </FilterField>
+                  <FilterSelect
+                    label={strings.orgAdmin.orgRole(orgLabelCap)}
+                    value={userRoleFilter}
+                    onChange={(v) => applyUserFilters({ role: v })}
+                    allLabel={strings.orgAdmin.allRoles}
+                    options={[{ value: "member", label: ORG_ROLE_LABEL.member }, { value: "project_creator", label: ORG_ROLE_LABEL.project_creator }, { value: "org_admin", label: ORG_ROLE_LABEL.org_admin }]}
+                  />
                   <FilterCheckbox
                     label={strings.orgAdmin.filterStale}
                     checked={userFilterStale}

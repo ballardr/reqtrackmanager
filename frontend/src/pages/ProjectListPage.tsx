@@ -21,7 +21,8 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Badge } from "../components/Badge";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Modal } from "../components/Modal";
@@ -42,7 +43,7 @@ import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
 import { TextField } from "../components/FormFields";
-import { LabeledSelect } from "../components/LabeledSelect";
+import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
@@ -362,43 +363,36 @@ export function ProjectListPage() {
           >
             <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
             <FilterCheckbox label={strings.projects.showTemplates} checked={showTemplates} onChange={setShowTemplates} />
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
-                <option value="active">{strings.projects.active}</option>
-                <option value="archived">{strings.projects.archived}</option>
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={showArchived ? "archived" : "active"}
+              onChange={(v) => setShowArchived(v === "archived")}
+              options={[{ value: "active", label: strings.projects.active }, { value: "archived", label: strings.projects.archived }]}
+            />
             {orgs.length > 1 && (
-              <FilterField label={orgLabelCap}>
-                <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
-                  <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
-                  {orgs.map((o) => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-              </FilterField>
+              <FilterSelect
+                label={orgLabelCap}
+                value={orgFilter}
+                onChange={setOrgFilter}
+                allLabel={strings.projects.allOrganisations(orgLabelPlural)}
+                options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+              />
             )}
-            <FilterField label={strings.filters.role}>
-              <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
-                <option value="">{strings.projects.allRoles}</option>
-                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-              </select>
-            </FilterField>
-            <FilterField label={strings.projects.stagePhaseKindLabel} help={strings.help.stagePhaseKindFilter}>
-              <select
-                className="input"
-                value={stagePhaseKindFilter}
-                onChange={(e) => setStagePhaseKindFilter(e.target.value as StagePhaseKind | "")}
-              >
-                <option value="">{strings.projects.allStages}</option>
-                {STAGE_PHASE_KINDS.map((kind) => (
-                  <option key={kind} value={kind}>{STAGE_PHASE_KIND_LABEL[kind]}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.role}
+              value={roleFilter}
+              onChange={setRoleFilter}
+              allLabel={strings.projects.allRoles}
+              options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }, { value: "member", label: PROJECT_ROLE_LABEL.member }]}
+            />
+            <FilterSelect
+              label={strings.projects.stagePhaseKindLabel}
+              help={strings.help.stagePhaseKindFilter}
+              value={stagePhaseKindFilter}
+              onChange={setStagePhaseKindFilter}
+              allLabel={strings.projects.allStages}
+              options={STAGE_PHASE_KINDS.map((kind) => ({ value: kind, label: STAGE_PHASE_KIND_LABEL[kind] }))}
+            />
           </FilterPanel>
         }
       >
@@ -524,11 +518,10 @@ export function ProjectListPage() {
             {viewMode === "tree" && hasHierarchy && (
               <div className="stack">
                 {orgsWithHierarchy.length > 1 && (
-                  <select className="input" style={{ maxWidth: 280 }} aria-label={orgLabelCap} value={treeOrgId} onChange={(e) => setTreeOrgId(e.target.value)}>
-                    {orgsWithHierarchy.map((o) => (
-                      <option key={o.id} value={o.id}>{o.name}</option>
-                    ))}
-                  </select>
+                  <InlineSelect
+                    maxWidth={280} ariaLabel={orgLabelCap} value={treeOrgId} placeholder={null} onChange={setTreeOrgId}
+                    options={orgsWithHierarchy.map((o) => ({ value: o.id, label: o.name }))}
+                  />
                 )}
                 {!treeNodes && <Spinner />}
                 {treeNodes && (

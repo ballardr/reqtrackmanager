@@ -24,6 +24,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { MODULE_AVAILABILITY_LABEL, type ModuleAvailability } from "../api/types";
 import { t } from "../i18n/strings";
+import { InlineSelect } from "./LabeledSelect";
 
 const strings = t();
 
@@ -158,18 +159,13 @@ export function ModuleAvailabilitySelect({
   disabled?: boolean;
 }) {
   return (
-    <select
-      className="input"
-      aria-label={label}
+    <InlineSelect
+      ariaLabel={label}
       value={value}
       disabled={disabled}
-      onChange={(e) => onChange(e.target.value as ModuleAvailability)}
-    >
-      {AVAILABILITY_OPTIONS.map((option) => (
-        <option key={option} value={option}>
-          {MODULE_AVAILABILITY_LABEL[option]}
-        </option>
-      ))}
-    </select>
+      placeholder={null}
+      onChange={onChange}
+      options={AVAILABILITY_OPTIONS.map((option) => ({ value: option, label: MODULE_AVAILABILITY_LABEL[option] }))}
+    />
   );
 }

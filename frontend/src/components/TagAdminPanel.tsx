@@ -145,23 +145,19 @@ export function TagAdminPanel({ api, scope }: { api: TagAdminApi; scope: "projec
     <div className="stack">
       <p className="text-muted" style={{ margin: 0 }}>{scope === "project" ? text.description : text.orgDescription}</p>
 
-      <FilterField label={text.modeLabel}>
-        <select
-          className="input"
-          style={{ maxWidth: 320 }}
-          aria-label={text.modeLabel}
-          value={modeValue}
-          onChange={(e) => {
-            const value = e.target.value;
-            void run(async () => {
-              await api.setMode(value === "inherit" ? null : (value as TagMode));
-              return text.modeSaved;
-            });
-          }}
-        >
-          {modes.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-        </select>
-      </FilterField>
+      <LabeledSelect
+        helpNotNeeded
+        label={text.modeLabel}
+        value={modeValue}
+        placeholder={null}
+        options={modes}
+        onChange={(value) =>
+          void run(async () => {
+            await api.setMode(value === "inherit" ? null : (value as TagMode));
+            return text.modeSaved;
+          })
+        }
+      />
       {scope === "project" && vocabulary.has_parent && vocabulary.own_mode === null && (
         <p className="text-muted" style={{ margin: 0 }}>
           {text.modeInheritedHint(vocabulary.mode === "restricted" ? text.modeRestricted : text.modeFree)}

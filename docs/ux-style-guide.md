@@ -442,7 +442,7 @@ Use this for any file input whose selection acts immediately (an attachment, an 
 
 *(New 2026-08-24 — see [docs/plans/completed/ux-audit-2026-08.md](plans/completed/ux-audit-2026-08.md) roadmap, "Document `FilterPanel` as its own style guide `Pattern:`". Documents an existing, working component that had never been given its own write-up — the same "built, working, never named" gap `FilterBadge` and `ViewToggle` both had before their own sections above.)*
 
-`FilterPanel`/`FilterField`/`FilterCheckbox` (`frontend/src/components/FilterPanel.tsx`) is the right-hand narrowing-filter sidebar: a plain `.card.stack` shell (`FilterPanel`) holding one or more labelled controls (`FilterField` wraps a `<label>` around its child, giving every filter control a real accessible name for free — no separate `aria-label` needed; `FilterCheckbox` is the boolean equivalent for a plain toggle like "unread only"). By default (`layout="side"`) it sits in the same `.side-grid` layout slot: list/table content on the left, `FilterPanel` on the right, both visible at once — see "Pattern: filter panel placement — side vs. top" below for the `layout="top"` alternative used above a handful of wide, many-column tables. *(Header/body split below, 2026-08-27: on desktop this whole panel is still never collapsed behind a menu; below the mobile breakpoint the filter *body* specifically does collapse — the header never does. This applies to both layouts.)*
+`FilterPanel`/`FilterField`/`FilterCheckbox` (`frontend/src/components/FilterPanel.tsx`) is the right-hand narrowing-filter sidebar: a plain `.card.stack` shell (`FilterPanel`) holding one or more labelled controls (a single-choice filter is a `FilterSelect`, which wraps `FilterField` around a `select.input` and names it from the caption; `FilterField` itself wraps a `<label>` around any other child, giving it a real accessible name for free; `FilterCheckbox` is the boolean equivalent for a plain toggle like "unread only"). By default (`layout="side"`) it sits in the same `.side-grid` layout slot: list/table content on the left, `FilterPanel` on the right, both visible at once — see "Pattern: filter panel placement — side vs. top" below for the `layout="top"` alternative used above a handful of wide, many-column tables. *(Header/body split below, 2026-08-27: on desktop this whole panel is still never collapsed behind a menu; below the mobile breakpoint the filter *body* specifically does collapse — the header never does. This applies to both layouts.)*
 
 Reach for it when a list page needs one or more controls that *narrow which rows are shown* — a status/role/stage/component select, a reviewer or action-type picker, a boolean like "only watched" or "include archived." It is specifically for narrowing filters, not for the page's primary actions or a tile/list `ViewToggle` — those stay in the main content area above the list, matching the split every current call site already uses (see the "Consolidate filter UI onto `FilterPanel` everywhere needed" roadmap item, which moved four pages onto this exact split rather than inventing a new one). A page's free-text search box is different: see the header/body split below — it now lives in `FilterPanel`'s own header on the two pages that have one. Six pages use it today: `RequirementsPage.tsx` and `ChangeRequestsPage.tsx` (the original two, Status/Category/Target-version/Reviewer-shaped selects), `ProjectListPage.tsx` (Status/Organisation/Role/Stage-status), `ProjectReviewsDuePage.tsx` (Component/Reviewer), `ProjectActionsPage.tsx` (Action type/Outcome), `ServerOrganisationsPage.tsx` (Status), and `NotificationsPage.tsx` (a single `FilterCheckbox`, "Unread only" — no `FilterField` selects, proving the panel doesn't require multiple controls to earn its place).
 
@@ -933,6 +933,24 @@ A **chip** is a value the user can act on (a tag, a removable item), as opposed 
 - **A control that looks like a chip is a chip.** It takes `.chip`, so it inherits the height; an icon-only one is square (`width: var(--chip-height)`, as `.tag-add` is). A chip whose label wraps may grow past the minimum; nothing else may.
 - **Checked** by the `TagInput` story and the tags Playwright spec, which compare the `[+]`'s height with a tag chip's.
 
+## Pattern: selects
+
+*(New 2026-11-09 — the UI/UX review found 117 hand-written `<select className="input">` elements, each choosing its own caption, "All" entry and accessible name.)*
+
+One component per place a single-choice select appears; a `<select>` is never written by hand outside them.
+
+| Where | Component | Notes |
+| --- | --- | --- |
+| A narrowing filter in a filter panel | `FilterSelect` (`components/FilterSelect.tsx`) | Caption (`label`, optional `help`), `allLabel` for the entry that clears the filter, `options`. The select is named by its caption. |
+| A field in a form | `LabeledSelect` | Caption, `help` or `helpNotNeeded`, `required`. |
+| A control in a row of other controls with no caption | `InlineSelect` | `ariaLabel` is required; `autoWidth`, `maxWidth`, per-option `disabled` and `group` (an `<optgroup>`) are supported. |
+
+- **Typed to the enum.** `value` and `onChange` take the option values' type, so a status filter is `RequirementStatus | ""`, not `string`; `labelOptions(REQUIREMENT_STATUS_LABEL)` (`utils/labelOptions.ts`) builds the options from the existing label map (Principle 12), never from the raw enum string.
+- **"All" is `""`.** `allLabel` shows the leading entry; a select that always holds a value (a model switcher) omits it, and `InlineSelect` passes `placeholder={null}`.
+- **Explanation goes in `help`**, one line per option ([Pattern: explain in help](#pattern-explain-in-help-not-in-the-layout)); with `help` the caption and select are siblings, so the select names itself with `aria-label`, which the components set.
+- **Checked** by `scripts/check_select_components.py` (pinned by `backend/tests/test_select_components.py`, empty baseline): a raw `<select` outside `FilterSelect.tsx` and `LabeledSelect.tsx` fails. Stories are excluded.
+- Reason: every select then has the same caption, "All" entry, accessible name and chevron, and a change to one (for example a new keyboard behaviour) reaches all of them.
+
 ## Pattern: dropdown chevrons
 
 *(New 2026-10-20 — from user review of the Pain Points filter panel, where the chevrons of the selects sat at different distances from the right edge, and none matched the Tags dropdown's.)*
@@ -940,7 +958,7 @@ A **chip** is a value the user can act on (a tag, a removable item), as opposed 
 Every single-value `<select className="input">` draws **one chevron, in one place**, so a panel of selects and custom dropdowns reads as one set. The browser's own arrow is not used: it sits at a different distance, and at a different size, in each browser, and it never matched the custom dropdowns.
 
 - **The chevron is the lucide `ChevronDown`, 14px, in the theme's text colour,** drawn by `select.input` itself (`appearance: none`, a background image from the per-theme `--select-chevron` token) **0.6rem from the right edge**, which is where a custom dropdown (`MultiSelectDropdown`, the tag filter) puts its own `ChevronDown` (14px, at the trigger's 0.6rem padding). Right padding keeps the value text clear of it.
-- **No page styles it.** Never set `appearance`, a background image or extra right padding on a select at a call site, and never use a bare `<select>` without `.input`; use `LabeledSelect` or a `FilterField` around `select.input`.
+- **No page styles it.** Never set `appearance`, a background image or extra right padding on a select at a call site, and never write a `<select>` by hand; use `FilterSelect`, `LabeledSelect` or `InlineSelect` ([Pattern: selects](#pattern-selects)).
 - **A custom dropdown matches.** A new dropdown built from a button shows `ChevronDown` at size 14 at the trigger's right padding, never nearer to the edge.
 - **A multi-line select** (`multiple`, `size`) has no chevron and keeps its native look.
 - **Checked** by the `LabeledSelect` story `SelectChevronsLineUpWithTheCustomDropdown`, which compares the select's chevron gap with the dropdown's.

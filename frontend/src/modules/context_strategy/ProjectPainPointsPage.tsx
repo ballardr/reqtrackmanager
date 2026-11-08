@@ -46,7 +46,8 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { RecordGrid } from "../../components/RecordGrid";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
@@ -81,6 +82,7 @@ import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
@@ -300,29 +302,27 @@ export function ProjectPainPointsPage() {
             sectionKey="context_strategy.pain_points.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Pain Points…" searchAriaLabel="Search Pain Points"
           >
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PainPointStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(PAIN_POINT_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.filters.priority}>
-              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as PainPointPriority | "")}>
-                <option value="">All priorities</option>
-                {Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.filters.scoring}>
-              <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
-                <option value="">Any scoring</option>
-                <option value="yes">Scored</option>
-                <option value="no">Not scored</option>
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(PAIN_POINT_STATUS_LABEL)}
+            />
+            <FilterSelect
+              label={strings.filters.priority}
+              value={priorityFilter}
+              onChange={setPriorityFilter}
+              allLabel="All priorities"
+              options={labelOptions(PAIN_POINT_PRIORITY_LABEL)}
+            />
+            <FilterSelect
+              label={strings.filters.scoring}
+              value={scoredFilter}
+              onChange={setScoredFilter}
+              allLabel="Any scoring"
+              options={[{ value: "yes", label: "Scored" }, { value: "no", label: "Not scored" }]}
+            />
             <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
             <FilterCheckbox

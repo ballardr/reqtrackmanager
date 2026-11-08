@@ -27,6 +27,7 @@ import {
 import { ApiError } from "../api/client";
 import { CheckboxField, DateField } from "../components/FormFields";
 import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { ItemRow } from "../components/ItemRow";
 import { LoadMoreButton } from "../components/LoadMoreButton";
@@ -213,31 +214,20 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
             searchPlaceholder={strings.search.placeholder}
             searchAriaLabel={strings.search.queryLabel}
           >
-            <FilterField label={strings.search.scope}>
-              <select className="input" aria-label={strings.search.scope} value={selectedScopeKey} onChange={(e) => chooseScope(e.target.value)}>
-                {scopeChoices.map((c) => (
-                  <option key={scopeKey(c)} value={scopeKey(c)}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.search.scope}
+              value={selectedScopeKey}
+              onChange={chooseScope}
+              options={scopeChoices.map((c) => ({ value: scopeKey(c), label: c.label }))}
+            />
             {organizations.length > 1 && (
-              <FilterField label={strings.search.organisation}>
-                <select
-                  className="input"
-                  aria-label={strings.search.organisation}
-                  value={state.organizationId ?? ""}
-                  onChange={(e) => update({ organizationId: e.target.value || null })}
-                >
-                  <option value="">{strings.search.allOrganisations}</option>
-                  {organizations.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.name}
-                    </option>
-                  ))}
-                </select>
-              </FilterField>
+              <FilterSelect
+                label={strings.search.organisation}
+                value={state.organizationId ?? ""}
+                onChange={(v) => update({ organizationId: v || null })}
+                allLabel={strings.search.allOrganisations}
+                options={organizations.map((o) => ({ value: o.id, label: o.name }))}
+              />
             )}
             <FilterField label={strings.search.recordType}>
               <MultiSelectDropdown
@@ -299,18 +289,18 @@ export function SearchPage({ api = searchApi }: { api?: SearchApi }) {
                 onChange={(keys) => update({ fields: keys })}
               />
             </FilterField>
-            <FilterField label={strings.search.match}>
-              <select className="input" aria-label={strings.search.match} value={state.match} onChange={(e) => update({ match: e.target.value as SearchPageState["match"] })}>
-                <option value="contains">{strings.search.matchContains}</option>
-                <option value="phrase">{strings.search.matchPhrase}</option>
-              </select>
-            </FilterField>
-            <FilterField label={strings.search.sort}>
-              <select className="input" aria-label={strings.search.sort} value={state.sort} onChange={(e) => update({ sort: e.target.value as SearchPageState["sort"] })}>
-                <option value="relevance">{strings.search.sortRelevance}</option>
-                <option value="updated">{strings.search.sortUpdated}</option>
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.search.match}
+              value={state.match}
+              onChange={(v) => update({ match: v })}
+              options={[{ value: "contains", label: strings.search.matchContains }, { value: "phrase", label: strings.search.matchPhrase }]}
+            />
+            <FilterSelect
+              label={strings.search.sort}
+              value={state.sort}
+              onChange={(v) => update({ sort: v })}
+              options={[{ value: "relevance", label: strings.search.sortRelevance }, { value: "updated", label: strings.search.sortUpdated }]}
+            />
             {filterCount > 0 && (
               <button type="button" className="btn" onClick={clearFilters}>
                 {strings.search.clearFilters}

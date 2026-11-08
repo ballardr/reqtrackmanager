@@ -14,7 +14,8 @@ import type {
 } from "../api/types";
 import { ENTITY_ACCENT_COLOR, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_ACTION_OUTCOME_TONE } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { SortableHeader } from "../components/SortableHeader";
@@ -186,26 +187,20 @@ export function ProjectActionsPage() {
         records={{ projectId: projectId ?? "", recordType: "requirement_action", filters: filterParams().toString(), onImported: reload }}
         filter={
           <FilterPanel sectionKey="projectActionsFilters">
-            <FilterField label={strings.actions.actionType}>
-              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="">{strings.actions.allTypes}</option>
-                {actionTypes.map((at) => (
-                  <option key={at.id} value={at.id}>
-                    {at.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.actions.outcome}>
-              <select className="input" value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value as RequirementActionOutcome | "")}>
-                <option value="">{strings.actions.allOutcomes}</option>
-                {OUTCOME_OPTIONS.map((o) => (
-                  <option key={o} value={o}>
-                    {REQUIREMENT_ACTION_OUTCOME_LABEL[o]}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.actions.actionType}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              allLabel={strings.actions.allTypes}
+              options={actionTypes.map((at) => ({ value: at.id, label: at.name }))}
+            />
+            <FilterSelect
+              label={strings.actions.outcome}
+              value={outcomeFilter}
+              onChange={setOutcomeFilter}
+              allLabel={strings.actions.allOutcomes}
+              options={OUTCOME_OPTIONS.map((o) => ({ value: o, label: REQUIREMENT_ACTION_OUTCOME_LABEL[o] }))}
+            />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
             <FilterCheckbox label={strings.actions.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />

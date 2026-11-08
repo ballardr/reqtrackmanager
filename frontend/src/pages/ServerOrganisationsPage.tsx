@@ -10,7 +10,8 @@ import { ActionMenu } from "../components/ActionMenu";
 import { BundleImportDialog } from "../components/BundleImportDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { Modal } from "../components/Modal";
 import { Spinner } from "../components/Spinner";
@@ -199,13 +200,12 @@ export function ServerOrganisationsPage() {
         }
         filter={
           <FilterPanel sectionKey="serverOrganisationsFilters">
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
-                <option value="active">{strings.serverOrgs.active}</option>
-                <option value="disabled">{strings.serverOrgs.disabled}</option>
-                <option value="all">{strings.serverOrgs.filterAll}</option>
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[{ value: "active", label: strings.serverOrgs.active }, { value: "disabled", label: strings.serverOrgs.disabled }, { value: "all", label: strings.serverOrgs.filterAll }]}
+            />
           </FilterPanel>
         }
       >

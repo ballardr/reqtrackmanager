@@ -31,7 +31,8 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -61,6 +62,7 @@ import { useTagFilter } from "../../hooks/useTagFilter";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { TagFilterField } from "../../components/TagFilterField";
 import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 type View = "register" | "matrix";
 
@@ -247,22 +249,20 @@ export function ProjectRisksPage() {
             sectionKey="risks.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search risks…" searchAriaLabel="Search risks"
           >
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RiskStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(RISK_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Risk type">
-              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="">All types</option>
-                {riskTypes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(RISK_STATUS_LABEL)}
+            />
+            <FilterSelect
+              label="Risk type"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              allLabel="All types"
+              options={riskTypes.map((t) => ({ value: t.id, label: t.name }))}
+            />
             <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
             <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />

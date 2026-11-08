@@ -18,6 +18,7 @@ import type { TagFilterState } from "../hooks/useTagFilter";
 import { useStrings } from "../context/TerminologyContext";
 import { ComponentFilterField } from "./ComponentFilterField";
 import { FilterField } from "./FilterPanel";
+import { FilterSelect } from "./FilterSelect";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 
 /**
@@ -66,17 +67,12 @@ export function TagFilterField({
         />
       </FilterField>
       {filter.tags.length > 1 && (
-        <FilterField label={strings.tags.filter.matchLabel}>
-          <select
-            className="input"
-            aria-label={strings.tags.filter.matchLabel}
-            value={filter.mode}
-            onChange={(e) => filter.setMode(e.target.value as "any" | "all")}
-          >
-            <option value="any">{strings.tags.filter.any}</option>
-            <option value="all">{strings.tags.filter.all}</option>
-          </select>
-        </FilterField>
+        <FilterSelect
+          label={strings.tags.filter.matchLabel}
+          value={filter.mode}
+          onChange={filter.setMode}
+          options={[{ value: "any", label: strings.tags.filter.any }, { value: "all", label: strings.tags.filter.all }]}
+        />
       )}
       {componentFilter}
     </>

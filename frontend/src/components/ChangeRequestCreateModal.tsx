@@ -41,11 +41,12 @@ import { CustomFieldsForm } from "./CustomFieldsForm";
 import { FormActions } from "./FormActions";
 import { CheckboxField, TextAreaField, TextField } from "./FormFields";
 import { FormGrid, FormGridFull } from "./FormGrid";
-import { LabeledSelect } from "./LabeledSelect";
+import { InlineSelect, LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 import { PrincipalPicker } from "./PrincipalPicker";
 import { ProposedLinksEditor } from "./ProposedLinksEditor";
 import { TagField } from "./TagField";
+import { labelOptions } from "../utils/labelOptions";
 
 interface ProposedFields {
   name: string;
@@ -290,29 +291,23 @@ export function ChangeRequestCreateModal({
         );
       case "target_stage_id":
         return (
-          <select
-            className="input"
+          <InlineSelect
+            ariaLabel={CHANGEABLE_FIELD_LABEL.target_stage_id}
             value={proposed.targetStageId}
-            onChange={(e) => setProposed((p) => ({ ...p, targetStageId: e.target.value }))}
-          >
-            {stages.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
+            placeholder={null}
+            onChange={(targetStageId) => setProposed((p) => ({ ...p, targetStageId }))}
+            options={stages.map((s) => ({ value: s.id, label: s.name }))}
+          />
         );
       case "level":
         return (
-          <select
-            className="input"
+          <InlineSelect<RequirementLevel>
+            ariaLabel={CHANGEABLE_FIELD_LABEL.level}
             value={proposed.level}
-            onChange={(e) => setProposed((p) => ({ ...p, level: e.target.value as RequirementLevel }))}
-          >
-            <option value="requirement">{REQUIREMENT_LEVEL_LABEL.requirement}</option>
-            <option value="recommended">{REQUIREMENT_LEVEL_LABEL.recommended}</option>
-            <option value="optional">{REQUIREMENT_LEVEL_LABEL.optional}</option>
-          </select>
+            placeholder={null}
+            onChange={(level) => setProposed((p) => ({ ...p, level }))}
+            options={labelOptions(REQUIREMENT_LEVEL_LABEL)}
+          />
         );
       case "review_date":
         return (

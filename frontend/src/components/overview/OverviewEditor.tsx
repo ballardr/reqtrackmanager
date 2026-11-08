@@ -36,6 +36,7 @@ import { Spinner } from "../Spinner";
 import { titleOf } from "./overviewTitles";
 import { OverviewWidgetGrid } from "./OverviewWidgetGrid";
 import { OverviewWidgetSettings } from "./OverviewWidgetSettings";
+import { InlineSelect } from "../LabeledSelect";
 
 /** Where the editor reads and writes: one project's own layout, or the organisation's default. */
 export type OverviewEditTarget = { kind: "project"; projectId: string } | { kind: "organisation"; organizationId: string };
@@ -131,23 +132,21 @@ export function OverviewEditor({
           error={saveError} saveLabel={t.save} onSave={() => void save()} onCancel={() => (dirty ? setConfirm("discard") : onCancel())}
           leading={(
             <span className="row" style={{ alignItems: "center", flexWrap: "wrap" }}>
-              <select
-                className="input" aria-label={t.addWidget} value="" disabled={atCap} style={{ width: "auto" }}
-                onChange={(e) => add(e.target.value)}
-              >
-                <option value="">{t.addWidget}</option>
-                {catalogue.widget_types.map((w) => <option key={w.key} value={w.key}>{t.typeLabel[w.key] ?? w.label}</option>)}
-              </select>
+              <InlineSelect
+                autoWidth ariaLabel={t.addWidget} value="" placeholder={t.addWidget} disabled={atCap}
+                onChange={add}
+                options={catalogue.widget_types.map((w) => ({ value: w.key, label: t.typeLabel[w.key] ?? w.label }))}
+              />
               {(scopes.length > 1 || draft.scope !== "this") && (
                 <>
-                  <select
-                    className="input" aria-label={strings.projectScope.label} value={draft.scope} style={{ width: "auto" }}
-                    onChange={(e) => setDraft({ ...draft, scope: e.target.value as OverviewScope })}
-                  >
-                    {PROJECT_SCOPES.filter((scope) => scopes.includes(scope) || scope === draft.scope).map((scope) => (
-                      <option key={scope} value={scope}>{strings.projectScope.options[scope]}</option>
-                    ))}
-                  </select>
+                  <InlineSelect<OverviewScope>
+                    autoWidth ariaLabel={strings.projectScope.label} value={draft.scope} placeholder={null}
+                    onChange={(scope) => setDraft({ ...draft, scope })}
+                    options={PROJECT_SCOPES.filter((scope) => scopes.includes(scope) || scope === draft.scope).map((scope) => ({
+                      value: scope,
+                      label: strings.projectScope.options[scope],
+                    }))}
+                  />
                   <FieldHelp label={strings.projectScope.label} help={strings.help.overviewScope} />
                 </>
               )}

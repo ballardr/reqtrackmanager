@@ -24,7 +24,8 @@ import {
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RequirementCreateModal } from "../components/RequirementCreateModal";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
@@ -52,6 +53,7 @@ import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 import { addSharedListFilters } from "../utils/listFilterParams";
+import { InlineSelect } from "../components/LabeledSelect";
 
 const PAGE_SIZE = 30;
 
@@ -414,59 +416,44 @@ export function RequirementsPage() {
             onSearchChange={setSearch}
             searchPlaceholder={strings.requirements.search}
           >
-            <FilterField label={strings.filters.status}>
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
-                <option value="">All statuses</option>
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {REQUIREMENT_STATUS_LABEL[s]}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.targetVersionFrom}>
-              <select className="input" value={stageFrom} onChange={(e) => setStageRange(e.target.value, stageTo)}>
-                <option value="">{strings.requirements.firstVersion}</option>
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.targetVersionTo}>
-              <select className="input" value={stageTo} onChange={(e) => setStageRange(stageFrom, e.target.value)}>
-                <option value="">{strings.requirements.lastVersion}</option>
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.component}>
-              <select className="input" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value)}>
-                <option value="">{strings.requirements.allComponents}</option>
-                {components.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.category}>
-              <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                <option value="">{strings.requirements.allCategories}</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={STATUS_OPTIONS.map((s) => ({ value: s, label: REQUIREMENT_STATUS_LABEL[s] }))}
+            />
+            <FilterSelect
+              label={strings.requirements.targetVersionFrom}
+              value={stageFrom}
+              onChange={(v) => setStageRange(v, stageTo)}
+              allLabel={strings.requirements.firstVersion}
+              options={stages.map((s) => ({ value: s.id, label: s.name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.targetVersionTo}
+              value={stageTo}
+              onChange={(v) => setStageRange(stageFrom, v)}
+              allLabel={strings.requirements.lastVersion}
+              options={stages.map((s) => ({ value: s.id, label: s.name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.component}
+              value={componentFilter}
+              onChange={setComponentFilter}
+              allLabel={strings.requirements.allComponents}
+              options={components.map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.category}
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              allLabel={strings.requirements.allCategories}
+              options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            />
             {/* C-G-11: completion is now an independent overlay marker, not a
                 status value — a separate checkbox alongside the Status
-                <select> above rather than one of its options. */}
+                select above rather than one of its options. */}
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} components={false} />}
             <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
@@ -528,18 +515,13 @@ export function RequirementsPage() {
                   {bulkMovePopoverOpen && (
                     <Popover anchorRef={bulkMoveTriggerRef} title={strings.requirements.bulkMoveToStage} onClose={() => setBulkMovePopoverOpen(false)}>
                       <div className="stack" style={{ gap: "var(--space-3)", minWidth: 200 }}>
-                        <select
-                          className="input"
-                          aria-label={strings.requirements.targetVersion}
+                        <InlineSelect
+                          ariaLabel={strings.requirements.targetVersion}
                           value={bulkMoveStageId}
-                          onChange={(e) => setBulkMoveStageId(e.target.value)}
-                        >
-                          {stages.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder={null}
+                          onChange={setBulkMoveStageId}
+                          options={stages.map((s) => ({ value: s.id, label: s.name }))}
+                        />
                         <button
                           className="btn btn-primary"
                           disabled={!bulkMoveStageId}

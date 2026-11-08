@@ -60,7 +60,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
-import { FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -366,69 +367,55 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
       </div>
 
       <FilterPanel sectionKey="orgCompliance.outstanding">
-        <FilterField label="Category">
-          <select className="input" value={category} onChange={(e) => setCategory(e.target.value as Category)}>
-            <option value="">All categories</option>
-            <option value="non_compliant">Non-compliant requirements</option>
-            <option value="pending">Pending approval</option>
-            <option value="actions">Outstanding required actions</option>
-            <option value="evidence">Evidence expired or expiring</option>
-            <option value="reviews">Reviews due or overdue</option>
-          </select>
-        </FilterField>
-        <FilterField label="Evidence status">
-          <select
-            className="input"
-            value={evidenceValidity}
-            onChange={(e) => setEvidenceValidity(e.target.value as EvidenceValidityFilter)}
-            disabled={category !== "" && category !== "evidence"}
-          >
-            <option value="">All</option>
-            <option value="expired">Expired</option>
-            <option value="expiring_soon">Expiring soon</option>
-          </select>
-        </FilterField>
-        <FilterField label={strings.filters.project}>
-          <select className="input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">{strings.filters.allProjects}</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label={COMPLIANCE_FILTER_LABEL.standard}>
-          <select
-            className="input"
-            value={standardFilter}
-            onChange={(e) => {
-              setStandardFilter(e.target.value);
+        <FilterSelect
+          label="Category"
+          value={category}
+          onChange={setCategory}
+          allLabel="All categories"
+          options={[{ value: "non_compliant", label: "Non-compliant requirements" }, { value: "pending", label: "Pending approval" }, { value: "actions", label: "Outstanding required actions" }, { value: "evidence", label: "Evidence expired or expiring" }, { value: "reviews", label: "Reviews due or overdue" }]}
+        />
+        <FilterSelect
+          label="Evidence status"
+          value={evidenceValidity}
+          onChange={setEvidenceValidity}
+          allLabel="All"
+          options={[{ value: "expired", label: "Expired" }, { value: "expiring_soon", label: "Expiring soon" }]}
+          disabled={category !== "" && category !== "evidence"}
+        />
+        <FilterSelect
+          label={strings.filters.project}
+          value={projectFilter}
+          onChange={setProjectFilter}
+          allLabel={strings.filters.allProjects}
+          options={projects.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standard}
+          value={standardFilter}
+          onChange={(v) => {
+              setStandardFilter(v);
               setVersionFilter("");
               setSubSectionFilter("");
             }}
-          >
-            <option value="">All standards</option>
-            {standards.map((s) => (
-              <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label={COMPLIANCE_FILTER_LABEL.standardVersion}>
-          <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)} disabled={!standardFilter}>
-            <option value="">All versions</option>
-            {versions.map((v) => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
-        </FilterField>
+          allLabel="All standards"
+          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standardVersion}
+          value={versionFilter}
+          onChange={setVersionFilter}
+          allLabel="All versions"
+          options={versions.map((v) => ({ value: v.id, label: v.label }))}
+          disabled={!standardFilter}
+        />
         {standardFilter && (
-          <FilterField label={COMPLIANCE_FILTER_LABEL.subSection}>
-            <select className="input" value={subSectionFilter} onChange={(e) => setSubSectionFilter(e.target.value)}>
-              <option value="">All sub-sections</option>
-              {subSections.map((s) => (
-                <option key={s.id} value={s.id}>{s.reference ? `${s.reference} — ${s.name}` : s.name}</option>
-              ))}
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={COMPLIANCE_FILTER_LABEL.subSection}
+            value={subSectionFilter}
+            onChange={setSubSectionFilter}
+            allLabel="All sub-sections"
+            options={subSections.map((s) => ({ value: s.id, label: s.reference ? `${s.reference} — ${s.name}` : s.name }))}
+          />
         )}
       </FilterPanel>
     </div>

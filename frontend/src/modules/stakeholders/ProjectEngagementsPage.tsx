@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi, projectPersonaApi, projectResearchApi, projectStakeholderApi, type EngagementListFilters } from "./api";
@@ -97,14 +98,13 @@ export function ProjectEngagementsPage() {
   if (engagements === null) return <Spinner />;
 
   const filterSelect = (label: string, value: string | undefined, options: Option[], onChange: (next: string | undefined) => void, allLabel: string) => (
-    <FilterField label={label}>
-      <select className="input" value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
-        <option value="">{allLabel}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </FilterField>
+    <FilterSelect
+      label={label}
+      value={value ?? ""}
+      onChange={(v) => onChange(v || undefined)}
+      allLabel={allLabel}
+      options={options.map((o) => ({ value: o.value, label: o.label }))}
+    />
   );
 
   return (
