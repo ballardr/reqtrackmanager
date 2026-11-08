@@ -173,7 +173,7 @@ def test_change_request_comment_lifecycle(client, admin_token, org_id):
 
 
 def test_org_group_lifecycle_create_get_member_add_remove(client, admin_token, org_id):
-    """Org groups themselves have no delete endpoint (by design); this
+    """Organisation groups themselves have no delete endpoint (by design); this
     covers create, list, and the member add/remove lifecycle."""
     created = client.post(
         f"/api/v1/orgs/{org_id}/groups", json={"name": "Lifecycle Group"}, headers=auth_headers(admin_token)

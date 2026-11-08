@@ -64,7 +64,7 @@ export function NeedDetailPage() {
   useEffect(() => {
     if (!projectId || !needId) return;
     projectNeedApi.get(projectId, needId).then(setNeed).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Stakeholder Need could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Stakeholder Need could not be found, or you do not have access to it."));
     });
     projectNeedApi.listVersions(projectId, needId).then(setVersions).catch(() => setVersions([]));
   }, [projectId, needId]);

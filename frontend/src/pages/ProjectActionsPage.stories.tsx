@@ -63,7 +63,7 @@ export const ListWithFilters: Story = {
     await expect(table.getByText("Completed")).toBeInTheDocument();
     // A group assignee shows its name, kind and member count rather than a person's name.
     await expect(table.getByText("QA Team")).toBeInTheDocument();
-    await expect(table.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(table.getByText("Organisation group · 3 members")).toBeInTheDocument();
   },
 };
 

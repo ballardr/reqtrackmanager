@@ -59,7 +59,7 @@ test.describe("server admin with zero org memberships", () => {
       // actions (see docs/decisions.md's "Organisation disable and hard
       // delete" / earlier OrgAdminPage degraded-view sections).
       await expect(page.getByRole("heading", { name: ORG_NAMES.alpha, exact: true })).toBeVisible();
-      await expect(page.getByText("You're not a member of this organisation")).toBeVisible();
+      await expect(page.getByText("You are not a member of this organisation")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Users" })).toHaveCount(0);
     });
 

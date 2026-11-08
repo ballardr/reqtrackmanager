@@ -22,7 +22,7 @@ export const User: Story = {
 export const OrgGroup: Story = {
   args: { principal: { type: "org_group", id: "g1", label: "Platform team", member_count: 4, exists: true } },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText("Org group · 4 members")).toBeInTheDocument();
+    await expect(within(canvasElement).getByText("Organisation group · 4 members")).toBeInTheDocument();
   },
 };
 
@@ -37,7 +37,7 @@ export const ProjectGroupWithOneMember: Story = {
 export const DeletedGroup: Story = {
   args: { principal: { type: "org_group", id: "g9", label: "Deleted group", member_count: null, exists: false } },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText("Org group · deleted")).toBeInTheDocument();
+    await expect(within(canvasElement).getByText("Organisation group · deleted")).toBeInTheDocument();
   },
 };
 

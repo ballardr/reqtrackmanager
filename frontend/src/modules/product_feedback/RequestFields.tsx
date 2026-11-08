@@ -7,7 +7,7 @@
  * draft; this component only edits it.
  *
  * Scoring levels are built from the scheme's axes, so an axis an organisation or project defines appears with no
- * change here. A derived axis (Demand) is worked out from the request's requesters and is shown with that level
+ * change here. A derived axis (Demand) is calculated from the request's requesters and is shown with that level
  * as its placeholder; choosing a level overrides it and clearing the choice goes back to the worked-out one.
  * Inbox requests (no `projectId`) offer the same fields; the scheme passed in is the organisation's own.
  *
@@ -155,7 +155,7 @@ function DerivedLevelPicker({
       <LabeledSelect
         help={PRODUCT_FEEDBACK_HELP.requestDerivedLevel} label={axis.label} value={value ?? ""}
         onChange={(next) => onChange(next || null)} options={axis.levels.map((l) => ({ value: l.id, label: l.name }))}
-        placeholder={derived ? `Worked out: ${derived.name}` : "From demand"}
+        placeholder={derived ? `Calculated: ${derived.name}` : "From demand"}
       />
       {selected?.description && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{selected.description}</span>}
     </div>

@@ -39,7 +39,7 @@ export const ManagerSeesWatchingGroups: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Team")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 4 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 4 members")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Stop watching: Platform Team" })).toBeInTheDocument();
   },
 };

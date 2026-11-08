@@ -22,7 +22,7 @@ Design decisions:
   request), reported as that row's error.
 - A change request is export-only (`CORE_NOT_IMPORTABLE` gives the reason): its content depends on its kind
   and it moves through submit and approval, which a file cannot author.
-- A person column is one cell: an email for a user, `Name (Org group)` / `Name (Project group)` for a group.
+- A person column is one cell: an email for a user, `Name (Organisation group)` / `Name (Project group)` for a group.
 - A project's custom fields are columns named `cf_<name>`, built per project.
 
 Dependencies: `modules.registry` (provider shapes), `services.record_tables` (cell helpers, people),
@@ -181,7 +181,7 @@ def list_parser(ctx: RecordImportContext, text: str) -> list[str]:
 
 
 def person_parser(field_name: str) -> Callable[[RecordImportContext, str], PrincipalRef | None]:
-    """A parser for a person cell: an email (user) or `Name (Org group)` (group); empty means nobody."""
+    """A parser for a person cell: an email (user) or `Name (Organisation group)` (group); empty means nobody."""
 
     def parse(ctx: RecordImportContext, text: str) -> PrincipalRef | None:
         return parse_principal_cell(ctx, text, field_name=field_name)

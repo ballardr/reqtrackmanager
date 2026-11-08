@@ -699,7 +699,7 @@ def test_csv_export_writes_a_group_and_the_same_file_imports_it_back(client, adm
     assert exported.status_code == 200
     text = exported.content.decode("utf-8-sig")
     rows = {r["name"]: r for r in csv.DictReader(io.StringIO(text))}
-    assert rows["Grouped"]["owner"] == "Csv Team (Org group)" and rows["Grouped"]["reviewer"] == "Csv Squad (Project group)"
+    assert rows["Grouped"]["owner"] == "Csv Team (Organisation group)" and rows["Grouped"]["reviewer"] == "Csv Squad (Project group)"
     assert rows["Personal"]["owner"] == me_email and rows["Personal"]["reviewer"] == ""
 
     target = create_project(client, admin_token, org_id, "Csv Target")
@@ -726,6 +726,29 @@ def test_csv_export_writes_a_group_and_the_same_file_imports_it_back(client, adm
     assert good["created"] == 1, good
     made = next(r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=h).json() if r["name"] == "By name")
     assert made["owner"]["type"] == "org_group" and made["reviewer"]["type"] == "project_group"
+
+
+def test_csv_import_still_reads_the_earlier_org_group_suffix(client, admin_token, org_id):
+    """A file exported before the label was spelled out ('(Org group)') still names the organisation group."""
+    import csv
+    import io
+
+    project = create_project(client, admin_token, org_id)
+    pid = project["id"]
+    create_org_group(client, admin_token, org_id, "Legacy Team")
+    _requirement(client, admin_token, pid, name="Seed")
+    h = auth_headers(admin_token)
+    exported = client.get(f"/api/v1/projects/{pid}/records/requirement/export", headers=h)
+    row = next(csv.DictReader(io.StringIO(exported.content.decode("utf-8-sig"))))
+    component, category = row["component"], row["category"]
+    resp = client.post(
+        f"/api/v1/projects/{pid}/records/requirement/import", params={"dry_run": "false"},
+        files={"file": ("r.csv", f"name,component,category,owner\nLegacy,{component},{category},Legacy Team (Org group)\n".encode(), "text/csv")},
+        headers=h,
+    )
+    assert resp.status_code == 200 and resp.json()["created"] == 1, resp.text
+    made = next(r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=h).json() if r["name"] == "Legacy")
+    assert made["owner"]["type"] == "org_group" and made["owner"]["label"] == "Legacy Team"
 
 
 def test_a_project_bundle_round_trips_requirement_people_and_reads_a_legacy_bundle(client, admin_token, org_id):

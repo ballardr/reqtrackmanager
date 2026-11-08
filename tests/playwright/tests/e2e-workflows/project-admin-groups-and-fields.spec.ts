@@ -439,7 +439,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       const dialog = page.getByRole("dialog", { name: "Add member" });
       await dialog.getByPlaceholder("Type a name to add, or an email to invite…").fill(directGroupName);
       const groupOption = dialog.getByRole("option", { name: new RegExp(`^${directGroupName}`) });
-      await expect(groupOption).toContainText("Org group");
+      await expect(groupOption).toContainText("Organisation group");
       await groupOption.click();
 
       // Staged, not yet granted — set this row's own role, then commit.

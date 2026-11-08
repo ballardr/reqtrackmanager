@@ -67,7 +67,7 @@ export const InviteTokenBypassesDisabledMode: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("You've been invited — complete your account below.")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("You have been invited — complete your account below.")).toBeInTheDocument());
   },
 };
 

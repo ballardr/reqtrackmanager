@@ -98,7 +98,7 @@ export function PainPointScoreFields({
           placeholder="Select a persona…" disabled={disabled || addable.length === 0}
         />
       ) : (
-        <p className="text-muted" style={{ margin: 0 }}>Personas aren't available in this project, so only the General scores apply.</p>
+        <p className="text-muted" style={{ margin: 0 }}>Personas are not available in this project, so only the General scores apply.</p>
       )}
     </>
   );

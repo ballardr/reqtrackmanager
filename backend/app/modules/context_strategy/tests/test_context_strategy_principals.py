@@ -289,9 +289,9 @@ def test_open_question_register_prints_and_groups_by_owner_principal(client, adm
 
     owners_column = _section(report, "open")["columns"].index("Owner")
     assert sorted(row[owners_column] for row in _section(report, "open")["rows"]) == [
-        "Triage Team (Org group)", "Triage Team (Org group)", "Unowned",
+        "Triage Team (Organisation group)", "Triage Team (Organisation group)", "Unowned",
     ]
-    assert dict(_section(report, "by_owner")["rows"]) == {"Triage Team (Org group)": "2", "Unowned": "1"}
+    assert dict(_section(report, "by_owner")["rows"]) == {"Triage Team (Organisation group)": "2", "Unowned": "1"}
     assert [r[0] for r in _section(report, "unowned")["rows"]] == ["OQ-003 Nobody?"]
 
 
@@ -312,7 +312,7 @@ def test_guiding_principle_usage_report_prints_a_group_owner(client, admin_token
 
     register = _section(_report(client, token, project["id"], "guiding-principle-usage"), "register")
 
-    assert register["rows"][0][register["columns"].index("Owner")] == "Principle Stewards (Org group)"
+    assert register["rows"][0][register["columns"].index("Owner")] == "Principle Stewards (Organisation group)"
 
 
 # --- Migration backfill ---------------------------------------------------------------------------------

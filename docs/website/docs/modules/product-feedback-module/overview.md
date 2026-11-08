@@ -4,7 +4,7 @@ sidebar_position: 40
 
 # Overview
 
-The Product Feedback module is a place for **enhancement requests**: things people ask the product to do, from stakeholders, staff and support. It keeps each ask as a versioned record with a triage lifecycle, adds up who stands behind it, scores it, ties it to the problem it solves and the Requirement that delivers it, and tells you who still has to be told the outcome. Delivery itself stays in your tracker (Jira, ServiceNow and so on); a request carries references to it.
+The Product Feedback module is a place for **enhancement requests**: things people ask the product to do, from stakeholders, staff and support. It keeps each ask as a versioned record with a triage lifecycle, adds up who stands behind it, scores it, ties it to the problem it solves and the Requirement that delivers it, and tells you who still has to be informed of the outcome. Delivery itself stays in your tracker (Jira, ServiceNow and so on); a request carries references to it.
 
 A request is a **solution**, not a problem. A Pain Point (from [Context & Strategy](../context-strategy-module/pain-point.md)) is the problem; a request is one proposal to fix it. Ranking proposals only by how many people asked rewards the loudest voice, so a request with no linked Pain Point shows a **No Pain Point** warning and appears in the [Unlinked requests](./reports.md#unlinked-requests-f2) report. It is a warning, never a block.
 

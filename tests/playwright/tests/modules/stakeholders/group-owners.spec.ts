@@ -50,7 +50,7 @@ test.describe("Stakeholders & Personas: groups as owners", () => {
     await page.reload();
     // (History rows name them too once the persona has several versions, hence `.first()`.)
     await expect(page.getByText(teamName).first()).toBeVisible();
-    await expect(page.getByText(/^Org group/).first()).toBeVisible();
+    await expect(page.getByText(/^Organisation group/).first()).toBeVisible();
     await expect(page.getByText(squadName).first()).toBeVisible();
     await expect(page.getByText(/^Project group/).first()).toBeVisible();
 

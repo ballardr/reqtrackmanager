@@ -236,7 +236,7 @@ export function StandardWorkspacePage() {
   );
 
   if (notFound) {
-    return <p className="text-muted">This compliance standard could not be found, or you don't have access to it.</p>;
+    return <p className="text-muted">This compliance standard could not be found, or you do not have access to it.</p>;
   }
   if (!standard) return <Spinner />;
 

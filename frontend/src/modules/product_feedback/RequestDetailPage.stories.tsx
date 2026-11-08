@@ -154,7 +154,7 @@ export const DeliveredShowsTheClosingTheLoopPanel: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole("region", { name: "Closing the loop" })).toBeInTheDocument();
-    await expect(canvas.getByText("1 of 2 still to be told.")).toBeInTheDocument();
+    await expect(canvas.getByText("1 of 2 still to be informed.")).toBeInTheDocument();
   },
 };
 

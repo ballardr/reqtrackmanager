@@ -116,7 +116,7 @@ export const GroupOwnerIsNamed: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Compliance Office")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 4 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 4 members")).toBeInTheDocument();
   },
 };
 

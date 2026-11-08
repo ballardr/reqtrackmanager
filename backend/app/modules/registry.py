@@ -1816,7 +1816,7 @@ class RecordColumn:
         label: The name a person sees.
         get: `(prepared, record) -> str`: the cell text, **unprefixed** (the engine adds the formula guard);
             also the "before" value an import compares against. Dates `YYYY-MM-DD`, instants UTC ISO 8601,
-            enums by the label users see, a person as an email (user) or `Name (Org group)` (group).
+            enums by the label users see, a person as an email (user) or `Name (Organisation group)` (group).
         parse: `(ctx, text) -> value`: the cell text (whitespace stripped, may be empty) to the value
             `create`/`update` receive; raises `RecordCellError`. `None` for an export-only column.
         kind: `text`, `enum`, `principal`, `date`, `number`, `bool`, `instant` or `list`, for the UI.

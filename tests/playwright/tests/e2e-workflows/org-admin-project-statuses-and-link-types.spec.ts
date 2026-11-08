@@ -169,7 +169,7 @@ test.describe("org admin: project statuses and link types", () => {
 
     await test.step("with only 'Active (E2E)' left, its delete control is disabled", async () => {
       await expect(inputWithValue(page, "Active (E2E)")).toBeVisible();
-      await expect(page.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+      await expect(page.getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
     });
 
     await test.step("Link types: add a new type, rename it, then delete it (unused, no prompt)", async () => {

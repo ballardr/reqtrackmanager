@@ -847,7 +847,7 @@ function RequirementClarifyModal({
           <FormGridFull>
             <TextAreaField helpNotNeeded required
               label="Clarification note" value={clarificationNote} onChange={setClarificationNote}
-              inputProps={{ placeholder: "What changed, and why it's non-substantive." }}
+              inputProps={{ placeholder: "What changed, and why it is non-substantive." }}
             />
           </FormGridFull>
         </FormGrid>

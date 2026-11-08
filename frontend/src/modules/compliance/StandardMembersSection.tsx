@@ -31,7 +31,7 @@
  *
  * The roster itself gained a second row kind for group-based grants
  * (`ComplianceStandardGroupMember`), visually distinguished with the same
- * `Users` icon + "Org group" badge `UserAutocomplete` already uses for a
+ * `Users` icon + "Organisation group" badge `UserAutocomplete` already uses for a
  * group match, rather than expanding a group to its individual members —
  * this remains a roster of this standard's own *direct* grants (user or
  * group), not every user a group happens to currently reach.
@@ -179,7 +179,7 @@ export function StandardMembersSection({
         ) : (
           <span className="row" style={{ gap: "var(--space-2)", alignItems: "center" }}>
             <Users size={14} aria-hidden="true" />
-            {row.group.group_name} <Badge>Org group</Badge>
+            {row.group.group_name} <Badge>Organisation group</Badge>
           </span>
         ),
     },

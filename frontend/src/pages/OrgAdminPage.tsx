@@ -1,4 +1,5 @@
 import { useMutation } from "../hooks/useMutation";
+import { ImportWarnings } from "../components/ImportWarnings";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
@@ -281,7 +282,7 @@ export function OrgAdminPage() {
   type OrgGroupSortKey = "name";
   const [groupSort, setGroupSort] = useState<SortState<OrgGroupSortKey> | null>(null);
   const [openOrgGroupId, setOpenOrgGroupId] = useState<string | null>(null);
-  // Org group pending deletion in its Tier 1 `ConfirmDialog`, or null.
+  // Organisation group pending deletion in its Tier 1 `ConfirmDialog`, or null.
   const [deletingOrgGroupId, setDeletingOrgGroupId] = useState<string | null>(null);
   const [inUseOrgGroup, setInUseOrgGroup] = useState<{ id: string; usage: PrincipalUsage } | null>(null);
   // Per-group SSO-sync enable/disable toggle —
@@ -2566,11 +2567,7 @@ export function OrgAdminPage() {
                     <li>{strings.importMerge.projectsImported(importMergeResult.projects_imported)}</li>
                     <li>{strings.importMerge.projectsSkipped(importMergeResult.projects_skipped)}</li>
                   </ul>
-                  {importMergeResult.warnings.length > 0 && (
-                    <ul style={{ margin: 0, color: "var(--color-warning, #b58900)" }}>
-                      {importMergeResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
-                    </ul>
-                  )}
+                  <ImportWarnings warnings={importMergeResult.warnings} />
                   <button className="btn" onClick={() => setImportMergeResult(null)} style={{ alignSelf: "flex-start" }}>
                     {strings.common.close}
                   </button>

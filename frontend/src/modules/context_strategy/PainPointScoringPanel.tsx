@@ -9,7 +9,7 @@
  * Built from the generic scoring core's shared pieces (`ScoringLevelPicker`,
  * `ScoringModelSwitcher`, the `projectScoringApi` scheme read); the persona
  * list arrives from the backend's `available_targets`, so this module never
- * knows the Stakeholders module exists. If personas aren't available, only the
+ * knows the Stakeholders module exists. If personas are not available, only the
  * General scores are offered. Existing rows whose persona has since
  * vanished stay editable as "Persona unavailable" so they can be removed.
  *

@@ -75,7 +75,7 @@ export const GroupAssigneeIsShownAndSavedAsAPrincipal: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("QA Team")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}`,

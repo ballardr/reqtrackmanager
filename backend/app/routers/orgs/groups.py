@@ -305,7 +305,7 @@ def _get_org_group_in_org(db: Session, organization_id: UUID, group_id: UUID) ->
     """
     group = db.get(OrgGroup, group_id)
     if group is None or group.organization_id != organization_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Org group not found.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation group not found.")
     return group
 
 

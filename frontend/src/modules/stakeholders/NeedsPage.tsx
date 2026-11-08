@@ -29,7 +29,7 @@ import type { Need, NeedFieldValues } from "./types";
 
 const MODULE_KEY = "stakeholders";
 const NOT_AVAILABLE =
-  "Stakeholder Needs aren't enabled for this project, or you don't have access to them.";
+  "Stakeholder Needs are not enabled for this project, or you do not have access to them.";
 
 export function NeedsPage() {
   const { projectId } = useParams<{ projectId: string }>();

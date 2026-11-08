@@ -579,7 +579,7 @@ def test_org_wide_visibility_does_not_reach_a_different_organisation(client, adm
 
 
 def test_org_wide_visibility_never_implies_manager_or_admin_rights(client, admin_token, org_id):
-    """Org-wide visibility is a read grant only — it must never let a plain
+    """Organisation-wide visibility is a read grant only — it must never let a plain
     member manage project settings or structure."""
     project = create_project(client, admin_token, org_id, "Org Wide Read Only")
     client.patch(

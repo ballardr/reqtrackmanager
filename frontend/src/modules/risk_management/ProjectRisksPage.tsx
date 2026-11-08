@@ -158,7 +158,7 @@ export function ProjectRisksPage() {
         setLoadError(null);
       })
       .catch((err) => {
-        if (active) setLoadError(toErrorMessage(err, "Risk Management isn't enabled for this project, or you don't have access to it."));
+        if (active) setLoadError(toErrorMessage(err, "Risk Management is not enabled for this project, or you do not have access to it."));
       });
     return () => {
       active = false;
@@ -318,7 +318,7 @@ export function ProjectRisksPage() {
                 />
                 {unplotted > 0 && (
                   <p className="text-muted" style={{ margin: 0 }}>
-                    {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "isn't" : "aren't"} plotted.
+                    {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "is not" : "are not"} plotted.
                   </p>
                 )}
               </div>

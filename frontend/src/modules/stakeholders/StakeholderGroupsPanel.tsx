@@ -85,7 +85,7 @@ export function StakeholderGroupsPanel({
         setLoadError(null);
       })
       .catch((err) => {
-        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module isn't enabled here, or you don't have access to it."));
+        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module is not enabled here, or you do not have access to it."));
       });
     return () => {
       active = false;

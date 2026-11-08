@@ -448,7 +448,7 @@ export const GroupAssignedTasksFollowTheServersSaidCanMarkDone: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Mine via the group")).toBeInTheDocument());
     await expect(canvas.getByText("Review Board")).toBeInTheDocument();
-    await expect(canvas.getAllByText(/Org group/).length).toBeGreaterThan(0);
+    await expect(canvas.getAllByText(/Organisation group/).length).toBeGreaterThan(0);
     const [mine, others] = canvas.getAllByRole("checkbox");
     await expect(mine).toBeEnabled();
     await expect(others).toBeDisabled();

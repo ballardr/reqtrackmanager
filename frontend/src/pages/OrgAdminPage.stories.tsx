@@ -997,7 +997,7 @@ export const NotAMemberServerAdminDegradedView: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("You're not a member of this organisation")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("You are not a member of this organisation")).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Become admin of this organisation" })).toBeInTheDocument();
     // "Create an admin user" is the section heading; the submit button
     // underneath it is labelled "New user" (`strings.orgAdmin.newUser`).
@@ -1248,7 +1248,7 @@ export const SelfSignupSsoConflictBlocksSave: Story = {
     await waitFor(() => expect(canvas.getByRole("switch", { name: "Allow self-signup" })).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("switch", { name: "Allow self-signup" }));
     await expect(
-      canvas.getByText("Self-signup can't be enabled while this organisation is SSO-only — turn off \"SSO only\" in the SSO configuration below first, or turn off self-signup here.")
+      canvas.getByText("Self-signup cannot be enabled while this organisation is SSO-only — turn off \"SSO only\" in the SSO configuration below first, or turn off self-signup here.")
     ).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Save security settings" })).toBeDisabled();
   },
@@ -1492,7 +1492,7 @@ export const GroupsSectionOpensSidePanel: Story = {
   },
 };
 
-/** Org groups are deletable (2026-10-05): the side panel's Delete opens a
+/** Organisation groups are deletable (2026-10-05): the side panel's Delete opens a
  * Tier 1 confirmation naming the group, and confirming calls the delete
  * endpoint, closes the panel and confirms with a toast. */
 export const GroupsSectionDeleteGroup: Story = {
@@ -1844,7 +1844,7 @@ export const ProjectStatusesDeleteDisabledAtLastRow: Story = {
     // has exactly one row by default — so the same "only one left" disabled
     // title appears twice on screen. Scope to the Active row itself.
     const row = canvas.getByDisplayValue("Active").closest<HTMLElement>(".stack")!;
-    await expect(within(row).getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+    await expect(within(row).getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
   },
 };
 
@@ -1933,7 +1933,7 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
-    await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+    await expect(canvas.getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
   },
 };
 
@@ -2179,7 +2179,7 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
 
     await userEvent.type(within(addMemberModal).getByPlaceholderText("Type a name to add, or an email to invite…"), "Eng");
     const groupOption = await within(addMemberModal).findByRole("option", { name: /Engineering/ });
-    await expect(groupOption).toHaveTextContent("Org group");
+    await expect(groupOption).toHaveTextContent("Organisation group");
     await userEvent.click(groupOption);
 
     // Staged, not yet granted — the row shows up with its own default role.

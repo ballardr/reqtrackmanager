@@ -99,7 +99,7 @@ export function AddMembersModal({
    * component's own docstring for the client-side-vs-server-side-search
    * modes this list feeds. */
   users: OrgUser[];
-  /** Org groups `UserAutocomplete` also matches by name. Omit to keep this
+  /** Organisation groups `UserAutocomplete` also matches by name. Omit to keep this
    * instance user/external-only. */
   groups?: OrgGroup[];
   /** This project's own groups, matched as a third kind purely to detect a

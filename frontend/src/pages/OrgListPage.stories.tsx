@@ -88,7 +88,7 @@ export const NoOrganisations: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("You don't belong to any organisations yet.")).toBeInTheDocument();
+    await expect(canvas.getByText("You do not belong to any organisations yet.")).toBeInTheDocument();
   },
 };
 

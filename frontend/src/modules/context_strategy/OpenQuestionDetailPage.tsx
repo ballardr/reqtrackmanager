@@ -128,7 +128,7 @@ export function OpenQuestionDetailPage() {
   useEffect(() => {
     if (!projectId || !openQuestionId) return;
     projectOpenQuestionApi.get(projectId, openQuestionId).then(setOpenQuestion).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Open Question could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Open Question could not be found, or you do not have access to it."));
     });
   }, [projectId, openQuestionId]);
 

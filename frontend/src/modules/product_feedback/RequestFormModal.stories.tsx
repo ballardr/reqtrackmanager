@@ -73,7 +73,7 @@ export const DerivedAxisShowsTheWorkedOutLevelAndCanBeOverridden: Story = {
   play: async ({ args }) => {
     const d = dialog();
     const demand = d.getByLabelText("Demand");
-    await expect(within(demand).getByRole("option", { name: "Worked out: Some" })).toBeInTheDocument();
+    await expect(within(demand).getByRole("option", { name: "Calculated: Some" })).toBeInTheDocument();
     await userEvent.selectOptions(demand, "demand-3");
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith(expect.objectContaining({ levels: expect.objectContaining({ demand: "demand-3" }) }), [], []);

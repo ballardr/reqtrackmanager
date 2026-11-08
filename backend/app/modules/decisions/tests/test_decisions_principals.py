@@ -333,12 +333,12 @@ def test_reports_name_a_group_with_its_kind(client, admin_token):
 
     d1 = section("decision-register", "register")
     row = d1["rows"][0]
-    assert row[d1["columns"].index("Owner")] == "Review Board (Org group)"
+    assert row[d1["columns"].index("Owner")] == "Review Board (Organisation group)"
     assert row[d1["columns"].index("Decision maker")] == "Delivery Squad (Project group)"
 
     d2 = section("approval-ageing", "awaiting")
     row = d2["rows"][0]
-    assert row[d2["columns"].index("Owner")] == "Review Board (Org group)"
+    assert row[d2["columns"].index("Owner")] == "Review Board (Organisation group)"
     assert row[d2["columns"].index("Decision maker")] == "Delivery Squad (Project group)"
 
 

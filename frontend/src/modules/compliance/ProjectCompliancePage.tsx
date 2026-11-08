@@ -121,7 +121,7 @@ export function ProjectCompliancePage() {
       setLoadError(null);
     } catch (err) {
       setLoadError(
-        toErrorMessage(err, "The Compliance module isn't enabled for this project's organisation, or you don't have access to it.")
+        toErrorMessage(err, "The Compliance module is not enabled for this project's organisation, or you do not have access to it.")
       );
     }
   }

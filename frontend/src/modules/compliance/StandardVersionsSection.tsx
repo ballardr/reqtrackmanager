@@ -22,6 +22,7 @@
  * than leaving it on the plain `/versions` URL the whole time.
  */
 import { useState } from "react";
+import { Spinner } from "../../components/Spinner";
 import { useNavigate } from "react-router-dom";
 
 import { Modal } from "../../components/Modal";
@@ -99,7 +100,7 @@ export function StandardVersionsSection({
   return (
     <div className="stack">
       {versions === null ? (
-        <p>Loading…</p>
+        <Spinner />
       ) : versions.length === 0 ? (
         <p className="text-muted">No versions yet.</p>
       ) : (

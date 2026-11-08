@@ -1,4 +1,5 @@
 import { Pencil, Power, Trash2 } from "lucide-react";
+import { ImportWarnings } from "../components/ImportWarnings";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -256,14 +257,7 @@ export function ServerOrganisationsPage() {
             </div>
           </Modal>
         )}
-        {importWarnings && importWarnings.length > 0 && (
-          <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
-            <strong>Imported with warnings</strong>
-            <ul style={{ margin: 0 }}>
-              {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
-            </ul>
-          </div>
-        )}
+        <ImportWarnings warnings={importWarnings} title={strings.projects.importWarnings} />
 
         {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
           <div className="stack">

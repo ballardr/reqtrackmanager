@@ -146,7 +146,7 @@ export const TwoFactorChallenge: Story = {
 };
 
 const withReauthState: Decorator = (Story) => (
-  <MemoryRouter initialEntries={[{ pathname: "/login", state: { message: "For your security, you've been signed out. Please sign in again." } }]}>
+  <MemoryRouter initialEntries={[{ pathname: "/login", state: { message: "For your security, you have been signed out. Please sign in again." } }]}>
     <Story />
   </MemoryRouter>
 );

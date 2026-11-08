@@ -55,7 +55,7 @@ export function RequestScoresPanel({
               const worked = isDerivedAxis(axis) && !chosen ? axis.levels.find((l) => l.id === request.derived_levels[axis.key]) : undefined;
               const level = chosen ?? worked;
               const note = isDerivedAxis(axis)
-                ? `${chosen ? "Chosen manually" : "Worked out"}${showDemand ? ` from ${demandText(request)}` : " from demand"}`
+                ? `${chosen ? "Chosen manually" : "Calculated"}${showDemand ? ` from ${demandText(request)}` : " from demand"}`
                 : null;
               return (
                 <div key={axis.key} className="stack" style={{ gap: "var(--space-1)" }}>

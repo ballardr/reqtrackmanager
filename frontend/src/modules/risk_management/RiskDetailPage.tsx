@@ -90,7 +90,7 @@ export function RiskDetailPage() {
       .then((types) => setRiskTypes(types.filter((t) => t.is_enabled).map((t) => ({ id: t.id, name: t.name }))))
       .catch(() => setRiskTypes([]));
     riskApi.get(projectId, riskId).then(setRisk).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Risk could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Risk could not be found, or you do not have access to it."));
     });
   }, [projectId, riskId]);
 

@@ -39,6 +39,7 @@
  * tiles-mode render below (name + org + status, in card form).
  */
 import { Plus } from "lucide-react";
+import { Spinner } from "../../components/Spinner";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -171,7 +172,7 @@ export function StandardListPage() {
               <ViewToggle mode={viewMode} onChange={setViewMode} />
             </div>
 
-            {rows === null && <p>Loading…</p>}
+            {rows === null && <Spinner />}
             {rows !== null && rows.length > 0 && filtered.length === 0 && (
               <p className="text-muted">No compliance standards match your search.</p>
             )}

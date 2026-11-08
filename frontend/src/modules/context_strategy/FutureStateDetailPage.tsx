@@ -109,7 +109,7 @@ export function FutureStateDetailPage() {
   useEffect(() => {
     if (!scopeId || !futureStateId) return;
     scopedApi.get(scopeId, futureStateId).then(setFutureState).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Future State could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Future State could not be found, or you do not have access to it."));
     });
     scopedApi.listVersions(scopeId, futureStateId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -2397,7 +2397,7 @@ export type PrincipalType = "user" | "org_group" | "project_group";
 
 export const PRINCIPAL_TYPE_LABEL: Record<PrincipalType, string> = {
   user: "User",
-  org_group: "Org group",
+  org_group: "Organisation group",
   project_group: "Project group",
 };
 

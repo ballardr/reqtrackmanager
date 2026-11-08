@@ -858,7 +858,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "organization_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The organisation whose compliance settings to update."},
                 {"name": "default_standards_manager_group_id", "type": "uuid", "required": False, "in": "body",
-                 "description": "Org group to fall back to as Standards Manager, or null to unset."},
+                 "description": "Organisation group to fall back to as Standards Manager, or null to unset."},
             ],
         ),
         McpToolDefinition(

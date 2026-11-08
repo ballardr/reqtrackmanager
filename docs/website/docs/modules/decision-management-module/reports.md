@@ -30,7 +30,7 @@ Click **Reports** at the top of the project overview, and pick a report from the
 Things worth knowing:
 
 - Rows that name a record lead with its code and end with its tags; see [Reports and export → How reports name records](../../core-features/reports-and-export.md#how-reports-name-records).
-- A group owner or decision maker prints as its name with its kind, for example `Platform Architecture (Org group)`, in the web view, PDF and CSV.
+- A group owner or decision maker prints as its name with its kind, for example `Platform Architecture (Organisation group)`, in the web view, PDF and CSV.
 - **Days waiting** counts from when the Decision entered its current status (Proposed, or Under review), not from when it was last edited.
 - **Overdue** is only a waiting-time threshold, because a Decision has no due date. **No decision maker** lists waiting Decisions whose decision maker is blank.
 - **Decision log** lists decisions that were *made*; a Rejected Decision appears in the register, not the log. Free-text fields are cut to 400 characters; open the Decision for the full text.

@@ -167,7 +167,7 @@ export function RequestDetailPage() {
       setRequest(await scopedApi.get(scopeId, requestId));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "This request could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This request could not be found, or you do not have access to it."));
       return;
     }
     void scopedApi.listVersions(scopeId, requestId).then(setVersions).catch(() => setVersions([]));
@@ -613,7 +613,7 @@ export function RequestDetailPage() {
           title={pending.to === "declined" ? "Decline this request?" : `${transitionLabel(request.status, pending.to)}?`}
           intro={
             pending.to === "declined" ? "A reason is required. It is kept with the request and shown to anyone told the outcome."
-              : delivering ? "This records that the request has shipped, so the people who asked can be told. A comment is optional."
+              : delivering ? "This records that the request has shipped, so the requesters can be informed. A comment is optional."
               : "A comment is optional."
           }
           commentLabel={pending.to === "declined" ? "Decline reason" : "Comment"}

@@ -55,7 +55,7 @@ export const ShowsIdentifyingFieldsOnly: Story = {
     await expect(body.getByText(/Use PostgreSQL as the backing store/)).toBeInTheDocument();
     // A group owner shows its name, kind and member count; the decision maker is a user.
     await expect(body.getByText("Platform Architecture")).toBeInTheDocument();
-    await expect(body.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(body.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await expect(body.getByText("Alex Morgan")).toBeInTheDocument();
     // No lifecycle/edit controls — read-only per this pattern's own rule.
     await expect(body.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();

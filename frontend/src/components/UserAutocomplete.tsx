@@ -39,7 +39,7 @@ type Option =
  * name, always client-side against the passed-in array — mirroring the
  * default (no-`organizationId`) user-matching logic exactly, regardless of
  * whether user matching itself is running client- or server-side in this
- * instance. A group match renders with a `Users` icon and an "Org group"
+ * instance. A group match renders with a `Users` icon and an "Organisation group"
  * badge so it's visually distinct from a user row in the same dropdown, and
  * selecting one calls `onSelectGroup(groupId)` instead of `onSelect`, then
  * closes/resets the control the same way a user pick does. There is no
@@ -57,8 +57,8 @@ type Option =
  * project rather than org-wide — so it needs a visually distinguishable,
  * not identical, treatment: `FolderKanban` (the same icon `Layout.tsx`'s
  * nav rail already uses for "Projects") instead of `Users`, and a
- * "Project group" badge instead of "Org group" (the org-group badge's text
- * was tightened from the previous bare "Group" to "Org group" at the same
+ * "Project group" badge instead of "Organisation group" (the org-group badge's text
+ * was tightened from the previous bare "Group" to "Organisation group" at the same
  * time, now that a second, similarly-named group concept can appear in the
  * same dropdown — leaving it as just "Group" would read as ambiguous next
  * to "Project group"). Selecting a project-group match calls
@@ -80,7 +80,7 @@ export function UserAutocomplete({
   users: OrgUser[];
   onSelect: (userId: string) => void;
   onSelectExternal?: (email: string) => void;
-  /** Org groups to also match by name (see module docstring). Omit to
+  /** Organisation groups to also match by name (see module docstring). Omit to
    * keep this instance user-only, unchanged from before this prop existed. */
   groups?: OrgGroup[];
   /** Required alongside `groups` — called with the matched group's id

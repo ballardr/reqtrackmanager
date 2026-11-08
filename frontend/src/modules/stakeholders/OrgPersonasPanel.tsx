@@ -41,7 +41,7 @@ export function OrgPersonasPanel({ orgId }: { orgId: string }) {
         setLoadError(null);
       })
       .catch((err) => {
-        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module isn't enabled for this organisation, or you don't have access to it."));
+        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module is not enabled for this organisation, or you do not have access to it."));
       });
     return () => {
       active = false;

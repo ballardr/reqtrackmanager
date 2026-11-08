@@ -41,7 +41,7 @@ export function RequestLoopPanel({
       ) : (
         <>
           <p style={{ margin: 0 }}>
-            {loop.open_count === 0 ? "Everyone who asked has been told." : `${loop.open_count} of ${loop.requesters.length} still to be told.`}
+            {loop.open_count === 0 ? "Every requester has been informed." : `${loop.open_count} of ${loop.requesters.length} still to be informed.`}
           </p>
           {loop.can_record && (
             <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-3)", flexWrap: "wrap" }}>

@@ -95,7 +95,7 @@ export function ProjectRequestsPage() {
       }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Product Feedback module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Product Feedback module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 

@@ -114,7 +114,7 @@ export function StrategyDetailPage() {
   useEffect(() => {
     if (!scopeId || !strategyId) return;
     scopedApi.get(scopeId, strategyId).then(setStrategy).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Strategy could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Strategy could not be found, or you do not have access to it."));
     });
     scopedApi.listVersions(scopeId, strategyId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

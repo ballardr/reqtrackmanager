@@ -161,6 +161,6 @@ export const LoadFailureShowsAMessage: Story = {
     spyOn(api, "get").mockRejectedValue(new Error("nope"));
   },
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(within(canvasElement).getByText(/nope|isn't enabled/)).toBeInTheDocument());
+    await waitFor(() => expect(within(canvasElement).getByText(/nope|is not enabled/)).toBeInTheDocument());
   },
 };

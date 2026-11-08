@@ -141,7 +141,7 @@ export function EngagementAudiencePanel({
           <div className="stack">
             <TreeSelect triggerLabel="Groups to add" nodes={nodes} selectedIds={selected} onChange={setSelected} emptyLabel="Choose groups…" />
             <span className="text-muted" style={{ fontSize: "0.8rem" }}>
-              Copies the group's current members in as participants. Later changes to the group don't change who took part.
+              Copies the group's current members in as participants. Later changes to the group do not change who took part.
             </span>
             <FormActions
               onCancel={() => { setPicking(false); setSelected([]); }}

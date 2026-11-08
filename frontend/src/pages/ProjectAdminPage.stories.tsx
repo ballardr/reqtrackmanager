@@ -474,7 +474,7 @@ export const StagesTabAddAndTransition: Story = {
     // an unscoped query is ambiguous between the two.
     const stagesSection = within(canvas.getByRole("button", { name: "Project stages section" }).closest(".card")!);
     // Deleting the only stage is blocked — there's nothing else to reassign to.
-    await expect(stagesSection.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+    await expect(stagesSection.getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
     await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Phase of Scoping" }), "Review");
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition`, { phase_id: "phase-review", cascade_to_requirements: false }),
@@ -998,7 +998,7 @@ export const MembersTabAddMemberModalOpen: Story = {
 /** the members/groups directory rework: the same "Add member"
  * autocomplete also matches org groups by name (client-side, against
  * `orgGroups` — always loaded for the Groups tab regardless), rendered with
- * an "Org group" badge distinguishing it from a user match. Picking one
+ * an "Organisation group" badge distinguishing it from a user match. Picking one
  * stages it (`AddMembersModal`'s staged multi-add); the role itself is set
  * on the staged row, then the grant (`POST .../group-roles`, not
  * `POST .../roles` — no `ProjectGroup` wrapper, no nesting) fires once
@@ -1016,7 +1016,7 @@ export const MembersTabAddMemberAutocompleteMatchesGroup: Story = {
 
     await userEvent.type(within(dialog).getByPlaceholderText("Type a name to add, or an email to invite…"), "Eng");
     const groupOption = await within(dialog).findByRole("option", { name: /Engineering/ });
-    await expect(groupOption).toHaveTextContent("Org group");
+    await expect(groupOption).toHaveTextContent("Organisation group");
     await userEvent.click(groupOption);
 
     // Staged with the default role ("member") — change it on the staged
@@ -1093,7 +1093,7 @@ export const MembersTabGroupRowRoleToggleAndRemove: Story = {
 /** the members/groups directory rework: the same "Add member"
  * autocomplete also matches this project's own groups (client-side,
  * against `memberTableGroups`), rendered with a "Project group" badge —
- * distinct from the "Org group" badge above, since these are genuinely
+ * distinct from the "Organisation group" badge above, since these are genuinely
  * different concepts (local to this one project vs. org-wide). Picking one
  * doesn't grant a role at all: a project group's roles are separate,
  * possibly-zero, possibly-multiple grants unaffected by who joins it — so
@@ -1266,7 +1266,7 @@ export const ActionTypesTabDeleteDisabledAtLastRow: Story = {
     // Action types now lives inside the merged "Fields & actions" tab.
     await userEvent.click(canvas.getByRole("link", { name: "Fields & actions" }));
     await waitFor(() => expect(canvas.getByDisplayValue("Review")).toBeInTheDocument());
-    await expect(canvas.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+    await expect(canvas.getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
   },
 };
 

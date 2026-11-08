@@ -369,7 +369,7 @@ export function RequirementDetailPage() {
       await reload();
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, `This ${strings.requirements.recordLabel.toLowerCase()} could not be found, or you don't have access to it.`));
+      setLoadError(toErrorMessage(err, `This ${strings.requirements.recordLabel.toLowerCase()} could not be found, or you do not have access to it.`));
     }
   }
 

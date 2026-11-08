@@ -37,7 +37,7 @@ test("a server admin with no org memberships sees an empty 'My organisations', n
   await loginAs(page, PERSONAS.serverAdmin.email);
   await page.getByRole("link", { name: "My organisations" }).click();
   await expect(page).toHaveURL(/\/orgs$/);
-  await expect(page.getByText("You don't belong to any organisations yet.")).toBeVisible();
+  await expect(page.getByText("You do not belong to any organisations yet.")).toBeVisible();
   await expect(page.getByRole("link", { name: ORG_NAMES.alpha })).not.toBeVisible();
   await expect(page.getByRole("link", { name: ORG_NAMES.beta })).not.toBeVisible();
   await expect(page.getByRole("link", { name: ORG_NAMES.gamma })).not.toBeVisible();

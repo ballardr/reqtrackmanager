@@ -14,6 +14,7 @@
  * settings-surface simplicity one level down.
  */
 import { useEffect, useState } from "react";
+import { Spinner } from "../../components/Spinner";
 
 import { api } from "../../api/client";
 import type { OrgGroup } from "../../api/types";
@@ -54,7 +55,7 @@ export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
     }
   }
 
-  if (settings === null || groups === null) return <p>Loading…</p>;
+  if (settings === null || groups === null) return <Spinner />;
 
   return (
     <div className="stack">

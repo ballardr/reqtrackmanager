@@ -58,7 +58,7 @@ import { showRecordInProject } from "./visibility";
 
 const MODULE_KEY = "stakeholders";
 const NOT_AVAILABLE =
-  "The Stakeholders & Personas module isn't enabled for this project's organisation, or you don't have access to it.";
+  "The Stakeholders & Personas module is not enabled for this project's organisation, or you do not have access to it.";
 
 /** Which create form is open: a kind, or the stakeholder-from-user variant. */
 type Creating = PeopleKind | "stakeholder_from_user" | null;

@@ -68,7 +68,7 @@ export function EvidenceDetailPage() {
       setFiles(fls);
       setRevalidations(revals);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "This evidence could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This evidence could not be found, or you do not have access to it."));
     }
   }, [projectId, evidenceId]);
 

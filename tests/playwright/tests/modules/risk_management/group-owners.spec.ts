@@ -37,14 +37,14 @@ test.describe("Risk Management: groups as owners", () => {
     await dialog.getByLabel("Risk title").fill(title);
     await dialog.getByRole("combobox", { name: "Owner" }).fill("Safety Board");
     await dialog.getByRole("option", { name: new RegExp(boardName) }).click();
-    await expect(dialog.getByText(/^Org group/)).toBeVisible();
+    await expect(dialog.getByText(/^Organisation group/)).toBeVisible();
     await dialog.getByRole("button", { name: "Save" }).click();
     await expect(page.getByText("Risk created.")).toBeVisible();
 
     // --- The register names each group with its kind, rather than a person's name.
     const boardRow = page.locator("tr", { hasText: title });
     await expect(boardRow.getByText(boardName)).toBeVisible();
-    await expect(boardRow.getByText(/^Org group/)).toBeVisible();
+    await expect(boardRow.getByText(/^Organisation group/)).toBeVisible();
     const squadRow = page.locator("tr", { hasText: squadRiskTitle });
     await expect(squadRow.getByText(squadName)).toBeVisible();
     await expect(squadRow.getByText(/^Project group/)).toBeVisible();
@@ -54,7 +54,7 @@ test.describe("Risk Management: groups as owners", () => {
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(page.getByText(boardName).first()).toBeVisible();
     await page.goto(`/projects/${project.id}?reports=choose&report=risk-register`);
-    await expect(page.getByText(`${boardName} (Org group)`).first()).toBeVisible();
+    await expect(page.getByText(`${boardName} (Organisation group)`).first()).toBeVisible();
 
     // --- Deleting the org group is blocked while it owns a Risk; hand the Risk to the admin.
     await page.goto(`/orgs/${org.id}/admin`);

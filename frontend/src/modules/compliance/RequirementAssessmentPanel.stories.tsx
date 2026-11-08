@@ -300,7 +300,7 @@ export const RequiredActionGroupAssigneeIsNamed: Story = {
     void canvasElement;
     const body = within(document.body);
     await waitFor(() => expect(body.getByText("Compliance Office")).toBeInTheDocument());
-    await expect(body.getByText("Org group · 4 members")).toBeInTheDocument();
+    await expect(body.getByText("Organisation group · 4 members")).toBeInTheDocument();
   },
 };
 

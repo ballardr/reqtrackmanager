@@ -491,9 +491,9 @@ class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):
 class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
     """A named grouping of organisation users (C-U-08 groups requirement).
 
-    Org groups can be nested inside project groups (C-U-12) so that an
+    Organisation groups can be nested inside project groups (C-U-12) so that an
     organisational team (e.g. "Development Team") can be granted a project
-    role in a single step. Org groups can also be nested inside *other* org
+    role in a single step. Organisation groups can also be nested inside *other* org
     groups (`OrgGroupMember.member_org_group_id`), transitively — unlike
     org-group-in-project-group nesting, which deliberately resolves only
     one level deep (see docs/decisions.md), this nesting is fully

@@ -66,7 +66,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
       setStrategies(await orgStrategyApi.list(orgId, { include_archived: includeArchived }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this organisation, or you do not have access to it."));
     }
   }
 

@@ -26,7 +26,7 @@ Design decisions:
 - Values are returned typed (`date`, `datetime`, `bool`, numbers) and formatted at the edge
   (`format_value`), so a renderer can sort and compare before it prints. A past instant stays UTC;
   a calendar date is a plain `date` and means the person's own day.
-- A person field shows the user's name or `Name (Org group)` for a group (`principal_text`), never
+- A person field shows the user's name or `Name (Organisation group)` for a group (`principal_text`), never
   an email address.
 
 Dependencies: `modules.registry` (provider shapes and merge), `services.principals` (names),

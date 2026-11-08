@@ -21,6 +21,7 @@
  * why this is a flagged scope trim, not an oversight.
  */
 import { useEffect, useState } from "react";
+import { Spinner } from "../../components/Spinner";
 
 import type { OrgUser } from "../../api/types";
 import { ListActions, ListActionsMenu } from "../../components/ListActions";
@@ -196,7 +197,7 @@ export function ProjectComplianceDetail({
             </ListActionsMenu>
           </div>
           {resolvedStandardId === null ? (
-            <p className="text-muted">Loading…</p>
+            <Spinner />
           ) : (
             <ApplicabilityTree
               orgId={orgId}

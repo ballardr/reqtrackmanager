@@ -62,7 +62,7 @@ test.describe("staged multi-add member flow", () => {
     await test.step("stage an org group with a different role, before committing either", async () => {
       await picker.fill(groupName);
       const groupOption = modal.getByRole("option", { name: new RegExp(`^${groupName}`) });
-      await expect(groupOption).toContainText("Org group");
+      await expect(groupOption).toContainText("Organisation group");
       await groupOption.click();
       await modal.getByRole("combobox", { name: `Role for ${groupName}` }).selectOption("project_administrator");
 

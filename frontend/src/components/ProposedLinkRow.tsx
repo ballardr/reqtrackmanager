@@ -41,7 +41,7 @@ export function ProposedLinkRow({
   trailing?: ReactNode;
   /** Controls (a remove button) that stay beside the row however long its text is. */
   actions?: ReactNode;
-  /** Drawn greyed out (a link that cannot be merged). */
+  /** Drawn as unavailable (a link that cannot be merged). */
   muted?: boolean;
 }) {
   const strings = useStrings();

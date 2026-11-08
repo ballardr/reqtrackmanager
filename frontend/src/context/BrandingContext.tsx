@@ -58,7 +58,7 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
  * Resolution order:
  * - Inside a project's URL space: that project's own organisation,
  *   falling back field-by-field to the platform default (`ServerSettings`)
- *   for whichever of logo/title/colour that org hasn't set.
+ *   for whichever of logo/title/colour that org has not set.
  * - Everywhere else (org list, global projects list, Preferences,
  *   server-management pages — no single org is "the" context): if the
  *   viewer belongs to exactly one organisation, that org's branding is

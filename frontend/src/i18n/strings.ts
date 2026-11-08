@@ -66,7 +66,7 @@ const en = {
     password: "Password",
     submit: "Sign in",
     error: "Invalid email or password.",
-    reauthRequired: "For your security, you've been signed out. Please sign in again.",
+    reauthRequired: "For your security, you have been signed out. Please sign in again.",
     twoFactorTitle: "Two-factor verification",
     twoFactorPrompt: "Enter the code from your authenticator app.",
     twoFactorCode: "Authentication code",
@@ -82,10 +82,10 @@ const en = {
     canInviteHint: "Not a member yet? Type their email to invite them.",
     // the members/groups directory rework — the visible badge
     // distinguishing an org-group match from a user match in the same
-    // dropdown. Tightened from the original bare "Group" to "Org group"
+    // dropdown. Tightened from the original bare "Group" to "Organisation group"
     // when a second, similarly-named match kind was added below — bare
     // "Group" would read as ambiguous next to "Project group".
-    groupBadge: "Org group",
+    groupBadge: "Organisation group",
     // the members/groups directory rework — the visible badge
     // distinguishing a project-group match (local to this one project)
     // from an org-group match (org-wide) in the same dropdown.
@@ -101,7 +101,7 @@ const en = {
     backToLogin: "Back to sign in",
     unavailable: "Public sign-up is not available for this deployment.",
     orgSpecifiedHint: (orgPlural: string) => `Sign-up is open to email addresses from participating ${orgPlural.toLowerCase()} only.`,
-    invitePrompt: "You've been invited — complete your account below.",
+    invitePrompt: "You have been invited — complete your account below.",
   },
   passwordReset: {
     forgotLink: "Forgot your password?",
@@ -203,7 +203,7 @@ const en = {
       save: "Save",
       saved: "Navigation saved",
       overrideRemoved: "This {project}'s own layout removed",
-      saveFailed: "Couldn't save your navigation layout.",
+      saveFailed: "Could not save your navigation layout.",
     },
   },
   projects: {
@@ -244,7 +244,7 @@ const en = {
     created: "{Project} created",
     // Small usability fix: picking an import file used to silently hide the
     // template picker with no explanation — this note replaces it instead.
-    importIgnoresTemplate: "A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.",
+    importIgnoresTemplate: "A bundle brings its own structure, so template selection does not apply once a file is chosen above.",
     // Hierarchical projects (docs/decisions.md).
     childOf: "Child of:",
     parentOf: "Parent of:",
@@ -327,14 +327,14 @@ const en = {
     createAndLinkAction: "Create and link a new action",
     unlinkAction: "Unlink",
     unlinkActionTitle: "Unlink this action?",
-    unlinkActionConfirm: "The action itself isn't affected — it just stops appearing on this {requirement}'s Actions card.",
+    unlinkActionConfirm: "The action itself is not affected — it just stops appearing on this {requirement}'s Actions card.",
     // `unlink_action` previously had no
     // lock check at all, an asymmetry with the already-gated add side;
     // unconditional across every {project}, unlike the
     // traceability-link strings above.
     unlinkActionViaChangeRequestTitle: "Unlink this action via change request?",
     unlinkActionViaChangeRequestConfirm:
-      "This {requirement} is approved — unlinking an action requires a change request. The action itself isn't affected either way; it just stops appearing on this {requirement}'s Actions card once approved.",
+      "This {requirement} is approved — unlinking an action requires a change request. The action itself is not affected either way; it just stops appearing on this {requirement}'s Actions card once approved.",
     noLinkedActions: "No actions linked yet.",
     attachments: "Attachments",
     subscribe: "Subscribe",
@@ -509,7 +509,7 @@ const en = {
     attachments: "Attachments",
     selectAttachment: (org: string) => `Select from ${org} resources`,
     noAttachmentsAvailable: (org: string, orgCap: string) =>
-      `No ${org} resources uploaded yet — upload one from ${orgCap} Admin first.`,
+      `No ${org} resources uploaded yet — upload one from ${orgCap} administration first.`,
     viewComments: "View comments",
     voteComments: "Vote comments",
     noVoteComments: "No comments were left with any vote.",
@@ -540,18 +540,18 @@ const en = {
     requireChangeRequestForApprovedLinksHint:
       "Once a {requirement} is approved, adding or removing a traceability link requires a change request instead of the direct action. Off by default — turn on for {projects} where links themselves need review once a {requirement} is locked.",
     requireChangeRequestForApprovedLinksForcedByOrg:
-      "Required by this organisation's policy — see Org Admin's Advanced settings. Mark this {project} exempt below to opt it out.",
+      "Required by this organisation's policy — see the Advanced settings of organisation administration. Mark this {project} exempt below to opt it out.",
     exemptFromOrgLinkLock: "Exempt this {project} from the organisation's change-request-for-links policy",
     exemptFromOrgLinkLockHint:
       "This organisation requires every {project} to gate link changes on an approved {requirement} behind a change request. Checking this opts this {project} out, falling back to its own setting above.",
     // AI approval via MCP (docs/decisions.md). Both this AND the
-    // organisation's own toggle (Org Admin's Advanced settings) must be on
+    // organisation's own toggle (Advanced settings of organisation administration) must be on
     // for an AI assistant acting through the MCP server to approve,
     // decide, or complete anything in this {project} — see
     // orgAdmin.allowAiApprovals's own comment for the org-level half.
     allowAiApprovals: "Allow AI approval via MCP for this {project}",
     allowAiApprovalsHint:
-      "Also requires AI approval to be enabled for this {project}'s organisation (Org Admin's Advanced settings). Off by default.",
+      "Also requires AI approval to be enabled for this {project}'s organisation (Advanced settings of organisation administration). Off by default.",
     allowAiApprovalsAckTitle: "Allow AI approval for this {project}?",
     allowAiApprovalsAckBody:
       "Approvals made by an AI assistant through the MCP server are not necessarily a deliberate, in-the-moment decision by a human reviewer, and may weaken the accountability this approval workflow is meant to represent.",
@@ -565,9 +565,9 @@ const en = {
     canBeParentHint: "Other {projects} can only be nested under this one once this is enabled.",
     visibility: "Visibility",
     visibilityOnlySpecified: "Only specified",
-    visibilityOrgWide: "Org-wide visibility",
+    visibilityOrgWide: "Organisation-wide visibility",
     visibilityHint: (org: string) =>
-      `"Org-wide visibility" gives every ${org} member automatic view access to this {project}, without an explicit assignment — manager/administrator/stakeholder roles still require one.`,
+      `"Organisation-wide visibility" gives every ${org} member automatic view access to this {project}, without an explicit assignment — manager/administrator/stakeholder roles still require one.`,
     projectStatus: "Status",
     saveSettings: "Save settings",
     // Hierarchical projects (docs/decisions.md).
@@ -633,7 +633,7 @@ const en = {
     modulesNav: "Modules",
     tagsNav: "Tags",
     modulesDescription:
-      "Turn modules on or off for this {project}. New {project}s start with the organisation's defaults; later changes to those defaults don't affect existing {project}s.",
+      "Turn modules on or off for this {project}. New {project}s start with the organisation's defaults; later changes to those defaults do not affect existing {project}s.",
     modulesEmpty: "No modules are registered on this deployment yet.",
     moduleToggleLabel: (name: string) => `Enable ${name} for this {project}`,
     moduleEnabledToast: (name: string) => `${name} enabled for this {project}`,
@@ -684,7 +684,7 @@ const en = {
     // `DirectoryTable` now mixes two row kinds (a real `ProjectGroup` and a
     // `ProjectMemberSource`, moved here from the Overview tab); this column
     // and its two badge values are what tells them apart. "Project" (not
-    // "Org group") for a member-source row is deliberate — it names another
+    // "Organisation group") for a member-source row is deliberate — it names another
     // whole {project} this one mirrors members *from*, not an org group —
     // see docs/ux-style-guide.md's "Pattern: type-badged mixed rows in a
     // single directory".
@@ -712,9 +712,9 @@ const en = {
     removeStagedMember: (label: string) => `Remove ${label}`,
     addSelectedMembers: (n: number) => (n === 0 ? "Add member(s)" : `Add ${n} member${n === 1 ? "" : "s"}`),
     externalAddedDirectly: (email: string, role: string, org: string) =>
-      `${email} was added directly to the {project} with the '${role}' role (not to this specific group, since they weren't already an ${org} member).`,
+      `${email} was added directly to the {project} with the '${role}' role (not to this specific group, since they were not already an ${org} member).`,
     externalInvited: (email: string, role: string) =>
-      `An invite email was sent to ${email}. They'll get the '${role}' role once they sign up.`,
+      `An invite email was sent to ${email}. They will get the '${role}' role once they sign up.`,
     externalSsoProvisioned: (email: string, role: string) =>
       `${email} was added and will get the '${role}' role next time they sign in via SSO.`,
     externalAddError: "Could not add this user.",
@@ -755,7 +755,7 @@ const en = {
     deleteStage: "Delete this {stage}",
     deleteComponent: "Delete this {component}",
     deleteCategory: "Delete this {category}",
-    deleteLastOneHint: "This is the only one — create another first so there's something to reassign to.",
+    deleteLastOneHint: "This is the only one — create another first so there is something to reassign to.",
     deleteMinItemsHint: (n: number) => `At least ${n} are required — add another before deleting this one.`,
     deleteComponentHasCategoriesHint: "Delete or reassign this {component}'s {categories} first.",
     reassignExistingTo: "Reassign existing items to",
@@ -849,9 +849,9 @@ const en = {
     // only ever deletes a `UserProjectRole` row, so this role isn't
     // togglable from here at all; it must be changed at its actual source
     // (the group's own membership/role, the project's visibility setting).
-    roleNotDirectlyRevocable: "This role isn't a direct grant on this {project} — it comes from a group, nested org group, project reference, or org-wide visibility. Change it at that source instead.",
+    roleNotDirectlyRevocable: "This role is not a direct grant on this {project} — it comes from a group, nested organisation group, project reference or organisation-wide visibility. Change it at that source instead.",
     // Appended inline to a checked-but-disabled role option's own label (not
-    // just its hover `title` above) so the reason it's greyed out is
+    // just its hover `title` above) so the reason it is unavailable is
     // visible without hovering — platform review 2026-09 follow-up.
     // Deliberately one generic suffix covering every non-`direct_role`
     // kind (group, nested org group, project reference, org-wide,
@@ -895,7 +895,7 @@ const en = {
     // `ProjectMembersTable.tsx`'s `sourceLine` for the fallback used when a
     // name is ever missing.
     sourceDirectGroup: (groupName: string) => `Via group '${groupName}'`,
-    sourceDirectOrgGroup: (groupName: string) => `Via nested org group '${groupName}'`,
+    sourceDirectOrgGroup: (groupName: string) => `Via nested organisation group '${groupName}'`,
     // `direct_org_group_role` (the members/groups directory rework) — a genuinely different mechanism from
     // `sourceDirectOrgGroup` above (nested inside a `ProjectGroup`): the
     // org group holds this role directly, granted from the Members
@@ -903,7 +903,7 @@ const en = {
     // the two don't read as the same thing.
     sourceDirectOrgGroupRole: (groupName: string) => `Via group '${groupName}' (direct)`,
     sourceDirectProjectRef: "Via project reference",
-    sourceDirectOrgWide: "Org-wide visibility",
+    sourceDirectOrgWide: "Organisation-wide visibility",
     sourceForwardInherited: (parentName: string, mode: string) => `Inherited from '${parentName}' (${mode.toLowerCase()})`,
     sourceMemberSourceInherited: (sourceName: string, mode: string) => `Via member source '${sourceName}' (${mode.toLowerCase()})`,
     // Role filter (`FilterField`, matching every other directory's own
@@ -923,7 +923,7 @@ const en = {
     removeAllAccess: "Remove all access",
     removeAllAccessConfirmTitle: (name: string) => `Remove all access for ${name}?`,
     removeAllAccessConfirmMessage: (name: string) =>
-      `This revokes every direct role ${name} holds on this {project}. They'll need to be re-added to regain access.`,
+      `This revokes every direct role ${name} holds on this {project}. They will need to be re-added to regain access.`,
     removeAllAccessConfirmButton: "Remove access",
     removeAllAccessSuccess: (name: string) => `Removed all access for ${name}.`,
     convertToDirect: "Convert inherited access to direct roles",
@@ -948,7 +948,7 @@ const en = {
   serverSettings: {
     title: "Platform branding",
     hint: (org: string) =>
-      `The default accent colour, logo, and header title used on any page without a single ${org} to brand it, and as the fallback for any ${org} that hasn't set its own.`,
+      `The default accent colour, logo, and header title used on any page without a single ${org} to brand it, and as the fallback for any ${org} that has not set its own.`,
     accentColor: "Default accent colour",
     logo: "Default logo",
     headerTitle: "Default header title",
@@ -963,7 +963,7 @@ const en = {
     loginBackground: "Default login page background image",
     loginBackgroundUploaded: "Background image uploaded.",
     emailFooterTitle: "Outgoing email footer",
-    emailFooterHint: (org: string) => `Shown in the footer of every outgoing email, and as the fallback for any ${org} that hasn't set its own.`,
+    emailFooterHint: (org: string) => `Shown in the footer of every outgoing email, and as the fallback for any ${org} that has not set its own.`,
     emailFooterCompanyName: "Company name",
     emailFooterCompanyNameHint: "Leave blank to use the built-in product name.",
     emailFooterWebsite: "Website",
@@ -1056,7 +1056,7 @@ const en = {
     mode: "Sign-up mode",
     modeDisabled: "Disabled — accounts are created by an admin or invite only",
     modeAlwaysOn: (org: string) => `Always on — anyone can sign up (no ${org} is joined automatically)`,
-    modeOrgSpecified: (org: string) => `Org specified — sign-up is allowed only for email domains an ${org} has opted in`,
+    modeOrgSpecified: (org: string) => `Organisation specified — sign-up is allowed only for email domains an ${org} has opted in`,
     modeOrgSpecifiedHint: (orgPlural: string) =>
       `${orgPlural} opt in and set their accepted domain from their own Advanced Settings page.`,
     save: "Save sign-up mode",
@@ -1209,12 +1209,12 @@ const en = {
     // Rename and Export on the Overview group.
     orgActions: (orgCap: string) => `${orgCap} actions`,
     backToOrganizations: (orgPlural: string) => `Back to ${orgPlural.toLowerCase()}`,
-    notAMemberTitle: (org: string) => `You're not a member of this ${org}`,
+    notAMemberTitle: (org: string) => `You are not a member of this ${org}`,
     notAMemberHint: "As a server admin you can still set it up: become its admin yourself, or create an admin user for someone else to log in as.",
     joinAsAdmin: (org: string) => `Become admin of this ${org}`,
     createInitialAdmin: "Create an admin user",
     initialAdminCreated: (org: string) => `User created — they can now log in and manage this ${org}.`,
-    noOrganizations: (orgPlural: string) => `You don't belong to any ${orgPlural.toLowerCase()} yet.`,
+    noOrganizations: (orgPlural: string) => `You do not belong to any ${orgPlural.toLowerCase()} yet.`,
     logo: (org: string) => `${org.charAt(0).toUpperCase()}${org.slice(1)} logo`,
     branding: "Branding",
     headerTitle: "Header title",
@@ -1229,7 +1229,7 @@ const en = {
     emailFooterAddress: "Postal address",
     defaultTemplate: "Default {project} template",
     projects: "{Projects}",
-    projectsHint: (org: string) => `Every {project} in this ${org}, including ones you don't otherwise have a role on — lets you manage a {project}'s users without needing its own admin access.`,
+    projectsHint: (org: string) => `Every {project} in this ${org}, including ones you do not otherwise have a role on — lets you manage a {project}'s users without needing its own admin access.`,
     manageUsers: "Manage users",
     // (docs/decisions.md): the inline "Manage users" expand-in-place
     // became a `Modal` wrapping the same `ProjectMembersTable`
@@ -1253,7 +1253,7 @@ const en = {
     // "not deactivated", not "has ever logged in" — a freshly created user
     // (or an invite the moment it's accepted) shows Active immediately,
     // which read as surprising until this tooltip spelled out why.
-    statusActiveHint: "This account is not deactivated. It doesn't necessarily mean the person has logged in yet.",
+    statusActiveHint: "This account is not deactivated. It does not necessarily mean the person has logged in yet.",
     newUser: "New user",
     userCreated: "User created",
     // "Invite user" : a second, distinct way
@@ -1263,7 +1263,7 @@ const en = {
     // than discovered by trial.
     inviteUser: "Invite user",
     newUserModalHint: "You set their password now. To let them choose their own, use Invite user instead.",
-    inviteUserModalHint: "They'll get an email with a link to choose their own password and display name.",
+    inviteUserModalHint: "They will get an email with a link to choose their own password and display name.",
     sendInvite: "Send invite",
     inviteSent: "Invite sent",
     passwordRuleHint: "At least 8 characters.",
@@ -1283,11 +1283,11 @@ const en = {
     newGroup: "New group",
     groupNamePlaceholder: "e.g. Engineering",
     groupCreated: "Group created",
-    // Org group delete (2026-10-05). Title/button/toast reuse the Project
+    // Organisation group delete (2026-10-05). Title/button/toast reuse the Project
     // Groups' own `admin.deleteGroup*`/`groupDeleted`; only the consequence
     // differs, since an org group can carry roles across many projects.
     deleteGroupMessage:
-      "Members lose every role and project access this group gave them, and it is removed from any group it's nested in. Access they hold some other way is unaffected. This cannot be undone.",
+      "Members lose every role and project access this group gave them, and it is removed from any group it is nested in. Access they hold some other way is unaffected. This cannot be undone.",
     // `DirectoryTable`'s row-detail panel — same "{name} details" shape `admin.groupDetails` already
     // established for Project Groups.
     groupDetails: (name: string) => `${name} details`,
@@ -1428,7 +1428,7 @@ const en = {
     oidcClientId: "OIDC client ID",
     oidcClientSecret: "OIDC client secret",
     oidcRequiredGroup: "Required SSO group",
-    oidcRequiredGroupHint: "If set, only users whose identity provider group/role claim includes this exact name are let in — everyone else sees a \"not provisioned\" message instead of signing in, even if they authenticate successfully.",
+    oidcRequiredGroupHint: "If set, only users whose identity provider group/role claim includes this exact name are permitted to sign in — everyone else sees a \"not provisioned\" message instead of signing in, even if they authenticate successfully.",
     saveSso: "Save SSO settings",
     scimProvisioning: "SCIM provisioning",
     scimHint: "Lets an identity provider push user and group membership changes directly (no login required), for prompt deprovisioning — the alternative to the group-claim sync above, which only runs when a user actually signs in.",
@@ -1438,7 +1438,7 @@ const en = {
     scimRegenerate: "Regenerate SCIM token",
     scimRevoke: "Revoke",
     scimTokenLabel: "SCIM token",
-    scimTokenShownOnce: "Copy this token now — it won't be shown again. Configure it as the bearer token in your identity provider's SCIM app settings.",
+    scimTokenShownOnce: "Copy this token now — it will not be shown again. Configure it as the bearer token in your identity provider's SCIM app settings.",
     loginBackground: "Login page background image",
     loginBackgroundUploaded: "Background image uploaded.",
     loginBackgroundRemoved: "Background image reset to the platform default.",
@@ -1466,13 +1466,13 @@ const en = {
     allowRelaxedChildProjectCreation: "Allow {project} managers to create sub-{project}s",
     allowRelaxedChildProjectCreationHint:
       "When enabled, anyone who manages a {project} can create a new {project} nested under it without needing Project creator or Organisation admin rights. Turning this off means only an Organisation admin or Project creator can create any {project}, including sub-{project}s.",
-    selfSignupSsoConflict: (org: string) => `Self-signup can't be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
+    selfSignupSsoConflict: (org: string) => `Self-signup cannot be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
     // Org-wide force of
     // `Project.require_change_request_for_approved_links`, minus a
     // per-project `exempt_from_org_link_lock` opt-out. See `Organization`'s
     // own field docstring (`frontend/src/api/types.ts`) for the full
     // resolution.
-    forceRequireChangeRequestForApprovedLinks: "Require a change request for link changes on approved {requirements}, org-wide",
+    forceRequireChangeRequestForApprovedLinks: "Require a change request for link changes on approved {requirements}, organisation-wide",
     forceRequireChangeRequestForApprovedLinksHint:
       "Applies to every {project} in this organisation, even one whose own setting is off — unless that {project} is individually marked exempt in its own Project Admin settings.",
     // AI approval via MCP (docs/decisions.md). Both this AND a given
@@ -1497,7 +1497,7 @@ const en = {
     externalUserPolicyDomainOnly: "Domain only — existing accounts anywhere can be added; new accounts only if their email matches the accepted domain above",
     externalUserPolicyAnyone: "Anyone — any email address can be added or invited",
     outsideDomainUsers: (org: string) => `Users outside this ${org}`,
-    outsideDomainUsersHint: (org: string) => `Existing accounts elsewhere in the system whose email matches this ${org}'s accepted domain but aren't members yet.`,
+    outsideDomainUsersHint: (org: string) => `Existing accounts elsewhere in the system whose email matches this ${org}'s accepted domain but are not members yet.`,
     showOutsideDomainUsers: "Show users outside this org",
     noOutsideDomainUsers: (org: string) => `No matching users found outside this ${org}.`,
     patUser: "User",
@@ -1515,7 +1515,7 @@ const en = {
     patRevokeAll: (org: string) => `Revoke all Personal Access Tokens for this ${org}`,
     patRevokeAllTitle: (org: string) => `Revoke every Personal Access Token that touches this ${org}?`,
     patRevokeAllConfirm: (orgPlural: string) =>
-      `This fully revokes each matching token — including any other ${orgPlural.toLowerCase()} it's also scoped to, not just this one — and cannot be undone.`,
+      `This fully revokes each matching token — including any other ${orgPlural.toLowerCase()} it is also scoped to, not just this one — and cannot be undone.`,
     patRevokeAllResult: "Revoked {n} token(s).",
     patNone: (org: string) => `No tokens currently reach this ${org}.`,
     projectStatuses: "{Project} statuses",
@@ -1758,7 +1758,7 @@ const en = {
     revokeModuleAdministratorConfirm: "They will lose access to module management immediately.",
     revokedModuleAdministratorToast: "Module administrator revoked",
     patRevokeAll: "Revoke all Personal Access Tokens platform-wide",
-    patRevokeAllHint: (orgPlural: string) => `Incident-response action: revokes every non-revoked Personal Access Token in the deployment, regardless of who owns it or which ${orgPlural.toLowerCase()}(s) it's scoped to.`,
+    patRevokeAllHint: (orgPlural: string) => `Incident-response action: revokes every non-revoked Personal Access Token in the deployment, regardless of who owns it or which ${orgPlural.toLowerCase()}(s) it is scoped to.`,
     patRevokeAllTitle: "Revoke every Personal Access Token on the entire platform?",
     patRevokeAllConfirm: "This cannot be undone.",
     patRevokeAllResult: "Revoked {n} token(s) platform-wide.",
@@ -2716,7 +2716,7 @@ const en = {
       `${columns} ${columns === 1 ? "column" : "columns"} · ${rows} ${rows === 1 ? "row" : "rows"}${merged > 0 ? ` · ${merged} merged` : ""}`,
     fieldLabel: "Table",
     fieldHelp: "The table's columns, rows and cells. Open the editor to select cells, merge them, align them and give them colours.",
-    cellTextHelp: "What the cell prints: text with the same formatting and {{placeholders}} as a text block. Leave it empty for a blank cell to write in by hand.",
+    cellTextHelp: "What the cell prints: text with the same formatting and {{placeholders}} as a text block. Leave it empty for a blank cell to complete manually.",
     summaryHelpLabel: "Editing the table",
     summaryHint: "The table is edited in its own window, where cells are selected, merged and coloured.",
     edit: "Edit table",
@@ -3143,7 +3143,7 @@ const en = {
     leaveOrgTooltip: (orgName: string) => `Remove your own membership in ${orgName}`,
     leaveOrgTitle: (orgName: string) => `Leave ${orgName}?`,
     leaveOrgConfirm: (org: string) =>
-      `You'll lose access to every {project} in this ${org} unless an admin adds you back — this can be undone by re-inviting you.`,
+      `You will lose access to every {project} in this ${org} unless an admin adds you back — this can be undone by re-inviting you.`,
     leftOrgToast: (orgCap: string) => `Left ${orgCap.toLowerCase()}`,
     changePassword: "Change password",
     currentPassword: "Current password",
@@ -3158,7 +3158,7 @@ const en = {
     authenticatorCode: "Authenticator code",
     enterCodeToDisable: "Enter a current code to disable 2FA.",
     pats: "Personal Access Tokens",
-    patsHint: (org: string) => `Long-lived tokens for non-interactive tools (e.g. an MCP server) that shouldn't need re-authenticating every 12 hours. Scoped to the ${org}(s) you choose, and never grant more access than your own account already has.`,
+    patsHint: (org: string) => `Long-lived tokens for non-interactive tools (e.g. an MCP server) that should not need re-authenticating every 12 hours. Scoped to the ${org}(s) you choose, and never grant more access than your own account already has.`,
     patName: "Name",
     patNamePlaceholder: "e.g. \"MCP server\"",
     patOrgs: (orgPlural: string) => `${orgPlural} this token can access`,
@@ -3169,11 +3169,11 @@ const en = {
     patAllProjects: "All {projects}",
     patExpiry: "Expiry",
     patExpiryTooLong: (orgPlural: string) =>
-      `Can't be extended past {date} — the longest lifetime the selected ${orgPlural.toLowerCase()}' policies currently allow.`,
+      `Cannot be extended past {date} — the longest lifetime the selected ${orgPlural.toLowerCase()}' policies currently allow.`,
     patNew: "New personal access token",
     patCreate: "Create token",
     patCreatedTitle: "Token created",
-    patCreatedHint: "Copy this token now — it won't be shown again.",
+    patCreatedHint: "Copy this token now — it will not be shown again.",
     patExpires: "Expires",
     patLastUsed: "Last used",
     patNever: "Never used",
@@ -3185,7 +3185,7 @@ const en = {
     patRevokeAllTitle: "Revoke every one of your Personal Access Tokens?",
     patRevokeAllConfirm: "This cannot be undone.",
     patRevokedAllToast: "All tokens revoked",
-    patNone: "You haven't created any Personal Access Tokens yet.",
+    patNone: "You have not created any Personal Access Tokens yet.",
     patNoOrgsSelected: (org: string) => `Select at least one ${org}.`,
   },
   actions: {
@@ -3207,7 +3207,7 @@ const en = {
     archived: "Archived",
     archivedToast: "Action archived",
     archiveTitle: "Archive this action?",
-    archiveConfirm: "It can no longer be edited afterwards, but stays visible on every {requirement} it's linked to.",
+    archiveConfirm: "It can no longer be edited afterwards, but stays visible on every {requirement} it is linked to.",
     // No `ConfirmDialog` here, matching `ProjectAdminPage.tsx`'s existing
     // unarchive button (also fires immediately) — reversible again, unlike
     // the Tier-1-confirmed archive action itself.
@@ -3705,7 +3705,7 @@ const en = {
     scoringModel: "The formula that combines the scoring axes (for example likelihood and consequence) into one score and band.",
     scoringDefaultModel: "The scoring model used for new scores in this {project} when none is chosen. The model decides how the axes combine into one score.",
     scoringThresholds:
-      "Where each level starts, in this {project}, for a level worked out from a number (such as Demand).\nLeave them as the organisation's values, or set your own when the same number means more or less here: for example, 20 requesters may be Many in a small product and few in a large one.\nLevel names and weights stay the organisation's. Each level must start above the one before.",
+      "Where each level starts, in this {project}, for a level calculated from a number (such as Demand).\nLeave them as the organisation's values, or set your own when the same number means more or less here: for example, 20 requesters may be Many in a small product and few in a large one.\nLevel names and weights stay the organisation's. Each level must start above the one before.",
     scoringEnabledModels: "The models offered when scoring and viewing a record, and shown side by side where a page shows several. The default model is always offered. Clear the choice to offer every model.",
     scoringAxisName: "What this criterion measures, for example Strategic fit. People see it as a field when they score a record.",
     scoringAxisDescription: "Guidance for the person scoring: what the criterion means and how to choose a level.",

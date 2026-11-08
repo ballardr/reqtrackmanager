@@ -33,7 +33,7 @@ const localGroups: OrgGroup[] = [
 // above. A genuinely different concept from an org group (local to one
 // project, not org-wide), so it gets a visually distinguishable match —
 // `FolderKanban` instead of `Users`, and a "Project group" badge instead of
-// "Org group" — see the component's own module docstring.
+// "Organisation group" — see the component's own module docstring.
 const localProjectGroups: ProjectGroup[] = [
   { id: "pg1", name: "Reviewers", roles: ["stakeholder"], member_user_ids: [], member_org_group_ids: [], member_source_project_ids: [] },
 ];
@@ -62,7 +62,7 @@ export const LocalFilterMode: Story = {
 
 /** the members/groups directory rework: passing `groups` also
  * matches org groups by name, client-side, alongside the user matches —
- * rendered with a `Users` icon and an "Org group" badge so it's visually
+ * rendered with a `Users` icon and an "Organisation group" badge so it's visually
  * distinct, and selecting one calls `onSelectGroup` (not `onSelect`). */
 export const GroupMatchRendersAndSelects: Story = {
   args: { groups: localGroups, onSelectGroup: fn() },
@@ -71,7 +71,7 @@ export const GroupMatchRendersAndSelects: Story = {
     const input = canvas.getByPlaceholderText("Add a user…");
     await userEvent.type(input, "engineer");
     const option = canvas.getByRole("option", { name: /Engineering/ });
-    await expect(option).toHaveTextContent("Org group");
+    await expect(option).toHaveTextContent("Organisation group");
     // No user matches "engineer" — the group match is the only option.
     await expect(canvas.queryByText("Alex Morgan")).not.toBeInTheDocument();
 
@@ -86,7 +86,7 @@ export const GroupMatchRendersAndSelects: Story = {
 /** Passing `projectGroups` also matches this project's own groups by
  * name, client-side, alongside user and org-group matches — rendered with a
  * `FolderKanban` icon and a "Project group" badge, visually distinct from
- * both a user row and an "Org group" match, and selecting one calls
+ * both a user row and an "Organisation group" match, and selecting one calls
  * `onSelectProjectGroup` (not `onSelect`/`onSelectGroup`). */
 export const ProjectGroupMatchRendersAndSelects: Story = {
   args: { projectGroups: localProjectGroups, onSelectProjectGroup: fn() },
@@ -124,7 +124,7 @@ export const OrgGroupAndProjectGroupMatchesCoexist: Story = {
     await userEvent.type(canvas.getByPlaceholderText("Add a user…"), "review");
     const orgGroupOption = canvas.getByRole("option", { name: /Review Squad/ });
     const projectGroupOption = canvas.getByRole("option", { name: /Reviewers/ });
-    await expect(orgGroupOption).toHaveTextContent("Org group");
+    await expect(orgGroupOption).toHaveTextContent("Organisation group");
     await expect(projectGroupOption).toHaveTextContent("Project group");
   },
 };

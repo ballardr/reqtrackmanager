@@ -77,7 +77,7 @@ export function ProjectEngagementsPage() {
         setLoadError(null);
       })
       .catch((err) => {
-        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module isn't enabled for this project, or you don't have access to its engagements."));
+        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module is not enabled for this project, or you do not have access to its engagements."));
       });
     return () => {
       active = false;

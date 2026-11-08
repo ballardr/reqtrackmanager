@@ -100,7 +100,7 @@ export const DeleteLastItemIsDisabled: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
-      canvas.getByRole("button", { name: "This is the only one — create another first so there's something to reassign to." })
+      canvas.getByRole("button", { name: "This is the only one — create another first so there is something to reassign to." })
     ).toBeDisabled();
   },
 };

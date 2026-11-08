@@ -200,7 +200,7 @@ export const PatsTabNoneYet: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Personal Access Tokens" }));
-    await waitFor(() => expect(canvas.getByText("You haven't created any Personal Access Tokens yet.")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("You have not created any Personal Access Tokens yet.")).toBeInTheDocument());
   },
 };
 

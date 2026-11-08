@@ -82,7 +82,7 @@ export function DecisionDetailPage() {
     });
     decisionsApi.listDecisionTypes(projectId).then(setDecisionTypes);
     decisionsApi.getDecision(projectId, decisionId).then(setDecision).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Decision could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Decision could not be found, or you do not have access to it."));
     });
   }, [projectId, decisionId]);
 

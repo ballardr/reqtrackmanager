@@ -285,7 +285,7 @@ export const GroupOwnerIsNamedWithItsKind: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
   },
 };
 

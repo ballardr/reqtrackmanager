@@ -304,8 +304,8 @@ def test_the_register_prints_the_owner_with_its_kind(client, admin_token):
     assert resp.status_code == 200, resp.text
     register = next(s for s in resp.json()["sections"] if s["key"] == "register")
     owners = {row[1]: row[register["columns"].index("Owner")] for row in register["rows"]}
-    assert owners["By group"] == "Risk Board (Org group)"
-    assert owners["By user"] not in ("", "Risk Board (Org group)") and "(" not in owners["By user"]
+    assert owners["By group"] == "Risk Board (Organisation group)"
+    assert owners["By user"] not in ("", "Risk Board (Organisation group)") and "(" not in owners["By user"]
     assert owners["Nobody"] == ""
 
 

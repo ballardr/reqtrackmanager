@@ -142,7 +142,7 @@ export function GuidingPrincipleDetailPage() {
   useEffect(() => {
     if (!scopeId || !guidingPrincipleId) return;
     scopedApi.get(scopeId, guidingPrincipleId).then(setGuidingPrinciple).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Guiding Principle could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Guiding Principle could not be found, or you do not have access to it."));
     });
     scopedApi.listVersions(scopeId, guidingPrincipleId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

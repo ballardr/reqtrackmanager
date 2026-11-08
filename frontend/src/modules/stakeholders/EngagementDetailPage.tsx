@@ -89,7 +89,7 @@ export function EngagementDetailPage() {
   useEffect(() => {
     if (!projectId || !engagementId) return;
     projectEngagementApi.get(projectId, engagementId).then(setEngagement).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Engagement could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Engagement could not be found, or you do not have access to it."));
     });
   }, [projectId, engagementId]);
 

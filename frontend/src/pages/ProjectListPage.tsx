@@ -1,4 +1,5 @@
 import { Plus, Star } from "lucide-react";
+import { ImportWarnings } from "../components/ImportWarnings";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -542,14 +543,7 @@ export function ProjectListPage() {
             }}
           />
         )}
-        {importWarnings && importWarnings.length > 0 && (
-          <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
-            <strong>{strings.projects.importWarnings}</strong>
-            <ul style={{ margin: 0 }}>
-              {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
-            </ul>
-          </div>
-        )}
+        <ImportWarnings warnings={importWarnings} title={strings.projects.importWarnings} />
           <div className="stack">
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <ViewToggle mode={viewMode} onChange={setViewMode} showTreeOption={hasHierarchy} />

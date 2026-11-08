@@ -132,7 +132,7 @@ test("a server admin adds users with a password (with and without an organisatio
       try {
         const inviteePage = await context.newPage();
         await inviteePage.goto(`${url.pathname}${url.search}`);
-        await expect(inviteePage.getByText("You've been invited")).toBeVisible();
+        await expect(inviteePage.getByText("You have been invited")).toBeVisible();
         await inviteePage.getByLabel("Display name").fill(person.name);
         await inviteePage.getByLabel("Email").fill(person.email);
         await inviteePage.getByLabel("Password").fill(person.password);

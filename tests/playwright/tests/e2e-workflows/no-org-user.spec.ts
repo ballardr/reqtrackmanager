@@ -40,7 +40,7 @@ test.describe("app shell for a user with zero organisation memberships", () => {
     await test.step("/orgs shows an empty directory, not a crash", async () => {
       await page.getByRole("link", { name: "My organisations" }).click();
       await expect(page).toHaveURL(/\/orgs$/);
-      await expect(page.getByText("You don't belong to any organisations yet.")).toBeVisible();
+      await expect(page.getByText("You do not belong to any organisations yet.")).toBeVisible();
     });
 
     await test.step("the nav rail has no org-admin/server-admin section for this plain, non-server-admin persona", async () => {

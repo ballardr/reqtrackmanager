@@ -115,7 +115,7 @@ test.describe("project admin: action types", () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await selectProjectAdminGroup(page, "Fields & actions");
       await expect(inputWithValue(page, "Test")).toBeVisible();
-      await expect(page.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+      await expect(page.getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
     });
   });
 });

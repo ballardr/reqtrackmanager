@@ -231,7 +231,7 @@ export function ChangeRequestDetailPage() {
       await reload();
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "This change request could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This change request could not be found, or you do not have access to it."));
     }
   }
 

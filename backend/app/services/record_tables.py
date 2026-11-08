@@ -359,7 +359,7 @@ def _same(before: str, after: str) -> bool:
 
 @dataclass
 class PrincipalCells:
-    """Batch lookup for a person column: an email for a user, `Name (Org group)` for a group.
+    """Batch lookup for a person column: an email for a user, `Name (Organisation group)` for a group.
 
     Load once per export (`load`), then ask per row (`text`), so a long list costs a fixed number of queries.
     """
@@ -386,7 +386,7 @@ class PrincipalCells:
 
 
 def parse_principal_cell(ctx: RecordImportContext, text: str, *, field_name: str) -> PrincipalRef | None:
-    """The person a cell names: an email (a user of the organisation) or a group (`Name (Org group)`).
+    """The person a cell names: an email (a user of the organisation) or a group (`Name (Organisation group)`).
 
     Args:
         ctx: The import context (organisation, project, per-import cache).

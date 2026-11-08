@@ -119,12 +119,15 @@ CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
     ),
 )
 
+# The suffix exports used before the label was spelled out; an import still reads it so an earlier file re-imports.
+LEGACY_ORG_GROUP_LABEL = "Org group"
+
 DELETED_GROUP_LABEL = "Deleted group"
 UNKNOWN_USER_LABEL = "Unknown user"
 
 PRINCIPAL_TYPE_LABEL: dict[PrincipalType, str] = {
     PrincipalType.USER: "User",
-    PrincipalType.ORG_GROUP: "Org group",
+    PrincipalType.ORG_GROUP: "Organisation group",
     PrincipalType.PROJECT_GROUP: "Project group",
 }
 
@@ -184,7 +187,7 @@ def validate_principal(
 def principal_member_ids(db: Session, ref: PrincipalRef) -> set[uuid.UUID]:
     """The users a principal stands for: the user itself, or a group's effective members.
 
-    Org groups resolve transitively through nested groups; project groups include their nested org
+    Organisation groups resolve transitively through nested groups; project groups include their nested org
     groups and referenced source projects (`rbac.effective_project_group_member_ids`).
     """
     if ref.type is PrincipalType.USER:
@@ -346,7 +349,7 @@ def label_of(
 
 def principal_text(principal: PrincipalOut | None, *, empty: str = "") -> str:
     """A principal as plain text for a report or export: a user's name, a group's name with its kind
-    (`Platform Team (Org group)`) so a group is never mistaken for a person.
+    (`Platform Team (Organisation group)`) so a group is never mistaken for a person.
 
     Args:
         principal: The resolved principal, or None for an empty field.
@@ -404,9 +407,9 @@ def principal_out(db: Session, type_value: str | None, principal_id: uuid.UUID |
 def group_ref_from_text(
     db: Session, text_value: str, *, organization_id: uuid.UUID, project_id: uuid.UUID | None
 ) -> tuple[PrincipalRef | None, str | None]:
-    """Resolves a group named in a spreadsheet cell: `Name (Org group)`, `Name (Project group)` (the form
-    `principal_text` writes, so an export re-imports) or a bare `Name` (an organisation group first, then
-    one of the project's groups).
+    """Resolves a group named in a spreadsheet cell: `Name (Organisation group)` (or the earlier `Name (Org group)`),
+    `Name (Project group)` (the form `principal_text` writes, so an export re-imports) or a bare `Name`
+    (an organisation group first, then one of the project's groups).
 
     Args:
         text_value: The cell text.
@@ -419,6 +422,7 @@ def group_ref_from_text(
     name = text_value.strip()
     wanted: PrincipalType | None = None
     for kind, label in ((PrincipalType.ORG_GROUP, PRINCIPAL_TYPE_LABEL[PrincipalType.ORG_GROUP]),
+                        (PrincipalType.ORG_GROUP, LEGACY_ORG_GROUP_LABEL),
                         (PrincipalType.PROJECT_GROUP, PRINCIPAL_TYPE_LABEL[PrincipalType.PROJECT_GROUP])):
         suffix = f" ({label})"
         if name.endswith(suffix):
@@ -439,7 +443,7 @@ def group_ref_from_text(
         return matches[0], None
     if not matches:
         return None, f"Unknown group '{text_value.strip()}'."
-    return None, f"Group '{text_value.strip()}' is ambiguous; add ' (Org group)' or ' (Project group)'."
+    return None, f"Group '{text_value.strip()}' is ambiguous; add ' (Organisation group)' or ' (Project group)'."
 
 
 # --- Deleting a group that still owns records -------------------------------------------------

@@ -14,6 +14,7 @@
  * unchanged value alongside the one it's actually changing).
  */
 import { useState } from "react";
+import { Spinner } from "../../components/Spinner";
 
 import { DefinitionList } from "../../components/DefinitionList";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
@@ -39,7 +40,7 @@ export function MappingTypesPanel({ orgId }: { orgId: string }) {
   useLoadOnChange(reload, [orgId]);
 
   if (error) return <div style={{ color: "var(--color-danger)" }}>{error}</div>;
-  if (items === null) return <p>Loading…</p>;
+  if (items === null) return <Spinner />;
 
   return (
     <div className="stack">

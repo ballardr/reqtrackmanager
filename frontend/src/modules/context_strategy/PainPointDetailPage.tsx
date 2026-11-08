@@ -150,7 +150,7 @@ export function PainPointDetailPage() {
   useEffect(() => {
     if (!projectId || !painPointId) return;
     projectPainPointApi.get(projectId, painPointId).then(setPainPoint).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Pain Point could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Pain Point could not be found, or you do not have access to it."));
     });
   }, [projectId, painPointId]);
 

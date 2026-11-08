@@ -164,7 +164,7 @@ export function StakeholderFormModal({
             {hint?.suggested_cadence && hint.quadrant && (
               <span className="text-muted" style={{ fontSize: "0.8rem" }} data-testid="cadence-hint">
                 Suggested: {TARGET_CADENCE_LABEL[hint.suggested_cadence]} ({GRID_QUADRANT_LABEL[hint.quadrant]}). A suggestion
-                only — your choice above is what's saved.
+                only — your choice above is what is saved.
               </span>
             )}
           </div>

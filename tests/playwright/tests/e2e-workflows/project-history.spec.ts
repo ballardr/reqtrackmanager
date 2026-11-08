@@ -13,7 +13,7 @@ test.describe("project history / changes-over-time view", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await openProject(page, PROJECT_NAMES.alpha1);
 
-    await test.step("post a comment first, so there's something for the include-comments toggle to reveal", async () => {
+    await test.step("post a comment first, so there is something for the include-comments toggle to reveal", async () => {
       await page.getByRole("link", { name: "Requirements", exact: true }).click();
       await openRequirementByCode(page, "HW-FN-001");
       await page.getByPlaceholder("Add comment").fill("E2E: project-history spec comment marker.");

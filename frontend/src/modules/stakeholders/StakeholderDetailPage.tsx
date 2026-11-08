@@ -102,7 +102,7 @@ export function StakeholderDetailPage() {
   useEffect(() => {
     if (!scopeId || !stakeholderId) return;
     scopedApi.get(scopeId, stakeholderId).then(setStakeholder).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Stakeholder could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Stakeholder could not be found, or you do not have access to it."));
     });
     scopedApi.listVersions(scopeId, stakeholderId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -358,7 +358,7 @@ export function StakeholderDetailPage() {
 
           <RepresentationPanel
             heading="Represents these Personas"
-            emptyText="This Stakeholder doesn't represent any Persona yet."
+            emptyText="This Stakeholder does not represent any Persona yet."
             load={() => scopedApi.listPersonas(scopeId, stakeholder.id)}
             linkFor={(persona) =>
               projectId

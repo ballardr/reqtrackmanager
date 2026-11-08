@@ -164,7 +164,7 @@ test("project admin invites a brand-new external user by email, and they can sig
   await test.step("complete signup via the invite link and confirm project access", async () => {
     const url = new URL(inviteUrl);
     await page.goto(`${url.pathname}${url.search}`);
-    await expect(page.getByText("You've been invited")).toBeVisible();
+    await expect(page.getByText("You have been invited")).toBeVisible();
     await page.getByLabel("Display name").fill("Invited Person");
     // The email field is prefilled by nothing server-side — the invite is
     // matched by the email the invitee types, so it must match exactly.

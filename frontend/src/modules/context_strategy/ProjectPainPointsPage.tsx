@@ -140,7 +140,7 @@ export function ProjectPainPointsPage() {
       setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 

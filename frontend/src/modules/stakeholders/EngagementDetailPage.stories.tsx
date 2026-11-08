@@ -266,7 +266,7 @@ export const FacilitatorsCanBeAddedAsUsersOrGroups: Story = {
         facilitators: [{ type: "user", id: "user-2" }, { type: "org_group", id: "group-1" }],
       }),
     );
-    await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
   },
 };
 

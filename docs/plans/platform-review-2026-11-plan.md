@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 17 (including 14b, 9b, 9c and 9d) done (14, 15, 16 and 17 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 17 (including 14b, 9b, 9c and 9d) done (14, 15, 16 and 17 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08; phase 18 done 2026-11-08; phase 19 split into 19a to 19d and 19a done 2026-11-08; review checkpoint R and phase 20 (website documentation) added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-22 / 24 phases complete.
+24 / 29 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -32,8 +32,13 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 15 | Organisation overview settings shortcut | Settings icon link on the title row for every member who can see the overview (User: no role predicate); story, Playwright spec written and not run; see `docs/decisions.md` | [x] |
 | 16 | Organisation-wide files list | `POST /orgs/{id}/files/search`, shared table and filters with the project page; only projects the caller holds a role in; Playwright spec written and not run; see `docs/decisions.md` | [x] |
 | 17 | Demo seed data | Requirement statements, pictures and diagram, links, evidence layout, two templates and a project from one, WSJF scoring; scoring configuration now travels in bundles and templates; PDF equation line height fixed; see `docs/decisions.md` | [x] |
-| 18 | UI/UX style guide review (whole product) | Read-only audit of every page and dialog against `docs/ux-style-guide.md`; findings register with severity; ends in a user sign-off | [ ] |
-| 19 | UI/UX fixes from the review | Implements the findings the user approves in phase 18; may split into sub-phases by finding group | [ ] |
+| 18 | UI/UX style guide review (whole product) | Read-only audit of every page and dialog against `docs/ux-style-guide.md`; findings register with severity; ends in a user sign-off. Register done 2026-11-08 (static scan, 16 findings in 6 groups, N5 refuted); the user approved every group at the checkpoint; see `docs/decisions.md` | [x] |
+| 19a | UI/UX fixes: wording, loading, warnings, style guide | Groups C and F and E2/E3: contractions, abbreviations and colloquial phrases expanded (the group label is now "Organisation group" in the UI, exports and imports, which still read the earlier "Org group" suffix), `Spinner` for every hand-written "Loading…", one `ImportWarnings` component, the `title` rule settled in the style guide; Playwright not run; see `docs/decisions.md` | [x] |
+| 19b | UI/UX fixes: help instead of permanent text, strings | Groups A (A1 to A5) and D (D1, D2): hints and muted explanations to `(?)` help, triage of the 166 `helpNotNeeded`, native `title` explanations to `Tooltip`, core nouns and filter labels into `strings` | [ ] |
+| 19c | UI/UX fixes: creation routes | Group B and the Nesting group: New project and New organisation offer Create and Import as separate dialogs on one field group (`SplitButtonTrigger`); Parent, Inheritance and Mirror role fold into one collapsed "Nesting" group | [ ] |
+| 19d | UI/UX fixes: `FilterSelect` | Group E1: one shared select for every filter panel and all 117 raw `<select>` elements, with a guard script (empty baseline) | [ ] |
+| R | Review checkpoint after the UI/UX fixes | User review of phase 19's result; every item raised becomes a numbered phase or is fixed in place; gates phase 20 | [ ] |
+| 20 | Website documentation update | Reviews and updates `docs/website/` for every user-visible change in phases 1 to 19 (and the review's fixes); screenshots and steps re-captured where the UI changed | [ ] |
 
 ```mermaid
 flowchart LR
@@ -52,10 +57,15 @@ flowchart LR
     P13["13 Templates"] --> P17
     P10["10 Rename"] --> P14["14 Overview widgets"]
     P13 --> P14
-    P18["18 UI/UX review"] --> P19["19 UI/UX fixes"]
+    P18["18 UI/UX review"] --> P19a["19a Wording, loading"]
+    P19a --> P19b["19b Help, strings"]
+    P19b --> P19c["19c Creation routes"]
+    P19c --> P19d["19d FilterSelect"]
+    P19d --> PR["R Review"]
+    PR --> P20["20 Website docs"]
 ```
 
-Phase 18 can start at any time; phase 19 follows its sign-off.
+Phase 19 (19a to 19d) follows phase 18's sign-off (given 2026-11-08); phase R follows phase 19d; phase 20 follows phase R, so the website describes the product as the review left it.
 
 ## Phase 3 findings register
 
@@ -73,6 +83,47 @@ Method: a static scan of the 21 `RecordHeader` pages (header props, layout, link
 | F8 | Report layout designer and pack editor back labels had no arrow | Fixed by F2 (same component) |
 
 Phases 4, 9 and 10 take nothing further from this audit.
+
+## Phase 18 findings register
+
+Drafted 2026-11-08 by static scan (*Decided by: Agent*, the phase 3 precedent). **Checkpoint passed 2026-11-08 (*Decided by: User*):** every group (A to F) is approved; Q1 yes (name only, the guide is edited in both places); **Q2 collapse Parent, Inheritance and Mirror role into one "Nesting" group** (the recommendation was inline); **Q3 all 117 selects** move to `FilterSelect`. Every file path below is under `frontend/src/`. **Not covered:** the Playwright structural walk (needs a rebuilt stack), so rendered-only issues (spacing, overflow, focus order) are unreviewed; and permanent muted text (`className="text-muted"`, 801 sites) was triaged only on the New project dialog, because a text scan cannot tell an explanation from an empty state or a required next step.
+
+**Clean:** the eight existing checkers pass with empty baselines (`check_field_help`, `check_required_markers`, `check_list_page_layout`, `check_textarea_autogrow`, `check_record_header_back`, `check_detail_cards`, `check_form_markup`, `check_spacing_tokens`). No hand-written tab bar, modal or portal outside the shared components, no `window.confirm`, no "(optional)", no raw enum string rendered, and every delete confirms or is a reversible one-tap toggle with a toast (`WatchingGroupsPanel`, `FavouritesPage`). Mutations go through `useMutation` or a parent that does.
+
+**Seed findings checked:** N1, N2, N3, N4, N7 confirmed; **N5 refuted** (`FormActions` inside a `Modal` already portals into the dialog header, `components/FormActions.tsx:86-87`); N6 stays an open question (Q2 below).
+
+| # | Group, finding and evidence | Rule | Severity | Proposed fix | Size |
+| --- | --- | --- | --- | --- | --- |
+| **A. Explain in help, not in the layout** | | | | | |
+| A1 | Permanent `hint` explains what a setting does: `pages/OrgAdminPage.tsx` 3016, 3410, 3426, 3581, 3591, 3606, 3627, 3637, 3653; `pages/ProjectAdminPage.tsx` 1626, 1647, 1667, 1693; `pages/PreferencesPage.tsx` 504, 513; `pages/ProjectListPage.tsx` 457 (N2) | Pattern: explain in help | defect (16) | Move each to `help`, one line per option where it has options | M |
+| A2 | `helpNotNeeded` plus a `hint` that says what the field is: `modules/stakeholders/EngagementFormModal.tsx` 92, 96, 103, 108, 112; `FindingFormModal.tsx` 64-65; `NeedFormModal.tsx` 49-58; `StakeholderFormModal.tsx` 192, 198; `ResearchPromptsPanel.tsx` 39; `modules/context_strategy/PainPointFormModal.tsx` 118. A warning that must be seen each time (personal data, "Required to reject.") stays visible | Pattern: explain in help; field help | defect (about 14) | Move the explanation to `help`; keep warnings | S |
+| A3 | `helpNotNeeded` on fields whose purpose is not obvious from the name. 166 of 441 uses have a label that is not a plain name, title or description (an upper bound, to be triaged by hand): `OrgAdminPage` 19, `ProjectAdminPage` 13, `PreferencesPage` 7, `EvidenceFormModals` 5, `StakeholderFormModal` 5, `DecisionFormModal` 4. Examples: Component and Category `components/RequirementCreateModal.tsx` 231-282 and `ChangeRequestCreateModal.tsx` 423, 433; Owner `RequirementFields.tsx` 100; Role `NewUserFields.tsx` 54; accent colours `OrgAdminPage.tsx` 3251, 3260; SMTP port 3492; cascade `ComponentPhasesPanel.tsx` 181; Template, Organisation, Visibility on New project (N4) | Pattern: field help | defect (the checker cannot judge it) | Triage the 166; add `strings.help.*` to every non-obvious one | L |
+| A4 | Permanent muted explanations on the New project dialog: `pages/ProjectListPage.tsx` 428 ("code is assigned automatically", N3) and 465 (`importIgnoresTemplate`). Other pages not triaged | Pattern: explain in help | defect (2 known) | `help` on Name; the import note disappears with B1 | S |
+| A5 | Native `title` used to explain, not to name an icon: `ReportParamsForm.tsx` 133, 152; `LinkTraceModal.tsx` 62; `ReportFormatDownload.tsx` 65; `ReportPackRunner.tsx` 228; `TreeSelect.tsx` 85; `pages/OrgAdminPage.tsx` 2369; `ProjectAdminPage.tsx` 1801; `RequirementsPage.tsx` 371-381 (icons whose meaning is only in `title`); `ScoringMatrixChart.tsx` 91 | Pattern: explain in help ("never a native `title`") | defect (about 10) | Shared `Tooltip`; give the `RequirementsPage` icons an accessible name | S |
+| **B. Creation routes** | | | | | |
+| B1 | New project: Import is a file field inside the Create form that hides the code, report name and template fields (N1): `pages/ProjectListPage.tsx` 513-517, 417, 431, 442, 463 | Create as a layer; one door for bulk | defect | `SplitButtonTrigger` (Create is the default click; chevron offers Import project), two short dialogs on one shared field group. Alternative: `MenuButton` "New" with both. Recommend the split button, which the guide names for a primary action with one alternative | M |
+| B2 | Same shape on `pages/ServerOrganisationsPage.tsx` 209-222: "Or import from an exported bundle" in the create dialog, creation choices hidden when a file is chosen | same | defect | Same fix, one component for both pages | M (with B1) |
+| **C. Formal wording** | | | | | |
+| C1 | Contractions in user-visible text: 27 lines in `i18n/strings.ts` (69, 104, 206, 247, 330, 337, 636, 758, 852, 951, 966, 1212, 1217, 1232, 1256, 1290, 1441, 1469, 1500, 1518, 1761, 3146, 3161, 3172, 3176, 3188, 3210) and about 48 string literals in components (`App.tsx` 120, `CsvImportWizard.tsx` 237, `OrgAdminPage.tsx` 3430, 3851, `RequirementDetailPage.tsx` 372, `ProjectAdminPage.tsx` 1597, 1599, 2393 and others) | Formal wording | defect (about 75) | Expand ("does not", "cannot") | S |
+| C2 | Abbreviations: "Org-wide visibility" (`strings.ts` 568, 570), "Org group" (88), "Org Admin" (377, 378, 512, 543, 554 and others; 21 lines); N7: the Visibility options come from `admin.*` while the same word is used elsewhere as "organisation" | Formal wording; one term for one thing | inconsistency | Spell out, reuse the glossary term | S |
+| C3 | Colloquial or idiomatic phrasing: `modules/product_feedback/RequestScoresPanel.tsx` 58 ("Worked out"), `RequestFields.tsx` 158 ("Worked out:"), `RequestLoopPanel.tsx` 44 ("Everyone who asked has been told"), `RequestDetailPage.tsx` 616 ("the people who asked"), `strings.ts` 2719, 3708 ("worked out from a number"), 1431 ("let in"), `components/ProposedLinkRow.tsx` 44 (comment, "greyed out") | Formal wording (the correction CLAUDE.md names) | defect (7) | "Calculated", "requesters", "unavailable", "permitted" | S |
+| **D. Terminology and strings** | | | | | |
+| D1 | Core nouns typed as English literals, so the organisation terminology and the deployment's organisation label are ignored (22 sites): `pages/ProjectListPage.tsx` 361 ("Organisation"), `ServerOrganisationsPage.tsx` 203, 209, 214, 220 (`New ${orgLabel}`, "Defaults to the bundle's own name", "Or import from…"), `ReportParamsForm.tsx` 60, 69, `ServerManagementPage.tsx` 717, `modules/compliance/StandardImportModal.tsx` 86, `OrgComplianceOutstandingPanel.tsx` 388, `StandardWorkspacePage.tsx` 264-268, `ComplianceOrgOverviewTiles.tsx` 58 | Terminology; one term for one thing | defect (22) | Move to `strings` with the noun placeholders | M |
+| D2 | `FilterField label="…"` literals outside `strings` (51; most in compliance, product feedback, context strategy and the project, requirement and change request lists) | one term for one thing; translation | inconsistency | `strings.filters.*`; the repeated Status, Role, Organisation labels become shared | M |
+| **E. Shared components** | | | | | |
+| E1 | 117 raw `<select className="input">` in 55 files, mostly in filter panels (`RequirementsPage.tsx` 7, `OrgComplianceOutstandingPanel.tsx` 6, `ProjectListPage.tsx` 5, `OrgComplianceStandardsPanel.tsx` 5, `SearchPage.tsx` 4, `RequestFilterFields.tsx` 4, `FileFilterFields.tsx` 3). `FilterField` has no select partner; `LabeledSelect` is for forms | one component per pattern | inconsistency | A `FilterSelect` (value, options, "All" entry) used by every filter panel; Q3 | L |
+| E2 | Hand-written "Loading…" in `modules/compliance/` (`ComplianceOrgSettingsPanel.tsx` 57, `StandardVersionsSection.tsx` 102, `ProjectComplianceDetail.tsx` 199, `MappingTypesPanel.tsx` 42, `StandardListPage.tsx` 174, `RequirementMappingsModal.tsx` 125) and `product_feedback/RequestDemandPanel.tsx` 105 | one component per pattern | inconsistency (7) | `Spinner` | S |
+| E3 | The import-warnings card is written three times with a literal `#b58900` fallback: `ProjectListPage.tsx` 546, `ServerOrganisationsPage.tsx` 260, `OrgAdminPage.tsx` 2570 | one component per pattern; tokens | inconsistency | One shared warning list (`Notice`-style) on theme tokens | S |
+| **F. The style guide itself** | | | | | |
+| F1 | Contradiction: Principle 8 and the compact-forms and button-size sections (lines 865, 906) ask every icon-only button for an `aria-label` **and** a `title`; "explain in help" (line 1093) says never use a native `title`. About 40 icon buttons carry both | Style guide | ambiguity | Q1 | S (docs) |
+
+Sizes: S under half a day, M about a day, L several days.
+
+### Questions for the checkpoint
+
+- **Q1 (F1):** may an icon-only button keep a native `title` as its name (not as an explanation)? Recommendation: yes, and the guide says so in both places.
+- **Q2 (N6):** on New project, keep Parent, Inheritance and Mirror role inline, or fold them under one collapsed "Nesting" group? Recommendation: keep inline; they appear only when a parent exists, so the default dialog is short.
+- **Q3 (E1):** build a shared `FilterSelect` and move all 117 selects onto it, or only the filter-panel ones (about 60)? Recommendation: filter-panel ones now, the form ones already have `LabeledSelect`.
 
 ## Challenges to the notes (read before approving)
 
@@ -400,7 +451,9 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Tests:** none for the review itself (nothing ships); the register cites the file and line for each finding so it can be re-checked.
 - **Docs:** the register in this plan; `docs/ux-style-guide.md` only if the review finds a rule that is ambiguous or missing (proposed to the user, not edited silently).
 
-### Phase 19 — UI/UX fixes from the review
+### Phase 19 — UI/UX fixes from the review (19a to 19d)
+
+*Split by finding group (*Decided by: Agent*, as the phase allowed):* 19a C, F, E2, E3; 19b A and D; 19c B and Nesting; 19d E1. Each sub-phase is one shippable change with its own stories, Playwright updates and decisions entry. **19a done 2026-11-08:** see `docs/decisions.md`.
 
 - **Why:** a review with no fixes leaves the debt in place; the fix-don't-defer rule applies to every approved finding.
 - **Work:** implement the findings approved at the phase 18 checkpoint, grouped by rule (for example, "permanent hints to help", "form header", "creation routes"), each group a separate shippable change. Extract shared components rather than patch each page, and move every call site onto them. Where a class of defect can be detected reliably, add a `scripts/check_*.py` guard with an empty baseline, as the existing checkers have. Update the style guide where a pattern was missing (for example, two creation routes: create and import as sibling choices).
@@ -408,6 +461,25 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Outcome:** every approved finding fixed or recorded with a user-agreed reason; the register in phase 18 marked with each finding's outcome.
 - **Tests:** stories for every changed or new component; Playwright for each changed flow (the New project entry choices, create, template, import, keyboard use); the checkers pass; `check_doc_links.py` passes.
 - **Docs:** docs website pages whose screenshots or steps change, `docs/ux-style-guide.md`, `docs/decisions.md` with `Decided by` tags.
+
+### Phase R — Review checkpoint after the UI/UX fixes
+
+*Raised by: User* (2026-11-08).
+
+- **Why:** phase 19 changes many screens at once; the user's own use is the check that the fixes read and behave as intended, and anything raised there must be settled before the website is documented.
+- **Work:** the agent hands back phase 19's result with a short list of what changed and where to look (the New project and New organisation entry choices, the moved hints and tooltips, the wording changes, `FilterSelect` on every filter panel). The user reviews and raises items. Each item is fixed in place or becomes a numbered phase with the user's agreement (*Decided by: User*); nothing is dismissed as out of scope.
+- **Outcome:** a user sign-off recorded in `docs/decisions.md`, with the items raised and their outcomes.
+- **Tests:** none of its own; each item fixed carries the stories and Playwright coverage its change needs.
+
+### Phase 20 — Website documentation update
+
+*Raised by: User* (2026-11-08).
+
+- **Why:** CLAUDE.md requires the docs website (`docs/website/`) to be reviewed after every change to user-visible behaviour; this plan has changed many (phases 4 to 17: two-level admin menus, navigation names, messages, Pain Point submission and scoring, templates, overview widgets, organisation files, workflows and component phases; phases 18 to R: creation routes, help tooltips, filter selects, wording). A single pass at the end finds pages that earlier phases missed and makes the site consistent.
+- **Work:** (1) list every phase's user-visible change from `docs/decisions.md` and the plan's Done notes; (2) for each, decide explicitly whether a page documents it, needs a new page, or needs none, and record the judgement in the decisions log; (3) update or add pages following the site's structure, tone, formal wording and Mermaid conventions, and check the glossary (`docs/website/docs/reference/glossary.md`) for terms the phases introduced; (4) re-capture screenshots and steps for screens that changed (New project and New organisation, admin menus, filter panels, overview, Files, Messages); (5) run the site build, `scripts/check_doc_links.py` and any site link check; (6) the two performance pages (`sizing-and-performance.mdx`, `performance-testing-method.md`) are reviewed because phases 9, 12, 14 and 16 touched measured paths, and the perf scenarios not re-run are listed there as unverified.
+- **Outcome:** the site describes the product as it stands after phase R; no page names a removed screen, an old label or a superseded flow.
+- **Tests:** the site builds without warnings; the link checkers pass; a screenshot is replaced only by one captured from the current build.
+- **Do not:** document internal-only changes; edit `docs/requirements.md`; name this plan or its phases on a site page.
 
 ## Standing checklist per phase
 
@@ -431,4 +503,4 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Phase 1 is large**; running it first delays visible features but prevents every later phase adding to the debt.
 - **Phase 13 depends on bundle hooks being complete for configuration**; the spike may uncover module gaps that are fixed in that phase.
 
-When the table reads 24/24: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 26/26: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

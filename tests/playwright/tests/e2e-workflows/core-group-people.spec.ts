@@ -48,7 +48,7 @@ test.describe("Core records: groups as owners, reviewers, assignees and watchers
     await page.goto(`/projects/${project.id}/requirements/${requirement.id}`);
     await expect(page.getByRole("heading", { name: new RegExp(`Group owned ${suffix}`) })).toBeVisible();
     await expect(page.getByText(boardName).first()).toBeVisible();
-    await expect(page.getByText(/^Org group/).first()).toBeVisible();
+    await expect(page.getByText(/^Organisation group/).first()).toBeVisible();
     await expect(page.getByText(squadName).first()).toBeVisible();
 
     // --- The board watches it; the panel lists it and lets the manager remove it again.

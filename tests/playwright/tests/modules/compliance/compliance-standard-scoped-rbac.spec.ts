@@ -131,7 +131,7 @@ test.describe("Compliance Module: standard-scoped RBAC — Members section", () 
     // The roster shows it as its own, visually-distinguished row.
     const groupRow = page.getByRole("row", { name: new RegExp(groupName) });
     await expect(groupRow).toBeVisible();
-    await expect(groupRow.getByText("Org group")).toBeVisible();
+    await expect(groupRow.getByText("Organisation group")).toBeVisible();
 
     const standards = await (
       await page.request.get(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}/modules/compliance/standards?include_archived=false`, {

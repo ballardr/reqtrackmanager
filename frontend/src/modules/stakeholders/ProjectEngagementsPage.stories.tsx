@@ -174,7 +174,7 @@ export const LoadFailureShowsAMessage: Story = {
     spyOn(api, "get").mockRejectedValue(new ApiError(404, "Not found"));
   },
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(within(canvasElement).getByText(/Not found|aren't enabled/)).toBeInTheDocument());
+    await waitFor(() => expect(within(canvasElement).getByText(/Not found|are not enabled/)).toBeInTheDocument());
   },
 };
 

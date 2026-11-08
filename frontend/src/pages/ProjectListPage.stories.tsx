@@ -366,7 +366,7 @@ export const CreateProjectImportFileHidesTemplateWithNote: Story = {
 
     await expect(within(dialog).queryByText("Create from template")).not.toBeInTheDocument();
     await expect(
-      within(dialog).getByText("A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.")
+      within(dialog).getByText("A bundle brings its own structure, so template selection does not apply once a file is chosen above.")
     ).toBeInTheDocument();
   },
 };

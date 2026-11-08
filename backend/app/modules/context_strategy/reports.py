@@ -201,7 +201,7 @@ def _user_names(db: Session, ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]
 def _owner_text(db: Session, rows: list[Any]) -> Callable[[Any], str | None]:
     """Resolves the owners of `rows` (anything with `owner_type` / `owner_id`) once; returns a lookup
     `row -> text or None when unowned` (`services.principals.principal_text`: a group reads
-    `Name (Org group)`, so a group is never mistaken for a person)."""
+    `Name (Organisation group)`, so a group is never mistaken for a person)."""
     labels = owner_labels(db, rows)
 
     def text(row: Any) -> str | None:

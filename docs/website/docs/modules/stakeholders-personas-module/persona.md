@@ -56,7 +56,7 @@ A child project with no override of its own therefore inherits its parent projec
 
 ## Groups as owners
 
-The **Owner** and **Champion** of a Persona, the **Owner** of a [Stakeholder](./stakeholder.md) and the **Owner** of a [Need](./stakeholder-need.md) can each be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's name, its kind (Org group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the Owner roles above still decide who can edit.
+The **Owner** and **Champion** of a Persona, the **Owner** of a [Stakeholder](./stakeholder.md) and the **Owner** of a [Need](./stakeholder-need.md) can each be a user, an organisation group or a project group, so a team can stand behind a record instead of one nominee who may leave. The record shows the group's name, its kind (Organisation group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the Owner roles above still decide who can edit.
 
 - A project group can be named only on a record that belongs to that project. An organisation-level Persona or Stakeholder is shared by every project, so it can name users and organisation groups only.
 - The version history lists who owned each version. If a group is later deleted, older versions show it as a deleted group.
