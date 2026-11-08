@@ -166,6 +166,8 @@ export interface Page<T> {
   items: T[];
   total: number;
   totalUnfiltered?: number;
+  /** Set when the server says the list was cut short (`X-Projects-Truncated`, the organisation Files list). */
+  truncated?: boolean;
 }
 
 async function requestPage<T>(path: string, options: RequestInit = {}): Promise<Page<T>> {
@@ -177,6 +179,7 @@ async function requestPage<T>(path: string, options: RequestInit = {}): Promise<
     items,
     total: totalHeader ? Number(totalHeader) : items.length,
     totalUnfiltered: totalUnfilteredHeader ? Number(totalUnfilteredHeader) : undefined,
+    truncated: response.headers.get("x-projects-truncated") === "true" ? true : undefined,
   };
 }
 

@@ -208,6 +208,16 @@ export const ReportsMenuHiddenWithoutOrganisationReports: Story = {
   },
 };
 
+/** The files icon link beside the title opens the organisation Files page for every member. */
+export const FilesShortcutOpensOrganisationFiles: Story = {
+  beforeEach: () => mockOrgOverviewApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const link = await canvas.findByRole("link", { name: "Organisation files" });
+    await expect(link).toHaveAttribute("href", expect.stringMatching(/\/orgs\/[^/]+\/files$/));
+  },
+};
+
 /** The settings icon link beside the title opens the organisation admin page; it is named for the
  * organisation and shown whether or not a Reports menu is present. */
 export const SettingsShortcutOpensOrganisationAdmin: Story = {

@@ -3070,6 +3070,15 @@ const en = {
     allUploaders: "Anyone",
     uploadedFrom: "Uploaded from",
     uploadedTo: "Uploaded to",
+    // The organisation Files page: the files of every project the person can open.
+    orgTitle: (orgCap: string) => `${orgCap} files`,
+    orgEmpty: "No files in the projects you can open yet.",
+    orgLink: (orgCap: string) => `${orgCap} files`,
+    columnProject: "Project",
+    filterProject: "Project",
+    allProjects: "All projects",
+    includeArchivedProjects: "Include archived projects",
+    projectsTruncated: "This list covers the first 250 projects you can open. Choose a project to see the rest.",
   },
   history: {
     title: "{Project} history",

@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 15 (including 14b, 9b, 9c and 9d) done (14 and 15 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 16 (including 14b, 9b, 9c and 9d) done (14, 15 and 16 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-20 / 24 phases complete.
+21 / 24 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 14 | Project overview widgets | Layout as JSON on project and organisation (own, ancestor, organisation, built-in), bounded metric catalogue with filters, one batched read-only metrics request, side-panel editor shared with the organisation default, module metric and widget extension points, bundles and templates; see `docs/decisions.md` | [x] |
 | 14b | Overview widgets: on-page editing, grid size, scope and text | UX review of the overview and its editor (findings register in `docs/decisions.md`): the page is the editor, 12-column flow grid with width and height, project scope as an overview setting with a widget override, text widget; Playwright run on a rebuilt stack | [x] |
 | 15 | Organisation overview settings shortcut | Settings icon link on the title row for every member who can see the overview (User: no role predicate); story, Playwright spec written and not run; see `docs/decisions.md` | [x] |
-| 16 | Organisation-wide files list | Mirrors the project files page | [ ] |
+| 16 | Organisation-wide files list | `POST /orgs/{id}/files/search`, shared table and filters with the project page; only projects the caller holds a role in; Playwright spec written and not run; see `docs/decisions.md` | [x] |
 | 17 | Demo seed data | Last, because it exercises phases 9, 12 and 13 | [ ] |
 | 18 | UI/UX style guide review (whole product) | Read-only audit of every page and dialog against `docs/ux-style-guide.md`; findings register with severity; ends in a user sign-off | [ ] |
 | 19 | UI/UX fixes from the review | Implements the findings the user approves in phase 18; may split into sub-phases by finding group | [ ] |
@@ -55,7 +55,7 @@ flowchart LR
     P18["18 UI/UX review"] --> P19["19 UI/UX fixes"]
 ```
 
-Phases 2, 11, 15 and 16 have no dependency and can be taken in any order. Phase 18 can start at any time; phase 19 follows its sign-off.
+Phase 18 can start at any time; phase 19 follows its sign-off.
 
 ## Phase 3 findings register
 
@@ -365,6 +365,7 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Security:** this is the multi-tenant isolation point to review: the query must apply the same visibility predicate as the per-project listing and the file download endpoint; test with a user in two projects and one in none. Restricted-classified content is not listed by content.
 - **Outcome:** an organisation-level Files page showing exactly the files the caller can already reach.
 - **Tests:** visibility matrix (member of project A only, org administrator, non-member, confidential file), scaling probe (a bounded number of statements), Playwright.
+- **Done 2026-11-08.** *Decided by: Agent* (for the user to veto): the page is reached from an icon link on the organisation overview (no new nav-rail entry); archived projects are hidden unless a filter asks; organisation shared resources are not listed (they have their own list). The Playwright spec `org-files.spec.ts` was written but not run (no compose stack) and the perf scenarios were not re-run. See `docs/decisions.md`.
 
 ### Phase 17 — Demo seed data
 

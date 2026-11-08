@@ -591,6 +591,14 @@ export interface ProjectFileUploader extends ProjectScopedRow {
   display_name: string;
 }
 
+/** One project whose files the person may list (`GET /orgs/{id}/files/projects`, the organisation Files page's "Project" filter). */
+export interface OrganizationFileProject {
+  id: string;
+  name: string;
+  code: string;
+  is_archived: boolean;
+}
+
 /** One row of `GET /projects/{id}/files` (ProjectFilesPage) — a file
  * reachable from a project's requirements, with the context needed to say
  * where it came from. `requirement_id`/`requirement_unique_code`/

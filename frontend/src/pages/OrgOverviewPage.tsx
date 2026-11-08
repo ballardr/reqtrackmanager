@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Settings } from "lucide-react";
+import { Files, Settings } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
@@ -35,6 +35,9 @@ const OVERVIEW_GROUP_KEY = "overview";
  *
  * A "Reports" button beside the title opens the Reports dialog (`ReportsButton`), shown only when the caller can
  * run at least one organisation report or pack.
+ *
+ * A "files" icon link beside the title opens the organisation Files page (`OrgFilesPage`), which lists only the files
+ * of the projects the person can open, so it is shown to every member.
  *
  * A "settings" icon link beside the title opens the organisation admin page. It is shown to everyone who
  * can see this page, because the admin page itself loads for every member (its settings sections gate
@@ -147,6 +150,12 @@ export function OrgOverviewPage() {
         />
         <div className="row" style={{ marginLeft: "auto", alignItems: "center", gap: "var(--space-1)" }}>
           {hasReports && <ReportsButton scope={{ kind: "organization", id: orgId }} organizationId={orgId} />}
+          <Link
+            to={`/orgs/${orgId}/files`} className="btn btn-icon"
+            aria-label={strings.files.orgLink(orgLabelCap)} title={strings.files.orgLink(orgLabelCap)}
+          >
+            <Files />
+          </Link>
           <Link
             to={`/orgs/${orgId}/admin`} className="btn btn-icon"
             aria-label={strings.nav.orgSettings(orgLabelCap)} title={strings.nav.orgSettings(orgLabelCap)}

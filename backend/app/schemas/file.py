@@ -114,3 +114,24 @@ class FileDetailsOut(BaseModel):
     description: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+
+
+class OrganizationFileSearchIn(ProjectFileSearchIn):
+    """Body of `POST /orgs/{id}/files/search`: the project Files page's filters plus the projects covered.
+
+    Attributes:
+        project_ids: Only these projects (among those the caller may list); empty keeps all of them.
+        include_archived: Also list the files of archived projects (default: leave them out).
+    """
+
+    project_ids: list[UUID] = Field(default_factory=list, max_length=250)
+    include_archived: bool = False
+
+
+class OrganizationFileProjectOut(BaseModel):
+    """One project whose files the caller may list (a choice for the organisation Files page's "Project" filter)."""
+
+    id: UUID
+    name: str
+    code: str
+    is_archived: bool

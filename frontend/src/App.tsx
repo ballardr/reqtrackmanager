@@ -24,6 +24,7 @@ import { HelpRedirectPage } from "./pages/HelpRedirectPage";
 import { ReportRunPage } from "./pages/ReportRunPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
+import { OrgFilesPage } from "./pages/OrgFilesPage";
 import { ProjectFilesPage } from "./pages/ProjectFilesPage";
 import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
@@ -96,6 +97,7 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
+        <Route path="/orgs/:orgId/files" element={<OrgFilesPage />} />
         <Route path="/orgs/:orgId/admin/templates-reports" element={<OldOrgReportsRedirect />} />
         <Route path="/orgs/:orgId/admin/:group?/:section?" element={<OrgAdminPage />} />
         <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
