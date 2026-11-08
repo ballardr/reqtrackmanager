@@ -2500,3 +2500,104 @@ export interface AnnouncementNotice {
   severity: AnnouncementSeverity;
   scope: "server" | "organisation";
 }
+
+// --- Project overview widgets (`backend/app/services/overview_widgets.py`) --------------------------
+
+/** The project scopes an overview or a widget reads in (`api/projectScope.ts` has the same type). */
+export type OverviewScope = "this" | "parents" | "children" | "both";
+
+/** One widget of an overview layout; `config` is the settings of its `type`. */
+export interface OverviewWidget {
+  id: string;
+  /** `metric_tile`, `gauge`, `status_chart`, `stage_progress`, `record_totals`, `activity`, `text` or `<module key>:<key>`. */
+  type: string;
+  title: string | null;
+  /** Columns of the 12-column grid, 1 to 12. */
+  width: number;
+  /** Rows, 1 to 12; a minimum, because a row grows with its content. */
+  height: number;
+  /** The widget's own scope, or `null` to follow the overview's. */
+  scope: OverviewScope | null;
+  visible: boolean;
+  config: Record<string, unknown>;
+}
+
+/** Where the layout in force comes from. */
+export type OverviewLayoutSource = "own" | "ancestor" | "organisation" | "default";
+
+/** The part of a layout the editor changes and the server stores. */
+export interface OverviewLayoutBody {
+  scope: OverviewScope;
+  widgets: OverviewWidget[];
+}
+
+export interface OverviewLayout extends OverviewLayoutBody {
+  source: OverviewLayoutSource;
+  /** Where the layout would come from without the project's own (project view only). */
+  inherited_source: OverviewLayoutSource | null;
+  /** Whether the caller may change the layout (the server's own check). */
+  can_customise: boolean;
+}
+
+export interface OverviewWidgetTypeInfo {
+  key: string;
+  label: string;
+  description: string;
+  module_key: string | null;
+  /** Columns (of 12) and rows a new widget of this type starts with. */
+  width: number;
+  height: number;
+}
+
+export interface OverviewMetricInfo {
+  key: string;
+  label: string;
+  unit: "count" | "percent";
+  scalar: boolean;
+  breakdown: boolean;
+  params: string[];
+  module_key: string | null;
+}
+
+export interface OverviewRecordTypeOption {
+  type: string;
+  label: string;
+  filter_params: string[];
+}
+
+/** What the widget editor offers for a project or an organisation. */
+export interface OverviewCatalogue {
+  widget_types: OverviewWidgetTypeInfo[];
+  metrics: OverviewMetricInfo[];
+  record_types: OverviewRecordTypeOption[];
+  max_widgets: number;
+}
+
+export interface OverviewMetricSpec {
+  id: string;
+  metric: string;
+  params: Record<string, unknown>;
+  scope: OverviewScope;
+}
+
+export interface OverviewBreakdownRow {
+  key: string;
+  label: string;
+  value: number;
+  detail: string | null;
+}
+
+/** One figure's outcome; only `ok` carries data. `unavailable` means the caller may not read it here (never zero). */
+export interface OverviewMetricResult {
+  state: "ok" | "unavailable" | "timeout" | "error";
+  unit: "count" | "percent" | null;
+  label: string | null;
+  /** How many projects the figure covers (1 unless its scope was widened). */
+  projects: number;
+  value: number | null;
+  breakdown: OverviewBreakdownRow[] | null;
+}
+
+export interface OverviewMetricsResponse {
+  results: Record<string, OverviewMetricResult>;
+}

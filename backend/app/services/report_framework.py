@@ -58,6 +58,7 @@ from __future__ import annotations
 import csv
 import inspect
 import io
+import logging
 import re
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -134,6 +135,8 @@ REPORT_FORMATS: tuple[str, ...] = ("json", "pdf", "docx", "html", "odt", "csv", 
 DOCUMENT_FORMATS: tuple[str, ...] = ("pdf", "docx", "html", "odt")
 
 # --- Result shapes -------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -1237,19 +1240,38 @@ class ReportCatalogueEntryOut(BaseModel):
     run_scope: Literal["any", "one", "one_and_children"] = "any"
 
 
-def param_out(param: ReportParamDefinition) -> ReportParamOut:
-    """A declared parameter in the shape the catalogue (and the layout designer's widget list) returns."""
+def param_out(
+    param: ReportParamDefinition, db: Session | None = None, organization_id: UUID | None = None, project_id: UUID | None = None,
+) -> ReportParamOut:
+    """A declared parameter in the shape the catalogue (and the layout designer's widget list) returns.
+
+    Args:
+        param: The declaration.
+        db: Session, with `organization_id` (and `project_id` for a project), to resolve a parameter's `choices_for`
+            provider into its options. Without them (the layout designer's widget list) such a parameter stays a text box.
+        organization_id: The organisation the catalogue is for.
+        project_id: The project the catalogue is for, `None` for an organisation-wide catalogue.
+    """
+    choices = list(param.choices) if param.choices is not None else None
+    labels = {str(k): v for k, v in param.choice_labels.items()} if param.choice_labels else None
+    if param.choices_for is not None and db is not None and organization_id is not None:
+        try:
+            offered = list(param.choices_for(db, organization_id, project_id))
+        except Exception:  # a provider's fault must not take the catalogue down; the control stays a text box
+            logger.exception("Report parameter '%s' could not list its choices", param.name)
+            offered = []
+        if offered:
+            choices = [value for value, _label in offered]
+            labels = {str(value): label for value, label in offered}
     return ReportParamOut(
-        name=param.name, type=param.type, default=param.default,
-        choices=list(param.choices) if param.choices is not None else None,
-        minimum=param.minimum, maximum=param.maximum, description=param.description, label=param.label,
-        choice_labels={str(k): v for k, v in param.choice_labels.items()} if param.choice_labels else None,
+        name=param.name, type=param.type, default=param.default, choices=choices,
+        minimum=param.minimum, maximum=param.maximum, description=param.description, label=param.label, choice_labels=labels,
     )
 
 
 def _entry(
     module_key: str, definition: ReportDefinition, *, scope: Literal["project", "organization"], path: str,
-    projects: Sequence[Project] = (),
+    db: Session, organization_id: UUID, project_id: UUID | None = None, projects: Sequence[Project] = (),
 ) -> ReportCatalogueEntryOut:
     module = get_module(module_key)
     return ReportCatalogueEntryOut(
@@ -1258,7 +1280,7 @@ def _entry(
         formats=list(REPORT_FORMATS), supports_include_children=scope == "project", supports_project_filter=scope == "organization",
         breakdown_path=f"{path}/by-project" if scope == "organization" else None,
         projects=[ReportProjectOut(id=p.id, name=p.name) for p in projects],
-        params=[param_out(p) for p in definition.params],
+        params=[param_out(p, db, organization_id, project_id) for p in definition.params],
         record_types=list(definition.record_types), view_only=definition.view_only,
     )
 
@@ -1296,7 +1318,9 @@ def project_catalogue(db: Session, project: Project) -> list[ReportCatalogueEntr
         path = _mounted_path(
             router, f"project_report_{definition.key}", f"{router.prefix}/reports/{definition.slug}",
         ).replace("{project_id}", str(project.id))
-        entries.append(_entry(module_key, definition, scope="project", path=path))
+        entries.append(_entry(
+            module_key, definition, scope="project", path=path, db=db, organization_id=project.organization_id, project_id=project.id,
+        ))
     return entries
 
 
@@ -1336,7 +1360,7 @@ def organization_catalogue(db: Session, user: User, organization_id: UUID) -> li
             p for p in scoped[definition.org_scope]
             if report_enabled_for_project(db, p.id, module_key, definition)
         ]
-        entries.append(_entry(module_key, definition, scope="organization", path=path, projects=pickable))
+        entries.append(_entry(module_key, definition, scope="organization", path=path, db=db, organization_id=organization_id, projects=pickable))
     return entries
 
 

@@ -90,7 +90,7 @@ Options are generated from what each report accepts, so a report only shows the 
 
 | Option | Applies to | Effect |
 | --- | --- | --- |
-| **Scoring model** | R1, R8, R9 | Which [scoring model](./pain-point-scoring.md#the-criteria) ranks Pain Points. Blank uses the project's default. |
+| **Scoring model** | R1, R8, R9 | Which [scoring model](./pain-point-scoring.md#the-criteria) ranks Pain Points, chosen from the models the project offers (the built-in ones and any the organisation or project defined). Blank uses the project's default. |
 | **Combine personas by** | R1, R8, R9 | How per-persona scores [roll up](./pain-point-scoring.md#how-personas-combine): weighted average (default), worst case, or plain average. |
 | **Stale after (months)** | R7, R8 | How long an Active item can go unrevised before it is flagged stale (default 6). |
 | **Changes since** | R7, R8 | Earliest version date to include in the change history. |

@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 13, 9b, 9c and 9d done (13 uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 14, 14b, 9b, 9c and 9d done (14 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-17 / 21 phases complete.
+19 / 24 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -27,10 +27,13 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 11 | Server and organisation messages (login pages and notification) | One `announcements` table (NULL organisation is platform-wide); login pages, banner and a one-time notification; organisation text may not contain a web address; see `docs/decisions.md` | [x] |
 | 12 | Pain Point scoring on the Product Feedback model (custom criteria, Cost of Delay) | Read helper, one row per axis (migrations 0149, 0150), General row plus persona overrides, custom criteria, Cost of Delay and WSJF (weighted sum that divides); Playwright and perf scenarios not run; see `docs/decisions.md` | [x] |
 | 13 | Template projects | Declared template keys on bundle hooks, fresh-draft starter records, module switches, tags, report setup; list filter, badge, explicit "None"; Playwright spec not run; see `docs/decisions.md` | [x] |
-| 14 | Project overview widgets | Configurable widgets, catalogue metrics with allowed filters; settled | [ ] |
+| 14 | Project overview widgets | Layout as JSON on project and organisation (own, ancestor, organisation, built-in), bounded metric catalogue with filters, one batched read-only metrics request, side-panel editor shared with the organisation default, module metric and widget extension points, bundles and templates; see `docs/decisions.md` | [x] |
+| 14b | Overview widgets: on-page editing, grid size, scope and text | UX review of the overview and its editor (findings register in `docs/decisions.md`): the page is the editor, 12-column flow grid with width and height, project scope as an overview setting with a widget override, text widget; Playwright run on a rebuilt stack | [x] |
 | 15 | Organisation overview settings shortcut | Small | [ ] |
 | 16 | Organisation-wide files list | Mirrors the project files page | [ ] |
 | 17 | Demo seed data | Last, because it exercises phases 9, 12 and 13 | [ ] |
+| 18 | UI/UX style guide review (whole product) | Read-only audit of every page and dialog against `docs/ux-style-guide.md`; findings register with severity; ends in a user sign-off | [ ] |
+| 19 | UI/UX fixes from the review | Implements the findings the user approves in phase 18; may split into sub-phases by finding group | [ ] |
 
 ```mermaid
 flowchart LR
@@ -49,9 +52,10 @@ flowchart LR
     P13["13 Templates"] --> P17
     P10["10 Rename"] --> P14["14 Overview widgets"]
     P13 --> P14
+    P18["18 UI/UX review"] --> P19["19 UI/UX fixes"]
 ```
 
-Phases 2, 11, 15 and 16 have no dependency and can be taken in any order.
+Phases 2, 11, 15 and 16 have no dependency and can be taken in any order. Phase 18 can start at any time; phase 19 follows its sign-off.
 
 ## Phase 3 findings register
 
@@ -336,6 +340,15 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Style guide:** a new edit surface with a side panel and per-widget settings; settings use field help, not permanent text; "Customise overview" is visible to managers only.
 - **Outcome:** a manager builds the project's overview from a catalogue of widgets and metrics; everyone with access sees it.
 - **Tests:** layout resolution including ancestor and organisation default; manager-only write; catalogue and filter validation (unknown key, unlisted filter, over-cap); hidden-record counts not leaked; gauge threshold rendering at the boundaries; one-batched-request and flat scaling probe; bundle round trip; Playwright add, configure, reorder, remove and restore; stories per widget type.
+- **Done 2026-11-08.** *Decided by: Agent* (for the user to veto): components and categories in a filter are stored by prefix, so no id remapping is needed; no first-party module declares a metric or widget yet (Compliance's tiles keep working through a core "Module summary tiles" widget); the layout response carries `can_customise`; the template guard's read-only list names the metrics `POST`. The Playwright spec ran and passed; the perf scenarios were edited (the page now calls the layout and the batched metrics) but not re-run; `seed_demo_data.py` was extended and not run on a fresh database. See `docs/decisions.md`.
+
+### Phase 14b — Overview widgets: on-page editing, grid size, scope and text
+
+*Raised by: User* (2026-11-08), after using phase 14: the action buttons should sit with the project name; `This + child projects` belongs in Customise overview; the Customise dialog wastes space and should be much tighter; widgets should be placeable on a grid and made bigger or smaller (on-page edit mode, with a flow layout of width and height that stays responsive); no "Built-in layout" badge, only a way back to the default once edited; a text widget for extra notes. *Decided by: User* for each of these, including the scope as a whole-overview setting with a per-widget override. This reverses phase 14's "free dragging is not part of this" for width and height (*Decided by: User*); positions remain a flow, not absolute.
+
+- **Why:** the first version's editor showed 11 widgets in over 1,200px, hid the effect of each change behind a dimmed page and offered four fixed widths; the findings register is in `docs/decisions.md`'s "Project overview widgets" entry.
+- **Work (done 2026-11-08):** the page is the editor (`OverviewEditor`, sticky bar, handle, resize corner, per-widget buttons, settings side panel); a 12-column flow grid with width (1-12) and height (1-12 rows, a minimum) that collapses to six and two columns; layout `{scope, widgets}` with a per-widget scope and a per-reference scope in the metrics request; a text widget with a safe markdown subset; the header's actions follow the project name; Restore default only once the layout is the project's own; the organisation default uses the same editor with labelled blocks.
+- **Tests:** backend (`test_overview_widgets.py`: sizes, scope, text, per-scope figures, a scope never widening to an unopenable project, the legacy list), stories for the grid, the editor, the helpers and the markdown, and Playwright (`overview-widgets.spec.ts`: edit, drag, resize, keyboard, save and restore; reflow on a phone; member; organisation default; `project-scope-filter.spec.ts` moved the scope into the editor).
 
 ### Phase 15 — Organisation overview settings shortcut
 
@@ -359,6 +372,40 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Verification (rule: a generated document is not done until read):** run the BRD for the demo project and read the output text, not only the structure; run the seed on a fresh database once (the recipe in the earlier close-out notes).
 - **Tests:** the seed runs end to end on a fresh database; a test asserts the demo BRD contains links, an image and an equation.
 
+### Phase 18 — UI/UX style guide review (whole product)
+
+*Raised by: User* (2026-11-08): a broad review of the interface against `docs/ux-style-guide.md`, with the fixes made in a separate phase after it. The New project dialog prompted it and is the first set of findings, not the scope.
+
+- **Why:** the style guide is binding, yet new surfaces keep copying the nearest example. Phase 3 audited record detail headers only; forms, dialogs, settings pages, list pages and creation routes have had no systematic pass.
+- **Scope:** every list page, record detail page, create and edit form, dialog, settings and administration page, in core and every module, at project, organisation and server level. Out of scope: backend behaviour, report content, and anything the style guide does not cover (raise those as a question, not a finding).
+- **Method (*Decided by: Agent*):** review only, no product changes. (1) Existing checkers first (`check_field_help.py`, `check_required_markers.py`, `check_list_page_layout.py`, `check_textarea_autogrow.py`, `check_record_header_back.py`) to confirm their baselines are still empty. (2) A static scan of the frontend source for each style-guide rule: permanent muted text or `hint` that explains an option, `helpNotNeeded` on a non-obvious field, `FormActions` outside the dialog header slot, a raw enum string, a native `title` used as a tooltip, a hand-written `side-grid`, a confirm that does not match its tier, a mutation with no toast, a control with no accessible name, per-page copies of a shared component. (3) A Playwright walk through the existing spec suite, recording structural facts per page (heading, actions, filters, tabs, form header, help buttons); the Playwright MCP browser is used only for a specific rendered question. Judgement by screenshot alone is not a finding.
+- **Findings register:** kept in this plan, one row per finding: id, page or component, style guide rule broken, severity (**defect**: breaks a binding rule; **inconsistency**: differs from a sibling; **suggestion**: improvement with no rule behind it), proposed fix, estimated size. Findings are grouped by rule so phase 19 can fix a class at once, and a finding that appears on several pages is one row that lists them. Where a fix needs a design choice (for example, a menu or a first dialog step), the register records the options and a recommendation.
+- **Seed findings (New project dialog, `frontend/src/pages/ProjectListPage.tsx`; from a read of the code, to be confirmed in the walk):**
+
+| # | Finding | Rule | Proposed fix |
+| --- | --- | --- | --- |
+| N1 | Import is a file field at the foot of the Create form; choosing a file hides the code, report name and template fields, with a permanent note (`importIgnoresTemplate`) | Explain in help; create-as-a-layer | `+ New project` offers Create and Import as separate choices (menu recommended); each a short dialog sharing one field group |
+| N2 | Visibility has a permanent `hint` (`visibilityHint`) | Explain in `(?)` help, one line per option | `help` listing both options |
+| N3 | "Code is assigned automatically" is permanent muted text | Same | Move to `help` on Name |
+| N4 | Template, Organisation and Visibility use `helpNotNeeded` though non-obvious | Field help | Add `strings.help.*` entries |
+| N5 | `FormActions` at the foot of the dialog body | Form header | Move to the header slot |
+| N6 | Parent, inheritance mode and mirror role laid out inline in a create form | Settings depth model | Decide: keep inline or collapse; ask the user |
+| N7 | Labels and Visibility options come from different string groups | One term for one thing | Reuse the glossary term |
+
+- **Checkpoint (*Decided by: User*, required):** the phase ends with the register presented to the user, who approves, rejects or reprioritises each group. Phase 19 implements only what is approved. Open design questions in the register are asked with `AskUserQuestion`.
+- **Outcome:** a complete, ranked, evidence-backed list of style-guide gaps and an approved fix list; no product code changed.
+- **Tests:** none for the review itself (nothing ships); the register cites the file and line for each finding so it can be re-checked.
+- **Docs:** the register in this plan; `docs/ux-style-guide.md` only if the review finds a rule that is ambiguous or missing (proposed to the user, not edited silently).
+
+### Phase 19 — UI/UX fixes from the review
+
+- **Why:** a review with no fixes leaves the debt in place; the fix-don't-defer rule applies to every approved finding.
+- **Work:** implement the findings approved at the phase 18 checkpoint, grouped by rule (for example, "permanent hints to help", "form header", "creation routes"), each group a separate shippable change. Extract shared components rather than patch each page, and move every call site onto them. Where a class of defect can be detected reliably, add a `scripts/check_*.py` guard with an empty baseline, as the existing checkers have. Update the style guide where a pattern was missing (for example, two creation routes: create and import as sibling choices).
+- **Risk:** broad UI edits break Playwright locators that use visible text; specs are updated in the same change, preferring stable roles and `data-` attributes.
+- **Outcome:** every approved finding fixed or recorded with a user-agreed reason; the register in phase 18 marked with each finding's outcome.
+- **Tests:** stories for every changed or new component; Playwright for each changed flow (the New project entry choices, create, template, import, keyboard use); the checkers pass; `check_doc_links.py` passes.
+- **Docs:** docs website pages whose screenshots or steps change, `docs/ux-style-guide.md`, `docs/decisions.md` with `Decided by` tags.
+
 ## Standing checklist per phase
 
 - Read the SOC 2 policy for any phase touching authorisation (6, 11, 16) and record the identify-verify-remediate review in `docs/decisions.md`.
@@ -381,4 +428,4 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Phase 1 is large**; running it first delays visible features but prevents every later phase adding to the debt.
 - **Phase 13 depends on bundle hooks being complete for configuration**; the spike may uncover module gaps that are fixed in that phase.
 
-When the table reads 18/18: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 24/24: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

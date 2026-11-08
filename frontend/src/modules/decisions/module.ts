@@ -51,7 +51,7 @@ import { ProjectDecisionsPage } from "./ProjectDecisionsPage";
  * Add it alongside whichever change does add such a list, not speculatively now.
  *
  * No `globalNavItems`/`standaloneWorkspaces`/`globalRoutes`/
- * `projectOverviewTiles`/`orgOverviewSections` — Decision Management has no
+ * `overviewWidgets`/`orgOverviewSections` — Decision Management has no
  * cross-org standalone entity (a Decision only ever exists inside a
  * project, unlike Compliance's own Standards), and nothing
  * calls for a project-overview summary tile or an org-dashboard

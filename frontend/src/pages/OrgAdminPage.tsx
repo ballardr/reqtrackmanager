@@ -84,6 +84,7 @@ import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
+import { OrgOverviewDefaultPanel } from "../components/overview/OrgOverviewDefaultPanel";
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import { ProjectCodePolicyPanel } from "../components/ProjectCodePolicyPanel";
@@ -3154,6 +3155,10 @@ export function OrgAdminPage() {
 
             <CollapsibleSection sectionKey="orgAdmin.navLabels" title={strings.navLabels.heading}>
               <NavLabelsPanel scope={{ kind: "organisation", organizationId: org.id }} />
+            </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.overviewDefault" title={strings.overviewWidgets.orgHeading}>
+              <OrgOverviewDefaultPanel organizationId={org.id} />
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>

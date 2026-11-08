@@ -208,6 +208,10 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # This project's own navigation names, keyed by stable navigation key (`services.nav_labels`); a key
     # with no entry follows the nearest ancestor's name, then the organisation's, then the built-in one.
     nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    # This project's own overview layout (`services.overview_widgets`): an object `{scope, widgets}`, the widgets an
+    # ordered list of instances. SQL NULL (not JSON null) means none: the nearest ancestor's, then the
+    # organisation's, then the built-in layout applies. An empty widget list is a layout with every widget removed.
+    overview_widgets: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):

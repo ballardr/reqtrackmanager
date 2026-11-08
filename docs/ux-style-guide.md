@@ -1337,6 +1337,17 @@ A record page whose sections people want in a different order lets them rearrang
 - Sections are keyed in the module (`requestSections.ts`); the server stores only the list of keys, never the page's names. A prompt that is not a section (the "Ready to deliver?" banner) stays on top.
 - Reset returns to the layer underneath ("Use the project's order", or "Use the built-in order" when the project has none).
 
+## Pattern: customise a page's widgets (project overview)
+
+A page made of widgets is edited on the page itself: the control sits at the right-hand end of the page title's row, with the page's other actions, and is shown only when the server says the caller may change the layout (`can_customise`, the write endpoint's own check); choosing it turns the page into the editor, so each change is seen as it is made. The editor is the shared `OverviewEditor`, which Organisation administration also uses for the organisation default (with a labelled block in place of data). Reason: a settings dialog hides the effect of each change, and a second editor for the organisation would drift from the first.
+
+- **A sticky bar** holds what is not one widget's: the add-widget control, the page-wide setting (the project scope), the count against the limit, Restore default, Cancel and Save. It stays on screen, the same reason a form's actions sit in its header. The page's other actions step aside while editing.
+- **Each widget** shows a handle to move it, a corner to resize it and buttons for its settings, hide or show, and remove, each named by the widget (`Move Files`, `Remove Files`). A hidden widget stays in place, dimmed, so it can be shown again. Moving and resizing work from the keyboard (arrow keys on the handle and on the corner) and announce the result; the width and height boxes in the settings do the same on a screen too small to drag.
+- **Settings** open in a side panel that edits the draft as it changes and closes with **Done**; Save belongs to the bar. A control that sets something for every widget (the scope) is in the bar, and a widget can override it in its settings with "Follow the overview" as the first choice.
+- **No state badge.** Which layout applies is not shown; **Restore default** appears only once the layout is the project's own, and its confirmation says what it returns to. Cancel asks before discarding changes.
+- **Responsive.** The grid is a flow of spans (twelve columns, six on a tablet, two on a phone), not absolute positions, so a layout made on a laptop reads on a phone: small tiles sit two to a row and every other widget takes the full width.
+- A figure the caller may not read is a notice ("This figure is not available to you."), never a zero; a figure read beyond the project is marked with its scope and project count.
+
 ## Pattern: aligned rows and foldable blocks in a settings panel
 
 A settings panel that edits several fields per row (a scoring level's name, weight and guidance; a type's name and definition; a model's axes) lays them out as **one grid with a heading per column**, never as a floating line of unlabelled inputs that wraps.

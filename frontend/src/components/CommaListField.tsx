@@ -19,11 +19,10 @@ import { TextField } from "./FormFields";
  * @param parse Turns one trimmed, non-empty part into a value (default: the text itself).
  * @param hint A visible hint under the field.
  * @param disabled Read-only.
- *
- * The field is always `helpNotNeeded`: a caller explains it with `hint` (or the label does).
+ * @param help The field's `(?)` help. Without it the field is `helpNotNeeded`: the label explains it.
  */
 export function CommaListField({
-  label, value, onChange, parse = (part) => part, hint, disabled,
+  label, value, onChange, parse = (part) => part, hint, disabled, help,
 }: {
   label: string;
   value: unknown[];
@@ -31,6 +30,8 @@ export function CommaListField({
   parse?: (part: string) => unknown;
   hint?: string;
   disabled?: boolean;
+  /** The field's `(?)` help; omit it for a self-explanatory list. */
+  help?: string;
 }) {
   const written = value.join(", ");
   const listOf = (text: string) => text.split(",").map((part) => part.trim()).filter(Boolean).map(parse);
@@ -38,10 +39,7 @@ export function CommaListField({
   const same = JSON.stringify(listOf(typed)) === JSON.stringify(value);
   if (!same) setTyped(written);
   const shown = same ? typed : written;
-  return (
-    <TextField helpNotNeeded
-      label={label} value={shown} disabled={disabled} hint={hint}
-      onChange={(text) => { setTyped(text); onChange(listOf(text)); }}
-    />
-  );
+  const change = (text: string) => { setTyped(text); onChange(listOf(text)); };
+  if (help) return <TextField help={help} label={label} value={shown} disabled={disabled} hint={hint} onChange={change} />;
+  return <TextField helpNotNeeded label={label} value={shown} disabled={disabled} hint={hint} onChange={change} />;
 }

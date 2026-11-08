@@ -160,7 +160,7 @@ test.describe("list scope filter across nested projects", () => {
     });
   });
 
-  test("the overview counts and the files list follow the same choice", async ({ page }) => {
+  test("the overview counts follow the overview's own scope setting and the files list its own choice", async ({ page }) => {
     const world = await createWorld(page.request, "overview");
     const parent = await createProject(page.request, world, `E2E Overview Parent ${Date.now()}`);
     const child = await createProject(page.request, world, `E2E Overview Child ${Date.now()}`, parent.id);
@@ -174,40 +174,24 @@ test.describe("list scope filter across nested projects", () => {
 
     await loginAs(page, world.adminEmail, PASSWORD);
     await page.goto(`/projects/${child.id}`);
-    const scope = page.getByRole("combobox", { name: SCOPE_LABEL });
 
-    await test.step("the scope select sits in the title row, level with the New button, above nothing", async () => {
-      const title = await page.getByRole("heading", { level: 1 }).boundingBox();
-      const select = await scope.boundingBox();
-      const button = await page.getByRole("link", { name: /^New requirement$/i }).boundingBox();
-      expect(select!.x + select!.width).toBeLessThanOrEqual(button!.x + 1);
-      expect(Math.abs((select!.y + select!.height / 2) - (button!.y + button!.height / 2))).toBeLessThan(button!.height);
-      // Nothing is added between the title and the metric tiles by the scope control: it sits within one control's height
-      // of whatever ends the heading block (the title, or the "Child of" line a nested project shows under it).
-      const parentLine = await page.getByText(/^Child of:/).boundingBox();
-      const headingEnd = Math.max(title!.y + title!.height, parentLine ? parentLine.y + parentLine.height : 0);
-      expect(select!.y).toBeLessThan(headingEnd + button!.height);
-    });
-
-    await test.step("the overview counts only this project until widened, then says how many projects they cover", async () => {
+    await test.step("the overview counts only this project until its scope is widened in Customise overview", async () => {
       await expect(page.locator(".card", { hasText: "Total records" })).toContainText(/Requirements\s*1(?!\d)/);
-      const saved = page.waitForResponse((r) => r.url().endsWith("/api/v1/auth/me/preferences") && r.request().method() === "PATCH");
-      await scope.selectOption({ label: "This + parent projects" });
-      expect((await saved).ok()).toBeTruthy();
-      await expect(scope).toHaveAccessibleDescription(/Counts cover 2 projects/);
-      await expect(scope).toHaveClass(/project-scope-select-widened/);
-      // The explanation is a tooltip on hover and on keyboard focus.
-      await scope.hover();
-      await expect(page.getByRole("tooltip")).toContainText("Counts cover 2 projects");
-      await page.mouse.move(0, 0);
-      await scope.focus();
-      await expect(page.getByRole("tooltip")).toContainText("Counts cover 2 projects");
-      await expect(page.locator(".card", { hasText: "Total records" })).toContainText(/Requirements\s*2(?!\d)/);
+      // The scope is a setting of the overview, not a control on the page.
+      await expect(page.getByRole("combobox", { name: SCOPE_LABEL })).toHaveCount(0);
+      await page.getByRole("button", { name: "Customise overview" }).click();
+      await page.getByRole("combobox", { name: SCOPE_LABEL }).selectOption({ label: "This + parent projects" });
+      await page.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByText("Overview saved.")).toBeVisible();
+      const totals = page.locator('[data-widget-id="record-totals"]');
+      await expect(totals.locator(".card", { hasText: "Total records" })).toContainText(/Requirements\s*2(?!\d)/);
+      // A figure read beyond this project says so.
+      await expect(totals).toContainText("With parents · 2 projects");
     });
 
-    await test.step("the files list shows the parent's file, labelled, once widened", async () => {
+    await test.step("the files list keeps its own scope choice and shows the parent's file, labelled, once widened", async () => {
       await page.goto(`/projects/${child.id}/files`);
-      await expect(page.getByRole("combobox", { name: SCOPE_LABEL })).toHaveValue("parents");
+      await page.getByRole("combobox", { name: SCOPE_LABEL }).selectOption({ label: "This + parent projects" });
       const row = page.getByRole("row").filter({ hasText: "parent-spec.txt" });
       await expect(row).toContainText(`From ${parent.name}`);
       await expect(row.getByRole("link", { name: new RegExp(parentReq.code) })).toHaveAttribute(

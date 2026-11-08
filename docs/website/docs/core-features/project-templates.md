@@ -19,7 +19,7 @@ Creating a new project **from a template** copies the template's configuration a
 
 | Copied | Details |
 | --- | --- |
-| Structure | Components, categories, custom field definitions, action types, groups and group memberships, direct role grants, terminology, navigation names, the stage workflows the template defines and the AI approvals setting |
+| Structure | Components, categories, custom field definitions, action types, groups and group memberships, direct role grants, terminology, navigation names, the overview layout, the stage workflows the template defines and the AI approvals setting |
 | Settings | Review reminder lead days, the tag vocabulary and mode, component phases settings, and report setup (layouts, packs, snippets, folders) |
 | Modules | Which modules and sub-components the template has on or off (within what the organisation allows) |
 | Module configuration | Each module's types, hidden organisation defaults, scoring definitions, submission policies, external systems and channels |

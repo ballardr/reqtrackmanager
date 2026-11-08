@@ -29,7 +29,7 @@ async function loginAsDemoAdminAndOpenProject(page: import("@playwright/test").P
 test("dashboard glance tile navigates to the requirements list", async ({ page }) => {
   await loginAsDemoAdminAndOpenProject(page);
 
-  const tiles = page.locator(".grid-metrics");
+  const tiles = page.locator(".overview-grid");
   await tiles.getByRole("link", { name: "% Completed" }).click();
   await page.waitForURL(/\/requirements(?:\?.*)?$/);
   await expect(page.getByLabel("Status")).toHaveValue("");
@@ -65,7 +65,7 @@ test("dashboard status chart segment navigates to the requirements list filtered
 test("dashboard change-request tile navigates to the change requests list filtered to that status", async ({ page }) => {
   await loginAsDemoAdminAndOpenProject(page);
 
-  const tiles = page.locator(".grid-metrics");
+  const tiles = page.locator(".overview-grid");
   await tiles.getByRole("link", { name: "Change requests approved" }).click();
   // The status stays in the URL as the list's own filter state, as above.
   await page.waitForURL(/\/change-requests(?:\?.*)?$/);

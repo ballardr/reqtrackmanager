@@ -14,7 +14,6 @@ package) as a pure code-organization refactor — see
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
 
@@ -25,16 +24,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.change_request import ChangeRequest
 from app.models.enums import (
-    ChangeRequestStatus,
     OrgRole,
     ProjectRole,
     ProjectRoleInheritanceMode,
     ProjectVisibility,
     StagePhaseKind,
 )
-from app.models.file import RequirementFile
 from app.models.organization import Organization
 from app.models.project import (
     FavoriteProject,
@@ -46,7 +42,7 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.project_status import ProjectStatusDefinition
-from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
+from app.models.requirement import Requirement
 from app.models.user import User
 from app.modules.registry import memoize_module_state, run_on_project_created_hooks, snapshot_project_module_state
 from app.schemas.changes import ChangeEntryOut
@@ -75,6 +71,7 @@ from app.services.downloads import filename_safe
 from app.services.lookups import project_or_404
 from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
+from app.services.project_counts import project_counts, project_stage_progress
 from app.services.project_export import build_project_bundle, import_project_bundle
 from app.services.project_files import FileFilters, project_file_rows, project_uploaders, row_identity
 from app.services.project_hierarchy import build_project_tree, would_create_project_cycle
@@ -1101,58 +1098,6 @@ def get_project_changes_endpoint(
     return entries
 
 
-@dataclass
-class _ProjectCounts:
-    """One project's overview counts (`id` is the project, which is what `ProjectScope.collect` keys rows on)."""
-
-    id: UUID
-    requirements: int = 0
-    completed: int = 0
-    proposed: int = 0
-    approved: int = 0
-    rejected: int = 0
-    files: int = 0
-    by_status: dict[str, int] = field(default_factory=dict)
-
-
-def _project_counts(db: Session, pid: UUID) -> _ProjectCounts:
-    """The overview counts of one project: live requirements (and how many are completed, by status),
-    change requests by outcome, and distinct requirement attachments.
-
-    Each figure is an aggregate computed by the database in a fixed number of statements, so the cost does not
-    grow with the number of requirements (no id list is read back or sent in an `IN (...)`).
-    """
-    counts = _ProjectCounts(id=pid)
-    live = (Requirement.project_id == pid, Requirement.is_archived.is_(False))
-    # C-G-11: completion is `Requirement.is_completed`, an overlay marker independent of
-    # `RequirementVersion.status` (no longer a `RequirementStatus` value at all), so it is read off the
-    # identity row, not the version.
-    counts.requirements, completed = db.execute(
-        select(func.count(), func.count().filter(Requirement.is_completed.is_(True))).where(*live)
-    ).one()
-    counts.completed = completed
-    if counts.requirements:
-        for status_value, total in db.execute(
-            select(RequirementVersion.status, func.count())
-            .join(Requirement, Requirement.id == RequirementVersion.requirement_id)
-            .where(*live, RequirementVersion.valid_to.is_(None))
-            .group_by(RequirementVersion.status)
-        ).all():
-            counts.by_status[status_value.value] = total
-        counts.files = db.scalar(
-            select(func.count(RequirementFile.file_id.distinct()))
-            .join(Requirement, Requirement.id == RequirementFile.requirement_id)
-            .where(*live)
-        ) or 0
-    by_outcome = {outcome: total for outcome, total in db.execute(
-        select(ChangeRequest.status, func.count()).where(ChangeRequest.project_id == pid).group_by(ChangeRequest.status)
-    ).all()}
-    counts.proposed = by_outcome.get(ChangeRequestStatus.SUBMITTED, 0) + by_outcome.get(ChangeRequestStatus.IN_REVIEW, 0)
-    counts.approved = by_outcome.get(ChangeRequestStatus.APPROVED, 0)
-    counts.rejected = by_outcome.get(ChangeRequestStatus.REJECTED, 0)
-    return counts
-
-
 @router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)
 def get_project_metrics(
     project_id: UUID, project_scope: ProjectScope = Depends(),
@@ -1165,7 +1110,7 @@ def get_project_metrics(
     progress stays this project's own: stages and baselines belong to one project.
     """
     per_project = project_scope.collect(
-        db, project_or_404(db, project_id), current_user.id, "requirement", lambda pid: [_project_counts(db, pid)],
+        db, project_or_404(db, project_id), current_user.id, "requirement", lambda pid: [project_counts(db, pid)],
     )
     own = next(c for c in per_project if c.id == project_id)
     requirement_count = sum(c.requirements for c in per_project)
@@ -1184,50 +1129,13 @@ def get_project_metrics(
     with memoize_module_state():
         record_counts = count_records_by_type(db, current_user, project_or_404(db, project_id), project_scope)
 
-    # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
-    # been baselined (C-G-10) shows completion across the requirements
-    # captured in that baseline; a stage not yet approved has no baseline
-    # yet, so it shows the project's current requirement count at 0%
-    # complete rather than a stage-specific count that doesn't exist yet.
-    stages = db.scalars(
-        select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
-    ).all()
-    stage_phases = phase_index(db, {s.phase_id for s in stages})
-    stage_progress: list[StageProgressOut] = []
-    # One query for every baselined stage: items captured and how many of them are now completed (the
-    # oldest baseline of a stage when it somehow has several). A component's own baseline (component phases)
-    # holds that component's requirements only, so the oldest one per component is added to its stage's.
-    baselined: dict[UUID, tuple[int, int]] = {}
-    seen_component_baselines: set[tuple[UUID, UUID | None]] = set()
-    for stage_id, component_id, total, done in db.execute(
-        select(Baseline.stage_id, Baseline.component_id, func.count(BaselineItem.requirement_id),
-               func.count(Requirement.id).filter(Requirement.is_completed.is_(True)))
-        .select_from(Baseline)
-        .outerjoin(BaselineItem, BaselineItem.baseline_id == Baseline.id)
-        .outerjoin(Requirement, Requirement.id == BaselineItem.requirement_id)
-        .where(Baseline.project_id == project_id)
-        .group_by(Baseline.id, Baseline.stage_id, Baseline.component_id, Baseline.created_at)
-        .order_by(Baseline.created_at, Baseline.id)
-    ).all():
-        if (stage_id, component_id) in seen_component_baselines:
-            continue
-        seen_component_baselines.add((stage_id, component_id))
-        previous_total, previous_done = baselined.get(stage_id, (0, 0))
-        baselined[stage_id] = (previous_total + total, previous_done + done)
-    for stage in stages:
-        if stage.id in baselined:
-            stage_requirement_count, stage_completed = baselined[stage.id]
-            stage_percent = (stage_completed / stage_requirement_count * 100.0) if stage_requirement_count else 0.0
-        else:
-            stage_requirement_count = own_requirement_count
-            stage_percent = 0.0
-        stage_progress.append(
-            StageProgressOut(
-                stage_id=stage.id, name=stage.name, phase_name=stage_phases[stage.phase_id].name,
-                phase_kind=stage_phases[stage.phase_id].kind,
-                requirement_count=stage_requirement_count, completed_percent=round(stage_percent, 1),
-            )
+    stage_progress = [
+        StageProgressOut(
+            stage_id=row.stage_id, name=row.name, phase_name=row.phase_name, phase_kind=row.phase_kind,
+            requirement_count=row.requirement_count, completed_percent=row.completed_percent,
         )
+        for row in project_stage_progress(db, project_id, own_requirement_count)
+    ]
 
     return ProjectMetricsOut(
         requirement_count=requirement_count,

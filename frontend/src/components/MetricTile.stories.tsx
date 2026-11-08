@@ -26,3 +26,13 @@ export const Default: Story = {
 export const PercentageValue: Story = {
   args: { label: "Corporate Security Standard", value: "83%", to: "/projects/project-1/modules/compliance" },
 };
+
+/** A figure no list shows exactly (a record count filtered by component) is a plain tile, not a link. */
+export const WithoutLink: Story = {
+  args: { label: "Risks in Software", value: 3 },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("3")).toBeInTheDocument();
+    await expect(canvas.queryByRole("link")).not.toBeInTheDocument();
+  },
+};

@@ -39,7 +39,7 @@ Click the star icon next to a project to favourite it — favourited projects al
 
 ## Opening a project
 
-Click into a project to reach its **Overview** — a summary of its stage, a **Total records** chart (every record in the project, split by type across the enabled modules; click a type to open its list), requirement status and change request counts, and recent activity, and the jumping-off point for every other project page (Requirements, Change Requests, Actions, Files, Reports, Project history, Project admin).
+Click into a project to reach its **Overview** — a summary of its stage, a **Total records** chart (every record in the project, split by type across the enabled modules; click a type to open its list), requirement status and change request counts, and recent activity, and the jumping-off point for every other project page (Requirements, Change Requests, Actions, Files, Reports, Project history, Project admin). A project manager can rearrange it into the widgets the team needs; see [Project overview](../core-features/project-overview.md).
 
 | Project overview |
 | --- |

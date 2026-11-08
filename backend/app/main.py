@@ -47,6 +47,7 @@ from app.routers import (
     notifications,
     org_record_tables,
     orgs,
+    overview_widgets,
     pats,
     placements,
     project_link_types,
@@ -388,6 +389,8 @@ app.include_router(announcements.org_router)
 app.include_router(announcements.reader_router)
 app.include_router(nav_labels.router)
 app.include_router(nav_labels.org_router)
+app.include_router(overview_widgets.router)
+app.include_router(overview_widgets.org_router)
 app.include_router(tags.router)
 app.include_router(tags.org_router)
 app.include_router(project_link_types.router)

@@ -107,6 +107,7 @@ from app.modules.context_strategy.pain_point_scores import (
     load_scoring_context,
     resolve_model,
 )
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME_KEY
 from app.modules.registry import ReportDefinition, ReportParamDefinition, ReportPartDefinition, get_artefact_summary
 from app.services import relationships
 from app.services.labels import REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE
@@ -121,7 +122,8 @@ from app.services.report_framework import (
     normalise_metrics,
     tones_by_label,
 )
-from app.services.scoring import resolve_effective_bands, resolve_effective_cell_ratings
+from app.services.scoring import get_registered_scheme, resolve_effective_bands, resolve_effective_cell_ratings
+from app.services.scoring_custom import effective_scheme
 
 STRATEGY_TYPE = "strategy"
 FUTURE_STATE_TYPE = "future_state"
@@ -1383,10 +1385,17 @@ def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
 _ORG_ROLE = "org_reports_viewer"
 # No fixed choices: an organisation or project may define models of its own, so the key is checked against the
 # scheme as it applies to each project reported on.
+def _model_choices(db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None) -> list[tuple[str, str]]:
+    """The scoring models the project (or, with no project, the organisation) offers, as `(key, name)`: the built-in
+    ones and any the organisation or project defined, so the report's model is chosen from a list."""
+    scheme = effective_scheme(db, organization_id, get_registered_scheme(PAIN_POINT_SCORING_SCHEME_KEY).scheme, project_id)
+    return [(model.key, model.label) for model in scheme.models]
+
+
 _MODEL_KEY = ReportParamDefinition(
-    "model_key", "string", label="Scoring model",
-    description="Key of the scoring model (for example sxf, sxc, sxfxc, cod, wsjf, or one the organisation or project "
-                "defined); defaults to the project's configured default model.",
+    "model_key", "string", label="Scoring model", choices_for=_model_choices,
+    description="The scoring model to rank by, chosen from the models this project (or organisation) offers; "
+                "defaults to the configured default model. Its key (for example sxf, wsjf) is also accepted by the API.",
 )
 _ROLLUP = ReportParamDefinition(
     "rollup", "string", default=RollupMethod.WEIGHTED_AVERAGE.value, choices=tuple(m.value for m in RollupMethod),

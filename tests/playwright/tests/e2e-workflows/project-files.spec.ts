@@ -26,7 +26,7 @@ test.describe("project files", () => {
     });
 
     await test.step("the overview's Files tile navigates to the project files page, not the unfiltered requirements list", async () => {
-      const filesTile = page.locator(".grid-metrics").getByRole("link", { name: /Files/ });
+      const filesTile = page.locator(".overview-grid").getByRole("link", { name: /Files/ });
       await filesTile.click();
       await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/files$/);
     });

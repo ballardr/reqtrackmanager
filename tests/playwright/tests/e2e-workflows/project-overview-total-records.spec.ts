@@ -57,7 +57,7 @@ test("the overview totals the records of every enabled module by type and each r
   });
 
   await test.step("the Requirements tile is gone: requirements are a slice of the total", async () => {
-    await expect(page.locator(".grid-metrics").getByRole("link", { name: "Requirements", exact: true })).toHaveCount(0);
+    await expect(page.locator(".overview-grid").getByRole("link", { name: "Requirements", exact: true })).toHaveCount(0);
   });
 
   await test.step("a legend row opens that type's list", async () => {

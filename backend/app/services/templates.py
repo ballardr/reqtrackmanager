@@ -35,6 +35,7 @@ created from scratch.
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -134,6 +135,7 @@ def clone_project(
         exempt_from_org_link_lock=source.exempt_from_org_link_lock,
         terminology=dict(source.terminology),
         nav_label_overrides=dict(source.nav_label_overrides or {}),
+        overview_widgets=copy.deepcopy(source.overview_widgets),
         status_id=get_default_project_status_id(db, source.organization_id),
         parent_project_id=parent_project_id,
     )

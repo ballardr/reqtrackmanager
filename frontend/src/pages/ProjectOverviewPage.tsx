@@ -1,139 +1,68 @@
-import { Plus } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Plus, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
-import type { ChangeEntry, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem, ProjectMetrics, RequirementStatus } from "../api/types";
-import { activityEntityLabel, activityEntryLink, activityEntryNotes, describeActivityEntry, REQUIREMENT_STATUS_LABEL } from "../api/types";
+import type { OverviewLayout, Project, ProjectAncestor, ProjectHierarchySummary, ProjectListItem } from "../api/types";
 import { EntitySwitcher } from "../components/EntitySwitcher";
-import { MetricTile } from "../components/MetricTile";
+import { OverviewEditor } from "../components/overview/OverviewEditor";
+import { OverviewWidgetGrid } from "../components/overview/OverviewWidgetGrid";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { ReportsButton } from "../components/ReportsButton";
 import { Spinner } from "../components/Spinner";
-import { StatusPieChart } from "../components/StatusPieChart";
-import { getArtefactListPath } from "../modules/artefactPaths";
-import { buildRecordTotalsChart, RECORD_SLICE_COLORS } from "../utils/recordTotals";
-import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
-import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
-import { useProjectScope } from "../hooks/useProjectScope";
-import { ProjectScopeSelect } from "../components/ProjectScopeSelect";
-import { getInstalledModule } from "../modules/registry";
+import { useOverviewMetrics } from "../hooks/useOverviewMetrics";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
-import { ActivityNote } from "../components/ActivityNote";
 import { Badge } from "../components/Badge";
 import { Tooltip } from "../components/Tooltip";
 import { useResetOnChange } from "../hooks/useResetOnChange";
 
-/** Project overview dashboard (U-P-05): key metrics, a total-records chart
- * split by record type, status/outcome charts, per-stage progress, and a
- * recent activity feed at a glance. Every tile/chart-segment/stage-bar
- * navigates to the list it summarises, pre-filtered to match what was
- * clicked (UX review) — see the `to` path built alongside each metric below.
- * The total-records chart is fed by the record-table providers, so a module's
- * records appear in it with no edit here. */
+/** Project overview dashboard (U-P-05): the widgets of the layout in force, which a project manager arranges
+ * ("Customise overview"). The built-in layout is the key metrics, a total-records chart split by record type,
+ * status and outcome charts, per-stage progress and a recent activity feed. Every tile, chart segment and
+ * stage bar navigates to the list it summarises, pre-filtered to match what was clicked (UX review).
+ * The figures of every visible widget arrive in one batched request (`useOverviewMetrics`); a module's tiles
+ * and widgets come from the registry, so this page never imports a specific module. */
 export function ProjectOverviewPage() {
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
-  const navigate = useNavigate();
-  const orgLabelCap = useOrgLabelCapitalized();
   const [project, setProject] = useState<Project | null>(null);
-  const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
-  const [activity, setActivity] = useState<ChangeEntry[] | null>(null);
+  const [layout, setLayout] = useState<OverviewLayout | null>(null);
+  const [editing, setEditing] = useState(false);
   // Hierarchical projects (docs/decisions.md): root-first ancestor
   // breadcrumb and "Child of/Parent of" labels, previously shown on
   // ProjectListPage/FavouritesPage but never here. Both default to `[]`
   // rather than `null` — an empty result (no parent/no children, or every
   // ancestor redacted) is a normal, renderable state, not a loading one,
   // so these don't gate the page's initial `<Spinner />` the way
-  // project/metrics do.
+  // project/layout do.
   const [ancestors, setAncestors] = useState<ProjectAncestor[]>([]);
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const projectScope = useProjectScope(projectId);
-  // Extra module-contributed summary tiles (module boundary cleanup,
-  // 2026-09-08) — e.g. Compliance's own per-standard status tiles,
-  // only shown once this project's org has the module enabled. This
-  // core page renders whatever each currently-enabled module's own
-  // `projectOverviewTiles` hands it and never imports a specific module
-  // itself; a module deciding it has nothing to show yet (e.g. no standards
-  // assigned) is that module's own `render` returning nothing, not
-  // something this page checks for.
-  const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
-  const contributedTiles = projectId
-    ? enabledModules.flatMap((entry) =>
-        (getInstalledModule(entry.module_key)?.projectOverviewTiles ?? []).map((tile) => ({
-          key: `${entry.module_key}:${tile.key}`,
-          node: tile.render({ projectId, projectScope: projectScope.scope }),
-        }))
-      )
-    : [];
+  // Each figure is read in its widget's project scope, else the overview's (set in "Customise overview").
+  const metrics = useOverviewMetrics(projectId, layout?.widgets ?? null, layout?.scope ?? "this", strings.common.error);
 
   useResetOnChange([projectId], () => setLoadError(null));
+
+  const loadLayout = useCallback(() => {
+    if (!projectId) return;
+    api
+      .get<OverviewLayout>(`/api/v1/projects/${projectId}/overview-layout`)
+      .then(setLayout)
+      .catch((err: unknown) => setLoadError(err instanceof ApiError ? err.message : strings.common.error));
+  }, [projectId, strings.common.error]);
 
   useEffect(() => {
     if (!projectId) return;
     const onError = (err: unknown) => setLoadError(err instanceof ApiError ? err.message : strings.common.error);
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject).catch(onError);
-    api
-      .get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes`)
-      .then((entries) => setActivity(entries.slice(0, 8)))
-      .catch(onError);
     api.get<ProjectAncestor[]>(`/api/v1/projects/${projectId}/ancestors`).then(setAncestors).catch(onError);
     api.get<ProjectListItem[]>(`/api/v1/projects/${projectId}/children`).then(setChildren).catch(onError);
-  }, [projectId, strings.common.error]);
-
-  // The counts follow the overview's scope; the rest of the page is always this project's own.
-  useEffect(() => {
-    if (!projectId) return;
-    api
-      .get<ProjectMetrics>(`/api/v1/projects/${projectId}/metrics${projectScope.query ? `?${projectScope.query}` : ""}`)
-      .then(setMetrics)
-      .catch((err: unknown) => setLoadError(err instanceof ApiError ? err.message : strings.common.error));
-  }, [projectId, projectScope.query, strings.common.error]);
+    loadLayout();
+  }, [projectId, strings.common.error, loadLayout]);
 
   if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
-  if (!project || !metrics) return <Spinner />;
-
-  const requirementsPath = (query?: string) => `/projects/${projectId}/requirements${query ? `?${query}` : ""}`;
-  const changeRequestsPath = (status: string) => `/projects/${projectId}/change-requests?status=${status}`;
-
-  const tiles: Array<[string, string | number, string]> = [
-    // C-G-11: completion is `Requirement.is_completed`, an independent
-    // overlay marker, not a `status` value — links to the requirements
-    // list's own "Completed" filter checkbox rather than a status filter
-    // (RequirementsPage.tsx seeds `completedFilter` from this same param).
-    [strings.overview.percentComplete, `${metrics.requirement_completed_percent}%`, requirementsPath("completed=1")],
-    // Links to the project-wide file browser (ProjectFilesPage), not the
-    // unfiltered requirements list — a bug flagged separately from this
-    // page's other tiles, which correctly link to a requirements/change-
-    // requests view that actually reflects what was clicked.
-    [strings.overview.fileCount, metrics.file_count, `/projects/${projectId}/files`],
-    [strings.overview.crProposed, metrics.change_requests_proposed, changeRequestsPath("active")],
-    [strings.overview.crApproved, metrics.change_requests_approved, changeRequestsPath("approved")],
-    [strings.overview.crRejected, metrics.change_requests_rejected, changeRequestsPath("rejected")],
-  ];
-
-  // The requirement and change request names follow the project's terminology; other types use the label the API sends.
-  const recordTypeLabels: Record<string, string> = {
-    requirement: strings.requirements.title,
-    change_request: strings.overview.changeRequestsChart,
-  };
-  const recordTotals = buildRecordTotalsChart(
-    metrics.records_by_type.map((c) => ({ ...c, label: recordTypeLabels[c.type] ?? c.label })),
-    strings.overview.otherRecords,
-  );
-  const openRecordType = (type: string | null) => {
-    const to = type && projectId ? getArtefactListPath(type, projectId) : null;
-    if (to) navigate(to);
-  };
-
-  const statusEntries = Object.entries(metrics.requirements_by_status) as Array<[RequirementStatus, number]>;
-  const crStatusEntries: Array<[string, number]> = [
-    ["active", metrics.change_requests_proposed],
-    ["approved", metrics.change_requests_approved],
-    ["rejected", metrics.change_requests_rejected],
-  ];
+  if (!project || !layout || !metrics.results) return <Spinner />;
 
   // Built from the single-`Project` GET response plus the `children` list
   // fetched above — `ProjectOverviewPage` has no `ProjectListItem` of its
@@ -160,127 +89,45 @@ export function ProjectOverviewPage() {
           {project.name}
         </div>
       )}
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
-            <h1 style={{ margin: 0 }}>{project.name}</h1>
-            {project.is_template && (
-              <Tooltip label={strings.projects.templateReadOnlyHelp} wrap>
-                <Badge>{strings.projects.template}</Badge>
-              </Tooltip>
+      <div className="row" style={{ alignItems: "center", flexWrap: "wrap", gap: "var(--space-2)" }}>
+        <h1 style={{ margin: 0 }}>{project.name}</h1>
+        {project.is_template && (
+          <Tooltip label={strings.projects.templateReadOnlyHelp} wrap>
+            <Badge>{strings.projects.template}</Badge>
+          </Tooltip>
+        )}
+        <EntitySwitcher
+          label="Switch project"
+          currentId={project.id}
+          loadOptions={() => loadProjectSwitcherOptions("overview")}
+        />
+        {!editing && (
+          <div className="row" style={{ marginLeft: "auto", alignItems: "center" }}>
+            {layout.can_customise && (
+              <button type="button" className="btn" onClick={() => setEditing(true)}>
+                <SlidersHorizontal /> {strings.overviewWidgets.customise}
+              </button>
             )}
-            <EntitySwitcher
-              label="Switch project"
-              currentId={project.id}
-              loadOptions={() => loadProjectSwitcherOptions("overview")}
-            />
-          </div>
-          <p className="text-muted">{project.summary}</p>
-          <ProjectHierarchyLabels project={hierarchySummary} />
-        </div>
-        <div className="row" style={{ alignItems: "center" }}>
-          <ProjectScopeSelect scope={projectScope} compact coveredProjects={metrics.scope_project_count} />
-          <ReportsButton scope={{ kind: "project", id: project.id }} organizationId={project.organization_id} project={project} />
-          <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
-            <Plus /> {strings.requirements.newRequirement}
-          </Link>
-        </div>
-      </div>
-      <div className="grid grid-metrics">
-        {tiles.map(([label, value, to]) => (
-          <MetricTile key={label} label={label} value={value} to={to} />
-        ))}
-        {contributedTiles.map((t) => (
-          <Fragment key={t.key}>{t.node}</Fragment>
-        ))}
-      </div>
-
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-        {metrics.record_total > 0 ? (
-          <StatusPieChart
-            title={strings.overview.totalRecords}
-            segments={recordTotals.segments}
-            colors={RECORD_SLICE_COLORS}
-            legend={recordTotals.legend.map((row) => ({
-              label: row.label, value: row.count, segment: row.segment, onClick: () => openRecordType(row.type),
-            }))}
-            onSegmentClick={(_, idx) => openRecordType(recordTotals.segmentTypes[idx])}
-          />
-        ) : (
-          <div className="card stack">
-            <div className="text-muted">{strings.overview.totalRecords}</div>
-            <p className="text-muted">{strings.overview.noRecords}</p>
+            <ReportsButton scope={{ kind: "project", id: project.id }} organizationId={project.organization_id} project={project} />
+            <Link className="btn btn-primary" to={`/projects/${projectId}/requirements?new=1`}>
+              <Plus /> {strings.requirements.newRequirement}
+            </Link>
           </div>
         )}
-        <StatusPieChart
-          title={strings.overview.requirementsByStatus}
-          segments={statusEntries.map(([status, count]) => [REQUIREMENT_STATUS_LABEL[status] ?? status, count])}
-          onSegmentClick={(_, idx) => navigate(requirementsPath(`status=${statusEntries[idx][0]}`))}
-        />
-        <StatusPieChart
-          title={strings.overview.changeRequestsChart}
-          segments={[
-            [strings.overview.crProposed, metrics.change_requests_proposed],
-            [strings.overview.crApproved, metrics.change_requests_approved],
-            [strings.overview.crRejected, metrics.change_requests_rejected],
-          ]}
-          onSegmentClick={(_, idx) => navigate(changeRequestsPath(crStatusEntries[idx][0]))}
-        />
-        <div className="card stack">
-          <div className="text-muted">{strings.overview.stageProgress}</div>
-          {metrics.stage_progress.map((s) => (
-            <Link
-              key={s.stage_id} to={requirementsPath(`stage=${s.stage_id}`)}
-              className="stack" style={{ gap: "0.2rem", textDecoration: "none", color: "inherit" }}
-            >
-              <div className="row" style={{ justifyContent: "space-between", fontSize: "0.85rem" }}>
-                <span>
-                  {s.name} <Badge>{s.phase_name}</Badge>
-                </span>
-                <span className="text-muted">{s.completed_percent}%</span>
-              </div>
-              <div style={{ background: "var(--color-surface-alt)", borderRadius: "var(--radius-sm)", height: 8, overflow: "hidden" }}>
-                <div
-                  style={{
-                    width: `${s.completed_percent}%`,
-                    background: "var(--color-primary)",
-                    height: "100%",
-                  }}
-                />
-              </div>
-            </Link>
-          ))}
-        </div>
       </div>
-
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.overview.projectActivity}</h2>
-        {activity && activity.length === 0 && <p className="text-muted">{strings.history.empty}</p>}
-        {activity?.map((c, idx) => {
-          const link = projectId ? activityEntryLink(c, projectId) : null;
-          return (
-            <div
-              key={idx}
-              className="row"
-              style={{ justifyContent: "space-between", borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}
-            >
-              <span className="stack" style={{ gap: "var(--space-1)", minWidth: 0 }}>
-                <span>
-                  <Badge>{activityEntityLabel(c.entity_type, orgLabelCap)}</Badge> {describeActivityEntry(c)}
-                  {link && (
-                    <>
-                      {" "}
-                      <Link to={link.to}>{link.label}</Link>
-                    </>
-                  )}
-                </span>
-                {activityEntryNotes(c).map((note) => <ActivityNote key={note} text={note} />)}
-              </span>
-              <span className="text-muted">{new Date(c.timestamp).toLocaleString()}</span>
-            </div>
-          );
-        })}
+      <div>
+        <p className="text-muted" style={{ margin: 0 }}>{project.summary}</p>
+        <ProjectHierarchyLabels project={hierarchySummary} />
       </div>
+      {metrics.error && <p style={{ color: "var(--color-danger)" }}>{metrics.error}</p>}
+      {editing && projectId ? (
+        <OverviewEditor
+          target={{ kind: "project", projectId }} onCancel={() => setEditing(false)}
+          onSaved={() => { setEditing(false); loadLayout(); }}
+        />
+      ) : (
+        <OverviewWidgetGrid widgets={layout.widgets} scope={layout.scope} metrics={metrics} projectId={project.id} />
+      )}
     </div>
   );
 }

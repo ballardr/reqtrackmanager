@@ -61,6 +61,7 @@ const sidebars: SidebarsConfig = {
         'core-features/links-and-traceability',
         'core-features/tags',
         'core-features/components-on-records',
+        'core-features/project-overview',
         'core-features/reports-and-export',
         {
           type: 'category',

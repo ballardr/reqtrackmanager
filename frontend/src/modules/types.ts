@@ -126,30 +126,17 @@ export interface StandaloneWorkspaceDef {
 }
 
 /**
- * One extra metric tile a Tier A module contributes to
- * `ProjectOverviewPage.tsx`'s `.grid.grid-metrics` grid (module boundary
- * cleanup, 2026-09-08 — e.g. Compliance's per-standard status tiles,
- * previously a direct `getProjectComplianceStatus`/`ProjectComplianceStatus`
- * import baked into that core page). Gated on the same per-project
- * `enabled-modules` list `ProjectOverviewPage.tsx` already fetches — a
- * module not currently enabled for the project contributes nothing, the
- * same "core doesn't decide, the module decides how much to render" shape
- * `globalNavItems`/`standaloneWorkspaces` already establish, just filtered
- * on project-scoped enablement here instead of nothing to filter on
- * (compare `routes`' own project-scoped/`enabledModules`-gated shape).
- * `render` may return zero tiles (e.g. Compliance renders none once loaded
- * if the project has no standards assigned yet) — build tiles with
- * `components/MetricTile.tsx` so a module's own tiles render identically
- * to the page's built-in ones.
+ * A widget type a module contributes to the project overview (`TierAModuleDefinition.overviewWidgets`), for
+ * example Compliance's per-standard status tiles or a risk heat map. The backend declares the same key in `ModuleDefinition.overview_widgets`, which is
+ * what lets the server validate a stored layout and offer the type only where the module is enabled; this is
+ * the renderer. The overview never imports the module: it looks the renderer up by `<module key>:<key>`.
  */
-export interface ProjectOverviewTileDef {
-  /** Must be unique across every installed module's project-overview
-   * tiles — used only as this contribution's React list `key`, never
-   * rendered. */
+export interface ProjectOverviewWidgetDef {
+  /** Unique within the module; the widget's type is `<module key>:<key>`. */
   key: string;
-  /** `projectScope` is the overview's list scope (`this` unless the viewer widened it to related projects):
-   * a tile that counts or summarises project data should cover the same projects as the built-in tiles. */
-  render: (props: { projectId: string; projectScope: ProjectScope }) => ReactNode;
+  /** Draws the widget. `config` is the settings stored with the widget (opaque to the core); `title` is its
+   * title, already defaulted. Return a card, as the built-in widgets are. */
+  render: (props: { projectId: string; projectScope: ProjectScope; title: string; config: Record<string, unknown> }) => ReactNode;
 }
 
 /**
@@ -174,7 +161,7 @@ export interface SearchScopeDefinition {
  * ("the org's headline compliance
  * gauges... must surface directly in the overview's own always-visible
  * stats header, not require a click into the `ResourceMenu` group at
- * all"). Mirrors `ProjectOverviewTileDef` exactly (same "module hands the
+ * all"). Mirrors `ProjectOverviewWidgetDef` (same "module hands the
  * parent a render function, parent has no idea what's inside it" shape),
  * scoped by `orgId` instead of `projectId` since this header has no project
  * in context. Deliberately distinct from `orgOverviewSections` above: that
@@ -194,7 +181,7 @@ export interface OrgOverviewTileDef {
  * One extra section a Tier A module contributes to
  * `pages/RequirementDetailPage.tsx`'s own "Links" card (the first consumer is Compliance's own linked-
  * compliance-requirements list plus a picker to add one). Mirrors
- * `ProjectOverviewTileDef`'s exact "module hands the parent a render
+ * `ProjectOverviewWidgetDef`'s "module hands the parent a render
  * function, parent has no idea what's inside it" shape, gated the same
  * way (this project's own currently-enabled-modules list) — `render`
  * decides everything about what it shows, including rendering nothing.
@@ -344,11 +331,11 @@ export interface TierAModuleDefinition {
    * current path matches one of them. Omitted (or empty) for a module with
    * no such entity of its own. */
   standaloneWorkspaces?: StandaloneWorkspaceDef[];
-  /** Extra metric tiles this module contributes to `ProjectOverviewPage
-   * .tsx` (module boundary cleanup, 2026-09-08), gated on this project's
-   * own `enabled-modules` list. Omitted (or empty) for a module with no
-   * project-overview summary of its own. */
-  projectOverviewTiles?: ProjectOverviewTileDef[];
+  /** Widget types this module contributes to the project overview's "Add widget" list, rendered by
+   * `components/overview/OverviewWidgetGrid.tsx` through the registry; each is an ordinary widget the person can
+   * place, size, hide or remove. Declared on the backend too
+   * (`ModuleDefinition.overview_widgets`). Omitted (or empty) for a module with no overview widget of its own. */
+  overviewWidgets?: ProjectOverviewWidgetDef[];
   /** This module's `ResourceMenu` groups on `pages/OrgOverviewPage.tsx`
    * (the "Organisation Overview"
    * page), below that page's own core stats header. Reuses
@@ -366,8 +353,8 @@ export interface TierAModuleDefinition {
   orgOverviewTiles?: OrgOverviewTileDef[];
   /** This module's extra sections on `pages/RequirementDetailPage.tsx`'s
    * own Links card, gated on this
-   * project's own `enabled-modules` list the same way `projectOverviewTiles`
-   * is. Omitted (or empty) for a module with no requirement-detail
+   * project's own `enabled-modules` list the same way `overviewWidgets`
+   * are. Omitted (or empty) for a module with no requirement-detail
    * contribution of its own. */
   requirementDetailSections?: RequirementDetailSectionDef[];
   /** This module's own accent colour for `.entity-accent-card`/`.entity-

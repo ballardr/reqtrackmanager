@@ -197,10 +197,12 @@ export const moduleDefinition: TierAModuleDefinition = {
       match: (pathname) => /^\/standards\/(?!settings\/)([^/]+)/.exec(pathname)?.[1] ?? null,
     },
   ],
-  projectOverviewTiles: [
+  // One tile per assigned standard, as an ordinary overview widget (placed, sized, hidden or removed like any other).
+  overviewWidgets: [
     {
-      key: "status",
-      render: ({ projectId, projectScope }) => createElement(ComplianceProjectOverviewTiles, { projectId, projectScope }),
+      key: "standards_status",
+      render: ({ projectId, projectScope }) =>
+        createElement("div", { className: "grid grid-metrics" }, createElement(ComplianceProjectOverviewTiles, { projectId, projectScope })),
     },
   ],
   // Corrected out of `frontend/src/api/types.ts`'s `ENTITY_ACCENT_COLOR`

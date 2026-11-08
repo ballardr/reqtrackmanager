@@ -2028,6 +2028,72 @@ class ScalingProbeApi:
 
 
 @dataclass(frozen=True)
+class OverviewMetricValue:
+    """What one overview metric returns for one evaluation (`OverviewMetric.evaluate`).
+
+    Attributes:
+        value: The single figure, or `None` when the metric has none (a breakdown-only metric).
+        breakdown: `(key, label, value)` rows for a chart; `None` when the metric has no breakdown.
+        detail: Optional text per breakdown key (a stage's phase name).
+    """
+
+    value: float | None = None
+    breakdown: list[tuple[str, str, float]] | None = None
+    detail: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class OverviewMetric:
+    """One figure the project overview can show, from the bounded catalogue (never an arbitrary query).
+
+    A widget names a metric by key and passes `params`; the server checks the key against the catalogue and every
+    parameter against `params`, so a manager's configuration cannot reach data the metric does not define.
+
+    Attributes:
+        label: Name shown in the widget editor and as the default widget title.
+        unit: `count` or `percent`; decides the gauge's default range and the value's suffix.
+        evaluate: `(ctx, params) -> OverviewMetricValue`. `ctx` is a `services.overview_metrics.MetricContext`
+            (session, caller, project, project scope). Read-only; must not add a statement per record.
+        params: The configuration keys the metric accepts (`record_type`, `filters`); any other is refused.
+        breakdown: Whether the result carries a breakdown, so chart widgets offer the metric.
+        scalar: Whether the result carries a single value, so tile and gauge widgets offer the metric.
+        gate: `(module_key, sub_component_key | None)` that must be open for the project, `None` for a core metric.
+    """
+
+    label: str
+    unit: str
+    evaluate: Callable[[Any, Mapping[str, Any]], OverviewMetricValue]
+    params: frozenset[str] = frozenset()
+    breakdown: bool = False
+    scalar: bool = True
+    gate: tuple[str, str | None] | None = None
+
+
+@dataclass(frozen=True)
+class OverviewWidgetType:
+    """A widget type a module contributes to the project overview (`ModuleDefinition.overview_widgets`).
+
+    The module's frontend registers the renderer under the same key (`TierAModuleDefinition.overviewWidgets`); this
+    declaration lets the server validate stored layouts and offer the type only where the module is enabled.
+
+    Attributes:
+        label: Name in the "Add widget" list.
+        description: One sentence on what it shows (the `(?)` help in the editor).
+        width: The width in columns (of 12) a new widget of this type starts with.
+        height: The height in rows a new widget of this type starts with.
+        in_default_layout: Whether the built-in overview includes one of this type while the module is enabled (placed
+            after the key tiles), so a project that has set no layout shows the module's contribution. A layout a
+            person has saved is never changed when a module is enabled later; they add the widget themselves.
+    """
+
+    label: str
+    description: str
+    width: int = 4
+    height: int = 4
+    in_default_layout: bool = False
+
+
+@dataclass(frozen=True)
 class LinkTypeSeed:
     """A link type a module wants to exist in every organisation, so its
     artefact types can be linked meaningfully without a core edit
@@ -2176,6 +2242,12 @@ class ReportParamDefinition:
         choice_labels: Human labels keyed by choice value, for the generated
             select; a choice without one falls back to its humanised value.
             Keys must be among `choices`.
+        choices_for: `(db, organization_id, project_id) -> [(value, label), ...]` for a value set that differs by
+            project or organisation (the scoring models a project offers). The catalogue calls it for the project
+            (`project_id` set) or organisation (`project_id` `None`) it is built for and shows the result as the
+            select's options, so a person picks a name instead of typing a key. It is for display only: the value
+            is not checked against it (the collector checks it against each project reported on), so the
+            parameter must not also declare `choices`. A provider that raises leaves the control a text box.
     """
 
     name: str
@@ -2187,6 +2259,7 @@ class ReportParamDefinition:
     description: str = ""
     label: str = ""
     choice_labels: Mapping[Any, str] | None = None
+    choices_for: Callable[[Session, uuid.UUID, uuid.UUID | None], Sequence[tuple[Any, str]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -2873,6 +2946,11 @@ class ModuleDefinition:
             a workflow produces).
         no_perf_generator: `{artefact type: reason}` for a type that is not generated (a record produced by a
             workflow whose volume is not a function of the requirement count).
+        overview_metrics: Maps a metric key (unique within the module; served as `<module_key>:<key>`) to an
+            `OverviewMetric`, so a project overview widget can show a figure of this module. Read via
+            `get_overview_metrics`. Offered and evaluated only where the module is enabled for the project.
+        overview_widgets: Maps a widget key (served as `<module_key>:<key>`) to an `OverviewWidgetType` whose
+            renderer the module's frontend registers; read via `get_overview_widget_types`.
         reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -2980,6 +3058,8 @@ class ModuleDefinition:
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
     no_perf_generator: dict[str, str] = field(default_factory=dict)
+    overview_metrics: dict[str, OverviewMetric] = field(default_factory=dict)
+    overview_widgets: dict[str, OverviewWidgetType] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -4393,6 +4473,8 @@ def _report_param_problem(param: ReportParamDefinition) -> str | None:
         return f"parameter '{param.name}' declares an empty choice set"
     if param.minimum is not None and param.maximum is not None and param.minimum > param.maximum:
         return f"parameter '{param.name}' has minimum above maximum"
+    if param.choices_for is not None and (param.choices is not None or param.choice_labels or param.type != "string"):
+        return f"parameter '{param.name}' takes its choices from a provider, so it declares no fixed choices or labels and is a string"
     if param.choice_labels and not set(param.choice_labels) <= set(param.choices or ()):
         return f"parameter '{param.name}' labels a value that is not one of its choices"
     default = param.default
@@ -4837,6 +4919,24 @@ def get_no_scaling_probe_types() -> dict[str, str]:
     for definition in get_module_registry().values():
         reasons.update(definition.no_scaling_probe)
     return reasons
+
+
+def get_overview_metrics() -> dict[str, tuple[str, OverviewMetric]]:
+    """Every module-contributed overview metric as `{<module_key>:<key>: (module_key, metric)}`."""
+    return {
+        f"{definition.key}:{metric_key}": (definition.key, metric)
+        for definition in get_module_registry().values()
+        for metric_key, metric in definition.overview_metrics.items()
+    }
+
+
+def get_overview_widget_types() -> dict[str, tuple[str, OverviewWidgetType]]:
+    """Every module-contributed overview widget type as `{<module_key>:<key>: (module_key, type)}`."""
+    return {
+        f"{definition.key}:{widget_key}": (definition.key, widget)
+        for definition in get_module_registry().values()
+        for widget_key, widget in definition.overview_widgets.items()
+    }
 
 
 def get_search_scopes() -> dict[str, tuple[ModuleDefinition, SearchScope]]:

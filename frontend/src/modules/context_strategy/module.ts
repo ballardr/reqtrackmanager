@@ -82,7 +82,7 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * and Open Question have no configurable type vocabulary, so they need none
  * of that admin-section wiring.
  *
- * No `globalNavItems`/`standaloneWorkspaces`/`projectOverviewTiles`/
+ * No `globalNavItems`/`standaloneWorkspaces`/`overviewWidgets`/
  * `requirementDetailSections`/`entityAccentColor`: none of the artefacts has
  * a cross-org standalone entity, a project-overview summary tile, or a
  * place in a mixed list of entity kinds yet.

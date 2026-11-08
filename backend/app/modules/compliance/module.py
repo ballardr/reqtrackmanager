@@ -177,6 +177,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleScheduledJob,
+    OverviewWidgetType,
     PerfDatasetGenerator,
     PrincipalReference,
 )
@@ -498,6 +499,14 @@ MODULE_DEFINITION = ModuleDefinition(
     get_global_router=get_global_router,
     models_import_path="app.modules.compliance.models",
     migrations_dir="app/modules/compliance/migrations",
+    # One tile per standard assigned to the project (and, where widened, its related projects); the frontend renders it.
+    overview_widgets={
+        "standards_status": OverviewWidgetType(
+            label="Compliance standards",
+            description="One tile for each compliance standard assigned to the project, with its percentage compliant.",
+            width=12, height=2, in_default_layout=True,
+        ),
+    },
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     on_org_created=_seed_org_defaults,
     project_nav_visible=_project_nav_visible,

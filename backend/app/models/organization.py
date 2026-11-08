@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -187,6 +187,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             nobody listed in the organisation's tag vocabulary.
         nav_label_overrides: The organisation's default navigation names by stable navigation key
             (`services.nav_labels`); a project's own or inherited name takes precedence.
+        overview_widgets: The organisation's default project overview layout (`services.overview_widgets`); SQL NULL
+            means none (the built-in layout applies). A project's own or inherited layout takes precedence.
     """
 
     __tablename__ = "organizations"
@@ -203,6 +205,7 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     tag_mode: Mapped[str] = mapped_column(String(12), default="free", server_default=text("'free'"))
     nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    overview_widgets: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     require_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_self_signup: Mapped[bool] = mapped_column(Boolean, default=False)

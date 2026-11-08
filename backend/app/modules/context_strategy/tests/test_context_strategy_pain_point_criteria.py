@@ -223,3 +223,89 @@ def test_custom_criteria_and_scores_travel_in_the_project_bundle(client, admin_t
     assert set(by_status["general"]["levels"]) == {"severity", "job_size", axis["key"]}
     assert set(by_status["active"]["levels"]) == {"severity", axis["key"]}
 
+
+
+# --- the report's scoring model is chosen from the models on offer --------------------------------------------
+
+
+def _model_param(client, token, url: str) -> dict:
+    """The first report in a catalogue that takes a scoring model, and its `model_key` parameter."""
+    entries = _call(client, token, "get", url).json()
+    return next(p for e in entries for p in e["params"] if p["name"] == "model_key")
+
+
+def test_the_reports_scoring_model_is_a_list_of_the_models_the_project_offers(client, admin_token):
+    org, project, token = _setup(client, admin_token, "PP Report Models Co")
+    pid = project["id"]
+    param = _model_param(client, token, f"/api/v1/projects/{pid}/report-catalogue")
+    # Named models, not a key typed from memory: the built-in ones, with their names.
+    assert {"sxf", "sxc", "sxfxc", "cod", "wsjf"} <= set(param["choices"])
+    assert param["choice_labels"]["sxf"] == "Severity × Frequency"
+    assert param["choice_labels"]["wsjf"] != "wsjf"
+
+    # A model the organisation defines is offered in its projects and in the organisation's own list.
+    spec = [{"name": "Low", "weight": 1}, {"name": "High", "weight": 4}]
+    _call(client, token, "post", _org_url(org["id"], "/axes"), json={"label": "Revenue risk", "levels": spec})
+    _call(client, token, "post", _org_url(org["id"], "/models"), json={
+        "label": "Revenue first", "combination": "weighted_sum", "axes": [{"axis_key": "c_revenue_risk", "role": "sum", "importance": 100}],
+    })
+    in_project = _model_param(client, token, f"/api/v1/projects/{pid}/report-catalogue")
+    assert in_project["choice_labels"]["m_revenue_first"] == "Revenue first"
+    in_org = _model_param(client, token, f"/api/v1/orgs/{org['id']}/report-catalogue")
+    assert "m_revenue_first" in in_org["choices"]
+    # The report still runs with a chosen key, and an unknown one is still refused by the report, not by the list.
+    ok = client.get(
+        f"/api/v1/projects/{pid}/modules/context_strategy/reports/pain-point-prioritisation", params={"model_key": "sxf"},
+        headers=auth_headers(token),
+    )
+    assert ok.status_code == 200, ok.text
+    assert client.get(
+        f"/api/v1/projects/{pid}/modules/context_strategy/reports/pain-point-prioritisation", params={"model_key": "nope"},
+        headers=auth_headers(token),
+    ).status_code == 400
+
+
+def test_a_model_only_one_project_defines_is_offered_in_that_project_only(client, admin_token):
+    org, project, token = _setup(client, admin_token, "PP Report Models Project Co")
+    from tests.conftest import create_project
+
+    other = create_project(client, token, org["id"], "PP Report Models Other")
+    spec = [{"name": "Low", "weight": 1}, {"name": "High", "weight": 4}]
+    _call(client, token, "post", _project_url(project["id"], "/axes"), json={"label": "Local risk", "levels": spec})
+    _call(client, token, "post", _project_url(project["id"], "/models"), json={
+        "label": "Local first", "combination": "weighted_sum", "axes": [{"axis_key": "c_local_risk", "role": "sum", "importance": 100}],
+    })
+    mine = _model_param(client, token, f"/api/v1/projects/{project['id']}/report-catalogue")
+    theirs = _model_param(client, token, f"/api/v1/projects/{other['id']}/report-catalogue")
+    assert "m_local_first" in mine["choices"] and "m_local_first" not in theirs["choices"]
+
+
+def test_a_provider_that_fails_leaves_a_text_box_instead_of_breaking_the_catalogue(client, admin_token):
+    from app.modules.context_strategy import reports
+
+    _, project, token = _setup(client, admin_token, "PP Report Models Failure Co")
+
+    def broken(db, organization_id, project_id):
+        raise RuntimeError("boom")
+
+    from dataclasses import replace
+
+    from app.services import report_framework
+
+    param = replace(reports._MODEL_KEY, choices_for=broken)
+    out = report_framework.param_out(param, db=None, organization_id=None)
+    assert out.choices is None  # no session means no provider call at all
+    from app.database import SessionLocal
+
+    with SessionLocal() as db:
+        failed = report_framework.param_out(param, db, uuid.UUID(project["organization_id"]), uuid.UUID(project["id"]))
+    assert failed.choices is None and failed.choice_labels is None and failed.name == "model_key"
+
+
+def test_a_parameter_cannot_declare_both_fixed_choices_and_a_provider():
+    from app.modules.registry import ReportParamDefinition, _report_param_problem
+
+    both = ReportParamDefinition("m", "string", choices=("a",), choices_for=lambda db, org, project: [("a", "A")])
+    assert _report_param_problem(both) is not None
+    assert _report_param_problem(ReportParamDefinition("m", "integer", choices_for=lambda db, org, project: [])) is not None
+    assert _report_param_problem(ReportParamDefinition("m", "string", choices_for=lambda db, org, project: [])) is None

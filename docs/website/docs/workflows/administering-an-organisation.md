@@ -47,6 +47,10 @@ Under **Projects & workflow → Link types**, define the vocabulary of links bet
 
 Under **Projects & workflow → Stage workflows**, define the phases a project stage can move through. A workflow is a name and an ordered list of phases; each phase has a name of your choosing and a **kind** (Open, Review, Locked, On hold or Closed) that decides what entering it does. The first phase is where a new stage starts. New organisations begin with a **Standard** workflow (Scoping, Review, Approved, Completed, Archived), which you can edit or replace. Every project can use your workflows, hide the ones it does not want and add its own; a workflow that a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind. See [Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
 
+## Default overview
+
+Under **Projects & workflow → Default overview**, arrange the project overview that every project of the organisation shows unless it, or a parent project, has its own. It is the same editor as a project's **Customise overview** (see [Project overview](../core-features/project-overview.md)); **Restore default** removes the organisation's overview so the built-in layout applies. Only the modules the organisation has enabled offer metrics, record types and widgets.
+
 ## Navigation names
 
 Under **Projects & workflow → Navigation names**, set the name each project navigation entry uses by default (for example Decisions as ADRs). A project uses the organisation's name unless a parent project or the project itself names the entry differently, and a project manager can still override it under **Project Admin → Settings**. The entries listed are the core entries and those of the modules the organisation has enabled. A name affects the navigation, the page title and the back link of that entry's records only; **Restore** returns a row to its built-in name.

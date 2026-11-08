@@ -562,6 +562,19 @@ def set_project_nav_labels(headers: dict, project_id: str, names: dict[str, str]
     return r.json()
 
 
+def add_overview_widgets(headers: dict, project_id: str, widgets: list[dict]) -> dict:
+    """Puts widgets ahead of the built-in overview layout (Customise overview), so the manual-demo dataset shows a
+    configured gauge and a filtered record count beside the standard tiles and charts."""
+    layout = httpx.get(f"{BASE}/projects/{project_id}/overview-layout", headers=headers, timeout=30)
+    layout.raise_for_status()
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/overview-layout",
+        json={"scope": layout.json()["scope"], "widgets": [*widgets, *layout.json()["widgets"]]}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_announcement(
     headers: dict, org_id: str, *, title: str, body: str, severity: str = "information", show_on_login: bool = False,
 ) -> dict:
@@ -2281,6 +2294,25 @@ def main() -> None:
     set_project_terminology(h_pm, drone["id"], {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"})
     # A renamed navigation entry (its name shows in the navigation and as the page title).
     set_project_nav_labels(h_pm, drone["id"], {"reviews-due": "Scheduled reviews"})
+    # A configured overview: a gauge on how much is complete (warning below 50%, critical below 25%), a count of the
+    # Avionics requirements named by component prefix, and a text note.
+    add_overview_widgets(h_pm, drone["id"], [
+        {
+            "id": "demo-completion", "type": "gauge", "title": "Programme completion", "width": 3, "height": 4, "visible": True,
+            "config": {
+                "metric": "requirement_completed_percent", "minimum": 0, "maximum": 100, "warning": 50, "critical": 25,
+                "direction": "below",
+            },
+        },
+        {
+            "id": "demo-avionics", "type": "metric_tile", "title": "Avionics specifications", "width": 3, "height": 2, "visible": True,
+            "config": {"metric": "record_count", "params": {"record_type": "requirement", "filters": {"component": ["AV"]}}},
+        },
+        {
+            "id": "demo-note", "type": "text", "title": "Reading this overview", "width": 6, "height": 3, "visible": True,
+            "config": {"markdown": "Figures cover **this project only**. The gauge turns to a warning below 50% complete and to critical below 25%."},
+        },
+    ])
     assign_project_role(h_pm, drone["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, drone["id"], demo_stakeholder["user_id"], "stakeholder")
     drone_components = {

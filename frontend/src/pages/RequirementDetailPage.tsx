@@ -167,7 +167,7 @@ export function RequirementDetailPage() {
   // Extra module-contributed sections (`requirementDetailSections`), rendered under
   // the Links panel in the aside. This page renders whatever each currently-enabled
   // module hands it and never imports a specific module's entity itself, mirroring
-  // `ProjectOverviewPage.tsx`'s identical `projectOverviewTiles` convention.
+  // the project overview's identical `overviewWidgets` convention.
   const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
   const contributedLinkSections =
     projectId && requirementId && organizationId
