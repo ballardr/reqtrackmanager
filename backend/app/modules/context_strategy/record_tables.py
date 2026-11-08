@@ -21,9 +21,9 @@ Design decisions:
   comment, so a file never moves a record through its lifecycle (a created record starts as the endpoints
   start it: `draft`, `submitted`, `open`). All five are marked approval-gated for that reason.
 - `Tags` is export-only: tags are governed by the tag vocabulary and tag authority, which a column cannot
-  carry. A Pain Point's Severity, Frequency and Confidence are columns, but they are its "all personas" scores:
-  a Pain Point scored per persona shows them blank and locked (`cell_lock`) because one level cannot stand for
-  several personas, and they are edited on the Pain Point page. Writing them is the manager tier, as scoring is.
+  carry. Every scoring criterion the project offers (Severity, Frequency, Cost of Delay's, its own) is a column
+  holding the Pain Point's General level; the levels of individual personas are edited on the Pain Point page.
+  Writing them is the manager tier, as scoring is.
 - A Pain Point or Open Question owner is assigned by a manager (the create form has no owner field), so an
   import that names one on a new row needs the manager role and says so otherwise.
 - The project tier lists only a project's own records. Organisation-owned Strategies, Future States and Guiding
@@ -94,10 +94,12 @@ from app.modules.context_strategy.models import (
 from app.modules.context_strategy.pain_point_scores import (
     RollupMethod,
     build_pain_point_scoring,
+    general_row,
     load_scoring_context,
     resolve_model,
+    score_level_ids,
 )
-from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME_KEY
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME, PAIN_POINT_SCORING_SCHEME_KEY
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
     GUIDING_PRINCIPLE_ARTEFACT_TYPE,
@@ -137,6 +139,7 @@ from app.services.record_tables_core import (
     text_parser,
 )
 from app.services.scoring import list_levels
+from app.services.scoring_custom import effective_scheme
 
 IMPORT_NOTE = "Edited by record import."
 
@@ -669,28 +672,22 @@ def _prepare_pain_points(db: Session, project: Project, records: list[PainPoint]
     return prepared
 
 
-#: The scoring axes of a Pain Point, which are also its three score columns' keys.
-_SCORE_AXES = ("severity", "frequency", "confidence")
-
-
 def _score_getter(axis: str) -> Callable[[_Prepared, PainPoint], str]:
     """The column getter for one score axis."""
     return lambda prepared, pain_point: _score_cell(prepared, pain_point, axis)
 
 
 def _score_cell(prepared: _Prepared, pain_point: PainPoint, axis: str) -> str:
-    """The "all personas" level name for `axis`; blank when unscored on it, or when scored per persona."""
-    rows = prepared.scores.get(pain_point.id, [])
-    row = next((r for r in rows if r.target_id is None), None)
-    level_id = getattr(row, f"{axis}_level_id", None) if row is not None else None
+    """The General level name for `axis`; blank when the General row is unscored on it."""
+    row = general_row(prepared.scores.get(pain_point.id, []))
+    level_id = score_level_ids(row).get(axis) if row is not None else None
     return prepared.level_names.get(level_id, "") if level_id is not None else ""
 
 
-def _score_lock(prepared: _Prepared, pain_point: PainPoint) -> str | None:
-    """Why a score cell cannot be edited in the grid: the Pain Point is scored per persona."""
-    if any(r.target_id is not None for r in prepared.scores.get(pain_point.id, [])):
-        return edits.PAIN_POINT_SCORED_PER_PERSONA
-    return None
+def _score_axis_keys(ctx: RecordImportContext) -> list[str]:
+    """The scoring criteria the import's project offers (the keys of its score columns)."""
+    scoring = cached_lookup(ctx, "pp:scoring", lambda: load_scoring_context(ctx.db, ctx.project))
+    return [axis.key for axis in scoring.scheme.axes]
 
 
 def _score_level_parser(axis: str, label: str) -> Any:
@@ -712,15 +709,16 @@ def _score_level_parser(axis: str, label: str) -> Any:
 
 
 def _score_columns(db: Session, project: Project) -> list[RecordColumn]:
-    """Severity, Frequency and Confidence as editable level-name columns (the scheme's levels, lowest first)."""
+    """Every scoring criterion of the project as an editable level-name column (the scheme's levels, lowest
+    first), holding the General level."""
     levels = list_levels(db, project.organization_id, PAIN_POINT_SCORING_SCHEME_KEY)
+    scheme = effective_scheme(db, project.organization_id, PAIN_POINT_SCORING_SCHEME, project.id)
     return [
         RecordColumn(
-            axis, label, _score_getter(axis), _score_level_parser(axis, label), kind="enum",
-            editable=True, choices=tuple(level.name for level in levels.get(axis, [])),
-            cell_lock=_score_lock,
+            axis.key, axis.label, _score_getter(axis.key), _score_level_parser(axis.key, axis.label), kind="enum",
+            editable=True, choices=tuple(level.name for level in levels.get(axis.key, [])),
         )
-        for axis, label in zip(_SCORE_AXES, ("Severity", "Frequency", "Confidence"), strict=True)
+        for axis in scheme.axes
     ]
 
 
@@ -820,7 +818,7 @@ def _create_pain_point(ctx: RecordImportContext, values: Mapping[str, Any]) -> P
     )
     if owner is not None:
         edits.edit_project_pain_point_record(ctx.db, ctx.project, pain_point, ctx.user, owner=owner, owner_explicitly_set=True)
-    scored = {axis: values[axis] for axis in _SCORE_AXES if values.get(axis) is not None}
+    scored = {axis: values[axis] for axis in _score_axis_keys(ctx) if values.get(axis) is not None}
     if scored:
         if not _may_manage_pain_points(ctx.db, ctx.user, ctx.project.id):
             raise RecordCellError("Only a Pain Point Manager may score a Pain Point.")
@@ -829,19 +827,20 @@ def _create_pain_point(ctx: RecordImportContext, values: Mapping[str, Any]) -> P
 
 
 def _apply_scores(ctx: RecordImportContext, pain_point: PainPoint, levels: Mapping[str, uuid.UUID | None]) -> None:
-    """Writes the "all personas" levels through the scores endpoint's own function."""
+    """Writes the General levels through the scores endpoint's own function."""
     scoring = cached_lookup(ctx, "pp:scoring", lambda: load_scoring_context(ctx.db, ctx.project))
     edits.edit_project_pain_point_scores(ctx.db, scoring, pain_point, ctx.user, levels)
 
 
 def _update_pain_point(ctx: RecordImportContext, pain_point: PainPoint, values: Mapping[str, Any]) -> None:
-    if any(key not in _SCORE_AXES for key in values):
+    axes = _score_axis_keys(ctx)
+    if any(key not in axes for key in values):
         edits.edit_project_pain_point_record(
             ctx.db, ctx.project, pain_point, ctx.user,
             type_ref_id=_pain_point_type_ref(ctx, values["type"]) if "type" in values else None,
             owner=values.get("owner"), owner_explicitly_set="owner" in values, **_pain_point_fields(values),
         )
-    scores = {axis: values[axis] for axis in _SCORE_AXES if axis in values}
+    scores = {axis: values[axis] for axis in axes if axis in values}
     if scores:
         _apply_scores(ctx, pain_point, scores)
 

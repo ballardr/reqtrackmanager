@@ -29,7 +29,7 @@ test("a pain point created with severity, frequency and confidence is scored on 
   await dialog.getByLabel("Pain Point title").fill(title);
 
   await test.step("the create form offers the scoring grid the detail page has", async () => {
-    const scores = dialog.getByRole("group", { name: "All personas scores" });
+    const scores = dialog.getByRole("group", { name: "General scores" });
     await scores.getByRole("combobox", { name: "Severity" }).selectOption({ label: "Blocker" });
     await scores.getByRole("combobox", { name: "Frequency" }).selectOption({ label: "Rare" });
     await scores.getByRole("combobox", { name: "Confidence" }).selectOption({ label: "High" });
@@ -41,7 +41,7 @@ test("a pain point created with severity, frequency and confidence is scored on 
   await test.step("the detail page shows the scores that were entered", async () => {
     await page.getByText(title).first().click();
     const scoring = page.getByRole("region", { name: "Scoring" });
-    const row = scoring.getByRole("group", { name: "All personas scores" });
+    const row = scoring.getByRole("group", { name: "General scores" });
     await expect(row.getByRole("combobox", { name: "Severity" }).locator("option:checked")).toHaveText("Blocker");
     await expect(row.getByRole("combobox", { name: "Frequency" }).locator("option:checked")).toHaveText("Rare");
     await expect(row.getByRole("combobox", { name: "Confidence" }).locator("option:checked")).toHaveText("High");

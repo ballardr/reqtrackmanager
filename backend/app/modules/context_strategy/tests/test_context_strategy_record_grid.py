@@ -2,9 +2,10 @@
 list's rows with the cells and the columns the grid may edit, and `PATCH .../records/{type}/rows/{code}` saves the
 changed cells of one record through the type's own update path.
 
-First use is a Pain Point's Severity, Frequency and Confidence (its "all personas" scores): the grid reads and
-writes them through the same function the scores endpoint uses, refuses a cell someone else changed since it was
-loaded, locks a Pain Point scored per persona or at a terminal outcome, and keeps the manager tier that scoring has.
+First use is a Pain Point's scoring criteria (its General levels): the grid reads and writes them through the
+same function the scores endpoint uses, refuses a cell someone else changed since it was loaded, keeps the
+persona rows when a General cell is saved, locks a Pain Point at a terminal outcome, and keeps the manager tier
+that scoring has.
 
 Each test builds its own organisation, so none depends on state left by another test.
 """
@@ -96,18 +97,18 @@ def test_saving_a_score_cell_writes_the_scores_endpoints_row_and_returns_the_ref
     assert resp.json()["cells"]["severity"] == "Major" and resp.json()["cells"]["confidence"] == "Medium"
 
     scores = _get(client, token, pid, pain_point["id"])
-    assert scores["scope"] == "all_personas"
+    assert scores["scope"] == "general"
     entry = scores["entries"][0]
-    assert entry["severity_level_id"] == levels["severity"]["Major"] and entry["confidence_level_id"] == levels["confidence"]["Medium"]
-    assert entry["frequency_level_id"] is None
+    assert entry["levels"]["severity"] == levels["severity"]["Major"] and entry["levels"]["confidence"] == levels["confidence"]["Medium"]
+    assert "frequency" not in entry["levels"]
 
     # A second axis keeps the first ones; a blank cell clears just its own axis.
     assert _save(client, token, pid, code, {"frequency": "Frequent"}, {"frequency": ""}).status_code == 200
     cleared = _save(client, token, pid, code, {"severity": ""}, {"severity": "Major"})
     assert cleared.status_code == 200 and cleared.json()["cells"]["severity"] == ""
     entry = _get(client, token, pid, pain_point["id"])["entries"][0]
-    assert entry["severity_level_id"] is None and entry["frequency_level_id"] == levels["frequency"]["Frequent"]
-    assert entry["confidence_level_id"] == levels["confidence"]["Medium"]
+    assert "severity" not in entry["levels"] and entry["levels"]["frequency"] == levels["frequency"]["Frequent"]
+    assert entry["levels"]["confidence"] == levels["confidence"]["Medium"]
 
     assert _events(pain_point["id"]).count("scored") == 3
 
@@ -141,7 +142,7 @@ def test_a_cell_someone_else_changed_since_it_was_loaded_is_refused_and_nothing_
     stale = _save(client, token, pid, code, {"severity": "Major", "frequency": "Frequent"}, {"severity": "", "frequency": ""})
     assert stale.status_code == 409 and "changed by someone else" in stale.json()["detail"] and "'Minor'" in stale.json()["detail"]
     entry = _get(client, token, pid, pain_point["id"])["entries"][0]
-    assert entry["severity_level_id"] == levels["severity"]["Minor"] and entry["frequency_level_id"] is None
+    assert entry["levels"]["severity"] == levels["severity"]["Minor"] and "frequency" not in entry["levels"]
 
 
 def test_a_refused_value_names_the_problem_and_a_column_the_grid_cannot_edit_is_refused(world):
@@ -155,7 +156,7 @@ def test_a_refused_value_names_the_problem_and_a_column_the_grid_cannot_edit_is_
     assert _save(client, token, pid, "PP-999", {"severity": "Major"}).status_code == 404
 
 
-def test_a_pain_point_scored_per_persona_locks_its_score_cells_and_refuses_a_save(world):
+def test_a_general_cell_saves_beside_the_persona_rows_and_leaves_them_alone(world):
     client, _, pid, token = world
     levels = _levels(client, token, pid)
     pain_point = _pain_point(client, token, pid)
@@ -164,13 +165,12 @@ def test_a_pain_point_scored_per_persona_locks_its_score_cells_and_refuses_a_sav
     assert _put(client, token, pid, pain_point["id"], [_entry(levels, target_id=persona, severity="Major")]).status_code == 200
 
     row = _row(_grid(client, token, pid), code)
-    assert row["cells"]["severity"] == "" and set(row["locks"]) == {"severity", "frequency", "confidence"}
-    assert "per persona" in row["locks"]["severity"]
+    assert row["cells"]["severity"] == "" and row["locks"] == {}
     resp = _save(client, token, pid, code, {"severity": "Minor"}, {"severity": ""})
-    assert resp.status_code == 409 and "per persona" in resp.json()["detail"]
-    # The row's other cells stay editable.
-    priority = next(c for c in _grid(client, token, pid)["columns"] if c["key"] == "priority")["choices"]
-    assert _save(client, token, pid, code, {"priority": priority[0]}).status_code == 200
+    assert resp.status_code == 200 and resp.json()["cells"]["severity"] == "Minor"
+    entries = {e["status"]: e for e in _get(client, token, pid, pain_point["id"])["entries"]}
+    assert entries["general"]["levels"]["severity"] == levels["severity"]["Minor"]
+    assert entries["active"]["levels"]["severity"] == levels["severity"]["Major"]
 
 
 def test_a_pain_point_at_a_terminal_outcome_is_a_read_only_row_with_the_reason(world):
@@ -268,4 +268,4 @@ def test_scores_are_columns_of_the_pain_point_file_and_a_persona_scored_row_expo
         files={"file": ("p.csv", edited.encode("utf-8"), "text/csv")}, headers=auth_headers(token),
     ).json()
     assert applied["updated"] == 1, applied
-    assert _get(client, token, pid, pain_point["id"])["entries"][0]["severity_level_id"] == levels["severity"]["Minor"]
+    assert _get(client, token, pid, pain_point["id"])["entries"][0]["levels"]["severity"] == levels["severity"]["Minor"]

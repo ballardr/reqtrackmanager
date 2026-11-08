@@ -123,9 +123,10 @@ def _score(client, token, project_id, pp_id, levels, rows) -> None:
     scores = [
         {
             "target_id": target,
-            "severity_level_id": levels["severity"][sev] if sev else None,
-            "frequency_level_id": levels["frequency"][freq] if freq else None,
-            "confidence_level_id": levels["confidence"][conf] if conf else None,
+            "levels": {
+                axis: levels[axis][name]
+                for axis, name in (("severity", sev), ("frequency", freq), ("confidence", conf)) if name
+            },
         }
         for target, sev, freq, conf in rows
     ]
@@ -745,14 +746,13 @@ def test_download_filename_survives_a_non_ascii_project_name(client, admin_token
 
 @pytest.mark.parametrize("slug", ["pain-point-prioritisation", "summary", "upgrade-drivers"])
 def test_scoring_report_parameters_declare_labelled_choices(client, admin_token, slug):
-    """The model/roll-up/stale parameters carry form labels and choice labels (so the Reports form shows a
-    "Scoring model" select, not a free-text "Model key" box), and a model outside the scheme is rejected."""
+    """The model/roll-up/stale parameters carry form labels (the model is a free key, since an organisation or project
+    may define its own models, checked against the project's scheme), and a model outside the scheme is rejected."""
     _, project, token = _setup(client, admin_token, f"Labels {slug[:8]} Co")
     catalogue = client.get(f"/api/v1/projects/{project['id']}/report-catalogue", headers=auth_headers(token)).json()
     params = {p["name"]: p for p in next(e for e in catalogue if e["slug"] == slug)["params"]}
     assert params["model_key"]["label"] == "Scoring model"
-    assert params["model_key"]["choices"] == ["sxf", "sxc", "sxfxc"]
-    assert params["model_key"]["choice_labels"]["sxf"] == "Severity × Frequency"
+    assert params["model_key"]["choices"] is None
     assert params["rollup"]["label"] == "Combine personas by"
     assert params["rollup"]["choice_labels"]["average"] == "Plain average"
     assert _report(client, token, project["id"], slug, expect=400, model_key="bogus")

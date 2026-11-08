@@ -3,8 +3,9 @@
  *
  * The create/edit dialog for a scoring axis an organisation or project defines (generic scoring-matrix core). Create
  * takes the name, the guidance and the axis's first levels; edit changes the name and guidance only, because levels
- * are edited in the scheme editor's Levels section like every other axis's. Saving is the caller's: it makes the
- * call and reports a failure through `error`.
+ * are edited in the scheme editor's Levels section like every other axis's. On a scheme with targets (Pain Points,
+ * scored per persona) create also asks whether the axis is scored once for the record or per target; that choice is
+ * fixed afterwards. Saving is the caller's: it makes the call and reports a failure through `error`.
  */
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -13,6 +14,7 @@ import type { ScoringAxis, ScoringAxisInput, ScoringLevelSpec } from "../api/sco
 import { useStrings } from "../context/TerminologyContext";
 import { FormActions } from "./FormActions";
 import { InlineTextInput, TextAreaField, TextField } from "./FormFields";
+import { LabeledSelect } from "./LabeledSelect";
 import { Modal } from "./Modal";
 
 interface LevelDraft {
@@ -46,14 +48,16 @@ function isPositive(weight: number): boolean {
 
 /**
  * @param initial The axis being edited; omit to define a new one.
+ * @param targetLabel What the scheme scores individually (`persona`); omit for a scheme with no targets.
  * @param error A save error to show beside the actions.
  * @param onCancel Closes the dialog.
  * @param onSave Called with the values to save (`levels` is empty when editing, where it is ignored).
  */
 export function ScoringAxisFormModal({
-  initial, error, onCancel, onSave,
+  initial, targetLabel, error, onCancel, onSave,
 }: {
   initial?: ScoringAxis;
+  targetLabel?: string | null;
   error?: string | null;
   onCancel: () => void;
   onSave: (values: ScoringAxisInput) => void;
@@ -61,6 +65,7 @@ export function ScoringAxisFormModal({
   const strings = useStrings();
   const [label, setLabel] = useState(initial?.label ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [perTarget, setPerTarget] = useState(false);
   const [levels, setLevels] = useState<LevelDraft[]>(blankLevels);
   const specs = initial ? [] : levelSpecs(levels);
   const valid = label.trim() !== "" && specs !== null;
@@ -74,6 +79,13 @@ export function ScoringAxisFormModal({
       <div className="stack">
         <TextField label="Name" required value={label} onChange={setLabel} help={strings.help.scoringAxisName} inputProps={{ maxLength: 100 }} />
         <TextAreaField label="Guidance" value={description} onChange={setDescription} help={strings.help.scoringAxisDescription} />
+        {!initial && targetLabel && (
+          <LabeledSelect
+            label="Scored" value={perTarget ? "target" : "whole"} placeholder={null} help={strings.help.scoringAxisScope}
+            options={[{ value: "whole", label: "Once for the whole record" }, { value: "target", label: `Separately for each ${targetLabel}` }]}
+            onChange={(next) => setPerTarget(next === "target")}
+          />
+        )}
         {initial ? (
           <p className="text-muted" style={{ margin: 0 }}>Edit this axis's levels in the Levels section.</p>
         ) : (
@@ -105,7 +117,10 @@ export function ScoringAxisFormModal({
         )}
         <FormActions
           error={error} onCancel={onCancel} saveDisabled={!valid}
-          onSave={() => onSave({ label: label.trim(), description: description.trim() || null, levels: specs ?? [] })}
+          onSave={() => onSave({
+            label: label.trim(), description: description.trim() || null, levels: specs ?? [],
+            ...(targetLabel ? { per_target: perTarget } : {}),
+          })}
         />
       </div>
     </Modal>

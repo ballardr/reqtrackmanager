@@ -35,15 +35,15 @@ async function setUpPainPoints(page: Parameters<typeof setUpOrg>[0], request: AP
   return { suffix, project, adminHeaders, base, painPoints };
 }
 
-/** The all-personas level names a Pain Point is scored with, read through the scores endpoint. */
+/** The General level names a Pain Point is scored with, read through the scores endpoint. */
 async function scoreNames(request: APIRequestContext, base: string, headers: Headers, projectId: string, painPointId: string) {
   const scheme = await (await request.get(`${API_BASE_URL}/api/v1/projects/${projectId}/scoring-schemes/pain_point`, { headers })).json();
   const names = new Map<string, string>(scheme.axes.flatMap((a: { levels: { id: string; name: string }[] }) => a.levels.map((l) => [l.id, l.name])));
   const scores = await (await request.get(`${base}/pain-points/${painPointId}/scores`, { headers })).json();
-  const entry = scores.entries[0];
-  return entry
-    ? { severity: names.get(entry.severity_level_id) ?? "", frequency: names.get(entry.frequency_level_id) ?? "", confidence: names.get(entry.confidence_level_id) ?? "" }
-    : { severity: "", frequency: "", confidence: "" };
+  const levels: Record<string, string> = scores.entries.find((e: { status: string }) => e.status === "general")?.levels ?? {};
+  return {
+    severity: names.get(levels.severity) ?? "", frequency: names.get(levels.frequency) ?? "", confidence: names.get(levels.confidence) ?? "",
+  };
 }
 
 test("a manager scores several pain points from the grid and the saved levels show on the next load", async ({ page, request }) => {
@@ -110,7 +110,7 @@ test("a row whose cell changed elsewhere stays changed with its message while th
   const scheme = await (await request.get(`${API_BASE_URL}/api/v1/projects/${project.id}/scoring-schemes/pain_point`, { headers: adminHeaders })).json();
   const moderate = scheme.axes.find((x: { key: string }) => x.key === "severity").levels.find((l: { name: string }) => l.name === "Moderate");
   const elsewhere = await request.put(`${base}/pain-points/${a.id}/scores`, {
-    headers: adminHeaders, data: { scores: [{ target_id: null, severity_level_id: moderate.id, frequency_level_id: null, confidence_level_id: null }] },
+    headers: adminHeaders, data: { scores: [{ target_id: null, levels: { severity: moderate.id } }] },
   });
   expect(elsewhere.ok()).toBeTruthy();
 

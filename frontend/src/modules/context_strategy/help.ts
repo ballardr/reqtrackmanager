@@ -8,7 +8,8 @@
 
 /** Help text for the Context & Strategy module's form fields, passed as `help` to the shared field components. */
 export const CONTEXT_STRATEGY_HELP = {
-  scoringMode: "All personas together records one score for the pain point. Each persona separately records a score per persona, which are then combined by the persona roll-up.",
+  scoringPersonaOverride:
+    "General holds one level for each criterion. Add a persona only where its levels differ from General: it overrides the criteria scored per persona (such as Severity) and takes General's level for the rest.\nCriteria scored for the whole Pain Point (such as Job size) are set under General only.\nWith personas added, the roll-up combines them; with none, General is the score.",
   painPointSubmission:
     "Any project member: everyone with access to the project can submit a Pain Point.\nPain Point Managers only: only Pain Point Managers and project managers can submit; other members raise an Enhancement Request where Product Feedback is enabled.\nEditing and triage are always for Pain Point Managers.",
   painPointSubmissionProject:

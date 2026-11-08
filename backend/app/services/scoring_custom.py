@@ -173,7 +173,7 @@ def _axis_from_row(row: ScoringCustomAxis, levels: list[ScoringLevel]) -> Scorin
     if len(levels) < 2:
         return None
     return ScoringAxisDefinition(
-        key=row.key, label=row.label, description=row.description or "",
+        key=row.key, label=row.label, description=row.description or "", per_target=row.per_target,
         default_levels=tuple(ScoringLevelDefault(lvl.name, float(lvl.weight), lvl.description or "") for lvl in levels),
     )
 
@@ -379,16 +379,18 @@ def _model_definition(visible: ScoringSchemeDefinition, combination: str, axes: 
     unknown = [k for k in keys if visible.axis(k) is None]
     if unknown:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown or unavailable axis: {', '.join(unknown)}.")
-    allowed = {"multiply", "divide"} if combination == "product" else {"sum"}
+    allowed = {"multiply", "divide"} if combination == "product" else {"sum", "divide"}
     if combination not in ("product", "weighted_sum") or any(a.role not in allowed for a in axes):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The roles do not suit the combination.")
     if combination == "product" and not any(a.role == "multiply" for a in axes):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A product needs at least one multiplied axis.")
+    if combination == "weighted_sum" and not any(a.role == "sum" for a in axes):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A weighted sum needs at least one summed axis.")
     definition = {"combination": combination, "axes": [
         {
             "axis_key": a.axis_key, "role": a.role, "exponent": a.exponent if combination == "product" else 1.0,
-            "importance": a.importance if combination == "weighted_sum" else None,
-            "lower_is_better": bool(a.lower_is_better) if combination == "weighted_sum" else False,
+            "importance": a.importance if a.role == "sum" else None,
+            "lower_is_better": bool(a.lower_is_better) if a.role == "sum" else False,
         }
         for a in axes
     ]}
@@ -406,14 +408,21 @@ def _model_definition(visible: ScoringSchemeDefinition, combination: str, axes: 
 def create_axis(
     db: Session, organization_id: uuid.UUID, scheme: ScoringSchemeDefinition, *, project_id: uuid.UUID | None,
     label: str, description: str | None, levels: list[LevelSpec], actor_id: uuid.UUID | None,
+    per_target: bool = False,
 ) -> ScoringCustomAxis:
     """Defines a new axis with its levels for the organisation or a project (flushed, not committed).
 
+    Args:
+        per_target: Score the axis per target (a persona) rather than once for the whole record; only a scheme
+            with a `target_label` takes it.
+
     Raises:
-        HTTPException: 400 if the scheme takes no custom criteria, the name repeats a visible axis, or the levels
-            are invalid.
+        HTTPException: 400 if the scheme takes no custom criteria, the name repeats a visible axis, the levels
+            are invalid, or `per_target` is asked of a scheme with no targets.
     """
     _require_custom_allowed(scheme)
+    if per_target and scheme.target_label is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This scoring scheme has no targets to score an axis for.")
     label = _clean_label(label)
     visible = effective_scheme(db, organization_id, scheme, project_id)
     if label.lower() in {a.label.lower() for a in visible.axes}:
@@ -422,6 +431,7 @@ def create_axis(
     row = ScoringCustomAxis(
         organization_id=organization_id, project_id=project_id, scheme_key=scheme.key,
         key=_unique_key(db, organization_id, scheme, _AXIS_PREFIX, label), label=label, description=description or None,
+        per_target=per_target,
     )
     db.add(row)
     for name, weight, text in checked:
@@ -432,7 +442,8 @@ def create_axis(
     _flush_or_conflict(db)
     log_event(db, entity_type="scoring_axis", entity_id=row.id, action="created", actor_id=actor_id,
               organization_id=organization_id, project_id=project_id,
-              detail={"scheme": scheme.key, "axis": row.key, "label": label, "levels": len(checked)})
+              detail={"scheme": scheme.key, "axis": row.key, "label": label, "levels": len(checked),
+                      "per_target": per_target})
     return row
 
 
@@ -702,7 +713,7 @@ def export_definitions(db: Session, organization_id: uuid.UUID, scheme: ScoringS
     hidden = [h for h in resolve_criteria(db, organization_id, scheme, project_id).hidden if not h["key"].startswith(("c_", "m_"))]
     return {
         "axes": [
-            {"key": a.key, "label": a.label, "description": a.description,
+            {"key": a.key, "label": a.label, "description": a.description, "per_target": a.per_target,
              "levels": [{"name": lvl.name, "weight": float(lvl.weight), "description": lvl.description} for lvl in levels.get(a.key, [])]}
             for a in axes
         ],
@@ -737,6 +748,7 @@ def import_definitions(
                 row = create_axis(
                     db, organization_id, scheme, project_id=project_id, label=entry["label"],
                     description=entry.get("description"), actor_id=actor_id,
+                    per_target=bool(entry.get("per_target")),
                     levels=[LevelSpec(lvl["name"], lvl["weight"], lvl.get("description")) for lvl in entry["levels"]],
                 )
             mapping[entry["key"]] = row.key

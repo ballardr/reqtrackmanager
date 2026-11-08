@@ -1710,16 +1710,12 @@ def get_pain_point_levels(headers: dict, project_id: str) -> dict[str, dict[str,
 
 def score_entry(levels: dict[str, dict[str, str]], target_id: str | None = None, **chosen: str) -> dict:
     """Builds one Pain Point score row from level names, e.g. `severity="Major", frequency="Constant"`;
-    `target_id=None` means "all personas"."""
-    return {
-        "target_id": target_id,
-        **{f"{axis}_level_id": levels[axis][chosen[axis]] if axis in chosen else None
-           for axis in ("severity", "frequency", "confidence")},
-    }
+    `target_id=None` is the General row (every criterion, including those scored for the whole Pain Point)."""
+    return {"target_id": target_id, "levels": {axis: levels[axis][name] for axis, name in chosen.items()}}
 
 
 def set_pain_point_scores(headers: dict, project_id: str, pain_point_id: str, scores: list[dict]) -> dict:
-    """Replaces a Pain Point's per-persona scores."""
+    """Replaces a Pain Point's scores (the General row and the personas that differ)."""
     r = httpx.put(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/scores",
         json={"scores": scores}, headers=headers, timeout=30,
@@ -3410,6 +3406,11 @@ def main() -> None:
         "band_label": "High",
     }])
     set_pain_point_scores(h_pm, drone["id"], pp_accepted["id"], [
+        # General: Cost of Delay's criteria (the whole Pain Point) and the default for the per-persona ones.
+        score_entry(
+            pp_levels, None, severity="Moderate", frequency="Frequent", confidence="High", value="High",
+            time_criticality="Moderate", risk_reduction="Substantial", job_size="Medium",
+        ),
         score_entry(pp_levels, persona_inspector["id"], severity="Major", frequency="Frequent", confidence="High"),
         score_entry(pp_levels, drone_operator_persona["id"], severity="Moderate", frequency="Constant", confidence="Medium"),
     ])

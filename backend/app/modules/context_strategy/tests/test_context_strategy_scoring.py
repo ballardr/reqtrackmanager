@@ -34,10 +34,15 @@ def test_pain_point_scheme_defaults(client, admin_token):
     assert axes["severity"] == ["Cosmetic", "Minor", "Moderate", "Major", "Blocker"]  # Blocker = top level
     assert axes["frequency"] == ["Rare", "Occasional", "Frequent", "Constant"]
     assert axes["confidence"] == ["Low", "Medium", "High"]
+    # Cost of Delay's criteria use the relative 1, 2, 3, 5, 8, 13, 20 scale, smallest first.
+    assert [lvl["weight"] for lvl in next(a for a in config["axes"] if a["key"] == "job_size")["levels"]] == [1, 2, 3, 5, 8, 13, 20]
     assert {m["key"]: m["axis_keys"] for m in config["models"]} == {
         "sxf": ["severity", "frequency"], "sxc": ["severity", "confidence"],
         "sxfxc": ["severity", "frequency", "confidence"],
+        "cod": ["value", "time_criticality", "risk_reduction"], "wsjf": ["value", "time_criticality", "risk_reduction"],
     }
+    wsjf = next(m for m in config["models"] if m["key"] == "wsjf")
+    assert wsjf["combination"] == "weighted_sum" and wsjf["divisor_axis_keys"] == ["job_size"]
     assert (config["default_model_key"], config["default_model_source"]) == ("sxfxc", "system")
     for model in config["models"]:
         assert [b["label"] for b in model["bands"]] == ["Low", "Medium", "High", "Critical"]

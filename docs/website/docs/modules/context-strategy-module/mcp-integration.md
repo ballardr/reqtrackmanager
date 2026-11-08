@@ -16,7 +16,7 @@ All 74 tools are project-scoped — there is no org-scoped equivalent, even for 
 | Create / update content | 10 | Creating a new record (Draft status) or replacing an existing one's content, for each of the five artefact types. |
 | Relationships and supersessions | 8 | Creating a typed or untyped relationship from an artefact to another, and recording a supersession (Strategy, Future State, and Guiding Principle only — Pain Point and Open Question have no supersession concept). |
 | Plain lifecycle transitions | 24 | Every non-decisive status change — propose, submit for review, send back, activate, retire, triage, reject, mark duplicate, accept, address, close, investigate, mark ready for decision, withdraw. None of these require the AI-approval opt-in below, since none of them constitute a final approval or resolution. |
-| Pain Point scoring | 3 | `list_pain_point_scores` (every Pain Point's rolled-up score and Blocker flag under a model), `get_pain_point_scores`, and `set_pain_point_scores` (replace a Pain Point's per-persona scores). |
+| Pain Point scoring | 3 | `list_pain_point_scores` (every Pain Point's rolled-up score and Blocker flag under a model), `get_pain_point_scores`, and `set_pain_point_scores` (replace a Pain Point's General and per-persona scores; each entry maps criterion keys to level IDs). |
 | Reports | 9 | One read-only `get_…_report` tool per [report](./reports.md) (R1–R9), returning the JSON the Reports page shows. Organisation-wide variants aren't exposed. |
 | Approve / decide (gated) | 5 | `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question` — see below. |
 

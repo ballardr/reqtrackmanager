@@ -85,7 +85,7 @@ async function setup(page: Page, request: APIRequestContext) {
     expect(created.ok(), await created.text()).toBeTruthy();
     const scored = await request.put(`${base}/pain-points/${(await created.json()).id}/scores`, {
       headers,
-      data: { scores: [{ target_id: null, severity_level_id: level("severity", scores[key][0]), frequency_level_id: level("frequency", scores[key][1]), confidence_level_id: level("confidence", "High") }] },
+      data: { scores: [{ target_id: null, levels: { severity: level("severity", scores[key][0]), frequency: level("frequency", scores[key][1]), confidence: level("confidence", "High") } }] },
     });
     expect(scored.ok(), await scored.text()).toBeTruthy();
   }

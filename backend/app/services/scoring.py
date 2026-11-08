@@ -1041,6 +1041,13 @@ def compute_score(
             # Each axis is scaled so its best level is 1: the top weight, or (an inverted axis) the lowest.
             raw += share * ((lowest / weight) if axis_key in model.inverted_axis_keys else (weight / top))
             maximum += share
+        for axis_key in model.divisor_axis_keys:
+            weight = weights.get(axis_key)
+            lowest = (min_weights or {}).get(axis_key)
+            if weight is None or lowest is None:
+                return None
+            raw /= weight
+            maximum /= lowest
     else:
         raw = Decimal(1)
         maximum = Decimal(1)
@@ -1112,7 +1119,7 @@ def build_scheme_config(
         "axes": [
             {
                 "key": axis.key, "label": axis.label, "description": axis.description or None,
-                "derived_source": axis.derived_source,
+                "derived_source": axis.derived_source, "per_target": axis.per_target,
                 "origin": criteria.axis_origin.get(axis.key, ("built_in", None))[0],
                 "owner_project_id": criteria.axis_origin.get(axis.key, ("built_in", None))[1],
                 "thresholds_source": thresholds[axis.key].source if axis.key in thresholds else None,
@@ -1134,6 +1141,6 @@ def build_scheme_config(
         "enabled_model_keys": enabled_keys,
         "enabled_models_source": enabled_source,
         "allow_custom_criteria": scheme.allow_custom_criteria,
-        "side_by_side_models": scheme.side_by_side_models,
+        "side_by_side_models": scheme.side_by_side_models, "target_label": scheme.target_label,
         "hidden_criteria": criteria.hidden,
     }

@@ -275,7 +275,7 @@ def create_org_scoring_axis(
     _require_scheme_admin(db, current_user, organization_id, registered)
     scoring_custom.create_axis(
         db, organization_id, registered.scheme, project_id=None, label=payload.label, description=payload.description,
-        levels=_axis_levels(payload), actor_id=current_user.id,
+        per_target=payload.per_target, levels=_axis_levels(payload), actor_id=current_user.id,
     )
     db.commit()
     return scoring.build_scheme_config(db, organization_id, registered)

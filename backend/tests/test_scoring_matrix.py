@@ -209,6 +209,23 @@ def test_a_weighted_sum_scales_each_axis_to_its_best_level_and_can_invert_one():
     assert compute_score(model, {"value": Decimal(2), "cost": Decimal(2)}, maxima, bands) is None  # no lowest weights
 
 
+def test_a_weighted_sum_can_be_divided_by_a_divisor_axis_and_normalises_against_the_best_case():
+    model = ScoringModelDefinition(
+        "wsjf", "WSJF", ("value", "time"), combination="weighted_sum", importance=(("value", 50.0), ("time", 50.0)),
+        divisor_axis_keys=("size",),
+    )
+    maxima = {"value": Decimal(20), "time": Decimal(20), "size": Decimal(20)}
+    minima = {"value": Decimal(1), "time": Decimal(1), "size": Decimal(1)}
+    bands = [BandValue("Low", 0, "muted")]
+    best = compute_score(model, {"value": Decimal(20), "time": Decimal(20), "size": Decimal(1)}, maxima, bands, min_weights=minima)
+    assert best is not None and best.raw == 100 and best.normalised == 1  # everything at the top, the smallest job
+    mixed = compute_score(model, {"value": Decimal(10), "time": Decimal(20), "size": Decimal(5)}, maxima, bands, min_weights=minima)
+    # The sum is 50 x 0.5 + 50 x 1 = 75; divided by a size of 5 it is 15, of a best case of 100 / 1.
+    assert mixed is not None and mixed.raw == 15 and mixed.normalised == 0.15
+    assert compute_score(model, {"value": Decimal(10), "time": Decimal(20)}, maxima, bands, min_weights=minima) is None  # size unset
+    assert compute_score(model, {"value": Decimal(10), "time": Decimal(20), "size": Decimal(5)}, maxima, bands) is None  # no lowest weights
+
+
 @pytest.mark.parametrize("model, message", [
     (ScoringModelDefinition("m", "M", ("a",), combination="vote"), "unknown combination"),
     (ScoringModelDefinition("m", "M", ("a",), exponents=(("a", 0.0),)), "exponent"),
@@ -216,7 +233,7 @@ def test_a_weighted_sum_scales_each_axis_to_its_best_level_and_can_invert_one():
     (ScoringModelDefinition("m", "M", ("a",), importance=(("a", 100.0),)), "takes no importance"),
     (ScoringModelDefinition("m", "M", ("a", "b"), combination="weighted_sum", importance=(("a", 50.0), ("b", 40.0))), "total 100"),
     (ScoringModelDefinition("m", "M", ("a", "b"), combination="weighted_sum", importance=(("a", 100.0),)), "one importance"),
-    (ScoringModelDefinition("m", "M", ("a",), combination="weighted_sum", importance=(("a", 100.0),), divisor_axis_keys=("b",)), "no divisors"),
+    (ScoringModelDefinition("m", "M", ("a",), combination="weighted_sum", importance=(("a", 100.0),), exponents=(("a", 2.0),)), "no exponents"),
     (ScoringModelDefinition("m", "M", ("a",), combination="weighted_sum", importance=(("a", 100.0),), inverted_axis_keys=("b",)), "invert"),
 ])
 def test_model_maths_validation(model, message):

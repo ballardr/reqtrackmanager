@@ -20,6 +20,7 @@ Dependencies: `perf_dataset.records`, this module's models and enums, `services.
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
 from typing import Any
 
@@ -50,6 +51,7 @@ from app.modules.context_strategy.models import (
     PainPoint,
     PainPointComment,
     PainPointScore,
+    PainPointScoreAxis,
     PainPointTypeDefinition,
     ProjectPainPointType,
     Strategy,
@@ -87,7 +89,8 @@ _LIFECYCLE_MIX = (
     ("retired", 0.05),
 )
 _PRINCIPLE_MIX = (("draft", 0.2), ("proposed", 0.1), ("approved", 0.1), ("active", 0.5), ("superseded", 0.05), ("retired", 0.05))
-_AXES = ("severity", "frequency", "confidence")
+_PER_PERSONA_AXES = ("severity", "frequency", "confidence", "value")
+_AXES = (*_PER_PERSONA_AXES, "time_criticality", "risk_reduction", "job_size")
 _PRIORITY_MIX = (("low", 0.25), ("medium", 0.5), ("high", 0.25))
 _PAIN_STATUS_MIX = tuple((s, w) for s, w in (
     (PainPointStatus.SUBMITTED, 0.25), (PainPointStatus.TRIAGED, 0.15), (PainPointStatus.ACCEPTED, 0.25),
@@ -251,13 +254,23 @@ def generate_pain_points(ctx: PerfProjectContext) -> dict[str, int]:
             },
             creator=creator, at=created, title=title,
         )
-        if levels and personas:
-            for persona_id in rng.sample(personas, min(rng.choice((0, 1, 2, 3)), len(personas))):
+        if levels:
+            # A General row for about half, carrying every axis, then the personas that differ from it.
+            targets: list[uuid.UUID | None] = [None] if rng.random() < 0.5 else []
+            targets += rng.sample(personas, min(rng.choice((0, 1, 2, 3)), len(personas)))
+            for target_id in targets:
+                axes = _AXES if target_id is None else _PER_PERSONA_AXES
+                score_id = uuid_from(rng)
                 batch.satellite(PainPointScore, {
-                    "id": uuid_from(rng), "pain_point_id": record_id, "target_type": "persona", "target_id": persona_id,
-                    **{f"{axis}_level_id": rng.choice(levels[axis]) if levels.get(axis) else None for axis in _AXES},
-                    "scored_by": rng.choice(ctx.user_ids), "created_at": at_between(rng, created), "updated_at": created,
+                    "id": score_id, "pain_point_id": record_id, "target_type": "persona" if target_id else None,
+                    "target_id": target_id, "scored_by": rng.choice(ctx.user_ids),
+                    "created_at": at_between(rng, created), "updated_at": created,
                 })
+                for axis in axes:
+                    if levels.get(axis):
+                        batch.satellite(PainPointScoreAxis, {
+                            "id": uuid_from(rng), "score_id": score_id, "axis_key": axis, "level_id": rng.choice(levels[axis]),
+                        })
     batch.write()
     add_comments(ctx, batch, PainPointComment, "pain_point_id")
     add_tags(ctx, batch)

@@ -119,20 +119,20 @@ export function buildScoringScheme(overrides: Partial<ScoringScheme> = {}): Scor
   return {
     key: "pain_point", label: "Pain Point scoring", module_key: "context_strategy",
     axes: [
-      { key: "severity", label: "Severity", description: "How badly the problem affects the persona.", levels: [
+      { key: "severity", label: "Severity", description: "How badly the problem affects the persona.", per_target: true, levels: [
         { id: "sev-1", name: "Cosmetic", description: "Task unaffected.", weight: 1 },
         { id: "sev-2", name: "Minor", description: null, weight: 2 },
         { id: "sev-3", name: "Moderate", description: null, weight: 3 },
         { id: "sev-4", name: "Major", description: null, weight: 4 },
         { id: "sev-5", name: "Blocker", description: "Unusable for this persona; no workaround.", weight: 5 },
       ] },
-      { key: "frequency", label: "Frequency", description: null, levels: [
+      { key: "frequency", label: "Frequency", description: null, per_target: true, levels: [
         { id: "freq-1", name: "Rare", description: null, weight: 1 },
         { id: "freq-2", name: "Occasional", description: null, weight: 2 },
         { id: "freq-3", name: "Frequent", description: null, weight: 3 },
         { id: "freq-4", name: "Constant", description: null, weight: 4 },
       ] },
-      { key: "confidence", label: "Confidence", description: null, levels: [
+      { key: "confidence", label: "Confidence", description: null, per_target: true, levels: [
         { id: "conf-1", name: "Low", description: null, weight: 0.5 },
         { id: "conf-2", name: "High", description: null, weight: 1 },
       ] },
@@ -142,6 +142,7 @@ export function buildScoringScheme(overrides: Partial<ScoringScheme> = {}): Scor
       { key: "sxfxc", label: "Severity × Frequency × Confidence", axis_keys: ["severity", "frequency", "confidence"], bands, bands_source: "system", cell_ratings: [], cell_ratings_source: "none" },
     ],
     system_default_model_key: "sxfxc", default_model_key: "sxfxc", default_model_source: "system",
+    target_label: "persona",
     ...overrides,
   };
 }

@@ -7,7 +7,26 @@
  * `testing/storybook-helpers` so core test helpers never import a module's
  * types.
  */
+import type { ScoringScheme } from "../../api/scoring";
+import { buildScoringScheme } from "../../testing/storybook-helpers";
 import type { PainPointScoreEntry, PainPointScores, PainPointScoringSummary, PainPointScoreValue } from "./types";
+
+/** The Pain Point scheme with a criterion scored for the whole Pain Point (Job size, levels `size-*`) beside the per-persona ones. */
+export function buildPainPointScheme(overrides: Partial<ScoringScheme> = {}): ScoringScheme {
+  const base = buildScoringScheme();
+  return {
+    ...base,
+    axes: [
+      ...base.axes,
+      { key: "job_size", label: "Job size", description: "How large the work is.", per_target: false, levels: [
+        { id: "size-1", name: "Small", description: null, weight: 1 },
+        { id: "size-2", name: "Large", description: null, weight: 5 },
+      ] },
+    ],
+    allow_custom_criteria: true, side_by_side_models: true, enabled_model_keys: ["sxfxc", "sxf"],
+    ...overrides,
+  };
+}
 
 /** A computed score in the "High" band by default. */
 export function scoreValue(overrides: Partial<PainPointScoreValue> = {}): PainPointScoreValue {
@@ -18,7 +37,7 @@ export function scoreValue(overrides: Partial<PainPointScoreValue> = {}): PainPo
 export function scoreEntry(overrides: Partial<PainPointScoreEntry> = {}): PainPointScoreEntry {
   return {
     target_id: "persona-1", target_type: "persona", label: "Field Technician", weight: 3, status: "active",
-    severity_level_id: "sev-4", frequency_level_id: "freq-4", confidence_level_id: null,
+    levels: { severity: "sev-4", frequency: "freq-4" }, effective_levels: { severity: "sev-4", frequency: "freq-4" },
     score: scoreValue(), is_blocker: false, ...overrides,
   };
 }

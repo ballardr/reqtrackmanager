@@ -198,7 +198,7 @@ def create_project_scoring_axis(
     registered = _load_scheme(db, project_id, scheme_key)
     scoring_custom.create_axis(
         db, project.organization_id, registered.scheme, project_id=project.id, label=payload.label,
-        description=payload.description,
+        description=payload.description, per_target=payload.per_target,
         levels=[scoring_custom.LevelSpec(lvl.name, lvl.weight, lvl.description) for lvl in payload.levels],
         actor_id=current_user.id,
     )

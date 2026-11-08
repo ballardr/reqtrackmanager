@@ -434,13 +434,15 @@ class ProjectPainPointTypeOut(BaseModel):
 
 
 class PainPointScoreEntryIn(BaseModel):
-    """One requested score row. `target_id` null = all personas; a level id
-    null = not scored on that axis."""
+    """One requested score row. `target_id` null = the General row (every criterion, the default for the
+    per-persona ones); a persona row holds per-persona criteria only. `levels` maps a scoring axis key to its
+    level id; a null level, or a missing axis, is not scored. Unknown fields are refused, so a client still sending
+    the earlier `severity_level_id` fields is told so rather than having its scores silently dropped."""
+
+    model_config = {"extra": "forbid"}
 
     target_id: UUID | None = None
-    severity_level_id: UUID | None = None
-    frequency_level_id: UUID | None = None
-    confidence_level_id: UUID | None = None
+    levels: dict[str, UUID | None] = Field(default_factory=dict, max_length=64)
 
 
 class PainPointCreate(BaseModel):
@@ -561,18 +563,18 @@ class ScoreOut(BaseModel):
 
 
 class PainPointScoreEntryOut(BaseModel):
-    """One resolved score row. `status` is `all`/`active`/`inactive`/
+    """One resolved score row. `status` is `general`/`active`/`inactive`/
     `unavailable` (see `pain_point_scores.TargetStatus`); `label` and
-    `weight` come from the target (null for all-personas/unavailable)."""
+    `weight` come from the target (null for General/unavailable). `levels` is what the row itself holds and
+    `effective_levels` what it scores with (a persona row's own per-persona criteria over General's)."""
 
     target_id: UUID | None
     target_type: str | None
     label: str | None
     weight: float | None
     status: str
-    severity_level_id: UUID | None
-    frequency_level_id: UUID | None
-    confidence_level_id: UUID | None
+    levels: dict[str, UUID]
+    effective_levels: dict[str, UUID]
     score: ScoreOut | None
     is_blocker: bool
 
@@ -581,7 +583,7 @@ class PainPointScoringSummaryOut(BaseModel):
     """A Pain Point's roll-up under the requested model and method."""
 
     pain_point_id: UUID
-    scope: str
+    scope: str  # none, general or per_persona
     score: ScoreOut | None
     counted: int
     is_blocker: bool
@@ -624,8 +626,8 @@ class PainPointScoringListOut(BaseModel):
 class PainPointScoresOut(PainPointScoringSummaryOut):
     """One Pain Point's roll-up plus what the score grid needs: the
     model/method used and the personas available to score against
-    (empty if the Stakeholders module's personas are off — then only "all personas"
-    scoring is possible)."""
+    (empty if the Stakeholders module's personas are off — then only the General
+    scores are possible)."""
 
     model_config = {"protected_namespaces": ()}
 

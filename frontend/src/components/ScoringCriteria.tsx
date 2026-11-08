@@ -133,7 +133,10 @@ export function ScoringCriteria({
             <div key={axis.key} style={{ display: "contents" }}>
               <strong className="definition-grid__cell">{axis.label}</strong>
               <span className="definition-grid__cell">{badges(axis.origin, axis.owner_project_id)}</span>
-              <span className="definition-grid__cell"><Badge tone={axis.derived_source ? "info" : "muted"}>{axis.derived_source ? "Automatic" : "Manual"}</Badge></span>
+              <span className="definition-grid__cell">
+                <Badge tone={axis.derived_source ? "info" : "muted"}>{axis.derived_source ? "Automatic" : "Manual"}</Badge>
+                {scheme.target_label && <Badge tone="muted">{axis.per_target ? `Per ${scheme.target_label}` : "Whole record"}</Badge>}
+              </span>
               {actions(
                 own, axis.label, () => setDialog({ kind: "axis", axis }), () => setDialog({ kind: "delete-axis", axis }),
                 () => setDialog({ kind: "hide", criterion: "axis", key: axis.key, label: axis.label }),
@@ -190,7 +193,7 @@ export function ScoringCriteria({
 
       {dialog?.kind === "axis" && (
         <ScoringAxisFormModal
-          initial={dialog.axis} error={error} onCancel={close}
+          initial={dialog.axis} targetLabel={scheme.target_label} error={error} onCancel={close}
           onSave={(values) => void submit(
             () => dialog.axis ? calls.updateAxis(dialog.axis.key, { label: values.label, description: values.description }) : calls.createAxis(values),
             dialog.axis ? "Axis saved." : "Axis added.",

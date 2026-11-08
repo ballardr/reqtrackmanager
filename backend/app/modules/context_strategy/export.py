@@ -99,8 +99,8 @@ from app.modules.context_strategy.models import (
     StrategyFile,
     StrategyVersion,
 )
-from app.modules.context_strategy.pain_point_scores import PERSONA_TARGET_TYPE
-from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME_KEY
+from app.modules.context_strategy.pain_point_scores import PERSONA_TARGET_TYPE, assign_score_level_ids, score_level_ids
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME, PAIN_POINT_SCORING_SCHEME_KEY
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
     FUTURE_STATE_CODE_PREFIX,
@@ -131,12 +131,15 @@ from app.services.current_versions import prime_current_versions, primed_current
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.scoring import list_levels, seed_missing_scoring_levels
+from app.services.scoring_custom import export_definitions, import_definitions
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
 
-_SCORE_AXES = {"severity": "severity_level_id", "frequency": "frequency_level_id", "confidence": "confidence_level_id"}
 _LINKS_KEY = "context_strategy_links"
 _PENDING_SCORES = "context_strategy_pending_scores"
+_AXIS_MAP = "context_strategy_scoring_axis_map"
+#: A bundle written before scores were stored per axis names these three levels beside the target.
+_LEGACY_SCORE_AXES = ("severity", "frequency", "confidence")
 
 
 def _j(value: datetime | date | None) -> str | None:
@@ -324,6 +327,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         "pain_point_types": [
             {"name": t.name, "sort_order": t.sort_order, "is_active": t.is_active, "definition": t.definition} for t in types
         ],
+        "pain_point_scoring_definitions": export_definitions(db, org.id, PAIN_POINT_SCORING_SCHEME, None),
     }
     default_policy = get_org_submission_policy(db, org.id)
     if default_policy is not None:
@@ -350,6 +354,7 @@ def import_org_data(
     """`ModuleOrgBundleHooks.import_`: recreates Pain Point types and the
     organisation-scoped Strategies, Future States and Guiding Principles, skipping a
     type or record whose name the organisation already has."""
+    _import_scoring_definitions(db, org.id, None, data, warnings)
     existing = {t.name for t in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.organization_id == org.id))}
     for t in data.get("pain_point_types", []):
         if t["name"] in existing:
@@ -394,6 +399,25 @@ def import_org_data(
 # --- Project level: export ---------------------------------------------------
 
 
+def _import_scoring_definitions(
+    db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None, data: dict[str, Any],
+    warnings: BundleImportWarnings, current_user: User | None = None,
+) -> dict[str, str]:
+    """Recreates the bundle's custom scoring axes, models and hidden criteria for the tier before any score, so
+    their levels exist when the scores are matched. Returns the exported-to-local axis key map."""
+    definitions = data.get("pain_point_scoring_definitions")
+    if not definitions:
+        return {}
+    messages: list[str] = []
+    mapping = import_definitions(
+        db, organization_id, PAIN_POINT_SCORING_SCHEME, project_id, definitions,
+        current_user.id if current_user is not None else None, messages,  # an organisation import has no actor
+    )
+    for message in messages:
+        warnings.add(message)
+    return mapping
+
+
 def _level_refs(db: Session, project: Project) -> dict[uuid.UUID, str]:
     """`{level id: name}` for the organisation's Pain Point scoring levels."""
     return {
@@ -435,7 +459,7 @@ def _pain_point_json(
             target = {"type": score.target_type, "label": label}
         scores.append({
             "target": target,
-            **{axis: levels.get(getattr(score, column)) for axis, column in _SCORE_AXES.items()},
+            "levels": {axis: levels[level_id] for axis, level_id in score_level_ids(score).items() if level_id in levels},
             "scored_by_email": (emails.get(score.scored_by) if score.scored_by else None),
         })
     return {
@@ -548,6 +572,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     ]
     refs[OPEN_QUESTION_ARTEFACT_TYPE] = {q.id: q.unique_code for q in questions}
 
+    out["pain_point_scoring_definitions"] = export_definitions(db, project.organization_id, PAIN_POINT_SCORING_SCHEME, project.id)
     out[_LINKS_KEY] = export_artefact_links(db, project, refs)
     return out, assets
 
@@ -618,10 +643,11 @@ def import_project_data(
     Scores are imported later, by `import_late`."""
     if not any(data.get(k) for k in (
         "pain_point_project_types", "pain_point_hidden_org_types", "pain_points", "open_questions",
-        "pain_point_submission_policy", *(spec.key for spec in _SPECS),
+        "pain_point_submission_policy", "pain_point_scoring_definitions", *(spec.key for spec in _SPECS),
     )):
         return
     organization_id = project.organization_id
+    db.info[(_AXIS_MAP, project.id)] = _import_scoring_definitions(db, organization_id, project.id, data, warnings, current_user)
     refs: dict[str, dict[str, uuid.UUID]] = {}
 
     for spec in _SPECS:
@@ -743,6 +769,7 @@ def import_late_project_data(
     """`ModuleProjectBundleHooks.import_late`: recreates the Pain Point scores, once the Personas they
     target exist. A persona the project cannot list, or a level the organisation lacks, is skipped with a warning."""
     pain_points: dict[str, uuid.UUID] | None = db.info.pop((_PENDING_SCORES, project.id), None)
+    axis_map: dict[str, str] = db.info.pop((_AXIS_MAP, project.id), None) or {}
     if not pain_points:
         return
     seed_missing_scoring_levels(db, project.organization_id)
@@ -766,15 +793,20 @@ def import_late_project_data(
                     warnings.add(f"{context}: persona {score['target']['label']!r} not found or ambiguous — skipped.")
                     continue
                 target_type, target_id = score["target"]["type"], matches[0]
+            named = score.get("levels")
+            if named is None:  # a bundle from before scores were stored per axis
+                named = {axis: score[axis] for axis in _LEGACY_SCORE_AXES if score.get(axis)}
             levels: dict[str, uuid.UUID | None] = {}
-            for axis, column in _SCORE_AXES.items():
-                name = score.get(axis)
+            for exported_axis, name in named.items():
+                axis = axis_map.get(exported_axis, exported_axis)
                 level_id = level_ids.get((axis, name)) if name else None
                 if name and level_id is None:
                     warnings.add(f"{context}: {axis} level {name!r} not found — left unscored.")
-                levels[column] = level_id
-            db.add(PainPointScore(
-                pain_point_id=pain_point_id, target_type=target_type, target_id=target_id, **levels,
+                levels[axis] = level_id
+            row = PainPointScore(
+                pain_point_id=pain_point_id, target_type=target_type, target_id=target_id,
                 scored_by=users.resolve(score.get("scored_by_email"), required=False, context=f"{context} scorer"),
-            ))
+            )
+            assign_score_level_ids(row, levels)
+            db.add(row)
     db.flush()

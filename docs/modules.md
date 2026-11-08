@@ -866,7 +866,20 @@ flowchart LR
   *lowest* (`services.scoring.min_axis_weights`, passed to `compute_score` as
   `min_weights`), so the normalised score stays in (0, 1]. A divisor model has
   no cell ratings (`ScoringModelDefinition.supports_cell_ratings`). RICE is
-  Reach × Impact × Confidence ÷ Effort.
+  Reach × Impact × Confidence ÷ Effort. A `weighted_sum` model may name
+  divisors too: the importance-weighted sum is divided by the divisors' weights
+  and the best case divides by their lowest (Weighted Shortest Job First:
+  Cost of Delay ÷ Job size); exponents stay product-only.
+- **Scoring targets and axis scope.** A scheme with `target_label` (`persona`)
+  scores a record for individual targets as well as for the whole record, and
+  each axis says which with `ScoringAxisDefinition.per_target` (a custom axis
+  chooses at creation, `scoring_custom_axes.per_target`, and cannot change it,
+  because stored scores depend on it; a scheme without a target refuses it).
+  The scheme config carries both (`target_label`, `axes[].per_target`) so a
+  screen needs no module knowledge. What a record stores for a target is the
+  module's own: Context & Strategy holds a General row (every criterion, and
+  the default for the per-persona ones) and a row per persona that differs
+  (per-persona criteria only), one `pain_point_score_axes` row per criterion.
 - **Derived axes (Module 14 Phase 3b).** An axis with
   `ScoringAxisDefinition.derived_source` is read from a number the module
   computes (a weighted demand) instead of being chosen: each of its levels
@@ -903,7 +916,9 @@ flowchart LR
   `enabled_model_keys` and `enabled_models_source`. Nothing is stored per
   model: a module derives every enabled model's score on read. A scheme
   that does this sets `side_by_side_models`; the shared scoring screens show
-  the "Models shown" setting only then, because no other module reads it.
+  the "Models shown" setting only then, because no other module reads it. A
+  module that shows one model at a time still sets it when its picker offers
+  only the enabled models (Pain Points).
 - **Scoring screens (Module 14 Phase 5b).** `ScoringSchemeEditor` and
   `ProjectScoringSettings` also hold the threshold field of a derived axis,
   "Models shown" (`side_by_side_models`), and `ScoringCriteria` (a scheme with
@@ -1311,7 +1326,7 @@ Read left to right: the same provider defines the columns of the file out and th
 - **Approval gates.** A type with an approval gate sets `approval_gated=True` and gives its `status` no `parse`: a file creates drafts and edits content, it never approves (`tests/test_record_tables.py` fails otherwise).
 - **Personal data.** Classify a column with `sensitivity` (`personal`, `contact`, `free_text_people`); core leaves a tagged column out of every export and import unless the organisation's policy (its override, else the server default, else excluded) allows the tag **and** the person holds `export_personal_data` (`services/record_policy.py`). Never add a per-module check; the tag is the whole contract. Never expose a Restricted-classified value as a column.
 - **PDF and Word: the Record list report.** A provider's table is also a report (`GET /projects/{id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`, `services/record_list_report.py`), listed in the report catalogue under the platform (`module_key` `platform`), not a module, with one `record_type` parameter holding exactly the types the caller may list. It adds no code per type: it renders `build_table`, so it shows the columns and rows the CSV export would. `format=csv` is the export's file byte for byte; a file (not the on-screen run) is audited as `records_exported`. A column colours its cells in PDF and Word with `RecordColumn.tones` (`{cell text: tone}`, tones as `report_model.TONE_FILL`); the text still names the value. The same MCP tool (`get_record_list_report`) serves every type.
-- **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (a Pain Point scored per persona has no single severity). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
+- **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (none is used by Pain Points now that a General level can be edited beside persona rows). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
 - **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export (no `create`/`update`) and gives a reason in `not_importable`; a core type's reason is in `CORE_NOT_IMPORTABLE` (`services/record_tables_core.py`, change requests). Do not add per-type export or import code to a core file.
 
 ### 4l2. Creating and linking a record from the Links panel

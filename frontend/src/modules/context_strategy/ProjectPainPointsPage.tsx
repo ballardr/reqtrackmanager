@@ -256,7 +256,9 @@ export function ProjectPainPointsPage() {
         >
           <div className="stack">
             <ScoringModelSwitcher
-              models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
+              models={scheme.models
+                .filter((m) => !scheme.enabled_model_keys?.length || scheme.enabled_model_keys.includes(m.key) || m.key === model)
+                .map((m) => ({ value: m.key, label: m.label }))}
               model={model}
               onModelChange={(next) => setModelParam(next === scheme.default_model_key ? "" : next)}
               rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}

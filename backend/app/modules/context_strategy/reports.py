@@ -107,7 +107,6 @@ from app.modules.context_strategy.pain_point_scores import (
     load_scoring_context,
     resolve_model,
 )
-from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
 from app.modules.registry import ReportDefinition, ReportParamDefinition, ReportPartDefinition, get_artefact_summary
 from app.services import relationships
 from app.services.labels import REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE
@@ -414,13 +413,16 @@ def _persona_rows(ctx: ScoringContext, summary: PainPointScoringSummary) -> list
     """Per-persona breakdown of one Pain Point's score rows."""
     rows: list[PersonaScoreRow] = []
     for e in summary.entries:
-        levels = {a: ctx.levels_by_id.get(getattr(e.row, f"{a}_level_id")) for a in ("severity", "frequency", "confidence")}
+        levels = {
+            a: ctx.levels_by_id.get(e.effective_levels[a]) if a in e.effective_levels else None
+            for a in ("severity", "frequency", "confidence")
+        }
         severity = levels["severity"]
         ratio = (
             float(severity.weight / ctx.top_severity_weight)
             if severity is not None and ctx.top_severity_weight else None
         )
-        persona = e.label or ("All personas" if e.target_status is TargetStatus.ALL else "Persona unavailable")
+        persona = e.label or ("General" if e.target_status is TargetStatus.GENERAL else "Persona unavailable")
         rows.append(PersonaScoreRow(
             persona=persona, target_status=e.target_status.value,
             severity=severity.name if severity else None,
@@ -438,11 +440,12 @@ def _matrix_point(ctx: ScoringContext, summary: PainPointScoringSummary) -> Matr
     for e in summary.entries:
         if e.target_status is TargetStatus.INACTIVE:
             continue
-        sev = ctx.levels_by_id.get(e.row.severity_level_id) if e.row.severity_level_id else None
-        freq = ctx.levels_by_id.get(e.row.frequency_level_id) if e.row.frequency_level_id else None
+        chosen = e.effective_levels
+        sev = ctx.levels_by_id.get(chosen["severity"]) if "severity" in chosen else None
+        freq = ctx.levels_by_id.get(chosen["frequency"]) if "frequency" in chosen else None
         if sev is None or freq is None:
             continue
-        conf = ctx.levels_by_id.get(e.row.confidence_level_id) if e.row.confidence_level_id else None
+        conf = ctx.levels_by_id.get(chosen["confidence"]) if "confidence" in chosen else None
         point = MatrixPoint(
             sev.name, float(sev.weight), freq.name, float(freq.weight),
             conf.name if conf else None, float(conf.weight) if conf else None,
@@ -1378,11 +1381,12 @@ def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
 # --- Declarations ---------------------------------------------------------------------------------------------
 
 _ORG_ROLE = "org_reports_viewer"
+# No fixed choices: an organisation or project may define models of its own, so the key is checked against the
+# scheme as it applies to each project reported on.
 _MODEL_KEY = ReportParamDefinition(
-    "model_key", "string", choices=tuple(m.key for m in PAIN_POINT_SCORING_SCHEME.models),
-    choice_labels={m.key: m.label for m in PAIN_POINT_SCORING_SCHEME.models}, label="Scoring model",
-    description="Scoring model: sxf (Severity x Frequency), sxc (Severity x Confidence) or sxfxc; "
-                "defaults to the project's configured default.",
+    "model_key", "string", label="Scoring model",
+    description="Key of the scoring model (for example sxf, sxc, sxfxc, cod, wsjf, or one the organisation or project "
+                "defined); defaults to the project's configured default model.",
 )
 _ROLLUP = ReportParamDefinition(
     "rollup", "string", default=RollupMethod.WEIGHTED_AVERAGE.value, choices=tuple(m.value for m in RollupMethod),

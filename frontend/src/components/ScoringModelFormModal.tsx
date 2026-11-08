@@ -4,7 +4,8 @@
  * The create/edit dialog for a scoring model an organisation or project defines (generic scoring-matrix core): a
  * name, how the axes combine, and how the model uses each axis it can see. A product multiplies or divides by each
  * axis (with an exponent for how strongly it counts); a weighted sum adds each axis by an importance percentage that
- * totals 100, optionally counting a lower level as better. The checks mirror the server's, so the person sees why
+ * totals 100, optionally counting a lower level as better, and may divide the sum by an axis (as Weighted Shortest
+ * Job First divides by job size). The checks mirror the server's, so the person sees why
  * Save is unavailable; the server still re-checks. Saving is the caller's, which reports a failure through `error`.
  */
 import { useState } from "react";
@@ -29,13 +30,14 @@ interface AxisDraft {
 const COMBINATION_LABEL: Record<Combination, string> = { product: "Product", weighted_sum: "Weighted sum" };
 const ROLE_LABEL: Record<Role, string> = { none: "Not used", multiply: "Multiply by", divide: "Divide by", sum: "Add" };
 const PRODUCT_ROLES: Role[] = ["none", "multiply", "divide"];
-const SUM_ROLES: Role[] = ["none", "sum"];
+const SUM_ROLES: Role[] = ["none", "sum", "divide"];
 
 /** The draft for one axis, read from the model being edited (or blank when defining a new one). */
 function draftFor(axis: ScoringAxis, model?: ScoringModel): AxisDraft {
   const blank: AxisDraft = { role: "none", exponent: "1", importance: "", lowerIsBetter: false };
   if (!model) return blank;
   if (model.combination === "weighted_sum") {
+    if (model.divisor_axis_keys?.includes(axis.key)) return { ...blank, role: "divide" };
     return model.axis_keys.includes(axis.key)
       ? { role: "sum", exponent: "1", importance: String(model.importance?.[axis.key] ?? ""), lowerIsBetter: !!model.inverted_axis_keys?.includes(axis.key) }
       : blank;
@@ -58,7 +60,7 @@ function buildModel(
   if (combination === "product" && !used.some((a) => drafts[a.key].role === "multiply")) {
     return { problem: "Multiply by at least one axis." };
   }
-  if (combination === "weighted_sum" && used.length === 0) return { problem: "Add at least one axis." };
+  if (combination === "weighted_sum" && !used.some((a) => drafts[a.key].role === "sum")) return { problem: "Add at least one axis." };
   const modelAxes: ScoringModelInput["axes"] = [];
   let total = 0;
   for (const axis of used) {
@@ -67,6 +69,8 @@ function buildModel(
       const exponent = Number(d.exponent);
       if (!(exponent > 0 && exponent <= 10)) return { problem: `${axis.label}: the exponent must be above 0 and at most 10.` };
       modelAxes.push({ axis_key: axis.key, role: d.role === "divide" ? "divide" : "multiply", exponent });
+    } else if (d.role === "divide") {
+      modelAxes.push({ axis_key: axis.key, role: "divide" });
     } else {
       const importance = Number(d.importance);
       if (!(importance > 0 && importance <= 100)) return { problem: `${axis.label}: the importance must be above 0 and at most 100.` };
@@ -103,7 +107,7 @@ export function ScoringModelFormModal({
     setCombination(next);
     // A role belongs to one combination; keep the axes a person picked by mapping them across.
     setDrafts((all) => Object.fromEntries(Object.entries(all).map(([key, d]) => [
-      key, { ...d, role: d.role === "none" ? "none" : next === "product" ? "multiply" : "sum" },
+      key, { ...d, role: d.role === "none" || d.role === "divide" ? d.role : next === "product" ? "multiply" : "sum" },
     ])));
   }
   const patch = (key: string, change: Partial<AxisDraft>) => setDrafts((all) => ({ ...all, [key]: { ...all[key], ...change } }));

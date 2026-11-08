@@ -582,12 +582,8 @@ def pain_point_levels(headers: dict, project_id: str) -> dict[str, dict[str, str
 
 
 def score_entry(levels: dict[str, dict[str, str]], target_id: str | None = None, **chosen: str) -> dict:
-    """One score row from level names (`severity="Major"`, ...); `target_id=None` = all personas."""
-    return {
-        "target_id": target_id,
-        **{f"{axis}_level_id": levels[axis][chosen[axis]] if axis in chosen else None
-           for axis in ("severity", "frequency", "confidence")},
-    }
+    """One score row from level names (`severity="Major"`, ...); `target_id=None` = the General row."""
+    return {"target_id": target_id, "levels": {axis: levels[axis][name] for axis, name in chosen.items()}}
 
 
 def set_persona_weight_override(headers: dict, project_id: str, persona_id: str, weight: float) -> dict:

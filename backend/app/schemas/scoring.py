@@ -36,6 +36,11 @@ class ScoringAxisOut(BaseModel):
     label: str
     description: str | None
     derived_source: str | None = None
+    per_target: bool = Field(
+        default=False,
+        description="On a scheme with targets, whether the axis is scored per target (a persona) rather than once "
+        "for the whole record.",
+    )
     origin: Literal["built_in", "org", "project"] = "built_in"
     owner_project_id: UUID | None = None
     thresholds_source: Literal["project", "ancestor", "organisation"] | None = Field(
@@ -116,6 +121,9 @@ class ScoringSchemeOut(BaseModel):
     enabled_models_source: ResolutionSource = "system"
     allow_custom_criteria: bool = False
     side_by_side_models: bool = False
+    target_label: str | None = Field(
+        default=None, description="What a record can be scored for individually (`persona`), or `None`.",
+    )
     hidden_criteria: list[HiddenCriterionOut] = []
 
 
@@ -185,6 +193,10 @@ class ScoringAxisCreate(BaseModel):
 
     label: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=2000)
+    per_target: bool = Field(
+        default=False, description="Score the axis per target (a persona) rather than once for the whole record; "
+        "only a scheme with targets takes it, and it cannot be changed afterwards.",
+    )
     levels: list[ScoringLevelSpecIn] = Field(min_length=2, max_length=12)
 
 

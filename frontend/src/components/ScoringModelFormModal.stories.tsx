@@ -80,3 +80,37 @@ export const EditStartsFromTheModel: Story = {
     await expect(d.getByRole("button", { name: "Save" })).toBeEnabled();
   },
 };
+
+/** A weighted sum can divide the sum by an axis (as Weighted Shortest Job First divides by job size); the divisor carries no importance. */
+export const WeightedSumCanDivideByAnAxis: Story = {
+  play: async ({ args }) => {
+    const d = dialog();
+    await userEvent.type(d.getByLabelText("Name"), "Fit per size");
+    await userEvent.selectOptions(d.getByLabelText("Combination"), "weighted_sum");
+    await expect(d.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.selectOptions(d.getByLabelText("Impact role"), "sum");
+    await userEvent.type(d.getByLabelText("Impact importance"), "100");
+    await userEvent.selectOptions(d.getByLabelText("Strategic fit role"), "divide");
+    await expect(d.queryByLabelText("Strategic fit importance")).not.toBeInTheDocument();
+    await userEvent.click(d.getByRole("button", { name: "Save" }));
+    await expect(args.onSave).toHaveBeenCalledWith({
+      label: "Fit per size", combination: "weighted_sum",
+      axes: [
+        { axis_key: "impact", role: "sum", importance: 100, lower_is_better: false },
+        { axis_key: "c_strategic_fit", role: "divide" },
+      ],
+    });
+  },
+};
+
+/** A weighted sum with only a divisor has nothing to sum, so it cannot be saved. */
+export const WeightedSumNeedsASummedAxis: Story = {
+  play: async () => {
+    const d = dialog();
+    await userEvent.type(d.getByLabelText("Name"), "Only a divisor");
+    await userEvent.selectOptions(d.getByLabelText("Combination"), "weighted_sum");
+    await userEvent.selectOptions(d.getByLabelText("Impact role"), "divide");
+    await expect(d.getByText("Add at least one axis.")).toBeInTheDocument();
+    await expect(d.getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};

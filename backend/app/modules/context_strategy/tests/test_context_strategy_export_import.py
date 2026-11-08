@@ -33,6 +33,7 @@ from app.modules.context_strategy.models import (
     Strategy,
     StrategyVersion,
 )
+from app.modules.context_strategy.pain_point_scores import score_level_ids
 from app.modules.context_strategy.service import PainPointLinkKind, StrategyLinkKind, create_pain_point_link, create_strategy_link
 from tests.conftest import auth_headers, create_org_admin_in, create_project
 from tests.db_helpers import must_get, must_scalar
@@ -119,8 +120,10 @@ def _build(client, token, org, project) -> dict[str, str]:
     assert client.put(
         f"{base}/pain-points/{scored['id']}/scores", headers=h,
         json={"scores": [{
-            "target_id": persona, "severity_level_id": _first(lv, "severity"),
-            "frequency_level_id": _first(lv, "frequency"), "confidence_level_id": _first(lv, "confidence"),
+            "target_id": persona, "levels": {
+                "severity": _first(lv, "severity"), "frequency": _first(lv, "frequency"),
+                "confidence": _first(lv, "confidence"),
+            },
         }]},
     ).status_code == 200
     assert client.post(
@@ -129,7 +132,7 @@ def _build(client, token, org, project) -> dict[str, str]:
     plain = _post(client, token, base + "/pain-points", {"pain_point_type_id": types["User"]["id"], "title": "Confusing menu"})
     assert client.put(
         f"{base}/pain-points/{plain['id']}/scores", headers=h,
-        json={"scores": [{"target_id": None, "severity_level_id": _first(lv, "severity")}]},
+        json={"scores": [{"target_id": None, "levels": {"severity": _first(lv, "severity")}}]},
     ).status_code == 200
 
     db = SessionLocal()
@@ -174,9 +177,11 @@ def test_project_export_import_round_trips_context_and_strategy(client, admin_to
 
         persona_score = must_scalar(db, select(PainPointScore).where(PainPointScore.pain_point_id == pps["Slow reports"].id))
         assert persona_score.target_type == "persona" and persona_score.target_id is not None
-        assert persona_score.severity_level_id is not None and persona_score.confidence_level_id is not None
+        persona_levels = score_level_ids(persona_score)
+        assert {"severity", "frequency", "confidence"} <= set(persona_levels)
         all_score = must_scalar(db, select(PainPointScore).where(PainPointScore.pain_point_id == pps["Confusing menu"].id))
-        assert all_score.target_id is None and all_score.severity_level_id is not None and all_score.frequency_level_id is None
+        all_levels = score_level_ids(all_score)
+        assert all_score.target_id is None and "severity" in all_levels and "frequency" not in all_levels
 
         strategy = must_scalar(db, select(Strategy).where(Strategy.project_id == new_id))
         version = must_scalar(db, select(StrategyVersion).where(StrategyVersion.strategy_id == strategy.id))

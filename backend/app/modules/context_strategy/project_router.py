@@ -182,6 +182,7 @@ from app.modules.context_strategy.models import (
     StrategyVersion,
 )
 from app.modules.context_strategy.pain_point_scores import (
+    EntrySummary,
     PainPointScoringSummary,
     RollupMethod,
     ScoreEntryInput,
@@ -228,6 +229,7 @@ from app.modules.context_strategy.schemas import (
     PainPointCreate,
     PainPointLinkCreate,
     PainPointOut,
+    PainPointScoreEntryIn,
     PainPointScoreEntryOut,
     PainPointScoresOut,
     PainPointScoresUpdate,
@@ -1495,9 +1497,7 @@ def create_project_pain_point(
         # Same validation and audit as the scores endpoint; any 400 leaves nothing committed.
         set_pain_point_scores(
             db, scoring_ctx, pain_point,
-            [ScoreEntryInput(e.target_id, e.severity_level_id, e.frequency_level_id, e.confidence_level_id)
-             for e in payload.scores],
-            current_user,
+            _score_entry_inputs(payload.scores), current_user,
         )
     db.commit()
     db.refresh(pain_point)
@@ -1606,21 +1606,27 @@ def _score_out(score) -> ScoreOut | None:
     )
 
 
+def _score_entry_out(e: EntrySummary) -> PainPointScoreEntryOut:
+    """Maps one resolved score row to its API shape."""
+    return PainPointScoreEntryOut(
+        target_id=e.row.target_id, target_type=e.row.target_type, label=e.label, weight=e.weight,
+        status=e.target_status.value, levels=e.levels, effective_levels=e.effective_levels,
+        score=_score_out(e.score), is_blocker=e.is_blocker,
+    )
+
+
+def _score_entry_inputs(entries: list[PainPointScoreEntryIn]) -> list[ScoreEntryInput]:
+    """Maps requested score rows from an API payload to the service's input."""
+    return [ScoreEntryInput(e.target_id, e.levels) for e in entries]
+
+
 def _scoring_summary_out(summary: PainPointScoringSummary) -> PainPointScoringSummaryOut:
     """Maps a roll-up to its API shape."""
     return PainPointScoringSummaryOut(
         pain_point_id=summary.pain_point_id, scope=summary.scope, score=_score_out(summary.score),
         counted=summary.counted, is_blocker=summary.is_blocker, blocker_labels=summary.blocker_labels,
         personas_degraded=summary.personas_degraded,
-        entries=[
-            PainPointScoreEntryOut(
-                target_id=e.row.target_id, target_type=e.row.target_type, label=e.label, weight=e.weight,
-                status=e.target_status.value, severity_level_id=e.row.severity_level_id,
-                frequency_level_id=e.row.frequency_level_id, confidence_level_id=e.row.confidence_level_id,
-                score=_score_out(e.score), is_blocker=e.is_blocker,
-            )
-            for e in summary.entries
-        ],
+        entries=[_score_entry_out(e) for e in summary.entries],
     )
 
 
@@ -1723,9 +1729,7 @@ def set_project_pain_point_scores(
     resolve_model(ctx, model_key)  # validate before writing
     set_pain_point_scores(
         db, ctx, pain_point,
-        [ScoreEntryInput(e.target_id, e.severity_level_id, e.frequency_level_id, e.confidence_level_id)
-         for e in payload.scores],
-        current_user,
+        _score_entry_inputs(payload.scores), current_user,
     )
     db.commit()
     return _scores_out(db, pain_point, model_key, method)

@@ -37,7 +37,7 @@ def _count(project_id) -> int:
         return must_scalar(db, select(func.count()).select_from(PainPoint).where(PainPoint.project_id == project_id))
 
 
-def test_create_persists_all_persona_scores(client, admin_token):
+def test_create_persists_general_scores(client, admin_token):
     _, project, token = _setup(client, admin_token, "PP Create Scores Co")
     pid = project["id"]
     levels = _levels(client, token, pid)
@@ -45,7 +45,7 @@ def test_create_persists_all_persona_scores(client, admin_token):
     resp = _create(client, token, pid, scores=[_entry(levels, severity="Blocker", frequency="Rare", confidence="High")])
     assert resp.status_code == 201, resp.text
     body = _get(client, token, pid, resp.json()["id"], model_key="sxf")
-    assert body["scope"] == "all_personas" and body["is_blocker"] is True
+    assert body["scope"] == "general" and body["is_blocker"] is True
     assert body["score"]["raw"] == 5
 
 
@@ -77,8 +77,10 @@ def test_invalid_score_creates_nothing(client, admin_token):
     levels = _levels(client, token, pid)
     before = _count(pid)
 
-    wrong_axis = {**_entry(levels), "severity_level_id": levels["frequency"]["Rare"]}
+    wrong_axis = {"target_id": None, "levels": {"severity": levels["frequency"]["Rare"]}}
     assert _create(client, token, pid, scores=[wrong_axis]).status_code == 400
+    earlier_shape = {"target_id": None, "severity_level_id": levels["severity"]["Minor"]}
+    assert _create(client, token, pid, scores=[earlier_shape]).status_code == 422  # not silently dropped
     unknown = _entry(levels, "00000000-0000-0000-0000-000000000001", severity="Minor")
     assert _create(client, token, pid, scores=[unknown]).status_code == 400
     assert _count(pid) == before

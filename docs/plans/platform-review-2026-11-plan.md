@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 11, 9b, 9c and 9d done (10 and 11 uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 12, 9b, 9c and 9d done (10, 11 and 12 uncommitted), the rest not started; phase 5b added 2026-11-07. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-15 / 21 phases complete.
+16 / 21 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -25,7 +25,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 9d | Phase schedule and reminders | `stage_phase_plans`, stage owner, lead time; actual dates on every move, daily upcoming and overdue sweep, completed on the move; report fields for the expected end and start; overview metric left to phase 14; see `docs/decisions.md` | [x] |
 | 10 | Rename navigation items, with organisation defaults | `nav_label_overrides` on project and organisation (per-key: project, ancestor, organisation), stable keys from the registry, looked up by route path; navigation, title and back link; see `docs/decisions.md` | [x] |
 | 11 | Server and organisation messages (login pages and notification) | One `announcements` table (NULL organisation is platform-wide); login pages, banner and a one-time notification; organisation text may not contain a web address; see `docs/decisions.md` | [x] |
-| 12 | Pain Point scoring on the Product Feedback model (custom criteria, Cost of Delay) | General row plus persona overrides; settled | [ ] |
+| 12 | Pain Point scoring on the Product Feedback model (custom criteria, Cost of Delay) | Read helper, one row per axis (migrations 0149, 0150), General row plus persona overrides, custom criteria, Cost of Delay and WSJF (weighted sum that divides); Playwright and perf scenarios not run; see `docs/decisions.md` | [x] |
 | 13 | Template projects | Partly built; module configuration is the gap | [ ] |
 | 14 | Project overview widgets | Configurable widgets, catalogue metrics with allowed filters; settled | [ ] |
 | 15 | Organisation overview settings shortcut | Small | [ ] |
@@ -305,6 +305,8 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Risk:** many readers and a destructive migration. Mitigation is the step order above; step 2 ships only after step 1 is green on the full suite and the perf scenarios.
 - **Outcome:** Pain Points offer the same model choice and custom criteria as Enhancement Requests, with Cost of Delay and WSJF available out of the box.
 - **Tests:** model mathematics including the divisor and normalisation; backfill round trip and idempotent re-run; project and organisation bundle round trip with custom axes; report and export columns; MCP tools and skill reference regenerated (`set_pain_point_scores` takes axis keys); scaling shapes stay flat; custom criteria visible in the matrix and filters.
+
+- **Done 2026-11-08.** All four steps. Migrations `0149` (custom axis `per_target`, core) and `0150` (`pain_point_score_axes`, module); next migration `0151`. Reports' `model_key` became a free key (custom models); the project and organisation bundles carry `pain_point_scoring_definitions` (the shared `scoring_definitions` key is Product Feedback's). The Playwright specs were updated and one added but not run, and the perf scenarios were not re-run. See `docs/decisions.md`.
 
 ### Phase 13 — Template projects
 

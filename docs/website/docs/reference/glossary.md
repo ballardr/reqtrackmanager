@@ -38,6 +38,10 @@ Recording that the people who asked for an [enhancement request](#enhancement-re
 
 The place a record sits in the project's component and category tree. A record other than a requirement can hold several, for example *Hardware / Cooling* and *Software*, and lists, search, reports and exports can be filtered by them. A requirement keeps its own single component and category. See [Core Features → Components on every record](../core-features/components-on-records.md).
 
+#### Cost of Delay
+
+A Pain Point scoring model that adds User/business value, Time criticality and Risk reduction / opportunity enablement with equal importance. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#the-criteria).
+
 #### Custom field
 
 A project-defined attribute (short text, long text, checkbox, or option list) attached to requirements or change requests, versioned alongside every built-in field. See [Custom fields, terminology, and templates](../concepts/custom-fields-terminology-and-templates.md).
@@ -61,6 +65,10 @@ A proposed solution someone asked the product for, kept in the Product Feedback 
 #### Entitlement
 
 The server-tier licensing lever controlling whether an organisation is allowed to use a given [module](#module) at all, independent of whether the organisation has actually turned it on. See [Modules → Overview](../modules/overview.md).
+
+#### General (Pain Point scores)
+
+The part of a Pain Point's scores that applies to the whole Pain Point: every criterion's level, and the default for the criteria scored per persona. A persona that differs adds its own levels, which override General for that persona. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#scoring-a-pain-point).
 
 #### Identity (requirement identity)
 
@@ -185,3 +193,7 @@ An optional TOTP-based second authentication factor a user can enrol in for thei
 #### Weighted demand
 
 The sum of the weights of the distinct people and Personas who asked for an [enhancement request](#enhancement-request) (a Stakeholder's Influence level, a Persona's weight), counting each only once. See [Product Feedback → Demand and merging](../modules/product-feedback-module/demand-and-merging.md).
+
+#### WSJF (Weighted Shortest Job First)
+
+A Pain Point scoring model that divides [Cost of Delay](#cost-of-delay) by Job size, so a small piece of work ranks above a large one of the same value. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#the-criteria).

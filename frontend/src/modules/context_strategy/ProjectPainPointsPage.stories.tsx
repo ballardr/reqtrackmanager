@@ -110,9 +110,9 @@ export const ShowsScoresAndBlockerAndSorts: Story = {
         painPoint({ id: "pp-none", title: "Unscored problem" }),
       ],
       [
-        scoringSummary({ pain_point_id: "pp-low", scope: "all_personas", counted: 1, score: scoreValue({ raw: 2, band_label: "Low", band_tone: "muted", normalised: 0.1 }) }),
+        scoringSummary({ pain_point_id: "pp-low", scope: "general", counted: 1, score: scoreValue({ raw: 2, band_label: "Low", band_tone: "muted", normalised: 0.1 }) }),
         scoringSummary({
-          pain_point_id: "pp-high", scope: "all_personas", counted: 1, is_blocker: true, blocker_labels: ["Field Technician"],
+          pain_point_id: "pp-high", scope: "general", counted: 1, is_blocker: true, blocker_labels: ["Field Technician"],
           score: scoreValue({ raw: 18, band_label: "Critical", band_tone: "danger", normalised: 0.9 }),
         }),
         scoringSummary({ pain_point_id: "pp-none" }),

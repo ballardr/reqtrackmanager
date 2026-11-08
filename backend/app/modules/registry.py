@@ -1093,9 +1093,9 @@ def validate_scoring_model_maths(model: ScoringModelDefinition) -> None:
 
     Raises:
         ValueError: For an unknown combination; a product model with an exponent that is not in (0, 10] or names
-            an axis the model does not use, or with weighted-sum settings; a weighted-sum model with divisors,
-            exponents, an importance missing for an axis or naming another, a non-positive importance, a total
-            other than 100, or an inverted axis it does not sum.
+            an axis the model does not use, or with weighted-sum settings; a weighted-sum model with exponents,
+            an importance missing for an axis or naming another, a non-positive importance, a total other than
+            100, or an inverted axis it does not sum.
     """
     used = {*model.axis_keys, *model.divisor_axis_keys}
     if model.combination == "product":
@@ -1107,8 +1107,8 @@ def validate_scoring_model_maths(model: ScoringModelDefinition) -> None:
         if len({axis_key for axis_key, _ in model.exponents}) != len(model.exponents):
             raise ValueError(f"Model '{model.key}' lists an exponent twice.")
     elif model.combination == "weighted_sum":
-        if model.divisor_axis_keys or model.exponents:
-            raise ValueError(f"Model '{model.key}' is a weighted sum, so it takes no divisors or exponents.")
+        if model.exponents:
+            raise ValueError(f"Model '{model.key}' is a weighted sum, so it takes no exponents.")
         percentages = dict(model.importance)
         if set(percentages) != set(model.axis_keys) or len(percentages) != len(model.importance):
             raise ValueError(f"Model '{model.key}' needs one importance for each summed axis.")
@@ -1153,6 +1153,9 @@ class ScoringAxisDefinition:
             of being chosen manually; core only stores the name. Each level then has a `threshold`, and the level
             for a value is the one with the highest threshold not above it (the lowest level takes anything below). A scorer may still pick a level by
             hand, which then wins. `None` = an ordinary, manually chosen axis.
+        per_target: Only on a scheme with targets (`ScoringSchemeDefinition.target_label`): whether the axis is
+            scored separately for each target (a persona) rather than once for the whole record. A per-target
+            axis scored for the whole record is the default for the targets that are not scored individually.
     """
 
     key: str
@@ -1160,6 +1163,7 @@ class ScoringAxisDefinition:
     default_levels: tuple[ScoringLevelDefault, ...]
     description: str = ""
     derived_source: str | None = None
+    per_target: bool = False
 
 
 @dataclass(frozen=True)
@@ -1195,7 +1199,7 @@ class ScoringModelDefinition:
             `axis_keys`. The normalised score divides by the best case: every
             multiplied axis at its top weight and every divisor at its lowest.
         combination: `"product"` (the default: multiplied axes over divisors) or `"weighted_sum"` (each axis
-            scaled to 0..1 and summed by its importance).
+            scaled to 0..1 and summed by its importance, then divided by any divisor axes, as in WSJF).
         exponents: Product only: `(axis key, exponent)` pairs raising an axis's weight to a power, so a more
             important criterion counts for more; an axis not listed has exponent 1.
         importance: Weighted sum only: `(axis key, percentage)` for every axis in `axis_keys`, totalling 100.
@@ -1252,9 +1256,12 @@ class ScoringSchemeDefinition:
         allow_custom_criteria: Whether an organisation (and a project) may define its own axes and models on this
             scheme, beside the registered ones, which then can only be hidden, never deleted. Off keeps a scheme
             exactly as registered.
-        side_by_side_models: Whether the module shows several models' scores for one record at once, so the
-            administrator chooses which models are enabled (`enabled_model_keys`). Off hides that setting from
-            the scoring screens, because nothing would read it.
+        side_by_side_models: Whether the module offers only the enabled models (`enabled_model_keys`) when scoring
+            or viewing, or shows several at once, so the administrator chooses which models are enabled. Off hides
+            that setting from the scoring screens, because nothing would read it.
+        target_label: Names what a record may be scored for individually (`"persona"`), or `None` when a record
+            has one score set. A scheme with a target lets each axis choose whether it is scored per target
+            (`ScoringAxisDefinition.per_target`), and the custom-axis form asks which.
 
     Raises:
         ValueError: On construction, if keys are malformed or duplicated,
@@ -1273,6 +1280,7 @@ class ScoringSchemeDefinition:
     reassign_level_usage: Callable[[Session, uuid.UUID, uuid.UUID], None] | None = None
     allow_custom_criteria: bool = False
     side_by_side_models: bool = False
+    target_label: str | None = None
 
     def __post_init__(self) -> None:
         """Validates the scheme's internal consistency (see class docstring)."""
@@ -1311,6 +1319,8 @@ class ScoringSchemeDefinition:
                 validate_scoring_bands([(b.label, b.min_score, b.tone) for b in model.default_bands])
         if self.default_model_key not in model_keys:
             raise ValueError(f"Default model '{self.default_model_key}' is not one of scheme '{self.key}'s models.")
+        if self.target_label is None and any(a.per_target for a in self.axes):
+            raise ValueError(f"Scheme '{self.key}' has per-target axes but no target_label.")
         if (self.count_level_usage is None) != (self.reassign_level_usage is None):
             raise ValueError("count_level_usage and reassign_level_usage must be supplied together.")
 
