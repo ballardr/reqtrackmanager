@@ -1343,7 +1343,7 @@ export const AdvancedSettingsForceRequireChangeRequestForApprovedLinks: Story = 
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Security" }));
     const toggle = await waitFor(() =>
-      canvas.getByRole("switch", { name: "Require a change request for link changes on approved requirements, org-wide" })
+      canvas.getByRole("switch", { name: "Require a change request for link changes on approved requirements, organisation-wide" })
     );
     await expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);

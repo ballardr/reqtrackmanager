@@ -55,6 +55,7 @@ import type { FileAsset } from "../../api/types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { DECISIONS_HELP } from "./help";
 
 export function DecisionDetailPage() {
   const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
@@ -213,8 +214,8 @@ export function DecisionDetailPage() {
         <DetailCard>
           <p style={{ margin: 0 }}>{decision.decision_statement}</p>
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
-            <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
-            <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+            <RecordFieldGroup help={DECISIONS_HELP.decisionOwner} label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+            <RecordFieldGroup help={DECISIONS_HELP.decisionMaker} label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
           </div>
 
           {decision.context && <RecordField label="Context" value={decision.context} />}

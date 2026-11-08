@@ -62,7 +62,7 @@ export function RequirementFields({
         <TextField helpNotNeeded required label={strings.requirements.name} value={values.name} onChange={(next) => set("name", next)} placeholder={strings.requirements.name} />
       </FormGridFull>
       <FormGridFull>
-        <TextAreaField helpNotNeeded label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
+        <TextAreaField help={strings.help.requirementReasoning} label={strings.requirements.reasoning} rows={3} value={values.reasoning} onChange={(next) => set("reasoning", next)} inputProps={{ placeholder: strings.requirements.reasoning }} />
       </FormGridFull>
       <FormGridFull>
         <TextAreaField help={strings.help.requirementClarification} label={strings.requirements.clarification} rows={2} value={values.clarification} onChange={(next) => set("clarification", next)} inputProps={{ placeholder: strings.requirements.clarification }} />
@@ -97,7 +97,7 @@ export function RequirementFields({
         onChange={(reviewer) => set("reviewer", reviewer)}
         ariaLabel={strings.requirements.reviewer} placeholder={strings.reviews.unassigned}
       />
-      <PrincipalFormField helpNotNeeded required={ownerRequired}
+      <PrincipalFormField help={strings.help.requirementOwner} required={ownerRequired}
         label={strings.requirements.owner} orgUsers={orgUsers} organizationId={organizationId}
         projectId={projectId} value={values.owner}
         display={saved ? savedPrincipalDisplay(values.owner, saved.owner) : undefined}

@@ -43,8 +43,12 @@
 import { StatBarEntry } from "../../components/StatBar";
 import { computeOrgComplianceHeadline } from "./orgComplianceSummary";
 import { useOrgComplianceStatus } from "./useOrgComplianceStatus";
+import { useOrgLabel } from "../../context/BrandingContext";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function ComplianceOrgOverviewTiles({ orgId }: { orgId: string }) {
+  const strings = useStrings();
+  const orgLabel = useOrgLabel();
   const statusRows = useOrgComplianceStatus(orgId);
 
   if (!statusRows || statusRows.length === 0) return null;
@@ -53,9 +57,9 @@ export function ComplianceOrgOverviewTiles({ orgId }: { orgId: string }) {
 
   return (
     <>
-      <StatBarEntry label="Overall org compliance" value={`${Math.round(overallCompliancePercentage)}%`} />
+      <StatBarEntry label={`Overall ${orgLabel} compliance`} value={`${Math.round(overallCompliancePercentage)}%`} />
       <StatBarEntry label="Compliance standards in use" value={activeStandardCount} />
-      <StatBarEntry label="Projects out of compliance" value={nonCompliantProjects.length} />
+      <StatBarEntry label={`${strings.filters.projects} out of compliance`} value={nonCompliantProjects.length} />
     </>
   );
 }

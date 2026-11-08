@@ -80,6 +80,8 @@ import {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { useStrings } from "../../context/TerminologyContext";
+import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
 
 type Category = "" | "non_compliant" | "pending" | "actions" | "evidence" | "reviews";
 type EvidenceValidityFilter = "" | Extract<ComplianceEvidenceValidityState, "expired" | "expiring_soon">;
@@ -92,6 +94,7 @@ function ProjectLink({ projectId, projectName }: { projectId: string; projectNam
 }
 
 export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [searchParams] = useSearchParams();
   const [category, setCategory] = useState<Category>(() => {
@@ -385,15 +388,15 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
             <option value="expiring_soon">Expiring soon</option>
           </select>
         </FilterField>
-        <FilterField label="Project">
+        <FilterField label={strings.filters.project}>
           <select className="input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">All projects</option>
+            <option value="">{strings.filters.allProjects}</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </FilterField>
-        <FilterField label="Standard">
+        <FilterField label={COMPLIANCE_FILTER_LABEL.standard}>
           <select
             className="input"
             value={standardFilter}
@@ -409,7 +412,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
             ))}
           </select>
         </FilterField>
-        <FilterField label="Standard version">
+        <FilterField label={COMPLIANCE_FILTER_LABEL.standardVersion}>
           <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)} disabled={!standardFilter}>
             <option value="">All versions</option>
             {versions.map((v) => (
@@ -418,7 +421,7 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
           </select>
         </FilterField>
         {standardFilter && (
-          <FilterField label="Sub-section">
+          <FilterField label={COMPLIANCE_FILTER_LABEL.subSection}>
             <select className="input" value={subSectionFilter} onChange={(e) => setSubSectionFilter(e.target.value)}>
               <option value="">All sub-sections</option>
               {subSections.map((s) => (

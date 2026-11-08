@@ -83,7 +83,8 @@ test.describe("project codes", () => {
     await openNewProjectForm(page);
     const dialog = page.getByRole("dialog", { name: "New project" });
     await expect(dialog.getByLabel("Code")).toHaveCount(0);
-    await expect(dialog.getByText(/assigned automatically from the name/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Help: Name" }).hover();
+    await expect(page.getByText(/assigned automatically from the name/)).toBeVisible();
     await dialog.getByLabel("Name", { exact: true }).fill("Rail Signalling Upgrade");
     await dialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);

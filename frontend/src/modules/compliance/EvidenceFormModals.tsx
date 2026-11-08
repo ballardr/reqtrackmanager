@@ -20,6 +20,7 @@ import { QuickLinkField } from "../../components/QuickLinkField";
 import { RemovableChip } from "../../components/RemovableChip";
 import { TagField } from "../../components/TagField";
 import type { ComplianceEvidence } from "./types";
+import { COMPLIANCE_HELP } from "./help";
 
 /**
  * Add / edit form for one piece of evidence. Create mode also stages files to upload once the record exists.
@@ -71,10 +72,10 @@ export function EvidenceFormModal({
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={2} />
           </FormGridFull>
-          <TextField helpNotNeeded label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
+          <TextField help={COMPLIANCE_HELP.issuingOrganisation} label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
           <DateField helpNotNeeded label="Issued date" value={issuedDate} onChange={setIssuedDate} />
           {!initial && (
-            <DateField helpNotNeeded
+            <DateField help={COMPLIANCE_HELP.evidenceExpiry}
               label="Expiry date"
               hint="Change it later with Revalidate."
               value={expiryDate}
@@ -159,7 +160,7 @@ export function RevalidateModal({
     <Modal title="Revalidate evidence" onClose={onCancel}>
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <DateField helpNotNeeded label="New expiry date" value={newExpiryDate} onChange={setNewExpiryDate} />
+          <DateField help={COMPLIANCE_HELP.evidenceNewExpiry} label="New expiry date" value={newExpiryDate} onChange={setNewExpiryDate} />
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Justification" value={justification} onChange={setJustification} rows={2} />
           </FormGridFull>

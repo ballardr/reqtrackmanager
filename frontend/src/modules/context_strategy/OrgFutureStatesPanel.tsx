@@ -30,8 +30,10 @@ import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./t
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { filterString } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
+  const strings = useStrings();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
@@ -98,7 +100,7 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
           sectionKey="context_strategy.orgFutureStates.list" total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search Future State…" searchAriaLabel="Search organisation Future State"
         >
-          <FilterField label="Status">
+          <FilterField label={strings.filters.status}>
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FutureStateStatus | "")}>
               <option value="">All statuses</option>
               {Object.entries(FUTURE_STATE_STATUS_LABEL).map(([value, label]) => (

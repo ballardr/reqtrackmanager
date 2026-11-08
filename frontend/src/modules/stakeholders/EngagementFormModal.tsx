@@ -24,6 +24,7 @@ import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import { CheckboxField, DateField, TextAreaField, TextField } from "../../components/FormFields";
+import { STAKEHOLDERS_HELP } from "./help";
 import type { EngagementCreateValues } from "./api";
 import type { AnonymousParticipantEntry, Engagement, EngagementChannel, EngagementFieldValues, ParticipantEntries } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
@@ -82,18 +83,18 @@ export function EngagementFormModal({
           <FormGridFull>
             <TextField helpNotNeeded required label="Title" ariaLabel="Engagement title" value={title} onChange={setTitle} hint="What happened, e.g. “Quarterly review with the regulator”." />
           </FormGridFull>
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={STAKEHOLDERS_HELP.engagementChannel}
             label="Channel" value={channel} placeholder={null}
             onChange={(value) => setChannel(value as EngagementChannel)} options={CHANNEL_OPTIONS}
           />
           <DateField helpNotNeeded required label="Date" value={date} onChange={setDate} />
           {!compact && (
             <FormGridFull>
-              <TextAreaField helpNotNeeded label="Purpose" rows={2} value={purpose} onChange={setPurpose} hint="Why the engagement took place." />
+              <TextAreaField help={STAKEHOLDERS_HELP.engagementPurpose} label="Purpose" rows={2} value={purpose} onChange={setPurpose} />
             </FormGridFull>
           )}
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} hint="A line or two on the outcome." />
+            <TextAreaField help={STAKEHOLDERS_HELP.engagementSummary} label="Summary" rows={compact ? 3 : 2} value={summary} onChange={setSummary} />
           </FormGridFull>
           {!compact && (
             <>
@@ -103,13 +104,11 @@ export function EngagementFormModal({
                   hint="Notes can name people and are personal data: they are deleted with the engagement."
                 />
               </FormGridFull>
-              <CheckboxField helpNotNeeded
+              <CheckboxField help={STAKEHOLDERS_HELP.engagementConsent}
                 heading="Consent" label="Recorded" ariaLabel="Consent recorded" checked={consent} onChange={setConsent}
-                hint="Tick once the participants have agreed to being recorded here."
               />
-              <DateField helpNotNeeded
+              <DateField help={STAKEHOLDERS_HELP.engagementRetainUntil}
                 label="Retain until" value={retainUntil} onChange={setRetainUntil}
-                hint="Optional. Nothing is deleted automatically; the engagement is flagged when this date is reached."
               />
             </>
           )}

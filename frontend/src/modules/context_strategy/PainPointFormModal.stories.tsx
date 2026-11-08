@@ -36,14 +36,13 @@ export const CreateNew: Story = {
   },
 };
 
-/** The picked type's definition shows under the picker, so the author knows what belongs there. */
+/** Every offered type's definition is in the Type field's help, one line per type, so the types can be compared before choosing. */
 export const ShowsTheTypeDefinition: Story = {
   args: { types: TYPES.map((t) => (t.id === "type-operator" ? { ...t, definition: "People who run and maintain the product." } : t)) },
   play: async () => {
     const body = within(document.body);
-    await expect(body.queryByText("People who run and maintain the product.")).not.toBeInTheDocument();
-    await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
-    await expect(body.getByText("People who run and maintain the product.")).toBeInTheDocument();
+    await userEvent.hover(body.getByRole("button", { name: "Help: Type" }));
+    await expect(body.getByText(/Operator: People who run and maintain the product\./)).toBeInTheDocument();
   },
 };
 

@@ -56,6 +56,7 @@ import {
 } from "../api/types";
 import { OrgTagsPanel } from "../components/OrgTagsPanel";
 import { ActionMenu } from "../components/ActionMenu";
+import { Tooltip } from "../components/Tooltip";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { AddToGroupControl } from "../components/AddToGroupControl";
@@ -2367,7 +2368,7 @@ export function OrgAdminPage() {
         const u = row.user;
         if (u.is_archived) return strings.orgAdmin.statusArchived;
         if (!u.is_active) return strings.orgAdmin.statusDeactivated;
-        return <span title={strings.orgAdmin.statusActiveHint}>{strings.orgAdmin.statusActive}</span>;
+        return <Tooltip label={strings.orgAdmin.statusActiveHint} wrap>{strings.orgAdmin.statusActive}</Tooltip>;
       },
     },
     {
@@ -3000,7 +3001,7 @@ export function OrgAdminPage() {
                                 value={idpSyncEdits[g.id] ?? g.idp_synced_group_name ?? ""}
                                 onChange={(next) => setIdpSyncEdits((prev) => ({ ...prev, [g.id]: next }))}
                               />
-                              <LabeledSelect helpNotNeeded
+                              <LabeledSelect help={strings.help.grantedOrgRole}
                                 label={strings.orgAdmin.grantedOrgRole}
                                 value={grantedRoleEdits[g.id] ?? g.granted_org_role ?? ""}
                                 onChange={(next) => setGrantedRoleEdits((prev) => ({ ...prev, [g.id]: next as OrgRole | "" }))}
@@ -3010,7 +3011,6 @@ export function OrgAdminPage() {
                                   { value: "org_admin", label: ORG_ROLE_LABEL.org_admin },
                                 ]}
                                 placeholder={strings.orgAdmin.grantedOrgRoleNone}
-                                hint={strings.orgAdmin.grantedOrgRoleHint}
                               />
                             </FormGrid>
                             <button
@@ -3230,22 +3230,21 @@ export function OrgAdminPage() {
                 <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: "var(--radius-sm)" }} />
               )}
 
-              <TextField helpNotNeeded
+              <TextField help={strings.help.orgHeaderTitle}
                 label={strings.orgAdmin.headerTitle}
                 labelExtra={<OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />}
                 placeholder={strings.appName}
                 value={headerTitleInput}
                 onChange={setHeaderTitleInput}
-                hint={strings.orgAdmin.headerTitleHint}
                 inputProps={{ id: "org-header-title" }}
               />
-              <CheckboxField helpNotNeeded
+              <CheckboxField help={strings.help.orgOwnAccentColor}
                 label={strings.orgAdmin.useOwnAccentColor(orgLabel)}
                 checked={useOwnAccentColor}
                 onChange={setUseOwnAccentColor}
               />
               {useOwnAccentColor && (
-                <ColorField helpNotNeeded label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
+                <ColorField help={strings.help.orgAccentColor} label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
               )}
               <CheckboxField
                 help={strings.help.reportAccentColor}
@@ -3254,7 +3253,7 @@ export function OrgAdminPage() {
                 onChange={setUseOwnReportAccent}
               />
               {useOwnReportAccent && (
-                <ColorField helpNotNeeded label={strings.orgAdmin.reportAccentColor} value={reportAccentInput} onChange={setReportAccentInput} />
+                <ColorField help={strings.help.reportAccentColor} label={strings.orgAdmin.reportAccentColor} value={reportAccentInput} onChange={setReportAccentInput} />
               )}
               <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
                 <legend><strong>{strings.orgAdmin.reportColourScheme}</strong> <FieldHelp label={strings.orgAdmin.reportColourScheme} help={strings.help.reportColourScheme} /></legend>
@@ -3275,14 +3274,14 @@ export function OrgAdminPage() {
               <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
               <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
               <FormGrid minColumn="18rem">
-                <TextField helpNotNeeded
+                <TextField help={strings.help.orgEmailFooterCompanyName}
                   label={strings.orgAdmin.emailFooterCompanyName}
                   labelExtra={<OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />}
                   value={emailFooterCompanyNameInput}
                   onChange={setEmailFooterCompanyNameInput}
                   inputProps={{ id: "org-email-footer-company" }}
                 />
-                <TextField helpNotNeeded
+                <TextField help={strings.help.orgEmailFooterWebsite}
                   label={strings.orgAdmin.emailFooterWebsite}
                   labelExtra={<OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />}
                   value={emailFooterWebsiteInput}
@@ -3290,7 +3289,7 @@ export function OrgAdminPage() {
                   inputProps={{ id: "org-email-footer-website" }}
                 />
                 <FormGridFull>
-                  <TextAreaField helpNotNeeded
+                  <TextAreaField help={strings.help.orgEmailFooterAddress}
                     label={strings.orgAdmin.emailFooterAddress}
                     labelExtra={<OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />}
                     rows={3}
@@ -3400,11 +3399,10 @@ export function OrgAdminPage() {
           <div className="stack">
             {ssoConfig && (
               <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig}>
-                <TextField helpNotNeeded
+                <TextField help={strings.help.organizationSlug(orgLabel)}
                   label={strings.orgAdmin.slug}
                   value={slugInput}
                   onChange={setSlugInput}
-                  hint={strings.orgAdmin.slugHint(orgLabel).replace("{slug}", slugInput || "…")}
                 />
                 <CheckboxField help={strings.help.ssoEnable} label={strings.orgAdmin.ssoEnabled} checked={ssoEnabled} onChange={setSsoEnabled} />
                 <CheckboxField help={strings.help.ssoNativeFormHidden} label={strings.orgAdmin.ssoOnly} checked={ssoOnly} onChange={setSsoOnly} />
@@ -3416,11 +3414,10 @@ export function OrgAdminPage() {
                   onChange={setOidcClientSecret}
                   inputProps={{ type: "password" }}
                 />
-                <TextField helpNotNeeded
+                <TextField help={strings.help.ssoRequiredGroup}
                   label={strings.orgAdmin.oidcRequiredGroup}
                   value={oidcRequiredGroup}
                   onChange={setOidcRequiredGroup}
-                  hint={strings.orgAdmin.oidcRequiredGroupHint}
                 />
 
                 {/* SSO group → org-role mapping used to live here, as a
@@ -3449,7 +3446,7 @@ export function OrgAdminPage() {
                   </span>
                 </div>
                 {scimGeneratedToken && (
-                  <TextField helpNotNeeded
+                  <TextField help={strings.help.scimTokenLabel}
                     label={strings.orgAdmin.scimTokenLabel}
                     hint={strings.orgAdmin.scimTokenShownOnce}
                     value={scimGeneratedToken}
@@ -3478,7 +3475,7 @@ export function OrgAdminPage() {
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.smtpEmail" title={strings.orgAdmin.smtpEmailTitle}>
                 <FormGrid minColumn="14rem">
-                  <TextField helpNotNeeded
+                  <TextField help={strings.help.smtpHost}
                     label={strings.orgAdmin.smtpHost}
                     value={smtpHost}
                     onChange={(next) => {
@@ -3486,7 +3483,7 @@ export function OrgAdminPage() {
                       setSmtpHost(next);
                     }}
                   />
-                  <TextField helpNotNeeded
+                  <TextField help={strings.help.smtpPort}
                     label={strings.orgAdmin.smtpPort}
                     value={smtpPort}
                     onChange={(next) => {
@@ -3494,7 +3491,7 @@ export function OrgAdminPage() {
                       setSmtpPort(next);
                     }}
                   />
-                  <TextField helpNotNeeded
+                  <TextField help={strings.help.smtpUsername}
                     label={strings.orgAdmin.smtpUsername}
                     value={smtpUsername}
                     onChange={(next) => {
@@ -3502,7 +3499,7 @@ export function OrgAdminPage() {
                       setSmtpUsername(next);
                     }}
                   />
-                  <TextField helpNotNeeded
+                  <TextField help={strings.help.smtpPassword}
                     label={strings.orgAdmin.smtpPassword}
                     value={smtpPassword}
                     onChange={(next) => {
@@ -3512,7 +3509,7 @@ export function OrgAdminPage() {
                     inputProps={{ type: "password" }}
                   />
                   <FormGridFull>
-                    <CheckboxField helpNotNeeded
+                    <CheckboxField help={strings.help.smtpUseTls}
                       label={strings.orgAdmin.smtpUseTls}
                       checked={smtpUseTls}
                       onChange={(next) => {
@@ -3527,9 +3524,8 @@ export function OrgAdminPage() {
                   <strong>{strings.orgAdmin.testEmail}</strong>
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
                   <div className="row" style={{ alignItems: "flex-end" }}>
-                    <TextField helpNotNeeded
+                    <TextField help={strings.help.testEmailRecipient}
                       label={strings.orgAdmin.testEmailRecipient}
-                      hint={strings.orgAdmin.testEmailRecipientHint}
                       value={testEmailRecipient}
                       onChange={setTestEmailRecipient}
                       inputProps={{ type: "email" }}
@@ -3568,31 +3564,29 @@ export function OrgAdminPage() {
           <div className="stack">
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.security" title={strings.orgAdmin.securityTitle}>
-                <ToggleField helpNotNeeded
+                <ToggleField help={strings.help.requireTwoFactor(orgLabel)}
                   label={strings.orgAdmin.require2fa}
                   checked={require2fa}
                   onChange={(next) => {
                     advancedDirtyRef.current = true;
                     setRequire2fa(next);
                   }}
-                  hint={strings.orgAdmin.require2faHint(orgLabel)}
                 />
 
-                <ToggleField helpNotNeeded
+                <ToggleField help={strings.help.allowSelfSignup(orgLabel)}
                   label={strings.orgAdmin.allowSelfSignup}
                   checked={allowSelfSignup}
                   onChange={(next) => {
                     advancedDirtyRef.current = true;
                     setAllowSelfSignup(next);
                   }}
-                  hint={strings.orgAdmin.allowSelfSignupHint(orgLabel)}
                 />
 
                 {selfSignupConflict && (
                   <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
                 )}
 
-                <TextField helpNotNeeded
+                <TextField help={strings.help.acceptedEmailDomain}
                   label={strings.orgAdmin.autoAcceptEmailDomain}
                   value={autoAcceptEmailDomain}
                   onChange={(next) => {
@@ -3600,7 +3594,6 @@ export function OrgAdminPage() {
                     setAutoAcceptEmailDomain(next);
                   }}
                   placeholder="acme.com"
-                  hint={strings.orgAdmin.autoAcceptEmailDomainHint}
                 />
 
                 <LabeledSelect help={strings.help.externalUserPolicy}
@@ -3614,28 +3607,26 @@ export function OrgAdminPage() {
                   placeholder={null}
                 />
 
-                <ToggleField helpNotNeeded
+                <ToggleField help={strings.help.allowRelaxedChildProjectCreation}
                   label={strings.orgAdmin.allowRelaxedChildProjectCreation}
                   checked={allowRelaxedChildProjectCreation}
                   onChange={(next) => {
                     advancedDirtyRef.current = true;
                     setAllowRelaxedChildProjectCreation(next);
                   }}
-                  hint={strings.orgAdmin.allowRelaxedChildProjectCreationHint}
                 />
 
-                <ToggleField helpNotNeeded
+                <ToggleField help={strings.help.forceChangeRequestForLinks}
                   label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
                   checked={forceRequireCrForLinks}
                   onChange={(next) => {
                     advancedDirtyRef.current = true;
                     setForceRequireCrForLinks(next);
                   }}
-                  hint={strings.orgAdmin.forceRequireChangeRequestForApprovedLinksHint}
                 />
 
                 {/* AI approval via MCP (docs/decisions.md) */}
-                <ToggleField helpNotNeeded
+                <ToggleField help={strings.help.orgAllowAiApprovals}
                   label={strings.orgAdmin.allowAiApprovals}
                   checked={allowAiApprovals}
                   onChange={(next) => {
@@ -3647,7 +3638,6 @@ export function OrgAdminPage() {
                       setAllowAiApprovals(false);
                     }
                   }}
-                  hint={strings.orgAdmin.allowAiApprovalsHint}
                 />
 
                 {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
@@ -3684,7 +3674,7 @@ export function OrgAdminPage() {
                     Security-card button above, on this same "Security"
                     group/page, since it's one field on the same
                     OrgAdvancedSettings object. */}
-                <TextField helpNotNeeded
+                <TextField help={strings.help.patMaxLifetime}
                   label={strings.orgAdmin.patMaxLifetime}
                   value={patMaxLifetimeDays}
                   onChange={(next) => {
@@ -3917,7 +3907,7 @@ export function OrgAdminPage() {
                       <FormGrid minColumn="18rem">
                         {!editingCustomRoleId && customRolePresets.length > 0 && (
                           <FormGridFull>
-                            <LabeledSelect helpNotNeeded
+                            <LabeledSelect help={strings.help.customRolePreset}
                               label={strings.orgAdmin.customRolePreset}
                               value=""
                               onChange={applyCustomRolePreset}

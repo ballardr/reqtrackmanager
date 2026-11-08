@@ -21,6 +21,7 @@ import { SidePanel } from "../../components/SidePanel";
 import { DECISION_STATUS_LABEL, DECISION_STATUS_TONE } from "./types";
 import type { Decision, DecisionTypeDefinition } from "./types";
 import { Badge } from "../../components/Badge";
+import { DECISIONS_HELP } from "./help";
 
 export function DecisionQuickViewPanel({
   projectId,
@@ -44,8 +45,8 @@ export function DecisionQuickViewPanel({
         <h2 style={{ margin: 0 }}>{decision.title}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{decisionType?.name ?? "—"}</p>
         <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{decision.decision_statement}</p>
-        <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
-        <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+        <RecordFieldGroup help={DECISIONS_HELP.decisionOwner} label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+        <RecordFieldGroup help={DECISIONS_HELP.decisionMaker} label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
         <Link
           to={`/projects/${projectId}/modules/decisions/${decision.id}`}
           className="btn btn-primary"

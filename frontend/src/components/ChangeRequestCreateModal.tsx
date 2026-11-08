@@ -420,7 +420,7 @@ export function ChangeRequestCreateModal({
         </>
       ) : (
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded required
+          <LabeledSelect help={strings.help.proposedRequirementComponent} required
             label={strings.requirements.component}
             value={componentId}
             onChange={(nextComponentId) => {
@@ -430,7 +430,7 @@ export function ChangeRequestCreateModal({
             options={components.map((c) => ({ value: c.id, label: c.name }))}
             placeholder={null}
           />
-          <LabeledSelect helpNotNeeded required
+          <LabeledSelect help={strings.help.proposedRequirementCategory} required
             label={strings.requirements.category}
             value={categoryId}
             onChange={setCategoryId}
@@ -438,14 +438,14 @@ export function ChangeRequestCreateModal({
             placeholder={null}
           />
           <FormGridFull>
-            <TextField helpNotNeeded required
+            <TextField help={strings.help.proposedRequirementName} required
               label={strings.changeRequests.proposedName}
               value={proposed.name}
               onChange={(next) => setProposed((p) => ({ ...p, name: next }))}
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded
+            <TextAreaField help={strings.help.proposedRequirementReasoning}
               label={strings.changeRequests.proposedReasoning}
               value={proposed.reasoning}
               onChange={(next) => setProposed((p) => ({ ...p, reasoning: next }))}

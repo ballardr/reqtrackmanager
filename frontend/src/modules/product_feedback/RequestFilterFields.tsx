@@ -11,6 +11,7 @@ import { isDerivedAxis } from "./requestLevels";
 import { ANY_CRITERION, type RequestListFilters, type StatusChoice } from "./requestListState";
 import { REQUEST_STATUS_LABEL } from "./types";
 import type { EnhancementRequest, RequestStatus } from "./types";
+import { useStrings } from "../../context/TerminologyContext";
 
 const STATUSES = Object.keys(REQUEST_STATUS_LABEL) as RequestStatus[];
 
@@ -23,11 +24,12 @@ const STATUSES = Object.keys(REQUEST_STATUS_LABEL) as RequestStatus[];
 export function RequestFilterFields({
   filters, scheme, requests,
 }: { filters: RequestListFilters; scheme: ScoringScheme | null; requests: EnhancementRequest[] }) {
+  const strings = useStrings();
   const unscoredCount = requests.filter((r) => filters.matches(r, "scored") && filters.isUnscored(r)).length;
   const manualAxes = (scheme?.axes ?? []).filter((a) => !isDerivedAxis(a));
   return (
     <>
-      <FilterField label="Status" help={PRODUCT_FEEDBACK_HELP.requestStatusFilter}>
+      <FilterField label={strings.filters.status} help={PRODUCT_FEEDBACK_HELP.requestStatusFilter}>
         <select className="input" aria-label="Status" value={filters.statusChoice} onChange={(e) => filters.setStatusChoice(e.target.value as StatusChoice)}>
           <option value="open">Open statuses</option>
           <option value="all">All statuses</option>
@@ -36,7 +38,7 @@ export function RequestFilterFields({
       </FilterField>
       {scheme && (
         <>
-          <FilterField label="Scoring">
+          <FilterField label={strings.filters.scoring}>
             <select
               className="input" value={filters.scored}
               onChange={(e) => filters.setScored(e.target.value as "" | "unscored" | "scored")}

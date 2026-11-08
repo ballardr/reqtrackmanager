@@ -481,7 +481,7 @@ export function PreferencesPage() {
             disabled={user?.display_name_locked}
             hint={user?.display_name_locked ? strings.preferences.displayNameLocked(orgLabel) : undefined}
           />
-          <TextField helpNotNeeded label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
+          <TextField help={strings.help.pronouns} label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
           <LabeledSelect helpNotNeeded
             label={strings.preferences.theme}
             value={theme}
@@ -489,7 +489,7 @@ export function PreferencesPage() {
             options={[{ value: "light", label: strings.preferences.light }, { value: "dark", label: strings.preferences.dark }, { value: "system", label: strings.preferences.system }]}
             placeholder={null}
           />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.contentWidth}
             label={strings.preferences.contentWidth}
             value={contentBoxed ? "boxed" : "full"}
             onChange={(next) => setContentBoxed(next === "boxed")}
@@ -497,22 +497,20 @@ export function PreferencesPage() {
             placeholder={null}
           />
           <FormGridFull>
-            <CheckboxField helpNotNeeded
+            <CheckboxField help={strings.help.showProjectCode}
               label={strings.preferences.showProjectCode}
               checked={showProjectCode}
               onChange={setShowProjectCode}
-              hint={strings.preferences.showProjectCodeHint}
             />
           </FormGridFull>
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.defaultProjectScope}
             label={strings.preferences.defaultProjectScope}
             value={defaultProjectScope}
             onChange={setDefaultProjectScope}
             options={PROJECT_SCOPES.map((scope) => ({ value: scope, label: strings.projectScope.options[scope] }))}
             placeholder={null}
-            hint={strings.preferences.defaultProjectScopeHint}
           />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.landingPage}
             label={strings.preferences.landing}
             value={landingMode}
             onChange={(next) => setLandingMode(next as LandingMode)}
@@ -528,7 +526,7 @@ export function PreferencesPage() {
               placeholder={null}
             />
           )}
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.emailDigest}
             label={strings.preferences.emailDigest}
             value={digestMode}
             onChange={(next) => setDigestMode(next as DigestMode)}
@@ -770,7 +768,7 @@ export function PreferencesPage() {
                   value={newPatName}
                   onChange={setNewPatName}
                 />
-                <DateField helpNotNeeded
+                <DateField help={strings.help.tokenExpiry}
                   label={strings.preferences.patExpiry}
                   value={newPatExpiry}
                   onChange={(next) => {

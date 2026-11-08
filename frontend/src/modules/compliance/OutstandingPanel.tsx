@@ -55,6 +55,7 @@ import {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
 
 export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -266,7 +267,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
       </div>
 
       <FilterPanel sectionKey="projectCompliance.outstanding">
-        <FilterField label="Standard">
+        <FilterField label={COMPLIANCE_FILTER_LABEL.standard}>
           <select
             className="input"
             value={standardFilter}
@@ -282,7 +283,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
             ))}
           </select>
         </FilterField>
-        <FilterField label="Standard version">
+        <FilterField label={COMPLIANCE_FILTER_LABEL.standardVersion}>
           <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)} disabled={!standardFilter}>
             <option value="">All versions</option>
             {versions.map((v) => (
@@ -291,7 +292,7 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
           </select>
         </FilterField>
         {standardFilter && (
-          <FilterField label="Sub-section">
+          <FilterField label={COMPLIANCE_FILTER_LABEL.subSection}>
             <select className="input" value={subSectionFilter} onChange={(e) => setSubSectionFilter(e.target.value)}>
               <option value="">All sub-sections</option>
               {subSections.map((s) => (

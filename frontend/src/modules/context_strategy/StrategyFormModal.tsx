@@ -23,6 +23,7 @@ import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { STRATEGY_PRIORITY_LABEL, STRATEGY_TIME_HORIZON_LABEL } from "./types";
 import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyTimeHorizon } from "./types";
+import { CONTEXT_STRATEGY_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof StrategyFieldValues; label: string; rows: number }[] = [
   { key: "objective", label: "Objective / strategic theme", rows: 2 },
@@ -91,13 +92,13 @@ export function StrategyFormModal({
               />
             </FormGridFull>
           ))}
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={CONTEXT_STRATEGY_HELP.priority}
             label="Priority"
             value={priority}
             onChange={(v) => setPriority(v as StrategyPriority)}
             options={Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={CONTEXT_STRATEGY_HELP.strategyTimeHorizon}
             label="Time horizon"
             value={timeHorizon}
             onChange={(v) => setTimeHorizon(v as StrategyTimeHorizon)}

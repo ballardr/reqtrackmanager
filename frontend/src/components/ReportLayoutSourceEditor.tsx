@@ -106,7 +106,7 @@ export function ReportLayoutSourceEditor({
       )}
       {mode === "linked" && (
         <>
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.reportLinkedFrom}
             label={text.linkedFrom} value={String(value.linked_from ?? "")} placeholder={text.choose} disabled={disabled} required
             options={recordNames.map(nameOption)} onChange={(name) => change({ linked_from: name })}
             hint={recordNames.length === 0 ? text.noNamesInScope : undefined}
@@ -115,7 +115,7 @@ export function ReportLayoutSourceEditor({
             label={text.linkTypes} value={linkTypes} disabled={disabled} hint={text.linkTypesHint}
             onChange={(next) => change({ link_types: next })}
           />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.reportLinkDirection}
             label={text.direction} value={String(value.direction ?? "both")} placeholder={null} disabled={disabled}
             options={Object.entries(text.directionLabels).map(([v, label]) => ({ value: v, label }))}
             onChange={(d) => change({ direction: d === "both" ? undefined : d })}
@@ -123,7 +123,7 @@ export function ReportLayoutSourceEditor({
         </>
       )}
       {mode === "group" && (
-        <LabeledSelect helpNotNeeded
+        <LabeledSelect help={strings.help.reportGroupSource}
           label={text.group} value={String(value.group ?? "")} placeholder={text.choose} disabled={disabled} required
           options={groupNames.map(nameOption)}
           onChange={(name) => change({ group: name, where: undefined, sort: undefined })}
@@ -131,7 +131,7 @@ export function ReportLayoutSourceEditor({
         />
       )}
       {mode !== "group" && (
-        <CheckboxField helpNotNeeded
+        <CheckboxField help={strings.help.reportIncludeArchived}
           label={text.includeArchived} checked={value.include_archived === true} disabled={disabled}
           onChange={(on) => change({ include_archived: on ? true : undefined })}
         />

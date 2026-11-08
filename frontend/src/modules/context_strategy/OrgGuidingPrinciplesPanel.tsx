@@ -37,8 +37,10 @@ import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePri
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { filterString } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
+  const strings = useStrings();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [guidingPrinciples, setGuidingPrinciples] = useState<GuidingPrinciple[] | null>(null);
@@ -107,7 +109,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
           sectionKey="context_strategy.orgGuidingPrinciples.list" total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search Guiding Principles…" searchAriaLabel="Search organisation Guiding Principles"
         >
-          <FilterField label="Status">
+          <FilterField label={strings.filters.status}>
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as GuidingPrincipleStatus | "")}>
               <option value="">All statuses</option>
               {Object.entries(GUIDING_PRINCIPLE_STATUS_LABEL).map(([value, label]) => (
@@ -115,7 +117,7 @@ export function OrgGuidingPrinciplesPanel({ orgId }: { orgId: string }) {
               ))}
             </select>
           </FilterField>
-          <FilterField label="Priority">
+          <FilterField label={strings.filters.priority}>
             <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as GuidingPrinciplePriority | "")}>
               <option value="">All priorities</option>
               {Object.entries(GUIDING_PRINCIPLE_PRIORITY_LABEL).map(([value, label]) => (

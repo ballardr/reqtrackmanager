@@ -261,7 +261,7 @@ export const CreateProjectAsksForCodeUnderManualAssignment: Story = {
   },
 };
 
-/** Under automatic assignment there is no code field, only a note, and no code is sent. */
+/** Under automatic assignment there is no code field, only help on Name, and no code is sent. */
 export const CreateProjectHasNoCodeFieldUnderAutomaticAssignment: Story = {
   beforeEach: () => {
     mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
@@ -273,7 +273,8 @@ export const CreateProjectHasNoCodeFieldUnderAutomaticAssignment: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
     await expect(within(dialog).queryByLabelText("Code")).not.toBeInTheDocument();
-    await expect(within(dialog).getByText(/assigned automatically from the name/)).toBeInTheDocument();
+    await userEvent.hover(within(dialog).getByRole("button", { name: "Help: Name" }));
+    await expect(within(document.body).getByText(/assigned automatically from the name/)).toBeInTheDocument();
     await userEvent.type(within(dialog).getByLabelText("Name"), "Rail Upgrade");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ code: null })));

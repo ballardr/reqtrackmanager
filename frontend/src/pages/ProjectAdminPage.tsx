@@ -43,6 +43,7 @@ import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Tooltip } from "../components/Tooltip";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
@@ -1502,6 +1503,17 @@ export function ProjectAdminPage() {
   // An earlier or partial module address (`/admin/<section>`, `/admin/<group>`) is replaced by the current one.
   if (moduleRoute.redirectTo) return <Navigate to={moduleRoute.redirectTo} replace />;
 
+  // Unavailable until this project has opted in to being a parent; its explanation is a tooltip on the button.
+  const addSubProjectButton = (
+    <button
+      className="btn"
+      disabled={!project.can_be_parent}
+      onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
+    >
+      <Plus /> {strings.projects.addSubProject}
+    </button>
+  );
+
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -1524,14 +1536,7 @@ export function ProjectAdminPage() {
             saved server value, not the settings tab's own possibly-
             unsaved checkbox edit, since a click here leads straight to a
             create flow the backend would otherwise reject. */}
-        <button
-          className="btn"
-          disabled={!project.can_be_parent}
-          title={project.can_be_parent ? undefined : strings.admin.canBeParentHint}
-          onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
-        >
-          <Plus /> {strings.projects.addSubProject}
-        </button>
+        {project.can_be_parent ? addSubProjectButton : <Tooltip label={strings.help.canBeParent} wrap>{addSubProjectButton}</Tooltip>}
       </div>
 
       <ResourceMenu ariaLabel={strings.admin.sectionsNav} groups={projectAdminGroups} active={activeGroup}>
@@ -1599,7 +1604,7 @@ export function ProjectAdminPage() {
             once the org's own force is active and this project isn't
             exempt — see `exemptFromOrgLinkLock` below for the escape
             hatch. */}
-        <CheckboxField helpNotNeeded
+        <CheckboxField help={strings.help.requireChangeRequestForApprovedLinks}
           label={strings.admin.requireChangeRequestForApprovedLinks}
           checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
           onChange={(next) => {
@@ -1609,21 +1614,20 @@ export function ProjectAdminPage() {
           disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
           title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
         />
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
-          {orgForceLinksLocked && !exemptFromOrgLinkLock
-            ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg
-            : strings.admin.requireChangeRequestForApprovedLinksHint}
-        </p>
+        {orgForceLinksLocked && !exemptFromOrgLinkLock && (
+          <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+            {strings.admin.requireChangeRequestForApprovedLinksForcedByOrg}
+          </p>
+        )}
         {orgForceLinksLocked && (
           <>
-            <CheckboxField helpNotNeeded
+            <CheckboxField help={strings.help.exemptFromOrgLinkLock}
               label={strings.admin.exemptFromOrgLinkLock}
               checked={exemptFromOrgLinkLock}
               onChange={(next) => {
                 settingsDirtyRef.current = true;
                 setExemptFromOrgLinkLock(next);
               }}
-              hint={strings.admin.exemptFromOrgLinkLockHint}
             />
           </>
         )}
@@ -1632,7 +1636,7 @@ export function ProjectAdminPage() {
             rather than this page's own plain-checkbox convention above; a
             deliberate choice per the UX style guide's component-reuse
             principle, not an oversight. */}
-        <ToggleField helpNotNeeded
+        <ToggleField help={strings.help.projectAllowAiApprovals}
           label={strings.admin.allowAiApprovals}
           checked={allowAiApprovals}
           onChange={(next) => {
@@ -1644,7 +1648,6 @@ export function ProjectAdminPage() {
               setAllowAiApprovals(false);
             }
           }}
-          hint={strings.admin.allowAiApprovalsHint}
         />
         <CheckboxField help={strings.help.projectUsableAsTemplate}
           label={strings.admin.isTemplate}
@@ -1655,7 +1658,7 @@ export function ProjectAdminPage() {
           }}
         />
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.projectVisibility(orgLabel)}
             label={strings.admin.visibility}
             value={visibility}
             onChange={(next) => {
@@ -1664,9 +1667,8 @@ export function ProjectAdminPage() {
             }}
             options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
             placeholder={null}
-            hint={strings.admin.visibilityHint(orgLabel)}
           />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.projectStatus}
             label={strings.admin.projectStatus}
             value={statusId}
             onChange={(next) => {
@@ -1683,14 +1685,13 @@ export function ProjectAdminPage() {
             have) a parent of its own — it's the opt-in mechanism other
             projects' managers need before this project appears in *their*
             "Parent project" picker at all. */}
-        <CheckboxField helpNotNeeded
+        <CheckboxField help={strings.help.canBeParent}
           label={strings.admin.canBeParent}
           checked={canBeParent}
           onChange={(next) => {
             settingsDirtyRef.current = true;
             setCanBeParent(next);
           }}
-          hint={strings.admin.canBeParentHint}
         />
         {/* The current parent's name is always shown plainly here (unlike
             ProjectListPage's list/tile "Child of:" label, which redacts a
@@ -1704,7 +1705,7 @@ export function ProjectAdminPage() {
         {showParentField && (
           <>
             <FormGrid minColumn="18rem">
-              <LabeledSelect helpNotNeeded
+              <LabeledSelect help={strings.help.projectParent}
                 label={strings.projects.parentProject}
                 value={parentProjectId}
                 onChange={(next) => {
@@ -1798,9 +1799,11 @@ export function ProjectAdminPage() {
             <button className="btn btn-primary" onClick={saveSettings}>
               {strings.admin.saveSettings}
             </button>
-            <button className="btn" onClick={exportProject} disabled={exporting} title={strings.admin.exportProjectHint(orgLabel)}>
-              <Download /> {exporting ? "Exporting…" : strings.admin.exportProject}
-            </button>
+            <Tooltip label={strings.admin.exportProjectHint(orgLabel)} wrap>
+              <button className="btn" onClick={exportProject} disabled={exporting}>
+                <Download /> {exporting ? "Exporting…" : strings.admin.exportProject}
+              </button>
+            </Tooltip>
           </div>
           <button className="btn btn-danger" onClick={toggleArchive}>
             {project.is_archived ? strings.admin.unarchiveProject : strings.admin.archiveProject}
@@ -2174,7 +2177,7 @@ export function ProjectAdminPage() {
           </div>
         ))}
         <div className="row" style={{ alignItems: "flex-end" }}>
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.customFieldAppliesTo}
             label={strings.admin.fieldAppliesTo}
             value={newFieldKind}
             onChange={(next) => setNewFieldKind(next as CustomFieldEntityKind)}
@@ -2185,7 +2188,7 @@ export function ProjectAdminPage() {
             placeholder={null}
           />
           <TextField helpNotNeeded label={strings.admin.fieldName} placeholder={strings.admin.fieldName} value={newFieldName} onChange={setNewFieldName} />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.customFieldType}
             label={strings.admin.fieldTypeLabel}
             value={newFieldType}
             onChange={(next) => setNewFieldType(next as CustomFieldType)}
@@ -2198,14 +2201,14 @@ export function ProjectAdminPage() {
             placeholder={null}
           />
           {newFieldType === "list" && (
-            <TextField helpNotNeeded
+            <TextField help={strings.help.customFieldOptions}
               label={strings.admin.optionsCommaSeparated}
               placeholder={strings.admin.optionsCommaSeparated}
               value={newFieldOptions}
               onChange={setNewFieldOptions}
             />
           )}
-          <CheckboxField helpNotNeeded label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
+          <CheckboxField help={strings.help.customFieldRequired} label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
             <Plus /> {strings.admin.newCustomField}
           </button>
@@ -2830,7 +2833,7 @@ export function ProjectAdminPage() {
         <ConfirmDialog
           title={strings.admin.completeStage}
           message={
-            <CheckboxField helpNotNeeded
+            <CheckboxField help={strings.help.cascadeToRequirementsStage}
               label={strings.admin.cascadeToRequirements}
               checked={cascadeInputs[closingStage.stage.id] ?? false}
               onChange={(next) => setCascadeInputs((c) => ({ ...c, [closingStage.stage.id]: next }))}

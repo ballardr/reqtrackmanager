@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
+import { Tooltip } from "../components/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -368,19 +369,25 @@ export function RequirementsPage() {
     return (
       <>
         {r.comment_count > 0 && (
-          <span className="row" title={`${r.comment_count} comment(s)`} style={{ gap: "0.2rem" }}>
-            <MessageSquare size={14} /> {r.comment_count}
-          </span>
+          <Tooltip label={strings.requirements.commentCountLabel(r.comment_count)}>
+            <span className="row" role="img" aria-label={strings.requirements.commentCountLabel(r.comment_count)} style={{ gap: "0.2rem" }}>
+              <MessageSquare size={14} /> {r.comment_count}
+            </span>
+          </Tooltip>
         )}
         {r.has_open_change_request && (
-          <span title="Has a pending change request">
-            <GitPullRequest size={14} />
-          </span>
+          <Tooltip label={strings.requirements.hasPendingChangeRequest}>
+            <span role="img" aria-label={strings.requirements.hasPendingChangeRequest}>
+              <GitPullRequest size={14} />
+            </span>
+          </Tooltip>
         )}
         {r.requires_approval && (
-          <span title="Requires approval">
-            <TriangleAlert size={14} />
-          </span>
+          <Tooltip label={strings.requirements.requiresApprovalBadge}>
+            <span role="img" aria-label={strings.requirements.requiresApprovalBadge}>
+              <TriangleAlert size={14} />
+            </span>
+          </Tooltip>
         )}
       </>
     );
@@ -407,7 +414,7 @@ export function RequirementsPage() {
             onSearchChange={setSearch}
             searchPlaceholder={strings.requirements.search}
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
                 <option value="">All statuses</option>
                 {STATUS_OPTIONS.map((s) => (

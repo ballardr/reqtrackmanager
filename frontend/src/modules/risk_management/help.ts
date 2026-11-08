@@ -12,4 +12,7 @@ export const RISK_HELP = {
   riskResidual: "The rating that remains once the effective treatments are taken into account.",
   riskTreatmentSummary: "Whether at least one effective treatment is recorded against this risk.",
   riskTreatmentStrategy: "How the risk will be handled: mitigate reduces it, transfer shifts it to another party, avoid removes its cause, accept lives with it.",
+  riskType: "The category of risk, chosen from the types defined for the project. It groups risks in lists and reports.",
+  riskOwner: "The person or group accountable for managing this risk.",
+  riskNextReview: "The date the risk is next due for review. Reviewers are reminded as it approaches.",
 } as const;

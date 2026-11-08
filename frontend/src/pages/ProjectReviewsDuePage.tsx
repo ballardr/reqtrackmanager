@@ -69,7 +69,7 @@ export function ProjectReviewsDuePage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Reviewer">
+            <FilterField label={strings.filters.reviewer}>
               <select className="input" value={reviewerKey} onChange={(e) => setReviewerKey(e.target.value)}>
                 <option value="">{strings.reviews.allReviewers}</option>
                 {reviewers.map(([key, name]) => (

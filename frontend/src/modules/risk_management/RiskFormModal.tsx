@@ -125,14 +125,14 @@ export function RiskFormModal({
           {textField("cause", "Cause")}
           {textField("risk_event", "Risk event")}
           {textField("consequence", "Consequence")}
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={RISK_HELP.riskType}
             label="Risk type"
             value={values.risk_type_id ?? ""}
             onChange={(next) => set("risk_type_id", next || null)}
             options={riskTypes.map((t) => ({ value: t.id, label: t.name }))}
             placeholder="No type"
           />
-          <PrincipalFormField helpNotNeeded
+          <PrincipalFormField help={RISK_HELP.riskOwner}
             label="Owner"
             orgUsers={orgUsers}
             organizationId={organizationId}
@@ -154,7 +154,7 @@ export function RiskFormModal({
             placeholder="Not decided"
             disabled={locked}
           />
-          <DateField helpNotNeeded
+          <DateField help={RISK_HELP.riskNextReview}
             label="Next review date" ariaLabel="Next review date"
             value={values.review_date ?? ""} onChange={(value) => set("review_date", value || null)}
           />

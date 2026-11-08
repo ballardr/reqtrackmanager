@@ -12,6 +12,7 @@ import { useMemo, type ReactNode } from "react";
 import { FilterField } from "../../components/FilterPanel";
 import { buildGroupTree, flattenGroupTree } from "./groupTree";
 import type { StakeholderGroup } from "./types";
+import { useStrings } from "../../context/TerminologyContext";
 
 /**
  * @param props.groups Every group in view, flat; renders nothing when empty.
@@ -34,11 +35,12 @@ export function StakeholderGroupFilterFields({
   onGroupByChange: (next: string) => void;
   afterGroup?: ReactNode;
 }) {
+  const strings = useStrings();
   const options = useMemo(() => flattenGroupTree(buildGroupTree(groups)), [groups]);
   if (groups.length === 0) return null;
   return (
     <>
-      <FilterField label="Group">
+      <FilterField label={strings.filters.group}>
         <select className="input" aria-label="Group" value={groupId} onChange={(e) => onGroupIdChange(e.target.value)}>
           <option value="">All groups</option>
           {options.map(({ group, depth }) => (
@@ -47,7 +49,7 @@ export function StakeholderGroupFilterFields({
         </select>
       </FilterField>
       {afterGroup}
-      <FilterField label="Group by">
+      <FilterField label={strings.filters.groupBy}>
         <select className="input" aria-label="Group by" value={groupBy} onChange={(e) => onGroupByChange(e.target.value)}>
           <option value="">No grouping</option>
           {options.filter(({ depth }) => depth === 0).map(({ group }) => (

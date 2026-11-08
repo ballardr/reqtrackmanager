@@ -47,6 +47,7 @@ import { Badge } from "./Badge";
 import { LabeledSelect } from "./LabeledSelect";
 import { ReportVariablesForm } from "./ReportVariablesForm";
 import { Spinner } from "./Spinner";
+import { Tooltip } from "./Tooltip";
 
 const PREVIEW_DELAY_MS = 300;
 
@@ -225,7 +226,7 @@ export function ReportPackRunner({
                       {entry.reason && <span className="text-muted" style={{ fontSize: "0.85rem" }}>{entry.reason}</span>}
                     </span>
                   </td>
-                  <td title={reportFormatTitle(entry.format)}>{reportFormatLabel(entry.format)}</td>
+                  <td><Tooltip label={reportFormatTitle(entry.format) ?? reportFormatLabel(entry.format)}>{reportFormatLabel(entry.format)}</Tooltip></td>
                   <td><Badge tone={entry.status === "included" ? "accent" : "warning"}>{PACK_ENTRY_STATUS_LABEL[entry.status]}</Badge></td>
                   <td>{entry.status === "included" ? entry.records : ""}</td>
                 </tr>

@@ -80,6 +80,7 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
@@ -88,6 +89,7 @@ const SCORED_FILTERS = ["yes", "no"] as const;
 const SORT_KEYS = ["score"] as const;
 
 export function ProjectPainPointsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -298,7 +300,7 @@ export function ProjectPainPointsPage() {
             sectionKey="context_strategy.pain_points.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Pain Points…" searchAriaLabel="Search Pain Points"
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PainPointStatus | "")}>
                 <option value="">All statuses</option>
                 {Object.entries(PAIN_POINT_STATUS_LABEL).map(([value, label]) => (
@@ -306,7 +308,7 @@ export function ProjectPainPointsPage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Priority">
+            <FilterField label={strings.filters.priority}>
               <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as PainPointPriority | "")}>
                 <option value="">All priorities</option>
                 {Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => (
@@ -314,7 +316,7 @@ export function ProjectPainPointsPage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Scoring">
+            <FilterField label={strings.filters.scoring}>
               <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
                 <option value="">Any scoring</option>
                 <option value="yes">Scored</option>

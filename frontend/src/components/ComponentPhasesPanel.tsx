@@ -178,7 +178,7 @@ export function ComponentPhasesPanel({
       {closing && (
         <ConfirmDialog
           title={strings.componentPhases.completeStage}
-          message={<CheckboxField helpNotNeeded label={strings.componentPhases.cascadeToRequirements} checked={cascade} onChange={setCascade} />}
+          message={<CheckboxField help={strings.help.cascadeToRequirementsComponent} label={strings.componentPhases.cascadeToRequirements} checked={cascade} onChange={setCascade} />}
           confirmLabel={closing.phaseName}
           onConfirm={() => {
             const { track, phaseId } = closing;

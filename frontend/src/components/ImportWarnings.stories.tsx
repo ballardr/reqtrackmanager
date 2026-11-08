@@ -32,7 +32,9 @@ export const BareList: Story = {
 export const NoWarnings: Story = {
   args: { warnings: [], title: "Imported with warnings" },
   play: async ({ canvasElement }) => {
-    await expect(canvasElement).toBeEmptyDOMElement();
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("status")).toBeNull();
+    await expect(canvas.queryByRole("listitem")).toBeNull();
   },
 };
 

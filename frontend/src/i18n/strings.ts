@@ -220,7 +220,6 @@ const en = {
     codeHint: (rule: string) => `Qualifies record codes, for example ${"ACME"}-REQ-001. ${rule}.`,
     codeEditHint: (rule: string) => `${rule}. Changing it breaks references that quote the old code.`,
     codeFixedHint: "Assigned automatically; your organisation administrator can change how codes are assigned.",
-    codeAutomatic: "The code is assigned automatically from the name.",
     summary: "Summary",
     stage: "Current {stage}",
     roles: "Your roles",
@@ -398,6 +397,9 @@ const en = {
     bulkSelectedCount: (n: number) => `${n} selected`,
     bulkClearSelection: "Clear selection",
     bulkArchiveSelected: "Archive selected",
+    commentCountLabel: (n: number) => `${n} ${n === 1 ? "comment" : "comments"}`,
+    hasPendingChangeRequest: "Has a pending change request",
+    requiresApprovalBadge: "Requires approval",
     bulkArchiveTitle: (n: number) => `Archive ${n} {requirements}?`,
     bulkArchiveConfirm: "They move out of the active list, but their history and links are kept.",
     bulkMoveToStage: "Move to stage",
@@ -537,21 +539,15 @@ const en = {
     // Forced hint below explaining why, rather than silently ignoring the
     // {project}'s own (irrelevant, in that case) stored value.
     requireChangeRequestForApprovedLinks: "Require a change request to add/remove links on approved {requirements}",
-    requireChangeRequestForApprovedLinksHint:
-      "Once a {requirement} is approved, adding or removing a traceability link requires a change request instead of the direct action. Off by default — turn on for {projects} where links themselves need review once a {requirement} is locked.",
     requireChangeRequestForApprovedLinksForcedByOrg:
       "Required by this organisation's policy — see the Advanced settings of organisation administration. Mark this {project} exempt below to opt it out.",
     exemptFromOrgLinkLock: "Exempt this {project} from the organisation's change-request-for-links policy",
-    exemptFromOrgLinkLockHint:
-      "This organisation requires every {project} to gate link changes on an approved {requirement} behind a change request. Checking this opts this {project} out, falling back to its own setting above.",
     // AI approval via MCP (docs/decisions.md). Both this AND the
     // organisation's own toggle (Advanced settings of organisation administration) must be on
     // for an AI assistant acting through the MCP server to approve,
     // decide, or complete anything in this {project} — see
     // orgAdmin.allowAiApprovals's own comment for the org-level half.
     allowAiApprovals: "Allow AI approval via MCP for this {project}",
-    allowAiApprovalsHint:
-      "Also requires AI approval to be enabled for this {project}'s organisation (Advanced settings of organisation administration). Off by default.",
     allowAiApprovalsAckTitle: "Allow AI approval for this {project}?",
     allowAiApprovalsAckBody:
       "Approvals made by an AI assistant through the MCP server are not necessarily a deliberate, in-the-moment decision by a human reviewer, and may weaken the accountability this approval workflow is meant to represent.",
@@ -562,12 +558,9 @@ const en = {
     // other {projects}' managers can only select this one as a parent once
     // this is enabled.
     canBeParent: "Allow this {project} to be a parent",
-    canBeParentHint: "Other {projects} can only be nested under this one once this is enabled.",
     visibility: "Visibility",
     visibilityOnlySpecified: "Only specified",
     visibilityOrgWide: "Organisation-wide visibility",
-    visibilityHint: (org: string) =>
-      `"Organisation-wide visibility" gives every ${org} member automatic view access to this {project}, without an explicit assignment — manager/administrator/stakeholder roles still require one.`,
     projectStatus: "Status",
     saveSettings: "Save settings",
     // Hierarchical projects (docs/decisions.md).
@@ -952,11 +945,8 @@ const en = {
     accentColor: "Default accent colour",
     logo: "Default logo",
     headerTitle: "Default header title",
-    headerTitleHint: "Leave blank to use the built-in product name.",
     orgLabelSingular: "Organisation label (singular)",
-    orgLabelSingularHint: "Deployment-wide word used in place of \"organisation\" throughout the UI, e.g. \"Tenant\". Leave blank to use \"organisation\".",
     orgLabelPlural: "Organisation label (plural)",
-    orgLabelPluralHint: "e.g. \"Tenants\". Leave blank to use \"Organisations\".",
     save: "Save platform branding",
     saved: "Saved.",
     logoUploaded: "Logo uploaded.",
@@ -965,7 +955,6 @@ const en = {
     emailFooterTitle: "Outgoing email footer",
     emailFooterHint: (org: string) => `Shown in the footer of every outgoing email, and as the fallback for any ${org} that has not set its own.`,
     emailFooterCompanyName: "Company name",
-    emailFooterCompanyNameHint: "Leave blank to use the built-in product name.",
     emailFooterWebsite: "Website",
     emailFooterAddress: "Postal address",
   },
@@ -1063,6 +1052,10 @@ const en = {
     saved: "Saved.",
   },
   serverOrgs: {
+    newOrganization: (org: string) => `New ${org}`,
+    organizationName: (orgCap: string) => `${orgCap} name`,
+    importedNameDefault: "Defaults to the bundle's own name when left blank.",
+    importFromBundle: (org: string) => `Or import from an exported ${org} bundle (.zip)`,
     active: "Active",
     disabled: "Disabled",
     disable: "Disable",
@@ -1105,7 +1098,6 @@ const en = {
     codePolicyPreview: (rule: string) => `Codes are ${rule}.`,
     codePolicySaved: "Project code policy saved",
     enforceCodeEverywhere: "Always show the project code",
-    enforceCodeEverywhereHint: "Shows ACME-REQ-001 instead of REQ-001 inside a {project} too, for everyone. Otherwise each person chooses in Preferences.",
     // Resource-menu group labels — Org Admin's 15 flat accordions regrouped into
     // 6 route-addressable groups. Static text, not org-dependent, matching
     // the style guide's own "after" diagram exactly.
@@ -1218,7 +1210,6 @@ const en = {
     logo: (org: string) => `${org.charAt(0).toUpperCase()}${org.slice(1)} logo`,
     branding: "Branding",
     headerTitle: "Header title",
-    headerTitleHint: "Shown next to the logo in the top bar. Leave blank to use the default.",
     useOwnAccentColor: (org: string) => `Override the platform default accent colour for this ${org}`,
     saveBranding: "Save branding",
     brandingSaved: "Branding saved",
@@ -1315,7 +1306,6 @@ const en = {
     // OAuth-SSO settings used to carry (`ssoMappings` etc., retired).
     grantedOrgRole: "Grants role on sync",
     grantedOrgRoleNone: "No role granted",
-    grantedOrgRoleHint: "A user whose IdP group claim matches the sync name above is granted this role — requires a sync name to also be set.",
     // This hint used to
     // sit next to a granted-role select that was the *only* gated field —
     // the sync-name input and Save button rendered unconditionally above it
@@ -1391,7 +1381,6 @@ const en = {
     testEmail: "Send test email",
     testEmailHint: (org: string) => `Sends a test email using this ${org}'s SMTP settings above, so you can confirm they actually work before relying on them.`,
     testEmailRecipient: "Recipient email",
-    testEmailRecipientHint: "Defaults to your own account when left blank.",
     testEmailNoSmtp: "Set an SMTP host above first.",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
@@ -1421,14 +1410,12 @@ const en = {
     twoFactor: "2FA",
     ssoConfig: "Single sign-on (SSO)",
     slug: "Login page slug",
-    slugHint: (org: string) => `This ${org}'s branded login page will be at /login/{slug}.`,
     ssoEnabled: "Enable SSO",
     ssoOnly: "Hide the native email/password form (SSO only)",
     oidcIssuerUrl: "OIDC issuer URL",
     oidcClientId: "OIDC client ID",
     oidcClientSecret: "OIDC client secret",
     oidcRequiredGroup: "Required SSO group",
-    oidcRequiredGroupHint: "If set, only users whose identity provider group/role claim includes this exact name are permitted to sign in — everyone else sees a \"not provisioned\" message instead of signing in, even if they authenticate successfully.",
     saveSso: "Save SSO settings",
     scimProvisioning: "SCIM provisioning",
     scimHint: "Lets an identity provider push user and group membership changes directly (no login required), for prompt deprovisioning — the alternative to the group-claim sync above, which only runs when a user actually signs in.",
@@ -1460,12 +1447,8 @@ const en = {
     advancedSaved: "Settings saved.",
     patMaxLifetimeHint: (org: string) => `Leave blank to use the deployment default. Lowering this immediately shortens the effective lifetime of tokens already issued for this ${org}, not just new ones.`,
     require2fa: "Require two-factor authentication",
-    require2faHint: (org: string) => `Blocks every member of this ${org}, including its own admins, from any of its projects or settings until they enable 2FA in Preferences. They can still enrol themselves at any time to regain access immediately — no admin action needed.`,
     allowSelfSignup: "Allow self-signup",
-    allowSelfSignupHint: (org: string) => `When the deployment's sign-up mode is "org specified", anyone with a matching email domain (below) can create their own account and join this ${org} as a member. Cannot be enabled for an SSO-only ${org}.`,
     allowRelaxedChildProjectCreation: "Allow {project} managers to create sub-{project}s",
-    allowRelaxedChildProjectCreationHint:
-      "When enabled, anyone who manages a {project} can create a new {project} nested under it without needing Project creator or Organisation admin rights. Turning this off means only an Organisation admin or Project creator can create any {project}, including sub-{project}s.",
     selfSignupSsoConflict: (org: string) => `Self-signup cannot be enabled while this ${org} is SSO-only — turn off "SSO only" in the SSO configuration below first, or turn off self-signup here.`,
     // Org-wide force of
     // `Project.require_change_request_for_approved_links`, minus a
@@ -1473,8 +1456,6 @@ const en = {
     // own field docstring (`frontend/src/api/types.ts`) for the full
     // resolution.
     forceRequireChangeRequestForApprovedLinks: "Require a change request for link changes on approved {requirements}, organisation-wide",
-    forceRequireChangeRequestForApprovedLinksHint:
-      "Applies to every {project} in this organisation, even one whose own setting is off — unless that {project} is individually marked exempt in its own Project Admin settings.",
     // AI approval via MCP (docs/decisions.md). Both this AND a given
     // {project}'s own toggle (Project Admin's settings) must be on before
     // an AI assistant acting through the MCP server can approve, decide,
@@ -1483,15 +1464,12 @@ const en = {
     // allow_ai_approvals's docstring) since a {project} manager needs to
     // know whether their own toggle can even take effect.
     allowAiApprovals: "Allow AI approval via MCP",
-    allowAiApprovalsHint:
-      "Lets an AI assistant acting through the MCP server approve/decide/complete things — but only in a {project} whose own manager or administrator has also explicitly enabled it. Off by default.",
     allowAiApprovalsAckTitle: "Allow AI approval for this organisation?",
     allowAiApprovalsAckBody:
       "Approvals made by an AI assistant through the MCP server are not necessarily a deliberate, in-the-moment decision by a human reviewer, and may weaken the accountability this approval workflow is meant to represent.",
     allowAiApprovalsAckCheckbox: "I understand this and want to allow it for this organisation anyway.",
     allowAiApprovalsAckConfirm: "Allow AI approval",
     autoAcceptEmailDomain: "Accepted email domain",
-    autoAcceptEmailDomainHint: "e.g. acme.com — used both for self-signup above and for domain-restricted external users below.",
     externalUserPolicy: "External users on projects",
     externalUserPolicyDisabled: (org: string) => `Disabled — {project} members must already belong to this ${org}`,
     externalUserPolicyDomainOnly: "Domain only — existing accounts anywhere can be added; new accounts only if their email matches the accepted domain above",
@@ -1766,7 +1744,6 @@ const en = {
     testEmail: "Send test email",
     testEmailHint: "Sends a test email using the deployment's configured SMTP settings, so you can confirm outgoing mail actually works.",
     testEmailRecipient: "Recipient email",
-    testEmailRecipientHint: "Defaults to your own account when left blank.",
     testEmailSending: "Sending…",
     testEmailSent: "Test email sent — check the inbox (and spam folder) for delivery.",
     // Resource-menu aria-label, matching Org Admin's `orgAdmin.sectionsNav`
@@ -3110,8 +3087,6 @@ const en = {
     landingProjectSelect: "Which {project}",
     showProjectCode: "Show the project code on record codes",
     defaultProjectScope: "Default list scope",
-    defaultProjectScopeHint: "Which {projects} a list covers when you open it in a {project} with parent or child {projects}. You can change it on each list; the choice is remembered per {project}.",
-    showProjectCodeHint: "Shows ACME-REQ-001 instead of REQ-001 inside a {project}. Records from another {project} always show it, and so does everything when your organisation requires it.",
     contentWidth: "Content width",
     contentWidthFull: "Full width",
     contentWidthBoxed: "Boxed (centred, capped)",
@@ -3728,6 +3703,75 @@ const en = {
     ssoGroupName: "The name of the identity-provider group whose members this group mirrors.",
     customRoleScope: "Where the role can be granted: across the organisation, within one {project}, or on the records of one kind in a module.",
     externalUserPolicy: "Whether people from outside the organisation can be added to projects: nobody, only people whose email is on the organisation's domain, or anyone.",
+    grantedOrgRole: "The organisation role given to anyone whose identity-provider group claim matches the sync name. Takes effect only when a sync name is also set.",
+    organizationSlug: (org: string) => `The short name in the address of this ${org}'s branded login page, /login/{slug}.`,
+    ssoRequiredGroup: "When set, only people whose identity-provider group or role claim includes this exact name may sign in; everyone else is told they are not provisioned, even after authenticating successfully.",
+    requireTwoFactor: (org: string) => `Blocks every member of this ${org}, including its administrators, from its projects and settings until they enable two-factor authentication in Preferences. A member can enrol at any time to regain access immediately.`,
+    allowSelfSignup: (org: string) => `Applies when the deployment's sign-up mode is "Organisation specified": anyone with an email address on the accepted domain can create an account and join this ${org} as a member. Unavailable while this ${org} is SSO-only.`,
+    acceptedEmailDomain: "The email domain, for example acme.com, used for self-signup above and for domain-restricted external users below.",
+    allowRelaxedChildProjectCreation: "On: anyone who manages a {project} can create a {project} nested under it without the Project creator or Organisation administrator role.\nOff: only an Organisation administrator or Project creator can create any {project}, including sub-{project}s.",
+    forceChangeRequestForLinks: "Applies to every {project} in this organisation, including one whose own setting is off, unless that {project} is marked exempt in its own administration settings.",
+    orgAllowAiApprovals: "Lets an AI assistant acting through the MCP server approve, decide or complete records, but only in a {project} whose manager or administrator has also enabled it. Off by default.",
+    exemptFromOrgLinkLock: "The organisation requires a change request for link changes on approved {requirements} in every {project}. Selecting this exempts this {project}, which then follows its own setting above.",
+    projectAllowAiApprovals: "Also requires AI approval to be enabled for this {project}'s organisation, in the Advanced settings of organisation administration. Off by default.",
+    projectVisibility: (org: string) => `Only specified: only people given a role on this {project} can see it.\nOrganisation-wide visibility: every member of the ${org} can view this {project} without an assignment; manager, administrator and stakeholder roles still need one.`,
+    canBeParent: "Other {projects} can be nested under this one only while this is enabled.",
+    showProjectCode: "Shows ACME-REQ-001 instead of REQ-001 inside a {project}. Records from another {project} always show it, and so does every record when your organisation requires it.",
+    defaultProjectScope: "Which {projects} a list covers when opened in a {project} with parent or child {projects}. It can be changed on each list; the choice is remembered per {project}.",
+    requirementComponent: "The part of the product this {requirement} belongs to. It forms the prefix of the {requirement}'s code and lets lists and reports be filtered by component.",
+    requirementCategory: "A subdivision of the chosen {component}, for example a subsystem. Only the categories of the selected {component} are offered.",
+    proposedRequirementComponent: "The {component} the proposed {requirement} would belong to if this change request is approved.",
+    proposedRequirementCategory: "The category, within the chosen {component}, the proposed {requirement} would belong to.",
+    proposedRequirementName: "The name the new {requirement} would have if this change request is approved.",
+    proposedRequirementReasoning: "Why the new {requirement} is needed: the risk, defect class or constraint it addresses and the outcome expected. Reviewers read it when deciding on the change request.",
+    requirementReasoning: "Why the {requirement} exists: the risk, defect class or constraint it addresses and the outcome expected. Reviewers read it when deciding whether to approve.",
+    requirementOwner: "The person or group accountable for this {requirement}. A group can own it, so the record stays owned when individual members change.",
+    actionType: "The kind of action, chosen from the types defined for the {project}. It groups actions in lists and reports.",
+    cascadeToRequirementsStage: "When the {stage} is completed, also marks its approved {requirements} as completed, so they leave the working list.",
+    cascadeToRequirementsComponent: "When this {component}'s phase for the {stage} is completed, also marks the {component}'s approved {requirements} for that {stage} as completed.",
+    newUserRole: "The organisation role the new user starts with.\nMember: can open the {projects} they are added to.\nProject creator: can also create {projects}.\nOrganisation administrator: manages the organisation's settings and people.",
+    enforceCodeEverywhere: "Shows ACME-REQ-001 instead of REQ-001 inside a {project} too, for everyone. When off, each person chooses in Preferences.",
+    orgHeaderTitle: "Shown next to the logo in the top bar for members of this organisation. Leave blank to use the platform default.",
+    orgOwnAccentColor: "Off: this organisation uses the platform accent colour. On: the colour chosen below is used instead.",
+    orgAccentColor: "The colour of buttons, links and highlights for members of this organisation.",
+    orgEmailFooterCompanyName: "The company name printed in the footer of emails sent for this organisation. Leave blank to use the platform default.",
+    orgEmailFooterWebsite: "The website address printed in the footer of emails sent for this organisation.",
+    orgEmailFooterAddress: "The postal address printed in the footer of emails sent for this organisation.",
+    scimTokenLabel: "A name that identifies the token, for example the identity provider that will use it, so it can be recognised and revoked later.",
+    smtpHost: "The address of the mail server used to send this organisation's emails, for example smtp.example.com.",
+    smtpPort: "The port of the mail server: usually 587 with STARTTLS or 465 with implicit TLS.",
+    smtpUsername: "The account used to sign in to the mail server. Leave blank when the server needs no sign-in.",
+    smtpPassword: "The password of the mail server account.",
+    smtpUseTls: "Encrypts the connection to the mail server. Turn off only for a trusted internal server that does not support it.",
+    testEmailRecipient: "The address the test email is sent to. Leave blank to use your own account's address.",
+    patMaxLifetime: "The longest a Personal Access Token may stay valid for people in this organisation. Leave blank to use the deployment default.",
+    customRolePreset: "Copies the permissions of a built-in role as a starting point, which can then be changed. Blank role starts with none.",
+    serverHeaderTitle: "Shown next to the logo in the top bar. Leave blank to use the built-in product name. An organisation can set its own.",
+    serverOrgLabelSingular: "The word used in place of \"organisation\" throughout the interface, for example \"Tenant\". Leave blank to use \"organisation\".",
+    serverOrgLabelPlural: "The plural of that word, for example \"Tenants\". Leave blank to use \"Organisations\".",
+    serverAccentColor: "The colour of buttons, links and highlights for everyone, unless an organisation sets its own.",
+    serverEmailFooterCompanyName: "The company name printed in the footer of emails. Leave blank to use the built-in product name.",
+    serverEmailFooterWebsite: "The website address printed in the footer of emails.",
+    serverEmailFooterAddress: "The postal address printed in the footer of emails.",
+    signupMode: "Disabled: accounts are created by an administrator or an invitation only.\nAlways on: anyone can sign up, and joins no organisation automatically.\nOrganisation specified: sign-up is allowed only for the email domains an organisation has accepted in its own settings.",
+    requireChangeRequestForApprovedLinks: "Once a {requirement} is approved, adding or removing a traceability link needs a change request instead of the direct action. Turn on for {projects} where the links themselves need review once a {requirement} is locked.",
+    projectStatus: "The {project}'s lifecycle status, chosen from the statuses defined for the organisation.",
+    customFieldAppliesTo: "The kind of record that shows this custom field.",
+    customFieldType: "How the value is entered: text, a number, a date, or a choice from a list.",
+    customFieldOptions: "The choices offered for a list field, separated by commas.",
+    customFieldRequired: "When on, a record cannot be saved without a value for this field.",
+    pronouns: "How other people should refer to you, for example she/her, he/him or they/them.",
+    contentWidth: "Full width uses the whole window. Boxed centres pages and limits them to a readable width.",
+    landingPage: "The page opened after you sign in. Automatic opens the page you used most recently.",
+    emailDigest: "How notification emails reach you.\nInstant: one email for each notification.\nDaily digest: one email a day that gathers them.\nNone: no emails; notifications still appear in the application.",
+    tokenExpiry: "The date the token stops working. A shorter life limits the harm if the token is ever disclosed.",
+    newProjectOrganization: "The organisation the new {project} belongs to. Its defaults, roles and project code policy apply.",
+    newProjectNameAutoCode: "The project code is assigned automatically from the name.",
+    useTemplate: "Copies the configuration and starter records of a template {project} into the new {project}. Choose None to start empty.",
+    reportLinkedFrom: "Lists only the records linked to the record chosen here, for example the {requirements} linked to a risk. The choices are the names given by enclosing blocks.",
+    reportLinkDirection: "Either way: follows links in both directions.\nFrom the record: follows links that start at the chosen record.\nTo the record: follows links that end at the chosen record.",
+    reportGroupSource: "The group, named by an enclosing block, whose members this block lists.",
+    reportIncludeArchived: "Includes archived records, which are otherwise left out.",
     reportFontWordName: "The font name written into Word and OpenDocument files for this family. Readers who have a font of that name see it; others see the generic fallback. Usually the family's own name.",
     reportFontGeneric: "The kind of font a reader falls back to when they do not have this one: sans-serif (like Arial), serif (like Times New Roman) or monospace (like Courier New).",
     moduleEntitlementPolicy: "Whether organisations may use a module when the server has no setting for that organisation. Choose the default that suits new organisations.",
@@ -4108,6 +4152,23 @@ const en = {
     } as Record<string, string>,
     fileUnreadable: "This file could not be read as a CSV.",
     importFailed: "Could not import the file.",
+  },
+  // Filter-panel captions shared by several lists; a caption used on one list alone stays with its list.
+  filters: {
+    status: "Status",
+    priority: "Priority",
+    role: "Role",
+    scoring: "Scoring",
+    from: "From",
+    to: "To",
+    group: "Group",
+    groupBy: "Group by",
+    reviewer: "Reviewer",
+    targetVersion: "Target version",
+    project: "{Project}",
+    projects: "{Projects}",
+    allProjects: "All {projects}",
+    select: "Select…",
   },
   common: {
     requiredLegend: "* required",

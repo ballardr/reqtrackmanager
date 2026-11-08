@@ -86,6 +86,7 @@ import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { useStrings } from "../../context/TerminologyContext";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
@@ -111,6 +112,7 @@ async function loadStandardSwitcherOptions(): Promise<EntitySwitcherOption[]> {
 }
 
 export function StandardWorkspacePage() {
+  const strings = useStrings();
   const { standardId, section: sectionParam, versionId } = useParams<{ standardId: string; section?: string; versionId?: string }>();
   const { showToast } = useToast();
 
@@ -265,7 +267,7 @@ export function StandardWorkspacePage() {
               value={requirementCount ?? (latestVersion ? "…" : 0)}
               to={latestVersion ? `/standards/${standard.id}/versions/${latestVersion.id}` : `/standards/${standard.id}/versions`}
             />
-            <MetricTile label="Projects" value={projectSummary?.length ?? "…"} to={`/standards/${standard.id}/projects`} />
+            <MetricTile label={strings.filters.projects} value={projectSummary?.length ?? "…"} to={`/standards/${standard.id}/projects`} />
             <MetricTile
               label="Compliant"
               value={projectSummary ? projectSummary.filter((p) => p.overall_compliance_state === "compliant").length : "…"}

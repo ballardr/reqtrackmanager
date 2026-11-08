@@ -228,7 +228,7 @@ export function RequirementCreateModal({
               {categories.length === 0 && components.length > 0 && (
                 <div className="row" style={{ alignItems: "flex-end" }}>
                   {components.length > 1 && (
-                    <LabeledSelect helpNotNeeded
+                    <LabeledSelect help={strings.help.requirementComponent}
                       label={strings.requirements.component} value={componentId} onChange={setComponentId}
                       options={components.map((c) => ({ value: c.id, label: c.name }))} placeholder={null}
                     />
@@ -268,7 +268,7 @@ export function RequirementCreateModal({
             ownerPlaceholder={strings.requirements.ownerDefaultsToYou}
             afterDescription={
               <>
-                <LabeledSelect helpNotNeeded required
+                <LabeledSelect help={strings.help.requirementComponent} required
                   label={strings.requirements.component}
                   value={componentId}
                   onChange={(next) => {
@@ -279,7 +279,7 @@ export function RequirementCreateModal({
                   options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
                   placeholder={null}
                 />
-                <LabeledSelect helpNotNeeded required
+                <LabeledSelect help={strings.help.requirementCategory} required
                   label={strings.requirements.category}
                   value={categoryId}
                   onChange={setCategoryId}

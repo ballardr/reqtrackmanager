@@ -95,11 +95,10 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
           {strings.orgAdmin.codePolicyPreview(describeCodePolicy({ kind, min_length: min, max_length: max, assignment }))}
         </p>
       )}
-      <CheckboxField helpNotNeeded
+      <CheckboxField help={strings.help.enforceCodeEverywhere}
         label={strings.orgAdmin.enforceCodeEverywhere}
         checked={enforce}
         onChange={setEnforce}
-        hint={strings.orgAdmin.enforceCodeEverywhereHint}
       />
       <div className="row">
         <button type="button" className="btn btn-primary" onClick={save} disabled={!valid || saving}>

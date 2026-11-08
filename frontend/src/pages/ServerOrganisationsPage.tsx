@@ -193,7 +193,7 @@ export function ServerOrganisationsPage() {
         }
         filter={
           <FilterPanel sectionKey="serverOrganisationsFilters">
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
                 <option value="active">{strings.serverOrgs.active}</option>
                 <option value="disabled">{strings.serverOrgs.disabled}</option>
@@ -207,18 +207,18 @@ export function ServerOrganisationsPage() {
             a brand-new entity opens in a Modal, not a permanently-visible
             inline block that reflows the list underneath it. */}
         {showNewForm && (
-          <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)} size="lg">
+          <Modal title={strings.serverOrgs.newOrganization(orgLabel)} onClose={() => setShowNewForm(false)} size="lg">
             <div className="stack">
               <FormGrid minColumn="18rem">
                 <TextField helpNotNeeded required={!importFile}
-                  label={`${orgLabelCap} name`}
-                  hint={importFile ? "Defaults to the bundle's own name when left blank." : undefined}
+                  label={strings.serverOrgs.organizationName(orgLabelCap)}
+                  hint={importFile ? strings.serverOrgs.importedNameDefault : undefined}
                   value={newName}
                   onChange={setNewName}
                   inputProps={{ autoFocus: true }}
                 />
                 <FileField helpNotNeeded
-                  label={`Or import from an exported ${orgLabel} bundle (.zip)`} accept=".zip,application/zip"
+                  label={strings.serverOrgs.importFromBundle(orgLabel)} accept=".zip,application/zip"
                   onChange={setImportFile}
                 />
               </FormGrid>

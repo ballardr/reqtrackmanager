@@ -132,14 +132,14 @@ export function DecisionFormModal({
           <FormGridFull>
             <TextAreaField helpNotNeeded required label="Decision statement" value={statement} onChange={setStatement} />
           </FormGridFull>
-          <LabeledSelect helpNotNeeded required
+          <LabeledSelect help={DECISIONS_HELP.decisionType} required
             label="Decision type"
             value={decisionTypeId}
             onChange={setDecisionTypeId}
             options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
           />
-          <DateField helpNotNeeded label="Decision date" value={decisionDate} onChange={setDecisionDate} />
-          <PrincipalFormField helpNotNeeded
+          <DateField help={DECISIONS_HELP.decisionDate} label="Decision date" value={decisionDate} onChange={setDecisionDate} />
+          <PrincipalFormField help={DECISIONS_HELP.decisionMaker}
             label="Decision maker"
             orgUsers={orgUsers}
             organizationId={organizationId}
@@ -150,7 +150,7 @@ export function DecisionFormModal({
             ariaLabel="Decision maker"
             placeholder="Search users and groups…"
           />
-          <PrincipalFormField helpNotNeeded required
+          <PrincipalFormField help={DECISIONS_HELP.decisionOwner} required
             label="Owner"
             orgUsers={orgUsers}
             organizationId={organizationId}

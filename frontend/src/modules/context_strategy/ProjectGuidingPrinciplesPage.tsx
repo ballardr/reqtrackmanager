@@ -37,8 +37,10 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function ProjectGuidingPrinciplesPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -124,7 +126,7 @@ export function ProjectGuidingPrinciplesPage() {
             sectionKey="context_strategy.guidingPrinciples.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Guiding Principles…" searchAriaLabel="Search Guiding Principles"
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as GuidingPrincipleStatus | "")}>
                 <option value="">All statuses</option>
                 {Object.entries(GUIDING_PRINCIPLE_STATUS_LABEL).map(([value, label]) => (
@@ -132,7 +134,7 @@ export function ProjectGuidingPrinciplesPage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Priority">
+            <FilterField label={strings.filters.priority}>
               <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as GuidingPrinciplePriority | "")}>
                 <option value="">All priorities</option>
                 {Object.entries(GUIDING_PRINCIPLE_PRIORITY_LABEL).map(([value, label]) => (

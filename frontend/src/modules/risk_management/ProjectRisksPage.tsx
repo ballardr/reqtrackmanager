@@ -60,6 +60,7 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { TagFilterField } from "../../components/TagFilterField";
+import { useStrings } from "../../context/TerminologyContext";
 
 type View = "register" | "matrix";
 
@@ -97,6 +98,7 @@ function inCell(risk: Risk, cell: CellFilter): boolean {
 }
 
 export function ProjectRisksPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -245,7 +247,7 @@ export function ProjectRisksPage() {
             sectionKey="risks.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search risks…" searchAriaLabel="Search risks"
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RiskStatus | "")}>
                 <option value="">All statuses</option>
                 {Object.entries(RISK_STATUS_LABEL).map(([value, label]) => (

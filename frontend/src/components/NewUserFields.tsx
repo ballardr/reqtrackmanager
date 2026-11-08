@@ -51,7 +51,7 @@ export function NewUserFields({
         />
       )}
       {showRole && (
-        <LabeledSelect helpNotNeeded
+        <LabeledSelect help={strings.help.newUserRole}
           label={strings.orgAdmin.role}
           value={values.role}
           onChange={(role) => onChange({ role: role as OrgRole })}

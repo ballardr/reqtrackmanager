@@ -26,6 +26,7 @@ import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import type { FutureState, FutureStateFieldValues } from "./types";
+import { CONTEXT_STRATEGY_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof FutureStateFieldValues; label: string; rows: number }[] = [
   { key: "current_state", label: "Current state", rows: 2 },
@@ -91,7 +92,7 @@ export function FutureStateFormModal({
               />
             </FormGridFull>
           ))}
-          <DateField helpNotNeeded label="Target date" ariaLabel="Target date" value={targetDate ?? ""} onChange={setTargetDate} />
+          <DateField help={CONTEXT_STRATEGY_HELP.futureStateTargetDate} label="Target date" ariaLabel="Target date" value={targetDate ?? ""} onChange={setTargetDate} />
           {initial && (
             <FormGridFull>
               <TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} />

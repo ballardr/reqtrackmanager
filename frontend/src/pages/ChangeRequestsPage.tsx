@@ -250,7 +250,7 @@ export function ChangeRequestsPage() {
             onSearchChange={setSearch}
             searchPlaceholder={strings.changeRequests.search}
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as CrStatusFilterValue)}>
                 <option value="active">Active</option>
                 <option value="">All statuses</option>
@@ -261,7 +261,7 @@ export function ChangeRequestsPage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Target version">
+            <FilterField label={strings.filters.targetVersion}>
               <select className="input" value={targetStageFilter} onChange={(e) => setTargetStageFilter(e.target.value)}>
                 <option value="">All versions</option>
                 {stages.map((s) => (

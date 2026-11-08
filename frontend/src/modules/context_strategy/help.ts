@@ -8,10 +8,16 @@
 
 /** Help text for the Context & Strategy module's form fields, passed as `help` to the shared field components. */
 export const CONTEXT_STRATEGY_HELP = {
+  painPointType: "The kind of Pain Point, which sets how it is grouped and reported. Types are defined in the project or organisation settings.",
   scoringPersonaOverride:
     "General holds one level for each criterion. Add a persona only where its levels differ from General: it overrides the criteria scored per persona (such as Severity) and takes General's level for the rest.\nCriteria scored for the whole Pain Point (such as Job size) are set under General only.\nWith personas added, the roll-up combines them; with none, General is the score.",
   painPointSubmission:
     "Any project member: everyone with access to the project can submit a Pain Point.\nPain Point Managers only: only Pain Point Managers and project managers can submit; other members raise an Enhancement Request where Product Feedback is enabled.\nEditing and triage are always for Pain Point Managers.",
   painPointSubmissionProject:
     "Inherit: use the parent project's setting, else the organisation default, else Pain Point Managers only.\nAny project member: everyone with access to the project can submit a Pain Point.\nPain Point Managers only: only Pain Point Managers and project managers can submit.\nEditing and triage are always for Pain Point Managers.",
+  priority: "How important this is compared with other items of the same kind.",
+  strategyTimeHorizon: "The period the strategy plans for.",
+  futureStateTargetDate: "The date by which the future state is intended to be reached.",
+  openQuestionDueDate: "The date by which an answer is needed, or when the question should next be reviewed.",
+  painPointDateIdentified: "When the Pain Point was first noticed. Today's date is used when this is left blank on creation.",
 } as const;

@@ -41,8 +41,10 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function ProjectStrategiesPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -128,7 +130,7 @@ export function ProjectStrategiesPage() {
             sectionKey="context_strategy.strategies.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Strategy…" searchAriaLabel="Search Strategy"
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StrategyStatus | "")}>
                 <option value="">All statuses</option>
                 {Object.entries(STRATEGY_STATUS_LABEL).map(([value, label]) => (
@@ -136,7 +138,7 @@ export function ProjectStrategiesPage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Priority">
+            <FilterField label={strings.filters.priority}>
               <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as StrategyPriority | "")}>
                 <option value="">All priorities</option>
                 {Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => (

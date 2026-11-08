@@ -687,7 +687,7 @@ function PlatformBrandingTab() {
         <PictureImage src={fileUrl(settings.default_logo_file_id)} style={{ height: 40 }} />
       )}
       <FormGrid minColumn="18rem">
-        <TextField helpNotNeeded
+        <TextField help={strings.help.serverHeaderTitle}
           label={strings.serverSettings.headerTitle}
           value={headerTitle}
           onChange={(next) => {
@@ -695,9 +695,8 @@ function PlatformBrandingTab() {
             setHeaderTitle(next);
           }}
           placeholder={strings.appName}
-          hint={strings.serverSettings.headerTitleHint}
         />
-        <TextField helpNotNeeded
+        <TextField help={strings.help.serverOrgLabelSingular}
           label={strings.serverSettings.orgLabelSingular}
           value={orgLabelSingular}
           onChange={(next) => {
@@ -705,9 +704,8 @@ function PlatformBrandingTab() {
             setOrgLabelSingular(next);
           }}
           placeholder="organisation"
-          hint={strings.serverSettings.orgLabelSingularHint}
         />
-        <TextField helpNotNeeded
+        <TextField help={strings.help.serverOrgLabelPlural}
           label={strings.serverSettings.orgLabelPlural}
           value={orgLabelPlural}
           onChange={(next) => {
@@ -715,10 +713,9 @@ function PlatformBrandingTab() {
             setOrgLabelPlural(next);
           }}
           placeholder="Organisations"
-          hint={strings.serverSettings.orgLabelPluralHint}
         />
       </FormGrid>
-      <ColorField helpNotNeeded
+      <ColorField help={strings.help.serverAccentColor}
         label={strings.serverSettings.accentColor}
         value={accentColor}
         onChange={(next) => {
@@ -749,7 +746,7 @@ function PlatformBrandingTab() {
       <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
       <FormGrid minColumn="18rem">
-        <TextField helpNotNeeded
+        <TextField help={strings.help.serverEmailFooterCompanyName}
           label={strings.serverSettings.emailFooterCompanyName}
           value={emailFooterCompanyName}
           onChange={(next) => {
@@ -757,9 +754,8 @@ function PlatformBrandingTab() {
             setEmailFooterCompanyName(next);
           }}
           placeholder={strings.appName}
-          hint={strings.serverSettings.emailFooterCompanyNameHint}
         />
-        <TextField helpNotNeeded
+        <TextField help={strings.help.serverEmailFooterWebsite}
           label={strings.serverSettings.emailFooterWebsite}
           value={emailFooterWebsite}
           onChange={(next) => {
@@ -768,7 +764,7 @@ function PlatformBrandingTab() {
           }}
         />
         <FormGridFull>
-          <TextAreaField helpNotNeeded
+          <TextAreaField help={strings.help.serverEmailFooterAddress}
           label={strings.serverSettings.emailFooterAddress}
           value={emailFooterAddress}
           onChange={(next) => {
@@ -812,9 +808,8 @@ function TestEmailTab() {
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.system.testEmailHint}</p>
       <div className="row" style={{ alignItems: "flex-end" }}>
-        <TextField helpNotNeeded
+        <TextField help={strings.help.testEmailRecipient}
           label={strings.system.testEmailRecipient}
-          hint={strings.system.testEmailRecipientHint}
           value={recipient}
           onChange={setRecipient}
           inputProps={{ type: "email" }}
@@ -862,7 +857,7 @@ function SignupModeTab() {
   return (
     <div className="card stack">
       <p className="text-muted" style={{ margin: 0 }}>{strings.signupSettings.hint}</p>
-      <LabeledSelect helpNotNeeded
+      <LabeledSelect help={strings.help.signupMode}
         label={strings.signupSettings.mode}
         value={mode}
         onChange={(next) => setMode(next as SignupMode)}

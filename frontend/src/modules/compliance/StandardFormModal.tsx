@@ -162,9 +162,9 @@ export function StandardFormModal({
           <FormGridFull>
             <TextAreaField helpNotNeeded label="Description" value={description} onChange={setDescription} rows={3} />
           </FormGridFull>
-          <TextField helpNotNeeded label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
+          <TextField help={COMPLIANCE_HELP.standardIssuer} label="Issuing organisation" value={issuingOrganisation} onChange={setIssuingOrganisation} />
           {initial && (
-            <PrincipalFormField helpNotNeeded required
+            <PrincipalFormField help={COMPLIANCE_HELP.standardOwner} required
               label="Owner"
               kinds={["user", "org_group"]}
               orgUsers={orgUsers}
@@ -181,7 +181,7 @@ export function StandardFormModal({
               <FormGridFull>
                 <h3 style={{ margin: "var(--space-3) 0 0" }}>Initial version</h3>
               </FormGridFull>
-              <TextField helpNotNeeded required label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
+              <TextField help={COMPLIANCE_HELP.standardInitialVersion} required label="Initial version label" value={versionLabel} onChange={setVersionLabel} placeholder="e.g. 1.0" />
               <DateField help={COMPLIANCE_HELP.complianceEffectiveDate} label="Effective date" value={effectiveDate} onChange={setEffectiveDate} />
               <FormGridFull>
                 <TextAreaField helpNotNeeded label="Change note" value={changeNote} onChange={setChangeNote} rows={2} />

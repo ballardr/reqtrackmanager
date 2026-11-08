@@ -23,6 +23,7 @@ import * as complianceApi from "./api";
 import type { ComplianceOrgSettings } from "./types";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
   const { showToast } = useToast();
@@ -64,7 +65,7 @@ export function ComplianceOrgSettingsPanel({ orgId }: { orgId: string }) {
         SSO-managed, designate a fallback group here instead of assigning managers one at a time — every current
         member of this group counts as a Standards Manager for any standard with no explicit manager of its own.
       </p>
-      <LabeledSelect helpNotNeeded
+      <LabeledSelect help={COMPLIANCE_HELP.defaultManagersGroup}
         label="Default compliance-managers group"
         value={settings.default_standards_manager_group_id ?? ""}
         onChange={handleChange}

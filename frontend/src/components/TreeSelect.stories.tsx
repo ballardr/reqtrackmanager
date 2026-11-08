@@ -55,6 +55,9 @@ export const WithDisabledNode: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Groups" }));
     await expect(within(document.body).getByRole("checkbox", { name: "Client" })).toBeDisabled();
+    // Why the node cannot be chosen is a tooltip, not a native title.
+    await userEvent.hover(within(document.body).getByRole("checkbox", { name: "Client" }).closest("label") as HTMLElement);
+    await expect(within(document.body).getByText("Organisation groups are edited by an organisation admin.")).toBeInTheDocument();
   },
 };
 

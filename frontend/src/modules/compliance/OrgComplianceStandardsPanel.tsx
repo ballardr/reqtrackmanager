@@ -75,6 +75,8 @@ import {
   type ProjectComplianceStatus,
 } from "./types";
 import { Badge } from "../../components/Badge";
+import { useStrings } from "../../context/TerminologyContext";
+import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
 
 type GroupBy = "standard" | "project";
 
@@ -139,6 +141,7 @@ function groupByVersion(rows: ProjectComplianceStatus[]): VersionGroup[] {
 const COMPLIANCE_OVERALL_STATES = Object.keys(COMPLIANCE_OVERALL_STATE_LABEL) as ComplianceOverallState[];
 
 export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
+  const strings = useStrings();
   const { showToast } = useToast();
   const [searchParams] = useSearchParams();
   const [statusRows, setStatusRows] = useState<ProjectComplianceStatus[] | null>(null);
@@ -391,7 +394,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
       </div>
 
       <FilterPanel sectionKey="orgCompliance.standards" matching={filteredRows.length} total={statusRows.length}>
-        <FilterField label="Group by">
+        <FilterField label={strings.filters.groupBy}>
           <select
             className="input"
             value={groupBy}
@@ -408,7 +411,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
             <option value="project">Project</option>
           </select>
         </FilterField>
-        <FilterField label="Standard">
+        <FilterField label={COMPLIANCE_FILTER_LABEL.standard}>
           <select
             className="input"
             value={standardFilter}
@@ -423,7 +426,7 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
             ))}
           </select>
         </FilterField>
-        <FilterField label="Standard version">
+        <FilterField label={COMPLIANCE_FILTER_LABEL.standardVersion}>
           <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)}>
             <option value="">All versions</option>
             {versions.map((v) => (
@@ -431,9 +434,9 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
             ))}
           </select>
         </FilterField>
-        <FilterField label="Project">
+        <FilterField label={strings.filters.project}>
           <select className="input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)}>
-            <option value="">All projects</option>
+            <option value="">{strings.filters.allProjects}</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}

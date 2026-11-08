@@ -59,7 +59,7 @@ export function ActionFields({
           rows={3} disabled={disabled}
         />
       </FormGridFull>
-      <LabeledSelect helpNotNeeded required={!disabled}
+      <LabeledSelect help={strings.help.actionType} required={!disabled}
         label={strings.actions.actionType}
         value={values.actionTypeId}
         onChange={(next) => set("actionTypeId", next)}

@@ -31,6 +31,7 @@ import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
+import { useStrings } from "../../context/TerminologyContext";
 
 type Option = { value: string; label: string };
 
@@ -38,6 +39,7 @@ type Option = { value: string; label: string };
 type EngagementRow = Engagement & { name: string };
 
 export function ProjectEngagementsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const findingId = searchParams.get("finding");
@@ -144,10 +146,10 @@ export function ProjectEngagementsPage() {
           <>
             {filterSelect("Participant", filters.stakeholder_id, stakeholderOptions, (next) => setFilter({ stakeholder_id: next }), "Anyone")}
             {filterSelect("Persona covered", filters.persona_id, personaOptions, (next) => setFilter({ persona_id: next }), "Any persona")}
-            <FilterField label="From">
+            <FilterField label={strings.filters.from}>
               <input className="input" type="date" aria-label="From date" value={filters.date_from ?? ""} onChange={(e) => setFilter({ date_from: e.target.value || undefined })} />
             </FilterField>
-            <FilterField label="To">
+            <FilterField label={strings.filters.to}>
               <input className="input" type="date" aria-label="To date" value={filters.date_to ?? ""} onChange={(e) => setFilter({ date_to: e.target.value || undefined })} />
             </FilterField>
             <FilterCheckbox label="Retention review due" checked={filters.retention_due === true} onChange={(next) => setFilter({ retention_due: next ? true : undefined })} />

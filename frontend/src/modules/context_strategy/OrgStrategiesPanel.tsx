@@ -46,8 +46,10 @@ import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } 
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { filterString } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
+  const strings = useStrings();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [strategies, setStrategies] = useState<Strategy[] | null>(null);
@@ -116,7 +118,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
           sectionKey="context_strategy.orgStrategies.list" total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search Strategy…" searchAriaLabel="Search organisation Strategy"
         >
-          <FilterField label="Status">
+          <FilterField label={strings.filters.status}>
             <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StrategyStatus | "")}>
               <option value="">All statuses</option>
               {Object.entries(STRATEGY_STATUS_LABEL).map(([value, label]) => (
@@ -124,7 +126,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
               ))}
             </select>
           </FilterField>
-          <FilterField label="Priority">
+          <FilterField label={strings.filters.priority}>
             <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as StrategyPriority | "")}>
               <option value="">All priorities</option>
               {Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => (

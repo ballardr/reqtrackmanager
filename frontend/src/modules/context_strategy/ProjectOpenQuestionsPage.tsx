@@ -54,8 +54,10 @@ import { TagFilterField } from "../../components/TagFilterField";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function ProjectOpenQuestionsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -155,7 +157,7 @@ export function ProjectOpenQuestionsPage() {
             sectionKey="context_strategy.open_questions.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Open Questions…" searchAriaLabel="Search Open Questions"
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OpenQuestionStatus | "")}>
                 <option value="">All statuses</option>
                 {Object.entries(OPEN_QUESTION_STATUS_LABEL).map(([value, label]) => (
@@ -163,7 +165,7 @@ export function ProjectOpenQuestionsPage() {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Priority">
+            <FilterField label={strings.filters.priority}>
               <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as OpenQuestionPriority | "")}>
                 <option value="">All priorities</option>
                 {Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => (

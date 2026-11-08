@@ -50,7 +50,7 @@ export const Populated: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("Overall org compliance")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Overall organisation compliance")).toBeInTheDocument());
     // Weighted: (10*100% + 10*60%) / 20 applicable = 80%.
     await expect(canvas.getByText("80%")).toBeInTheDocument();
     await expect(canvas.getByText("Compliance standards in use")).toBeInTheDocument();
@@ -71,6 +71,6 @@ export const NoComplianceActivity: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.queryByText("Overall org compliance")).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Overall organisation compliance")).not.toBeInTheDocument();
   },
 };

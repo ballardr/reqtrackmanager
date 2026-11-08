@@ -71,6 +71,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useInitialSearchParams, oneOf } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 const COMPLIANCE_TABS = ["standards", "evidence", "outstanding"] as const;
 type ComplianceTabKey = (typeof COMPLIANCE_TABS)[number];
@@ -320,7 +321,7 @@ function AssignStandardModal({
                 />
               )
             )}
-            <DateField helpNotNeeded label="Target compliance date" value={targetDate} onChange={setTargetDate} />
+            <DateField help={COMPLIANCE_HELP.targetComplianceDate} label="Target compliance date" value={targetDate} onChange={setTargetDate} />
           </FormGrid>
         )}
         <FormActions

@@ -352,14 +352,14 @@ export function ProjectListPage() {
           >
             <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
             <FilterCheckbox label={strings.projects.showTemplates} checked={showTemplates} onChange={setShowTemplates} />
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
                 <option value="active">{strings.projects.active}</option>
                 <option value="archived">{strings.projects.archived}</option>
               </select>
             </FilterField>
             {orgs.length > 1 && (
-              <FilterField label="Organisation">
+              <FilterField label={orgLabelCap}>
                 <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
                   <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
                   {orgs.map((o) => (
@@ -368,7 +368,7 @@ export function ProjectListPage() {
                 </select>
               </FilterField>
             )}
-            <FilterField label="Role">
+            <FilterField label={strings.filters.role}>
               <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
                 <option value="">{strings.projects.allRoles}</option>
                 <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
@@ -400,7 +400,7 @@ export function ProjectListPage() {
             <div className="stack">
               <FormGrid minColumn="18rem">
                 {orgs.length > 1 && (
-                  <LabeledSelect helpNotNeeded required
+                  <LabeledSelect help={strings.help.newProjectOrganization} required
                     label={orgLabelCap}
                     value={newOrgId}
                     onChange={setNewOrgId}
@@ -409,7 +409,8 @@ export function ProjectListPage() {
                     inputProps={{ autoFocus: true }}
                   />
                 )}
-                <TextField helpNotNeeded required
+                <TextField required
+                  help={newOrg?.project_code_policy.assignment === "auto" ? strings.help.newProjectNameAutoCode : undefined}
                   label={strings.projects.name}
                   value={newName}
                   onChange={setNewName}
@@ -424,11 +425,6 @@ export function ProjectListPage() {
                     inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
                   />
                 )}
-                {newOrg?.project_code_policy.assignment === "auto" && (
-                  <FormGridFull>
-                    <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
-                  </FormGridFull>
-                )}
                 {!importFile && (
                   <TextField help={strings.help.projectReportName}
                     label={strings.projects.reportName}
@@ -441,7 +437,7 @@ export function ProjectListPage() {
                   <TextAreaField helpNotNeeded label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
                 </FormGridFull>
                 {!importFile && templateOptions.length > 0 && (
-                  <LabeledSelect helpNotNeeded
+                  <LabeledSelect help={strings.help.useTemplate}
                     label={strings.projects.useTemplate}
                     value={templateProjectId}
                     onChange={setTemplateProjectId}
@@ -449,13 +445,12 @@ export function ProjectListPage() {
                     placeholder={strings.projects.noTemplate}
                   />
                 )}
-                <LabeledSelect helpNotNeeded
+                <LabeledSelect help={strings.help.projectVisibility(orgLabel)}
                   label={strings.admin.visibility}
                   value={newVisibility}
                   onChange={(next) => setNewVisibility(next as "only_specified" | "org_wide")}
                   options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
                   placeholder={null}
-                  hint={strings.admin.visibilityHint(orgLabel)}
                 />
                 {/* Small usability fix: picking an import file below used to silently hide
                     the template picker above with no explanation — this note

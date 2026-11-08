@@ -25,6 +25,7 @@ import { FormActions } from "../../components/FormActions";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
+import { STAKEHOLDERS_HELP } from "./help";
 
 export function StakeholderGroupFormModal({
   initial,
@@ -65,7 +66,7 @@ export function StakeholderGroupFormModal({
             <TextField helpNotNeeded required label="Name" ariaLabel="Group name" value={name} onChange={setName} />
           </FormGridFull>
           <TextField helpNotNeeded label="Description" value={description} onChange={setDescription} />
-          <LabeledSelect helpNotNeeded label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />
+          <LabeledSelect help={STAKEHOLDERS_HELP.stakeholderGroupParent} label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />
           <FormGridFull>
             <label className="checkbox-label" style={{ gap: "var(--space-3)" }}>
               <input type="checkbox" checked={exclusive} onChange={(e) => setExclusive(e.target.checked)} aria-label="One branch per stakeholder" />

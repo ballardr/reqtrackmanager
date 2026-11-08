@@ -42,6 +42,7 @@ import { TextAreaField } from "../../components/FormFields";
 import { FormActions } from "../../components/FormActions";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function StandardApplicabilityPanel({
   standard,
@@ -184,6 +185,7 @@ function ExcludeProjectModal({
   onCancel: () => void;
   onSave: (values: { project_id: string; reason: string }) => void;
 }) {
+  const strings = useStrings();
   const [projectId, setProjectId] = useState("");
   const [reason, setReason] = useState("");
 
@@ -194,7 +196,7 @@ function ExcludeProjectModal({
           <p className="text-muted">Every project in this organisation is already excluded, or none exist.</p>
         ) : (
           <LabeledSelect helpNotNeeded required
-            label="Project"
+            label={strings.filters.project}
             value={projectId}
             onChange={setProjectId}
             options={candidateProjects.map((p) => ({ value: p.id, label: p.name }))}

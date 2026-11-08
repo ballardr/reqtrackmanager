@@ -36,6 +36,7 @@ import type { ScoringScheme } from "../../api/scoring";
 import { PainPointScoreFields } from "./PainPointScoreFields";
 import { scoreInputsFromDraft, type ScoreDraft, type ScoreRow } from "./painPointScoreDraft";
 import { PAIN_POINT_PRIORITY_LABEL } from "./types";
+import { CONTEXT_STRATEGY_HELP } from "./help";
 import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointScoringTarget,
 } from "./types";
@@ -89,6 +90,12 @@ export function PainPointFormModal({
     .filter((t) => t.is_enabled || t.id === initial?.pain_point_type_id)
     .map((t) => ({ value: t.id, label: t.is_enabled ? t.name : `${t.name} (disabled)` }));
 
+  // One line per offered Type: its name and definition, so the options can be compared before choosing.
+  const typeHelp = types
+    .filter((t) => t.is_enabled || t.id === initial?.pain_point_type_id)
+    .map((t) => (t.definition ? `${t.name}: ${t.definition}` : t.name))
+    .join("\n") || CONTEXT_STRATEGY_HELP.painPointType;
+
   const personaRows: ScoreRow[] = (scoring?.targets ?? [])
     .filter((t) => t.is_active)
     .map((t) => ({ key: t.id, label: t.label, note: t.weight !== null ? `weight ${t.weight}` : "", retired: false, unavailable: false }));
@@ -114,9 +121,8 @@ export function PainPointFormModal({
     <Modal title={initial ? `Edit ${initial.title}` : "New Pain Point"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded required label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions}
-            hint={types.find((t) => t.id === painPointTypeId)?.definition || undefined} />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={typeHelp} required label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
+          <LabeledSelect help={CONTEXT_STRATEGY_HELP.priority}
             label="Priority"
             value={priority}
             onChange={(v) => setPriority(v as PainPointPriority)}
@@ -133,8 +139,8 @@ export function PainPointFormModal({
               />
             </FormGridFull>
           ))}
-          <DateField helpNotNeeded
-            label={`Date identified${!initial ? " (defaults to today if left blank)" : ""}`} ariaLabel="Date identified"
+          <DateField help={CONTEXT_STRATEGY_HELP.painPointDateIdentified}
+            label="Date identified"
             value={dateIdentified} onChange={setDateIdentified}
           />
           <FormGridFull>

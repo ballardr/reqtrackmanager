@@ -44,8 +44,10 @@ import { localToday } from "../../utils/localDate";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
 
 export function ProjectFutureStatesPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -138,7 +140,7 @@ export function ProjectFutureStatesPage() {
             sectionKey="context_strategy.futureStates.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Future State…" searchAriaLabel="Search Future State"
           >
-            <FilterField label="Status">
+            <FilterField label={strings.filters.status}>
               <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FutureStateStatus | "")}>
                 <option value="">All statuses</option>
                 {Object.entries(FUTURE_STATE_STATUS_LABEL).map(([value, label]) => (
