@@ -13,9 +13,19 @@
 # what "no default was configured" actually means here.
 set -eu
 
+# Optional Microsoft Clarity project id (a demonstration deployment only). Only a short alphanumeric value is
+# written into the JavaScript file; anything else is ignored, so the value cannot inject script.
+CLARITY_PROJECT_ID_CHECKED=""
+case "${CLARITY_PROJECT_ID-}" in
+  "") ;;
+  *[!A-Za-z0-9]*) echo "CLARITY_PROJECT_ID ignored: it must contain letters and digits only." >&2 ;;
+  *) CLARITY_PROJECT_ID_CHECKED="${CLARITY_PROJECT_ID}" ;;
+esac
+
 cat > /usr/share/nginx/html/env-config.js <<EOF
 window.__ENV__ = {
-  VITE_API_BASE_URL: "${VITE_API_BASE_URL-http://localhost:8000}"
+  VITE_API_BASE_URL: "${VITE_API_BASE_URL-http://localhost:8000}",
+  CLARITY_PROJECT_ID: "${CLARITY_PROJECT_ID_CHECKED}"
 };
 EOF
 

@@ -183,6 +183,10 @@ services:
       REPORT_FONTS_DIR: /app/report-fonts
     volumes:
       - ./report-fonts:/app/report-fonts:ro
+      # The demonstration command's state (a rotated password) and status (reset metrics): shared with the
+      # demo-scheduler service, so a manual and a scheduled reset see the same files.
+      - reqtrack_demo_state:/demo/state
+      - reqtrack_demo_status:/demo/status
     networks:
       - default
       - converter
@@ -237,6 +241,8 @@ services:
       # root docker-compose.yml; preserves an explicitly-empty value rather
       # than treating it as unset.
       VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+      # Optional Microsoft Clarity project id for a demonstration (scripts/demo.sh --clarity <id>); empty loads nothing.
+      CLARITY_PROJECT_ID: ${DEMO_CLARITY_PROJECT_ID:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -254,6 +260,33 @@ services:
       start_period: 60s
       timeout: 5s
       retries: 10
+
+  # Daily demonstration reset (docs/development.md, "Demonstration"): the backend image running
+  # `demo_setup.py schedule`, so the demonstration data is removed and seeded again at DEMO_RESET_AT in
+  # DEMO_RESET_TZ. Not started by default; use `docker compose --profile demo-schedule up -d demo-scheduler`.
+  # A host with cron or systemd can run `demo_setup.py --demo --reset` instead; do not run both. It is a
+  # separate opt-in service, not a backend job, so a deployment cannot reset itself by accident. Every run
+  # applies the same guards as a manual reset.
+  demo-scheduler:
+    extends:
+      service: backend
+    profiles: ["demo-schedule"]
+    entrypoint: ["python", "scripts/demo_setup.py"]
+    command: ["schedule"]
+    ports: !reset []
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    environment:
+      DEMO_MODE: "1"
+      DEMO_API_BASE: http://backend:8000/api/v1
+      DEMO_RESET_AT: ${DEMO_RESET_AT:-00:00}
+      DEMO_RESET_TZ: ${DEMO_RESET_TZ:-UTC}
+      DEMO_ROTATE_PASSWORDS: ${DEMO_ROTATE_PASSWORDS:-}
+      DEMO_CONFIRM_DATABASE: ${DEMO_CONFIRM_DATABASE:-}
+    depends_on:
+      backend:
+        condition: service_healthy
 
   # See the root docker-compose.yml's mcp-server service for the full
   # explanation — same service, dev/test defaults.
@@ -320,3 +353,5 @@ networks:
 volumes:
   reqtrack_test_db_data:
   reqtrack_test_storage_data:
+  reqtrack_demo_state:
+  reqtrack_demo_status:

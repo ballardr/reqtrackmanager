@@ -35,9 +35,9 @@ COPY . .
 # still be root-owned and need a one-time `chown` after upgrading, same as
 # this project's other pre-release "reset and reseed" upgrade path.
 RUN useradd --system --create-home --home-dir /home/app app \
-    && mkdir -p /app/data/files \
+    && mkdir -p /app/data/files /demo/state /demo/status \
     && chmod +x /app/docker-entrypoint.sh \
-    && chown -R app:app /app
+    && chown -R app:app /app /demo
 USER app
 
 # Disaster-recovery backup tool (scripts/dr_backup.py, docs/disaster-recovery.md): the application image plus

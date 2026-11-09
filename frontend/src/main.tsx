@@ -7,6 +7,9 @@ import { AuthProvider } from "./context/AuthContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ToastProvider } from "./context/ToastContext";
 import "./styles/theme.css";
+import { loadClarity } from "./utils/clarity";
+
+loadClarity(window.__ENV__?.CLARITY_PROJECT_ID);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

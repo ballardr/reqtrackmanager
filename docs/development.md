@@ -45,7 +45,9 @@ Six **template projects** are seeded (tick **Show templates** in the project lis
 
 Idempotent (skips if already seeded) and API-driven, same as the E2E persona dataset (`scripts/seed_e2e_dataset.py`) — this is a separate script with separate, screenshot-friendly content, not a variant of the E2E fixtures. Login as `demo.admin@example.com` / `DemoDemo123!` afterward; see the script's own docstring for the other seeded personas and their roles. This is also the dataset the README's screenshots are captured from.
 
-There's no organisation-deletion endpoint (see [docs/soc2/policies/data-retention-and-disposal-policy.md](soc2/policies/data-retention-and-disposal-policy.md)), so this script only skips rather than resets existing demo data. A future public demo instance that resets nightly would do the reset at the database level instead — `docker compose down -v && docker compose up -d --build` against a dedicated demo compose stack, then re-run the seed script — the same pattern used below to get back to a clean slate.
+### Demonstration setup and daily reset
+
+`scripts/demo.sh` sets the stack up as a demonstration (seed, sign-in details on the login page), `--reset` starts again, and an opt-in service resets it daily. Commands, options, variables, guards and Microsoft Clarity are in [demo.md](demo.md).
 
 ## Backend
 

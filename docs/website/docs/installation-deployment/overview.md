@@ -48,6 +48,12 @@ Reading this top to bottom: `db` and `storage` must be healthy before `backend` 
 | `keycloak` | Real OIDC identity provider, for testing per-org SSO end-to-end | No — a real deployment points each org at its own IdP instead | Yes |
 | `prometheus`, `loki`, `tempo`, `grafana`, `alloy` | Optional observability stack (`--profile observability`) | Yes, opt-in | No |
 
+## Demonstration hosting
+
+:::note
+The `tests/container/` stack can also be set up as a demonstration with sample data (`scripts/demo.sh`). This is for demonstration hosting only and is not a standard way of hosting ReqTrackManager; use the production stack for real use. See the [demonstration reference](https://github.com/ballardr/reqtrackmanager/blob/main/docs/demo.md) for details.
+:::
+
 ## Where to go next
 
 - Trying the product out, or hacking on this repo? Start with [Quick start (local / evaluation)](./quick-start.md).

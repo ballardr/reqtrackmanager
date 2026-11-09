@@ -17,16 +17,10 @@ Design notes:
   names and content exist to give the Playwright suite fixed, predictable
   anchors (docs/e2e-workflows.md), not to look good in a screenshot. This
   one exists purely to look like a real, in-use product.
-- Idempotent by skipping, same as the E2E seed: if "Solstice Robotics"
-  already exists, exits without changes rather than creating a duplicate.
-  This script does NOT attempt to wipe/reset existing demo data itself —
-  there is no organisation-deletion endpoint (see docs/soc2/policies/
-  data-retention-and-disposal-policy.md's Known Gaps), and this script only
-  ever talks to the API, not the database directly. A full reset (for a
-  future "resets nightly" public demo instance) is a database-level
-  operation instead — see docs/deployment.md's "Demo instance" section for
-  the documented recipe (`docker compose down -v && up -d --build`, then
-  re-run this script against the fresh database).
+- Idempotent by skipping, same as the E2E seed: if "Solstice Robotics" already exists, exits without changes
+  rather than creating a duplicate. It does not reset anything itself; `demo_setup.py` (run through
+  `scripts/demo.sh`) removes the demonstration organisation through the organisation deletion route and seeds
+  again, with the guards and the daily schedule described in docs/development.md.
 
 Run via (from tests/container):
     docker compose exec backend python scripts/seed_demo_data.py
@@ -46,9 +40,10 @@ from pathlib import Path
 import httpx
 
 BASE = os.environ.get("DEMO_API_BASE", "http://localhost:8000/api/v1")
-ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASSWORD = "ChangeMe123!"
-PASSWORD = "DemoDemo123!"
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.environ.get("DEMO_ADMIN_PASSWORD", "ChangeMe123!")
+# Shared by every demonstration account; `demo_setup.py` replaces it when it rotates the password.
+PASSWORD = os.environ.get("DEMO_PASSWORD", "DemoDemo123!")
 
 ORG_NAME = "Solstice Robotics"
 
@@ -70,11 +65,39 @@ def create_org(headers: dict, name: str) -> dict:
 
 
 def create_org_user(headers: dict, org_id: str, email: str, display_name: str, role: str) -> dict:
+    """Creates a demonstration account in the organisation, or re-joins one that outlived a reset.
+
+    An organisation's removal never deletes accounts, so a second seed finds the account already there; it is
+    then given its role in the new organisation instead.
+
+    Args:
+        headers: Server administrator headers.
+        org_id: The organisation.
+        email: Sign-in name.
+        display_name: Shown name.
+        role: Organisation role.
+
+    Returns:
+        The user, with at least `user_id`.
+
+    Raises:
+        httpx.HTTPStatusError: On any failure other than "email already in use".
+    """
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/users",
         json={"email": email, "display_name": display_name, "password": PASSWORD, "role": role},
         headers=headers, timeout=30,
     )
+    if r.status_code == httpx.codes.CONFLICT:
+        found = httpx.get(f"{BASE}/system/users", params={"search": email}, headers=headers, timeout=30)
+        found.raise_for_status()
+        user = next(u for u in found.json() if u["email"].lower() == email.lower())
+        joined = httpx.post(
+            f"{BASE}/orgs/{org_id}/users/{user['user_id']}/roles",
+            json={"user_id": user["user_id"], "role": role}, headers=headers, timeout=30,
+        )
+        joined.raise_for_status()
+        return {"user_id": user["user_id"], "email": email, "display_name": user["display_name"], "roles": [role]}
     r.raise_for_status()
     return r.json()
 
@@ -4273,7 +4296,7 @@ def main() -> None:
     seed_template_projects.seed_template_projects(h_pm, org, owner_id=demo_admin["user_id"])
 
     print()
-    print("Done. Demo personas (all password: DemoDemo123!):")
+    print("Done. Demo personas (all share one password: DemoDemo123! unless demo_setup.py rotated it):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
     print("  demo.engineer@example.com    - stakeholder on Falcon-3/Solstice Cloud; direct project manager"
           " on Falcon-3 Avionics Subsystem (also reaches Falcon-3 via its member-source consumption)")
