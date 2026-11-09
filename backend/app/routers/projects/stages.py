@@ -34,11 +34,12 @@ from app.schemas.project import (
     StageReviewResponseCreate,
     StageReviewResponseOut,
 )
-from app.schemas.stage_workflow import StageTransitionRequest
+from app.schemas.stage_workflow import StageTransitionRequest, StageUsageOut
 from app.services.audit import log_event
 from app.services.notifications import notify
 from app.services.principals import principal_columns, principal_labels, principal_ref, validate_principal
 from app.services.rbac import get_effective_project_roles, get_project_member_user_ids, require_project_manage, require_project_view
+from app.services.stage_usage import stages_in_use
 from app.services.stage_workflows import (
     WorkflowConflict,
     default_workflow,
@@ -133,6 +134,15 @@ def list_stages(project_id: UUID, current_user: User = Depends(require_project_v
     return _stages_out(db, list(db.scalars(
         select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
     ).all()), current_user)
+
+
+@router.get("/{project_id}/stage-usage", response_model=StageUsageOut)
+def get_stage_usage(project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db)) -> StageUsageOut:
+    """Whether the project uses its stages beyond the default one; the navigation shows Delivery status only then."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
+    return StageUsageOut(in_use=stages_in_use(db, project))
 
 
 @router.patch("/{project_id}/stages/{stage_id}", response_model=ProjectStageOut)

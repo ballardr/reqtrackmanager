@@ -41,7 +41,7 @@ const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1
  * prefix — Layout composes several providers each with their own fetch, so
  * a single path-matching mock is far more maintainable than one spy per
  * story. */
-function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = []) {
+function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true) {
   spyOn(api, "get").mockImplementation(async (path: string): Promise<unknown> => {
     if (path === "/api/v1/system/branding") return SERVER_SETTINGS;
     if (path === "/api/v1/orgs") return [ORG];
@@ -58,6 +58,8 @@ function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enab
     // Storybook suite) while verifying changes here — fixed
     // in passing rather than left, per this repo's "fix, don't defer" rule.
     if (path.endsWith("/enabled-modules")) return enabledModules;
+    // `useProjectHasStages`: the Delivery status entry is in the rail only when the project uses its stages.
+    if (path === `/api/v1/projects/${PROJECT.id}/stage-usage`) return { in_use: stagesInUse };
     // Compliance's own `globalNavItems` contribution (`ComplianceGlobalNavLink.tsx`) fetches this
     // unconditionally whenever a user is logged in, via `Layout.tsx`'s
     // generic module-nav-item mechanism — not something Layout.tsx itself
@@ -376,3 +378,27 @@ export const LongRailDark: Story = { ...LongRailScrollbarClearsToggle, globals: 
 
 export const LightTheme: Story = { ...LoggedInWithProjectRoute, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...LoggedInWithProjectRoute, globals: { theme: "dark" } };
+
+/** The Delivery status entry is in the project rail once the project uses its stages. */
+export const ShowsDeliveryStatusOnlyWhenTheProjectUsesStages: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("link", { name: "Delivery status" })).toBeInTheDocument();
+  },
+};
+
+/** A project still on its default stage is not offered the entry. */
+export const HidesDeliveryStatusUntilStagesAreUsed: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], false);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Project history" });
+    await expect(canvas.queryByRole("link", { name: "Delivery status" })).not.toBeInTheDocument();
+  },
+};

@@ -38,13 +38,14 @@ persona and their role.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
 
-BASE = "http://localhost:8000/api/v1"
+BASE = os.environ.get("DEMO_API_BASE", "http://localhost:8000/api/v1")
 ADMIN_EMAIL = "admin@example.com"
 ADMIN_PASSWORD = "ChangeMe123!"
 PASSWORD = "DemoDemo123!"
@@ -2455,7 +2456,10 @@ def main() -> None:
         {"id": "note", "type": "text", "width": 5, "height": 3, "config": {"markdown": "Delivery figures across every project."}},
     ])
     create_org_dashboard(h_pm, org["id"], "Engineering", [
-        {"id": "records", "type": "metric_tile", "width": 3, "height": 2, "config": {"metric": "org_record_count", "params": {"record_type": "requirement"}}},
+        {
+            "id": "records", "type": "metric_tile", "width": 3, "height": 2,
+            "config": {"metric": "org_record_count", "params": {"record_type": "requirement"}},
+        },
     ], viewer_user_ids=[demo_engineer["user_id"]])
 
     print("Setting the organisation's report look...")
@@ -4110,7 +4114,7 @@ def main() -> None:
         )
     for requirement in (return_to_home_req, gps_req):
         create_artefact_link(
-            h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=chain_link_types["Impacts"]["id"],
+            h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Impacts"]["id"],
             other_type="requirement", other_id=requirement["id"],
         )
     create_artefact_link(
@@ -4254,6 +4258,15 @@ def main() -> None:
     for index, requirement in enumerate(list(cloud_reqs.values())[:3]):
         tag_record(h_pm, cloud["id"], "requirement", requirement["id"], [("Security", "Performance", "Availability")[index]])
 
+    # The project of this product's own records (requirements, decisions, SOC 2 assessment); a module of its own
+    # because it loads a large fixture generated from the repository's documents.
+    import seed_repo_demo
+
+    repo_counts = seed_repo_demo.seed_repo_demo(
+        h_pm, org, admin_user_id=demo_admin["user_id"],
+        member_user_ids=[demo_engineer["user_id"], demo_stakeholder["user_id"]],
+    )
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -4312,6 +4325,9 @@ def main() -> None:
     print("  Evidence: every Falcon-3 requirement has a statement (six with equations); a Pain Point and the flight-controller Risk"
           " carry pictures and an SVG diagram; Pain Points, a Risk and a Decision are linked to requirements, so the"
           " 'Business Requirements Document (with evidence)' layout prints links, pictures and equations")
+    if repo_counts:
+        print(f"  {seed_repo_demo.PROJECT_NAME}: " + ", ".join(f"{count} {name}" for name, count in repo_counts.items())
+              + " — loaded from this repository's documents (docs/decisions.md, docs/requirements.md, docs/soc2/)")
     print("  Templates: 'Product Design template' (Usability and Accessibility Pain Point types, Cost of Delay ÷ job size scoring,"
           " no Risk Management or Compliance) and 'Project Management template' (Schedule, Budget and Resourcing Pain Point types,"
           " no Product Feedback or Stakeholders); 'Falcon-3 Operator App' was created from the first, with two Pain Points scored by WSJF")

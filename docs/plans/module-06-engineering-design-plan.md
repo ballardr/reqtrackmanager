@@ -167,7 +167,7 @@ open-question resolutions below, before Phase 1.
    review (each item answered explicitly) or freeform review commentary
    with these as prompts/guidance only — the former is more auditable but
    heavier to build; recommend freeform-with-prompts initially, since
-   Governance's own review-policy mechanism ([Governance & Traceability](module-07-08-governance-and-traceability-plan.md) Phase 4) may
+   Governance's own review-policy mechanism ([Traceability & Governance](module-07-traceability-and-governance-plan.md) Phase 4) may
    eventually want to generalise structured review checklists across
    multiple artefact types rather than Design inventing its own.
 8. **Invalidation: an overlay marker, or a new lifecycle status? — raised

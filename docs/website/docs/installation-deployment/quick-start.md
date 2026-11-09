@@ -43,6 +43,8 @@ A bootstrap admin with an otherwise empty instance isn't much to look at. To pop
 cd tests/container && docker compose exec backend python scripts/seed_demo_data.py
 ```
 
+The demo organisation also contains **ReqTrackManager (this product)**, a project made from this product's own requirements, 480 of its recorded decisions, its SOC 2 assessment (criteria, evidence and open gaps) and its architecture principles, visible to every demo account. It is a realistic, large dataset for trying lists, search, reports and compliance views. Loading it takes several minutes.
+
 This is idempotent (it skips if already seeded) and API-driven — the same approach used for the separate, test-oriented E2E persona dataset (`scripts/seed_e2e_dataset.py`), just with different, screenshot-friendly content. Log in as `demo.admin@example.com` / `DemoDemo123!` afterward; see the script's own docstring for the other seeded personas and their roles. This is also the exact dataset used for the screenshots throughout this site and the project README.
 
 There's no organisation-deletion endpoint, so the script only skips rather than resets existing demo data. To get back to a clean slate: `docker compose down -v && docker compose up -d --build`, then re-run the seed script.

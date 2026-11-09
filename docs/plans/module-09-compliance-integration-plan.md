@@ -33,7 +33,7 @@ for that future append, per this task's ask to plan every module now.
 ## Status / Resume Here
 
 0 / 3 phases complete. **All three phases are hard-blocked**: Phase 1 needs
-the Traceability half of Governance & Traceability (Modules 7 + 8), Phase 2 needs its
+the Traceability half of [Traceability & Governance](module-07-traceability-and-governance-plan.md) (Module 7), Phase 2 needs its
 Governance half, Phase 3 needs both. None of this should start before those halves exist — attempting it
 earlier would mean guessing at integration points that don't exist yet.
 
@@ -64,10 +64,10 @@ is asked to reference it.
    artefact type Traceability Module 7's rule engine needs to target.
 2. Confirm whether Compliance's existing approval/evidence workflow
    (already built, per compliance-module-plan.md) should remain fully
-   independent of Governance's new generic approval-policy engine ([Governance & Traceability](module-07-08-governance-and-traceability-plan.md)
+   independent of Governance's new generic approval-policy engine ([Traceability & Governance](module-07-traceability-and-governance-plan.md)
    Phase 3), or whether Governance should eventually subsume it — same
    "generalise for new work, don't destabilise what's proven" caution as
-   the Governance & Traceability plan's own Phase 0 Q6, applied here specifically: §37's closing line
+   the Traceability & Governance plan's Q6 decision (existing types move onto the engine one verified step at a time, Phase 7), applied here specifically: §37's closing line
    ("Compliance approval and evidence validity remain managed by the
    Compliance module") is the overview's own explicit answer — Governance
    should *consume* Compliance's completion status as a signal, not replace
@@ -98,7 +98,7 @@ Compliance artefact, not new Compliance functionality.
 
 ## Phase 2 — Compliance participates in Governance baseline policies
 
-**Scope** (§37): Governance's baseline policy (Governance & Traceability Phase 5) can
+**Scope** (§37): Governance's baseline policy (Traceability & Governance Phase 5, `baseline_policies`) can
 include "Compliance complete" as one of its configurable pre-baseline
 checks, alongside required fields/approvals/traceability/verification.
 

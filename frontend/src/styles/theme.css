@@ -3638,3 +3638,111 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 @media (max-width: 1000px) {
   .overview-resize { display: none; }
 }
+
+/* Delivery plan timeline (`DeliveryTimeline`): a label column and a dated track per row. Plain positioning, no chart
+   library; the table view says the same in words. */
+.delivery-timeline {
+  display: flex;
+  flex-direction: column;
+  overflow-x: auto;
+  min-width: 0;
+}
+.delivery-timeline-row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(24rem, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) 0;
+}
+.delivery-timeline-axis {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.delivery-timeline-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.delivery-timeline-track {
+  position: relative;
+  height: 1.75rem;
+}
+.delivery-timeline-axis .delivery-timeline-track {
+  height: 1.25rem;
+}
+.delivery-timeline-tick,
+.delivery-timeline-today-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.delivery-timeline-today-label {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+.delivery-timeline-today {
+  position: absolute;
+  top: -0.5rem;
+  bottom: -0.5rem;
+  width: 0;
+  border-left: 2px dashed var(--color-danger);
+}
+.delivery-timeline-bar {
+  position: absolute;
+  top: 0.15rem;
+  height: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--color-info);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-alt);
+}
+.delivery-timeline-bar-overdue {
+  border-color: var(--color-danger);
+}
+.delivery-timeline-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-info);
+}
+.delivery-timeline-bar-overdue .delivery-timeline-fill {
+  background: var(--color-danger);
+}
+.delivery-timeline-actual {
+  position: absolute;
+  top: 1.35rem;
+  height: 0.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-text);
+}
+.delivery-timeline-nodates {
+  position: absolute;
+  left: 0;
+  top: 0.15rem;
+  font-size: 0.85rem;
+}
+
+/* `ProgressMeter`: a small bar with its value in words beside it. */
+.progress-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+.progress-meter-track {
+  display: inline-block;
+  width: 5rem;
+  height: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-alt);
+}
+.progress-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--color-info);
+}

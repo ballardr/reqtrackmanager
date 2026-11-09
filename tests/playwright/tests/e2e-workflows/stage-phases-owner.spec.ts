@@ -13,7 +13,7 @@ const API = "http://localhost:8000/api/v1";
 test.describe("stage phases page", () => {
   installCleanupHook();
 
-  test("a track's owner moves it from the Stage phases page", async ({ page }) => {
+  test("a track's owner moves it from the Delivery status page", async ({ page }) => {
     test.setTimeout(60_000);
     const adminEmail = PERSONAS.orgAdminAlphaBeta.email;
     const project = await createDisposableProject(page.request, adminEmail, "E2E Stage Phases Owner");
@@ -39,7 +39,7 @@ test.describe("stage phases page", () => {
 
     await loginAs(page, ownerEmail);
     await page.goto(`/projects/${project.projectId}/stage-phases`);
-    await expect(page.getByRole("heading", { name: "Stage phases" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Delivery status" })).toBeVisible();
     await expect(page.getByRole("combobox", { name: new RegExp(`^Phase of ${first.name} in `) }).first()).toBeEnabled();
     await expect(page.getByRole("combobox", { name: new RegExp(`^Phase of ${second.name} in `) }).first()).toBeDisabled();
 

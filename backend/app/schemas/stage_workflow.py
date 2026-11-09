@@ -158,3 +158,9 @@ class PhasePlansOut(BaseModel):
     own_lead_days: int | None
     inherited: bool
     plans: list[PhasePlanOut]
+
+
+class StageUsageOut(BaseModel):
+    """Whether the project uses its stages beyond the default one (a navigation hint)."""
+
+    in_use: bool

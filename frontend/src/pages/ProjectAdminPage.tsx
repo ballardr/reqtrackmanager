@@ -1,4 +1,5 @@
 import { useMutation } from "../hooks/useMutation";
+import { usePhaseMove } from "../hooks/usePhaseMove";
 import { ArrowDown, ArrowUp, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -33,7 +34,6 @@ import type {
   ProjectRoleInheritanceMode,
   ProjectStage,
   StageWorkflow,
-  StageWorkflowPhase,
   ProjectStatusDefinition,
 } from "../api/types";
 import { CUSTOM_FIELD_TYPE_LABEL, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
@@ -214,8 +214,6 @@ export function ProjectAdminPage() {
   const [projectModules, setProjectModules] = useState<ProjectModuleEnablement[]>([]);
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
   const [stageWorkflows, setStageWorkflows] = useState<StageWorkflow[]>([]);
-  // A stage being moved into a closed phase: asks first whether to complete its approved requirements too.
-  const [closingStage, setClosingStage] = useState<{ stage: ProjectStage; phase: StageWorkflowPhase } | null>(null);
   const [newStageWorkflowId, setNewStageWorkflowId] = useState("");
   const [creatingWorkflow, setCreatingWorkflow] = useState(false);
   const [newWorkflowError, setNewWorkflowError] = useState<string | null>(null);
@@ -254,7 +252,6 @@ export function ProjectAdminPage() {
   // (the tree) rather than at project level.
   const [newCategoryInputs, setNewCategoryInputs] = useState<Record<string, { name: string; prefix: string }>>({});
   const [deadlineInputs, setDeadlineInputs] = useState<Record<string, string>>({});
-  const [cascadeInputs, setCascadeInputs] = useState<Record<string, boolean>>({});
 
   // Rename/delete state for stages/components/categories. Each "edits" map
   // is keyed by item id and only populated once the user actually starts
@@ -577,6 +574,11 @@ export function ProjectAdminPage() {
     setAvailableModuleRoles(availableModuleRoles);
   }
 
+  const stageMove = usePhaseMove(
+    { title: strings.admin.completeStage, cascade: strings.admin.cascadeToRequirements, cascadeHelp: strings.help.cascadeToRequirementsStage },
+    "move", () => void reload(),
+  );
+
   // A whole-module enablement change cascades into every one of that
   // module's own sub-components' *effective* state (`is_module_
   // subcomponent_enabled`'s own "whole-module-disabled always wins" rule
@@ -836,21 +838,10 @@ export function ProjectAdminPage() {
   }
 
   /** Moves a stage to a phase of its workflow; a closed phase first asks whether to complete its requirements. */
-  async function moveStage(stage: ProjectStage, phaseId: string, cascade = false) {
-    const body = { phase_id: phaseId, cascade_to_requirements: cascade };
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stage.id}/transition`, body), "move", "{stage}"))) return;
-    reload();
-  }
-
   function requestStageMove(stage: ProjectStage, phaseId: string) {
     const phase = stageWorkflows.find((w) => w.id === stage.workflow_id)?.phases.find((p) => p.id === phaseId);
     if (!phase || phase.id === stage.phase_id) return;
-    if (phase.kind === "closed") {
-      setCascadeInputs((c) => ({ ...c, [stage.id]: false }));
-      setClosingStage({ stage, phase });
-      return;
-    }
-    void moveStage(stage, phase.id);
+    stageMove.requestMove({ path: `/api/v1/projects/${projectId}/stages/${stage.id}/transition`, phase, noun: "{stage}" });
   }
 
   async function changeStageWorkflow(stage: ProjectStage, workflowId: string) {
@@ -2824,25 +2815,7 @@ export function ProjectAdminPage() {
             {section.render({ projectId: project.id })}
           </div>
         ))}
-      {closingStage && (
-        <ConfirmDialog
-          title={strings.admin.completeStage}
-          message={
-            <CheckboxField help={strings.help.cascadeToRequirementsStage}
-              label={strings.admin.cascadeToRequirements}
-              checked={cascadeInputs[closingStage.stage.id] ?? false}
-              onChange={(next) => setCascadeInputs((c) => ({ ...c, [closingStage.stage.id]: next }))}
-            />
-          }
-          confirmLabel={closingStage.phase.name}
-          onConfirm={() => {
-            const { stage, phase } = closingStage;
-            setClosingStage(null);
-            void moveStage(stage, phase.id, cascadeInputs[stage.id] ?? false);
-          }}
-          onCancel={() => setClosingStage(null)}
-        />
-      )}
+      {stageMove.dialog}
       {creatingWorkflow && (
         <StageWorkflowEditor workflow={null} error={newWorkflowError} onCancel={() => setCreatingWorkflow(false)} onSave={saveNewWorkflow} />
       )}

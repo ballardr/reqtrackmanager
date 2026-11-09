@@ -1156,7 +1156,7 @@ dependency. No Decision-Management-specific admin surface was needed —
 Fine-Grained Access Control's own generic `PermissionPicker` already
 renders Decision Type sub-types via the `get_subtypes` provider. Not a
 blocker for Phases 1–7. Superseded, not duplicated, if/when the Governance half of the
-[merged Governance & Traceability module](module-07-08-governance-and-traceability-plan.md) later ships its own generic per-artefact-type Approval
+[merged Traceability & Governance module](module-07-traceability-and-governance-plan.md) later ships its own generic per-artefact-type Approval
 Policies (its Phase 3) — Governance's policies would become just
 another way to grant the same underlying `(decision, approve_baseline,
 subtype=...)` permission, not a replacement for this phase's work; see

@@ -14,6 +14,7 @@ import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useClientConfig } from "../hooks/useClientConfig";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import { useProjectHasStages } from "../hooks/useProjectHasStages";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { resolveNavIcon } from "../modules/navIcons";
 import type { ProjectNavItem } from "../navigation/projectNav";
@@ -108,6 +109,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
   const { modules: enabledModules } = useProjectEnabledModules(projectId);
+  // Delivery status has nothing to show until the project goes beyond its default stage, so its entry waits for that.
+  const hasStages = useProjectHasStages(projectId ?? null);
   // Every installed module's own top-level nav links (`globalNavItems`) and
   // "standalone workspace" nav sections (`standaloneWorkspaces`,
   // `modules/types.ts`) — a generic mechanism a module registers into
@@ -175,7 +178,9 @@ function LayoutShell({ children }: { children: ReactNode }) {
             };
           });
         }),
-        { key: "stage-phases", to: `/projects/${projectId}/stage-phases`, label: navLabel(`/projects/${projectId}/stage-phases`, strings.stagePhases.title), icon: <Layers size={16} /> },
+        ...(hasStages
+          ? [{ key: "stage-phases", to: `/projects/${projectId}/stage-phases`, label: navLabel(`/projects/${projectId}/stage-phases`, strings.stagePhases.title), icon: <Layers size={16} /> }]
+          : []),
         { key: "history", to: `/projects/${projectId}/history`, label: navLabel(`/projects/${projectId}/history`, strings.history.title), icon: <History size={16} /> },
         { key: "admin", to: `/projects/${projectId}/admin`, label: navLabel(`/projects/${projectId}/admin`, strings.nav.admin), icon: <Settings size={16} /> },
       ]

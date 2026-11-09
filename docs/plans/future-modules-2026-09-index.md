@@ -93,8 +93,8 @@ that discussion; this just reorders the table to match it).
 | 3 | 5 | Requirements & Requirement Libraries | Not started | [module-05-requirements-and-libraries-plan.md](module-05-requirements-and-libraries-plan.md) | — (already largely built; does not need Module 0) | — | §14–16 |
 | 4 | 6 | Engineering Design | Not started | [module-06-engineering-design-plan.md](module-06-engineering-design-plan.md) | Module 0, Requirements (existing) | Decisions (4) — design/decision are usually created together, per the doc below; now satisfiable immediately, Decision Management having shipped | §3 Module 6 list, now superseded by [engineering-design-vs-decisions.md](engineering-design-vs-decisions.md) — a supplementary source the user provided 2026-09-16 with a full field-level spec, no longer the thinnest module |
 | 5 | 3 | Risk Management | Phases 0, 1a (core per-cell scoring override) and 1 (data model, scoring, RBAC, project API) shipped 2026-10-12; Phase 2 is next | [module-03-risk-management-plan.md](completed/module-03-risk-management-plan.md) | Module 0, Requirements (existing) | Context (1), Decisions (4), Design (6), Verification (existing) — all four satisfied by this point in the order except Context, which lands immediately before it | §11 |
-| 6–7 | 8 + 7 | Governance & Traceability (one module, nine sub-components; merged 2026-11-09, **Decided by: User**) | Not started | [module-07-08-governance-and-traceability-plan.md](module-07-08-governance-and-traceability-plan.md) | Module 0 (Traceability half only; the Governance half needs nothing) | Compliance (9) results feed Governance Health and baseline checks; every artefact type a rule targets (1, 2, 3, 4, 5, 6, 9) — a rule targeting a type that doesn't exist yet just can't be configured yet | §17–36 |
-| 8 | 9 | Compliance Integration | Not started | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Modules 7 + 8 (Governance & Traceability) | Risk (3), Decisions (4) — reserved relationship targets | §37 |
+| 6–7 | 7 (was 8 + 7) | Traceability & Governance (one module, ten sub-components; merged 2026-11-09, **Decided by: User**; also takes Module 5 Phase 1, Requirement Types) | Not started | [module-07-traceability-and-governance-plan.md](module-07-traceability-and-governance-plan.md) | Module 0 (Traceability half only; the Governance half needs nothing) | Compliance (9) results feed Governance Health and baseline checks; every artefact type a rule targets (1, 2, 3, 4, 5, 6, 9) — a rule targeting a type that doesn't exist yet just can't be configured yet | §17–36 |
+| 8 | 9 | Compliance Integration | Not started | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Module 7 (Traceability & Governance) | Risk (3), Decisions (4) — reserved relationship targets | §37 |
 | 9 | 10 | Reporting & Analysis | **Complete 2026-11-04** (custom-report layout designer over the core report framework; Executive Gap Analysis and Change Impact moved to Module 6 Phase 9) | [module-10-reporting-and-analysis-plan.md](completed/module-10-reporting-and-analysis-plan.md) | Module 0 | Consumes whatever of 1–9 is enabled at generation time; degrades gracefully, never blocks on a module not existing | §47 |
 | — | 13 | Product Variants | Not started — proposed 2026-10-04, generalised from tiers 2026-10-12 | [module-13-product-variants-plan.md](module-13-product-variants-plan.md) | Module 0 | Context & Strategy (1): intentional Pain Point → Variant links | not in the overview — requested by the user 2026-10-04 |
 | — | 14 | Product Feedback (Enhancement Requests) | **Built** (13/13, 2026-11-05) | [module-14-product-feedback-plan.md](completed/module-14-product-feedback-plan.md) | Module 0 | Context & Strategy (1): Pain Point links + report hook; Stakeholders & Personas (2): requester/Engagement links | not in the overview — requested by the user 2026-10-05 |
@@ -240,7 +240,7 @@ flowchart TD
         M5["Module 5\nRequirements & Libraries"]
     end
 
-    GT["Modules 7 + 8\nGovernance & Traceability"]
+    GT["Module 7\nTraceability & Governance"]
     M9["Module 9\nCompliance Integration"]
     M10["Module 10\nReporting & Analysis"]
 
@@ -317,7 +317,7 @@ flowchart TD
     M4["4 Decision Management"]
     M5["5 Requirements & Libraries"]
     M6["6 Engineering Design"]
-    subgraph GT["7 + 8 Governance & Traceability (one module)"]
+    subgraph GT["7 Traceability & Governance (one module)"]
         direction LR
         M8["8 Governance sub-components"]
         M7["7 Traceability sub-components"]
@@ -339,7 +339,7 @@ sub-components: Traceability's "Required" enforcement level is enforced only
 while the `baseline_policies` sub-component is enabled, and the only hard
 dependencies that remain are *inside* the module (exceptions and cross-project
 traceability require `traceability_rules`; see
-[the merged plan](module-07-08-governance-and-traceability-plan.md)). Every other module can be turned on in any combination, including any of
+[the merged plan](module-07-traceability-and-governance-plan.md)). Every other module can be turned on in any combination, including any of
 the "no" answers implied by your examples:
 
 - **Module 4 (Decision Management) without Module 1 (Context & Strategy):

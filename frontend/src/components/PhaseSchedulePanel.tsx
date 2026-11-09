@@ -22,22 +22,17 @@ import { toErrorMessage } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useDisclosureState } from "../hooks/useDisclosureState";
 import { useMutation } from "../hooks/useMutation";
+import { usePhaseRangeEditor } from "../hooks/usePhaseRangeEditor";
+import { formatDay } from "../utils/deliveryPlan";
 import { localToday } from "../utils/localDate";
 import { Badge } from "./Badge";
 import { DisclosureRow } from "./DisclosureRow";
 import { LabeledSelect } from "./LabeledSelect";
-import { PhaseRangeEditor } from "./PhaseRangeEditor";
 import { PrincipalFormField } from "./PrincipalFormField";
 
 const INHERIT = "inherit";
 const STAGE_SCOPE = "stage";
 const USUAL_LEAD_DAYS = [0, 1, 2, 3, 5, 7, 10, 14, 21, 28, 30, 60, 90];
-
-/** `YYYY-MM-DD` shown in the viewer's locale, without any timezone shift (a calendar date has none). */
-function formatDay(day: string): string {
-  const [year, month, date] = day.split("-").map(Number);
-  return new Date(year, month - 1, date).toLocaleDateString();
-}
 
 /** Whole calendar days from `expectedTo` (a date) to the local day `completedAt` falls on. */
 function daysLate(expectedTo: string, completedAt: string): number {
@@ -65,8 +60,6 @@ export function PhaseSchedulePanel({
   const [tracks, setTracks] = useState<ComponentPhases | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [scopes, setScopes] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState<{ stage: ProjectStage; componentId: string | null; phaseId: string; phaseName: string } | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const base = `/api/v1/projects/${projectId}`;
   // One stage is shown open; several start closed, each with its current phase on the row.
   const disclosure = useDisclosureState("phaseSchedule:stages", stages.length > 1);
@@ -92,6 +85,7 @@ export function PhaseSchedulePanel({
   }, [base, strings.phaseSchedule.loadFailed]);
 
   useLoadOnChange(reload, [base]);
+  const rangeEditor = usePhaseRangeEditor(base, () => { void reload(); onChanged?.(); });
 
   async function setLeadDays(value: string) {
     const lead_days = value === INHERIT ? null : Number(value);
@@ -106,22 +100,6 @@ export function PhaseSchedulePanel({
       await reload();
       onChanged?.();
     }
-  }
-
-  async function saveRange(expectedFrom: string | null, expectedTo: string | null) {
-    if (!editing) return;
-    setSaveError(null);
-    try {
-      await api.put(`${base}/stages/${editing.stage.id}/phase-plan`, {
-        phase_id: editing.phaseId, component_id: editing.componentId, expected_from: expectedFrom, expected_to: expectedTo,
-      });
-    } catch (err) {
-      setSaveError(toErrorMessage(err, strings.mutation.failure("save", strings.phaseSchedule.nounPlan)));
-      return;
-    }
-    setEditing(null);
-    await reload();
-    onChanged?.();
   }
 
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
@@ -216,7 +194,10 @@ export function PhaseSchedulePanel({
                         <td>
                           <button
                             className="btn" aria-label={strings.phaseSchedule.editPhase(phase.name)} title={strings.phaseSchedule.editPhase(phase.name)}
-                            onClick={() => { setSaveError(null); setEditing({ stage, componentId, phaseId: phase.id, phaseName: phase.name }); }}
+                            onClick={() => rangeEditor.open({
+                              stageId: stage.id, componentId, phaseId: phase.id, title: strings.phaseSchedule.editTitle(stage.name, phase.name),
+                              expectedFrom: row?.expected_from ?? null, expectedTo: row?.expected_to ?? null,
+                            })}
                           >
                             <Pencil />
                           </button>
@@ -230,17 +211,7 @@ export function PhaseSchedulePanel({
           </DisclosureRow>
         );
       })}
-      {editing && (
-        <PhaseRangeEditor
-          title={strings.phaseSchedule.editTitle(editing.stage.name, editing.phaseName)}
-          expectedFrom={rowOf(plans, editing)?.expected_from ?? null} expectedTo={rowOf(plans, editing)?.expected_to ?? null}
-          error={saveError} onCancel={() => setEditing(null)} onSave={(from, to) => void saveRange(from, to)}
-        />
-      )}
+      {rangeEditor.dialog}
     </div>
   );
-}
-
-function rowOf(plans: PhasePlans, editing: { stage: ProjectStage; componentId: string | null; phaseId: string }): PhasePlan | undefined {
-  return plans.plans.find((p) => p.stage_id === editing.stage.id && p.component_id === editing.componentId && p.phase_id === editing.phaseId);
 }

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import {
-  buildComponent, buildComponentPhases, buildComponentTrack, buildStage, buildStageWorkflow, withToast,
+  buildComponent, buildComponentPhases, buildComponentTrack, buildPhasePlan, buildStage, buildStageWorkflow, withToast,
 } from "../testing/storybook-helpers";
 import { ComponentTracksList } from "./ComponentTracksList";
 
@@ -18,7 +18,7 @@ const tracks = [
   buildComponentTrack({ component_id: "c2", stage_id: "s2", can_move: false, not_applicable: true }),
 ];
 
-/** The tracks of every component through the stages, with a picker each; shared by project administration and the Stage phases page. */
+/** The tracks of every component through the stages, with a picker each; shared by project administration and the Delivery status page. */
 const meta: Meta<typeof ComponentTracksList> = {
   title: "Components/ComponentTracksList",
   component: ComponentTracksList,
@@ -89,5 +89,43 @@ export const EditColumnNeedsOnEdit: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("button", { name: "Edit Software in Release 1" }));
     await expect(args.onEdit).toHaveBeenCalled();
+  },
+};
+
+const plans = [
+  buildPhasePlan({ stage_id: "s1", component_id: "c1", phase_id: "phase-scoping", expected_from: "2020-01-01", expected_to: "2020-02-01" }),
+  buildPhasePlan({ stage_id: "s2", component_id: "c1", phase_id: "phase-scoping", expected_from: "2099-01-01", expected_to: "2099-02-01" }),
+];
+
+/** With the phase schedule the table adds progress, the expected range and an overdue badge, and a track without dates says so. */
+export const ProgressDatesAndOverdue: Story = {
+  args: { plans },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const columnHeaders = within(canvas.getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent);
+    await expect(columnHeaders).toEqual(["Component", "Stage", "Current phase", "Progress", "Expected", "Owner", "State"]);
+    await expect(canvas.getAllByText("Step 1 of 5").length).toBeGreaterThan(0);
+    await expect(canvas.getByText("Overdue")).toBeInTheDocument();
+    await expect(canvas.getAllByText("No dates set").length).toBeGreaterThan(0);
+  },
+};
+
+/** The schedule button opens the host's range editor for the track's current phase. */
+export const ScheduleButtonCallsTheHost: Story = {
+  args: { plans, onSchedule: fn() },
+  play: async ({ canvasElement, args }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Set expected dates for Software in Release 1" }));
+    await expect(args.onSchedule).toHaveBeenCalledWith(expect.objectContaining({ component_id: "c1", stage_id: "s1" }));
+  },
+};
+
+/** The timeline view draws the same filtered rows as bars, one per track. */
+export const TimelineView: Story = {
+  args: { plans, view: "timeline" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getAllByRole("listitem")).toHaveLength(4);
+    await userEvent.selectOptions(canvas.getByRole("combobox", { name: "Stage" }), "Release 2");
+    await waitFor(() => expect(canvas.getAllByRole("listitem")).toHaveLength(2));
   },
 };
