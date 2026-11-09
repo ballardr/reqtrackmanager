@@ -3960,6 +3960,12 @@ const en = {
   overviewWidgets: {
     customise: "Customise overview",
     orgHeading: "Default overview",
+    orgHint: "The overview every {project} of the organisation shows unless it, or a parent {project}, has its own. A {project} that customises its overview keeps that layout.",
+    orgBuiltIn: "Built-in layout",
+    orgCustom: (n: number) => `Customised: ${n} ${n === 1 ? "widget" : "widgets"}`,
+    orgEdit: "Edit overview default",
+    orgEditTitle: "Default overview",
+    orgSummaryFailed: "Could not load the default overview.",
     editing: "Editing the overview",
     save: "Save",
     saved: "Overview saved.",

@@ -18,7 +18,7 @@
  * - Save and Cancel are always on screen (the bar is sticky), the same reason a form's actions sit in its header.
  * - A widget the person hides stays in the grid, dimmed, so it can be shown again; it requests no data.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import { availableScopes, projectScopeApi, PROJECT_SCOPES } from "../../api/projectScope";
@@ -76,10 +76,12 @@ function dashboardLayout(loaded: OrgDashboardLayout): OverviewLayout {
  * @param target The tier to edit.
  * @param onSaved Called after a save or a restore (the page reloads its layout and leaves edit mode).
  * @param onCancel Called when the person leaves without saving.
+ * @param onDirtyChange Called whenever the draft starts or stops differing from the saved layout, so a dialog around
+ *   the editor can guard its own close button.
  */
 export function OverviewEditor({
-  target, onSaved, onCancel,
-}: { target: OverviewEditTarget; onSaved: () => void; onCancel: () => void }) {
+  target, onSaved, onCancel, onDirtyChange,
+}: { target: OverviewEditTarget; onSaved: () => void; onCancel: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const strings = useStrings();
   const t = strings.overviewWidgets;
   const run = useMutation();
@@ -120,6 +122,8 @@ export function OverviewEditor({
     () => layout !== null && draft !== null && JSON.stringify(draft) !== JSON.stringify({ scope: layout.scope, widgets: layout.widgets }),
     [layout, draft],
   );
+
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
   if (loadError) return <p style={{ color: "var(--color-danger)" }}>{loadError}</p>;
   if (!layout || !catalogue || !draft) return <Spinner />;

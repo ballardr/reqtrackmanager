@@ -3142,7 +3142,7 @@ export function OrgAdminPage() {
               <OrganizationCodePanel org={org} onSaved={setOrg} />
             </CollapsibleSection>
 
-            <CollapsibleSection sectionKey="orgAdmin.overviewDefault" title={strings.overviewWidgets.orgHeading}>
+            <CollapsibleSection sectionKey="orgAdmin.overviewDefault" title={strings.overviewWidgets.orgHeading} help={strings.overviewWidgets.orgHint}>
               <OrgOverviewDefaultPanel organizationId={org.id} />
             </CollapsibleSection>
 

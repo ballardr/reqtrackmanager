@@ -59,7 +59,7 @@ Under **Workflow → Stage workflows**, define the phases a project stage can mo
 
 ## Default overview
 
-Under **Projects → Default overview**, arrange the project overview that every project of the organisation shows unless it, or a parent project, has its own. It is the same editor as a project's **Customise overview** (see [Project overview](../core-features/project-overview.md)); **Restore default** removes the organisation's overview so the built-in layout applies. Only the modules the organisation has enabled offer metrics, record types and widgets.
+Under **Projects → Default overview**, the row shows whether the organisation has its own default or the built-in layout applies. **Edit overview default** opens a dialog to arrange the project overview that every project of the organisation shows unless it, or a parent project, has its own. It is the same editor as a project's **Customise overview** (see [Project overview](../core-features/project-overview.md)); **Restore default** removes the organisation's overview so the built-in layout applies. Only the modules the organisation has enabled offer metrics, record types and widgets.
 
 ## Navigation names
 

@@ -187,13 +187,23 @@ test.describe("project overview widgets", () => {
       await page.goto(`/orgs/${project.organizationId}/admin`);
       await selectOrgAdminGroup(page, "Projects");
       await ensureExpanded(page, "Default overview");
-      const editor = page.locator('[data-overview-editor="organisation"]');
+      // The section is a compact row; the editor opens in a dialog.
+      await expect(page.getByText("Built-in layout")).toBeVisible();
+      await page.getByRole("button", { name: "Edit overview default" }).click();
+      const dialog = page.getByRole("dialog", { name: "Default overview" });
+      const editor = dialog.locator('[data-overview-editor="organisation"]');
       // The default has no data of its own: each widget is a labelled block.
       await expect(editor.locator("[data-placeholder]").first()).toBeVisible();
       await editor.getByRole("button", { name: "Hide Files", exact: true }).click();
-      await editor.getByRole("button", { name: "Save" }).click();
+      // Closing with unsaved changes asks first; keeping the edits leaves the dialog open.
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog", { name: /Discard/ })).toBeVisible();
+      await page.getByRole("dialog", { name: /Discard/ }).getByRole("button", { name: "Keep editing" }).click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: "Save" }).click();
       await expect(page.getByText("Overview saved.")).toBeVisible();
-      await expect(editor.getByRole("button", { name: "Restore default" })).toBeVisible();
+      await expect(dialog).toBeHidden();
+      await expect(page.getByText(/^Customised: \d+ widgets?$/)).toBeVisible();
     });
 
     await test.step("a project with no layout of its own shows the default", async () => {
