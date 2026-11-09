@@ -1,6 +1,6 @@
 import { Ban, Eye, KeyRound, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
 import { useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
 import type { BulkRevokeResult, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
@@ -28,6 +28,7 @@ import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { AddUserModal, type AddUserMode } from "./AddUserModal";
 import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
+import { PoliciesPanel } from "../components/PoliciesPanel";
 import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
@@ -890,9 +891,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "messages" | "modules" | "reportFonts" | "dataPolicy";
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "messages" | "modules" | "reportFonts" | "policies" | "personalDataExport";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "messages", "modules", "reportFonts", "dataPolicy"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "messages", "modules", "reportFonts", "policies", "personalDataExport"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -905,6 +906,10 @@ const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview"
  */
 export function ServerManagementPage() {
   const { group: groupParam } = useParams<{ group?: string }>();
+
+  // "Data policy" is now the published document; the export rule this group held was renamed, so an older address
+  // or bookmark lands on the renamed group.
+  if (groupParam === "dataPolicy") return <Navigate to="/server/management/personalDataExport" replace />;
 
   const activeGroup: ServerManagementGroupKey = SERVER_MANAGEMENT_GROUP_KEYS.includes(
     groupParam as ServerManagementGroupKey
@@ -920,7 +925,8 @@ export function ServerManagementPage() {
     { key: "messages", label: strings.announcements.heading, href: "/server/management/messages" },
     { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
     { key: "reportFonts", label: strings.reportFonts.title, href: "/server/management/reportFonts" },
-    { key: "dataPolicy", label: strings.personalDataPolicy.groupTitle, href: "/server/management/dataPolicy" },
+    { key: "policies", label: strings.policies.heading, href: "/server/management/policies" },
+    { key: "personalDataExport", label: strings.personalDataPolicy.groupTitle, href: "/server/management/personalDataExport" },
   ];
 
   return (
@@ -942,7 +948,12 @@ export function ServerManagementPage() {
         )}
         {activeGroup === "modules" && <ServerModulesTab />}
         {activeGroup === "reportFonts" && <ServerReportFontsTab />}
-        {activeGroup === "dataPolicy" && (
+        {activeGroup === "policies" && (
+          <CollapsibleSection sectionKey="serverManagement.policies" title={strings.policies.heading}>
+            <PoliciesPanel scope={{ kind: "server" }} />
+          </CollapsibleSection>
+        )}
+        {activeGroup === "personalDataExport" && (
           <CollapsibleSection sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.title} help={strings.personalDataPolicy.serverHint}>
             <PersonalDataPolicyPanel scope={{ kind: "server" }} />
           </CollapsibleSection>

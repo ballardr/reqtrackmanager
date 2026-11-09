@@ -2521,6 +2521,79 @@ export interface AnnouncementNotice {
   dismissible: boolean;
 }
 
+// --- Policies (`backend/app/routers/policies.py`) -----------------------------------------------
+
+/** A node of a policy body: the limited rich-text vocabulary the server validates (`services/policy_body.py`). */
+export interface PolicyNode {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: PolicyNode[];
+  text?: string;
+  marks?: { type: string; attrs?: { href?: string } }[];
+}
+
+/** A policy body: a document node holding blocks. */
+export interface PolicyBody {
+  type: "doc";
+  content: PolicyNode[];
+}
+
+export type PolicyState = "draft" | "published";
+export const POLICY_STATE_LABEL: Record<PolicyState, string> = { draft: "Not published", published: "Published" };
+export const POLICY_STATE_TONE: Record<PolicyState, BadgeTone> = { draft: "muted", published: "accent" };
+
+/** Built-in server policy slots: their titles are fixed. */
+export type PolicySlot = "privacy" | "data";
+
+/** One row of the administration list; a built-in slot not yet written has a null `id`. */
+export interface PolicySummary {
+  id: string | null;
+  key: PolicySlot | null;
+  title: string;
+  state: PolicyState;
+  effective_from: string | null;
+  current_version: number;
+  has_unpublished_changes: boolean;
+  updated_at: string | null;
+}
+
+export interface PolicyVersion {
+  version: number;
+  title: string;
+  effective_from: string | null;
+  published_at: string;
+  change_note: string;
+}
+
+/** A policy with its working copy and version history, as administrators see it. */
+export interface Policy extends PolicySummary {
+  id: string;
+  body: PolicyBody;
+  versions: PolicyVersion[];
+}
+
+/** The fields an administrator sets (`key` only when creating a built-in slot). */
+export interface PolicyWrite {
+  key?: PolicySlot | null;
+  title: string;
+  body: PolicyBody;
+  effective_from: string | null;
+}
+
+/** A published policy in the public list. */
+export interface PublicPolicySummary {
+  id: string;
+  key: PolicySlot | null;
+  title: string;
+  effective_from: string | null;
+  version: number;
+  published_at: string;
+}
+
+export interface PublicPolicy extends PublicPolicySummary {
+  body: PolicyBody;
+}
+
 // --- Project overview widgets (`backend/app/services/overview_widgets.py`) --------------------------
 
 /** The project scopes an overview or a widget reads in (`api/projectScope.ts` has the same type). */

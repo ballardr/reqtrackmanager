@@ -51,6 +51,7 @@ from app.routers import (
     overview_widgets,
     pats,
     placements,
+    policies,
     project_link_types,
     projects,
     record_list_report,
@@ -388,6 +389,8 @@ app.include_router(stage_workflows.project_router)
 app.include_router(announcements.system_router)
 app.include_router(announcements.org_router)
 app.include_router(announcements.reader_router)
+app.include_router(policies.system_router)
+app.include_router(policies.public_router)
 app.include_router(nav_labels.router)
 app.include_router(nav_labels.org_router)
 app.include_router(org_dashboards.router)

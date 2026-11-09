@@ -185,8 +185,9 @@ class Settings(BaseSettings):
             and per worker process for the unauthenticated "forgot password" and "reset password" calls.
             0 disables it.
         public_announcement_rate_limit_burst / public_announcement_rate_limit_per_minute: Token bucket per
-            client address and per worker process for the unauthenticated read of login-page messages
-            (one call per login page view). 0 disables it.
+            client address and per worker process for the unauthenticated reads of login-page messages
+            (one call per login page view) and of published server policies (a separate bucket each).
+            0 disables it.
         credential_reset_send_rate_limit_burst / credential_reset_send_rate_limit_per_minute: Token bucket
             per administrator and per worker process for sending reset links to other people. 0 disables it.
         require_strong_secrets: When true, the process refuses to start while `jwt_secret` is the built-in

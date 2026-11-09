@@ -125,7 +125,7 @@ test("a server admin changes the server default for a sensitivity tag", async ({
 
   await loginAs(page, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
   await page.goto("/server/management");
-  await selectServerManagementGroup(page, "Data policy");
+  await selectServerManagementGroup(page, "Personal data in exports");
   await openSection(page);
   const row = tagRow(page, "Free text that can quote people");
   await expect(row).toBeVisible();

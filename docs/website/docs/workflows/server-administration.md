@@ -23,7 +23,7 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 | Server management |
 | --- |
-| Access review, platform branding, public sign-up, email, messages, module, report font and data policy settings |
+| Access review, platform branding, public sign-up, email, messages, module, report font, policy and personal data settings |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
 - **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators. **Add user** creates a person from here (see [Adding a user](#adding-a-user)).
@@ -32,7 +32,8 @@ Opening any one org's admin page from here as a server admin (rather than an org
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
 - **Email** — deployment-wide outbound email configuration.
 - **Messages** — platform-wide announcements (see [below](#messages)).
-- **Data policy** — the deployment default for personal data in record exports and imports (see [below](#personal-data-in-exports-and-imports)).
+- **Policies** — the privacy policy, the data policy and any other policy the deployment publishes (see [below](#policies)).
+- **Personal data in exports** — the deployment default for personal data in record exports and imports (see [below](#personal-data-in-exports-and-imports)).
 - **Modules** — which [modules](../modules/overview.md) exist for whom: the default entitlement policy (open or closed), what an organisation gets for a module it has not chosen itself (available, and on for new projects), an **Apply to all organisations** action that writes those defaults into existing organisations (type the word shown to confirm), and a per-organisation list to grant or withdraw a module. A module withdrawn from an organisation disappears from its administrators' and projects' module lists. A fresh install starts with every module available; an upgraded one changes only when you choose.
 - **Report fonts** — the fonts report authors can choose. The four bundled fonts are always offered. A house typeface is added by putting its `.ttf` files in the font directory the deployment mounts (see [Extra report fonts](../installation-deployment/production-deployment.md#extra-report-fonts)) and pressing **Rescan**. For each provided family you can switch **Offered to authors** off (layouts already using it keep working), set the **Name in Word and OpenDocument** and a **Generic fallback** (sans-serif, serif or monospace) for readers who lack the font. The page lists the faces found with each font's licence permission, and every file that was skipped with the reason (for example, a font whose licence forbids embedding). You are responsible for the licence of every font you provide. PDF reports always carry the real font; Word and OpenDocument files name it.
 
@@ -56,9 +57,29 @@ flowchart LR
 - **Send as notification** sends the message once to every active user. Each person's [notification preferences](./notifications.md#choosing-how-youre-notified) apply, and you are not notified of your own send. The row then records how many people it reached, and it cannot be sent again. An ended message cannot be sent.
 - Organisation administrators write messages for their own organisation only; they cannot see or change yours.
 
+## Policies
+
+**Server Management → Policies** is where the deployment publishes its written policies. The **Privacy policy** and the **Data policy** are always listed first (marked **Not written** until you write them) and keep their titles; **New policy** adds any other, such as an acceptable use policy.
+
+```mermaid
+flowchart LR
+    A["Write or edit<br/>(working copy)"] --> B["Publish<br/>(new version)"]
+    B --> C["Visible on the<br/>Policies page"]
+    C --> D["Edit again<br/>(readers still see<br/>the published version)"]
+    D --> B
+    C --> E["Unpublish<br/>(versions kept)"]
+```
+
+- The text is written in a visual editor: headings, paragraphs, bulleted and numbered lists, quotations, a horizontal rule, bold, italic and links (https, http or mailto addresses only). Anything outside that set cannot be saved.
+- **Save** stores the working copy only. People keep reading the published version until you press **Publish**, which records a new version with its date and an optional **Change note** that only administrators see. A policy with edits not yet published shows **Unpublished changes**.
+- **Effective from** is a calendar date shown with the policy; it does not delay publication.
+- **Version history** lists every published version. **Unpublish** removes a policy from the Policies page and keeps its versions; it can be published again. A policy that is not built in can also be deleted, with its versions.
+- Everything published is readable by anyone, without signing in, at `/policies`. A **Policies** link appears below the sign-in form and at the foot of the navigation rail while at least one policy is published. Drafts and unpublished policies are never shown.
+- Publishing and unpublishing are recorded in the audit log with the policy's key and version, never its text.
+
 ## Personal data in exports and imports
 
-**Server Management → Data policy** sets the deployment-wide default for whether record columns that hold personal data (names and identifiers, contact details, free text that can quote people) may leave the application in an export, or be written by an import. Everything is excluded until you allow it, so a fresh install lets no personal data out through a file. Allowing a kind asks for confirmation; excluding one does not. An organisation can set its own rule under **Security** in its [admin page](./administering-an-organisation.md#personal-data-in-exports-and-imports), and one that has not follows this default. Each change is recorded in the audit log with the old and new value.
+**Server Management → Personal data in exports** sets the deployment-wide default for whether record columns that hold personal data (names and identifiers, contact details, free text that can quote people) may leave the application in an export, or be written by an import. Everything is excluded until you allow it, so a fresh install lets no personal data out through a file. Allowing a kind asks for confirmation; excluding one does not. An organisation can set its own rule under **Security** in its [admin page](./administering-an-organisation.md#personal-data-in-exports-and-imports), and one that has not follows this default. Each change is recorded in the audit log with the old and new value.
 
 ## Adding a user
 

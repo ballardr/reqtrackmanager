@@ -32,6 +32,9 @@ import type {
   ComponentPhases,
   PhasePlan,
   PhasePlans,
+  Policy,
+  PolicyBody,
+  PolicySummary,
   ComponentTrack,
   ChangeEntry,
   ChangeRequest,
@@ -43,6 +46,7 @@ import type {
   ProjectLinkTypes,
   Notification,
   Project,
+  PublicPolicy,
   ProposedLink,
   ProjectFile,
   ProjectListItem,
@@ -234,6 +238,29 @@ export function buildAnnouncement(overrides: Partial<Announcement> = {}): Announ
     id: "announcement-1", organization_id: null, title: "Planned maintenance", body: "The service restarts at night.",
     severity: "warning", starts_at: null, ends_at: null, show_on_login: true, dismissible: true, status: "active", notified_at: null,
     notified_count: null, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...overrides,
+  };
+}
+
+/** A paragraph-only policy body. */
+export function buildPolicyBody(...paragraphs: string[]): PolicyBody {
+  return { type: "doc", content: paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })) };
+}
+
+export function buildPolicySummary(overrides: Partial<PolicySummary> = {}): PolicySummary {
+  return {
+    id: "policy-1", key: null, title: "Acceptable use policy", state: "draft", effective_from: null, current_version: 0,
+    has_unpublished_changes: true, updated_at: "2026-11-09T01:00:00Z", ...overrides,
+  };
+}
+
+export function buildPolicy(overrides: Partial<Policy> = {}): Policy {
+  return { ...buildPolicySummary(), id: "policy-1", body: buildPolicyBody("Use the service responsibly."), versions: [], ...overrides };
+}
+
+export function buildPublicPolicy(overrides: Partial<PublicPolicy> = {}): PublicPolicy {
+  return {
+    id: "policy-1", key: null, title: "Privacy policy", effective_from: "2026-12-01", version: 2, published_at: "2026-11-09T01:00:00Z",
+    body: buildPolicyBody("We keep only what the service needs."), ...overrides,
   };
 }
 

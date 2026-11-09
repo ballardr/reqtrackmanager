@@ -31,6 +31,7 @@ import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectReviewsDuePage } from "./pages/ProjectReviewsDuePage";
+import { PoliciesPage, PublicPoliciesPage } from "./pages/PoliciesPage";
 import { ReportLayoutDesignerPage } from "./pages/ReportLayoutDesignerPage";
 import { ReportPackPage } from "./pages/ReportPackPage";
 import { SearchPage } from "./pages/SearchPage";
@@ -87,12 +88,15 @@ function ProtectedRoutes() {
       </div>
     );
   }
+  // The Policies page is public: the people a privacy policy concerns most have not signed in yet.
+  if (!user && /^\/policies(\/|$)/.test(location.pathname)) return <PublicPoliciesPage />;
   if (!user) return <Navigate to="/login" replace />;
 
   return (
     <Layout>
       <Routes>
         {buildModuleRoutes(enabledModules, projectId)}
+        <Route path="/policies/:policyId?" element={<PoliciesPage />} />
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />

@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
 import type { ServerSettings, SignupConfig, SystemUser } from "../api/types";
-import { withRouter, withToast } from "../testing/storybook-helpers";
+import { buildPolicySummary, buildUser, withAuth, withRouter, withToast } from "../testing/storybook-helpers";
 import { ServerManagementPage } from "./ServerManagementPage";
 
 function systemUser(overrides: Partial<SystemUser>): SystemUser {
@@ -531,5 +531,30 @@ export const AddUserButtonOpensTheDialog: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add user" }));
     await userEvent.click(within(document.body).getByRole("menuitem", { name: "New user" }));
     await expect(within(document.body).getByRole("dialog", { name: "New user" })).toBeInTheDocument();
+  },
+};
+
+/** The published documents (Policies) and the export rule for personal data are separate groups with distinct names. */
+export const PoliciesAndPersonalDataExportAreSeparateGroups: Story = {
+  decorators: [withAuth(buildUser({ is_server_admin: true }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/system/policies") {
+        return ["privacy", "data"].map((key) => buildPolicySummary({
+          id: null, key: key as "privacy" | "data", title: key === "privacy" ? "Privacy policy" : "Data policy",
+          has_unpublished_changes: false, updated_at: null,
+        }));
+      }
+      throw new Error(`unmocked path: ${path}`);
+    });
+    spyOn(api, "getPage").mockResolvedValue({ items: [], total: 0 });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Personal data in exports" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("link", { name: "Policies" }));
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/system/policies"));
+    await expect(await canvas.findByRole("button", { name: "Write Privacy policy" })).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Write Data policy" })).toBeInTheDocument();
   },
 };

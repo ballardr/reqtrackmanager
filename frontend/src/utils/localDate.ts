@@ -14,6 +14,20 @@ export function localToday(now: Date = new Date()): string {
 }
 
 /**
+ * A calendar date a person chose, shown as that same day in a long local format ("1 December 2026"). The date has
+ * no time or timezone, so it is built from its parts rather than parsed as a UTC instant, which would shift it a day
+ * west of Greenwich.
+ *
+ * @param value `YYYY-MM-DD`.
+ * @returns The formatted day, or `value` unchanged when it is not a date.
+ */
+export function formatPlainDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).toLocaleDateString(undefined, { dateStyle: "long" });
+}
+
+/**
  * The two UTC instants that bound a window of the viewer's own calendar days, for a filter on a time that has
  * already happened (an upload time is stored in UTC). The start is the first moment of `from`'s local day and the end
  * is the first moment of the local day after `to`, so both days are wholly included and the end is exclusive.

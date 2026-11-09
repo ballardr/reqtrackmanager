@@ -26,6 +26,7 @@ import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { ReportRunsIndicator } from "./ReportRunsIndicator";
 import { NavRailLink } from "./NavRailLink";
+import { PoliciesLink } from "./PoliciesLink";
 import { ProjectNavSection } from "./ProjectNavSection";
 import { Tooltip } from "./Tooltip";
 
@@ -321,6 +322,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 className="text-muted"
                 style={{ marginTop: "auto", paddingTop: "var(--space-4)", fontSize: "0.7rem", lineHeight: 1.6 }}
               >
+                {/* The in-application footer: a link to the published policies, absent when there are none. */}
+                <div><PoliciesLink /></div>
                 <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
                 <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>
                   {backendVersion ? strings.nav.backendVersion(backendVersion.version) : strings.nav.backendVersionLoading}

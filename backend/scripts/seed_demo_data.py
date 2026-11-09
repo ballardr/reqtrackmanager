@@ -638,6 +638,22 @@ def create_announcement(
     return r.json()
 
 
+def publish_server_policy(headers: dict, key: str, heading: str, paragraphs: list[str]) -> None:
+    """Writes and publishes a built-in server policy (Server Management's Policies group), so the manual-demo dataset
+    shows the Policies page and the login-page link. A policy that already exists is left as it is."""
+    body = {"type": "doc", "content": [
+        {"type": "heading", "attrs": {"level": 1}, "content": [{"type": "text", "text": heading}]},
+        *({"type": "paragraph", "content": [{"type": "text", "text": text}]} for text in paragraphs),
+    ]}
+    created = httpx.post(f"{BASE}/system/policies", json={"key": key, "body": body}, headers=headers, timeout=30)
+    if created.status_code == 409:
+        return
+    created.raise_for_status()
+    httpx.post(
+        f"{BASE}/system/policies/{created.json()['id']}/publish", json={"change_note": "Demonstration text"}, headers=headers, timeout=30,
+    ).raise_for_status()
+
+
 def create_org_dashboard(
     headers: dict, org_id: str, name: str, widgets: list[dict], viewer_user_ids: list[str] | None = None,
 ) -> dict:
@@ -2464,6 +2480,16 @@ def main() -> None:
     ])
     improvement_workflow = create_org_workflow(h_pm, org["id"], "Continuous improvement", [
         ("Scoping", "open"), ("Implementation ready", "locked"), ("Done", "closed"),
+    ])
+
+    print("Publishing the server policies...")
+    publish_server_policy(h_admin, "privacy", "How personal data is handled", [
+        "This is a demonstration service. It holds only the sample data in this organisation.",
+        "Replace this text with the privacy policy of your own service before real use.",
+    ])
+    publish_server_policy(h_admin, "data", "How records are kept", [
+        "Records are kept until a project administrator deletes them.",
+        "Replace this text with the data policy of your own service before real use.",
     ])
 
     print("Posting an organisation message...")

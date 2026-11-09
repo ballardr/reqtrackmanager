@@ -114,6 +114,10 @@ A role governing organisation-wide administration (`org_admin`, `project_creator
 
 A long-lived, org/project-scoped bearer credential for non-interactive use, such as scripting against the REST API or connecting an AI assistant. See [Core Features → Personal access tokens](../core-features/personal-access-tokens.md).
 
+#### Policy
+
+A written document a deployment publishes, such as a privacy policy or a data policy, written by a server administrator in a visual editor. Saving changes a working copy; **Publish** records a new version, which anyone can read at `/policies` without signing in. Distinct from the **Personal data in exports** setting, which decides whether personal data columns may leave the application in a record export. See [Server administration](../workflows/server-administration.md#policies).
+
 #### Project
 
 Belongs to exactly one organisation, and can optionally have a parent project, modelling a larger programme as a tree of related projects. See [Organisations and projects](../concepts/organisations-and-projects.md).

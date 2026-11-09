@@ -42,6 +42,7 @@ from app.models.organization import (
 )
 from app.models.pat import PersonalAccessToken
 from app.models.placement import ArtefactPlacement
+from app.models.policy import PolicyDocument, PolicyDocumentVersion
 from app.models.project import (
     FavoriteProject,
     OrgGroupProjectRole,
@@ -102,6 +103,8 @@ __all__ = [
     "ArtefactTag",
     "Tag",
     "Announcement",
+    "PolicyDocument",
+    "PolicyDocumentVersion",
     "AuditEvent",
     "LoginEvent",
     "ChangeRequest",

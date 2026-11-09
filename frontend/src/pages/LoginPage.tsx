@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError, api, fileUrl } from "../api/client";
 import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
 import { LoginAnnouncements } from "../components/LoginAnnouncements";
+import { PoliciesLink } from "../components/PoliciesLink";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
@@ -161,6 +162,7 @@ export function LoginPage() {
           </div>
         )}
       </form>
+      <div style={{ textAlign: "center" }}><PoliciesLink className="text-muted" /></div>
     </div>
     </div>
   );
