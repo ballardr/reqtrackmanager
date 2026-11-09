@@ -63,12 +63,14 @@ function validateBandDraft(draft: { label: string; percent: string }[]): string 
  * @param onReset Clears the override; same feedback contract as `onSave`.
  */
 export function ScoringBandsEditor({
-  bands, custom, defaultLabel, resetLabel, onSave, onReset,
+  bands, custom, defaultLabel, resetLabel, platformFallback, onSave, onReset,
 }: {
   bands: ScoringBand[];
   custom: boolean;
   defaultLabel: string;
   resetLabel?: string;
+  /** The fallback is the module default on an organisation page: no pill, only a reset while custom. */
+  platformFallback?: boolean;
   onSave: (bands: ScoringBand[]) => Promise<void>;
   onReset: () => Promise<void>;
 }) {
@@ -101,7 +103,7 @@ export function ScoringBandsEditor({
     <div className="stack" style={{ gap: "var(--space-3)" }}>
       <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
         <span>Rating bands</span>
-        <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel}
+        <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel} platformFallback={platformFallback}
           onReset={() => void run(onReset)} disabled={busy} />
       </div>
       <div className="definition-grid" style={{ gridTemplateColumns: "minmax(8rem, 1fr) 6.5rem 8rem 6rem max-content" }}>

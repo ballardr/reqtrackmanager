@@ -28,12 +28,10 @@ import {
   type RecordSensitivityTag,
   type ServerRecordSensitivity,
 } from "../api/types";
-import { useOrgLabel } from "../context/BrandingContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ModuleSettingsList } from "./ModuleSettingsList";
-import { OverridePill } from "./OverridePill";
 import { Spinner } from "./Spinner";
 import { ToggleSwitch } from "./ToggleSwitch";
 
@@ -67,7 +65,6 @@ function fromOrg(row: OrgRecordSensitivity): PolicyRow {
  */
 export function PersonalDataPolicyPanel({ scope }: { scope: PersonalDataPolicyScope }) {
   const { showToast } = useToast();
-  const orgLabel = useOrgLabel();
   const isServer = scope.kind === "server";
   const base = isServer
     ? "/api/v1/system/record-sensitivity-policy"
@@ -117,9 +114,6 @@ export function PersonalDataPolicyPanel({ scope }: { scope: PersonalDataPolicySc
   if (rows === null) return <Spinner />;
   return (
     <div className="stack">
-      <p className="text-muted" style={{ margin: 0 }}>
-        {isServer ? strings.serverHint : strings.orgHint(orgLabel)}
-      </p>
       <ModuleSettingsList
         items={rows.map((row) => {
           const label = RECORD_SENSITIVITY_TAG_LABEL[row.tag];
@@ -130,14 +124,6 @@ export function PersonalDataPolicyPanel({ scope }: { scope: PersonalDataPolicySc
             hint: isServer ? strings.serverStateHint(row.effective) : strings.orgStateHint(row.serverAllowed, row.effective),
             control: (
               <span className="row" style={{ gap: "var(--space-3)", display: "inline-flex", alignItems: "center" }}>
-                {!isServer && (
-                  <OverridePill
-                    custom={row.override !== null}
-                    defaultLabel={strings.followsServer}
-                    resetLabel={strings.resetToServer}
-                    onReset={() => change(row, row.serverAllowed)}
-                  />
-                )}
                 <ToggleSwitch checked={row.effective} label={strings.allowedLabel(label.toLowerCase())} onChange={(next) => change(row, next)} />
               </span>
             ),

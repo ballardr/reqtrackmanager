@@ -52,7 +52,7 @@ Choosing **Customise overview** turns the page into the editor, with the figures
 
 The overview adapts to the screen: twelve columns on a laptop, six on a tablet, and two on a phone, where the small tiles sit two to a row and every other widget takes the full width. Dragging the corner is available on a laptop-sized screen; the width and height boxes in a widget's settings work everywhere.
 
-An organisation administrator sets the organisation default under **Projects & workflow → Default overview**, with the same editor (each widget is a labelled block, since a default has no project to read figures from). The layout travels in the project and organisation exports and is copied when a project is created from a template.
+An organisation administrator sets the organisation default under **Projects → Default overview**, with the same editor (each widget is a labelled block, since a default has no project to read figures from). The layout travels in the project and organisation exports and is copied when a project is created from a template.
 
 ## Text widgets
 

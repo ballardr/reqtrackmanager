@@ -121,7 +121,7 @@ test.describe("organisation-owned record codes", () => {
 
     await test.step("the change asks for confirmation, and cancelling changes nothing", async () => {
       await page.goto(`/orgs/${world.orgId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Projects");
       const toggle = page.getByRole("button", { name: "Organisation code section" });
       if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
       const field = page.getByRole("textbox", { name: "Code", exact: true });

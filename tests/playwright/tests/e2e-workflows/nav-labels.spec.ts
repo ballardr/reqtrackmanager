@@ -64,7 +64,7 @@ test.describe("navigation names", () => {
     await test.step("the organisation administrator sets a default name in Organisation Admin", async () => {
       await loginAs(page, email);
       await page.goto(`/orgs/${project.organizationId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Navigation names");
       await page.getByRole("textbox", { name: "Name for Files" }).fill("Documents");
       await page.getByRole("button", { name: "Save names" }).click();

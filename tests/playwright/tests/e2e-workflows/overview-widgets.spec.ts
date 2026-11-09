@@ -185,7 +185,7 @@ test.describe("project overview widgets", () => {
     await test.step("the organisation administrator hides the Files tile in the default overview", async () => {
       await loginAs(page, email);
       await page.goto(`/orgs/${project.organizationId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Projects");
       await ensureExpanded(page, "Default overview");
       const editor = page.locator('[data-overview-editor="organisation"]');
       // The default has no data of its own: each widget is a labelled block.

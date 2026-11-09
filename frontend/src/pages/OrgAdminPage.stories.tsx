@@ -55,7 +55,15 @@ const defaultArtefactRules: ArtefactLinkRule[] = [
   { artefact_type: "decision", label: "Decision", link_type_ids: null },
 ];
 
+/** The platform branding the company settings show as placeholders. */
+const PLATFORM_BRANDING = {
+  accent_color_hex: "#475569", default_logo_file_id: "platform-logo", default_header_title: "Platform Requirements",
+  default_login_background_file_id: null, email_footer_company_name: "Platform Co", email_footer_website: "https://platform.example.com",
+  email_footer_address: "1 Platform Way", org_label_singular: null, org_label_plural: null,
+};
+
 function mockOrgAdminApis(overrides: {
+  scim?: { enabled: boolean; token_prefix: string | null };
   advanced?: OrgAdvancedSettings; sso?: OrgSsoConfig; org?: Organization;
   projectStatuses?: ProjectStatusDefinition[]; linkTypes?: LinkTypeDefinition[]; userAccess?: UserAccess;
   pats?: OrgPersonalAccessToken[]; users?: OrgUser[]; orgInvites?: OrgPendingInvite[]; groups?: OrgGroup[];
@@ -104,6 +112,7 @@ function mockOrgAdminApis(overrides: {
   const orgPendingInvites = overrides.orgInvites ?? [];
   const orgGroups = overrides.groups ?? groups;
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === "/api/v1/system/branding") return PLATFORM_BRANDING;
     if (path === `/api/v1/orgs/${ORG_ID}`) return overrides.org ?? org;
     if (path === "/api/v1/orgs?mine=true") return overrides.orgs ?? [];
     if (path.includes("/project-statuses")) return statuses;
@@ -164,7 +173,7 @@ function mockOrgAdminApis(overrides: {
     if (path.includes("/users/search")) return { members: orgUsers, external: null };
     if (path.includes("/projects")) return [];
     if (path.includes("/sso-config")) return overrides.sso ?? ssoConfig;
-    if (path.includes("/scim-token")) return { enabled: false, token_prefix: null };
+    if (path.includes("/scim-token")) return overrides.scim ?? { enabled: false, token_prefix: null };
     // Checked before the plain "/users" branch below — a user-access
     // summary request also contains that substring.
     if (path.includes("/access")) return overrides.userAccess ?? { org_groups: [], projects: [] };
@@ -1149,37 +1158,42 @@ export const BrandingSectionSave: Story = {
   },
 };
 
-/** Style guide "Pattern: platform default vs. override":
- * a field with a saved custom value shows a "Custom" pill and an explicit
- * "Reset to platform default" action, instead of the field just quietly
- * accepting an emptied-out value with no indication of what that does. */
-export const BrandingSectionOverridePillAndReset: Story = {
-  beforeEach: () => mockOrgAdminApis({ org: { ...org, header_title: "Acme Requirements", email_footer_company_name: "Acme Ltd" } }),
+/** Style guide "Pattern: platform default vs. override": an empty text field uses the platform value, which the
+ * field shows as its placeholder; there is no "Custom" pill and no reset link, so emptying the field is the way back. */
+export const BrandingSectionPlatformValueIsThePlaceholder: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ org: { ...org, header_title: "Acme Requirements", email_footer_company_name: null } });
+    spyOn(api, "put").mockResolvedValue(org);
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
     await waitFor(() => expect(canvas.getByLabelText(/^Header title/)).toBeInTheDocument());
 
-    // Overridden fields show "Custom" + a reset action…
-    await expect(canvas.getAllByText("Custom")).toHaveLength(2);
-    await expect(canvas.getAllByRole("button", { name: "Reset to platform default" })).toHaveLength(2);
-    // …fields still on the platform default show the pill with no reset.
-    await expect(canvas.getAllByText("Platform default").length).toBeGreaterThan(0);
+    await expect(canvas.queryByText("Custom")).toBeNull();
+    await expect(canvas.queryByRole("button", { name: "Reset to platform default" })).toBeNull();
+    // With no logo of its own the platform logo is shown under a muted caption, and there is nothing to remove.
+    await expect(canvas.getByText("Platform default")).toBeVisible();
+    await expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull();
+    await expect(canvas.getByLabelText("Company name")).toHaveAttribute("placeholder", "Platform Co");
+    await expect(canvas.getByLabelText("Website")).toHaveAttribute("placeholder", "https://platform.example.com");
+    await expect(canvas.getByLabelText("Postal address")).toHaveAttribute("placeholder", "1 Platform Way");
 
-    await expect(canvas.getByLabelText(/^Header title/)).toHaveValue("Acme Requirements");
-    await userEvent.click(canvas.getAllByRole("button", { name: "Reset to platform default" })[0]);
-    await expect(canvas.getByLabelText(/^Header title/)).toHaveValue("");
+    // Emptying a field and saving sends null, which is the platform value again.
+    const header = canvas.getByLabelText(/^Header title/);
+    await expect(header).toHaveValue("Acme Requirements");
+    await expect(header).toHaveAttribute("placeholder", "Platform Requirements");
+    await userEvent.clear(header);
+    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding`, expect.objectContaining({ header_title: null }))
+    );
   },
 };
 
-/** Roadmap "Logo & login-background reset": unlike the text-based branding
- * fields above, logo/login-background have no local "clear the input" edit
- * state to revert — the reset action calls the new `DELETE` endpoints
- * directly and immediately, the same way the upload itself commits
- * immediately (no separate Save step). Login-background now lives inside
- * the same Branding card as the logo — both resets are
- * exercised without leaving the Branding & defaults group. */
-export const BrandingSectionLogoAndLoginBackgroundReset: Story = {
+/** The logo and the login background cannot be emptied, so each has a Remove button (no pill) while the
+ * organisation has its own file; the platform picture is shown muted when it has none. */
+export const BrandingSectionLogoAndLoginBackgroundRemove: Story = {
   beforeEach: () => {
     mockOrgAdminApis({ org: { ...org, logo_file_id: "file-logo-1", login_background_file_id: "file-bg-1" } });
     spyOn(api, "delete").mockImplementation(async (path: string) =>
@@ -1189,21 +1203,19 @@ export const BrandingSectionLogoAndLoginBackgroundReset: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
-    await waitFor(() => expect(canvas.getAllByText("Custom").length).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Remove" })).toHaveLength(2));
+    await expect(canvas.queryByText("Custom")).toBeNull();
 
-    await userEvent.click(canvas.getAllByRole("button", { name: "Reset to platform default" })[0]);
+    await userEvent.click(canvas.getAllByRole("button", { name: "Remove" })[0]);
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=logo`));
-    await expect(within(document.body).getByText("Logo reset to the platform default.")).toBeInTheDocument();
+    await expect(within(document.body).getByText("Logo removed.")).toBeInTheDocument();
 
-    await waitFor(() => expect(canvas.getByLabelText("Login page background image")).toBeInTheDocument());
-    const backgroundReset = canvas.getAllByRole("button", { name: "Reset to platform default" }).find((btn) =>
-      btn.closest("div")?.textContent?.includes("Login page background image")
-    );
-    await userEvent.click(backgroundReset!);
+    // The mocked organisation keeps both files after the first removal, so the second Remove is the login background's.
+    await userEvent.click(canvas.getAllByRole("button", { name: "Remove" })[1]);
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=login_background`)
     );
-    await expect(within(document.body).getByText("Background image reset to the platform default.")).toBeInTheDocument();
+    await expect(within(document.body).getByText("Background image removed.")).toBeInTheDocument();
   },
 };
 
@@ -1816,7 +1828,7 @@ export const ProjectStatusesAddAndReorder: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByDisplayValue("Proposed")).toBeInTheDocument());
     const nameInput = canvas.getByPlaceholderText("Name");
     await userEvent.type(nameInput, "Deprecated");
@@ -1837,12 +1849,9 @@ export const ProjectStatusesDeleteDisabledAtLastRow: Story = {
   beforeEach: () => mockOrgAdminApis({ projectStatuses: [buildProjectStatus({ id: "st1", name: "Active", sort_order: 0 })] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByDisplayValue("Active")).toBeInTheDocument());
-    // Project statuses and Link types are both open by default under
-    // "Projects & workflow" now, and the mocked link-types fixture also
-    // has exactly one row by default — so the same "only one left" disabled
-    // title appears twice on screen. Scope to the Active row itself.
+    // Scope to the Active row itself: the project statuses are the only list with this "only one left" title here.
     const row = canvas.getByDisplayValue("Active").closest<HTMLElement>(".stack")!;
     await expect(within(row).getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
   },
@@ -1858,7 +1867,7 @@ export const ProjectStatusesDeleteInUseOpensDialog: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByDisplayValue("Proposed")).toBeInTheDocument());
     const row = canvas.getByDisplayValue("Proposed").closest<HTMLElement>(".stack")!;
     await userEvent.click(within(row).getByTitle("Delete this status"));
@@ -1875,7 +1884,7 @@ export const LinkTypesAddAndRename: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Workflow$/ }));
     await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
     // Two "Forward name"/"Reverse name"-placeholder inputs exist on this
     // section: the existing row's own rename inputs (first, pre-filled)
@@ -1908,7 +1917,7 @@ export const LinkTypesSetDirection: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Workflow$/ }));
     const select = await canvas.findByRole("combobox", { name: "Direction: Derives from" });
     await expect(select).toHaveValue("forward_is_upstream");
     await expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
@@ -1931,7 +1940,7 @@ export const LinkTypesDeleteDisabledAtLastRow: Story = {
     mockOrgAdminApis({ linkTypes: [buildLinkType({ id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", sort_order: 0 })] }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Workflow$/ }));
     await waitFor(() => expect(canvas.getByDisplayValue("Depends on")).toBeInTheDocument());
     await expect(canvas.getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
   },
@@ -2033,7 +2042,7 @@ export const ManageUsersModalShowsEffectiveMembers: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
 
@@ -2068,7 +2077,7 @@ export const ManageUsersModalToggleDirectRole: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
 
@@ -2102,7 +2111,7 @@ export const ManageUsersModalAddControlRenders: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
 
@@ -2134,7 +2143,7 @@ export const ManageUsersModalAddMemberNestedModalOpen: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
 
@@ -2168,7 +2177,7 @@ export const ManageUsersModalAddMemberAutocompleteMatchesGroup: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
 
@@ -2214,7 +2223,7 @@ export const ManageUsersModalGroupRowRoleToggleAndRemove: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Projects & workflow" }));
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
     await waitFor(() => expect(canvas.getByText("Beta")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: "Manage users" }));
 
@@ -2360,7 +2369,7 @@ export const ModulesSectionNoSubComponentsRendersNoDisclosure: Story = {
   },
 };
 
-/** Non-entitled modules are shown greyed out with an explanatory note
+/** Non-entitled modules are shown as unavailable with an explanatory note
  * rather than hidden (visibility helps future upsell), and the select is
  * disabled so an org admin can't self-enable it. */
 export const ModulesSectionNonEntitledModuleIsGreyedOut: Story = {
@@ -2682,3 +2691,107 @@ export const RoleManagementDefinitionsHiddenForNonAdmin: Story = {
 
 export const LightTheme: Story = { ...UsersSectionAndCreateUser, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...UsersSectionAndCreateUser, globals: { theme: "dark" } };
+
+/** The body of the n-th `api.put` call the story's spy has recorded. */
+function putBody(n: number): Record<string, unknown> {
+  return (api.put as unknown as { mock: { calls: unknown[][] } }).mock.calls[n][1] as Record<string, unknown>;
+}
+
+/** Each Save under Security, Email and Reports sends only its own group's fields, so an unsaved edit in another
+ * group is neither saved nor reset. */
+export const SavesSendOnlyTheirOwnGroup: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(advanced);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
+    await waitFor(() => expect(canvas.getByLabelText("SMTP host")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Save email settings" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(1));
+    const emailBody = putBody(0);
+    await expect(emailBody).toHaveProperty("smtp_host");
+    await expect(emailBody).not.toHaveProperty("require_2fa");
+    await expect(emailBody).not.toHaveProperty("pat_max_lifetime_days");
+
+    await userEvent.click(canvas.getByRole("link", { name: "Security" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Save security settings" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(2));
+    const securityBody = putBody(1);
+    await expect(securityBody).toHaveProperty("require_2fa");
+    await expect(securityBody).not.toHaveProperty("smtp_host");
+    await expect(securityBody).not.toHaveProperty("pat_max_lifetime_days");
+
+    await userEvent.click(canvas.getByRole("button", { name: "Save token lifetime" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledTimes(3));
+    await expect(putBody(2)).toEqual({ pat_max_lifetime_days: null });
+  },
+};
+
+/** The SSO save is confirmed with a toast. */
+export const SsoSaveShowsAToast: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(ssoConfig);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "OAuth/SSO" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Save SSO settings" }));
+    await expect(await within(document.body).findByText("SSO settings saved.")).toBeInTheDocument();
+  },
+};
+
+/** Regenerating or revoking the live SCIM token asks first, and each outcome ends in a toast. */
+export const ScimRegenerateAndRevokeAskFirst: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ scim: { enabled: true, token_prefix: "rtm_scim_abc" } });
+    spyOn(api, "post").mockResolvedValue({ token: "rtm_scim_new-secret", token_prefix: "rtm_scim_new" });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "OAuth/SSO" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "Regenerate SCIM token" }));
+    const regenerate = within(await within(document.body).findByRole("dialog", { name: "Regenerate the SCIM token?" }));
+    await userEvent.click(regenerate.getByRole("button", { name: "Cancel" }));
+    await expect(api.post).not.toHaveBeenCalled();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Regenerate SCIM token" }));
+    await userEvent.click(within(await within(document.body).findByRole("dialog")).getByRole("button", { name: "Regenerate SCIM token" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/scim-token`));
+    await expect(await canvas.findByDisplayValue("rtm_scim_new-secret")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Revoke" }));
+    await userEvent.click(within(await within(document.body).findByRole("dialog", { name: "Revoke the SCIM token?" })).getByRole("button", { name: "Revoke" }));
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/scim-token`));
+  },
+};
+
+/** A group with a single section shows it as a headed card with no accordion toggle. */
+export const SingleSectionGroupHasNoAccordion: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Email" }));
+    await waitFor(() => expect(canvas.getByLabelText("SMTP host")).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: /section$/ })).toBeNull();
+  },
+};
+
+/** Projects and Workflow are separate entries; the earlier combined address lands on Projects. */
+export const ProjectsAndWorkflowAreSeparateGroups: Story = {
+  beforeEach: () => mockOrgAdminApis(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByRole("link", { name: "Projects & workflow" })).toBeNull();
+    await userEvent.click(canvas.getByRole("link", { name: /^Workflow$/ }));
+    await expect(await canvas.findByRole("heading", { name: "Stage workflows" })).toBeInTheDocument();
+    await expect(canvas.getByRole("heading", { name: "Link types" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("heading", { name: "Project statuses" })).toBeNull();
+    await userEvent.click(canvas.getByRole("link", { name: /^Projects$/ }));
+    await expect(await canvas.findByRole("heading", { name: "Project statuses" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("heading", { name: "Stage workflows" })).toBeNull();
+  },
+};

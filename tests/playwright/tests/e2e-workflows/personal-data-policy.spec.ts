@@ -32,7 +32,7 @@ function tagRow(page: Page, name: string) {
 
 /** Opens the section if it is collapsed (sections remember their state per browser). */
 async function openSection(page: Page) {
-  const header = page.getByRole("button", { name: SECTION });
+  const header = page.getByRole("button", { name: `${SECTION} section`, exact: true });
   if ((await header.getAttribute("aria-expanded")) === "false") await header.click();
 }
 
@@ -81,23 +81,25 @@ test("an org admin overrides the server default for a sensitivity tag and goes b
   await openSection(page);
   const row = tagRow(page, "Contact details");
   await expect(row).toBeVisible();
-  await expect(row.getByText("Follows the server")).toBeVisible();
+  // The server default is not an organisation concern: no pill and no reset control.
+  await expect(row.getByText("Follows the server")).toHaveCount(0);
 
   await test.step("flipping the effective value saves an override of the opposite value", async () => {
     await row.getByRole("switch").click();
     await confirmWidening(page, !start.effective);
-    await expect(row.getByText("Custom")).toBeVisible();
+    // The switch follows the saved value, so wait for it before reading the stored policy back.
+    await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", String(!start.effective));
     const changed = await read();
     expect(changed.override).toBe(!start.server_allowed);
     expect(changed.effective).toBe(!start.effective);
-    await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", String(!start.effective));
   });
 
-  await test.step("following the server again clears the override", async () => {
+  await test.step("setting the value back to the server's clears the override", async () => {
     // Going back widens the policy when the server default allows the tag and the override excluded it.
-    await row.getByRole("button", { name: "Follow the server again" }).click();
-    await confirmWidening(page, start.server_allowed && !(await read()).effective);
-    await expect(row.getByText("Follows the server")).toBeVisible();
+    const widening = start.server_allowed && !(await read()).effective;
+    await row.getByRole("switch").click();
+    await confirmWidening(page, widening);
+    await expect(row.getByRole("switch")).toHaveAttribute("aria-checked", String(start.server_allowed));
     const restored = await read();
     expect(restored.override).toBeNull();
     expect(restored.effective).toBe(start.server_allowed);

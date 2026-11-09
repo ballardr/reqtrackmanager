@@ -12,7 +12,7 @@ import { CollapsibleSection } from "./CollapsibleSection";
  * stateful `AuthContext.Provider` — not the no-op stub `withAuth` defaults
  * to — so toggling the section is actually observable across a re-render,
  * matching the server-synced preference it stands in for. */
-function Interactive({ variant = "card" as "card" | "plain", defaultCollapsed = false, summary = undefined as string | undefined, marked = false, forceOpen = false }) {
+function Interactive({ variant = "card" as "card" | "plain", defaultCollapsed = false, summary = undefined as string | undefined, marked = false, forceOpen = false, collapsible = true, help = undefined as string | undefined }) {
   const [user, setUser] = useState(buildUser({ ui_preferences: {} }));
   return (
     <AuthContext.Provider
@@ -37,7 +37,7 @@ function Interactive({ variant = "card" as "card" | "plain", defaultCollapsed = 
       }}
     >
       <CollapsibleSection sectionKey="storyExample" title="Personal Access Tokens" variant={variant} defaultCollapsed={defaultCollapsed}
-        summary={summary} marked={marked} forceOpen={forceOpen}>
+        summary={summary} marked={marked} forceOpen={forceOpen} collapsible={collapsible} help={help}>
         <p style={{ margin: 0 }}>Section content goes here.</p>
       </CollapsibleSection>
     </AuthContext.Provider>
@@ -80,6 +80,27 @@ export const PlainVariant: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Section content goes here.")).toBeInTheDocument();
+  },
+};
+
+/** The only section of a page is a headed card with no toggle, however a stored preference reads. */
+export const NotCollapsible: Story = {
+  args: { collapsible: false, defaultCollapsed: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("heading", { name: "Personal Access Tokens" })).toBeVisible();
+    await expect(canvas.getByText("Section content goes here.")).toBeVisible();
+    await expect(canvas.queryByRole("button", { name: "Personal Access Tokens section" })).toBeNull();
+  },
+};
+
+/** Help for the whole section sits beside the heading and opens without toggling the bar. */
+export const HelpBesideTheHeading: Story = {
+  args: { help: "What this section holds." },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Help: Personal Access Tokens" }));
+    await expect(canvas.getByText("Section content goes here.")).toBeVisible();
   },
 };
 

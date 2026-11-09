@@ -60,7 +60,6 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
 
   return (
     <div className="stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.codePolicyHint}</p>
       <FormGrid minColumn="10rem">
         <LabeledSelect help={strings.help.codeCharacters}
           label={strings.orgAdmin.codeKind}

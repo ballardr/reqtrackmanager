@@ -16,14 +16,27 @@ const strings = t();
  * field in these forms already batches edits behind one Save button rather
  * than saving per-field.
  *
+ * `platformFallback` is for a setting on an organisation page whose fallback is the platform or module default:
+ * organisations do not manage that default, so no pill says "Custom" or "Platform default"; only the way back stays,
+ * a reset button shown while the value differs (a value that cannot be emptied, such as a band set, has no other
+ * way back). A pill that names an inherited tier (organisation, parent project) is not this case and stays.
+ *
  * `defaultLabel`/`resetLabel` replace "Platform default"/"Reset to platform
  * default" where the fallback isn't the platform — e.g. a project setting
  * inherited from its parent project or organisation ("Inherited from
  * organisation" / "Use inherited value").
  */
 export function OverridePill({
-  custom, onReset, disabled, defaultLabel, resetLabel,
-}: { custom: boolean; onReset?: () => void; disabled?: boolean; defaultLabel?: string; resetLabel?: string }) {
+  custom, onReset, disabled, defaultLabel, resetLabel, platformFallback,
+}: { custom: boolean; onReset?: () => void; disabled?: boolean; defaultLabel?: string; resetLabel?: string; platformFallback?: boolean }) {
+  if (platformFallback) {
+    if (!custom || !onReset) return null;
+    return (
+      <button type="button" className="btn" onClick={onReset} disabled={disabled}>
+        {resetLabel ?? strings.common.resetToPlatformDefault}
+      </button>
+    );
+  }
   if (!custom) {
     return <Badge>{defaultLabel ?? strings.common.platformDefault}</Badge>;
   }

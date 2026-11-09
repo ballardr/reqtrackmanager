@@ -112,7 +112,10 @@ def update_advanced_settings(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    if payload.allow_self_signup and org.sso_only:
+    # A partial update: a field the client does not send is left as it is, so a Save in one settings group never
+    # resets another group's values (email, security and report configuration are saved separately).
+    sent = payload.model_fields_set
+    if payload.allow_self_signup and "allow_self_signup" in sent and org.sso_only:
         # Self-signup is anonymous and un-gated by an admin, unlike every
         # other native-account-creation path (create_org_user, an admin-
         # sent invite) — letting it hand out a native password credential
@@ -122,44 +125,57 @@ def update_advanced_settings(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Self-signup cannot be enabled for an SSO-only organisation."
         )
-    org.smtp_host = payload.smtp_host
-    org.smtp_port = payload.smtp_port
-    org.smtp_username = payload.smtp_username
+    if "smtp_host" in sent:
+        org.smtp_host = payload.smtp_host
+    if "smtp_port" in sent:
+        org.smtp_port = payload.smtp_port
+    if "smtp_username" in sent:
+        org.smtp_username = payload.smtp_username
     if payload.smtp_password:
         # Blank means "leave unchanged" — the field is never returned by GET,
         # so a client re-submitting the form has no value to send back.
         org.smtp_password = payload.smtp_password
-    org.smtp_use_tls = payload.smtp_use_tls
-    org.pat_max_lifetime_days = payload.pat_max_lifetime_days
+    if "smtp_use_tls" in sent:
+        org.smtp_use_tls = payload.smtp_use_tls
+    if "pat_max_lifetime_days" in sent:
+        org.pat_max_lifetime_days = payload.pat_max_lifetime_days
     # Stored output of background custom reports; capped by the platform ceiling when read
     # (`services.report_run_jobs.effective_retention_days`), so a larger value is accepted but not honoured.
-    org.report_output_retention_days = payload.report_output_retention_days
-    file_name = (payload.report_file_name or "").strip() or None
-    if file_name is not None:
-        problems = template_problems(file_name, allowed=ORG_FILE_NAME_PLACEHOLDERS, variables=None)
-        if problems:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problems[0])
-    org.report_file_name = file_name
-    if "report_footer_text" in payload.model_fields_set:
+    if "report_output_retention_days" in sent:
+        org.report_output_retention_days = payload.report_output_retention_days
+    if "report_file_name" in sent:
+        file_name = (payload.report_file_name or "").strip() or None
+        if file_name is not None:
+            problems = template_problems(file_name, allowed=ORG_FILE_NAME_PLACEHOLDERS, variables=None)
+            if problems:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problems[0])
+        org.report_file_name = file_name
+    if "report_footer_text" in sent:
         org.report_footer_text = (payload.report_footer_text or "").strip() or None
     if payload.report_include_cover_page is not None:
         org.report_include_cover_page = payload.report_include_cover_page
     if payload.report_chapters_per_component is not None:
         org.report_chapters_per_component = payload.report_chapters_per_component
-    org.require_2fa = payload.require_2fa
-    org.allow_self_signup = payload.allow_self_signup
-    org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
-    org.external_user_policy = payload.external_user_policy
+    if "require_2fa" in sent:
+        org.require_2fa = payload.require_2fa
+    if "allow_self_signup" in sent:
+        org.allow_self_signup = payload.allow_self_signup
+    if "auto_accept_email_domain" in sent:
+        org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
+    if "external_user_policy" in sent:
+        org.external_user_policy = payload.external_user_policy
     # Hierarchical projects (decision 13 in docs/decisions.md): lets an org
     # admin opt back into the stricter "all project creation needs
     # ORG_ADMIN/PROJECT_CREATOR" behaviour, including for children, turning
     # off routers.projects.create_project's relaxed parent-manage-only path.
-    org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
+    if "allow_relaxed_child_project_creation" in sent:
+        org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
     # Org-wide force of the traceability-
     # link change-request requirement — see `services.requirements.
     # requires_change_request_for_links` and `Organization.
     # force_require_change_request_for_approved_links`'s docstring.
-    org.force_require_change_request_for_approved_links = payload.force_require_change_request_for_approved_links
+    if "force_require_change_request_for_approved_links" in sent:
+        org.force_require_change_request_for_approved_links = payload.force_require_change_request_for_approved_links
     # AI approval via MCP (docs/decisions.md): org half of the two-level
     # opt-in gate. The frontend requires an explicit acknowledgment dialog
     # before ever sending `allow_ai_approvals=true` here — this endpoint
@@ -167,10 +183,12 @@ def update_advanced_settings(
     # server-enforced" pattern as every other advanced-settings checkbox on
     # this endpoint), since the decision is a human's, not something to
     # validate server-side.
-    org.allow_ai_approvals = payload.allow_ai_approvals
+    if "allow_ai_approvals" in sent:
+        org.allow_ai_approvals = payload.allow_ai_approvals
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
         actor_id=current_user.id, organization_id=organization_id,
+        detail={"fields": sorted(sent)},  # names only, never values (a secret such as the SMTP password)
     )
     db.commit()
     db.refresh(org)

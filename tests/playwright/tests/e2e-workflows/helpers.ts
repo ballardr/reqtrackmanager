@@ -113,6 +113,9 @@ export async function logout(page: Page): Promise<void> {
  * actually collapsed. */
 export async function ensureExpanded(page: Page, sectionTitle: string): Promise<void> {
   const toggle = page.getByRole("button", { name: `${sectionTitle} section` });
+  // A section that is the only one on its page has no toggle (`collapsible={false}`): it is always open.
+  await expect(toggle.or(page.getByRole("heading", { name: sectionTitle, exact: true })).first()).toBeVisible();
+  if ((await toggle.count()) === 0) return;
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
     await toggle.click();
   }
@@ -214,7 +217,8 @@ export async function selectResourceMenuGroup(page: Page, groupLabel: string, pa
     await expect(header.or(narrowMenu).first()).toBeAttached();
     if ((await header.count()) > 0 && (await header.getAttribute("aria-expanded")) !== "true") await header.click();
   }
-  const link = page.getByRole("link", { name: groupLabel, exact: true });
+  // Scoped to the resource menu: the application navigation rail also has links named like a group (Projects).
+  const link = page.locator("nav.resource-menu-nav").getByRole("link", { name: groupLabel, exact: true });
   // Below ResourceMenu's own mobile breakpoint (theme.css/useNarrowViewport,
   // 860px) the link list is replaced with a single <select> — same group
   // switch, a different control (platform-review-2026-09, "resource menus

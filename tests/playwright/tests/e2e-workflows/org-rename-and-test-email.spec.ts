@@ -155,7 +155,7 @@ test.describe("organisation rename and test-email actions", () => {
       // "Email" top-level resource-menu group, open by default there — no
       // section-toggle click needed, just select the group.
       await selectOrgAdminGroup(page, "Email");
-      await expect(page.getByRole("button", { name: "Send test email" })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Send test email", exact: true })).toBeDisabled();
       await expect(page.getByText("Set an SMTP host above first.")).toBeVisible();
     });
 
@@ -174,7 +174,7 @@ test.describe("organisation rename and test-email actions", () => {
       await recipientInput.fill(testEmailRecipient);
       await Promise.all([
         page.waitForResponse((r) => r.url().includes(`/orgs/${org.id}/test-email`) && r.request().method() === "POST"),
-        page.getByRole("button", { name: "Send test email" }).click(),
+        page.getByRole("button", { name: "Send test email", exact: true }).click(),
       ]);
       await expect(page.getByText(/Test email sent/)).toBeVisible();
 
@@ -204,7 +204,7 @@ test.describe("organisation rename and test-email actions", () => {
     await page.getByLabel("Recipient email").fill(recipient);
     await Promise.all([
       page.waitForResponse((r) => r.url().includes("/system/test-email") && r.request().method() === "POST"),
-      page.getByRole("button", { name: "Send test email" }).click(),
+      page.getByRole("button", { name: "Send test email", exact: true }).click(),
     ]);
     await expect(page.getByText(/Test email sent/)).toBeVisible();
 

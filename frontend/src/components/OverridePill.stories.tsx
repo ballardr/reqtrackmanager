@@ -71,3 +71,23 @@ export const OverriddenWithCustomResetLabel: Story = {
 
 export const LightTheme: Story = { args: { custom: true, onReset: fn() }, globals: { theme: "light" } };
 export const DarkTheme: Story = { args: { custom: true, onReset: fn() }, globals: { theme: "dark" } };
+
+/** A fallback that is the platform or module default on an organisation page: no pill, only a reset while custom. */
+export const PlatformFallbackCustom: Story = {
+  args: { custom: true, platformFallback: true, resetLabel: "Reset to module default", onReset: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.queryByText("Custom")).toBeNull();
+    await userEvent.click(canvas.getByRole("button", { name: "Reset to module default" }));
+    await expect(args.onReset).toHaveBeenCalledOnce();
+  },
+};
+
+/** Nothing is drawn while the value is already the default. */
+export const PlatformFallbackDefault: Story = {
+  args: { custom: false, platformFallback: true },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("button")).toBeNull();
+    await expect(within(canvasElement).queryByText("Platform default")).toBeNull();
+  },
+};

@@ -101,7 +101,7 @@ test.describe("project codes", () => {
 
     await test.step("switch the organisation to manual assignment", async () => {
       await page.goto(`/orgs/${world.orgId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Projects");
       const toggle = page.getByRole("button", { name: "Project codes section" });
       if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
       await page.getByLabel("Assignment").selectOption("manual");

@@ -1,4 +1,5 @@
 import { useMutation } from "../hooks/useMutation";
+import { usePlatformBranding } from "../hooks/usePlatformBranding";
 import { ImportWarnings } from "../components/ImportWarnings";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -83,7 +84,8 @@ import { NewUserFields } from "../components/NewUserFields";
 import { EMPTY_NEW_USER, type NewUserValues } from "../components/newUserValues";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
 import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
-import { OverridePill } from "../components/OverridePill";
+import { BrandingImageField } from "../components/BrandingImageField";
+import { InlineMessage } from "../components/InlineMessage";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
@@ -111,7 +113,7 @@ import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
 import { ReportSetupPanel } from "../components/ReportSetupPanel";
 import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
-import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField, UploadField } from "../components/FormFields";
+import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
 import { FieldHelp } from "../components/FieldHelp";
 import { ReportColourSchemeEditor } from "../components/ReportColourSchemeEditor";
 import { DEFAULT_COLOUR_CONTEXT, type ColourEntry } from "../utils/reportColours";
@@ -119,7 +121,6 @@ import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
-import { PictureImage } from "../components/PictureImage";
 
 /**
  * The 7 resource-menu groups Org Admin's previous 15 flat accordions were
@@ -155,7 +156,8 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "overview",
   "users",
   "groups",
-  "projects-workflow",
+  "projects",
+  "workflow",
   "branding-defaults",
   "reports",
   "oauth-sso",
@@ -193,6 +195,9 @@ type CoreOrgAdminGroupKey = (typeof CORE_ORG_ADMIN_GROUP_KEYS)[number];
  */
 type OrgAdminGroupKey = CoreOrgAdminGroupKey | string;
 
+/** The four groups of advanced settings, each with its own Save (see `saveAdvanced`). */
+type AdvancedGroup = "email" | "security" | "pats" | "reports";
+
 /** One row of the Org Users `DirectoryTable`
  * — a real user or a not-yet-accepted org-only invite, merged client-side.
  * Same `kind`-discriminated union row-merge pattern `ProjectMembersTable`
@@ -226,6 +231,7 @@ export function OrgAdminPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const orgLabel = useOrgLabel();
+  const platformBranding = usePlatformBranding();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
   const [org, setOrg] = useState<Organization | null>(null);
@@ -358,7 +364,7 @@ export function OrgAdminPage() {
   // this component's own early-return guards further down, e.g. `if (!org)
   // return <Spinner />`) — filtered to *effectively enabled* modules only,
   // so a disabled-but-installed Tier C module's remote code is never
-  // fetched just because it's greyed-out-visible on the Modules admin
+  // fetched just because it's shown but unavailable on the Modules admin
   // panel. See `useFederatedModules`'s own docstring and `frontend/src/
   // modules/federatedLoader.ts` for the full mechanism.
   useFederatedModules(modules.filter((m) => m.enabled));
@@ -470,7 +476,7 @@ export function OrgAdminPage() {
   // own comment and docs/decisions.md. Set on every field's onChange,
   // cleared once `saveAdvanced` succeeds (so a later, legitimate reload
   // can resume populating the form again).
-  const advancedDirtyRef = useRef(false);
+  const advancedDirtyRef = useRef<Record<AdvancedGroup, boolean>>({ email: false, security: false, pats: false, reports: false });
   const [outsideDomainUsers, setOutsideDomainUsers] = useState<OutsideDomainUser[] | null>(null);
   const [outsideDomainError, setOutsideDomainError] = useState<string | null>(null);
   const [orgPats, setOrgPats] = useState<OrgPersonalAccessToken[]>([]);
@@ -523,11 +529,11 @@ export function OrgAdminPage() {
   const [oidcClientId, setOidcClientId] = useState("");
   const [oidcClientSecret, setOidcClientSecret] = useState("");
   const [oidcRequiredGroup, setOidcRequiredGroup] = useState("");
-  const [ssoError, setSsoError] = useState<string | null>(null);
 
   const [scimStatus, setScimStatus] = useState<ScimTokenStatus | null>(null);
   const [scimGeneratedToken, setScimGeneratedToken] = useState<string | null>(null);
-  const [scimError, setScimError] = useState<string | null>(null);
+  // The two actions that replace or remove the live provisioning credential ask first (Tier 1).
+  const [scimConfirm, setScimConfirm] = useState<"regenerate" | "revoke" | null>(null);
 
   const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
   const [accentColorInput, setAccentColorInput] = useState("#475569");
@@ -711,17 +717,22 @@ export function OrgAdminPage() {
       // Skip re-populating the editable fields below if the user has an
       // unsaved edit pending — this fetch may have been in flight since
       // before that edit started (see `advancedDirtyRef`'s own comment).
-      if (!advancedDirtyRef.current) {
+      const dirty = advancedDirtyRef.current;
+      if (!dirty.email) {
         setSmtpHost(a.smtp_host ?? "");
         setSmtpPort(a.smtp_port ? String(a.smtp_port) : "");
         setSmtpUsername(a.smtp_username ?? "");
         setSmtpUseTls(a.smtp_use_tls);
-        setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
+      }
+      if (!dirty.pats) setPatMaxLifetimeDays(a.pat_max_lifetime_days ? String(a.pat_max_lifetime_days) : "");
+      if (!dirty.reports) {
         setReportOutputRetentionDays(a.report_output_retention_days ? String(a.report_output_retention_days) : "");
         setReportFileName(a.report_file_name ?? "");
         setReportFooterText(a.report_footer_text ?? "");
         setReportIncludeCoverPage(a.report_include_cover_page);
         setReportChaptersPerComponent(a.report_chapters_per_component);
+      }
+      if (!dirty.security) {
         setRequire2fa(a.require_2fa);
         setAllowSelfSignup(a.allow_self_signup);
         setAutoAcceptEmailDomain(a.auto_accept_email_domain ?? "");
@@ -879,22 +890,33 @@ export function OrgAdminPage() {
     }
   }
 
-  async function saveAdvanced() {
+  /**
+   * Saves one group of the organisation's advanced settings. The endpoint leaves every field a request does not
+   * send as it is, so each Save sends only its own group's fields and an unsaved edit in another group is neither
+   * saved nor overwritten.
+   *
+   * @param group `email` (SMTP), `security` (sign-in and project policies), `pats` (token lifetime) or `reports`.
+   */
+  async function saveAdvanced(group: AdvancedGroup) {
     if (!orgId) return;
     setAdvancedError(null);
-    try {
-      const saved = await api.put<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`, {
+    const fields: Record<AdvancedGroup, Record<string, unknown>> = {
+      email: {
         smtp_host: smtpHost || null,
         smtp_port: smtpPort ? Number(smtpPort) : null,
         smtp_username: smtpUsername || null,
         smtp_password: smtpPassword || undefined,
         smtp_use_tls: smtpUseTls,
-        pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null,
+      },
+      pats: { pat_max_lifetime_days: patMaxLifetimeDays ? Number(patMaxLifetimeDays) : null },
+      reports: {
         report_output_retention_days: reportOutputRetentionDays ? Number(reportOutputRetentionDays) : null,
         report_file_name: reportFileName.trim() || null,
         report_footer_text: reportFooterText.trim() || null,
         report_include_cover_page: reportIncludeCoverPage,
         report_chapters_per_component: reportChaptersPerComponent,
+      },
+      security: {
         require_2fa: require2fa,
         allow_self_signup: allowSelfSignup,
         auto_accept_email_domain: autoAcceptEmailDomain || null,
@@ -902,12 +924,15 @@ export function OrgAdminPage() {
         allow_relaxed_child_project_creation: allowRelaxedChildProjectCreation,
         force_require_change_request_for_approved_links: forceRequireCrForLinks,
         allow_ai_approvals: allowAiApprovals,
-      });
+      },
+    };
+    try {
+      const saved = await api.put<OrgAdvancedSettings>(`/api/v1/orgs/${orgId}/advanced-settings`, fields[group]);
       setAdvanced(saved);
-      setSmtpPassword("");
-      // Saved successfully, so the fields now match the server again — a
+      if (group === "email") setSmtpPassword("");
+      // Saved successfully, so the group's fields now match the server again — a
       // later reload() is safe to repopulate them from a fresh fetch.
-      advancedDirtyRef.current = false;
+      advancedDirtyRef.current[group] = false;
       showToast(strings.orgAdmin.advancedSaved);
     } catch (err) {
       setAdvancedError(err instanceof Error ? err.message : strings.common.error);
@@ -925,7 +950,7 @@ export function OrgAdminPage() {
     if (!orgId) return;
     setPatToDescope(null);
     if (!(await run(() => api.post(`/api/v1/orgs/${orgId}/pats/${patId}/descope`), {
-      success: "Token removed from this organisation.", failure: "Could not remove the token from this organisation.",
+      success: strings.orgAdmin.patRemoved(orgLabel), failure: strings.orgAdmin.patRemoveFailed(orgLabel),
     }))) return;
     setOrgPats((current) => current.filter((p) => p.id !== patId));
   }
@@ -936,7 +961,7 @@ export function OrgAdminPage() {
     let revokedCount = 0;
     const done = await run(async () => {
       revokedCount = (await api.post<{ revoked_count: number }>(`/api/v1/orgs/${orgId}/pats/revoke-all`)).revoked_count;
-    }, { failure: "Could not revoke the tokens." });
+    }, { failure: strings.orgAdmin.patRevokeAllFailed });
     if (!done) return;
     setOrgPats([]);
     setPatBulkResult(strings.orgAdmin.patRevokeAllResult.replace("{n}", String(revokedCount)));
@@ -1899,7 +1924,6 @@ export function OrgAdminPage() {
   }
 
   async function saveSso() {
-    setSsoError(null);
     try {
       const saved = await api.put<OrgSsoConfig>(`/api/v1/orgs/${orgId}/sso-config`, {
         slug: slugInput || null,
@@ -1912,31 +1936,31 @@ export function OrgAdminPage() {
       });
       setSsoConfig(saved);
       setOidcClientSecret("");
+      showToast(strings.mutation.success(strings.orgAdmin.ssoSettingsNoun, strings.mutation.past.save));
     } catch (err) {
-      setSsoError(err instanceof Error ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
   async function regenerateScimToken() {
-    setScimError(null);
     try {
       const created = await api.post<ScimTokenCreated>(`/api/v1/orgs/${orgId}/scim-token`);
       setScimGeneratedToken(created.token);
       setScimStatus({ enabled: true, token_prefix: created.token_prefix });
+      showToast(strings.mutation.success(strings.orgAdmin.scimTokenNoun, strings.mutation.past.generate));
     } catch (err) {
-      setScimError(err instanceof ApiError ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
   async function revokeScimToken() {
-    setScimError(null);
     try {
       await api.delete(`/api/v1/orgs/${orgId}/scim-token`);
-      showToast(strings.mutation.success("SCIM token", strings.mutation.past.revoke));
+      showToast(strings.mutation.success(strings.orgAdmin.scimTokenNoun, strings.mutation.past.revoke));
       setScimGeneratedToken(null);
       setScimStatus({ enabled: false, token_prefix: null });
     } catch (err) {
-      setScimError(err instanceof ApiError ? err.message : strings.common.error);
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -2072,7 +2096,7 @@ export function OrgAdminPage() {
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.serverOrgs.disabled}</h2>
           <p className="text-muted">{loadError}</p>
-          {enableError && <div style={{ color: "var(--color-danger)" }}>{enableError}</div>}
+          <InlineMessage>{enableError}</InlineMessage>
           <button className="btn btn-primary" onClick={enableThisOrg} disabled={enabling} style={{ alignSelf: "flex-start" }}>
             {strings.serverOrgs.enable}
           </button>
@@ -2118,7 +2142,7 @@ export function OrgAdminPage() {
         <div className="card stack">
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.orgAdmin.notAMemberTitle(orgLabel)}</h2>
           <p className="text-muted">{strings.orgAdmin.notAMemberHint}</p>
-          {joinError && <div style={{ color: "var(--color-danger)" }}>{joinError}</div>}
+          <InlineMessage>{joinError}</InlineMessage>
           <button className="btn btn-primary" onClick={joinAsAdmin} disabled={joining} style={{ alignSelf: "flex-start" }}>
             {strings.orgAdmin.joinAsAdmin(orgLabel)}
           </button>
@@ -2135,8 +2159,8 @@ export function OrgAdminPage() {
               inputProps={{ type: "password" }}
             />
           </FormGrid>
-          {bootstrapError && <div style={{ color: "var(--color-danger)" }}>{bootstrapError}</div>}
-          {bootstrapCreated && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.initialAdminCreated(orgLabel)}</div>}
+          <InlineMessage>{bootstrapError}</InlineMessage>
+          {bootstrapCreated && <InlineMessage tone="success">{strings.orgAdmin.initialAdminCreated(orgLabel)}</InlineMessage>}
           <button
             className="btn btn-primary"
             onClick={createInitialAdmin}
@@ -2203,7 +2227,8 @@ export function OrgAdminPage() {
     { key: "overview", label: strings.orgAdmin.groupOverview, href: `/orgs/${orgId}/admin/overview` },
     { key: "users", label: strings.orgAdmin.groupUsers, href: `/orgs/${orgId}/admin/users` },
     { key: "groups", label: strings.orgAdmin.groupGroups, href: `/orgs/${orgId}/admin/groups` },
-    { key: "projects-workflow", label: strings.orgAdmin.groupProjectsWorkflow, href: `/orgs/${orgId}/admin/projects-workflow` },
+    { key: "projects", label: strings.orgAdmin.groupProjects, href: `/orgs/${orgId}/admin/projects` },
+    { key: "workflow", label: strings.orgAdmin.groupWorkflow, href: `/orgs/${orgId}/admin/workflow` },
     { key: "branding-defaults", label: strings.orgAdmin.groupBrandingDefaults, href: `/orgs/${orgId}/admin/branding-defaults` },
     { key: "reports", label: strings.orgAdmin.groupReports, href: `/orgs/${orgId}/admin/reports` },
     { key: "oauth-sso", label: strings.orgAdmin.groupOauthSso, href: `/orgs/${orgId}/admin/oauth-sso` },
@@ -2457,6 +2482,8 @@ export function OrgAdminPage() {
 
   // An earlier or partial module address (`/admin/<section>`, `/admin/<group>`) is replaced by the current one.
   if (moduleRoute.redirectTo) return <Navigate to={moduleRoute.redirectTo} replace />;
+  // The earlier combined "Projects & workflow" address now lands on Projects (workflow settings have their own entry).
+  if (groupParam === "projects-workflow") return <Navigate to={`${adminBasePath}/projects`} replace />;
 
   return (
     <div className="stack">
@@ -2471,14 +2498,7 @@ export function OrgAdminPage() {
         {activeGroup === "overview" && (
           <div className="stack">
             {orgId && <OrgUsageTable orgId={orgId} />}
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <div className="stack" style={{ gap: "var(--space-2)" }}>
-                {/* Org name is now shown once, universally, as `ResourceMenu`'s
-                    own title above every group — repeating it here as a
-                    second <h1> (previously the only place it appeared at
-                    all — every other group had no page title whatsoever)
-                    would just duplicate that same text on this one group. */}
-              </div>
+            <div className="row" style={{ justifyContent: "flex-end" }}>
               <div className="row">
                 {org.logo_file_id && (
                   <img src={fileUrl(org.logo_file_id)} alt={`${org.name} logo`} style={{ height: 40 }} />
@@ -2499,7 +2519,7 @@ export function OrgAdminPage() {
                       ? [{ label: strings.orgAdmin.rename, icon: <Pencil size={14} />, onSelect: () => setRenameModalOpen(true) }]
                       : []),
                     {
-                      label: `Export ${orgLabel} bundle`,
+                      label: strings.orgAdmin.exportBundle(orgLabel),
                       icon: <Download size={14} />,
                       onSelect: exportOrg,
                     },
@@ -2511,14 +2531,13 @@ export function OrgAdminPage() {
             {renameModalOpen && (
               <Modal title={strings.orgAdmin.rename} onClose={() => setRenameModalOpen(false)}>
                 <div className="stack">
-                  <TextField helpNotNeeded required
+                  <TextField required help={strings.orgAdmin.renameHint(orgLabel)}
                     label={strings.orgAdmin.rename}
                     value={orgNameEdit}
                     onChange={setOrgNameEdit}
                     inputProps={{ autoFocus: true }}
                   />
-                  <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.renameHint(orgLabel)}</span>
-                  {renameError && <div style={{ color: "var(--color-danger)" }}>{renameError}</div>}
+                  <InlineMessage>{renameError}</InlineMessage>
                   <FormActions
                     onCancel={() => setRenameModalOpen(false)}
                     onSave={renameOrg}
@@ -2528,8 +2547,7 @@ export function OrgAdminPage() {
               </Modal>
             )}
 
-            <CollapsibleSection sectionKey="orgAdmin.importMerge" title={strings.importMerge.action(orgLabel)} defaultCollapsed>
-              <p className="text-muted" style={{ margin: 0 }}>{strings.importMerge.hint(orgLabel)}</p>
+            <CollapsibleSection sectionKey="orgAdmin.importMerge" title={strings.importMerge.action(orgLabel)} defaultCollapsed help={strings.importMerge.hint(orgLabel)}>
               {!importMergeConflicts && !importMergeResult && (
                 <div className="stack">
                   <FileField helpNotNeeded label={strings.importMerge.chooseFile} accept=".zip,application/zip" onChange={setImportMergeFile} />
@@ -2577,10 +2595,10 @@ export function OrgAdminPage() {
                   </button>
                 </div>
               )}
-              {importMergeError && <div style={{ color: "var(--color-danger)" }}>{importMergeError}</div>}
+              <InlineMessage>{importMergeError}</InlineMessage>
             </CollapsibleSection>
 
-            <CollapsibleSection sectionKey="orgAdmin.resources" title={strings.orgAdmin.resources} defaultCollapsed>
+            <CollapsibleSection sectionKey="orgAdmin.resources" title={strings.orgAdmin.resources} defaultCollapsed help={strings.orgAdmin.resourcesHint(orgLabel)}>
               {resources.map((r) => (
                 <div key={r.id} className="row" style={{ justifyContent: "space-between" }}>
                   <a href={fileUrl(r.id)} target="_blank" rel="noreferrer">
@@ -2602,14 +2620,13 @@ export function OrgAdminPage() {
               <FileUploadTrigger onSelect={uploadResource}>
                 <Upload size={14} /> {strings.common.chooseFile}
               </FileUploadTrigger>
-              <span className="text-muted row">{strings.orgAdmin.resourcesHint(orgLabel)}</span>
             </CollapsibleSection>
           </div>
         )}
 
         {activeGroup === "users" && (
           <div className="stack">
-            <CollapsibleSection sectionKey="orgAdmin.users" title={strings.orgAdmin.users(orgLabelCap)}>
+            <CollapsibleSection sectionKey="orgAdmin.users" collapsible={false} title={strings.orgAdmin.users(orgLabelCap)}>
               <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-3)" }}>
                 <AddUserMenu onInvite={() => setInviteUserModalOpen(true)} onNewUser={() => setNewUserModalOpen(true)} />
                 {advanced?.auto_accept_email_domain && (
@@ -2621,33 +2638,23 @@ export function OrgAdminPage() {
                   </button>
                 )}
               </div>
-              {outsideDomainError && <div style={{ color: "var(--color-danger)" }}>{outsideDomainError}</div>}
+              <InlineMessage>{outsideDomainError}</InlineMessage>
               {outsideDomainUsers !== null && (
                 <div className="card stack">
-                  <strong>{strings.orgAdmin.outsideDomainUsers(orgLabel)}</strong>
-                  <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.outsideDomainUsersHint(orgLabel)}</p>
-                  {outsideDomainUsers.length === 0 ? (
-                    <p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers(orgLabel)}</p>
-                  ) : (
-                    <div style={{ overflowX: "auto" }}>
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>{strings.orgAdmin.email}</th>
-                            <th>{strings.orgAdmin.name}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {outsideDomainUsers.map((u) => (
-                            <tr key={u.user_id}>
-                              <td>{u.email}</td>
-                              <td>{u.display_name}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                  <span className="row" style={{ gap: "var(--space-2)" }}>
+                    <strong>{strings.orgAdmin.outsideDomainUsers(orgLabel)}</strong>
+                    <FieldHelp label={strings.orgAdmin.outsideDomainUsers(orgLabel)} help={strings.orgAdmin.outsideDomainUsersHint(orgLabel)} />
+                  </span>
+                    <DirectoryTable
+                      ariaLabel={strings.orgAdmin.outsideDomainUsers(orgLabel)}
+                      rows={outsideDomainUsers}
+                      rowKey={(u) => u.user_id}
+                      columns={[
+                        { key: "email", label: strings.orgAdmin.email, render: (u) => u.email },
+                        { key: "name", label: strings.orgAdmin.name, render: (u) => u.display_name },
+                      ]}
+                      emptyState={<p className="text-muted">{strings.orgAdmin.noOutsideDomainUsers(orgLabel)}</p>}
+                    />
                 </div>
               )}
 
@@ -2719,7 +2726,6 @@ export function OrgAdminPage() {
             {newUserModalOpen && (
               <Modal title={strings.orgAdmin.newUser} onClose={() => setNewUserModalOpen(false)} size="lg">
                 <div className="stack">
-                  <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.newUserModalHint}</p>
                   <NewUserFields values={newUser} onChange={(patch) => setNewUser((prev) => ({ ...prev, ...patch }))} />
                   <FormActions
                     onCancel={() => setNewUserModalOpen(false)}
@@ -2734,8 +2740,7 @@ export function OrgAdminPage() {
             {inviteUserModalOpen && (
               <Modal title={strings.orgAdmin.inviteUser} onClose={() => setInviteUserModalOpen(false)}>
                 <div className="stack">
-                  <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.inviteUserModalHint}</p>
-                  <TextField helpNotNeeded required
+                  <TextField required help={strings.orgAdmin.inviteUserModalHint}
                     label={strings.orgAdmin.email}
                     value={inviteUserEmail}
                     onChange={setInviteUserEmail}
@@ -2753,7 +2758,7 @@ export function OrgAdminPage() {
 
             {viewingUser && (
               <SidePanel title={strings.orgAdmin.userAccessTitle(viewingUser.display_name)} onClose={() => setViewingUser(null)}>
-                {userAccessError && <div style={{ color: "var(--color-danger)" }}>{userAccessError}</div>}
+                <InlineMessage>{userAccessError}</InlineMessage>
                 {!userAccess && !userAccessError && <Spinner />}
                 {userAccess && (
                   <div className="stack">
@@ -2818,7 +2823,7 @@ export function OrgAdminPage() {
 
         {activeGroup === "groups" && (
           <div className="stack">
-            <CollapsibleSection sectionKey="orgAdmin.groups" title={strings.orgAdmin.groups(orgLabelCap)}>
+            <CollapsibleSection sectionKey="orgAdmin.groups" collapsible={false} title={strings.orgAdmin.groups(orgLabelCap)}>
               <button
                 className="btn btn-primary"
                 style={{ alignSelf: "flex-start" }}
@@ -2851,41 +2856,31 @@ export function OrgAdminPage() {
                 </Modal>
               )}
 
-              {/* Rebuilt on the shared `DirectoryTable` inside the
-                  standard `.side-grid` + `FilterPanel` layout, replacing the
-                  old `CollapsibleSection`-of-`CollapsibleSection`s accordion
-                  that rendered every group's full member list open and
-                  inline, unconditionally (docs/decisions.md). Each row now opens a
-                  `SidePanel` instead — style guide "Pattern: entity detail
-                  panel." */}
-              <div className="side-grid">
-                <div className="stack">
-                  <DirectoryTable
-                    ariaLabel={strings.orgAdmin.groups(orgLabelCap)}
-                    columns={orgGroupColumns}
-                    rows={groups}
-                    rowKey={(row) => row.id}
-                    sort={groupSort}
-                    onSort={(key) => applyGroupSort(key as OrgGroupSortKey)}
-                    total={groupsTotal}
-                    onLoadMore={() => loadGroups(groupSearch, groups.length, true)}
-                    onRowClick={(row) => setOpenOrgGroupId(row.id)}
-                    emptyState={<p className="text-muted">{strings.orgAdmin.noGroupsFound}</p>}
-                  />
-                </div>
+              {/* `FilterPanel` as a full-width bar above the table, like Users: search is its only control, so a side
+                  column would waste the width (style guide "Pattern: filter panel placement — side vs. top"). Each
+                  row opens a `SidePanel` ("Pattern: entity detail panel"). */}
+              <div className="stack">
                 <FilterPanel
+                  layout="top"
                   sectionKey="orgAdminGroupsFilters"
                   search={groupSearch}
                   onSearchChange={handleGroupSearchChange}
                   searchPlaceholder={strings.orgAdmin.searchGroups}
                 >
-                  {/* No dedicated filter fields beyond search exist for
-                      Groups today — `FilterPanel` is still the right shell
-                      (consistent chrome/mobile-collapse with every other
-                      directory), it just has nothing besides the header
-                      search box to offer here. */}
                   {null}
                 </FilterPanel>
+                <DirectoryTable
+                  ariaLabel={strings.orgAdmin.groups(orgLabelCap)}
+                  columns={orgGroupColumns}
+                  rows={groups}
+                  rowKey={(row) => row.id}
+                  sort={groupSort}
+                  onSort={(key) => applyGroupSort(key as OrgGroupSortKey)}
+                  total={groupsTotal}
+                  onLoadMore={() => loadGroups(groupSearch, groups.length, true)}
+                  onRowClick={(row) => setOpenOrgGroupId(row.id)}
+                  emptyState={<p className="text-muted">{strings.orgAdmin.noGroupsFound}</p>}
+                />
               </div>
             </CollapsibleSection>
 
@@ -2978,7 +2973,7 @@ export function OrgAdminPage() {
                         </button>
                       </div>
                     )}
-                    {nestErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{nestErrors[g.id]}</div>}
+                    <InlineMessage>{nestErrors[g.id]}</InlineMessage>
 
                     {/* SSO sync sub-section — fully gated on `ssoConfigured`
                         (bug fix, see comment above): with no SSO configured,
@@ -3023,7 +3018,7 @@ export function OrgAdminPage() {
                             >
                               {strings.orgAdmin.saveIdpSync}
                             </button>
-                            {idpSyncErrors[g.id] && <div style={{ color: "var(--color-danger)" }}>{idpSyncErrors[g.id]}</div>}
+                            <InlineMessage>{idpSyncErrors[g.id]}</InlineMessage>
                           </>
                         )}
                       </div>
@@ -3068,11 +3063,10 @@ export function OrgAdminPage() {
           </div>
         )}
 
-        {activeGroup === "projects-workflow" && (
+        {activeGroup === "projects" && (
           <div className="stack">
             {orgProjects && (
-              <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects}>
-                <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectsHint(orgLabel)}</p>
+              <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects} help={strings.orgAdmin.projectsHint(orgLabel)}>
                 {orgProjects.map((p) => (
                   <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
                     <div className="row" style={{ justifyContent: "space-between" }}>
@@ -3140,24 +3134,19 @@ export function OrgAdminPage() {
               </Modal>
             )}
 
-            <CollapsibleSection sectionKey="orgAdmin.projectCodes" title={strings.orgAdmin.projectCodes}>
+            <CollapsibleSection sectionKey="orgAdmin.projectCodes" title={strings.orgAdmin.projectCodes} help={strings.orgAdmin.codePolicyHint}>
               <ProjectCodePolicyPanel org={org} onSaved={setOrg} />
             </CollapsibleSection>
 
-            <CollapsibleSection sectionKey="orgAdmin.organizationCode" title={strings.orgAdmin.organizationCode}>
+            <CollapsibleSection sectionKey="orgAdmin.organizationCode" title={strings.orgAdmin.organizationCode} help={strings.orgAdmin.organizationCodeHint}>
               <OrganizationCodePanel org={org} onSaved={setOrg} />
-            </CollapsibleSection>
-
-            <CollapsibleSection sectionKey="orgAdmin.navLabels" title={strings.navLabels.heading}>
-              <NavLabelsPanel scope={{ kind: "organisation", organizationId: org.id }} />
             </CollapsibleSection>
 
             <CollapsibleSection sectionKey="orgAdmin.overviewDefault" title={strings.overviewWidgets.orgHeading}>
               <OrgOverviewDefaultPanel organizationId={org.id} />
             </CollapsibleSection>
 
-            <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses}>
-              <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.projectStatusesHint}</p>
+            <CollapsibleSection sectionKey="orgAdmin.projectStatuses" title={strings.orgAdmin.projectStatuses} help={strings.orgAdmin.projectStatusesHint}>
               <DefinitionList
                 items={projectStatuses}
                 fields={[{ key: "name", getValue: (i) => i.name, placeholder: strings.admin.name, maxWidth: 220 }]}
@@ -3171,6 +3160,11 @@ export function OrgAdminPage() {
               />
             </CollapsibleSection>
 
+          </div>
+        )}
+
+        {activeGroup === "workflow" && (
+          <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.stageWorkflows" title={strings.stageWorkflows.heading}>
               <StageWorkflowsPanel scope={{ kind: "organisation", organizationId: org.id }} />
             </CollapsibleSection>
@@ -3178,60 +3172,49 @@ export function OrgAdminPage() {
             <CollapsibleSection sectionKey="orgAdmin.linkTypes" title={strings.orgAdmin.linkTypes}>
               <LinkTypesPanel scope={{ kind: "organization", orgId: org.id }} />
             </CollapsibleSection>
+
+            <CollapsibleSection sectionKey="orgAdmin.navLabels" title={strings.navLabels.heading}>
+              <NavLabelsPanel scope={{ kind: "organisation", organizationId: org.id }} />
+            </CollapsibleSection>
           </div>
         )}
 
         {activeGroup === "branding-defaults" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding}>
-              <UploadField helpNotNeeded
+              <BrandingImageField
                 id="org-logo-input"
                 label={strings.orgAdmin.logo(orgLabel)}
-                labelExtra={<OverridePill custom={org.logo_file_id != null} onReset={removeLogo} disabled={logoUploading} />}
-                accept="image/*"
-                disabled={logoUploading}
+                fileId={org.logo_file_id ?? null}
+                platformFileId={platformBranding?.default_logo_file_id ?? null}
+                busy={logoUploading}
                 onSelect={uploadLogo}
-              >
-                <Upload size={14} /> {strings.common.chooseFile}
-              </UploadField>
-              {logoUploading && <Spinner />}
-              {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
-              {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.logoUploaded}</div>}
-              {org.logo_file_id && <PictureImage src={fileUrl(org.logo_file_id)} style={{ height: 40 }} />}
+                onRemove={removeLogo}
+                error={logoError}
+                uploaded={logoUploaded ? strings.orgAdmin.logoUploaded : null}
+                height={40}
+              />
 
               {/* Login-background sits alongside the org logo (style guide
                   "after" diagram, G4a: "Branding — logo, colour, footer") —
                   moved here from the SSO section, where it previously sat
                   for no reason connected to SSO/OIDC itself. */}
-              <UploadField helpNotNeeded
+              <BrandingImageField
                 id="org-login-background-input"
                 label={strings.orgAdmin.loginBackground}
-                labelExtra={
-                  <OverridePill
-                    custom={org.login_background_file_id != null}
-                    onReset={removeLoginBackground}
-                    disabled={loginBackgroundUploading}
-                  />
-                }
-                accept="image/*"
-                disabled={loginBackgroundUploading}
+                fileId={org.login_background_file_id ?? null}
+                platformFileId={platformBranding?.default_login_background_file_id ?? null}
+                busy={loginBackgroundUploading}
                 onSelect={uploadLoginBackground}
-              >
-                <Upload size={14} /> {strings.common.chooseFile}
-              </UploadField>
-              {loginBackgroundUploading && <Spinner />}
-              {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
-              {loginBackgroundUploaded && (
-                <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.loginBackgroundUploaded}</div>
-              )}
-              {org.login_background_file_id && (
-                <img src={fileUrl(org.login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: "var(--radius-sm)" }} />
-              )}
+                onRemove={removeLoginBackground}
+                error={loginBackgroundError}
+                uploaded={loginBackgroundUploaded ? strings.orgAdmin.loginBackgroundUploaded : null}
+                height={100}
+              />
 
               <TextField help={strings.help.orgHeaderTitle}
                 label={strings.orgAdmin.headerTitle}
-                labelExtra={<OverridePill custom={org.header_title != null} onReset={() => setHeaderTitleInput("")} />}
-                placeholder={strings.appName}
+                placeholder={platformBranding?.default_header_title || strings.appName}
                 value={headerTitleInput}
                 onChange={setHeaderTitleInput}
                 inputProps={{ id: "org-header-title" }}
@@ -3269,19 +3252,21 @@ export function OrgAdminPage() {
                 onChange={setReportIncludeLogo}
               />
               <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
-              <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
-              <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>{strings.orgAdmin.emailFooterHint(orgLabel)}</p>
+              <span className="row" style={{ gap: "var(--space-2)" }}>
+                <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
+                <FieldHelp label={strings.orgAdmin.emailFooterTitle} help={strings.orgAdmin.emailFooterHint(orgLabel)} />
+              </span>
               <FormGrid minColumn="18rem">
                 <TextField help={strings.help.orgEmailFooterCompanyName}
                   label={strings.orgAdmin.emailFooterCompanyName}
-                  labelExtra={<OverridePill custom={org.email_footer_company_name != null} onReset={() => setEmailFooterCompanyNameInput("")} />}
+                  placeholder={platformBranding?.email_footer_company_name ?? undefined}
                   value={emailFooterCompanyNameInput}
                   onChange={setEmailFooterCompanyNameInput}
                   inputProps={{ id: "org-email-footer-company" }}
                 />
                 <TextField help={strings.help.orgEmailFooterWebsite}
                   label={strings.orgAdmin.emailFooterWebsite}
-                  labelExtra={<OverridePill custom={org.email_footer_website != null} onReset={() => setEmailFooterWebsiteInput("")} />}
+                  placeholder={platformBranding?.email_footer_website ?? undefined}
                   value={emailFooterWebsiteInput}
                   onChange={setEmailFooterWebsiteInput}
                   inputProps={{ id: "org-email-footer-website" }}
@@ -3289,30 +3274,31 @@ export function OrgAdminPage() {
                 <FormGridFull>
                   <TextAreaField help={strings.help.orgEmailFooterAddress}
                     label={strings.orgAdmin.emailFooterAddress}
-                    labelExtra={<OverridePill custom={org.email_footer_address != null} onReset={() => setEmailFooterAddressInput("")} />}
                     rows={3}
                     value={emailFooterAddressInput}
                     onChange={setEmailFooterAddressInput}
-                    inputProps={{ id: "org-email-footer-address" }}
+                    inputProps={{ id: "org-email-footer-address", placeholder: platformBranding?.email_footer_address ?? undefined }}
                   />
                 </FormGridFull>
               </FormGrid>
-              {brandingError && <div style={{ color: "var(--color-danger)" }}>{brandingError}</div>}
+              <InlineMessage>{brandingError}</InlineMessage>
               <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
                 {strings.orgAdmin.saveBranding}
               </button>
             </CollapsibleSection>
 
             {defaultTemplateOptions.length > 0 && (
-              <CollapsibleSection sectionKey="orgAdmin.defaultTemplate" title={strings.orgAdmin.defaultTemplate}>
-                <InlineSelect
-                  ariaLabel={strings.orgAdmin.defaultTemplate}
+              <div className="card">
+                <LabeledSelect
+                  label={strings.orgAdmin.defaultTemplate}
+                  help={strings.help.orgDefaultTemplate}
                   placeholder={strings.projects.noTemplate}
                   value={org.default_template_project_id ?? ""}
                   options={defaultTemplateOptions.map((p) => ({ value: p.id, label: p.name }))}
                   onChange={setDefaultTemplate}
+                  autoWidth
                 />
-              </CollapsibleSection>
+              </div>
             )}
           </div>
         )}
@@ -3338,7 +3324,7 @@ export function OrgAdminPage() {
                   value={reportFileName}
                   kind="organization"
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.reports = true;
                     setReportFileName(next);
                   }}
                 />
@@ -3347,7 +3333,7 @@ export function OrgAdminPage() {
                   help={strings.help.reportOutputRetention}
                   value={reportOutputRetentionDays}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.reports = true;
                     setReportOutputRetentionDays(next);
                   }}
                   hint={strings.orgAdmin.reportOutputRetentionHint(
@@ -3360,7 +3346,7 @@ export function OrgAdminPage() {
                   help={strings.help.reportFooterText}
                   value={reportFooterText}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.reports = true;
                     setReportFooterText(next);
                   }}
                   inputProps={{ maxLength: 500 }}
@@ -3370,7 +3356,7 @@ export function OrgAdminPage() {
                   help={strings.help.reportIncludeCoverPage}
                   checked={reportIncludeCoverPage}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.reports = true;
                     setReportIncludeCoverPage(next);
                   }}
                 />
@@ -3379,12 +3365,12 @@ export function OrgAdminPage() {
                   help={strings.help.reportChaptersPerComponent}
                   checked={reportChaptersPerComponent}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.reports = true;
                     setReportChaptersPerComponent(next);
                   }}
                 />
-                {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
-                <button className="btn btn-primary" onClick={saveAdvanced} style={{ alignSelf: "flex-start" }}>
+                <InlineMessage>{advancedError}</InlineMessage>
+                <button className="btn btn-primary" onClick={() => void saveAdvanced("reports")} style={{ alignSelf: "flex-start" }}>
                   {strings.orgAdmin.saveReportConfiguration}
                 </button>
               </CollapsibleSection>
@@ -3396,7 +3382,7 @@ export function OrgAdminPage() {
         {activeGroup === "oauth-sso" && (
           <div className="stack">
             {ssoConfig && (
-              <CollapsibleSection sectionKey="orgAdmin.sso" title={strings.orgAdmin.ssoConfig}>
+              <CollapsibleSection sectionKey="orgAdmin.sso" collapsible={false} title={strings.orgAdmin.ssoConfig} help={strings.orgAdmin.ssoMappingsMovedHint}>
                 <TextField help={strings.help.organizationSlug(orgLabel)}
                   label={strings.orgAdmin.slug}
                   value={slugInput}
@@ -3424,9 +3410,7 @@ export function OrgAdminPage() {
                     instead (`OrgGroup.granted_org_role`, alongside
                     `idp_synced_group_name`), managed from the Groups
                     section. */}
-                <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.ssoMappingsMovedHint}</p>
 
-                {ssoError && <div style={{ color: "var(--color-danger)" }}>{ssoError}</div>}
                 <button className="btn btn-primary" onClick={saveSso} style={{ alignSelf: "flex-start" }}>
                   {strings.orgAdmin.saveSso}
                 </button>
@@ -3434,8 +3418,7 @@ export function OrgAdminPage() {
             )}
 
             {scimStatus && (
-              <CollapsibleSection sectionKey="orgAdmin.scim" title={strings.orgAdmin.scimProvisioning}>
-                <p className="text-muted" style={{ margin: 0 }}>{strings.orgAdmin.scimHint}</p>
+              <CollapsibleSection sectionKey="orgAdmin.scim" collapsible={false} title={strings.orgAdmin.scimProvisioning} help={strings.orgAdmin.scimHint}>
                 <div className="row">
                   <span>
                     {scimStatus.enabled
@@ -3452,13 +3435,12 @@ export function OrgAdminPage() {
                     inputProps={{ readOnly: true, onFocus: (e) => e.target.select() }}
                   />
                 )}
-                {scimError && <div style={{ color: "var(--color-danger)" }}>{scimError}</div>}
                 <div className="row">
-                  <button className="btn btn-primary" onClick={regenerateScimToken}>
+                  <button className="btn btn-primary" onClick={() => (scimStatus.enabled ? setScimConfirm("regenerate") : void regenerateScimToken())}>
                     {scimStatus.enabled ? strings.orgAdmin.scimRegenerate : strings.orgAdmin.scimGenerate}
                   </button>
                   {scimStatus.enabled && (
-                    <button className="btn btn-danger" onClick={revokeScimToken}>
+                    <button className="btn btn-danger" onClick={() => setScimConfirm("revoke")}>
                       {strings.orgAdmin.scimRevoke}
                     </button>
                   )}
@@ -3471,13 +3453,13 @@ export function OrgAdminPage() {
         {activeGroup === "email" && (
           <div className="stack">
             {advanced && (
-              <CollapsibleSection sectionKey="orgAdmin.smtpEmail" title={strings.orgAdmin.smtpEmailTitle}>
+              <CollapsibleSection sectionKey="orgAdmin.smtpEmail" collapsible={false} title={strings.orgAdmin.smtpEmailTitle}>
                 <FormGrid minColumn="14rem">
                   <TextField help={strings.help.smtpHost}
                     label={strings.orgAdmin.smtpHost}
                     value={smtpHost}
                     onChange={(next) => {
-                      advancedDirtyRef.current = true;
+                      advancedDirtyRef.current.email = true;
                       setSmtpHost(next);
                     }}
                   />
@@ -3485,7 +3467,7 @@ export function OrgAdminPage() {
                     label={strings.orgAdmin.smtpPort}
                     value={smtpPort}
                     onChange={(next) => {
-                      advancedDirtyRef.current = true;
+                      advancedDirtyRef.current.email = true;
                       setSmtpPort(next);
                     }}
                   />
@@ -3493,7 +3475,7 @@ export function OrgAdminPage() {
                     label={strings.orgAdmin.smtpUsername}
                     value={smtpUsername}
                     onChange={(next) => {
-                      advancedDirtyRef.current = true;
+                      advancedDirtyRef.current.email = true;
                       setSmtpUsername(next);
                     }}
                   />
@@ -3501,7 +3483,7 @@ export function OrgAdminPage() {
                     label={strings.orgAdmin.smtpPassword}
                     value={smtpPassword}
                     onChange={(next) => {
-                      advancedDirtyRef.current = true;
+                      advancedDirtyRef.current.email = true;
                       setSmtpPassword(next);
                     }}
                     inputProps={{ type: "password" }}
@@ -3511,7 +3493,7 @@ export function OrgAdminPage() {
                       label={strings.orgAdmin.smtpUseTls}
                       checked={smtpUseTls}
                       onChange={(next) => {
-                        advancedDirtyRef.current = true;
+                        advancedDirtyRef.current.email = true;
                         setSmtpUseTls(next);
                       }}
                     />
@@ -3519,8 +3501,10 @@ export function OrgAdminPage() {
                 </FormGrid>
 
                 <div className="stack" style={{ gap: "var(--space-2)" }}>
-                  <strong>{strings.orgAdmin.testEmail}</strong>
-                  <span className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.orgAdmin.testEmailHint(orgLabel)}</span>
+                  <span className="row" style={{ gap: "var(--space-2)" }}>
+                    <strong>{strings.orgAdmin.testEmail}</strong>
+                    <FieldHelp label={strings.orgAdmin.testEmail} help={strings.orgAdmin.testEmailHint(orgLabel)} />
+                  </span>
                   <div className="row" style={{ alignItems: "flex-end" }}>
                     <TextField help={strings.help.testEmailRecipient}
                       label={strings.orgAdmin.testEmailRecipient}
@@ -3533,22 +3517,13 @@ export function OrgAdminPage() {
                     </button>
                   </div>
                   {!smtpHost && <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.orgAdmin.testEmailNoSmtp}</span>}
-                  {testEmailError && <div style={{ color: "var(--color-danger)" }}>{testEmailError}</div>}
-                  {testEmailSuccess && <div style={{ color: "var(--color-accent)" }}>{strings.orgAdmin.testEmailSent}</div>}
+                  <InlineMessage>{testEmailError}</InlineMessage>
+                  {testEmailSuccess && <InlineMessage tone="success">{strings.orgAdmin.testEmailSent}</InlineMessage>}
                 </div>
-                {/* SMTP fields are part of the same `OrgAdvancedSettings`
-                    object the Security group's own save button submits —
-                    previously a shared button on the same page ("saved
-                    with the Security settings below"), now its own
-                    explicit button now that Email and Security are
-                    separate top-level groups. See the SSO mappings save button's own
-                    comment for why calling the same `saveAdvanced()` from
-                    here is still correct. */}
-                {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
+                <InlineMessage>{advancedError}</InlineMessage>
                 <button
                   className="btn btn-primary"
-                  onClick={saveAdvanced}
-                  disabled={selfSignupConflict}
+                  onClick={() => void saveAdvanced("email")}
                   style={{ alignSelf: "flex-start" }}
                 >
                   {strings.orgAdmin.saveEmailSettings}
@@ -3566,7 +3541,7 @@ export function OrgAdminPage() {
                   label={strings.orgAdmin.require2fa}
                   checked={require2fa}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.security = true;
                     setRequire2fa(next);
                   }}
                 />
@@ -3575,20 +3550,20 @@ export function OrgAdminPage() {
                   label={strings.orgAdmin.allowSelfSignup}
                   checked={allowSelfSignup}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.security = true;
                     setAllowSelfSignup(next);
                   }}
                 />
 
                 {selfSignupConflict && (
-                  <div style={{ color: "var(--color-danger)" }}>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</div>
+                  <InlineMessage>{strings.orgAdmin.selfSignupSsoConflict(orgLabel)}</InlineMessage>
                 )}
 
                 <TextField help={strings.help.acceptedEmailDomain}
                   label={strings.orgAdmin.autoAcceptEmailDomain}
                   value={autoAcceptEmailDomain}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.security = true;
                     setAutoAcceptEmailDomain(next);
                   }}
                   placeholder="acme.com"
@@ -3598,7 +3573,7 @@ export function OrgAdminPage() {
                   label={strings.orgAdmin.externalUserPolicy}
                   value={externalUserPolicy}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.security = true;
                     setExternalUserPolicy(next as ExternalUserPolicy);
                   }}
                   options={[{ value: "disabled", label: strings.orgAdmin.externalUserPolicyDisabled(orgLabel) }, { value: "org_domain_only", label: strings.orgAdmin.externalUserPolicyDomainOnly }, { value: "anyone", label: strings.orgAdmin.externalUserPolicyAnyone }]}
@@ -3609,7 +3584,7 @@ export function OrgAdminPage() {
                   label={strings.orgAdmin.allowRelaxedChildProjectCreation}
                   checked={allowRelaxedChildProjectCreation}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.security = true;
                     setAllowRelaxedChildProjectCreation(next);
                   }}
                 />
@@ -3618,7 +3593,7 @@ export function OrgAdminPage() {
                   label={strings.orgAdmin.forceRequireChangeRequestForApprovedLinks}
                   checked={forceRequireCrForLinks}
                   onChange={(next) => {
-                    advancedDirtyRef.current = true;
+                    advancedDirtyRef.current.security = true;
                     setForceRequireCrForLinks(next);
                   }}
                 />
@@ -3632,30 +3607,16 @@ export function OrgAdminPage() {
                       setAiApprovalsAckChecked(false);
                       setAiApprovalsAckPending(true);
                     } else {
-                      advancedDirtyRef.current = true;
+                      advancedDirtyRef.current.security = true;
                       setAllowAiApprovals(false);
                     }
                   }}
                 />
 
-                {advancedError && <div style={{ color: "var(--color-danger)" }}>{advancedError}</div>}
-                {/* `onClick={saveAdvanced}` submits the *whole*
-                    `OrgAdvancedSettings` object — SMTP/email (its own
-                    "Email" group now) and the SSO mappings (its own
-                    "OAuth/SSO" group) are all part of the same underlying
-                    settings resource/PUT, just split across three separate
-                    top-level resource-menu groups by what they actually
-                    govern
-                    rather than one combined page. Each group that touches
-                    a field on this object now has its own save button
-                    calling the same `saveAdvanced()` — see the SSO
-                    mappings and SMTP & email save buttons' own comments —
-                    since every field lives in this one component's shared
-                    state regardless of which group is currently
-                    rendered. */}
+                <InlineMessage>{advancedError}</InlineMessage>
                 <button
                   className="btn btn-primary"
-                  onClick={saveAdvanced}
+                  onClick={() => void saveAdvanced("security")}
                   disabled={selfSignupConflict}
                   style={{ alignSelf: "flex-start" }}
                 >
@@ -3666,88 +3627,77 @@ export function OrgAdminPage() {
 
             {advanced && (
               <CollapsibleSection sectionKey="orgAdmin.pats" title={strings.orgAdmin.pats}>
-                {/* PAT lifetime joins the existing PAT list per the style
-                    guide's regrouping notes, rather than staying under the
-                    old "Advanced" catch-all. Still saved via the shared
-                    Security-card button above, on this same "Security"
-                    group/page, since it's one field on the same
-                    OrgAdvancedSettings object. */}
-                <TextField help={strings.help.patMaxLifetime}
-                  label={strings.orgAdmin.patMaxLifetime}
-                  value={patMaxLifetimeDays}
-                  onChange={(next) => {
-                    advancedDirtyRef.current = true;
-                    setPatMaxLifetimeDays(next);
-                  }}
-                  hint={
-                    <>
-                      {strings.orgAdmin.patMaxLifetimeHint(orgLabel)}
-                      <br />
-                      Saved with the Security settings above.
-                    </>
-                  }
-                  inputProps={{ type: "number", min: 1, max: 3650, style: { maxWidth: 160 } }}
-                />
+                <div className="row" style={{ alignItems: "flex-end", gap: "var(--space-3)" }}>
+                  <TextField help={strings.help.patMaxLifetime}
+                    label={strings.orgAdmin.patMaxLifetime}
+                    value={patMaxLifetimeDays}
+                    onChange={(next) => {
+                      advancedDirtyRef.current.pats = true;
+                      setPatMaxLifetimeDays(next);
+                    }}
+                    inputProps={{ type: "number", min: 1, max: 3650, style: { maxWidth: 160 } }}
+                  />
+                  <button className="btn btn-primary" onClick={() => void saveAdvanced("pats")}>
+                    {strings.orgAdmin.savePatLifetime}
+                  </button>
+                </div>
+                <InlineMessage>{advancedError}</InlineMessage>
 
-                {orgPats.length === 0 ? (
-                  <p className="text-muted">{strings.orgAdmin.patNone(orgLabel)}</p>
-                ) : (
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>{strings.orgAdmin.patUser}</th>
-                        <th>{strings.orgAdmin.patName}</th>
-                        <th>{strings.orgAdmin.patExpires}</th>
-                        <th>{strings.orgAdmin.patLastUsed}</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orgPats.map((p) => (
-                        <tr key={p.id}>
-                          <td>
-                            {p.user_display_name} <span className="text-muted">({p.user_email})</span>
-                          </td>
-                          <td>
+                  <DirectoryTable
+                    ariaLabel={strings.orgAdmin.pats}
+                    rows={orgPats}
+                    rowKey={(p) => p.id}
+                    columns={[
+                      {
+                        key: "user", label: strings.orgAdmin.patUser,
+                        render: (p) => <>{p.user_display_name} <span className="text-muted">({p.user_email})</span></>,
+                      },
+                      {
+                        key: "name", label: strings.orgAdmin.patName,
+                        render: (p) => (
+                          <>
                             {p.name}
                             {p.other_org_count > 0 && (
                               <div className="text-muted">{strings.orgAdmin.patOtherOrgs(p.other_org_count, orgLabelPlural)}</div>
                             )}
-                          </td>
-                          <td>{new Date(p.expires_at).toLocaleDateString()}</td>
-                          <td>{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : strings.orgAdmin.never}</td>
-                          <td>
-                            <div className="row">
-                              {p.other_org_count > 0 && (
-                                <button className="btn" onClick={() => setPatToDescope(p.id)}>
-                                  {strings.orgAdmin.patDescope}
-                                </button>
-                              )}
-                              <button
-                                className="btn btn-danger"
-                                onClick={() => setPatToRevoke(p.id)}
-                              >
-                                {strings.orgAdmin.patRevoke}
+                          </>
+                        ),
+                      },
+                      { key: "expires", label: strings.orgAdmin.patExpires, render: (p) => new Date(p.expires_at).toLocaleDateString() },
+                      {
+                        key: "lastUsed", label: strings.orgAdmin.patLastUsed,
+                        render: (p) => (p.last_used_at ? new Date(p.last_used_at).toLocaleString() : strings.orgAdmin.never),
+                      },
+                      {
+                        key: "actions", label: "",
+                        render: (p) => (
+                          <div className="row">
+                            {p.other_org_count > 0 && (
+                              <button className="btn" onClick={() => setPatToDescope(p.id)}>
+                                {strings.orgAdmin.patDescope}
                               </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
+                            )}
+                            <button className="btn btn-danger" onClick={() => setPatToRevoke(p.id)}>
+                              {strings.orgAdmin.patRevoke}
+                            </button>
+                          </div>
+                        ),
+                      },
+                    ]}
+                    emptyState={<p className="text-muted">{strings.orgAdmin.patNone(orgLabel)}</p>}
+                  />
 
                 {orgPats.length > 0 && (
                   <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
                     {strings.orgAdmin.patRevokeAll(orgLabel)}
                   </button>
                 )}
-                {patBulkResult && <div style={{ color: "var(--color-accent)" }}>{patBulkResult}</div>}
+                {patBulkResult && <InlineMessage tone="success">{patBulkResult}</InlineMessage>}
               </CollapsibleSection>
             )}
 
             {orgId && (
-              <CollapsibleSection sectionKey="orgAdmin.personalData" title={strings.personalDataPolicy.title}>
+              <CollapsibleSection sectionKey="orgAdmin.personalData" title={strings.personalDataPolicy.title} help={strings.personalDataPolicy.orgHint(orgLabel)}>
                 <PersonalDataPolicyPanel scope={{ kind: "organization", organizationId: orgId }} />
               </CollapsibleSection>
             )}
@@ -3756,7 +3706,7 @@ export function OrgAdminPage() {
 
         {activeGroup === "tags" && orgId && (
           <div className="stack">
-            <CollapsibleSection sectionKey="orgAdmin.tags" title={strings.tags.admin.title}>
+            <CollapsibleSection sectionKey="orgAdmin.tags" collapsible={false} title={strings.tags.admin.title}>
               <OrgTagsPanel organizationId={orgId} />
             </CollapsibleSection>
           </div>
@@ -3764,7 +3714,7 @@ export function OrgAdminPage() {
 
         {activeGroup === "messages" && (
           <div className="stack">
-            <CollapsibleSection sectionKey="orgAdmin.messages" title={strings.announcements.heading}>
+            <CollapsibleSection sectionKey="orgAdmin.messages" collapsible={false} title={strings.announcements.heading}>
               <AnnouncementsPanel scope={{ kind: "organisation", organizationId: org.id }} />
             </CollapsibleSection>
           </div>
@@ -3772,15 +3722,14 @@ export function OrgAdminPage() {
 
         {activeGroup === "modules" && (
           <div className="stack">
-            <CollapsibleSection sectionKey="orgAdmin.modules" title={strings.orgAdmin.modulesTitle}>
-              <p className="text-muted">{strings.orgAdmin.modulesDescription}</p>
+            <CollapsibleSection sectionKey="orgAdmin.modules" collapsible={false} title={strings.orgAdmin.modulesTitle} help={strings.orgAdmin.modulesDescription}>
               {modules.length === 0 ? (
                 <p className="text-muted">{strings.orgAdmin.modulesEmpty}</p>
               ) : (
                 <ModuleSettingsList
                   items={modules.map((m) => {
                     // Non-entitled/not-yet-implemented modules stay listed
-                    // (greyed, with a hint) rather than hidden — visibility
+                    // (unavailable, with a hint) rather than hidden — visibility
                     // helps future upsell.
                     const disabled = !m.entitled || !m.implemented;
                     const subComponents = orgModuleSubComponents[m.module_key] ?? [];
@@ -3838,8 +3787,7 @@ export function OrgAdminPage() {
                 matching the "without necessarily seeing the
                 ORG_ADMIN-only role-definition half" requirement. */}
             {advanced !== null && (
-              <CollapsibleSection sectionKey="orgAdmin.roleManagement.definitions" title={strings.orgAdmin.customRolesTitle}>
-                <p className="text-muted">{strings.orgAdmin.customRolesHint}</p>
+              <CollapsibleSection sectionKey="orgAdmin.roleManagement.definitions" collapsible={false} title={strings.orgAdmin.customRolesTitle} help={strings.orgAdmin.customRolesHint}>
                 <button
                   className="btn btn-primary"
                   style={{ alignSelf: "flex-start" }}
@@ -3970,8 +3918,7 @@ export function OrgAdminPage() {
                 module-role controls above already follow: authorization is
                 enforced server-side (403 + toast on failure), not by
                 hiding the control client-side. */}
-            <CollapsibleSection sectionKey="orgAdmin.roleManagement.assignment" title={strings.orgAdmin.customRoleAssignmentTitle}>
-              <p className="text-muted">{strings.orgAdmin.customRoleAssignmentHint}</p>
+            <CollapsibleSection sectionKey="orgAdmin.roleManagement.assignment" collapsible={false} title={strings.orgAdmin.customRoleAssignmentTitle} help={strings.orgAdmin.customRoleAssignmentHint}>
               {customRoles.length === 0 ? (
                 <p className="text-muted">{strings.orgAdmin.noCustomRoles}</p>
               ) : (
@@ -4127,6 +4074,19 @@ export function OrgAdminPage() {
           onCancel={() => setPatToRevoke(null)}
         />
       )}
+      {scimConfirm && (
+        <ConfirmDialog
+          title={scimConfirm === "regenerate" ? strings.orgAdmin.scimRegenerateTitle : strings.orgAdmin.scimRevokeTitle}
+          message={scimConfirm === "regenerate" ? strings.orgAdmin.scimRegenerateConfirm : strings.orgAdmin.scimRevokeConfirm}
+          confirmLabel={scimConfirm === "regenerate" ? strings.orgAdmin.scimRegenerate : strings.orgAdmin.scimRevoke}
+          onConfirm={() => {
+            const action = scimConfirm;
+            setScimConfirm(null);
+            void (action === "regenerate" ? regenerateScimToken() : revokeScimToken());
+          }}
+          onCancel={() => setScimConfirm(null)}
+        />
+      )}
       {revokeAllPatsOpen && (
         <ConfirmDialog
           title={strings.orgAdmin.patRevokeAllTitle(orgLabel)}
@@ -4152,7 +4112,7 @@ export function OrgAdminPage() {
           confirmLabel={strings.orgAdmin.allowAiApprovalsAckConfirm}
           confirmDisabled={!aiApprovalsAckChecked}
           onConfirm={() => {
-            advancedDirtyRef.current = true;
+            advancedDirtyRef.current.security = true;
             setAllowAiApprovals(true);
             setAiApprovalsAckPending(false);
           }}

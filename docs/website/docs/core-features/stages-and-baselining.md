@@ -36,7 +36,7 @@ flowchart LR
 
 Every organisation starts with the **Standard** workflow above. A stage can move to any phase of its workflow, in either direction; entering or leaving a Locked phase needs the project manager role, because leaving one unlocks the requirements outside the change-request process.
 
-Organisation administrators define more workflows under **Organisation Admin → Projects & workflow → Stage workflows** (for example Scoping, Technical scoping, Review board, Tendering, Awarded, In progress, Completion for outsourced work). Project managers add workflows of their own under **Project Admin → Workflows and phases → Workflows**, and can hide an organisation workflow in the project and add it back later. A stage changes workflow only while it is in an Open phase with no baseline. A workflow a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind.
+Organisation administrators define more workflows under **Organisation Admin → Workflow → Stage workflows** (for example Scoping, Technical scoping, Review board, Tendering, Awarded, In progress, Completion for outsourced work). Project managers add workflows of their own under **Project Admin → Workflows and phases → Workflows**, and can hide an organisation workflow in the project and add it back later. A stage changes workflow only while it is in an Open phase with no baseline. A workflow a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind.
 
 ## Component phases
 

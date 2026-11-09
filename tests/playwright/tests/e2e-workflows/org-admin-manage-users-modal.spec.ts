@@ -34,9 +34,9 @@ test.describe("org admin: Manage users modal", () => {
     ).json();
 
     await page.goto("/orgs");
-    await selectOrgAdminGroup(page, "Projects & workflow");
+    await selectOrgAdminGroup(page, "Projects");
     // `.last()`, not `.first()`: every ancestor wrapper up to the whole
-    // "Projects & workflow" section also matches `.stack:has-text(name)`
+    // "Projects" group also matches `.stack:has-text(name)`
     // (the project name is somewhere within all of them too) — document
     // order lists outer wrappers before the specific per-project row, so
     // the *last* match is this project's own row, not the broadest one.

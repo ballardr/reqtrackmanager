@@ -188,7 +188,7 @@ test.describe("project admin: project-level link types", () => {
     const switchName = "Let projects add their own link types and hide the organisation's";
     await test.step("the switch is on by default and says how many project types it affects", async () => {
       await page.goto(`/orgs/${world.orgId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Link types");
       await expect(page.getByRole("switch", { name: switchName })).toBeChecked();
       await expect(page.getByText("1 project-level link type(s) in 1 project(s) are affected.")).toBeVisible();
@@ -218,7 +218,7 @@ test.describe("project admin: project-level link types", () => {
 
     await test.step("switching it back on restores the project's own type", async () => {
       await page.goto(`/orgs/${world.orgId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Link types");
       await page.getByRole("switch", { name: switchName }).click();
       await expect(page.getByText("Project customisation updated.")).toBeVisible();

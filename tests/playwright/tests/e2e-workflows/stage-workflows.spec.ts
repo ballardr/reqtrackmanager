@@ -41,7 +41,7 @@ test.describe("stage workflows", () => {
     await test.step("the organisation administrator builds the workflow in Organisation Admin", async () => {
       await loginAs(page, email);
       await page.goto(`/orgs/${project.organizationId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Stage workflows");
       await page.getByRole("button", { name: "New workflow" }).click();
       const dialog = page.getByRole("dialog", { name: "New workflow" });
@@ -64,7 +64,7 @@ test.describe("stage workflows", () => {
       await saved;
       // The choice is kept for this person across a reload.
       await page.reload();
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Stage workflows");
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       // The phases read as an ordered list of steps: names in order, the kind beside each, the first marked as the start.

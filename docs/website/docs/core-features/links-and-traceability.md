@@ -8,7 +8,7 @@ Any two records in a project can be linked, whatever their kind: a requirement t
 
 ## Link types
 
-Organisation admins manage link types under **Admin → Projects & workflow → Link types**. Each has a name for both directions and a [direction](requirements-management.md#traceability-links) (upstream, downstream or none) that traceability views and AI assistants use to answer "where does this come from?" and "what depends on it?". Modules that ship their own vocabulary add link types for it when they are enabled (the Decision Management module adds "Addresses" for a decision and the pain point it addresses, for example); an admin can rename, reclassify or restrict any of them, and your edits are never overwritten.
+Organisation admins manage link types under **Admin → Workflow → Link types**. Each has a name for both directions and a [direction](requirements-management.md#traceability-links) (upstream, downstream or none) that traceability views and AI assistants use to answer "where does this come from?" and "what depends on it?". Modules that ship their own vocabulary add link types for it when they are enabled (the Decision Management module adds "Addresses" for a decision and the pain point it addresses, for example); an admin can rename, reclassify or restrict any of them, and your edits are never overwritten.
 
 ### Restrict what a link type can join
 
@@ -52,11 +52,11 @@ flowchart TD
 
 ### One shared set for the whole organisation
 
-An organisation that wants every project on the same vocabulary can switch off **Let projects add their own link types and hide the organisation's** (Admin → Projects & workflow → Link types). Asking first, it shows how many project-level link types it affects. Nothing is deleted: project link types, hiding and rules stop applying, project admins see the list read-only, and everything comes back if you switch it on again. Links already made keep showing either way.
+An organisation that wants every project on the same vocabulary can switch off **Let projects add their own link types and hide the organisation's** (Admin → Workflow → Link types). Asking first, it shows how many project-level link types it affects. Nothing is deleted: project link types, hiding and rules stop applying, project admins see the list read-only, and everything comes back if you switch it on again. Links already made keep showing either way.
 
 ## Linking across nested projects
 
-When projects are nested, a record can be linked to one in a **parent or child project**, for example a pain point taken in at product level traced to the requirements below it. Each link type decides whether, and in which direction, that is allowed, with the **Across nested projects** setting under each link type (organisation admins under **Admin → Projects & workflow → Link types**, project admins for their project's own types):
+When projects are nested, a record can be linked to one in a **parent or child project**, for example a pain point taken in at product level traced to the requirements below it. Each link type decides whether, and in which direction, that is allowed, with the **Across nested projects** setting under each link type (organisation admins under **Admin → Workflow → Link types**, project admins for their project's own types):
 
 | Setting | Meaning |
 |---------|---------|
@@ -193,7 +193,7 @@ flowchart LR
 
 Both views follow the same rules as the panel: records you can't see, or that are in a module that is off, are left out and never followed through, and following a record's link takes you to its page.
 
-Direction comes from the link type. A link type with no direction (an organisation admin sets one under **Admin → Projects & workflow → Link types**) always lands in **Related**, so if most of a record's links are undirected the views say so.
+Direction comes from the link type. A link type with no direction (an organisation admin sets one under **Admin → Workflow → Link types**) always lands in **Related**, so if most of a record's links are undirected the views say so.
 
 ## Deleting a link type that is in use
 

@@ -39,29 +39,35 @@ Deleting a group never leaves a project without a Project Manager. Every project
 
 An organisation has **one report look**. On **Branding**, set the logo, an optional **report accent colour** (reports follow the organisation's accent colour until you give them their own) and whether reports carry the logo. **Report colours** are named colours (such as `primary` or `warning`) that report layouts without colours of their own use by name; change one and every layout that uses the name changes with it (see [Colours](../core-features/custom-reports/designing-a-layout.md#colours)). Under **Reports → Configuration**, set the default **footer text**, whether built-in reports have a **cover page** and whether the requirements report starts a **chapter for each component**. The built-in reports use all of it; a [report layout](../core-features/custom-reports/designing-a-layout.md) uses only what it asks for, so a client with its own look gets its own layout. Introductions, chapters and appendices are written in report layouts. See [Core Features → Reports and export](../core-features/reports-and-export.md).
 
+### Company settings and the platform values
+
+The header title and the outgoing email footer (company name, website and postal address) use the platform's values until the organisation sets its own. An empty field shows the platform value as its placeholder, so emptying a field and saving returns to it. The logo and the login page background are files: **Remove** appears while the organisation has its own, and the platform picture is shown dimmed when it has none.
+
+Each **Save** button under **Email**, **Security** (including **Save token lifetime**) and **Reports → Configuration** saves only the settings on its own page; an unsaved change on another page is neither saved nor lost.
+
 ## Tags
 
 **Org admin → Tags** holds the tags used by records the organisation itself owns (organisation personas, stakeholders, strategies and so on) and the setting for who may add a new one. A project's own records use that project's tags. See [Tags](../core-features/tags.md#child-projects-and-the-organisation).
 
 ## Link types
 
-Under **Projects & workflow → Link types**, define the vocabulary of links between records: each link type's name in both directions, its direction (upstream, downstream or none), which kinds of record it may join (**Can link from** / **Can link to**), and, in the **By artefact type** tab, which link types each kind of record may use. Deleting a link type that is in use opens a dialog to move its links to another type or delete them too. A switch on the same page decides whether project admins may add link types of their own and hide the organisation's. See [Links and traceability](../core-features/links-and-traceability.md#link-types).
+Under **Workflow → Link types**, define the vocabulary of links between records: each link type's name in both directions, its direction (upstream, downstream or none), which kinds of record it may join (**Can link from** / **Can link to**), and, in the **By artefact type** tab, which link types each kind of record may use. Deleting a link type that is in use opens a dialog to move its links to another type or delete them too. A switch on the same page decides whether project admins may add link types of their own and hide the organisation's. See [Links and traceability](../core-features/links-and-traceability.md#link-types).
 
 ## Stage workflows
 
-Under **Projects & workflow → Stage workflows**, define the phases a project stage can move through. A workflow is a name and an ordered list of phases; each phase has a name of your choosing and a **kind** (Open, Review, Locked, On hold or Closed) that decides what entering it does. The first phase is where a new stage starts. New organisations begin with a **Standard** workflow (Scoping, Review, Approved, Completed, Archived), which you can edit or replace. Every project can use your workflows, hide the ones it does not want and add its own; a workflow that a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind. See [Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
+Under **Workflow → Stage workflows**, define the phases a project stage can move through. A workflow is a name and an ordered list of phases; each phase has a name of your choosing and a **kind** (Open, Review, Locked, On hold or Closed) that decides what entering it does. The first phase is where a new stage starts. New organisations begin with a **Standard** workflow (Scoping, Review, Approved, Completed, Archived), which you can edit or replace. Every project can use your workflows, hide the ones it does not want and add its own; a workflow that a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind. See [Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
 
 ## Default overview
 
-Under **Projects & workflow → Default overview**, arrange the project overview that every project of the organisation shows unless it, or a parent project, has its own. It is the same editor as a project's **Customise overview** (see [Project overview](../core-features/project-overview.md)); **Restore default** removes the organisation's overview so the built-in layout applies. Only the modules the organisation has enabled offer metrics, record types and widgets.
+Under **Projects → Default overview**, arrange the project overview that every project of the organisation shows unless it, or a parent project, has its own. It is the same editor as a project's **Customise overview** (see [Project overview](../core-features/project-overview.md)); **Restore default** removes the organisation's overview so the built-in layout applies. Only the modules the organisation has enabled offer metrics, record types and widgets.
 
 ## Navigation names
 
-Under **Projects & workflow → Navigation names**, set the name each project navigation entry uses by default (for example Decisions as ADRs). A project uses the organisation's name unless a parent project or the project itself names the entry differently, and a project manager can still override it under **Project Admin → Settings**. The entries listed are the core entries and those of the modules the organisation has enabled. A name affects the navigation, the page title and the back link of that entry's records only; **Restore** returns a row to its built-in name.
+Under **Workflow → Navigation names**, set the name each project navigation entry uses by default (for example Decisions as ADRs). A project uses the organisation's name unless a parent project or the project itself names the entry differently, and a project manager can still override it under **Project Admin → Settings**. The entries listed are the core entries and those of the modules the organisation has enabled. A name affects the navigation, the page title and the back link of that entry's records only; **Restore** returns a row to its built-in name.
 
 ## Project codes
 
-Under **Projects & workflow → Project codes**, decide how a project's short code is formed: which **characters** (letters, digits, or both), the **shortest** and **longest** length, and whether the code is **assigned automatically** (from the project's name, with a number added on a clash) or **chosen by the creator**. A code is unique within the organisation, never equal to the organisation's own code, and never contains a hyphen. A change applies to codes created from now on; existing codes are never rewritten.
+Under **Projects → Project codes**, decide how a project's short code is formed: which **characters** (letters, digits, or both), the **shortest** and **longest** length, and whether the code is **assigned automatically** (from the project's name, with a number added on a clash) or **chosen by the creator**. A code is unique within the organisation, never equal to the organisation's own code, and never contains a hyphen. A change applies to codes created from now on; existing codes are never rewritten.
 
 Tick **Lock codes after creation** to stop anyone but an organisation administrator changing a project's code once it exists, for example when a service account creates your projects and the code is an identifier owned by that automation. Project managers and project administrators then see the code read-only in project settings, and the server refuses a change from any other route. Creating a project with a code is never blocked, and the lock applies when codes are assigned manually (an automatically assigned code cannot be changed by anyone).
 
@@ -82,7 +88,7 @@ flowchart TD
 
 Records the organisation itself owns and every project shares (Personas, Stakeholders, Stakeholder groups, Strategies, Future states and Guiding principles that you created at organisation level) are numbered within the organisation and qualified by the **organisation's** code: `ACME-PER-001`. They always show qualified, because a bare `PER-001` could equally be a project's own Persona. A project's own records of the same type follow the project-code rule above.
 
-Under **Projects & workflow → Organisation code**, change the organisation's code (letters and digits only, no hyphen, and different from every project code). You are asked to confirm: a qualified code already written down under the old code (in a document or a ticket) stops finding its record, though the records keep their own codes. The change is recorded in the audit log.
+Under **Projects → Organisation code**, change the organisation's code (letters and digits only, no hyphen, and different from every project code). You are asked to confirm: a qualified code already written down under the old code (in a document or a ticket) stops finding its record, though the records keep their own codes. The change is recorded in the audit log.
 
 A qualified code can be looked up from the API (`GET /api/v1/orgs/{id}/records/by-code/{code}`) and by AI assistants through the `get_record_by_code` MCP tool; both return only records the caller may see.
 
@@ -92,7 +98,7 @@ Configure an identity provider for the organisation under **SSO** — see [API &
 
 ## Modules
 
-**Modules** lists every optional feature module this deployment offers, each with one availability dropdown (a module your plan doesn't include shows greyed out with a note):
+**Modules** lists every optional feature module this deployment offers, each with one availability dropdown (a module your plan doesn't include is not listed):
 
 - **Off** — no project in the organisation can use it; takes effect in every project immediately.
 - **Available, off for new projects** — projects start without it but a project admin can turn it on.

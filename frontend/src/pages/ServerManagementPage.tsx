@@ -943,7 +943,7 @@ export function ServerManagementPage() {
         {activeGroup === "modules" && <ServerModulesTab />}
         {activeGroup === "reportFonts" && <ServerReportFontsTab />}
         {activeGroup === "dataPolicy" && (
-          <CollapsibleSection sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.title}>
+          <CollapsibleSection sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.title} help={strings.personalDataPolicy.serverHint}>
             <PersonalDataPolicyPanel scope={{ kind: "server" }} />
           </CollapsibleSection>
         )}

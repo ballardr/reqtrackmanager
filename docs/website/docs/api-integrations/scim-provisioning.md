@@ -21,7 +21,7 @@ This is a pragmatic subset of the SCIM spec, not full compliance, documented the
 
 ## Authentication: a per-organisation bearer token
 
-SCIM calls come from the IdP's provisioning engine, not a logged-in browser, so they use a separate mechanism from everything else on this page: a **per-organisation bearer token**, managed from **Organisation admin → SCIM provisioning** (org-admin only). The raw token is shown exactly once, at generation; generating a new one immediately invalidates the previous one — there is only ever a single active token per organisation.
+SCIM calls come from the IdP's provisioning engine, not a logged-in browser, so they use a separate mechanism from everything else on this page: a **per-organisation bearer token**, managed from **Organisation admin → SCIM provisioning** (org-admin only). The raw token is shown exactly once, at generation; generating a new one immediately invalidates the previous one — there is only ever a single active token per organisation. Regenerating and revoking each ask for confirmation first, because the identity provider's provisioning stops working until the new token is entered there (or, after a revoke, until a new one is generated).
 
 ```
 Authorization: Bearer <scim-token>

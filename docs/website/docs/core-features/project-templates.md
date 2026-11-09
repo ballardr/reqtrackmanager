@@ -68,7 +68,7 @@ Templates are left out of the project list so everyday work is not mixed with th
 
 ## Organisation default template
 
-An organisation administrator can set any template in the organisation as the **default template** (**Organisation admin → Projects & workflow**), including one they hold no role in. It is offered by default whenever someone in that organisation creates a new project, and every person who can create projects may use it, whether or not they can otherwise see it — the administrator has chosen it as the starting point for everyone. Any other template remains available as an alternative to those who can view it.
+An organisation administrator can set any template in the organisation as the **default template** (**Organisation admin → Branding & defaults**), including one they hold no role in. It is offered by default whenever someone in that organisation creates a new project, and every person who can create projects may use it, whether or not they can otherwise see it — the administrator has chosen it as the starting point for everyone. Any other template remains available as an alternative to those who can view it.
 
 ## Where this fits
 
