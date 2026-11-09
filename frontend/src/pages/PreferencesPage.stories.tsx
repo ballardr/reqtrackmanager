@@ -37,7 +37,7 @@ const myMemberships: MyMemberships = {
   ],
 };
 
-function mockPreferencesApis(userId: string, opts: { pats?: PersonalAccessToken[] } = {}) {
+function mockPreferencesApis(userId: string, opts: { pats?: PersonalAccessToken[]; creatableOrgs?: Organization[] } = {}) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/notifications/preferences")) return notificationPrefs;
     if (path.includes("archived=false")) return [buildProjectListItem({ id: "p1", organization_id: "org-1", name: "Atlas Platform" })];
@@ -47,6 +47,7 @@ function mockPreferencesApis(userId: string, opts: { pats?: PersonalAccessToken[
     // instead of the expected `{max_expires_at}` shape).
     if (path.includes("/me/pats/max-lifetime")) return { max_expires_at: "2027-01-01T00:00:00Z" };
     if (path.includes("/me/pats")) return opts.pats ?? [];
+    if (path === "/api/v1/orgs?mine=true") return opts.creatableOrgs ?? [org];
     if (path === "/api/v1/orgs") return [org];
     if (path.includes("/auth/me/memberships")) return myMemberships;
     if (path.includes("/users")) return [{ user_id: userId, email: "alex@example.com", display_name: "Alex Morgan", is_active: true, is_archived: false, roles: ["org_admin"], display_name_locked: false, last_login_at: null, is_2fa_enabled: false, module_roles: [], custom_roles: [] }] satisfies OrgUser[];
@@ -95,6 +96,32 @@ export const ProfileTabProjectCodePreference: Story = {
     await expect(toggle).toBeChecked();
     await userEvent.click(toggle);
     await expect(toggle).not.toBeChecked();
+  },
+};
+
+const secondOrg: Organization = { ...org, id: "org-2", name: "Beta Inc", slug: "beta", code: "BETA" };
+
+/** With one organisation there is nothing to choose, so the control is absent. */
+export const DefaultNewProjectOrgAbsentForOneOrganisation: Story = {
+  beforeEach: () => mockPreferencesApis("user-1"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByLabelText("Default list scope")).toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Default organisation for new projects")).not.toBeInTheDocument();
+  },
+};
+
+/** With several organisations the person picks one, and "None" restores the first-in-list start. */
+export const DefaultNewProjectOrgIsChosenAndCleared: Story = {
+  beforeEach: () => mockPreferencesApis("user-1", { creatableOrgs: [org, secondOrg] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = (await canvas.findByLabelText("Default organisation for new projects")) as HTMLSelectElement;
+    await expect(select.value).toBe("");
+    await userEvent.selectOptions(select, "org-2");
+    await waitFor(() => expect(select.value).toBe("org-2"));
+    await userEvent.selectOptions(select, "");
+    await waitFor(() => expect(select.value).toBe(""));
   },
 };
 

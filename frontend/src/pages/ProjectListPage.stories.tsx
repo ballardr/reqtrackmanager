@@ -446,6 +446,33 @@ export const UnseenDefaultTemplateIsOffered: Story = {
   },
 };
 
+/** The person's default organisation (Preferences) is where New project starts; a stale one falls back to the first. */
+export const CreateProjectStartsOnTheDefaultOrganisation: Story = {
+  // Innermost decorator: replaces the signed-in user the meta decorator provides.
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false, ui_preferences: { default_new_project_organization_id: "org-2" } }))],
+  beforeEach: () => mockProjectListApis({ orgs: [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })], projects: singleOrgProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await waitFor(() => expect((within(dialog).getByLabelText(/Organisation/) as HTMLSelectElement).value).toBe("org-2"));
+  },
+};
+
+export const CreateProjectIgnoresAStaleDefaultOrganisation: Story = {
+  // Innermost decorator: replaces the signed-in user the meta decorator provides.
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false, ui_preferences: { default_new_project_organization_id: "gone" } }))],
+  beforeEach: () => mockProjectListApis({ orgs: [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })], projects: singleOrgProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await waitFor(() => expect((within(dialog).getByLabelText(/Organisation/) as HTMLSelectElement).value).toBe("org-1"));
+  },
+};
+
 /** Choosing "None" for the template is explicit: the organisation's default template would otherwise apply. */
 export const NoTemplateChoiceIsSentExplicitly: Story = {
   beforeEach: () => {

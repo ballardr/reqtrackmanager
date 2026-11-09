@@ -47,7 +47,9 @@ import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { DEFAULT_NEW_PROJECT_ORG_PREFERENCE, resolveNewProjectOrgId } from "../hooks/defaultProjectOrganization";
 import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useUiPreference } from "../hooks/useUiPreference";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 
@@ -91,6 +93,8 @@ export function ProjectListPage() {
   const [newReportName, setNewReportName] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newOrgId, setNewOrgId] = useState("");
+  // The organisation the New project dialog starts on (Preferences); a deep link sets `newOrgId` first.
+  const [defaultNewOrgId] = useUiPreference<string>(DEFAULT_NEW_PROJECT_ORG_PREFERENCE, "");
   const [templateProjectId, setTemplateProjectId] = useState("");
   const [newVisibility, setNewVisibility] = useState<"only_specified" | "org_wide">("only_specified");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -213,7 +217,7 @@ export function ProjectListPage() {
     setOrgs(activeOrgs);
     setAllProjects(everyProject);
     setTemplateProjects(templates);
-    if (!newOrgId && activeOrgs[0]) setNewOrgId(activeOrgs[0].id);
+    if (!newOrgId && activeOrgs[0]) setNewOrgId(resolveNewProjectOrgId(activeOrgs, defaultNewOrgId));
   }
 
   useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly, showTemplates]);
