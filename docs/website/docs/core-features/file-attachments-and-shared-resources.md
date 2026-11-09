@@ -34,7 +34,7 @@ A picture you cannot read shows an icon in place of its preview. A *confidential
 
 ## Organisation files
 
-The **Files** icon beside the title of the organisation overview opens the organisation's **Files** page, which lists the files of every project you can open in one list. It shows exactly what you could already reach by visiting each project's Files page: an administrator of the organisation sees a project's files only with a role in that project. Each row names its project and links to it, and the filters are those of the project page plus:
+The **Files** entry in the navigation rail, directly below **Projects**, opens the organisation's **Files** page (a list of your organisations first, if you belong to several); so does the **Organisation files** icon beside the title of the organisation overview. The page which lists the files of every project you can open in one list. It shows exactly what you could already reach by visiting each project's Files page: an administrator of the organisation sees a project's files only with a role in that project. Each row names its project and links to it, and the filters are those of the project page plus:
 
 - **Project** limits the list to one project.
 - **Include archived projects** adds the files of archived projects, which are left out by default.

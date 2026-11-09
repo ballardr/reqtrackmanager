@@ -119,6 +119,48 @@ export const SingleOrganisationRedirectsToOverview: Story = {
   },
 };
 
+const withOrgFilesRoutes: Decorator = (Story) => (
+  <MemoryRouter initialEntries={["/org-files"]}>
+    <Routes>
+      <Route path="/org-files" element={<Story />} />
+      <Route path="/orgs/:id/files" element={<div>Org files page</div>} />
+    </Routes>
+  </MemoryRouter>
+);
+
+/** `target="files"` — `/org-files` (the navigation rail entry) redirects straight to the one organisation's Files page. */
+export const SingleOrganisationRedirectsToFiles: Story = {
+  args: { target: "files" },
+  decorators: [withOrgFilesRoutes],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") return [org({ id: "org-1", name: "Acme Corp" })];
+      throw new Error(`Unexpected api.get(${path})`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Org files page")).toBeInTheDocument();
+  },
+};
+
+/** With several organisations the entry lists them, each linking to its own Files page. */
+export const MultipleOrganisationsListForFiles: Story = {
+  args: { target: "files" },
+  decorators: [withOrgFilesRoutes],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") {
+        return [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })];
+      }
+      throw new Error(`Unexpected api.get(${path})`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Beta Inc" })).toHaveAttribute("href", "/orgs/org-2/files");
+  },
+};
+
 /** Rebuilt onto `DirectoryTable` + `FilterPanel` (search) — see the
  * component's own module docstring for why this search is client-side.
  * Typing narrows the table to matching organisation names only, and

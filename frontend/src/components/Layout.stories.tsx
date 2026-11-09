@@ -108,6 +108,21 @@ export const LoggedInNoProject: Story = {
     await expect(canvas.queryByText("Administration")).not.toBeInTheDocument();
     // The only path to org administration for a non-server-admin.
     await expect(canvas.getByRole("link", { name: "My organisations" })).toBeInTheDocument();
+    // Organisation Files sits directly below Projects in the Global section.
+    const links = canvas.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    await expect(links.indexOf("Files")).toBe(links.indexOf("Projects") + 1);
+  },
+};
+
+/** The organisation Files entry stays active on the page it opens. */
+export const OrganisationFilesEntryIsActiveOnItsPage: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/orgs/org-1/files")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Files" })).toHaveClass("active");
   },
 };
 

@@ -34,6 +34,25 @@ test.describe("organisation files", () => {
     });
   });
 
+  test("the navigation rail opens Files, listing organisations first for a person in several", async ({ page }) => {
+    await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
+    const railFiles = page.getByRole("navigation").getByRole("link", { name: "Files", exact: true });
+
+    await test.step("the entry sits directly below Projects", async () => {
+      const labels = await page.getByRole("navigation").getByRole("link").evaluateAll((links) => links.map((a) => a.getAttribute("aria-label")));
+      expect(labels.indexOf("Files")).toBe(labels.indexOf("Projects") + 1);
+    });
+
+    await test.step("two organisations are listed, and choosing one opens its Files page with the entry active", async () => {
+      await railFiles.click();
+      await expect(page).toHaveURL(/\/org-files$/);
+      await page.getByRole("link", { name: ORG_NAMES.beta }).click();
+      await expect(page).toHaveURL(/\/orgs\/[^/]+\/files/);
+      await expect(page.getByRole("heading", { level: 1, name: "Organisation files" })).toBeVisible();
+      await expect(railFiles).toHaveClass(/active/);
+    });
+  });
+
   test("a plain member reaches the page and it lists only what their projects hold", async ({ page }) => {
     await loginAs(page, PERSONAS.memberAlphaBeta.email);
     await openOrganisationFiles(page, ORG_NAMES.alpha);

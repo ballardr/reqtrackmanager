@@ -263,6 +263,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
               activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
             <div className="nav-section-label">Global</div>
             <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
+            {/* "Files" — the files of every project the person can open in their organisation. Shown to every
+                member, as the page is (it lists only files the caller may see); `/org-files` resolves the
+                organisation the way `/org-overview` does, and the entry stays active on the page itself. */}
+            <NavRailLink to="/org-files" exact alsoActiveOn={/^\/orgs\/[^/]+\/files(\/|$)/} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
             {/* "Organisation Overview" — a core, always-visible
                 nav-rail link (unlike the module-contributed
                 nav links below, this one carries general-purpose org stats every org

@@ -98,6 +98,7 @@ function ProtectedRoutes() {
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
+        <Route path="/org-files" element={<OrgListPage target="files" />} />
         <Route path="/orgs/:orgId/files" element={<OrgFilesPage />} />
         <Route path="/orgs/:orgId/admin/templates-reports" element={<OldOrgReportsRedirect />} />
         <Route path="/orgs/:orgId/admin/:group?/:section?" element={<OrgAdminPage />} />
