@@ -74,7 +74,7 @@ flowchart LR
 - **Save** stores the working copy only. People keep reading the published version until you press **Publish**, which records a new version with its date and an optional **Change note** that only administrators see. A policy with edits not yet published shows **Unpublished changes**.
 - **Effective from** is a calendar date shown with the policy; it does not delay publication.
 - **Version history** lists every published version. **Unpublish** removes a policy from the Policies page and keeps its versions; it can be published again. A policy that is not built in can also be deleted, with its versions.
-- Everything published is readable by anyone, without signing in, at `/policies`. A **Policies** link appears below the sign-in form and at the foot of the navigation rail while at least one policy is published. Drafts and unpublished policies are never shown.
+- Everything published is readable by anyone, without signing in, at `/policies`. A **Policies** link appears below the sign-in form and at the foot of the navigation rail while at least one policy is published. Drafts and unpublished policies are never shown, and while nothing is published the link is absent and `/policies` redirects to the sign-in page (or the project list when signed in).
 - Publishing and unpublishing are recorded in the audit log with the policy's key and version, never its text.
 
 ## Personal data in exports and imports

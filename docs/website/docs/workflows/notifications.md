@@ -28,3 +28,7 @@ A server administrator or your organisation's administrator can send an [announc
 ## Where this fits
 
 See [Discussions, notifications, and audit](../concepts/discussions-notifications-and-audit.md) for the model behind what gets notified and why, and [Core Features → Notifications and email](../core-features/notifications-and-email.md) for the full type-by-type reference and unsubscribe mechanics.
+
+## Policies
+
+When your organisation's administrator publishes a policy and chooses **Notify members**, you receive a notification of the type *Policy published in your organisation* (if you may read that policy). Opening it goes to the [Policies page](./administering-an-organisation.md#policies). It follows your preferences for that type.

@@ -3,10 +3,15 @@ Module: routers.policies
 
 Policies (written documents such as a privacy policy):
 - `/api/v1/system/policies`: server administrators write, publish and retire server policies.
+- `/api/v1/orgs/{id}/policies`: organisation administrators do the same for the organisation's own policies, set who
+  may read each, and choose whether links are allowed.
 - `GET /api/v1/public/policies` and `/{id}`: public, rate-limited; the published server policies.
+- `GET /api/v1/policies/mine` and `/{id}`: signed in; the published policies of the caller's organisations that the
+  caller may read.
 
-Authorisation: scope is enforced in `services.policies` (a policy of another scope is a 404). The public read
-returns only published content (never the author, working copy, change note or an unpublished policy).
+Authorisation: scope is enforced in `services.policies` (a policy of another scope is a 404) and readers' visibility in
+`services.org_policies` (a policy the caller may not read is a 404). The public read returns only published content
+(never the author, working copy, change note or an unpublished policy).
 """
 
 from __future__ import annotations
@@ -17,10 +22,20 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_client_ip
+from app.deps import get_client_ip, get_current_user
+from app.models.enums import OrgRole
 from app.models.policy import PolicyDocument, PolicyDocumentVersion, PolicyState
 from app.models.user import User
 from app.schemas.policies import (
+    MemberPolicyOut,
+    MemberPolicySummaryOut,
+    OrgPolicyAudienceLookupIn,
+    OrgPolicyIn,
+    OrgPolicyOut,
+    OrgPolicyPublishIn,
+    OrgPolicySettingsIn,
+    OrgPolicySettingsIO,
+    OrgPolicySummaryOut,
     PolicyIn,
     PolicyOut,
     PolicyPublishIn,
@@ -30,11 +45,18 @@ from app.schemas.policies import (
     PublicPolicyOut,
     PublicPolicySummaryOut,
 )
+from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.services import org_policies
 from app.services import policies as service
-from app.services.rbac import require_server_admin
+from app.services.principals import principal_labels, validate_principal
+from app.services.rbac import require_org_role, require_server_admin
 
 system_router = APIRouter(prefix="/api/v1/system/policies", tags=["policies"])
+org_router = APIRouter(prefix="/api/v1/orgs/{organization_id}/policies", tags=["policies"])
+member_router = APIRouter(prefix="/api/v1/policies/mine", tags=["policies"])
 public_router = APIRouter(prefix="/api/v1/public/policies", tags=["policies"])
+
+_org_admin = require_org_role(OrgRole.ORG_ADMIN)
 
 
 def _summary(row: PolicyDocument, current: PolicyDocumentVersion | None) -> PolicySummaryOut:
@@ -136,6 +158,178 @@ def get_server_policy_version(
     """One published version with its text, for audit."""
     v = service.get_version(db, service.get_in_scope(db, policy_id, None), version)
     return PolicyVersionBodyOut(**_version_out(v).model_dump(), body=v.body)
+
+
+# --- organisation ---------------------------------------------------------------------------------------
+
+
+def _audience_out(db: Session, audiences: dict[UUID, list[PrincipalRef]], policy_id: UUID) -> list[PrincipalOut]:
+    """The resolved audience of one policy (display names and member counts)."""
+    refs = audiences.get(policy_id, [])
+    labels = principal_labels(db, refs)
+    return [labels[(r.type.value, r.id)] for r in refs]
+
+
+def _org_out(db: Session, row: PolicyDocument) -> OrgPolicyOut:
+    return OrgPolicyOut(**_out(db, row).model_dump(), audience=_audience_out(db, org_policies.audience_of(db, [row.id]), row.id))
+
+
+@org_router.get("/settings", response_model=OrgPolicySettingsIO)
+def get_org_policy_settings(
+    organization_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> OrgPolicySettingsIO:
+    """The organisation's policy settings, with the starter titles the add dialog suggests."""
+    return OrgPolicySettingsIO(allow_links=org_policies.links_allowed(db, organization_id), starter_titles=list(org_policies.STARTER_TITLES))
+
+
+@org_router.put("/settings", response_model=OrgPolicySettingsIO)
+def replace_org_policy_settings(
+    organization_id: UUID, body: OrgPolicySettingsIn, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> OrgPolicySettingsIO:
+    """Chooses whether the organisation's policies may contain links."""
+    org_policies.set_links_allowed(db, organization_id, body.allow_links, current_user)
+    db.commit()
+    return OrgPolicySettingsIO(allow_links=body.allow_links, starter_titles=list(org_policies.STARTER_TITLES))
+
+
+@org_router.post("/audience-labels", response_model=list[PrincipalOut])
+def resolve_org_policy_audience(
+    organization_id: UUID, body: OrgPolicyAudienceLookupIn, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> list[PrincipalOut]:
+    """Display names for people and groups picked for an audience that is not saved yet.
+
+    Each entry must belong to the organisation (the rule `PUT` applies), so a name from another organisation is never returned.
+    """
+    for entry in body.audience:
+        validate_principal(db, entry, organization_id=organization_id, project_id=None, field="audience")
+    labels = principal_labels(db, body.audience)
+    return [labels[(r.type.value, r.id)] for r in body.audience]
+
+
+@org_router.get("", response_model=list[OrgPolicySummaryOut])
+def list_org_policies(
+    organization_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> list[OrgPolicySummaryOut]:
+    """Every policy of the organisation, whatever its audience, by title."""
+    rows = service.list_scope(db, organization_id)
+    current = service.current_versions(db, rows)
+    audiences = org_policies.audience_of(db, [r.id for r in rows])
+    return [
+        OrgPolicySummaryOut(**_summary(r, current.get(r.id)).model_dump(), audience=_audience_out(db, audiences, r.id)) for r in rows
+    ]
+
+
+@org_router.post("", response_model=OrgPolicyOut, status_code=status.HTTP_201_CREATED)
+def create_org_policy(
+    organization_id: UUID, body: OrgPolicyIn, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> OrgPolicyOut:
+    """Creates a draft policy for the organisation (it has no built-in slots, so `key` is refused)."""
+    row = service.create(
+        db, organization_id=organization_id, actor=current_user, key=body.key, title=body.title, body=body.body,
+        effective_from=body.effective_from, allow_links=org_policies.links_allowed(db, organization_id),
+    )
+    org_policies.set_audience(db, row, body.audience or [], current_user)
+    db.commit()
+    return _org_out(db, row)
+
+
+@org_router.get("/{policy_id}", response_model=OrgPolicyOut)
+def get_org_policy(
+    organization_id: UUID, policy_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> OrgPolicyOut:
+    """An organisation policy with its working copy, audience and version history."""
+    return _org_out(db, service.get_in_scope(db, policy_id, organization_id))
+
+
+@org_router.put("/{policy_id}", response_model=OrgPolicyOut)
+def replace_org_policy(
+    organization_id: UUID, policy_id: UUID, body: OrgPolicyIn, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> OrgPolicyOut:
+    """Replaces the working copy (and the audience when sent); readers keep seeing the published version until it is published."""
+    row = service.get_in_scope(db, policy_id, organization_id, lock=True)
+    service.update(
+        db, row, actor=current_user, title=body.title, body=body.body, effective_from=body.effective_from,
+        allow_links=org_policies.links_allowed(db, organization_id),
+    )
+    if body.audience is not None:
+        org_policies.set_audience(db, row, body.audience, current_user)
+    db.commit()
+    return _org_out(db, row)
+
+
+@org_router.post("/{policy_id}/publish", response_model=OrgPolicyOut)
+def publish_org_policy(
+    organization_id: UUID, policy_id: UUID, body: OrgPolicyPublishIn,
+    current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> OrgPolicyOut:
+    """Publishes the working copy as the next version, telling its readers when `notify_members` is set."""
+    row = service.get_in_scope(db, policy_id, organization_id, lock=True)
+    org_policies.check_publishable(db, row)
+    version = service.publish(db, row, actor=current_user, change_note=body.change_note)
+    if body.notify_members:
+        org_policies.notify_audience(db, row, version, current_user)
+    db.commit()
+    return _org_out(db, row)
+
+
+@org_router.post("/{policy_id}/unpublish", response_model=OrgPolicyOut)
+def unpublish_org_policy(
+    organization_id: UUID, policy_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> OrgPolicyOut:
+    """Takes an organisation policy off its readers' page; every version is kept."""
+    row = service.get_in_scope(db, policy_id, organization_id, lock=True)
+    service.unpublish(db, row, current_user)
+    db.commit()
+    return _org_out(db, row)
+
+
+@org_router.delete("/{policy_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_org_policy(
+    organization_id: UUID, policy_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> Response:
+    """Deletes an organisation policy with its versions and audience."""
+    service.delete(db, service.get_in_scope(db, policy_id, organization_id), current_user)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@org_router.get("/{policy_id}/versions/{version}", response_model=PolicyVersionBodyOut)
+def get_org_policy_version(
+    organization_id: UUID, policy_id: UUID, version: int, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> PolicyVersionBodyOut:
+    """One published version with its text, for audit."""
+    v = service.get_version(db, service.get_in_scope(db, policy_id, organization_id), version)
+    return PolicyVersionBodyOut(**_version_out(v).model_dump(), body=v.body)
+
+
+# --- members --------------------------------------------------------------------------------------------
+
+
+def _member_summary(item: org_policies.ReaderPolicy) -> MemberPolicySummaryOut:
+    return MemberPolicySummaryOut(
+        id=item.row.id, organization_id=item.organization.id, organization_name=item.organization.name,
+        title=item.version.title, effective_from=item.version.effective_from, version=item.version.version,
+        published_at=item.version.published_at,
+    )
+
+
+@member_router.get("", response_model=list[MemberPolicySummaryOut])
+def list_my_policies(
+    response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> list[MemberPolicySummaryOut]:
+    """The published policies of the caller's organisations that the caller may read."""
+    _no_store(response)
+    return [_member_summary(item) for item in org_policies.published_for(db, current_user)]
+
+
+@member_router.get("/{policy_id}", response_model=MemberPolicyOut)
+def get_my_policy(
+    policy_id: UUID, response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> MemberPolicyOut:
+    """One published organisation policy with its text (404 for one the caller may not read)."""
+    _no_store(response)
+    item = org_policies.reader_policy(db, current_user, policy_id)
+    return MemberPolicyOut(**_member_summary(item).model_dump(), body=item.version.body)
 
 
 # --- public ---------------------------------------------------------------------------------------------

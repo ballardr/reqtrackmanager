@@ -6,6 +6,7 @@ Policies: written documents (privacy policy, data policy, access policy, ...) pu
 Responsibilities:
 - `PolicyDocument`: one policy with its working copy (title and body being edited) and its publication state.
 - `PolicyDocumentVersion`: an append-only snapshot written each time a policy is published.
+- `PolicyAudience`: a user or organisation group an organisation policy is limited to (none: every member).
 
 Design decisions:
 - One table with a nullable owner, the shape `Announcement.organization_id` uses, so server and organisation
@@ -31,6 +32,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 
 class PolicyState(str, enum.Enum):
@@ -108,3 +110,22 @@ class PolicyDocumentVersion(UUIDPKMixin, Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     change_note: Mapped[str] = mapped_column(Text, default="")
+
+
+class PolicyAudience(UUIDPKMixin, Base):
+    """A user or group an organisation policy is limited to (`audience_type` is a `PrincipalType`).
+
+    A policy with no audience rows is shown to every member of its organisation.
+    """
+
+    __tablename__ = "policy_audience"
+    __table_args__ = (
+        UniqueConstraint("policy_id", "audience_type", "audience_id", name="uq_policy_audience"),
+        principal_check_constraint("audience"),
+    )
+
+    policy_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("policy_documents.id", ondelete="CASCADE"), index=True
+    )
+    audience_type: Mapped[str] = principal_type_column()
+    audience_id: Mapped[uuid.UUID] = principal_id_column()

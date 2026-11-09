@@ -21,7 +21,7 @@ If you belong to more than one organisation, an organisation switcher appears wh
 
 ## Policies
 
-When the deployment has published a policy (a privacy policy or a data policy, for example), a **Policies** link appears below the sign-in form, so you can read it before you have an account. Signed in, the same link is at the foot of the navigation rail. The page lists each published policy with its effective date and version. See [Server administration → Policies](./server-administration.md#policies) for how they are written.
+When the deployment has published a policy (a privacy policy or a data policy, for example), a **Policies** link appears below the sign-in form, so you can read it before you have an account. Signed in, the same link is at the foot of the navigation rail. The page lists each published policy with its effective date and version. See [Server administration → Policies](./server-administration.md#policies) for how they are written. Once you are signed in, the page also lists, under your organisation's name, the policies your organisation has published for you; see [Administering an organisation → Policies](./administering-an-organisation.md#policies).
 
 ## With single sign-on (SSO)
 

@@ -4,7 +4,8 @@ Module: schemas.policies
 Request and response shapes for policies (`routers.policies`).
 
 The public shapes carry only what a reader needs: never the author, the working copy, the change note or an
-owning organisation's id.
+owning organisation's id. The member shapes (an organisation's policies, read by its members) add the organisation's
+name and id, which the member already knows.
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.policy import PolicyState
+from app.schemas.principal import PrincipalOut, PrincipalRef
+from app.services.org_policies import MAX_AUDIENCE
 from app.services.policies import MAX_NOTE_LENGTH, MAX_TITLE_LENGTH
 
 
@@ -105,3 +108,88 @@ class PublicPolicyOut(PublicPolicySummaryOut):
     """A published policy with its text."""
 
     body: dict[str, Any]
+
+
+class OrgPolicyIn(PolicyIn):
+    """The editable fields of an organisation policy.
+
+    Attributes:
+        audience: Who may read it; empty (or omitted on create) is every member of the organisation. A key left out of a
+            replacement leaves the audience unchanged.
+    """
+
+    audience: list[PrincipalRef] | None = Field(default=None, max_length=MAX_AUDIENCE)
+
+
+class OrgPolicyPublishIn(PolicyPublishIn):
+    """Publishing an organisation policy.
+
+    Attributes:
+        notify_members: Tell the people who may read it (off by default; the publisher is not told).
+    """
+
+    notify_members: bool = False
+
+
+class OrgPolicySummaryOut(PolicySummaryOut):
+    """One row of the organisation's administration list.
+
+    Attributes:
+        audience: Who the policy is limited to (empty: every member).
+    """
+
+    audience: list[PrincipalOut]
+
+
+class OrgPolicyOut(PolicyOut):
+    """An organisation policy with its working copy and version history, as the organisation's administrators see it."""
+
+    audience: list[PrincipalOut]
+
+
+class OrgPolicySettingsIO(BaseModel):
+    """The organisation's policy settings.
+
+    Attributes:
+        allow_links: Whether the organisation's policies may contain links.
+        starter_titles: Titles the add dialog suggests (read-only).
+    """
+
+    allow_links: bool
+    starter_titles: list[str] = []
+
+
+class OrgPolicySettingsIn(BaseModel):
+    """Changes the organisation's policy settings."""
+
+    allow_links: bool
+
+
+class MemberPolicySummaryOut(BaseModel):
+    """A published organisation policy in a member's list.
+
+    Attributes:
+        organization_id / organization_name: The owning organisation.
+        version: Current published version number.
+        published_at: When that version was published (UTC).
+    """
+
+    id: UUID
+    organization_id: UUID
+    organization_name: str
+    title: str
+    effective_from: date | None
+    version: int
+    published_at: datetime
+
+
+class MemberPolicyOut(MemberPolicySummaryOut):
+    """A published organisation policy with its text."""
+
+    body: dict[str, Any]
+
+
+class OrgPolicyAudienceLookupIn(BaseModel):
+    """People and groups to name in the audience editor before the policy is saved."""
+
+    audience: list[PrincipalRef] = Field(max_length=MAX_AUDIENCE)

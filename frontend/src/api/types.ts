@@ -363,6 +363,7 @@ export type CoreNotificationType =
   | "project_members_changed_by_org"
   | "system_storage_alert"
   | "system_announcement"
+  | "policy_published"
   | "report_run_finished"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
@@ -1938,6 +1939,8 @@ export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: 
 export function notificationLink(n: Notification): string | null {
   // A background report: its page offers the download, or a fresh run once the file has been removed.
   if (n.entity_type === "generated_report" && n.entity_id) return `/report-runs/${n.entity_id}`;
+  // A policy published in the person's organisation: the Policies page opens it.
+  if (n.entity_type === "policy" && n.entity_id) return `/policies/${n.entity_id}`;
   if (n.project_id && n.entity_type && n.entity_id) {
     if (n.entity_type === "requirement") return `/projects/${n.project_id}/requirements/${n.entity_id}`;
     if (n.entity_type === "change_request") return `/projects/${n.project_id}/change-requests/${n.entity_id}`;
@@ -2578,6 +2581,42 @@ export interface PolicyWrite {
   title: string;
   body: PolicyBody;
   effective_from: string | null;
+}
+
+/** The fields an organisation administrator sets: the audience too (empty: every member; omitted on replace: unchanged). */
+export interface OrgPolicyWrite extends PolicyWrite {
+  audience?: PrincipalRef[];
+}
+
+/** A row of the organisation's policy list, with who it is limited to. */
+export interface OrgPolicySummary extends PolicySummary {
+  audience: Principal[];
+}
+
+/** An organisation policy with its working copy, audience and version history. */
+export interface OrgPolicy extends Policy {
+  audience: Principal[];
+}
+
+/** An organisation's policy settings; `starter_titles` are the suggestions the add dialog offers. */
+export interface OrgPolicySettings {
+  allow_links: boolean;
+  starter_titles: string[];
+}
+
+/** A published organisation policy in a member's list. */
+export interface MemberPolicySummary {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  title: string;
+  effective_from: string | null;
+  version: number;
+  published_at: string;
+}
+
+export interface MemberPolicy extends MemberPolicySummary {
+  body: PolicyBody;
 }
 
 /** A published policy in the public list. */

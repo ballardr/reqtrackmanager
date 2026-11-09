@@ -301,6 +301,10 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     # deliberate, in-the-moment human decision. See docs/decisions.md's "AI
     # approval via MCP" entry.
     allow_ai_approvals: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Whether the organisation's own policies may contain links (`services.org_policies`). Off by default: the page is
+    # members-only, so the phishing concern of an organisation message does not apply, but a link on a page every
+    # member trusts is still a choice the organisation makes.
+    allow_policy_links: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):

@@ -638,6 +638,20 @@ def create_announcement(
     return r.json()
 
 
+def publish_org_policy(headers: dict, org_id: str, title: str, paragraphs: list[str]) -> None:
+    """Writes and publishes an organisation policy (Organisation Admin's Policies group), so the manual-demo dataset shows
+    the organisation's section on the Policies page to every member. No audience: every member reads it."""
+    body = {"type": "doc", "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": text}]} for text in paragraphs
+    ]}
+    created = httpx.post(f"{BASE}/orgs/{org_id}/policies", json={"title": title, "body": body}, headers=headers, timeout=30)
+    created.raise_for_status()
+    httpx.post(
+        f"{BASE}/orgs/{org_id}/policies/{created.json()['id']}/publish", json={"change_note": "Demonstration text"}, headers=headers,
+        timeout=30,
+    ).raise_for_status()
+
+
 def publish_server_policy(headers: dict, key: str, heading: str, paragraphs: list[str]) -> None:
     """Writes and publishes a built-in server policy (Server Management's Policies group), so the manual-demo dataset
     shows the Policies page and the login-page link. A policy that already exists is left as it is."""
@@ -2491,6 +2505,14 @@ def main() -> None:
         "Records are kept until a project administrator deletes them.",
         "Replace this text with the data policy of your own service before real use.",
     ])
+
+    print("Publishing an organisation policy...")
+    publish_org_policy(
+        h_pm, org["id"], "Confidentiality agreement", [
+            "Information in this organisation is shared for demonstration only.",
+            "Replace this text with your own confidentiality agreement before real use.",
+        ],
+    )
 
     print("Posting an organisation message...")
     create_announcement(

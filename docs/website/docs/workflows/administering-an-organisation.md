@@ -122,6 +122,25 @@ Under **Messages**, write announcements for the people of your organisation: a c
 - **Send as notification** sends the message once to every active member of the organisation (each person's notification preferences apply, and you are not notified of your own send). The row records how many people it reached, and it cannot be sent again.
 - You see and change only your organisation's messages. Messages are included when you export the organisation (without the record of the send) and again when you import it; platform messages are not.
 
+## Policies
+
+Under **Policies**, publish your organisation's own written policies: an access policy, a confidentiality agreement, an acceptable use policy, a code of conduct, or any other. Your members read them on the **Policies** page beside the deployment's own policies, under your organisation's name. They are never public: nobody outside the organisation can read them, even with the address.
+
+```mermaid
+flowchart LR
+    A["Write the policy<br/>(working copy)"] --> B["Publish<br/>(new version)"]
+    B --> C["Members read it on<br/>the Policies page"]
+    B -.->|optional| D["Notify members"]
+```
+
+- **New policy** takes a title (suggestions such as *Access policy* and *Confidentiality agreement* fill the field for you) and the text, written in the same visual editor as the server's policies. An organisation has no built-in policies.
+- **Audience** limits who may read a policy. Empty means every member of the organisation; naming people or organisation groups (including their nested groups) limits it to them and to the organisation's administrators, who always see every policy. Anyone else does not see it listed and cannot open it.
+- **Save** stores the working copy only. Members keep reading the published version until you press **Publish**, which records a new version with its date and an optional **Change note** that only administrators see. **Notify members** (off unless you choose it) tells everyone who may read the policy; you are not notified of your own publication.
+- **Version history** lists every published version. **Unpublish** removes a policy from members' page and keeps its versions; a policy can also be deleted, with its versions.
+- **Allow web addresses in organisation policies** (off by default) decides whether policy text may contain links, for example to an external standard. With it off, a link is refused when the policy is saved or published; turning it off later does not change a version that is already published.
+- Policies are included when you export the organisation (the working copy, the audience and every published version) and arrive as **drafts** when the bundle is imported, so an import never publishes text in the new organisation's name before someone has reviewed it. The deployment's own policies are not part of a bundle.
+- Publishing, unpublishing and audience changes are recorded in the audit log with the policy's key, version and counts, never its text.
+
 ## Role management
 
 Under **Role management**, define custom roles and grant fixed, module, or custom roles to users and groups — see [Core Features → Role Management](../core-features/role-management.md).

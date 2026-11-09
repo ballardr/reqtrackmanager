@@ -55,6 +55,7 @@ from app.models.engagement import Subscription
 from app.models.enums import ChangeRequestStatus, PrincipalType
 from app.models.org_dashboard import OrganizationDashboardViewer
 from app.models.organization import OrgGroup
+from app.models.policy import PolicyAudience
 from app.models.project import Project, ProjectGroup, ProjectStage
 from app.models.requirement import RequirementVersion
 from app.models.requirement_action import RequirementAction
@@ -118,6 +119,11 @@ CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
     PrincipalReference(
         model=OrganizationDashboardViewer, field="viewer", label="dashboard viewers", audit_entity_type="organization_dashboard",
         mandatory=True, multi_valued=True, record_id_field="dashboard_id",
+    ),
+    # Mandatory for the same reason: removing a group never widens who may read a restricted policy.
+    PrincipalReference(
+        model=PolicyAudience, field="audience", label="policy audiences", audit_entity_type="policy",
+        mandatory=True, multi_valued=True, record_id_field="policy_id",
     ),
     PrincipalReference(
         model=ChangeRequestTask, field="assignee", label="change request task assignees",

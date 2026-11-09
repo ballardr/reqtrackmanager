@@ -35,9 +35,9 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
     """The headline figures of the organisation as `current_user` may see them.
 
     Project and requirement counts cover active items only (archived projects and requirements are excluded, like the
-    lists they summarise; `archived_project_count` reports the archived projects separately); the file total includes archived projects' files, which still occupy storage. A scoped
-    member's file total is a strict undercount (a comment attachment is not attributed to a project), never an
-    over-exposure.
+    lists they summarise; `archived_project_count` reports the archived projects separately); the file total includes
+    archived projects' files, which still occupy storage. A scoped member's file total is a strict undercount (a comment
+    attachment is not attributed to a project), never an over-exposure.
 
     Args:
         db: The session (read only).

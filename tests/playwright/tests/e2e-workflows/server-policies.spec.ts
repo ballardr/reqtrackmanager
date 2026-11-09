@@ -56,6 +56,7 @@ test.describe("server policies", () => {
       await logout(page);
       await page.goto("/policies");
       await expect(page.getByText(marker)).toHaveCount(0);
+      await expect(page).toHaveURL(/\/login$/);
     });
 
     await test.step("publishing makes it readable without signing in", async () => {
@@ -96,6 +97,8 @@ test.describe("server policies", () => {
       await logout(page);
       await page.goto("/policies");
       await expect(page.getByText(marker)).toHaveCount(0);
+      await expect(page).toHaveURL(/\/login$/);
+      await expect(page.getByRole("link", { name: "Policies" })).toHaveCount(0);
     });
   });
 

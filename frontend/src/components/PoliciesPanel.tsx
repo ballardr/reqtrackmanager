@@ -1,10 +1,13 @@
 /**
  * Module: components/PoliciesPanel
  *
- * Administration of policies for one scope (today the server's; an organisation's reuses it). Lists the built-in
- * policies first (unset until written) and any others, with their status, version and effective date. An
- * administrator can write or edit the working copy, publish it as a new version with a change note, unpublish it,
- * read the version history, and delete a policy that is not built in.
+ * Administration of policies for one scope: the server's, or one organisation's (the same panel with the owner
+ * passed in). Lists the built-in policies first (the server's, unset until written) and any others, with their
+ * status, version and effective date. An administrator can write or edit the working copy, publish it as a new
+ * version with a change note, unpublish it, read the version history, and delete a policy that is not built in.
+ *
+ * An organisation's list adds each policy's audience, the setting that allows links in its policies, and, on
+ * publication, the choice to notify the people who may read it.
  *
  * Saving writes the working copy only; readers see the published version until it is published again. The server
  * enforces scope and the text rules; its message is shown in the dialog.
@@ -13,7 +16,9 @@ import { History, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { api } from "../api/client";
-import type { Policy, PolicySlot, PolicySummary, PolicyVersion, PolicyWrite } from "../api/types";
+import type {
+  OrgPolicySettings, OrgPolicySummary, OrgPolicyWrite, Policy, PolicySlot, PolicySummary, PolicyVersion,
+} from "../api/types";
 import { POLICY_STATE_LABEL, POLICY_STATE_TONE } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
@@ -23,33 +28,36 @@ import { formatPlainDate } from "../utils/localDate";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FormActions } from "./FormActions";
-import { TextAreaField } from "./FormFields";
+import { CheckboxField, TextAreaField, ToggleField } from "./FormFields";
 import { Modal } from "./Modal";
 import { PolicyEditor } from "./PolicyEditor";
+import { PrincipalBadge } from "./PrincipalBadge";
 import { Spinner } from "./Spinner";
 
-/** Where the panel reads and writes: the server's policies. */
-export type PolicyScope = { kind: "server" };
+/** Where the panel reads and writes: the server's policies, or one organisation's. */
+export type PolicyScope = { kind: "server" } | { kind: "organisation"; organizationId: string };
 
 function basePath(scope: PolicyScope): string {
-  return scope.kind === "server" ? "/api/v1/system/policies" : "";
+  return scope.kind === "server" ? "/api/v1/system/policies" : `/api/v1/orgs/${scope.organizationId}/policies`;
 }
 
 /** What the editor dialog is open for: a new policy, a built-in policy not yet written, or an existing one. */
 type Editing = { kind: "new" } | { kind: "slot"; slot: PolicySlot; title: string } | { kind: "edit"; policy: Policy };
 
-function PublishDialog({ title, error, onCancel, onPublish }: {
-  title: string; error: string | null; onCancel: () => void; onPublish: (note: string) => void;
+function PublishDialog({ title, error, organisation, onCancel, onPublish }: {
+  title: string; error: string | null; organisation: boolean; onCancel: () => void; onPublish: (note: string, notifyMembers: boolean) => void;
 }) {
   const strings = useStrings();
   const text = strings.policies;
   const [note, setNote] = useState("");
+  const [notifyMembers, setNotifyMembers] = useState(false);
   return (
     <Modal title={text.publishTitle(title)} onClose={onCancel}>
       <div className="stack">
-        <p>{text.publishBody}</p>
+        <p>{organisation ? text.publishBodyOrganisation : text.publishBody}</p>
         <TextAreaField label={text.changeNote} help={strings.help.policyChangeNote} value={note} onChange={setNote} rows={3} inputProps={{ maxLength: 1000 }} />
-        <FormActions error={error} onCancel={onCancel} saveLabel={text.publish} onSave={() => onPublish(note.trim())} />
+        {organisation && <CheckboxField label={text.notifyMembers} help={strings.help.policyNotifyMembers} checked={notifyMembers} onChange={setNotifyMembers} />}
+        <FormActions error={error} onCancel={onCancel} saveLabel={text.publish} onSave={() => onPublish(note.trim(), notifyMembers)} />
       </div>
     </Modal>
   );
@@ -90,7 +98,8 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
   const text = strings.policies;
   const run = useMutation();
   const { showToast } = useToast();
-  const [items, setItems] = useState<PolicySummary[] | null>(null);
+  const [items, setItems] = useState<(PolicySummary | OrgPolicySummary)[] | null>(null);
+  const [settings, setSettings] = useState<OrgPolicySettings | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [publishing, setPublishing] = useState<PolicySummary | null>(null);
@@ -99,15 +108,21 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
   const [history, setHistory] = useState<Policy | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const path = basePath(scope);
+  const organisation = scope.kind === "organisation";
 
   const reload = useCallback(async () => {
     try {
-      setItems(await api.get<PolicySummary[]>(path));
+      const [list, loadedSettings] = await Promise.all([
+        api.get<(PolicySummary | OrgPolicySummary)[]>(path),
+        organisation ? api.get<OrgPolicySettings>(`${path}/settings`) : Promise.resolve(null),
+      ]);
+      setItems(list);
+      setSettings(loadedSettings);
       setLoadError(null);
     } catch (err) {
       setLoadError(toErrorMessage(err, text.loadFailed));
     }
-  }, [path, text.loadFailed]);
+  }, [path, organisation, text.loadFailed]);
 
   useLoadOnChange(reload, [path]);
 
@@ -132,7 +147,13 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
     }
   }
 
-  async function save(values: PolicyWrite) {
+  async function setAllowLinks(allowLinks: boolean) {
+    if (await run(() => api.put(`${path}/settings`, { allow_links: allowLinks }), { success: text.settingSaved, failure: strings.mutation.failure("save", text.noun) })) {
+      setSettings((current) => (current ? { ...current, allow_links: allowLinks } : current));
+    }
+  }
+
+  async function save(values: OrgPolicyWrite) {
     if (editing === null) return;
     setSaveError(null);
     const existing = editing.kind === "edit" ? editing.policy : null;
@@ -149,10 +170,10 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
     await reload();
   }
 
-  async function publish(item: PolicySummary, note: string) {
+  async function publish(item: PolicySummary, note: string, notifyMembers: boolean) {
     setSaveError(null);
     try {
-      await api.post(`${path}/${item.id}/publish`, { change_note: note });
+      await api.post(`${path}/${item.id}/publish`, organisation ? { change_note: note, notify_members: notifyMembers } : { change_note: note });
     } catch (err) {
       setSaveError(toErrorMessage(err, strings.mutation.failure("publish", text.noun)));
       return;
@@ -176,6 +197,9 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
   if (!items) return <Spinner />;
   return (
     <div className="stack">
+      {settings && (
+        <ToggleField label={text.allowLinks} help={strings.help.policyLinks} checked={settings.allow_links} onChange={(next) => void setAllowLinks(next)} />
+      )}
       <div className="row" style={{ justifyContent: "flex-end" }}>
         <button className="btn btn-primary" onClick={() => { setSaveError(null); setEditing({ kind: "new" }); }}>{text.newPolicy}</button>
       </div>
@@ -185,6 +209,7 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
             <th>{text.title}</th>
             <th>{text.state}</th>
             <th>{text.version}</th>
+            {organisation && <th>{text.audience}</th>}
             <th>{text.effectiveFromLabel}</th>
             <th>{text.updated}</th>
             <th />
@@ -205,6 +230,17 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
                 )}
               </td>
               <td>{item.current_version > 0 ? item.current_version : ""}</td>
+              {organisation && (
+                <td>
+                  {"audience" in item && item.audience.length > 0 ? (
+                    <div className="row" style={{ gap: "var(--space-1)", flexWrap: "wrap" }}>
+                      {item.audience.map((p) => <PrincipalBadge key={`${p.type}:${p.id}`} principal={p} />)}
+                    </div>
+                  ) : (
+                    <span className="text-muted">{text.audienceEveryone}</span>
+                  )}
+                </td>
+              )}
               <td>{item.effective_from ? formatPlainDate(item.effective_from) : ""}</td>
               <td>{item.updated_at ? new Date(item.updated_at).toLocaleString() : ""}</td>
               <td>
@@ -238,10 +274,16 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
         <PolicyEditor
           policy={editing.kind === "edit" ? editing.policy : null} slot={editing.kind === "slot" ? editing.slot : null}
           slotTitle={editing.kind === "slot" ? editing.title : undefined} error={saveError}
+          organization={scope.kind === "organisation" ? { id: scope.organizationId, starterTitles: settings?.starter_titles ?? [] } : undefined}
           onCancel={() => setEditing(null)} onSave={save}
         />
       )}
-      {publishing && <PublishDialog title={publishing.title} error={saveError} onCancel={() => setPublishing(null)} onPublish={(note) => void publish(publishing, note)} />}
+      {publishing && (
+        <PublishDialog
+          title={publishing.title} error={saveError} organisation={organisation} onCancel={() => setPublishing(null)}
+          onPublish={(note, notifyMembers) => void publish(publishing, note, notifyMembers)}
+        />
+      )}
       {history && <HistoryDialog title={history.title} versions={history.versions} onClose={() => setHistory(null)} />}
       {unpublishing && (
         <ConfirmDialog

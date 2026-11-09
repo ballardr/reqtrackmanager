@@ -54,6 +54,8 @@ class NotificationType(str, enum.Enum):
     SYSTEM_STORAGE_ALERT = "system_storage_alert"
     # A server-wide or organisation announcement sent as a notification (services/announcements.py).
     SYSTEM_ANNOUNCEMENT = "system_announcement"
+    # An organisation policy published with "notify members" chosen (services/org_policies.py).
+    POLICY_PUBLISHED = "policy_published"
     # A background custom report finished or failed (services/report_run_jobs.py).
     REPORT_RUN_FINISHED = "report_run_finished"
 

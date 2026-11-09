@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import { buildPublicPolicy, withRouter } from "../testing/storybook-helpers";
+import { buildMemberPolicy, buildPublicPolicy, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { PoliciesLink } from "./PoliciesLink";
 
 /** The footer link to the Policies page, shown only when a policy is published. */
@@ -31,5 +31,16 @@ export const AbsentWhenNoneIsPublished: Story = {
   play: async ({ canvasElement }) => {
     await waitFor(() => expect(api.get).toHaveBeenCalled());
     await expect(within(canvasElement).queryByRole("link")).not.toBeInTheDocument();
+  },
+};
+
+/** A signed-in member sees the link when only their organisation has published a policy. */
+export const ShowsForAnOrganisationPolicy: Story = {
+  decorators: [withAuth(buildUser())],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => (path === "/api/v1/policies/mine" ? [buildMemberPolicy()] : []));
+  },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("link", { name: "Policies" })).toHaveAttribute("href", "/policies");
   },
 };

@@ -89,6 +89,7 @@ import { InlineMessage } from "../components/InlineMessage";
 import { PermissionPicker } from "../components/PermissionPicker";
 import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
+import { PoliciesPanel } from "../components/PoliciesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
 import { OrgOverviewDefaultPanel } from "../components/overview/OrgOverviewDefaultPanel";
 import { OrganizationCodePanel } from "../components/OrganizationCodePanel";
@@ -166,6 +167,7 @@ const CORE_ORG_ADMIN_GROUP_KEYS = [
   "modules",
   "tags",
   "messages",
+  "policies",
   // Fine-Grained Access Control (core, not a module —): custom-role
   // definition (ORG_ADMIN-only) plus the broader grant_roles-based
   // assignment surface, named "Role Management".
@@ -2237,6 +2239,7 @@ export function OrgAdminPage() {
     { key: "modules", label: strings.orgAdmin.groupModules, href: `/orgs/${orgId}/admin/modules` },
     { key: "tags", label: strings.orgAdmin.groupTags, href: `/orgs/${orgId}/admin/tags` },
     { key: "messages", label: strings.announcements.heading, href: `/orgs/${orgId}/admin/messages` },
+    { key: "policies", label: strings.policies.heading, href: `/orgs/${orgId}/admin/policies` },
     { key: "role-management", label: strings.orgAdmin.groupRoleManagement, href: `/orgs/${orgId}/admin/role-management` },
     ...buildAdminMenuEntries(moduleAdminSections, adminBasePath),
   ];
@@ -3716,6 +3719,14 @@ export function OrgAdminPage() {
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.messages" collapsible={false} title={strings.announcements.heading}>
               <AnnouncementsPanel scope={{ kind: "organisation", organizationId: org.id }} />
+            </CollapsibleSection>
+          </div>
+        )}
+
+        {activeGroup === "policies" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.policies" collapsible={false} title={strings.policies.orgHeading}>
+              <PoliciesPanel scope={{ kind: "organisation", organizationId: org.id }} />
             </CollapsibleSection>
           </div>
         )}

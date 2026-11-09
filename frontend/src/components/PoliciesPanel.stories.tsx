@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { PolicySummary } from "../api/types";
+import type { OrgPolicySettings, OrgPolicySummary, PolicySummary } from "../api/types";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { buildPolicy, buildPolicySummary, withToast } from "../testing/storybook-helpers";
 import { PoliciesPanel } from "./PoliciesPanel";
@@ -132,5 +132,112 @@ export const HistoryListsVersions: Story = {
     await userEvent.click(await within(canvasElement).findByRole("button", { name: "Version history: Data policy" }));
     const dialog = within(await within(document.body).findByRole("dialog"));
     await expect(await dialog.findByText("First version")).toBeInTheDocument();
+  },
+};
+
+const ORG_ID = "org-1";
+const ORG_BASE = `/api/v1/orgs/${ORG_ID}/policies`;
+const LIMITED: OrgPolicySummary = {
+  ...buildPolicySummary({ id: "access-1", title: "Access policy", state: "published", current_version: 1, has_unpublished_changes: false }),
+  audience: [{ type: "org_group", id: "g1", label: "Engineering", member_count: 4, exists: true }],
+};
+const OPEN: OrgPolicySummary = { ...buildPolicySummary({ id: "conf-1", title: "Confidentiality agreement" }), audience: [] };
+const STARTERS = ["Access policy", "Confidentiality agreement", "Acceptable use policy", "Code of conduct"];
+
+function mockOrganisationReads(settings: OrgPolicySettings = { allow_links: false, starter_titles: STARTERS }) {
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === ORG_BASE) return [LIMITED, OPEN];
+    if (path === `${ORG_BASE}/settings`) return settings;
+    const id = path.split("/").pop();
+    const row = [LIMITED, OPEN].find((r) => r.id === id);
+    return { ...buildPolicy({ ...row, id: id as string }), audience: row?.audience ?? [] };
+  });
+}
+
+/** An organisation has no built-in policies; each row shows who it is limited to (every member when nobody is named). */
+export const OrganisationListsPoliciesWithTheirAudience: Story = {
+  args: { scope: { kind: "organisation", organizationId: ORG_ID } },
+  beforeEach: () => mockOrganisationReads(),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Engineering")).toBeInTheDocument();
+    await expect(canvas.getByText("Every member")).toBeInTheDocument();
+    await expect(canvas.queryByText("Not written")).not.toBeInTheDocument();
+    await expect(api.get).toHaveBeenCalledWith(ORG_BASE);
+  },
+};
+
+/** The organisation chooses whether its policies may contain links; the change applies at once. */
+export const OrganisationAllowsLinksWithASwitch: Story = {
+  args: { scope: { kind: "organisation", organizationId: ORG_ID } },
+  beforeEach: () => {
+    mockOrganisationReads();
+    spyOn(api, "put").mockResolvedValue({ allow_links: true, starter_titles: STARTERS });
+  },
+  play: async ({ canvasElement }) => {
+    const toggle = await within(canvasElement).findByRole("switch", { name: "Allow web addresses in organisation policies" });
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(toggle);
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${ORG_BASE}/settings`, { allow_links: true }));
+    await waitFor(() => expect(toggle).toHaveAttribute("aria-checked", "true"));
+  },
+};
+
+/** A new organisation policy offers starter titles that fill the title, and sends no key (it has no built-in policies). */
+export const OrganisationNewPolicyOffersStarterTitlesAndAnAudience: Story = {
+  args: { scope: { kind: "organisation", organizationId: ORG_ID } },
+  beforeEach: () => {
+    mockOrganisationReads();
+    spyOn(api, "post").mockResolvedValue({ ...buildPolicy({ id: "new-1" }), audience: [] });
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "New policy" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByText("Every member of the organisation.")).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Confidentiality agreement" }));
+    await expect(dialog.getByRole("textbox", { name: "Title" })).toHaveValue("Confidentiality agreement");
+    await expect(dialog.queryByRole("button", { name: "Confidentiality agreement" })).not.toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    const [url, payload] = (api.post as unknown as { mock: { calls: [string, { key: unknown; title: string; audience: unknown[] }][] } }).mock.calls[0];
+    await expect(url).toBe(ORG_BASE);
+    await expect(payload.title).toBe("Confidentiality agreement");
+    await expect(payload.audience).toEqual([]);
+  },
+};
+
+/** Publishing an organisation policy offers to notify the members who may read it, off unless chosen. */
+export const OrganisationPublishCanNotifyMembers: Story = {
+  args: { scope: { kind: "organisation", organizationId: ORG_ID } },
+  beforeEach: () => {
+    mockOrganisationReads();
+    spyOn(api, "post").mockResolvedValue({ ...buildPolicy(), audience: [] });
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Publish Confidentiality agreement" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    const notify = dialog.getByRole("checkbox", { name: "Notify members" });
+    await expect(notify).not.toBeChecked();
+    await userEvent.click(notify);
+    await userEvent.click(dialog.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${ORG_BASE}/conf-1/publish`, { change_note: "", notify_members: true }));
+  },
+};
+
+/** Editing an existing policy shows its audience and sends it back with the text, so it is never silently dropped. */
+export const OrganisationEditKeepsTheAudience: Story = {
+  args: { scope: { kind: "organisation", organizationId: ORG_ID } },
+  beforeEach: () => {
+    mockOrganisationReads();
+    spyOn(api, "put").mockResolvedValue({ ...buildPolicy(), audience: [] });
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "Edit Access policy" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await expect(dialog.getByText("Engineering")).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    const [, payload] = (api.put as unknown as { mock: { calls: [string, { audience: unknown[] }][] } }).mock.calls[0];
+    await expect(payload.audience).toEqual([{ type: "org_group", id: "g1" }]);
   },
 };

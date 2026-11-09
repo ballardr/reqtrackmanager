@@ -32,6 +32,7 @@ import type {
   ComponentPhases,
   PhasePlan,
   PhasePlans,
+  MemberPolicy,
   Policy,
   PolicyBody,
   PolicySummary,
@@ -255,6 +256,14 @@ export function buildPolicySummary(overrides: Partial<PolicySummary> = {}): Poli
 
 export function buildPolicy(overrides: Partial<Policy> = {}): Policy {
   return { ...buildPolicySummary(), id: "policy-1", body: buildPolicyBody("Use the service responsibly."), versions: [], ...overrides };
+}
+
+/** A member's view of a published organisation policy. */
+export function buildMemberPolicy(overrides: Partial<MemberPolicy> = {}): MemberPolicy {
+  return {
+    id: "org-policy-1", organization_id: "org-1", organization_name: "Acme", title: "Access policy", effective_from: null, version: 1,
+    published_at: "2026-11-09T01:00:00Z", body: buildPolicyBody("Request access through your manager."), ...overrides,
+  };
 }
 
 export function buildPublicPolicy(overrides: Partial<PublicPolicy> = {}): PublicPolicy {

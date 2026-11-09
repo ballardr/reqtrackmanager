@@ -116,7 +116,7 @@ A long-lived, org/project-scoped bearer credential for non-interactive use, such
 
 #### Policy
 
-A written document a deployment publishes, such as a privacy policy or a data policy, written by a server administrator in a visual editor. Saving changes a working copy; **Publish** records a new version, which anyone can read at `/policies` without signing in. Distinct from the **Personal data in exports** setting, which decides whether personal data columns may leave the application in a record export. See [Server administration](../workflows/server-administration.md#policies).
+A written document published by a server administrator (a privacy policy or a data policy, readable at `/policies` without signing in) or by an organisation's administrators (an access policy or a confidentiality agreement, readable only by that organisation's members, optionally limited to chosen people or groups). Written in a visual editor. Saving changes a working copy; **Publish** records a new version. Distinct from the **Personal data in exports** setting, which decides whether personal data columns may leave the application in a record export. See [Server administration](../workflows/server-administration.md#policies) and [Administering an organisation](../workflows/administering-an-organisation.md#policies).
 
 #### Project
 

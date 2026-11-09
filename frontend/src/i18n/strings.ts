@@ -43,6 +43,7 @@ const en = {
       project_members_changed_by_org: "Project members changed by someone who is not a project manager",
       system_storage_alert: "File storage alert (server admins)",
       system_announcement: "Announcement from the platform or your organisation",
+      policy_published: "Policy published in your organisation",
       report_run_finished: "Background report ready or failed",
       compliance_required_action_due_soon: "Compliance required action due soon",
       compliance_required_action_overdue: "Compliance required action overdue",
@@ -3641,6 +3642,12 @@ const en = {
       "Why this version differs from the last one. Only administrators see it, in the version history. Leave it empty for a first version.",
     policyBody:
       "The policy text. Headings, paragraphs, lists, quotations, bold, italic and links are available. Changes are saved to the working copy; people see the text only once it is published.",
+    policyAudience:
+      "Who may read the policy once it is published. Leave it empty for every member of the organisation. Naming people or groups limits it to them (groups include their nested groups) and to the organisation's administrators, who always see every policy. Anyone else cannot find it, even with its address.",
+    policyLinks:
+      "On: policy text may contain links to web addresses, for example to an external standard. Off: a link is refused when the policy is saved or published. Turning it off does not change a version that is already published.",
+    policyNotifyMembers:
+      "Sends a notification to everyone who may read the policy, so people who are not on the Policies page still learn of it. You are not notified. The send is recorded as a count in the audit log and is not repeated when you publish again unless you choose it again.",
     announcementNotify:
       "Sends the message once as a notification, so people who are not signed in at the moment still receive it. The send is recorded and cannot be repeated.",
     navLabelName:
@@ -3956,7 +3963,6 @@ const en = {
   },
   policies: {
     heading: "Policies",
-    noneBody: "No policy has been published yet.",
     navLabel: "Published policies",
     loadFailed: "Could not load the policies.",
     notFound: "This policy is not published.",
@@ -3981,6 +3987,8 @@ const en = {
     publishAria: (title: string) => `Publish ${title}`,
     publishTitle: (title: string) => `Publish "${title}"?`,
     publishBody: "The text becomes a new version, visible to everyone who can open the Policies page. The change is recorded in the audit log.",
+    publishBodyOrganisation: "The text becomes a new version, visible to the members of the organisation who may read it. The change is recorded in the audit log.",
+    settingSaved: "Setting saved.",
     publishedToast: "Policy published.",
     unpublish: "Unpublish",
     unpublishAria: (title: string) => `Unpublish ${title}`,
@@ -3993,6 +4001,15 @@ const en = {
     history: "Version history",
     historyEmpty: "Not published yet.",
     noteNone: "No change note.",
+    orgHeading: "Organisation policies",
+    allowLinks: "Allow web addresses in organisation policies",
+    audience: "Audience",
+    audienceEveryone: "Every member",
+    audienceEmpty: "Every member of the organisation.",
+    notifyMembers: "Notify members",
+    titleSuggestions: "Suggestions",
+    organisationSection: (name: string) => `${name} policies`,
+    orgPolicyLine: (organisation: string, title: string) => `${organisation}: ${title}`,
     toolbar: "Text formatting",
     bold: "Bold",
     italic: "Italic",
