@@ -5,15 +5,15 @@
  * project administration (where it also edits a track) and the "Stage phases" page (where a track's owner moves theirs).
  *
  * Responsibilities:
- * - Show one collapsible group per component, summarised by its current phases, so a project with many components and
- *   stages stays readable; filter by stage and by "tracks I can move".
+ * - Show one flat table row per component and stage (component, stage, phase, workflow, owner, state), in component then
+ *   stage order; filter by stage and by "tracks I can move" so a project with many components and stages stays readable.
  * - Move a track (a closed phase first asks whether to complete the component's approved requirements too) and report it
  *   through `onChanged`; the server decides who may move (`can_move`), this list only disables the picker.
  *
  * Design decisions: a locked-phase move by a person who cannot make it is not offered as a choice; the server enforces it
  * regardless. Editing a track (workflow, applicability, owner) is offered only where the host passes `onEdit`.
  */
-import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { api } from "../api/client";
@@ -22,6 +22,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { useMutation } from "../hooks/useMutation";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { DirectoryTable, type DirectoryColumn } from "./DirectoryTable";
 import { CheckboxField } from "./FormFields";
 import { FilterSelect } from "./FilterSelect";
 import { InlineSelect } from "./LabeledSelect";
@@ -52,20 +53,20 @@ export function ComponentTracksList({
   const run = useMutation();
   const [stageFilter, setStageFilter] = useState("");
   const [movableOnly, setMovableOnly] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [closing, setClosing] = useState<{ track: ComponentTrack; phaseId: string; phaseName: string } | null>(null);
   const [cascade, setCascade] = useState(false);
   const base = `/api/v1/projects/${projectId}`;
 
-  const tracksOf = useMemo(() => {
-    const map = new Map<string, ComponentTrack[]>();
-    for (const track of state.tracks) {
-      if (stageFilter && track.stage_id !== stageFilter) continue;
-      if (movableOnly && !track.can_move) continue;
-      map.set(track.component_id, [...(map.get(track.component_id) ?? []), track]);
-    }
-    return map;
-  }, [state.tracks, stageFilter, movableOnly]);
+  const rows = useMemo(() => {
+    const componentOrder = new Map(components.map((c, index) => [c.id, index]));
+    const stageOrder = new Map(stages.map((st, index) => [st.id, index]));
+    return state.tracks
+      .filter((track) => componentOrder.has(track.component_id) && stageOrder.has(track.stage_id))
+      .filter((track) => (!stageFilter || track.stage_id === stageFilter) && (!movableOnly || track.can_move))
+      .sort((x, y) =>
+        (componentOrder.get(x.component_id) ?? 0) - (componentOrder.get(y.component_id) ?? 0)
+        || (stageOrder.get(x.stage_id) ?? 0) - (stageOrder.get(y.stage_id) ?? 0));
+  }, [state.tracks, components, stages, stageFilter, movableOnly]);
 
   async function move(track: ComponentTrack, phaseId: string, cascadeToRequirements: boolean) {
     const path = `${base}/components/${track.component_id}/stages/${track.stage_id}/transition`;
@@ -84,12 +85,46 @@ export function ComponentTracksList({
     }
   }
 
-  const toggle = (id: string) => setCollapsed((current) => {
-    const next = new Set(current);
-    if (!next.delete(id)) next.add(id);
-    return next;
-  });
-  const shown = components.filter((c) => (tracksOf.get(c.id) ?? []).length > 0);
+  const nameOf = (list: { id: string; name: string }[], id: string) => list.find((item) => item.id === id)?.name ?? "";
+  const columns: DirectoryColumn<ComponentTrack>[] = [
+    { key: "component", label: t.component, render: (track) => <strong>{nameOf(components, track.component_id)}</strong> },
+    { key: "stage", label: strings.componentPhases.stageColumn, render: (track) => nameOf(stages, track.stage_id) },
+    {
+      key: "phase", label: t.phaseColumn,
+      render: (track) => {
+        if (track.not_applicable) return <span className="text-muted">{t.noPhase}</span>;
+        const phases = workflows.find((w) => w.id === track.workflow_id)?.phases ?? [{ id: track.phase_id, name: track.phase_name, kind: track.phase_kind }];
+        return (
+          <InlineSelect
+            ariaLabel={t.track(nameOf(components, track.component_id), nameOf(stages, track.stage_id))} value={track.phase_id}
+            placeholder={null} autoWidth disabled={!track.can_move} onChange={(next) => requestMove(track, next)}
+            options={phases.map((p) => ({ value: p.id, label: p.name }))}
+          />
+        );
+      },
+    },
+    { key: "workflow", label: t.workflow, render: (track) => track.workflow_name },
+    { key: "owner", label: t.owner, render: (track) => <PrincipalBadge principal={track.owner} placeholder="" /> },
+    {
+      key: "state", label: t.stateColumn,
+      render: (track) => (
+        <span className="row">
+          {track.not_applicable && <Badge>{t.notApplicableBadge}</Badge>}
+          {track.customised && <Badge>{t.customisedBadge}</Badge>}
+          {track.previous_closed && <Badge tone="info">{t.previousClosedBadge}</Badge>}
+        </span>
+      ),
+    },
+  ];
+  if (onEdit) {
+    columns.push({
+      key: "actions", label: <span className="sr-only">{t.actionsColumn}</span>,
+      render: (track) => {
+        const name = t.editTrack(nameOf(components, track.component_id), nameOf(stages, track.stage_id));
+        return <button className="btn" aria-label={name} title={name} onClick={() => onEdit(track)}><Pencil /></button>;
+      },
+    });
+  }
 
   return (
     <div className="stack">
@@ -100,60 +135,11 @@ export function ComponentTracksList({
         />
         <CheckboxField help={t.movableOnlyHelp} label={t.movableOnly} checked={movableOnly} onChange={setMovableOnly} />
       </div>
-      {shown.length === 0 && <div className="text-muted">{movableOnly ? t.noMovable : t.noTracks}</div>}
-      {shown.map((component) => {
-        const tracks = tracksOf.get(component.id) ?? [];
-        const open = !collapsed.has(component.id);
-        return (
-          <div key={component.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
-            <button
-              type="button" className="btn" style={{ alignSelf: "flex-start" }} aria-expanded={open}
-              onClick={() => toggle(component.id)} aria-label={t.toggleComponent(component.name)}
-            >
-              {open ? <ChevronDown /> : <ChevronRight />} <strong>{component.name}</strong>
-              {!open && (
-                <span className="text-muted">
-                  {tracks.map((tr) => `${stages.find((s) => s.id === tr.stage_id)?.name ?? ""}: ${tr.not_applicable ? t.notApplicableBadge : tr.phase_name}`).join(" · ")}
-                </span>
-              )}
-            </button>
-            {open && tracks.map((track) => {
-              const stage = stages.find((s) => s.id === track.stage_id);
-              if (!stage) return null;
-              const phases = workflows.find((w) => w.id === track.workflow_id)?.phases ?? [{ id: track.phase_id, name: track.phase_name, kind: track.phase_kind }];
-              return (
-                <div key={stage.id} className="row" style={{ justifyContent: "space-between" }}>
-                  <div className="row">
-                    <span style={{ minWidth: "10rem" }}>{stage.name}</span>
-                    {track.not_applicable ? (
-                      <Badge>{t.notApplicableBadge}</Badge>
-                    ) : (
-                      <InlineSelect
-                        ariaLabel={t.track(component.name, stage.name)} value={track.phase_id} placeholder={null}
-                        maxWidth={220} disabled={!track.can_move} onChange={(next) => requestMove(track, next)}
-                        options={phases.map((p) => ({ value: p.id, label: p.name }))}
-                      />
-                    )}
-                    {track.customised && <Badge>{track.workflow_name}</Badge>}
-                    {track.previous_closed && <Badge tone="info">{t.previousClosedBadge}</Badge>}
-                  </div>
-                  <div className="row">
-                    <PrincipalBadge principal={track.owner} placeholder="" />
-                    {onEdit && (
-                      <button
-                        className="btn" aria-label={t.editTrack(component.name, stage.name)} title={t.editTrack(component.name, stage.name)}
-                        onClick={() => onEdit(track)}
-                      >
-                        <Pencil />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+      <DirectoryTable
+        ariaLabel={t.tracksTable} columns={columns} rows={rows}
+        rowKey={(track) => `${track.component_id}:${track.stage_id}`}
+        emptyState={<div className="text-muted">{movableOnly ? t.noMovable : t.noTracks}</div>}
+      />
       {closing && (
         <ConfirmDialog
           title={t.completeStage}

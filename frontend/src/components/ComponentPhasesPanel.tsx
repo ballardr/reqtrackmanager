@@ -5,7 +5,7 @@
  * whether each component follows its own workflow for each stage; when it is on, every component lists its
  * track per stage with a phase picker (moving it applies the phase kind's behaviour on the server: a locked
  * phase approves only that component's requirements for the stage), its owner and an edit dialog for the
- * workflow, applicability and owner. Progression between stages is advisory: a badge says when the previous
+ * workflow, applicability and owner (one flat row per component and stage). Progression between stages is advisory: a badge says when the previous
  * stage has closed for the component, and nothing is blocked otherwise.
  */
 import { useCallback, useState } from "react";
@@ -94,7 +94,7 @@ export function ComponentPhasesPanel({
     <div className="stack">
       <LabeledSelect
         label={strings.componentPhases.mode} help={strings.help.componentPhasesMode} placeholder={null}
-        value={state.own_mode ?? INHERIT} onChange={(value) => void setMode(value)}
+        value={state.own_mode ?? INHERIT} onChange={(value) => void setMode(value)} autoWidth
         options={[
           { value: "off", label: strings.componentPhases.modeOff },
           { value: "on", label: strings.componentPhases.modeOn },

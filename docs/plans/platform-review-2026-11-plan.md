@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 17 (including 14b, 9b, 9c and 9d) and 25 done (14, 15, 16 and 17 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08; phase 18 done 2026-11-08; phase 19 split into 19a to 19d and 19a, 19b and 19c done 2026-11-08 and 19d done 2026-11-09; review checkpoint R and phase 20 (website documentation) added 2026-11-08; phases 21 (organisation dashboards, 21a to 21c), 22, 23 and 24 (24a, 24b) added 2026-11-09 from the first review items at R; phases 25 to 32 (25, 26, 27, 28a, 28b, 29, 30, 31, 32a, 32b) added 2026-11-09 from further review items at R, planned only (the user starts each one). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 17 (including 14b, 9b, 9c and 9d), 25 and 26 done (14, 15, 16 and 17 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08; phase 18 done 2026-11-08; phase 19 split into 19a to 19d and 19a, 19b and 19c done 2026-11-08 and 19d done 2026-11-09; review checkpoint R and phase 20 (website documentation) added 2026-11-08; phases 21 (organisation dashboards, 21a to 21c), 22, 23 and 24 (24a, 24b) added 2026-11-09 from the first review items at R; phases 25 to 32 (25, 26, 27, 28a, 28b, 29, 30, 31, 32a, 32b) added 2026-11-09 from further review items at R, planned only (the user starts each one). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-35 / 46 phases complete.
+36 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -46,7 +46,7 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 21b | Organisation dashboards: the overview page | Overview page is a dashboard (grid and editor reused with a `dashboard` target); Compliance summary and attention widgets replace its Dashboard page and the stats-header tiles; Playwright run on the rebuilt stack | [x] |
 | 21c | Organisation dashboards: extra pages | Pages with per-user and per-group visibility (404 for others), Manage dashboards dialog, audit, bundles, seeds; SOC 2 policy item 2c; Playwright run on the rebuilt stack | [x] |
 | 25 | Collapsible workflows | Each workflow in the shared workflows panel is a `DisclosureRow` (name, step count, source; open for one, closed for several); the stage phase schedule uses it too; open state is one stored key per list holding only the exceptions; `ComponentTracksList` left for phase 26; Playwright written, not run; see `docs/decisions.md` | [x] |
-| 26 | Component phases setup: compact switch, flat track list | The full-width On/Off/Inherit select becomes a compact control; the per-component expansion becomes a flat list (reverses 24b's W6 collapse, *Decided by: User*); planned 2026-11-09 | [ ] |
+| 26 | Component phases setup: compact switch, flat track list | The full-width On/Off/Inherit select becomes a compact control; the per-component expansion becomes a flat list (reverses 24b's W6 collapse, *Decided by: User*); `LabeledSelect` `autoWidth`, one `DirectoryTable` row per component and stage; Playwright written, not run; see `docs/decisions.md` | [x] |
 | 27 | Component delivery plan page | The existing Stage phases page (project navigation, not settings) becomes a delivery plan: components against stages and time, progress, expected dates, and phase changes in place; planned 2026-11-09 | [ ] |
 | 28a | Demo project from this repository | A demo project built from this product's requirements, decisions, SOC 2 package and architecture, from a curated, drift-checked fixture; planned 2026-11-09 | [ ] |
 | 28b | More example template projects | Further template projects beside the two from phase 17, each with modules, workflows, vocabularies, dashboard and starter drafts; planned 2026-11-09 | [ ] |

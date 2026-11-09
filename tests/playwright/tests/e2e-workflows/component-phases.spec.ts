@@ -40,6 +40,15 @@ test.describe("component phases", () => {
       await expect(page.getByRole("combobox", { name: new RegExp(`Phase of ${software.name} in`) })).toBeVisible();
     });
 
+    await test.step("the switch is compact and the tracks are one flat table", async () => {
+      const mode = page.getByRole("combobox", { name: /Component phases/ });
+      const modeWidth = (await mode.boundingBox())?.width ?? Infinity;
+      const pageWidth = (await page.locator("main").boundingBox())?.width ?? 0;
+      expect(modeWidth).toBeLessThan(pageWidth / 2);
+      await expect(page.getByRole("button", { name: /Show or hide the tracks/ })).toHaveCount(0);
+      await expect(page.getByRole("table", { name: /Component phases by/ })).toBeVisible();
+    });
+
     await test.step("moving Software into its locked phase approves only Software", async () => {
       const phase = page.getByRole("combobox", { name: new RegExp(`Phase of ${software.name} in`) });
       await phase.selectOption({ label: "Approved" });

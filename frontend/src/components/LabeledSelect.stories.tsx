@@ -51,6 +51,16 @@ export const NoPlaceholder: Story = {
   },
 };
 
+/** `autoWidth` sizes the select to its longest option, so a short choice does not stretch across the row. */
+export const AutoWidthTakesTheWidthOfItsOptions: Story = {
+  args: { label: "Mode", value: "a", placeholder: null, autoWidth: true, options: [{ value: "a", label: "On" }, { value: "b", label: "Off" }] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = canvas.getByLabelText("Mode");
+    await expect(select.getBoundingClientRect().width).toBeLessThan(canvasElement.getBoundingClientRect().width / 2);
+  },
+};
+
 /** Every select draws the same chevron at the same distance from its right edge, and so does the custom dropdown beside it. */
 export const SelectChevronsLineUpWithTheCustomDropdown: Story = {
   render: () => (

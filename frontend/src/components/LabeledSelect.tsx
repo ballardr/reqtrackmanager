@@ -8,7 +8,7 @@
  * occurrence made it a genuine repeated pattern (`CLAUDE.md`'s reuse rule). Purely presentational: one labelled
  * `<select>` with a leading placeholder option and an optional disabled
  * state (plus `help`/`helpNotNeeded` for the field's `(?)` help, `ariaLabel` when the accessible name must differ from the visible label, `hint` and `inputProps`
- * for the odd `select` attribute). Callers own any cascading-reset behaviour (e.g. clearing a child
+ * for the odd `select` attribute, and `autoWidth` for a select with a few short options that need not fill the row). Callers own any cascading-reset behaviour (e.g. clearing a child
  * selection when its parent changes) — this component only renders.
  */
 import { useId } from "react";
@@ -29,6 +29,7 @@ export function LabeledSelect({
   inputProps,
   help,
   required,
+  autoWidth,
 }: FieldHelpProps & {
   label: string;
   value: string;
@@ -41,6 +42,8 @@ export function LabeledSelect({
   /** Overrides the label as the select's accessible name when they differ. */
   ariaLabel?: string;
   hint?: ReactNode;
+  /** Sizes the select to its longest option instead of filling the row. */
+  autoWidth?: boolean;
   inputProps?: Omit<SelectHTMLAttributes<HTMLSelectElement>, "value" | "onChange" | "className" | "aria-label" | "disabled">;
 }) {
   const id = useId();
@@ -53,6 +56,7 @@ export function LabeledSelect({
         aria-required={required || undefined}
         id={controlId}
         className="input"
+        style={autoWidth ? { width: "auto", alignSelf: "flex-start" } : undefined}
         aria-label={ariaLabel ?? label}
         disabled={disabled}
         value={value}

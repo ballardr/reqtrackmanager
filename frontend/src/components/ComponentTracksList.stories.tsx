@@ -52,22 +52,42 @@ export const FilterByStage: Story = {
   },
 };
 
-/** "Only tracks I can move" drops the components with nothing the person may move. */
+/** "Only tracks I can move" drops the rows the person may not move. */
 export const OnlyTracksIMayMove: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("checkbox", { name: /Only tracks I can move/ }));
     await waitFor(() => expect(canvas.queryByText("Hardware")).not.toBeInTheDocument());
-    await expect(canvas.getByText("Software")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Software")).toHaveLength(2);
   },
 };
 
-/** A component's group collapses to a one-line summary of its phases. */
-export const CollapsingSummarisesPhases: Story = {
+/** One flat row per component and stage, in component then stage order, with no disclosure. */
+export const OneFlatRowPerComponentAndStage: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("button", { name: "Show or hide the tracks of Hardware" }));
-    await expect(canvas.queryByRole("combobox", { name: "Phase of Hardware in Release 1" })).not.toBeInTheDocument();
-    await expect(canvas.getByText(/Release 1: Scoping · Release 2: Not applicable/)).toBeInTheDocument();
+    const table = canvas.getByRole("table");
+    await expect(within(table).getAllByRole("row")).toHaveLength(5);
+    await expect(canvas.queryByRole("button", { name: /Show or hide/ })).not.toBeInTheDocument();
+    const columnHeaders = within(table).getAllByRole("columnheader").map((h) => h.textContent);
+    await expect(columnHeaders).toEqual(["Component", "Stage", "Phase", "Workflow", "Owner", "State"]);
+  },
+};
+
+/** With every track filtered out the list says there is nothing to show. */
+export const NoTracksMatchTheFilter: Story = {
+  args: { state: buildComponentPhases({ tracks: [] }) },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText(/no components or stages yet/)).toBeInTheDocument();
+  },
+};
+
+/** The edit column appears only where the host can edit a track. */
+export const EditColumnNeedsOnEdit: Story = {
+  args: { onEdit: fn() },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: "Edit Software in Release 1" }));
+    await expect(args.onEdit).toHaveBeenCalled();
   },
 };
