@@ -1,0 +1,11 @@
+# Prometheus for the demonstration stack (tests/container, profile demo-metrics): scrapes the backend only, no
+# alert rules and no cAdvisor, which that stack lacks. Collected samples live in the reqtrack_demo_metrics volume,
+# which a demonstration reset does not touch (scripts/demo.sh --purge-metrics removes it). docs/demo.md.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: reqtrackmanager-backend
+    static_configs:
+      - targets: ["backend:8000"]
+    metrics_path: /metrics

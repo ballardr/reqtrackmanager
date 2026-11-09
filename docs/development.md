@@ -47,7 +47,7 @@ Idempotent (skips if already seeded) and API-driven, same as the E2E persona dat
 
 ### Demonstration setup and daily reset
 
-`scripts/demo.sh` sets the stack up as a demonstration (seed, sign-in details on the login page), `--reset` starts again, and an opt-in service resets it daily. Commands, options, variables, guards and Microsoft Clarity are in [demo.md](demo.md).
+`scripts/demo.sh` sets the stack up as a demonstration (seed, sign-in details on the login page), `--reset` starts again, and an opt-in service resets it daily. Commands, options, variables, guards, usage metrics (collected in Prometheus and bundled with `--export-metrics`) and Microsoft Clarity are in [demo.md](demo.md).
 
 ## Backend
 

@@ -11,6 +11,8 @@ Responsibilities:
 - Work out the next reset time from a daily wall-clock time and an IANA zone (`next_reset_at`).
 - Hold a lock so a manual and a scheduled reset cannot overlap (`reset_lock`).
 - Write the Prometheus textfile the existing monitoring can alert on (`write_reset_metrics`).
+- Append each run's start and finish to a history file (`append_reset_event`), so a usage-metrics bundle can mark where
+  each cycle begins and explain a counter that falls to zero.
 
 Design decisions:
 - Every guard is a pure function of values the caller reads, so each refusal is tested without a database or a
@@ -32,6 +34,7 @@ from __future__ import annotations
 
 import fcntl
 import ipaddress
+import json
 import secrets
 import string
 from collections.abc import Iterator
@@ -59,6 +62,9 @@ CATCHER_HOSTS = frozenset({"mailhog", "mailpit", "localhost", "127.0.0.1", "::1"
 """Mail relays that are mail catchers; any other relay could deliver demonstration mail to real people."""
 
 METRICS_FILENAME = "reqtrack-demo-reset.prom"
+HISTORY_FILENAME = "reqtrack-demo-resets.jsonl"
+HISTORY_LIMIT = 500
+"""Lines kept in the reset history; one cycle writes two, so this is about eight months of daily resets."""
 LOCK_FILENAME = ".demo-reset.lock"
 
 
@@ -328,3 +334,28 @@ def write_reset_metrics(directory: Path, *, succeeded: bool, finished: datetime,
         next_reset: The next scheduled reset, if any.
     """
     write_atomic(directory / METRICS_FILENAME, reset_metrics_text(succeeded=succeeded, finished=finished, next_reset=next_reset))
+    append_reset_event(directory, "reset_finished", at=finished, succeeded=succeeded)
+
+
+def append_reset_event(directory: Path, event: str, *, at: datetime, succeeded: bool | None = None) -> None:
+    """Appends one line to `reqtrack-demo-resets.jsonl` (the last `HISTORY_LIMIT` lines are kept).
+
+    The history holds times and outcomes only. A failure to write it never fails the run (the history is a
+    reviewer's aid, not part of the reset).
+
+    Args:
+        directory: The status directory.
+        event: `reset_started` or `reset_finished`.
+        at: When it happened (UTC instant).
+        succeeded: For `reset_finished`, whether the run completed.
+    """
+    entry: dict[str, object] = {"event": event, "at": at.astimezone(UTC).isoformat().replace("+00:00", "Z")}
+    if succeeded is not None:
+        entry["succeeded"] = succeeded
+    path = directory / HISTORY_FILENAME
+    try:
+        lines = path.read_text().splitlines() if path.exists() else []
+        lines.append(json.dumps(entry, separators=(",", ":")))
+        write_atomic(path, "\n".join(lines[-HISTORY_LIMIT:]) + "\n")
+    except OSError:
+        return

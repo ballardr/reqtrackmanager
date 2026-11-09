@@ -1,6 +1,6 @@
 # Demonstration setup
 
-Sets the local stack (`tests/container`) up as a demonstration with sample data, resets it on request or every day, and optionally records sessions with Microsoft Clarity. For evaluation and demonstrations only: never run it against a deployment that holds real data (the guards below refuse most such cases, but they are a safety net, not a permission).
+Sets the local stack (`tests/container`) up as a demonstration with sample data, resets it on request or every day, collects usage metrics in Prometheus for a developer to review, and optionally records sessions with Microsoft Clarity. For evaluation and demonstrations only: never run it against a deployment that holds real data (the guards below refuse most such cases, but they are a safety net, not a permission).
 
 ## Quick start
 
@@ -20,6 +20,10 @@ Open http://localhost:3000. The sign-in details (accounts, role, password, next 
 | `scripts/demo.sh --rotate-passwords` | A new random password for every account on each run (default: fixed). |
 | `scripts/demo.sh --clarity <project id>` | Also loads Microsoft Clarity (see [Microsoft Clarity](#microsoft-clarity)). |
 | `scripts/demo.sh --schedule` | Also starts the daily reset service. |
+| `scripts/demo.sh --no-metrics` | Does not start the usage-metrics Prometheus (it starts by default). |
+| `scripts/demo.sh --export-metrics [path] [--since 7d] [--no-snapshot]` | Writes a metrics bundle and starts nothing (see [Usage metrics](#usage-metrics)). |
+| `scripts/demo.sh --view-metrics <bundle>` | Opens a bundle in a throwaway Prometheus on `127.0.0.1:9091`. |
+| `scripts/demo.sh --purge-metrics` | Stops Prometheus and removes the collected metrics. |
 | `scripts/demo.sh <other options>` | Any other option goes to `demo_setup.py` (table below), for example `--confirm-database reqtrack_test`. |
 
 The script behind it can be run directly in a running stack:
@@ -95,7 +99,38 @@ Everything is created through the real HTTP API (`seed_demo_data.py`, which also
 
 `demo-scheduler` (Compose profile `demo-schedule`) runs `demo_setup.py schedule`: at `DEMO_RESET_AT` in `DEMO_RESET_TZ` it removes the demonstration organisation and seeds again. The local time is kept across a daylight-saving change. A message warns for the hour before. It is a separate opt-in service, never a backend job, so a deployment cannot reset itself by accident; every run applies the guards above. A host cron entry running `scripts/demo.sh --reset` is an alternative; use one or the other.
 
-A failed seed removes the partly seeded organisation (names and accounts are unique, so the previous data cannot be kept beside it) and exits `1`. The status directory holds `reqtrack-demo-reset.prom` with `reqtrack_demo_reset_last_success`, `reqtrack_demo_reset_last_run_timestamp_seconds` and `reqtrack_demo_reset_next_timestamp_seconds`, for monitoring to alert on.
+A failed seed removes the partly seeded organisation (names and accounts are unique, so the previous data cannot be kept beside it) and exits `1`. The status directory also holds `reqtrack-demo-resets.jsonl`, the start and finish of every run, for the [usage metrics](#usage-metrics) bundle. It holds `reqtrack-demo-reset.prom` with `reqtrack_demo_reset_last_success`, `reqtrack_demo_reset_last_run_timestamp_seconds` and `reqtrack_demo_reset_next_timestamp_seconds`, for monitoring to alert on.
+
+## Usage metrics
+
+A demonstration is the one place real evaluators use the product, and the daily reset removes what they did. `scripts/demo.sh` therefore also starts a Prometheus (Compose profile `demo-metrics`, service `prometheus`) that scrapes the backend's `/metrics` every 15 seconds and keeps 30 days (at most 2 GB) in the named volume `reqtrack_demo_metrics`. A reset and a teardown never touch that volume; only `--purge-metrics` removes it. It is published on `127.0.0.1:9090` only, because its admin API is enabled for the snapshot, and it listens on IPv6 inside the container. The production stack is unchanged.
+
+```mermaid
+flowchart LR
+    B["backend /metrics"] -->|"scrape every 15 s"| P["prometheus<br/>volume reqtrack_demo_metrics"]
+    R["demo_setup.py reset"] -->|"start and finish times"| H["reset history<br/>/demo/status"]
+    P --> E["demo.sh --export-metrics"]
+    H --> E
+    E --> S{"Labels on the<br/>allow-list?"}
+    S -- no --> X["Refuse, write nothing"]
+    S -- yes --> T["bundle .tar.gz"]
+    T --> V["demo.sh --view-metrics"]
+```
+
+**What the metrics can say.** Request count and latency per route template, method and status (`http_requests_total`, `http_request_duration_seconds`), shed requests, requirement and change request transitions, sign-in results (`login_attempts_total`), database statements by operation, and pool and memory gauges. They show which screens' routes are used and how the server behaves. They cannot say who did something or why: no metric carries a user, record, title, code or search text. Pair them with Microsoft Clarity (below) for on-screen behaviour, matching the two by time only.
+
+**The bundle.** `scripts/demo.sh --export-metrics [path]` (default `demo-metrics-<UTC timestamp>.tar.gz` in the current directory) writes:
+
+| File | Content |
+| --- | --- |
+| `snapshot/` | A Prometheus TSDB snapshot at full resolution (`--no-snapshot` leaves it out). |
+| `series.jsonl` | Every series over the range at a fixed step (grows with the range, at most about 2,000 points a series), one JSON object a line. Series that are constant zero are left out and counted in the manifest. |
+| `manifest.json` | Application version, bundle format, range, scrape interval, series counts, the reset history, the configured reset time with its zone and next UTC instant, whether session recording was enabled (never the project identifier), and the number of rows per database table. No row content. |
+| `README.txt` | How to open it and what the metric names mean. |
+
+`--since 7d` narrows the range (default `30d`). All times in the bundle are UTC instants; the reset history (`reset_started` and `reset_finished` with the outcome, appended by every setup, reset and teardown run) explains why counters fall to zero at each cycle. The command is the download path: copy the file from the demonstration host with `scp`. `scripts/demo.sh --view-metrics <bundle>` starts a Prometheus on the snapshot at http://127.0.0.1:9091 and removes it on exit.
+
+**Safety.** Before writing, every series is checked against an allow-list of label names and value shapes (a route template, never an identifier; `scripts/demo_metrics.py`); an unexpected label or value stops the export, naming the label and never its value. The bundle holds metrics only: no logs, traces, environment values, configuration or sign-in details. Metrics are Internal under the data classification policy; the bundle leaves the host, so the check is its control. An in-application download button was not built: the backend would need a demonstration-only path to Prometheus's admin API in a product that also runs in production.
 
 ## Microsoft Clarity
 

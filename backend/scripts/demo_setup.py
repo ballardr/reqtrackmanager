@@ -298,6 +298,7 @@ def _locked_run(args: argparse.Namespace, schedule: Schedule | None, state_dir: 
         rules.write_reset_metrics(status_dir, succeeded=False, finished=now, next_reset=next_reset)
         return EXIT_FAILED
 
+    rules.append_reset_event(status_dir, "reset_started", at=now)
     seeding = False
     try:
         if args.reset or args.teardown:

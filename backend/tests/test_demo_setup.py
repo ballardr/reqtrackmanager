@@ -9,8 +9,9 @@ output is covered by its own tests).
 
 from __future__ import annotations
 
+import json
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -143,6 +144,25 @@ def test_the_metrics_file_says_what_happened_without_secrets():
     assert "reqtrack_demo_reset_next_timestamp_seconds" in text
 
 
+def test_each_reset_cycle_is_marked_in_the_history_with_times_and_outcome_only(tmp_path):
+    rules.append_reset_event(tmp_path, "reset_started", at=_utc(2026, 11, 9, 0, 0))
+    rules.append_reset_event(tmp_path, "reset_finished", at=_utc(2026, 11, 9, 0, 6), succeeded=True)
+    lines = (tmp_path / rules.HISTORY_FILENAME).read_text().splitlines()
+    assert [json.loads(line) for line in lines] == [
+        {"event": "reset_started", "at": "2026-11-09T00:00:00Z"},
+        {"event": "reset_finished", "at": "2026-11-09T00:06:00Z", "succeeded": True},
+    ]
+
+
+def test_the_history_keeps_only_the_latest_lines_and_an_unwritable_directory_never_fails_a_run(tmp_path):
+    for minute in range(rules.HISTORY_LIMIT + 5):
+        rules.append_reset_event(tmp_path, "reset_started", at=_utc(2026, 11, 9) + timedelta(minutes=minute))
+    assert len((tmp_path / rules.HISTORY_FILENAME).read_text().splitlines()) == rules.HISTORY_LIMIT
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    rules.append_reset_event(blocker / "inside", "reset_started", at=_utc(2026, 11, 9))
+
+
 # ---- the command ------------------------------------------------------------------------------------------
 
 
@@ -214,6 +234,15 @@ def test_setup_seeds_and_publishes_one_sign_in_message(routed, admin_token, stan
     assert rules.DEFAULT_PASSWORD in message["body"]
     shown = routed.get("/api/v1/announcements/login").json()
     assert [m["title"] for m in shown] == [rules.LOGIN_MESSAGE_TITLE]
+
+
+def test_a_reset_run_marks_its_start_and_finish_and_the_history_survives_the_next_reset(routed, admin_token, stand_in_seed, dirs):
+    assert _run("--demo", *_confirm(), *dirs) == 0
+    assert _run("--demo", "--reset", *_confirm(), *dirs) == 0
+    status = Path(dirs[3])
+    events = [json.loads(line) for line in (status / rules.HISTORY_FILENAME).read_text().splitlines()]
+    assert [e["event"] for e in events] == ["reset_started", "reset_finished"] * 2
+    assert all(e["succeeded"] is True for e in events if e["event"] == "reset_finished")
 
 
 def test_a_second_run_changes_nothing_and_does_not_duplicate_the_message(routed, admin_token, stand_in_seed, dirs):

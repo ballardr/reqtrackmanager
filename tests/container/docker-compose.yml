@@ -288,6 +288,36 @@ services:
       backend:
         condition: service_healthy
 
+  # Usage metrics for a demonstration (docs/demo.md, "Usage metrics"): scripts/demo.sh starts it (profile
+  # demo-metrics) and `--export-metrics` bundles what it collected. Scrapes the backend only. Samples are kept for
+  # 30 days (and at most 2 GB) in a named volume that a demonstration reset leaves alone. The admin API is enabled
+  # for the bundle's snapshot, so the port is published on the loopback address only and the listener also takes IPv6.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["demo-metrics"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-admin-api
+      - --web.listen-address=[::]:9090
+    volumes:
+      - ../../observability/prometheus.demo.yml:/etc/prometheus/prometheus.yml:ro
+      - reqtrack_demo_metrics:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      start_period: 20s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      backend:
+        condition: service_healthy
+
   # See the root docker-compose.yml's mcp-server service for the full
   # explanation — same service, dev/test defaults.
   mcp-server:
@@ -355,3 +385,4 @@ volumes:
   reqtrack_test_storage_data:
   reqtrack_demo_state:
   reqtrack_demo_status:
+  reqtrack_demo_metrics:
