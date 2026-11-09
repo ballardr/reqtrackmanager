@@ -1112,6 +1112,15 @@ const en = {
     // 2026-08-24 — a flat regroup, no new navigation capability) — new
     // strings rather than reusing `groupPeople` for one of the two.
     groupOverview: "Overview",
+    usage: {
+      title: "Usage",
+      measure: "Measure",
+      value: "Value",
+      users: "Users",
+      activeProjects: "Active {projects}",
+      archivedProjects: "Archived {projects}",
+      storage: "File storage",
+    },
     groupUsers: "Users",
     groupGroups: "Groups",
     groupProjectsWorkflow: "Projects & workflow",

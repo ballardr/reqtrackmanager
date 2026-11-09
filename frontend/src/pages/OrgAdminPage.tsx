@@ -77,6 +77,7 @@ import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
+import { OrgUsageTable } from "../components/OrgUsageTable";
 import { AddUserMenu } from "../components/AddUserMenu";
 import { NewUserFields } from "../components/NewUserFields";
 import { EMPTY_NEW_USER, type NewUserValues } from "../components/newUserValues";
@@ -2469,6 +2470,7 @@ export function OrgAdminPage() {
       >
         {activeGroup === "overview" && (
           <div className="stack">
+            {orgId && <OrgUsageTable orgId={orgId} />}
             <div className="row" style={{ justifyContent: "space-between" }}>
               <div className="stack" style={{ gap: "var(--space-2)" }}>
                 {/* Org name is now shown once, universally, as `ResourceMenu`'s

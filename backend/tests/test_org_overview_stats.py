@@ -187,5 +187,31 @@ def test_archived_projects_and_requirements_are_not_counted(client, admin_token,
     assert (member_after["project_count"], member_after["requirement_count"]) == (1, 1)
     admin_after = stats(admin_token)
     assert admin_after["project_count"] == admin_before["project_count"] - 1
+    # The archived project moves to its own figure (the settings usage table reads it), and a member counts it too.
+    assert admin_after["archived_project_count"] == admin_before["archived_project_count"] + 1
+    assert member_after["archived_project_count"] == 1
     # One archived requirement, plus the one inside the archived project.
     assert admin_after["requirement_count"] == admin_before["requirement_count"] - 2
+
+
+def test_the_settings_usage_figures_equal_the_dashboard_metrics(client, admin_token, org_id):
+    """The settings overview's usage table reads this endpoint and the dashboards read the same service function, so
+    the two cannot disagree for the same organisation."""
+    project = create_project(client, admin_token, org_id, name="Usage Figures Project")
+    requirement_id = _create_requirement(client, admin_token, project["id"])
+    _attach_file(client, admin_token, project["id"], requirement_id)
+
+    stats = client.get(f"/api/v1/orgs/{org_id}/overview-stats", headers=auth_headers(admin_token)).json()
+    resp = client.post(
+        f"/api/v1/orgs/{org_id}/dashboards/overview/metrics",
+        json={"metrics": [
+            {"id": "p", "metric": "org_project_count"}, {"id": "m", "metric": "org_member_count"},
+            {"id": "s", "metric": "org_file_storage"},
+        ]},
+        headers=auth_headers(admin_token),
+    )
+    assert resp.status_code == 200, resp.text
+    results = resp.json()["results"]
+    assert results["p"]["value"] == stats["project_count"]
+    assert results["m"]["value"] == stats["member_count"]
+    assert results["s"]["value"] == stats["total_file_size_bytes"] > 0

@@ -1479,6 +1479,7 @@ export interface OrgProjectSummary {
  * (`backend/app/schemas/org.py`) for the full scoping rules. */
 export interface OrgOverviewStats {
   project_count: number;
+  archived_project_count: number;
   requirement_count: number;
   member_count: number;
   total_file_size_bytes: number;

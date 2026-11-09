@@ -941,6 +941,7 @@ class OrgOverviewStatsOut(BaseModel):
     """
 
     project_count: int
+    archived_project_count: int
     requirement_count: int
     member_count: int
     total_file_size_bytes: int

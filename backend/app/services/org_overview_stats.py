@@ -35,7 +35,7 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
     """The headline figures of the organisation as `current_user` may see them.
 
     Project and requirement counts cover active items only (archived projects and requirements are excluded, like the
-    lists they summarise); the file total includes archived projects' files, which still occupy storage. A scoped
+    lists they summarise; `archived_project_count` reports the archived projects separately); the file total includes archived projects' files, which still occupy storage. A scoped
     member's file total is a strict undercount (a comment attachment is not attributed to a project), never an
     over-exposure.
 
@@ -72,6 +72,11 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
                 Requirement.is_archived.is_(False),
             )
         ) or 0
+        archived_project_count = db.scalar(
+            select(func.count()).select_from(Project).where(
+                Project.organization_id == organization_id, Project.is_archived.is_(True)
+            )
+        ) or 0
         total_file_size_bytes = db.scalar(
             select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
                 FileAsset.organization_id == organization_id
@@ -90,6 +95,7 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
             db.scalars(select(Project.id).where(Project.id.in_(org_project_ids), Project.is_archived.is_(False))).all()
         ) if org_project_ids else set()
         project_count = len(active_project_ids)
+        archived_project_count = len(org_project_ids) - len(active_project_ids)
         requirement_count = (
             db.scalar(select(func.count()).select_from(Requirement).where(
                 Requirement.project_id.in_(active_project_ids), Requirement.is_archived.is_(False),
@@ -142,6 +148,7 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
 
     return OrgOverviewStatsOut(
         project_count=project_count,
+        archived_project_count=archived_project_count,
         requirement_count=requirement_count,
         member_count=member_count,
         total_file_size_bytes=total_file_size_bytes,

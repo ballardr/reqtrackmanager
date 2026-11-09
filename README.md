@@ -8,6 +8,8 @@
 
 ReqTrackManager is an open-source engineering requirements management system (ERMS) — a formal, collaborative alternative to expensive legacy enterprise requirements tools for product teams that can't justify that cost, without falling back to a static requirements spreadsheet that nobody trusts by the second review cycle. Requirements get a real identity, a full version history, and a paper trail from first draft to shipped and verified; changes to already-approved requirements go through an actual review workflow instead of a silent edit. It's built to sit at the center of how a hardware, firmware, or regulated-software team actually works day to day — not bolted on as an afterthought.
 
+Requirements are the core, not the limit. With modules enabled, a project becomes the full, linked and versioned documentation of a product: why it exists, who it is for, what it must do, what was decided, what could go wrong and which standards it must meet — see [Optional modules](#optional-modules).
+
 See [docs/requirements.md](docs/requirements.md) for the full product requirements and [docs/solution-architecture.md](docs/solution-architecture.md) for the architecture; [docs/decisions.md](docs/decisions.md) records the scoping and implementation decisions made along the way, [docs/ux-style-guide.md](docs/ux-style-guide.md) is the normative frontend UX style guide (navigation/settings hierarchy, create flows, confirmation, tokens) and [docs/plans/completed/ux-audit-2026-08.md](docs/plans/completed/ux-audit-2026-08.md) is the audit and roadmap that produced it, [docs/enterprise-integration.md](docs/enterprise-integration.md) covers the SSO design, SCIM provisioning, and the separate-port provisioning API blueprint, [docs/mcp-server.md](docs/mcp-server.md) covers AI-assistant access to requirements, [docs/deployment.md](docs/deployment.md) covers deploying to production, [docs/development.md](docs/development.md) covers running it locally and the contributor workflow, and [docs/user-guide.md](docs/user-guide.md) is a full walkthrough of using the app.
 
 A public documentation website is live at **[ballardr.github.io/reqtrackmanager](https://ballardr.github.io/reqtrackmanager/)** (Docusaurus, built from [docs/website/](docs/website/) and deployed via GitHub Pages — see [docs/plans/completed/docs-website-plan.md](docs/plans/completed/docs-website-plan.md) for how it was built). It is also published as a container image (`ghcr.io/ballardr/reqtrackmanager-docs`) for [hosting the docs inside your own deployment](docs/deployment.md#hosting-the-documentation-internally).
@@ -22,7 +24,29 @@ Organisations contain projects; projects have role- and group-based access contr
 
 ## Optional modules
 
-Beyond requirements and change requests, ReqTrackManager is a modular platform: each capability area is a module that a server administrator makes available to organisations and an organisation turns on per project (a fresh install has every module available; see Server Management → Modules). First-party modules: **Compliance** (standards, clauses, assessments), **Context & Strategy** (strategy, future states, guiding principles, pain points with configurable scoring, open questions), **Decision Management** (decisions with approval and supersession), **Product Feedback** (enhancement requests per project or in an organisation inbox, with demand counted from who asked and reversible merging of duplicates; API and MCP tools today, screens to follow), **Risk Management** (risks, scoring matrices, reports) and **Stakeholders & Personas** (people, needs, engagements, research findings). Every record of every module shares the same machinery: a project-scoped human-readable code (`REQ-001`, `DEC-003`, qualified by the project code outside its own project), tags, links and traceability, an Activity timeline beside the record, global search, reports and bundle export. Create forms mark required fields with `*`, explain non-obvious fields with a `(?)` help tooltip, keep Save in a pinned header above the scrolling fields, and can link and tag the new record in the same step. Lists keep their scroll position after opening a record, filter panels collapse, and Pain Points can be scored in a bulk edit grid; the project overview shows a total-records chart split by type and can be rearranged by a project manager into gauges, charts and counts from a catalogue of metrics. Where projects are nested, any list can widen to parent and child projects. A module is added by registration, not by editing core code — see [docs/modules.md](docs/modules.md) and the website's "Building your own module".
+Beyond requirements and change requests, ReqTrackManager is a modular platform: each capability area is a module that a server administrator makes available to organisations and an organisation turns on per project (a fresh install has every module available; see Server Management → Modules). With the modules enabled, a project is not only a requirements register but the complete product documentation: each module records one aspect of the product, and links, tags, search, reports and bundle export join them into a single traceable whole. A team that needs only requirements leaves the modules off.
+
+```mermaid
+flowchart LR
+    CS["Context & Strategy<br/>why: strategy, future states, principles, pain points"]
+    SP["Stakeholders & Personas<br/>who: people, needs, engagements, findings"]
+    PF["Product Feedback<br/>demand: enhancement requests"]
+    REQ["Requirements (core)<br/>what: requirements, change requests, actions"]
+    DEC["Decision Management<br/>how it was decided: decisions, supersession"]
+    RSK["Risk Management<br/>what could go wrong: risks, scoring"]
+    CMP["Compliance<br/>which standards: assessments, evidence"]
+    HUB(["Links, tags, search,<br/>reports and bundle export"])
+
+    CS --- HUB
+    SP --- HUB
+    PF --- HUB
+    REQ --- HUB
+    DEC --- HUB
+    RSK --- HUB
+    CMP --- HUB
+```
+
+First-party modules: **Compliance** (standards, clauses, assessments), **Context & Strategy** (strategy, future states, guiding principles, pain points with configurable scoring, open questions), **Decision Management** (decisions with approval and supersession), **Product Feedback** (enhancement requests per project or in an organisation inbox, with demand counted from who asked and reversible merging of duplicates; API and MCP tools today, screens to follow), **Risk Management** (risks, scoring matrices, reports) and **Stakeholders & Personas** (people, needs, engagements, research findings). Every record of every module shares the same machinery: a project-scoped human-readable code (`REQ-001`, `DEC-003`, qualified by the project code outside its own project), tags, links and traceability, an Activity timeline beside the record, global search, reports and bundle export. Create forms mark required fields with `*`, explain non-obvious fields with a `(?)` help tooltip, keep Save in a pinned header above the scrolling fields, and can link and tag the new record in the same step. Lists keep their scroll position after opening a record, filter panels collapse, and Pain Points can be scored in a bulk edit grid; the project overview shows a total-records chart split by type and can be rearranged by a project manager into gauges, charts and counts from a catalogue of metrics. Where projects are nested, any list can widen to parent and child projects. A module is added by registration, not by editing core code — see [docs/modules.md](docs/modules.md) and the website's "Building your own module".
 
 ## Enterprise-ready
 

@@ -11,6 +11,10 @@ Reach an organisation's admin page via **My organisations** in the nav, or from 
 | Users, groups, and organisation-wide settings |
 | ![Organisation admin page showing users and settings](../../static/img/screenshots/org-admin.png) |
 
+## Usage
+
+The **Overview** group of the settings opens with a table of **Usage**: the number of users, the number of active and archived projects, and the file storage the organisation uses. It shows the organisation's real totals and is shown to organisation administrators only; the same figures are available as widgets on the [organisation overview](./organisations-and-projects.md#organisation-overview).
+
 ## Managing users
 
 A member who is locked out can be sent a password reset link from their **⋮** menu (**Send password reset link**): it goes to their own address, so you never see it. See [Password resets and credential recovery](./password-reset-and-credential-recovery.md).
