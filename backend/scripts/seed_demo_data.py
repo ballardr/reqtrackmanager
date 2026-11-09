@@ -4267,6 +4267,11 @@ def main() -> None:
         member_user_ids=[demo_engineer["user_id"], demo_stakeholder["user_id"]],
     )
 
+    # Four further example templates (Software delivery, Compliance readiness, Research and discovery, Hardware design).
+    import seed_template_projects
+
+    seed_template_projects.seed_template_projects(h_pm, org, owner_id=demo_admin["user_id"])
+
     print()
     print("Done. Demo personas (all password: DemoDemo123!):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
@@ -4331,6 +4336,8 @@ def main() -> None:
     print("  Templates: 'Product Design template' (Usability and Accessibility Pain Point types, Cost of Delay ÷ job size scoring,"
           " no Risk Management or Compliance) and 'Project Management template' (Schedule, Budget and Resourcing Pain Point types,"
           " no Product Feedback or Stakeholders); 'Falcon-3 Operator App' was created from the first, with two Pain Points scored by WSJF")
+    print("  More templates: " + ", ".join(repr(spec.name) for spec in seed_template_projects.SPECS)
+          + " — each with its own stage workflow, vocabularies, overview dashboard and starter drafts")
 
 
 if __name__ == "__main__":

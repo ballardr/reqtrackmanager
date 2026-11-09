@@ -39,6 +39,21 @@ flowchart LR
 
 Read left to right: the template's configuration and starter records are copied, records are returned to drafts, and the template's own history, people and assessments stay behind.
 
+## Example templates
+
+The demonstration organisation includes six example templates, each showing a different way to set up a project. A project created from one receives its modules, workflow, types, scoring, overview dashboard and starter drafts.
+
+| Template | Suited to | Modules and workflow | Starter drafts |
+| --- | --- | --- | --- |
+| Product Design | Feedback-driven design | Risk and Compliance off; Cost of Delay scoring | Requirements |
+| Project Management | Work delivered through suppliers | Product Feedback and Stakeholders off | Requirements |
+| Software delivery | A software product | Release train: Backlog, Build, Code review, Release candidate, Released; Cost of Delay scoring | Requirements, a decision, an action, a Pain Point |
+| Compliance readiness | Preparing for an audit | Audit readiness: Gap analysis, Remediation, Evidence review, Audit window, Certified; an example standard assigned | Requirements, a risk, evidence |
+| Research and discovery | Learning before building | Research cycle: Planning, Fieldwork, Synthesis, Playback, Closed; Stakeholders on, Risk and Compliance off | Requirements, a persona, a stakeholder, a need, an open question, an engagement with a finding |
+| Hardware design | An embedded product such as an IoT data logger | Design gates: Concept, Schematic design, Design review, Prototype build, Validation, Production release | Requirements with a verification method, a decision, a risk, an action, a Pain Point |
+
+Every starter record arrives as a draft, so nothing is approved until the new project's own reviewers approve it.
+
 ## Who can change a template
 
 While a project is marked as a template, only project managers, project administrators and organisation administrators can change it. Everyone else, including people who can see it through organisation-wide visibility or hold a module role on it, can read it but cannot add or change anything, whatever the project's other settings. This keeps a template stable as the starting point for new projects. Clear the template setting to let the team work in it again.
