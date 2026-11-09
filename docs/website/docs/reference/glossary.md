@@ -118,6 +118,10 @@ A long-lived, org/project-scoped bearer credential for non-interactive use, such
 
 A written document published by a server administrator (a privacy policy or a data policy, readable at `/policies` without signing in) or by an organisation's administrators (an access policy or a confidentiality agreement, readable only by that organisation's members, optionally limited to chosen people or groups). Written in a visual editor. Saving changes a working copy; **Publish** records a new version. Distinct from the **Personal data in exports** setting, which decides whether personal data columns may leave the application in a record export. See [Server administration](../workflows/server-administration.md#policies) and [Administering an organisation](../workflows/administering-an-organisation.md#policies).
 
+#### Policy acceptance
+
+The recorded agreement of one person to the current version of a [policy](#policy) that requires it: the person, the version, a fingerprint of the text and the time. Until a person has accepted, they can read but cannot create or change records. A new version asks again. It records acceptance by an account, not a signature. See [Requiring acceptance](../workflows/administering-an-organisation.md#requiring-acceptance).
+
 #### Project
 
 Belongs to exactly one organisation, and can optionally have a parent project, modelling a larger programme as a tree of related projects. See [Organisations and projects](../concepts/organisations-and-projects.md).

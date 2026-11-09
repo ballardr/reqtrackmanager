@@ -5,6 +5,8 @@
  * editor. Saving writes the working copy only; publishing is a separate, recorded action in `PoliciesPanel`, so an
  * edit never changes what people can already read.
  *
+ * A policy can require each person it applies to to accept the current version (`requires_acknowledgement`).
+ *
  * An organisation policy also takes an audience (users and organisation groups; empty is every member) and offers
  * starter titles that only fill the title field.
  *
@@ -17,7 +19,7 @@ import { api } from "../api/client";
 import type { OrgPolicy, OrgPolicyWrite, Policy, PolicyBody, PolicySlot, Principal, PrincipalRef } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { FormActions } from "./FormActions";
-import { DateField, TextField } from "./FormFields";
+import { DateField, TextField, ToggleField } from "./FormFields";
 import { Modal } from "./Modal";
 import { PolicyBodyEditor } from "./PolicyBodyEditor";
 import { PrincipalListField } from "./PrincipalListField";
@@ -54,6 +56,7 @@ export function PolicyEditor({ policy, slot, slotTitle, error, organization, onC
   const [title, setTitle] = useState(policy?.title ?? slotTitle ?? "");
   const [body, setBody] = useState<PolicyBody>(policy?.body ?? EMPTY_BODY);
   const [effectiveFrom, setEffectiveFrom] = useState(policy?.effective_from ?? "");
+  const [requiresAcknowledgement, setRequiresAcknowledgement] = useState(policy?.requires_acknowledgement ?? false);
   // The audience as display values; a person or group picked here is named by the server, so the chip never reads "Unknown".
   const [audience, setAudience] = useState<Principal[]>(() => (policy as OrgPolicy | null)?.audience ?? []);
 
@@ -91,6 +94,10 @@ export function PolicyEditor({ policy, slot, slotTitle, error, organization, onC
           </div>
         )}
         <DateField label={text.effectiveFromLabel} help={strings.help.policyEffectiveFrom} value={effectiveFrom} onChange={setEffectiveFrom} />
+        <ToggleField
+          label={text.requiresAcknowledgement} help={strings.help.policyRequiresAcknowledgement}
+          checked={requiresAcknowledgement} onChange={setRequiresAcknowledgement}
+        />
         {organization && (
           <PrincipalListField
             label={text.audience} ariaLabel={text.audience} values={audience} orgUsers={[]}
@@ -103,6 +110,7 @@ export function PolicyEditor({ policy, slot, slotTitle, error, organization, onC
           error={error} onCancel={onCancel} saveDisabled={fixedTitle === null && title.trim() === ""}
           onSave={() => onSave({
             key: policy ? undefined : (slot ?? null), title: title.trim(), body, effective_from: effectiveFrom === "" ? null : effectiveFrom,
+            requires_acknowledgement: requiresAcknowledgement,
             ...(organization ? { audience: audience.map(({ type, id }) => ({ type, id })) } : {}),
           })}
         />

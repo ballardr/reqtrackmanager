@@ -8,6 +8,9 @@ Policies (written documents such as a privacy policy):
 - `GET /api/v1/public/policies` and `/{id}`: public, rate-limited; the published server policies.
 - `GET /api/v1/policies/mine` and `/{id}`: signed in; the published policies of the caller's organisations that the
   caller may read.
+- `GET /api/v1/policies/mine/pending` and `POST /api/v1/policies/mine/{id}/acknowledge`: the policies the caller must
+  accept and the acceptance; administrators also read who has accepted (`/{id}/acknowledgements`, its CSV export and a
+  reminder) for the server's policies and their organisation's.
 
 Authorisation: scope is enforced in `services.policies` (a policy of another scope is a 404) and readers' visibility in
 `services.org_policies` (a policy the caller may not read is a 404). The public read returns only published content
@@ -22,11 +25,15 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_client_ip, get_current_user
+from app.deps import get_client_ip, get_current_session_user, get_current_user
 from app.models.enums import OrgRole
 from app.models.policy import PolicyDocument, PolicyDocumentVersion, PolicyState
 from app.models.user import User
 from app.schemas.policies import (
+    AcknowledgeIn,
+    AcknowledgementOut,
+    AcknowledgementStatusOut,
+    AcknowledgementStatusRowOut,
     MemberPolicyOut,
     MemberPolicySummaryOut,
     OrgPolicyAudienceLookupIn,
@@ -36,6 +43,7 @@ from app.schemas.policies import (
     OrgPolicySettingsIn,
     OrgPolicySettingsIO,
     OrgPolicySummaryOut,
+    PendingPolicyOut,
     PolicyIn,
     PolicyOut,
     PolicyPublishIn,
@@ -44,10 +52,13 @@ from app.schemas.policies import (
     PolicyVersionOut,
     PublicPolicyOut,
     PublicPolicySummaryOut,
+    ReminderOut,
 )
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import org_policies
 from app.services import policies as service
+from app.services import policy_acknowledgements as acks
+from app.services.audit import log_event
 from app.services.principals import principal_labels, validate_principal
 from app.services.rbac import require_org_role, require_server_admin
 
@@ -63,7 +74,7 @@ def _summary(row: PolicyDocument, current: PolicyDocumentVersion | None) -> Poli
     return PolicySummaryOut(
         id=row.id, key=row.key, title=row.title, state=row.state, effective_from=row.effective_from,
         current_version=row.current_version, has_unpublished_changes=service.has_unpublished_changes(row, current),
-        updated_at=row.updated_at,
+        updated_at=row.updated_at, requires_acknowledgement=row.requires_acknowledgement,
     )
 
 
@@ -79,6 +90,46 @@ def _out(db: Session, row: PolicyDocument) -> PolicyOut:
     return PolicyOut(**_summary(row, current).model_dump(), body=row.body, versions=[_version_out(v) for v in history])
 
 
+def _apply_requirement(db: Session, row: PolicyDocument, body: PolicyIn, actor: User) -> None:
+    """Applies `requires_acknowledgement` when the request sends it; asks for acceptance when it is switched on for a published policy."""
+    if body.requires_acknowledgement is not None and acks.set_requirement(db, row, body.requires_acknowledgement, actor):
+        acks.notify_unaccepted(db, row, actor)
+
+
+def _status_out(db: Session, row: PolicyDocument) -> AcknowledgementStatusOut:
+    rows = acks.status_rows(db, row)
+    return AcknowledgementStatusOut(
+        policy_id=row.id, title=row.title, version=row.current_version, requires_acknowledgement=row.requires_acknowledgement,
+        required=len(rows), accepted=sum(1 for r in rows if r.current), truncated=len(rows) > acks.STATUS_LIMIT,
+        people=[
+            AcknowledgementStatusRowOut(
+                user_id=r.user.id, display_name=r.user.display_name, email=r.user.email, accepted_version=r.accepted_version,
+                accepted_at=r.accepted_at, current=r.current,
+            )
+            for r in rows[: acks.STATUS_LIMIT]
+        ],
+    )
+
+
+def _status_csv(db: Session, row: PolicyDocument, actor: User) -> Response:
+    rows = acks.status_rows(db, row)
+    log_event(
+        db, entity_type="policy", entity_id=row.id, action="acknowledgements_exported", actor_id=actor.id,
+        organization_id=row.organization_id, detail={"key": row.key, "version": row.current_version, "row_count": len(rows)},
+    )
+    db.commit()
+    return Response(
+        content=acks.status_csv(rows, row.current_version), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="policy-acceptances.csv"', "Cache-Control": "no-store"},
+    )
+
+
+def _remind(db: Session, row: PolicyDocument, actor: User) -> ReminderOut:
+    count = acks.notify_unaccepted(db, row, actor)
+    db.commit()
+    return ReminderOut(notified=count)
+
+
 @system_router.get("", response_model=list[PolicySummaryOut])
 def list_server_policies(current_user: User = Depends(require_server_admin), db: Session = Depends(get_db)) -> list[PolicySummaryOut]:
     """The server policies, the built-in slots first; a slot not yet written appears as an unset row (`id` null)."""
@@ -88,7 +139,7 @@ def list_server_policies(current_user: User = Depends(require_server_admin), db:
     slots = [
         _summary(by_key[k], current.get(by_key[k].id)) if k in by_key else PolicySummaryOut(
             id=None, key=k, title=title, state=PolicyState.DRAFT, effective_from=None, current_version=0,
-            has_unpublished_changes=False, updated_at=None,
+            has_unpublished_changes=False, updated_at=None, requires_acknowledgement=False,
         )
         for k, title in service.SLOT_TITLES.items()
     ]
@@ -102,6 +153,7 @@ def create_server_policy(body: PolicyIn, current_user: User = Depends(require_se
         db, organization_id=None, actor=current_user, key=body.key, title=body.title, body=body.body,
         effective_from=body.effective_from,
     )
+    _apply_requirement(db, row, body, current_user)
     db.commit()
     return _out(db, row)
 
@@ -119,6 +171,7 @@ def replace_server_policy(
     """Replaces a server policy's working copy; readers keep seeing the published version until it is published."""
     row = service.get_in_scope(db, policy_id, None, lock=True)
     service.update(db, row, actor=current_user, title=body.title, body=body.body, effective_from=body.effective_from)
+    _apply_requirement(db, row, body, current_user)
     db.commit()
     return _out(db, row)
 
@@ -130,6 +183,7 @@ def publish_server_policy(
     """Publishes the working copy as the next version."""
     row = service.get_in_scope(db, policy_id, None, lock=True)
     service.publish(db, row, actor=current_user, change_note=body.change_note)
+    acks.notify_unaccepted(db, row, current_user)
     db.commit()
     return _out(db, row)
 
@@ -149,6 +203,30 @@ def delete_server_policy(policy_id: UUID, current_user: User = Depends(require_s
     service.delete(db, service.get_in_scope(db, policy_id, None), current_user)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@system_router.get("/{policy_id}/acknowledgements", response_model=AcknowledgementStatusOut)
+def get_server_policy_acknowledgements(
+    policy_id: UUID, current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
+) -> AcknowledgementStatusOut:
+    """Who has and has not accepted a server policy's current version."""
+    return _status_out(db, service.get_in_scope(db, policy_id, None))
+
+
+@system_router.get("/{policy_id}/acknowledgements/export")
+def export_server_policy_acknowledgements(
+    policy_id: UUID, current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
+) -> Response:
+    """The status of a server policy as a CSV (person, email, status, version and time)."""
+    return _status_csv(db, service.get_in_scope(db, policy_id, None), current_user)
+
+
+@system_router.post("/{policy_id}/acknowledgements/remind", response_model=ReminderOut)
+def remind_server_policy(
+    policy_id: UUID, current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
+) -> ReminderOut:
+    """Notifies everyone who has not accepted a server policy's current version."""
+    return _remind(db, service.get_in_scope(db, policy_id, None), current_user)
 
 
 @system_router.get("/{policy_id}/versions/{version}", response_model=PolicyVersionBodyOut)
@@ -229,6 +307,7 @@ def create_org_policy(
         effective_from=body.effective_from, allow_links=org_policies.links_allowed(db, organization_id),
     )
     org_policies.set_audience(db, row, body.audience or [], current_user)
+    _apply_requirement(db, row, body, current_user)
     db.commit()
     return _org_out(db, row)
 
@@ -253,6 +332,7 @@ def replace_org_policy(
     )
     if body.audience is not None:
         org_policies.set_audience(db, row, body.audience, current_user)
+    _apply_requirement(db, row, body, current_user)
     db.commit()
     return _org_out(db, row)
 
@@ -266,7 +346,10 @@ def publish_org_policy(
     row = service.get_in_scope(db, policy_id, organization_id, lock=True)
     org_policies.check_publishable(db, row)
     version = service.publish(db, row, actor=current_user, change_note=body.change_note)
-    if body.notify_members:
+    if row.requires_acknowledgement:
+        # Asking for acceptance is the notification for a required policy; one message per person, not two.
+        acks.notify_unaccepted(db, row, current_user)
+    elif body.notify_members:
         org_policies.notify_audience(db, row, version, current_user)
     db.commit()
     return _org_out(db, row)
@@ -291,6 +374,30 @@ def delete_org_policy(
     service.delete(db, service.get_in_scope(db, policy_id, organization_id), current_user)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@org_router.get("/{policy_id}/acknowledgements", response_model=AcknowledgementStatusOut)
+def get_org_policy_acknowledgements(
+    organization_id: UUID, policy_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> AcknowledgementStatusOut:
+    """Who has and has not accepted an organisation policy's current version."""
+    return _status_out(db, service.get_in_scope(db, policy_id, organization_id))
+
+
+@org_router.get("/{policy_id}/acknowledgements/export")
+def export_org_policy_acknowledgements(
+    organization_id: UUID, policy_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> Response:
+    """The status of an organisation policy as a CSV (person, email, status, version and time)."""
+    return _status_csv(db, service.get_in_scope(db, policy_id, organization_id), current_user)
+
+
+@org_router.post("/{policy_id}/acknowledgements/remind", response_model=ReminderOut)
+def remind_org_policy(
+    organization_id: UUID, policy_id: UUID, current_user: User = Depends(_org_admin), db: Session = Depends(get_db),
+) -> ReminderOut:
+    """Notifies everyone who has not accepted an organisation policy's current version."""
+    return _remind(db, service.get_in_scope(db, policy_id, organization_id), current_user)
 
 
 @org_router.get("/{policy_id}/versions/{version}", response_model=PolicyVersionBodyOut)
@@ -319,7 +426,45 @@ def list_my_policies(
 ) -> list[MemberPolicySummaryOut]:
     """The published policies of the caller's organisations that the caller may read."""
     _no_store(response)
-    return [_member_summary(item) for item in org_policies.published_for(db, current_user)]
+    required = {p.row.id: p.accepted for p in acks.applicable(db, current_user)} if acks.any_required(db) else {}
+    return [
+        _member_summary(item).model_copy(update={
+            "requires_acknowledgement": item.row.id in required, "acknowledged": required.get(item.row.id, False),
+        })
+        for item in org_policies.published_for(db, current_user)
+    ]
+
+
+@member_router.get("/pending", response_model=list[PendingPolicyOut])
+def list_pending_policies(
+    response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+) -> list[PendingPolicyOut]:
+    """The server and organisation policies the caller must accept, with their text (empty when none)."""
+    _no_store(response)
+    if not acks.any_required(db):
+        return []
+    return [
+        PendingPolicyOut(
+            id=p.row.id, organization_id=p.organization.id if p.organization else None,
+            organization_name=p.organization.name if p.organization else None, title=p.version.title,
+            effective_from=p.version.effective_from, version=p.version.version, published_at=p.version.published_at,
+            body=p.version.body,
+        )
+        for p in acks.pending(db, current_user)
+    ]
+
+
+@member_router.post("/{policy_id}/acknowledge", response_model=AcknowledgementOut)
+def acknowledge_policy(
+    policy_id: UUID, body: AcknowledgeIn, current_user: User = Depends(get_current_session_user), db: Session = Depends(get_db),
+) -> AcknowledgementOut:
+    """Records that the caller read and accepted the given version of a required policy.
+
+    Interactive sessions only: an access token is a headless credential and cannot accept on a person's behalf.
+    """
+    record = acks.acknowledge(db, current_user, policy_id, body.version)
+    db.commit()
+    return AcknowledgementOut(policy_id=record.policy_id, version=record.version, acknowledged_at=record.acknowledged_at)
 
 
 @member_router.get("/{policy_id}", response_model=MemberPolicyOut)

@@ -28,7 +28,7 @@ This matrix does not replace the individual policy documents in [policies/](poli
 | # | Criterion | Control Description | Evidence | Status |
 | --- | --- | --- | --- | --- |
 | CC2.1 | Obtains/generates quality information to support internal control | System generates structured audit events and login history usable for control monitoring | `audit_events`, `login_events` tables; [policies/system-operations-monitoring-and-logging-policy.md](policies/system-operations-monitoring-and-logging-policy.md) | ✅ |
-| CC2.2 | Internally communicates information necessary for internal control, including objectives and responsibilities | Policies are documented (this package); formal internal communication/training program | This package's [policies/](policies/) | 🔴 Documented, but not yet formally communicated/attested by staff — Company action required |
+| CC2.2 | Internally communicates information necessary for internal control, including objectives and responsibilities | Policies are documented (this package); formal internal communication/training program | This package's [policies/](policies/) | 🔴 Documented, but not yet formally communicated/attested by staff — Company action required (the product can record per-person acceptance of published policies once the Company publishes this set there and requires it) |
 | CC2.3 | Communicates with external parties (customers, regulators) regarding matters affecting internal control | Customer-facing status/incident communication process; public documentation of the product's security posture | [README.md](../../README.md), [enterprise-integration.md](../enterprise-integration.md) describe technical behavior; formal customer notification process | 🔴 Organizational action required |
 
 ## CC3 — Risk Assessment

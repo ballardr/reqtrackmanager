@@ -364,6 +364,7 @@ export type CoreNotificationType =
   | "system_storage_alert"
   | "system_announcement"
   | "policy_published"
+  | "policy_acknowledgement_required"
   | "report_run_finished"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
@@ -2558,6 +2559,8 @@ export interface PolicySummary {
   current_version: number;
   has_unpublished_changes: boolean;
   updated_at: string | null;
+  /** Whether each person the policy applies to must accept its current version. */
+  requires_acknowledgement: boolean;
 }
 
 export interface PolicyVersion {
@@ -2581,6 +2584,8 @@ export interface PolicyWrite {
   title: string;
   body: PolicyBody;
   effective_from: string | null;
+  /** Omitted on replace: unchanged. */
+  requires_acknowledgement?: boolean;
 }
 
 /** The fields an organisation administrator sets: the audience too (empty: every member; omitted on replace: unchanged). */
@@ -2613,6 +2618,9 @@ export interface MemberPolicySummary {
   effective_from: string | null;
   version: number;
   published_at: string;
+  /** Whether the caller must accept this policy, and whether they have accepted this version. */
+  requires_acknowledgement: boolean;
+  acknowledged: boolean;
 }
 
 export interface MemberPolicy extends MemberPolicySummary {
@@ -2632,6 +2640,44 @@ export interface PublicPolicySummary {
 export interface PublicPolicy extends PublicPolicySummary {
   body: PolicyBody;
 }
+
+/** A required policy the caller has not accepted, with the text to read; `organization_id` is null for a server policy. */
+export interface PendingPolicy {
+  id: string;
+  organization_id: string | null;
+  organization_name: string | null;
+  title: string;
+  effective_from: string | null;
+  version: number;
+  published_at: string;
+  body: PolicyBody;
+}
+
+/** One person in a policy's acceptance status. */
+export interface PolicyAcceptanceRow {
+  user_id: string;
+  display_name: string;
+  email: string;
+  accepted_version: number | null;
+  accepted_at: string | null;
+  /** Whether the accepted version is the policy's current one. */
+  current: boolean;
+}
+
+/** Who has and has not accepted a policy's current version. */
+export interface PolicyAcceptanceStatus {
+  policy_id: string;
+  title: string;
+  version: number;
+  requires_acknowledgement: boolean;
+  required: number;
+  accepted: number;
+  truncated: boolean;
+  people: PolicyAcceptanceRow[];
+}
+
+/** The code the server returns with a refusal of a change while a required policy is unaccepted. */
+export const POLICY_ACCEPTANCE_REQUIRED_CODE = "policy_acknowledgement_required";
 
 // --- Project overview widgets (`backend/app/services/overview_widgets.py`) --------------------------
 

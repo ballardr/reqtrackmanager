@@ -141,6 +141,29 @@ flowchart LR
 - Policies are included when you export the organisation (the working copy, the audience and every published version) and arrive as **drafts** when the bundle is imported, so an import never publishes text in the new organisation's name before someone has reviewed it. The deployment's own policies are not part of a bundle.
 - Publishing, unpublishing and audience changes are recorded in the audit log with the policy's key, version and counts, never its text.
 
+### Requiring acceptance
+
+Switch on **Require acceptance** in the policy editor when members must accept a policy, for example a confidentiality agreement. It applies to everyone who may read the policy (the whole organisation, or the audience you chose, with group members counted individually).
+
+```mermaid
+sequenceDiagram
+    participant A as Administrator
+    participant M as Member
+    A->>M: Publish a policy that requires acceptance (notification sent)
+    M->>M: Reads the policy and presses Accept
+    Note over M: Until then: reading and searching work,<br/>creating or changing records is refused
+    A->>A: Acceptance view: who has accepted, export, reminder
+    A->>M: Publish a new version
+    M->>M: Asked to accept the new version
+```
+
+- A member who has not accepted sees a notice on every page and a dialog with the text when they sign in. Until they accept, they can read and search and can sign out, but they cannot create or change records.
+- **Accept** records the person, the version, a fingerprint of the text accepted and the time. It is a record of acceptance by an account, not a signature, and it can be made only from a signed-in session, never with an access token.
+- A policy with acceptance required shows **Acceptance required** in the list and an **Acceptance** action that lists everyone the policy applies to: accepted, accepted an earlier version, or not accepted. **Export** downloads the list as a CSV file, and **Send reminder** notifies everyone who has not accepted the current version (except you).
+- Publishing a new version asks everyone again. Publishing a required policy notifies the people who have not accepted it; this replaces the **Notify members** choice for that policy, so no one receives two messages.
+- Switching **Require acceptance** off takes effect at once, without publishing, so a mistaken requirement can be lifted immediately. Administrators can always reach the policy settings, even before they have accepted.
+- Acceptances are not included in the organisation export, because they identify the people of this deployment. The setting itself is included.
+
 ## Role management
 
 Under **Role management**, define custom roles and grant fixed, module, or custom roles to users and groups — see [Core Features → Role Management](../core-features/role-management.md).

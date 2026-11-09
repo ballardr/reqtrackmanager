@@ -6,13 +6,16 @@
  * status, version and effective date. An administrator can write or edit the working copy, publish it as a new
  * version with a change note, unpublish it, read the version history, and delete a policy that is not built in.
  *
+ * A policy that requires acceptance shows a badge and an **Acceptance** action: who has accepted its current version,
+ * an export and a reminder (`PolicyAcceptancesDialog`).
+ *
  * An organisation's list adds each policy's audience, the setting that allows links in its policies, and, on
  * publication, the choice to notify the people who may read it.
  *
  * Saving writes the working copy only; readers see the published version until it is published again. The server
  * enforces scope and the text rules; its message is shown in the dialog.
  */
-import { History, Pencil, Trash2 } from "lucide-react";
+import { ClipboardCheck, History, Pencil, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { api } from "../api/client";
@@ -30,6 +33,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { FormActions } from "./FormActions";
 import { CheckboxField, TextAreaField, ToggleField } from "./FormFields";
 import { Modal } from "./Modal";
+import { PolicyAcceptancesDialog } from "./PolicyAcceptancesDialog";
 import { PolicyEditor } from "./PolicyEditor";
 import { PrincipalBadge } from "./PrincipalBadge";
 import { Spinner } from "./Spinner";
@@ -106,6 +110,7 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
   const [unpublishing, setUnpublishing] = useState<PolicySummary | null>(null);
   const [removing, setRemoving] = useState<PolicySummary | null>(null);
   const [history, setHistory] = useState<Policy | null>(null);
+  const [acceptances, setAcceptances] = useState<PolicySummary | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const path = basePath(scope);
   const organisation = scope.kind === "organisation";
@@ -226,6 +231,7 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
                   <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
                     <Badge tone={POLICY_STATE_TONE[item.state]}>{POLICY_STATE_LABEL[item.state]}</Badge>
                     {item.current_version > 0 && item.has_unpublished_changes && <Badge tone="warning">{text.unpublishedChanges}</Badge>}
+                    {item.requires_acknowledgement && <Badge tone="accent">{text.acceptanceRequired}</Badge>}
                   </div>
                 )}
               </td>
@@ -257,6 +263,9 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
                       {item.state === "published" && (
                         <button className="btn" aria-label={text.unpublishAria(item.title)} onClick={() => setUnpublishing(item)}>{text.unpublish}</button>
                       )}
+                      {item.requires_acknowledgement && (
+                        <button className="btn" aria-label={text.acceptanceAria(item.title)} title={text.acceptanceAria(item.title)} onClick={() => setAcceptances(item)}><ClipboardCheck /></button>
+                      )}
                       <button className="btn" aria-label={`${text.history}: ${item.title}`} title={text.history} onClick={() => void openHistory(item)}><History /></button>
                       <button className="btn" aria-label={text.editAria(item.title)} title={text.editAria(item.title)} onClick={() => void openEditor(item)}><Pencil /></button>
                       {item.key === null && (
@@ -284,6 +293,7 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
           onPublish={(note, notifyMembers) => void publish(publishing, note, notifyMembers)}
         />
       )}
+      {acceptances && <PolicyAcceptancesDialog path={`${path}/${acceptances.id}`} title={acceptances.title} onClose={() => setAcceptances(null)} />}
       {history && <HistoryDialog title={history.title} versions={history.versions} onClose={() => setHistory(null)} />}
       {unpublishing && (
         <ConfirmDialog

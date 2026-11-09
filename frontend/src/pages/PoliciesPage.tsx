@@ -14,19 +14,39 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { MemberPolicy, MemberPolicySummary, PublicPolicy } from "../api/types";
+import type { MemberPolicy, MemberPolicySummary, PendingPolicy, PublicPolicy } from "../api/types";
 import { PolicyBodyView } from "../components/PolicyBodyView";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
 import { Spinner } from "../components/Spinner";
 import { useStrings } from "../context/TerminologyContext";
+import { useAcceptPolicy, usePolicyAcceptance } from "../hooks/usePolicyAcceptance";
 import { useMemberPolicies, usePublishedPolicies } from "../hooks/usePublishedPolicies";
 import { formatPlainDate } from "../utils/localDate";
 
 /** Which read a policy comes from: the public server policies, or the signed-in person's organisations. */
 type PolicySource = "server" | "organisation";
 
+/**
+ * The panel above a policy the person must accept: why, and the Accept action. Shown only for the version being read,
+ * so a text that changed meanwhile is not accepted unseen.
+ */
+function AcceptPanel({ policy }: { policy: PendingPolicy }) {
+  const text = useStrings().policies;
+  const accept = useAcceptPolicy();
+  return (
+    <section className="card stack" aria-label={text.acceptHeading}>
+      <strong>{text.acceptHeading}</strong>
+      <p style={{ margin: 0 }}>{text.acceptBody(policy.version)}</p>
+      <div className="row" style={{ justifyContent: "flex-end" }}>
+        <button className="btn btn-primary" onClick={() => void accept(policy)}>{text.accept}</button>
+      </div>
+    </section>
+  );
+}
+
 function SelectedPolicy({ policyId, source }: { policyId: string; source: PolicySource }) {
   const text = useStrings().policies;
+  const { pending } = usePolicyAcceptance();
   const [state, setState] = useState<{ id: string; policy: PublicPolicy | MemberPolicy | null; failed: boolean } | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -40,8 +60,10 @@ function SelectedPolicy({ policyId, source }: { policyId: string; source: Policy
   if (!state || state.id !== policyId) return <Spinner />;
   if (!state.policy) return <div role="alert">{text.notFound}</div>;
   const { policy } = state;
+  const toAccept = pending.find((p) => p.id === policy.id && p.version === policy.version);
   return (
     <article className="stack" aria-labelledby="policy-title">
+      {toAccept && <AcceptPanel policy={toAccept} />}
       <div className="stack" style={{ gap: "var(--space-1)" }}>
         <h2 id="policy-title" style={{ margin: 0 }}>{policy.title}</h2>
         <div className="text-muted">

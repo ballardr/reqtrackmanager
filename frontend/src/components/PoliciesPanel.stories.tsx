@@ -15,6 +15,9 @@ const DRAFT_ACCEPTABLE = buildPolicySummary({ id: "aup-1", title: "Acceptable us
 const EDITED_PUBLISHED = buildPolicySummary({
   id: "terms-1", title: "Terms of service", state: "published", current_version: 1, has_unpublished_changes: true,
 });
+const REQUIRED_AGREEMENT = buildPolicySummary({
+  id: "nda-1", title: "Confidentiality agreement", state: "published", current_version: 1, has_unpublished_changes: false, requires_acknowledgement: true,
+});
 const LIST = [UNSET_PRIVACY, PUBLISHED_DATA, DRAFT_ACCEPTABLE, EDITED_PUBLISHED];
 
 function mockReads(list: PolicySummary[] = LIST) {
@@ -28,6 +31,38 @@ function mockReads(list: PolicySummary[] = LIST) {
     });
   });
 }
+
+/** A policy that requires acceptance is marked and offers the acceptance view; one that does not offers neither. */
+export const ARequiredPolicyOffersAcceptance: Story = {
+  beforeEach: () => mockReads([...LIST, REQUIRED_AGREEMENT]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Acceptance required")).toBeInTheDocument();
+    await expect(canvas.getAllByText("Acceptance required")).toHaveLength(1);
+    await expect(canvas.getByRole("button", { name: "Acceptance of Confidentiality agreement" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Acceptance of Data policy" })).not.toBeInTheDocument();
+  },
+};
+
+/** The editor carries the requirement switch and sends it with the policy. */
+export const TheEditorSendsTheRequirement: Story = {
+  beforeEach: () => {
+    mockReads();
+    spyOn(api, "post").mockResolvedValue(buildPolicy());
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "New policy" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await userEvent.type(dialog.getByRole("textbox", { name: "Title" }), "Confidentiality agreement");
+    await userEvent.click(dialog.getByRole("switch", { name: "Require acceptance" }));
+    await userEvent.click(await dialog.findByRole("textbox", { name: "Policy text" }));
+    await userEvent.keyboard("Keep it to yourself.");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    const [, payload] = (api.post as unknown as { mock: { calls: [string, { requires_acknowledgement: boolean }][] } }).mock.calls[0];
+    await expect(payload.requires_acknowledgement).toBe(true);
+  },
+};
 
 /** Policy administration for the server: built-in policies first, then any others. */
 const meta: Meta<typeof PoliciesPanel> = {

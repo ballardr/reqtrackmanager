@@ -22,6 +22,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { ScoringScheme } from "../api/scoring";
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
+import { PolicyAcceptanceContext } from "../context/PolicyAcceptanceValue";
 import { ProjectContext } from "../context/ProjectContextValue";
 import { ThemeProvider } from "../context/ThemeContext";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
@@ -33,6 +34,7 @@ import type {
   PhasePlan,
   PhasePlans,
   MemberPolicy,
+  PendingPolicy,
   Policy,
   PolicyBody,
   PolicySummary,
@@ -250,7 +252,7 @@ export function buildPolicyBody(...paragraphs: string[]): PolicyBody {
 export function buildPolicySummary(overrides: Partial<PolicySummary> = {}): PolicySummary {
   return {
     id: "policy-1", key: null, title: "Acceptable use policy", state: "draft", effective_from: null, current_version: 0,
-    has_unpublished_changes: true, updated_at: "2026-11-09T01:00:00Z", ...overrides,
+    has_unpublished_changes: true, updated_at: "2026-11-09T01:00:00Z", requires_acknowledgement: false, ...overrides,
   };
 }
 
@@ -262,7 +264,16 @@ export function buildPolicy(overrides: Partial<Policy> = {}): Policy {
 export function buildMemberPolicy(overrides: Partial<MemberPolicy> = {}): MemberPolicy {
   return {
     id: "org-policy-1", organization_id: "org-1", organization_name: "Acme", title: "Access policy", effective_from: null, version: 1,
-    published_at: "2026-11-09T01:00:00Z", body: buildPolicyBody("Request access through your manager."), ...overrides,
+    published_at: "2026-11-09T01:00:00Z", requires_acknowledgement: false, acknowledged: false,
+    body: buildPolicyBody("Request access through your manager."), ...overrides,
+  };
+}
+
+/** A required policy the signed-in person has not accepted. */
+export function buildPendingPolicy(overrides: Partial<PendingPolicy> = {}): PendingPolicy {
+  return {
+    id: "org-policy-1", organization_id: "org-1", organization_name: "Acme", title: "Confidentiality agreement", effective_from: null,
+    version: 1, published_at: "2026-11-09T01:00:00Z", body: buildPolicyBody("Keep what you learn here to yourself."), ...overrides,
   };
 }
 
@@ -565,6 +576,15 @@ export function buildChangeEntry(overrides: Partial<ChangeEntry> = {}): ChangeEn
     detail: null,
     ...overrides,
   };
+}
+
+/** Wraps a story in `PolicyAcceptanceContext` with the policies the signed-in person must still accept. */
+export function withPolicyAcceptance(pending: PendingPolicy[], reload: () => Promise<void> = async () => undefined): Decorator {
+  return (Story) => (
+    <PolicyAcceptanceContext.Provider value={{ pending, reload }}>
+      <Story />
+    </PolicyAcceptanceContext.Provider>
+  );
 }
 
 /** Wraps a story in `AuthContext` with a fixture (or logged-out) user —

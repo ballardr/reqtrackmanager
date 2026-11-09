@@ -23,6 +23,8 @@ If you belong to more than one organisation, an organisation switcher appears wh
 
 When the deployment has published a policy (a privacy policy or a data policy, for example), a **Policies** link appears below the sign-in form, so you can read it before you have an account. Signed in, the same link is at the foot of the navigation rail. The page lists each published policy with its effective date and version. See [Server administration → Policies](./server-administration.md#policies) for how they are written. Once you are signed in, the page also lists, under your organisation's name, the policies your organisation has published for you; see [Administering an organisation → Policies](./administering-an-organisation.md#policies).
 
+If a policy requires your acceptance, a dialog with its text opens when you sign in and a notice stays at the top of every page until you accept. Until then you can read, search and sign out, but you cannot create or change records. Accept from the dialog or on the policy's page under **Policies**.
+
 ## With single sign-on (SSO)
 
 If your organisation has SSO configured, go to its branded login page (`/login/{org-slug}` — ask your org admin for the link) instead of the plain sign-in page. A "Sign in with SSO" button appears there, alongside the regular email/password form unless your org has hidden it:

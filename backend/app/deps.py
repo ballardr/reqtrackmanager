@@ -98,6 +98,20 @@ def _resolve_user_from_pat(token: str, db: Session, request: Request) -> User:
     return user
 
 
+def _require_policies_accepted(user: User, db: Session, request: Request) -> User:
+    """Refuses a request that changes data while the user has an unaccepted required policy.
+
+    See `services.policy_acknowledgements`: reading, searching, the policies, sign-in and sign-out stay open.
+
+    Raises:
+        HTTPException: 403 (`policy_acknowledgement_required`) for a blocked request.
+    """
+    from app.services.policy_acknowledgements import enforce_accepted
+
+    enforce_accepted(db, user, request.method, request.url.path)
+    return user
+
+
 def _resolve_user_from_token(token: str | None, db: Session, request: Request) -> User:
     """Decodes and validates a bearer token, returning the active user it names.
 
@@ -125,7 +139,7 @@ def _resolve_user_from_token(token: str | None, db: Session, request: Request) -
     if not token:
         raise _UNAUTHORIZED
     if token.startswith(PAT_PREFIX):
-        return _resolve_user_from_pat(token, db, request)
+        return _require_policies_accepted(_resolve_user_from_pat(token, db, request), db, request)
     claims = decode_access_token(token)
     if not claims or "sub" not in claims or claims.get("purpose") != "access":
         # Rejects 2FA challenge tokens (services/totp.py / routers/auth.py):
@@ -140,7 +154,7 @@ def _resolve_user_from_token(token: str | None, db: Session, request: Request) -
         # 2FA disable (see User.token_version) — reject even though the
         # signature/expiry are otherwise valid.
         raise _UNAUTHORIZED
-    return user
+    return _require_policies_accepted(user, db, request)
 
 
 def get_current_user(
@@ -247,7 +261,7 @@ def get_current_user_or_module_frame(module_key: str):
                     "project_id": frame_claims.get("project_id"),
                 }
                 db.info["module_frame_project_id"] = frame_claims.get("project_id")
-                return user
+                return _require_policies_accepted(user, db, request)
         return _resolve_user_from_token(token, db, request)
 
     return _dependency

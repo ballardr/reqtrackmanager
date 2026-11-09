@@ -7,6 +7,7 @@ Responsibilities:
 - `PolicyDocument`: one policy with its working copy (title and body being edited) and its publication state.
 - `PolicyDocumentVersion`: an append-only snapshot written each time a policy is published.
 - `PolicyAudience`: a user or organisation group an organisation policy is limited to (none: every member).
+- `PolicyAcknowledgement`: one person's acceptance of one published version of a policy that requires it.
 
 Design decisions:
 - One table with a nullable owner, the shape `Announcement.organization_id` uses, so server and organisation
@@ -16,6 +17,8 @@ Design decisions:
 - `body` is a validated rich-text document (a ProseMirror tree limited to a fixed vocabulary, see
   `services.policy_body`), never markup, so no stored value is rendered as HTML.
 - `key` names a built-in slot (`privacy`, `data`); other policies have no key. A slot is unique per owner.
+- `requires_acknowledgement` is a live setting of the policy (not a snapshot per version), so an administrator can switch
+  a requirement off at once without publishing; acceptances are kept per version and never edited.
 - `effective_from` is a person's calendar date (a plain date, no timezone); `published_at` is a past instant in UTC.
 """
 
@@ -26,7 +29,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -52,6 +55,7 @@ class PolicyDocument(UUIDPKMixin, TimestampMixin, Base):
         body: Working body (validated rich-text document).
         state: `published` while `current_version` is visible to readers; `draft` otherwise.
         effective_from: Date the policy takes effect, shown as chosen; NULL when not stated.
+        requires_acknowledgement: Whether each person it applies to must accept the current version.
         current_version: Number of the latest published version; 0 before the first publication.
         created_by: The author, kept for audit; never returned by a public endpoint.
     """
@@ -77,6 +81,7 @@ class PolicyDocument(UUIDPKMixin, TimestampMixin, Base):
     body: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     state: Mapped[PolicyState] = mapped_column(str_enum(PolicyState, 20), default=PolicyState.DRAFT)
     effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    requires_acknowledgement: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     current_version: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -129,3 +134,32 @@ class PolicyAudience(UUIDPKMixin, Base):
     )
     audience_type: Mapped[str] = principal_type_column()
     audience_id: Mapped[uuid.UUID] = principal_id_column()
+
+
+class PolicyAcknowledgement(UUIDPKMixin, Base):
+    """A person's acceptance of one published version of a policy; never changed after it is written.
+
+    Holds the person, the policy, the version, a hash of the text accepted and the time (UTC), and nothing else: no
+    address or device. It records a click by an account, not a signature.
+
+    Attributes:
+        policy_id: The policy.
+        version: The published version number accepted.
+        user_id: Who accepted it.
+        content_hash: SHA-256 of that version's title and body, so the record names the exact text.
+        acknowledged_at: When it was accepted (UTC).
+    """
+
+    __tablename__ = "policy_acknowledgements"
+    __table_args__ = (
+        UniqueConstraint("policy_id", "version", "user_id", name="uq_policy_acknowledgements_policy_version_user"),
+        Index("ix_policy_acknowledgements_user_id", "user_id"),
+    )
+
+    policy_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("policy_documents.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

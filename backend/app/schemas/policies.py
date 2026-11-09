@@ -30,12 +30,15 @@ class PolicyIn(BaseModel):
         title: Heading, one line; ignored for a slot, which keeps its fixed title.
         body: Rich-text document (validated against the allowed vocabulary).
         effective_from: Date the policy takes effect, as chosen by the author; `None` when not stated.
+        requires_acknowledgement: Whether each person it applies to must accept the current version; a key left out
+            of a replacement leaves the setting unchanged.
     """
 
     key: Literal["privacy", "data"] | None = None
     title: str = Field(default="", max_length=MAX_TITLE_LENGTH)
     body: dict[str, Any] = Field(default_factory=dict)
     effective_from: date | None = None
+    requires_acknowledgement: bool | None = None
 
 
 class PolicyPublishIn(BaseModel):
@@ -53,6 +56,7 @@ class PolicySummaryOut(BaseModel):
 
     Attributes:
         has_unpublished_changes: Whether the working copy differs from the published version.
+        requires_acknowledgement: Whether each person it applies to must accept the current version.
     """
 
     id: UUID | None
@@ -62,6 +66,7 @@ class PolicySummaryOut(BaseModel):
     effective_from: date | None
     current_version: int
     has_unpublished_changes: bool
+    requires_acknowledgement: bool = False
     updated_at: datetime | None
 
 
@@ -172,6 +177,8 @@ class MemberPolicySummaryOut(BaseModel):
         organization_id / organization_name: The owning organisation.
         version: Current published version number.
         published_at: When that version was published (UTC).
+        requires_acknowledgement: Whether the caller must accept it.
+        acknowledged: Whether the caller has accepted this version.
     """
 
     id: UUID
@@ -181,6 +188,8 @@ class MemberPolicySummaryOut(BaseModel):
     effective_from: date | None
     version: int
     published_at: datetime
+    requires_acknowledgement: bool = False
+    acknowledged: bool = False
 
 
 class MemberPolicyOut(MemberPolicySummaryOut):
@@ -193,3 +202,77 @@ class OrgPolicyAudienceLookupIn(BaseModel):
     """People and groups to name in the audience editor before the policy is saved."""
 
     audience: list[PrincipalRef] = Field(max_length=MAX_AUDIENCE)
+
+
+class PendingPolicyOut(BaseModel):
+    """A required policy the caller has not accepted, with the text to read and accept.
+
+    Attributes:
+        organization_id / organization_name: The owning organisation, or `None` for a server policy.
+        version: The version to accept.
+        published_at: When it was published (UTC).
+    """
+
+    id: UUID
+    organization_id: UUID | None
+    organization_name: str | None
+    title: str
+    effective_from: date | None
+    version: int
+    published_at: datetime
+    body: dict[str, Any]
+
+
+class AcknowledgeIn(BaseModel):
+    """Accepting a policy: the version the person read, so a text that changed meanwhile is not accepted unseen."""
+
+    version: int = Field(ge=1)
+
+
+class AcknowledgementOut(BaseModel):
+    """A recorded acceptance."""
+
+    policy_id: UUID
+    version: int
+    acknowledged_at: datetime
+
+
+class AcknowledgementStatusRowOut(BaseModel):
+    """One person in a policy's status view.
+
+    Attributes:
+        accepted_version: The latest version accepted, or `None`.
+        accepted_at: When it was accepted (UTC), or `None`.
+        current: Whether that is the policy's current version.
+    """
+
+    user_id: UUID
+    display_name: str
+    email: str
+    accepted_version: int | None
+    accepted_at: datetime | None
+    current: bool
+
+
+class AcknowledgementStatusOut(BaseModel):
+    """Who has and has not accepted a policy's current version.
+
+    Attributes:
+        required / accepted: Counts over everyone the policy applies to.
+        truncated: Whether `people` was cut at the response limit (the export carries every row).
+    """
+
+    policy_id: UUID
+    title: str
+    version: int
+    requires_acknowledgement: bool
+    required: int
+    accepted: int
+    truncated: bool
+    people: list[AcknowledgementStatusRowOut]
+
+
+class ReminderOut(BaseModel):
+    """The result of sending a reminder."""
+
+    notified: int

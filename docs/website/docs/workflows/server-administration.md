@@ -76,6 +76,7 @@ flowchart LR
 - **Version history** lists every published version. **Unpublish** removes a policy from the Policies page and keeps its versions; it can be published again. A policy that is not built in can also be deleted, with its versions.
 - Everything published is readable by anyone, without signing in, at `/policies`. A **Policies** link appears below the sign-in form and at the foot of the navigation rail while at least one policy is published. Drafts and unpublished policies are never shown, and while nothing is published the link is absent and `/policies` redirects to the sign-in page (or the project list when signed in).
 - Publishing and unpublishing are recorded in the audit log with the policy's key and version, never its text.
+- **Require acceptance** makes every person with an account accept the current version of the policy. Until they do, they can read and sign out but cannot create or change records. The **Acceptance** action lists who has and has not accepted, exports the list and sends reminders; it works as described in [Administering an organisation](./administering-an-organisation.md#requiring-acceptance). An organisation administrator cannot require acceptance of a server policy.
 
 ## Personal data in exports and imports
 

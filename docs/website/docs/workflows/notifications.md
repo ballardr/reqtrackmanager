@@ -32,3 +32,5 @@ See [Discussions, notifications, and audit](../concepts/discussions-notification
 ## Policies
 
 When your organisation's administrator publishes a policy and chooses **Notify members**, you receive a notification of the type *Policy published in your organisation* (if you may read that policy). Opening it goes to the [Policies page](./administering-an-organisation.md#policies). It follows your preferences for that type.
+
+When a policy requires your acceptance, you receive a notification of the type *A policy needs your acceptance* when it is published, when a new version is published and when an administrator sends a reminder. Opening it goes to the policy, where you can accept it. See [Requiring acceptance](./administering-an-organisation.md#requiring-acceptance).

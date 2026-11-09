@@ -2,7 +2,9 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import { buildMemberPolicy, buildPolicyBody, buildPublicPolicy, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
+import {
+  buildMemberPolicy, buildPendingPolicy, buildPolicyBody, buildPublicPolicy, buildUser, withAuth, withPolicyAcceptance, withRouter, withToast,
+} from "../testing/storybook-helpers";
 import { PoliciesPage } from "./PoliciesPage";
 
 const PRIVACY = buildPublicPolicy({ id: "p1", key: "privacy", title: "Privacy policy" });
@@ -112,5 +114,42 @@ export const SignedOutNeverReadsOrganisationPolicies: Story = {
   play: async ({ canvasElement }) => {
     await within(canvasElement).findByRole("heading", { name: "Privacy policy", level: 2 });
     await expect(api.get).not.toHaveBeenCalledWith("/api/v1/policies/mine");
+  },
+};
+
+/** A policy the person must accept shows the panel with Accept, and accepting posts the version being read. */
+export const ARequiredPolicyShowsTheAcceptPanel: Story = {
+  decorators: [withToast(), withPolicyAcceptance([buildPendingPolicy({ id: "org-policy-1", version: 1 })]), withAuth(buildUser()), withRouter("/policies", "/policies/:policyId?")],
+  beforeEach: () => {
+    const member = buildMemberPolicy({ id: "org-policy-1", title: "Confidentiality agreement", requires_acknowledgement: true });
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/public/policies") return [];
+      if (path === "/api/v1/policies/mine") return [member];
+      return member;
+    });
+    spyOn(api, "post").mockResolvedValue({ policy_id: "org-policy-1", version: 1, acknowledged_at: "2026-11-10T01:00:00Z" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Your acceptance is required")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Accept" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/policies/mine/org-policy-1/acknowledge", { version: 1 }));
+  },
+};
+
+/** A policy that is read but not pending (accepted, or not required) has no panel. */
+export const NoAcceptPanelWhenNothingIsPending: Story = {
+  decorators: [withPolicyAcceptance([]), withAuth(buildUser()), withRouter("/policies", "/policies/:policyId?")],
+  beforeEach: () => {
+    const member = buildMemberPolicy({ id: "org-policy-1", title: "Access policy" });
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/public/policies") return [];
+      if (path === "/api/v1/policies/mine") return [member];
+      return member;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("heading", { name: "Access policy", level: 2 })).toBeInTheDocument();
+    await expect(within(canvasElement).queryByText("Your acceptance is required")).not.toBeInTheDocument();
   },
 };

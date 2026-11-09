@@ -10,6 +10,7 @@ import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlura
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
 import { NavLabelProvider } from "../context/NavLabelContext";
 import { useNavLabeler } from "../context/NavLabelValue";
+import { PolicyAcceptanceProvider } from "../context/PolicyAcceptanceContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useClientConfig } from "../hooks/useClientConfig";
 import { useHasReviewsDue } from "../hooks/useHasReviewsDue";
@@ -27,6 +28,7 @@ import { NotificationBell } from "./NotificationBell";
 import { ReportRunsIndicator } from "./ReportRunsIndicator";
 import { NavRailLink } from "./NavRailLink";
 import { PoliciesLink } from "./PoliciesLink";
+import { PolicyAcceptNotice } from "./PolicyAcceptNotice";
 import { ProjectNavSection } from "./ProjectNavSection";
 import { Tooltip } from "./Tooltip";
 
@@ -78,7 +80,9 @@ export function Layout({ children }: { children: ReactNode }) {
       <BrandingProvider projectId={projectId}>
         <NavLabelProvider projectId={projectId}>
           <FavouritesProvider>
-            <LayoutShell>{children}</LayoutShell>
+            <PolicyAcceptanceProvider>
+              <LayoutShell>{children}</LayoutShell>
+            </PolicyAcceptanceProvider>
           </FavouritesProvider>
         </NavLabelProvider>
       </BrandingProvider>
@@ -197,6 +201,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   return (
     <div style={{ minHeight: "100%" }}>
       {user && <AnnouncementBanner organizationId={branding.organizationId} />}
+      {user && <PolicyAcceptNotice />}
       <header className="app-header" style={{ justifyContent: "space-between" }}>
         <Link
           to="/projects"

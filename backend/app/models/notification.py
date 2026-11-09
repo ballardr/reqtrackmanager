@@ -56,6 +56,8 @@ class NotificationType(str, enum.Enum):
     SYSTEM_ANNOUNCEMENT = "system_announcement"
     # An organisation policy published with "notify members" chosen (services/org_policies.py).
     POLICY_PUBLISHED = "policy_published"
+    # A policy that requires acceptance was published or a reminder was sent (services/policy_acknowledgements.py).
+    POLICY_ACKNOWLEDGEMENT_REQUIRED = "policy_acknowledgement_required"
     # A background custom report finished or failed (services/report_run_jobs.py).
     REPORT_RUN_FINISHED = "report_run_finished"
 

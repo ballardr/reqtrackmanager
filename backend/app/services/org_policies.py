@@ -245,8 +245,9 @@ def notify_audience(db: Session, row: PolicyDocument, version: PolicyDocumentVer
 def export_org(db: Session, organization_id: uuid.UUID) -> dict[str, list[dict[str, Any]]]:
     """The organisation's policies as an `org.json` section.
 
-    Each entry carries the working copy, the audience (by email or group name) and every published version. Authors and
-    publishers are not carried (kept in the source deployment's audit log).
+    Each entry carries the working copy, whether it requires acceptance, the audience (by email or group name) and every
+    published version. Acceptances are not carried (personal data of this
+    deployment's people), nor are authors and publishers (kept in the source deployment's audit log).
     """
     rows = policies.list_scope(db, organization_id)
     audiences = audience_of(db, [r.id for r in rows])
@@ -255,6 +256,7 @@ def export_org(db: Session, organization_id: uuid.UUID) -> dict[str, list[dict[s
         entries.append({
             "title": row.title, "body": row.body,
             "effective_from": row.effective_from.isoformat() if row.effective_from else None,
+            "requires_acknowledgement": row.requires_acknowledgement,
             "audience": [b for a in audiences[row.id] if (b := principal_to_bundle(db, a.type.value, a.id)) is not None],
             "versions": [
                 {
@@ -321,6 +323,7 @@ def import_org(
         row = PolicyDocument(
             organization_id=organization_id, key=None, title=title, body=body, state=PolicyState.DRAFT,
             effective_from=_date(entry.get("effective_from")), current_version=0, created_by=actor.id,
+            requires_acknowledgement=entry.get("requires_acknowledgement") is True,
         )
         db.add(row)
         db.flush()
