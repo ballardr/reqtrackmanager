@@ -4,18 +4,16 @@ import { expectTidyStatBlocks, loginAs, openProject, ORG_NAMES, PERSONAS, PROJEC
 import { createStandardWithVersion, selectFilterOption } from "./helpers";
 
 /**
- * Job to be done: the org-level Organisation Compliance View + Dashboard (§22/§23),
- * mounted as three flat `ResourceMenu` groups ("Compliance dashboard" /
- * "Compliance by standard" / "Outstanding compliance items") on the core
- * "Organisation Overview" page (`/orgs/:orgId/overview`) — see
+ * Job to be done: the org-level Organisation Compliance View + Dashboard (§22/§23): the compliance summary is a
+ * widget on the Organisation Overview's dashboard, and "Compliance by standard" / "Outstanding compliance items" are
+ * two flat `ResourceMenu` groups on the core "Organisation Overview" page (`/orgs/:orgId/overview`) — see
  * `frontend/src/modules/compliance/module.ts`'s `orgOverviewSections` for
  * how these moved off `OrgAdminPage.tsx` (where they originally lived, as
  * one combined "Compliance overview" group), and for
  * why that group's internal `Tabs` were collapsed into three flat
  * top-level groups instead (one navigation layer too many). This spec also
- * covers the headline gauges (`ComplianceOrgOverviewTiles.tsx`),
- * which surface directly in the page's own always-visible stats header —
- * no click into any group required.
+ * covers the summary widget (`OrgComplianceWidgets.tsx`), which the
+ * built-in dashboard shows with no click into any group required.
  *
  * Covers the read/drill-down path: author and publish a standard,
  * assign it to a project and assess a requirement Non-Compliant,
@@ -95,23 +93,17 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
 
-    // --- headline gauges surface directly in the Organisation
-    //     Overview's own always-visible stats header, no group click needed.
-    //     Labelled distinctly from the Dashboard group's own same-numbers
-    //     StatCards below (both render at once — the Dashboard group is
-    //     `OrgOverviewPage.tsx`'s default section).
+    // --- the compliance summary is a widget on the Organisation Overview's built-in dashboard (Compliance is enabled
+    //     for the organisation, so the built-in layout includes it): no group click needed.
     await page.goto("/org-overview");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
-    await expect(page.getByText("Overall org compliance")).toBeVisible();
-    await expect(page.getByText("Compliance standards in use")).toBeVisible();
-    await expect(page.getByText("Projects out of compliance")).toBeVisible();
+    await expect(page.getByText("Active compliance standards")).toBeVisible();
+    await expect(page.getByText("Overall compliance", { exact: true })).toBeVisible();
 
-    // --- Org-wide Dashboard: the non-compliant project count is a headline
+    // --- Compliance summary widget: the non-compliant project count is a headline
     // tile that drills through to "Compliance by standard"
     //     pre-filtered/pre-pivoted to exactly the projects it counted,
     //     rather than listing them inline on the tile itself.
-    await selectOrgOverviewGroup(page, "Compliance dashboard");
-    await expect(page.getByText("Active compliance standards")).toBeVisible();
     const nonCompliantTile = page.getByRole("link", { name: /Non-compliant projects/ });
     await expect(nonCompliantTile).toBeVisible();
     await nonCompliantTile.click();
@@ -125,16 +117,18 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await expect(page.getByRole("link", { name: new RegExp(reference) })).toBeVisible();
 
     // --- download the organisation-wide compliance report,
-    //     now behind the "Export" popover trigger (Principle 11).
-    await selectOrgOverviewGroup(page, "Compliance dashboard");
+    //     behind the "Export" popover trigger (Principle 11), in the title row of the Compliance sections.
+    await selectOrgOverviewGroup(page, "Compliance by standard");
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const pdfDownloadPromise = page.waitForEvent("download");
     await page.getByRole("button", { name: "Download PDF report" }).click();
     const pdfDownload = await pdfDownloadPromise;
-    expect(pdfDownload.suggestedFilename()).toContain("compliance-report.pdf");
+    expect(pdfDownload.suggestedFilename()).toContain("compliance-by-standard-report.pdf");
 
     // --- "Compliance by standard" group: the standard groups the project,
-    //     and drilling down opens the project's own Compliance page.
+    //     and drilling down opens the project's own Compliance page. The section is already open from the export step,
+    //     with the project pivot the summary tile linked to, so go through the Overview to open it fresh.
+    await selectOrgOverviewGroup(page, "Overview");
     await selectOrgOverviewGroup(page, "Compliance by standard");
 
     // This panel's own Export trigger carries its active Standard
@@ -383,7 +377,6 @@ test.describe("Compliance Module: org compliance view + dashboard", () => {
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
     await page.goto("/org-overview");
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click(); // this persona administers two organisations
-    await selectOrgOverviewGroup(page, "Compliance dashboard");
     await expect(page.locator(".grid-metrics").first()).toBeVisible();
     await expectTidyStatBlocks(page);
   });

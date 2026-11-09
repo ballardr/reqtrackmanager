@@ -234,3 +234,34 @@ export const OrganisationDefaultUsesBlocks: Story = {
 
 export const LightTheme: Story = { ...ShowsTheLayoutWithLiveFigures, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...ShowsTheLayoutWithLiveFigures, globals: { theme: "dark" } };
+
+/** A dashboard page of an organisation reads and writes its own endpoints, offers no project scope, and saves the layout. */
+export const DashboardTargetUsesTheDashboardEndpoints: Story = {
+  args: { target: { kind: "dashboard", organizationId: "org-1", dashboardId: "page-1" } },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs/org-1/dashboards/page-1") {
+        return { dashboard: { id: "page-1", name: "Board", is_default: false, restricted: false, viewers: [], can_manage: true }, scope: "this", widgets: two, built_in: false };
+      }
+      if (path === "/api/v1/orgs/org-1/dashboard-catalogue") return catalogue;
+      throw new Error(`unmocked GET: ${path}`);
+    });
+    spyOn(api, "post").mockImplementation(async (_path: string, body?: unknown) => ({
+      results: Object.fromEntries((body as { metrics: OverviewMetricSpec[] }).metrics.map((spec) => [
+        spec.id, { state: "ok", unit: "count", label: spec.metric, projects: 1, value: 4, breakdown: null },
+      ])),
+    }));
+    spyOn(api, "put").mockResolvedValue({});
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("2 of 3 widgets")).toBeInTheDocument();
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/orgs/org-1/dashboards/page-1/metrics", expect.anything()));
+    // A page has no project scope to choose and no default to return to.
+    await expect(canvas.queryByRole("combobox", { name: "Project scope" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Restore default" })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/orgs/org-1/dashboards/page-1/layout", expect.objectContaining({ scope: "this" })));
+    await expect(args.onSaved).toHaveBeenCalled();
+  },
+};

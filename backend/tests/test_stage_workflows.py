@@ -408,3 +408,45 @@ def test_requirements_report_the_phase_and_kind_of_their_target_stage(client, ad
         db.close()
     assert values["target_stage_phase"] == "Tendering"
     assert values["target_stage_phase_kind"] == "On hold"
+
+
+def test_a_workflow_reports_who_follows_it_without_naming_another_projects_stages(client, admin_token, org_id):
+    workflow = _make_workflow(client, admin_token, org_id)
+    mine = create_project(client, admin_token, org_id, "Usage Mine")
+    other = create_project(client, admin_token, org_id, "Usage Other")
+    for project, stage_name in ((mine, "Design stage"), (other, "Secret stage")):
+        resp = client.post(
+            f"/api/v1/projects/{project['id']}/stages", json={"name": stage_name, "workflow_id": workflow["id"]},
+            headers=auth_headers(admin_token),
+        )
+        assert resp.status_code == 201, resp.text
+
+    in_project = next(
+        w for w in client.get(_project_url(mine["id"]), headers=auth_headers(admin_token)).json() if w["id"] == workflow["id"]
+    )["used_by"]
+    assert in_project["stage_names"] == ["Design stage"]
+    assert (in_project["stage_count"], in_project["project_count"]) == (1, 1)
+
+    across = next(
+        w for w in client.get(_org_url(org_id), headers=auth_headers(admin_token)).json() if w["id"] == workflow["id"]
+    )["used_by"]
+    assert across["stage_names"] == []  # the organisation tier reports counts, never stage names
+    assert (across["stage_count"], across["project_count"]) == (2, 2)
+
+    unused = _make_workflow(client, admin_token, org_id, {"name": "Unused", "phases": [{"name": "Only", "kind": "open"}]})
+    assert unused["used_by"] == {"stage_names": [], "stage_count": 0, "track_count": 0, "project_count": 0}
+
+
+def test_the_stage_list_says_whether_the_caller_may_use_locked_phases(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "Lock Flag")
+    create_org_user(client, admin_token, org_id, "lock_flag_pa@example.com")
+    users = client.get(f"/api/v1/orgs/{org_id}/users", headers=auth_headers(admin_token)).json()
+    user_id = next(u["user_id"] for u in users if u["email"] == "lock_flag_pa@example.com")
+    client.post(
+        f"/api/v1/projects/{project['id']}/roles", json={"user_id": user_id, "role": "project_administrator"},
+        headers=auth_headers(admin_token),
+    )
+    administrator = login(client, "lock_flag_pa@example.com", "Password123!")
+    can_lock = lambda token: [s["can_lock"] for s in _stages(client, token, project["id"])]  # noqa: E731
+    assert can_lock(admin_token) == [True]
+    assert can_lock(administrator) == [False]

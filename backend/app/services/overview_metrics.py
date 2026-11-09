@@ -55,9 +55,11 @@ from app.modules.registry import (
     is_module_enabled,
 )
 from app.modules.registry import is_module_enabled_for_project as module_enabled_for_project
+from app.services.client_date import effective_today
 from app.services.project_counts import ProjectCounts, project_counts, project_stage_progress
 from app.services.project_scope import ProjectScope, gate_open
 from app.services.record_counts import count_record_type, count_records_by_type, readable_provider
+from app.services.stage_phase_plans import phase_attention_counts
 from app.services.tags import TagFilter
 
 #: Most references one request may carry.
@@ -82,6 +84,15 @@ RECORD_COUNT_KEY = "record_count"
 ScopeName = Literal["this", "parents", "children", "both"]
 
 _log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PhaseAttention:
+    """One project's scheduled phases that are overdue or start soon (`id` is the project id, as `collect` needs)."""
+
+    id: uuid.UUID
+    overdue: int
+    upcoming: int
 
 
 class MetricUnavailable(Exception):
@@ -153,6 +164,21 @@ def _change_requests_by_outcome(ctx: MetricContext, params: Mapping[str, Any]) -
     return OverviewMetricValue(breakdown=rows)
 
 
+def _phase_attention(index: int) -> Callable[[MetricContext, Mapping[str, Any]], OverviewMetricValue]:
+    """An `evaluate` for the scheduled phases that are overdue (`0`) or start soon (`1`) across the scope's projects."""
+
+    def evaluate(ctx: MetricContext, params: Mapping[str, Any]) -> OverviewMetricValue:
+        today = effective_today()
+        found = ctx.project_scope.collect(
+            ctx.db, ctx.project, ctx.user.id, "requirement",
+            lambda pid: [PhaseAttention(pid, *phase_attention_counts(ctx.db, ctx.db.get(Project, pid) or ctx.project, today))],
+            id_of=lambda row: row.id,
+        )
+        return OverviewMetricValue(value=float(sum((row.overdue, row.upcoming)[index] for row in found)))
+
+    return evaluate
+
+
 def _stage_progress(ctx: MetricContext, params: Mapping[str, Any]) -> OverviewMetricValue:
     """Each stage's completion percentage; always the request project's own stages."""
     rows = project_stage_progress(ctx.db, ctx.project.id, ctx.own().requirements)
@@ -192,6 +218,8 @@ def core_metrics() -> dict[str, OverviewMetric]:
     return {
         "requirement_count": OverviewMetric("Requirements", "count", _scalar(lambda c: sum(x.requirements for x in c.counts()))),
         "requirement_completed_percent": OverviewMetric("Requirements complete", "percent", _scalar(_percent_complete)),
+        "phases_overdue": OverviewMetric("Phases overdue", "count", _phase_attention(0)),
+        "phases_upcoming": OverviewMetric("Phases starting soon", "count", _phase_attention(1)),
         "file_count": OverviewMetric("Files", "count", _scalar(lambda c: sum(x.files for x in c.counts()))),
         "change_requests_proposed": OverviewMetric("Change requests proposed", "count", _scalar(lambda c: sum(x.proposed for x in c.counts()))),
         "change_requests_approved": OverviewMetric("Change requests approved", "count", _scalar(lambda c: sum(x.approved for x in c.counts()))),

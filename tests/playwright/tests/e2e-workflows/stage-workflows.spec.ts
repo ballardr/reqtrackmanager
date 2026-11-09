@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
-  apiHeaders, createDisposableProject, ensureExpanded, installCleanupHook, loginAs, moveStageToPhase, onCleanup, ORG_NAMES,
+  apiHeaders, createDisposableProject, ensureExpanded, ensureRowExpanded, installCleanupHook, loginAs, moveStageToPhase, onCleanup, ORG_NAMES,
   PERSONAS, selectOrgAdminGroup,
 } from "./helpers";
 
@@ -54,8 +54,27 @@ test.describe("stage workflows", () => {
       await dialog.getByRole("textbox", { name: "Phase name 3" }).fill("Contract awarded");
       await dialog.getByRole("combobox", { name: "Kind 3" }).selectOption({ label: "Locked" });
       await dialog.getByRole("button", { name: "Save" }).click();
-      await expect(page.getByText(workflowName, { exact: true })).toBeVisible();
-      await expect(page.getByText("Contract awarded · Locked")).toBeVisible();
+      // With more than one workflow, each is a closed row: named, with its step count, phases hidden until opened.
+      const toggle = page.getByRole("button", { name: new RegExp(`^${workflowName}`) }).and(page.locator("[aria-expanded]"));
+      await expect(toggle).toContainText("3 steps");
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("list", { name: `Phases of ${workflowName}` })).toHaveCount(0);
+      const saved = page.waitForResponse((r) => r.url().includes("/auth/me/preferences") && r.request().method() === "PATCH");
+      await ensureRowExpanded(page, workflowName);
+      await saved;
+      // The choice is kept for this person across a reload.
+      await page.reload();
+      await selectOrgAdminGroup(page, "Projects & workflow");
+      await ensureExpanded(page, "Stage workflows");
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      // The phases read as an ordered list of steps: names in order, the kind beside each, the first marked as the start.
+      const steps = page.getByRole("list", { name: `Phases of ${workflowName}` }).getByRole("listitem");
+      await expect(steps).toHaveCount(3);
+      await expect(steps.nth(0)).toContainText("Scoping");
+      await expect(steps.nth(0)).toContainText("Starting phase");
+      await expect(steps.nth(2)).toContainText("Contract awarded");
+      await expect(steps.nth(2)).toContainText("Locked");
+      await expect(page.getByText("In use", { exact: true })).toHaveCount(0);
     });
 
     await test.step("a stage follows it, and a phase of kind locked baselines the requirements", async () => {
@@ -72,7 +91,7 @@ test.describe("stage workflows", () => {
         headers, data: { name: `Build ${stamp}`, workflow_id: workflowId },
       })).json();
 
-      await page.goto(`/projects/${project.projectId}/admin/structure`);
+      await page.goto(`/projects/${project.projectId}/admin/stagesPhases`);
       const phase = page.getByRole("combobox", { name: `Phase of Build ${stamp}` });
       await phase.selectOption({ label: "Tendering" });
       await expect(phase.locator("option:checked")).toHaveText("Tendering");
@@ -88,7 +107,7 @@ test.describe("stage workflows", () => {
     });
 
     await test.step("a project hides an organisation workflow and restores it", async () => {
-      await page.goto(`/projects/${project.projectId}/admin/structure`);
+      await page.goto(`/projects/${project.projectId}/admin/stagesPhases`);
       await ensureExpanded(page, "Stage workflows");
       await page.getByRole("button", { name: `Hide workflow ${workflowName}` }).click();
       await page.getByRole("dialog").getByRole("button", { name: "Hide" }).click();

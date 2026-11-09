@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { ArtefactLinkCandidate, ArtefactLinkTypeOption } from "../api/artefactLinks";
 import type { Category, Component, ProjectStage } from "../api/types";
 import {
-  buildFileAsset, buildProjectListItem, buildRequirement, buildUser,
+  buildFileAsset, buildProjectListItem, buildRequirement, buildStageWorkflow, buildUser,
   withRouter, withStatefulAuth, withTerminology, withToast,
 } from "../testing/storybook-helpers";
 import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
@@ -55,6 +55,7 @@ function mockRequirementsListApis(
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles === "manager" ? ["project_manager"] : ["member"] })];
     if (path.includes("/components")) return comps;
     if (path.includes("/categories")) return cats;
+    if (path.endsWith("/stage-workflows")) return [buildStageWorkflow()];
     if (path.includes("/stages")) return stages;
     if (path.includes("custom-fields")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
@@ -763,3 +764,15 @@ export const BulkArchivePartialFailureShowsToast: Story = {
 
 export const LightTheme: Story = { ...TilesView, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...TilesView, globals: { theme: "dark" } };
+
+/** A requirement shows the phase that governs it beside its target version, and the Phase filter sends the phase name. */
+export const ShowsAndFiltersByGoverningPhase: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = await canvas.findByRole("combobox", { name: "Phase" });
+    await expect(within(select).getByRole("option", { name: "Review" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "Review");
+    await waitFor(() => expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("phase=Review")));
+  },
+};

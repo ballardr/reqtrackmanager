@@ -87,7 +87,7 @@ test.describe("stage review deadlines and completion", () => {
     const pmHeaders = { Authorization: `Bearer ${await page.evaluate(() => localStorage.getItem("reqtrack_token"))}` };
     await openProject(page, PROJECT_NAMES.alpha2);
     const projectId = page.url().match(/projects\/([0-9a-f-]+)/)![1];
-    structureUrl = `/projects/${projectId}/admin/structure`;
+    structureUrl = `/projects/${projectId}/admin/stagesPhases`;
     const { organization_id: orgId } = await (await page.request.get(`${API}/projects/${projectId}`, { headers: pmHeaders })).json();
     const users: { user_id: string; email: string }[] = await (
       await page.request.get(`${API}/orgs/${orgId}/users`, { headers: pmHeaders })
@@ -154,7 +154,7 @@ test.describe("stage review deadlines and completion", () => {
       });
       const memberToken = (await login.json()).access_token;
       const resp = await moveStageToPhase(
-        page.request, { Authorization: `Bearer ${memberToken}` }, projectId, stageId, "Approved",
+        page.request, { Authorization: `Bearer ${memberToken}` }, projectId, stageId, "Approved", false, pmHeaders,
       );
       expect(resp.status()).toBe(403);
     });

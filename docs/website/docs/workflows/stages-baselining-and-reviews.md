@@ -6,7 +6,7 @@ sidebar_position: 6
 
 ## Viewing a project's stages
 
-**Project Admin → Structure** shows a project's stage sequence (e.g. Scoping → Development → Hardening).
+**Project Admin → Workflows and phases** shows a project's stage sequence (e.g. Scoping → Development → Hardening).
 
 | Project stages |
 | --- |

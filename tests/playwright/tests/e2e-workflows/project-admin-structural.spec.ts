@@ -46,7 +46,8 @@ async function openStructuralProject(page: Page, label: string) {
   );
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
   await page.goto(`/projects/${projectId}/admin`);
-  await selectProjectAdminGroup(page, "Structure");
+  // Stages are under "Workflows and phases"; components and categories stay under "Structure".
+  await selectProjectAdminGroup(page, label === "Stages" ? "Workflows and phases" : "Structure");
   return { projectId, projectName, authHeaders };
 }
 
@@ -181,7 +182,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       // (`selectProjectAdminGroup` only clicks if not already active),
       // kept for robustness against a future reversion.
       await page.reload();
-      await selectProjectAdminGroup(page, "Structure");
+      await selectProjectAdminGroup(page, "Workflows and phases");
 
       // Stage order is Milestone 1(0)/Milestone 2(1).
       await stagesSection.getByTitle("Delete this stage").nth(0).click();

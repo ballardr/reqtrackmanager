@@ -3,12 +3,12 @@ import type { ReactNode } from "react";
 /**
  * One non-clickable stat card — a big number plus a label, with optional
  * `children` for a drill-down list/detail underneath (e.g. the actual
- * projects a count refers to). Extracted from `modules/compliance/OrgComplianceDashboard.tsx`'s own
+ * projects a count refers to). Extracted from `modules/compliance/OrgComplianceWidgets.tsx`'s own
  * previously-local `StatCard`, which needed a core-owned home once
  * `pages/OrgOverviewPage.tsx`'s stats header needed the identical shape —
  * a core page must never import a component from `modules/compliance/`
  * ("Modular Feature System
- * Boundary" section). `OrgComplianceDashboard.tsx` now imports this shared
+ * Boundary" section). `OrgComplianceWidgets.tsx` now imports this shared
  * version too, rather than keeping a second, duplicate implementation.
  *
  * Deliberately distinct from `MetricTile` (`components/MetricTile.tsx`):
@@ -19,7 +19,7 @@ import type { ReactNode } from "react";
  * Renders value-above-label, centered — the same visual order/alignment as
  * `MetricTile`, not a mirror-image layout — because the two are used
  * interchangeably in the same `.grid.grid-metrics` row (e.g.
- * `OrgComplianceDashboard.tsx`'s top grid mixes both), and a label-above,
+ * `OrgComplianceWidgets.tsx`'s top grid mixes both), and a label-above,
  * left-aligned `StatCard` sitting next to a value-above, centered
  * `MetricTile` reads as visually broken even though each is internally
  * consistent on its own.

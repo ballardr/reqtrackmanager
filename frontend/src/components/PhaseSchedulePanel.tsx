@@ -20,9 +20,11 @@ import type {
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useDisclosureState } from "../hooks/useDisclosureState";
 import { useMutation } from "../hooks/useMutation";
 import { localToday } from "../utils/localDate";
 import { Badge } from "./Badge";
+import { DisclosureRow } from "./DisclosureRow";
 import { LabeledSelect } from "./LabeledSelect";
 import { PhaseRangeEditor } from "./PhaseRangeEditor";
 import { PrincipalFormField } from "./PrincipalFormField";
@@ -66,6 +68,8 @@ export function PhaseSchedulePanel({
   const [editing, setEditing] = useState<{ stage: ProjectStage; componentId: string | null; phaseId: string; phaseName: string } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const base = `/api/v1/projects/${projectId}`;
+  // One stage is shown open; several start closed, each with its current phase on the row.
+  const disclosure = useDisclosureState("phaseSchedule:stages", stages.length > 1);
 
   const reload = useCallback(async () => {
     try {
@@ -147,8 +151,11 @@ export function PhaseSchedulePanel({
         const rowFor = (phaseId: string): PhasePlan | undefined =>
           plans.plans.find((p) => p.stage_id === stage.id && p.component_id === componentId && p.phase_id === phaseId);
         return (
-          <div key={stage.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
-            <strong>{stage.name}</strong>
+          <DisclosureRow
+            key={stage.id} title={stage.name}
+            summary={track?.not_applicable ? strings.componentPhases.notApplicableBadge : phases.find((p) => p.id === currentPhaseId)?.name}
+            collapsed={disclosure.isCollapsed(stage.id)} onToggle={() => disclosure.toggle(stage.id)}
+          >
             <PrincipalFormField
               label={strings.phaseSchedule.owner} help={strings.help.phaseScheduleOwner} ariaLabel={strings.phaseSchedule.ownerAria(stage.name)}
               orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
@@ -220,7 +227,7 @@ export function PhaseSchedulePanel({
                 </tbody>
               </table>
             )}
-          </div>
+          </DisclosureRow>
         );
       })}
       {editing && (

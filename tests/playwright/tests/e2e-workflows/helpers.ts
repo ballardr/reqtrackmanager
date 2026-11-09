@@ -119,6 +119,19 @@ export async function ensureExpanded(page: Page, sectionTitle: string): Promise<
 }
 
 /**
+ * Opens one row of a collapsible list (`DisclosureRow`: a workflow, a stage's schedule) when it is closed, and returns
+ * once it is open. The row's toggle is named by the row title followed by its summary, so it is matched by prefix;
+ * a row's own action buttons ("Edit workflow X") do not begin with the title.
+ */
+export async function ensureRowExpanded(page: Page, rowTitle: string): Promise<void> {
+  const escaped = rowTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const toggle = page.getByRole("button", { name: new RegExp(`^${escaped}`) }).and(page.locator("[aria-expanded]"));
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+}
+
+/**
  * Opens one org group's `SidePanel` on Org Admin's Groups section
  * (`DirectoryTable`, 2026-08-31 — replaces the
  * earlier always-expanded `CollapsibleSection` accordion this helper
@@ -518,13 +531,15 @@ export async function apiHeaders(
  */
 export async function moveStageToPhase(
   request: APIRequestContext, headers: Record<string, string>, projectId: string, stageId: string, phaseName: string,
-  cascadeToRequirements = false,
+  cascadeToRequirements = false, lookupHeaders: Record<string, string> = headers,
 ) {
+  // The stage and workflow are looked up as `lookupHeaders` (default: the caller), so a refusal can be asserted for a
+  // caller with no access to the project at all.
   const base = `http://localhost:8000/api/v1/projects/${projectId}`;
-  const stages: { id: string; workflow_id: string }[] = await (await request.get(`${base}/stages`, { headers })).json();
+  const stages: { id: string; workflow_id: string }[] = await (await request.get(`${base}/stages`, { headers: lookupHeaders })).json();
   const stage = stages.find((s) => s.id === stageId)!;
   const workflows: { id: string; phases: { id: string; name: string }[] }[] = await (
-    await request.get(`${base}/stage-workflows`, { headers })
+    await request.get(`${base}/stage-workflows`, { headers: lookupHeaders })
   ).json();
   const phase = workflows.find((w) => w.id === stage.workflow_id)!.phases.find((p) => p.name === phaseName)!;
   return request.post(`${base}/stages/${stageId}/transition`, {

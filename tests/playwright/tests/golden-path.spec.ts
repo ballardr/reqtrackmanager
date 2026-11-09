@@ -116,8 +116,8 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("approve stage locks the requirement", async () => {
     await page.getByText("Project Admin").click();
-    // Project stages now lives inside the merged "Structure" tab.
-    await selectProjectAdminGroup(page, "Structure");
+    // Project stages live under the "Workflows and phases" group, with workflows, component phases and the schedule.
+    await selectProjectAdminGroup(page, "Workflows and phases");
     // Moves between the workflow's phases are free; entering the locked "Approved" phase writes the baseline.
     const phase = page.getByRole("combobox", { name: "Phase of Scoping" });
     await phase.selectOption({ label: "Review" });

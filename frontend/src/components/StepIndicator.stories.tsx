@@ -31,3 +31,18 @@ export const SecondStep: Story = {
     await expect(within(list).getByText("Choose a report").closest("li")).not.toHaveAttribute("aria-current");
   },
 };
+
+/** Vertical, with a detail under each step and none marked current: a list that only describes an order. */
+export const VerticalWithDetails: Story = {
+  args: {
+    steps: ["Scoping", "Approved", "Completed"], current: undefined, vertical: true, label: "Phases of Standard",
+    details: ["Starting phase", "Locked", undefined],
+  },
+  play: async ({ canvasElement }) => {
+    const items = within(within(canvasElement).getByRole("list", { name: "Phases of Standard" })).getAllByRole("listitem");
+    await expect(items).toHaveLength(3);
+    await expect(within(items[0]).getByText("Starting phase")).toBeInTheDocument();
+    await expect(within(items[1]).getByText("Locked")).toBeInTheDocument();
+    for (const item of items) await expect(item).not.toHaveAttribute("aria-current");
+  },
+};

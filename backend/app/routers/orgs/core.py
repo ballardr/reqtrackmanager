@@ -21,32 +21,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import OrgRole
-from app.models.file import FileAsset, RequirementActionFile, RequirementFile
 from app.models.organization import Organization, UserOrgRole
 from app.models.project import Project
-from app.models.requirement import Requirement
-from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import get_org_creation_choices, memoize_module_state, run_on_org_created_hooks
-
-# `_accessible_project_ids` (the overview-stats endpoint reuses the
-# exact same project-visibility computation `GET /projects` already uses,
-# rather than duplicating it here) — this codebase already has precedent
-# for importing an underscore-prefixed helper across a module boundary
-# (`routers/projects.py` itself imports `_direct_project_member_ids_base`/
-# `_descendant_org_group_ids` from `services/rbac.py`) own spec offers "move it to a shared service
-# (or import it)" as the two options and this repo has no existing
-# convention of one router importing from another, but moving ~150 lines of
-# heavily-documented, actively-relied-on RBAC logic out of `projects.py`
-# for one new read-only endpoint is a disproportionate risk for this
-# change — importing it is the lower-risk option.
-from app.routers.projects.core import _accessible_project_ids
 from app.schemas.org import (
     MergeConflictOut,
     OrganizationCreate,
@@ -67,6 +51,7 @@ from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.downloads import filename_safe
 from app.services.org_deletion import delete_organization_cascade
 from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
+from app.services.org_overview_stats import org_overview_stats
 from app.services.rbac import get_effective_org_roles, memoize_user_lookups, require_org_role, require_server_admin
 from app.services.report_starters import add_starter_layouts
 from app.services.stage_workflows import seed_stage_workflow
@@ -504,106 +489,7 @@ def get_org_overview_stats(
     Agent — previously archived projects were counted, so a member's
     "Projects" figure disagreed with their own project list.)
     """
-    org_roles = get_effective_org_roles(db, current_user.id, organization_id)
-    sees_full_totals = current_user.is_server_admin or OrgRole.ORG_ADMIN in org_roles
-
-    member_count = db.scalar(
-        select(func.count(func.distinct(User.id)))
-        .select_from(User)
-        .join(UserOrgRole, UserOrgRole.user_id == User.id)
-        .where(UserOrgRole.organization_id == organization_id, User.is_archived.is_(False))
-    ) or 0
-
-    if sees_full_totals:
-        project_count = db.scalar(
-            select(func.count()).select_from(Project).where(
-                Project.organization_id == organization_id, Project.is_archived.is_(False)
-            )
-        ) or 0
-        requirement_count = db.scalar(
-            select(func.count())
-            .select_from(Requirement)
-            .join(Project, Project.id == Requirement.project_id)
-            .where(
-                Project.organization_id == organization_id, Project.is_archived.is_(False),
-                Requirement.is_archived.is_(False),
-            )
-        ) or 0
-        total_file_size_bytes = db.scalar(
-            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
-                FileAsset.organization_id == organization_id
-            )
-        ) or 0
-    else:
-        accessible_ids = _accessible_project_ids(db, current_user.id)
-        org_project_ids = set(
-            db.scalars(
-                select(Project.id).where(
-                    Project.organization_id == organization_id, Project.id.in_(accessible_ids)
-                )
-            ).all()
-        ) if accessible_ids else set()
-        active_project_ids = set(
-            db.scalars(select(Project.id).where(Project.id.in_(org_project_ids), Project.is_archived.is_(False))).all()
-        ) if org_project_ids else set()
-        project_count = len(active_project_ids)
-        requirement_count = (
-            db.scalar(select(func.count()).select_from(Requirement).where(
-                Requirement.project_id.in_(active_project_ids), Requirement.is_archived.is_(False),
-            ))
-            if active_project_ids
-            else 0
-        ) or 0
-
-        # Distinct files this member can account for: this org's own shared
-        # resources (`is_org_resource`, visible to any member regardless of
-        # per-project access — same as `GET /{organization_id}/resources`)
-        # plus files attached to a requirement/action within their
-        # accessible-project set. A file could match both a requirement
-        # attachment and (if it's also an org resource) the first clause —
-        # `union()` de-duplicates by file id so it's never double-counted.
-        #
-        # Known, deliberate gap: `CommentFile` (a file attached to a
-        # `ReviewComment`, C-M-02's discussion-thread attachment path) is
-        # NOT included here. `ReviewComment.target_id` is polymorphic
-        # (`ReviewTargetType.REQUIREMENT`/`ACTION`/`CHANGE_REQUEST`, no FK),
-        # so resolving it back to a project id for scoping would need a
-        # three-way branch per target type — a disproportionate amount of
-        # complexity for what these comment-thread attachments actually
-        # weigh, versus the admin branch above (a plain per-org sum, which
-        # *does* include every `CommentFile`'s underlying `FileAsset`
-        # regardless of type). This makes a scoped member's own total a
-        # strict undercount, never an over-exposure — the safe direction
-        # for a visibility boundary — but it is a real, known accuracy gap:
-        # revisit if comment attachments turn out to matter for this figure.
-        org_resource_file_ids = select(FileAsset.id.label("file_id")).where(
-            FileAsset.organization_id == organization_id, FileAsset.is_org_resource.is_(True)
-        )
-        if org_project_ids:
-            requirement_ids = select(Requirement.id).where(Requirement.project_id.in_(org_project_ids))
-            action_ids = select(RequirementAction.id).where(RequirementAction.project_id.in_(org_project_ids))
-            file_ids_via_requirement = select(RequirementFile.file_id).where(
-                RequirementFile.requirement_id.in_(requirement_ids)
-            )
-            file_ids_via_action = select(RequirementActionFile.file_id).where(
-                RequirementActionFile.action_id.in_(action_ids)
-            )
-            distinct_file_ids = org_resource_file_ids.union(file_ids_via_requirement, file_ids_via_action).subquery()
-        else:
-            distinct_file_ids = org_resource_file_ids.subquery()
-        total_file_size_bytes = db.scalar(
-            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
-                FileAsset.id.in_(select(distinct_file_ids.c.file_id))
-            )
-        ) or 0
-
-    return OrgOverviewStatsOut(
-        project_count=project_count,
-        requirement_count=requirement_count,
-        member_count=member_count,
-        total_file_size_bytes=total_file_size_bytes,
-        is_full_org_total=sees_full_totals,
-    )
+    return org_overview_stats(db, current_user, organization_id)
 
 
 @router.get("/{organization_id}/projects", response_model=list[OrgProjectSummaryOut])

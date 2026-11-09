@@ -40,7 +40,7 @@ export function ProjectOverviewPage() {
   const [children, setChildren] = useState<ProjectListItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Each figure is read in its widget's project scope, else the overview's (set in "Customise overview").
-  const metrics = useOverviewMetrics(projectId, layout?.widgets ?? null, layout?.scope ?? "this", strings.common.error);
+  const metrics = useOverviewMetrics(projectId ? `/api/v1/projects/${projectId}/overview-metrics` : undefined, layout?.widgets ?? null, layout?.scope ?? "this", strings.common.error);
 
   useResetOnChange([projectId], () => setLoadError(null));
 

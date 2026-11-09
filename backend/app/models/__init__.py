@@ -31,6 +31,7 @@ from app.models.generated_report import GeneratedReport
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
+from app.models.org_dashboard import OrganizationDashboard, OrganizationDashboardViewer
 from app.models.organization import (
     Organization,
     OrgGroup,
@@ -156,6 +157,8 @@ __all__ = [
     "ProjectStatusDefinition",
     "ComponentStageState",
     "StagePhasePlan",
+    "OrganizationDashboard",
+    "OrganizationDashboardViewer",
     "StageWorkflow",
     "StageWorkflowPhase",
     "StageReviewResponse",

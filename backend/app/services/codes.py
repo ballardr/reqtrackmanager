@@ -22,6 +22,9 @@ Design decisions:
   ambiguous with a project's own.
 - The organisation row is locked while a code is generated, so two projects
   created at once cannot be given the same code.
+- The organisation may lock project codes after creation (`CodePolicy.locked`); `change_project_code` is the one
+  place that enforces it, so every route that changes a code is covered, and only an organisation administrator
+  may still change one.
 - The stored `unique_code` of a record never changes; qualification is applied
   when a code is displayed or looked up.
 - Output with no viewer (a report, an export) uses `display_code`, the server twin of the
@@ -66,6 +69,7 @@ from app.services.rbac import (
     get_effective_org_roles,
     get_effective_permissions,
     get_effective_project_roles,
+    is_org_admin,
     permission_satisfied,
 )
 
@@ -171,8 +175,30 @@ def assign_project_code(db: Session, organization_id: uuid.UUID, name: str, requ
     return validate_project_code(db, org, requested)
 
 
-def change_project_code(db: Session, project: Project, requested: str) -> str:
+def project_code_locked_for(db: Session, project: Project, user_id: uuid.UUID) -> bool:
+    """Whether the organisation's lock stops `user_id` changing `project`'s code.
+
+    The lock stops everyone except an organisation administrator of the project's organisation (a
+    project manager, a project administrator and a server administrator included). Under automatic
+    assignment nobody can change a code, so the lock is moot there and this reports `False`.
+    """
+    org = db.get(Organization, project.organization_id)
+    if org is None:
+        return False
+    policy = get_policy(org)
+    return policy.locked and policy.assignment == "manual" and not is_org_admin(db, user_id, project.organization_id)
+
+
+def change_project_code(db: Session, project: Project, requested: str, actor_id: uuid.UUID) -> str:
     """Validates a new code for an existing project; only allowed under manual assignment.
+
+    Args:
+        db: The session.
+        project: The project whose code would change.
+        requested: The proposed code.
+        actor_id: The user making the change; the organisation's lock (`CodePolicy.locked`) applies to
+            everyone but an organisation administrator. This is the one function every route that
+            changes a code goes through, so the lock cannot be bypassed on one of them.
 
     Returns:
         The normalised code (unchanged input is returned as is, without re-checking the policy,
@@ -180,6 +206,7 @@ def change_project_code(db: Session, project: Project, requested: str) -> str:
 
     Raises:
         HTTPException: 400 if codes are assigned automatically or the code breaks the policy;
+            403 if the codes are locked and the actor is not an organisation administrator;
             409 if it is taken.
     """
     org = _lock_organization(db, project.organization_id)
@@ -187,6 +214,11 @@ def change_project_code(db: Session, project: Project, requested: str) -> str:
         return project.code
     if get_policy(org).assignment == "auto":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Project codes are assigned automatically in this organisation.")
+    if project_code_locked_for(db, project, actor_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Project codes are locked in this organisation; only an organisation administrator can change one.",
+        )
     return validate_project_code(db, org, requested, exclude_project_id=project.id)
 
 

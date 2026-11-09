@@ -39,8 +39,8 @@ import { getInstalledModule } from "../../modules/registry";
 import { buildRecordTotalsChart, RECORD_SLICE_COLORS } from "../../utils/recordTotals";
 import { renderMarkdown } from "../../utils/safeMarkdown";
 import {
-  chartDestination, clamp, effectiveScope, formatMetricValue, gridSpans, isScopedType, moveWidgetTo, OVERVIEW_COLUMNS, OVERVIEW_MAX_ROWS,
-  resizedBy, tileDestination,
+  chartDestination, clamp, effectiveScope, formatMetricValue, gridSpans, isScopedType, moveWidgetTo, orgTileDestination, OVERVIEW_COLUMNS,
+  OVERVIEW_MAX_ROWS, resizedBy, tileDestination,
 } from "../../utils/overviewWidgets";
 import { ActivityNote } from "../ActivityNote";
 import { rowLabel, titleOf } from "./overviewTitles";
@@ -121,13 +121,21 @@ function ActivityWidget({ projectId, title, limit }: { projectId: string; title:
  * hidden or removed.
  */
 function ModuleWidget({
-  widget, projectId, projectScope, title, editingName,
-}: { widget: OverviewWidget; projectId: string; projectScope: ProjectScope; title: string; editingName?: string }) {
+  widget, projectId, organizationId, projectScope, title, editingName,
+}: {
+  widget: OverviewWidget; projectId?: string; organizationId?: string; projectScope: ProjectScope; title: string; editingName?: string;
+}) {
   const strings = useStrings();
   const [moduleKey, widgetKey] = widget.type.split(":");
-  const definition = getInstalledModule(moduleKey)?.overviewWidgets?.find((w) => w.key === widgetKey);
-  if (!definition) return <Notice title={title || editingName || widget.type} message={strings.overviewWidgets.widgetUnknown} />;
-  const drawn = definition.render({ projectId, projectScope, title, config: widget.config });
+  const installed = getInstalledModule(moduleKey);
+  const organizationRenderer = organizationId !== undefined ? installed?.orgOverviewWidgets?.find((w) => w.key === widgetKey) : undefined;
+  const projectRenderer = organizationId === undefined && projectId !== undefined ? installed?.overviewWidgets?.find((w) => w.key === widgetKey) : undefined;
+  if (organizationId === undefined ? !projectRenderer : !organizationRenderer) {
+    return <Notice title={title || editingName || widget.type} message={strings.overviewWidgets.widgetUnknown} />;
+  }
+  const drawn = organizationId !== undefined
+    ? organizationRenderer?.render({ orgId: organizationId, title, config: widget.config })
+    : projectRenderer?.render({ projectId: projectId ?? "", projectScope, title, config: widget.config });
   if (editingName === undefined) return <>{drawn}</>;
   return (
     <div className="stack" style={{ gap: "var(--space-1)" }}>
@@ -159,15 +167,18 @@ function TextWidget({ title, markdown }: { title: string; markdown: string }) {
  * @param widgets The layout in force (or, when editing, the draft).
  * @param scope The overview's project scope; a widget with its own scope reads in that one.
  * @param metrics The figures by widget id (`useOverviewMetrics`); ignored with `placeholders`.
- * @param projectId The project; omitted for an organisation's default, which has no data.
+ * @param projectId The project; omitted for an organisation (a dashboard, or its default project layout, which has no data).
+ * @param organizationId The organisation, for one of its dashboards: the figures are the organisation's and a module's
+ *   widget is drawn by its organisation renderer.
  * @param placeholders Draw a labelled block for each figure widget instead of its data (an organisation's default).
  * @param edit Makes the grid the editor.
  * @param typeLabels Names of the widget types by key (the editor's catalogue), for a module's widget, which the string table does not name.
  */
 export function OverviewWidgetGrid({
-  widgets, scope, metrics, projectId, placeholders = false, edit, typeLabels,
+  widgets, scope, metrics, projectId, organizationId, placeholders = false, edit, typeLabels,
 }: {
-  widgets: OverviewWidget[]; scope: OverviewScope; metrics: OverviewMetricsState; projectId?: string; placeholders?: boolean; edit?: OverviewGridEdit;
+  widgets: OverviewWidget[]; scope: OverviewScope; metrics: OverviewMetricsState; projectId?: string; organizationId?: string;
+  placeholders?: boolean; edit?: OverviewGridEdit;
   typeLabels?: Record<string, string>;
 }) {
   const strings = useStrings();
@@ -187,7 +198,7 @@ export function OverviewWidgetGrid({
     const projectScope = effectiveScope(widget, scope);
     if (widget.type === "text") return <TextWidget title={widget.title ?? ""} markdown={String(widget.config.markdown ?? "")} />;
     if (edit && !widget.visible) return <Notice title={nameOf(widget)} message={notices.hiddenNotice} />;
-    if (placeholders || !projectId) {
+    if (placeholders || (!projectId && !organizationId)) {
       return (
         <div className="card stack" data-placeholder>
           <strong>{nameOf(widget)}</strong>
@@ -195,6 +206,9 @@ export function OverviewWidgetGrid({
         </div>
       );
     }
+    const tileTo = (metricKey: string, config: Record<string, unknown>) =>
+      projectId ? tileDestination(metricKey, config, projectId) : orgTileDestination(metricKey);
+    const chartTo = (metricKey: string, rowKey: string) => (projectId ? chartDestination(metricKey, rowKey, projectId) : null);
     const needsFigure = ["metric_tile", "gauge", "status_chart", "stage_progress", "record_totals"].includes(widget.type);
     if (needsFigure) {
       if (!result) return <div className="card"><Spinner /></div>;
@@ -206,7 +220,7 @@ export function OverviewWidgetGrid({
     const params = (widget.config.params as Record<string, unknown> | undefined) ?? {};
     switch (widget.type) {
       case "metric_tile":
-        return <MetricTile label={title} value={formatMetricValue(result?.value ?? 0, result?.unit ?? null)} to={edit ? null : tileDestination(metric, params, projectId)} />;
+        return <MetricTile label={title} value={formatMetricValue(result?.value ?? 0, result?.unit ?? null)} to={edit ? null : tileTo(metric, params)} />;
       case "gauge": {
         const levels = widget.config as { minimum?: number; maximum?: number; warning?: number; critical?: number; direction?: "above" | "below" };
         return (
@@ -229,7 +243,7 @@ export function OverviewWidgetGrid({
               title={title} ariaLabel={notices.barAria}
               rows={rows.map((r) => ({
                 key: r.key, label: r.label, value: r.value, valueText: formatMetricValue(r.value, result?.unit ?? null),
-                to: edit ? null : chartDestination(metric, r.key, projectId),
+                to: edit ? null : chartTo(metric, r.key),
               }))}
             />
           );
@@ -238,13 +252,14 @@ export function OverviewWidgetGrid({
           <StatusPieChart
             title={title} segments={rows.map((r) => [r.label, r.value])}
             onSegmentClick={edit ? undefined : (_, idx) => {
-              const to = chartDestination(metric, rows[idx].key, projectId);
+              const to = chartTo(metric, rows[idx].key);
               if (to) navigate(to);
             }}
           />
         );
       }
       case "stage_progress":
+        if (!projectId) return null;
         return (
           <div className="card stack">
             <div className="text-muted">{title}</div>
@@ -267,6 +282,7 @@ export function OverviewWidgetGrid({
           </div>
         );
       case "record_totals": {
+        if (!projectId) return null;
         const total = result?.value ?? 0;
         if (total <= 0) {
           return (
@@ -293,9 +309,10 @@ export function OverviewWidgetGrid({
         );
       }
       case "activity":
+        if (!projectId) return null;
         return <ActivityWidget projectId={projectId} title={title} limit={typeof widget.config.limit === "number" ? widget.config.limit : 8} />;
       default:
-        return <ModuleWidget widget={widget} projectId={projectId} projectScope={projectScope} title={title} editingName={edit ? nameOf(widget) : undefined} />;
+        return <ModuleWidget widget={widget} projectId={projectId} organizationId={organizationId} projectScope={projectScope} title={title} editingName={edit ? nameOf(widget) : undefined} />;
     }
   };
 

@@ -1,12 +1,12 @@
 # Platform Review November 2026 — Plan
 
-**Status:** planned 2026-11-06; phases 1 to 17 (including 14b, 9b, 9c and 9d) done (14, 15, 16 and 17 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08; phase 18 done 2026-11-08; phase 19 split into 19a to 19d and 19a, 19b and 19c done 2026-11-08 and 19d done 2026-11-09; review checkpoint R and phase 20 (website documentation) added 2026-11-08. **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
+**Status:** planned 2026-11-06; phases 1 to 17 (including 14b, 9b, 9c and 9d) and 25 done (14, 15, 16 and 17 uncommitted), the rest not started; phase 5b added 2026-11-07; phases 18 and 19 added 2026-11-08; phase 18 done 2026-11-08; phase 19 split into 19a to 19d and 19a, 19b and 19c done 2026-11-08 and 19d done 2026-11-09; review checkpoint R and phase 20 (website documentation) added 2026-11-08; phases 21 (organisation dashboards, 21a to 21c), 22, 23 and 24 (24a, 24b) added 2026-11-09 from the first review items at R; phases 25 to 32 (25, 26, 27, 28a, 28b, 29, 30, 31, 32a, 32b) added 2026-11-09 from further review items at R, planned only (the user starts each one). **Decision tags:** every decision says `Decided by: User` or `Decided by: Agent`. All sign-off questions were answered on 2026-11-06 (see each phase's *Decided by: User* lines). A question that arises during a phase is asked with `AskUserQuestion`; do not assume.
 
 Source: 17 human review notes (the "Platform Review" list). Each was checked against the code before planning; several are partly built already, and three have a design objection recorded below.
 
 ## Status / Resume Here
 
-27 / 29 phases complete.
+35 / 46 phases complete.
 
 | # | Phase | Notes | Status |
 | --- | --- | --- | --- |
@@ -37,7 +37,24 @@ Source: 17 human review notes (the "Platform Review" list). Each was checked aga
 | 19b | UI/UX fixes: help instead of permanent text, strings | Groups A (A1 to A5) and D (D1, D2): hints and muted explanations to `(?)` help, triage of the 166 `helpNotNeeded`, native `title` explanations to `Tooltip`, core nouns and filter labels into `strings` | [x] |
 | 19c | UI/UX fixes: creation routes | Group B and the Nesting group: New project and New organisation offer Create and Import as separate dialogs on one field group (`SplitButtonTrigger`, `BundleImportDialog`, `ProjectIdentityFields`); Parent, Inheritance and Mirror role fold into one collapsed "Nesting" group (`ProjectNestingFields`, shared with project settings); Playwright edited, not run; see `docs/decisions.md` | [x] |
 | 19d | UI/UX fixes: `FilterSelect` | Group E1: one shared select for every filter panel and all 117 raw `<select>` elements, with a guard script (empty baseline); 95 selects moved onto `FilterSelect`, `LabeledSelect` and `InlineSelect`, enum-typed options via `labelOptions`; Playwright not run; see `docs/decisions.md` | [x] |
-| R | Review checkpoint after the UI/UX fixes | User review of phase 19's result; every item raised becomes a numbered phase or is fixed in place; gates phase 20 | [ ] |
+| R | Review checkpoint after the UI/UX fixes | User review of phase 19's result; every item raised becomes a numbered phase or is fixed in place; gates phase 20. First items raised 2026-11-09 became phases 21 to 24 | [ ] |
+| 22 | Organisation compliance pages: Export beside Reports | `PageActions` portals a section's Export into the title row's action group beside Reports; Playwright run on the rebuilt stack; see `docs/decisions.md` | [x] |
+| 23 | Lock project codes after creation | `locked` in the project code policy; enforced in `change_project_code` (the one function every route uses); caller flag `code_change_locked`; Playwright run on the rebuilt stack; see `docs/decisions.md` | [x] |
+| 24a | Component stage and phase setup: review | Register of 11 findings (W1 to W11) from a static walk; the user signed off W1 to W3 and W6 to W10 on 2026-11-09 (W11 is phase 20's) | [x] |
+| 24b | Component stage and phase setup: fixes | Step list and "In use" badge removed; W1 "Workflows and phases" group, W2 Stage phases page, W3 workflow picker, W6 collapsible filtered track list, W7 phase on the requirement list, filter and overview metrics, W8 locked phases, W9 used by, W10 seed; Playwright run on the rebuilt stack; see `docs/decisions.md` | [x] |
+| 21a | Organisation dashboards: widget framework | `WidgetRules`, organisation catalogue and batched figures, `org_overview_widgets` registry hook, tables and migration 0152; see `docs/decisions.md` | [x] |
+| 21b | Organisation dashboards: the overview page | Overview page is a dashboard (grid and editor reused with a `dashboard` target); Compliance summary and attention widgets replace its Dashboard page and the stats-header tiles; Playwright run on the rebuilt stack | [x] |
+| 21c | Organisation dashboards: extra pages | Pages with per-user and per-group visibility (404 for others), Manage dashboards dialog, audit, bundles, seeds; SOC 2 policy item 2c; Playwright run on the rebuilt stack | [x] |
+| 25 | Collapsible workflows | Each workflow in the shared workflows panel is a `DisclosureRow` (name, step count, source; open for one, closed for several); the stage phase schedule uses it too; open state is one stored key per list holding only the exceptions; `ComponentTracksList` left for phase 26; Playwright written, not run; see `docs/decisions.md` | [x] |
+| 26 | Component phases setup: compact switch, flat track list | The full-width On/Off/Inherit select becomes a compact control; the per-component expansion becomes a flat list (reverses 24b's W6 collapse, *Decided by: User*); planned 2026-11-09 | [ ] |
+| 27 | Component delivery plan page | The existing Stage phases page (project navigation, not settings) becomes a delivery plan: components against stages and time, progress, expected dates, and phase changes in place; planned 2026-11-09 | [ ] |
+| 28a | Demo project from this repository | A demo project built from this product's requirements, decisions, SOC 2 package and architecture, from a curated, drift-checked fixture; planned 2026-11-09 | [ ] |
+| 28b | More example template projects | Further template projects beside the two from phase 17, each with modules, workflows, vocabularies, dashboard and starter drafts; planned 2026-11-09 | [ ] |
+| 29 | Demo setup script | One guarded command to set a stack up as a demo (migrate, seed all demo projects, accounts, branding, notice) with `--reset`, and an opt-in scheduler for a daily reset at a set time (default UTC midnight); planned 2026-11-09 | [ ] |
+| 30 | Messages: defaults, severity colour, non-dismissable, history | Start now and no end by default, severity by colour and icon instead of a badge, a `dismissible` switch, history that is not capped away, and Duplicate; planned 2026-11-09 | [ ] |
+| 31 | Organisation settings: usage table | A plain table at the top of the organisation settings overview: users, projects, storage; planned 2026-11-09 | [ ] |
+| 32a | Organisation administration UI/UX review | Review of every organisation administration page against the style guide, starting from the "Custom" pills and reset links on company settings; register and sign-off; planned 2026-11-09 | [ ] |
+| 32b | Organisation administration UI/UX fixes | The approved findings of 32a, including the style guide change for removed override pills; planned 2026-11-09 | [ ] |
 | 20 | Website documentation update | Reviews and updates `docs/website/` for every user-visible change in phases 1 to 19 (and the review's fixes); screenshots and steps re-captured where the UI changed | [ ] |
 
 ```mermaid
@@ -62,10 +79,39 @@ flowchart LR
     P19b --> P19c["19c Creation routes"]
     P19c --> P19d["19d FilterSelect"]
     P19d --> PR["R Review"]
-    PR --> P20["20 Website docs"]
+    PR --> P21a["21a Org widget framework"]
+    P14["14 Overview widgets"] --> P21a
+    P21a --> P21b["21b Org overview page"]
+    P21b --> P21c["21c Extra dashboard pages"]
+    PR --> P22["22 Export beside Reports"]
+    PR --> P23["23 Project code lock"]
+    P9c["9c Component phases"] --> P24a["24a Stage setup review"]
+    P24a --> P24b["24b Stage setup fixes"]
+    P21c --> P20["20 Website docs"]
+    P22 --> P20
+    P23 --> P20
+    P24b --> P20
+    PR --> P25["25 Collapsible workflows"]
+    P24b --> P26["26 Component phases setup"]
+    P26 --> P27["27 Delivery plan page"]
+    P17["17 Demo data"] --> P28a["28a Demo from this repository"]
+    P13["13 Templates"] --> P28b["28b More templates"]
+    P28a --> P29["29 Demo setup script"]
+    P28b --> P29
+    P30["30 Messages"] --> P29
+    PR --> P30
+    P21b --> P31["31 Org usage table"]
+    PR --> P32a["32a Org admin review"]
+    P32a --> P32b["32b Org admin fixes"]
+    P25 --> P20
+    P27 --> P20
+    P29 --> P20
+    P30 --> P20
+    P31 --> P20
+    P32b --> P20
 ```
 
-Phase 19 (19a to 19d) follows phase 18's sign-off (given 2026-11-08); phase R follows phase 19d; phase 20 follows phase R, so the website describes the product as the review left it.
+Phase 19 (19a to 19d) follows phase 18's sign-off (given 2026-11-08); phase R follows phase 19d; phase 20 follows phase R and phases 21 to 32, so the website describes the product as the review left it. Phases 25 to 32 are independent of one another except as drawn (29 needs 28a, 28b and 30, so its demo notice can be non-dismissable; 27 needs 26); the user starts each one.
 
 ## Phase 3 findings register
 
@@ -125,6 +171,28 @@ Sizes: S under half a day, M about a day, L several days.
 - **Q2 (N6):** on New project, keep Parent, Inheritance and Mirror role inline, or fold them under one collapsed "Nesting" group? Recommendation: keep inline; they appear only when a parent exists, so the default dialog is short.
 - **Q3 (E1):** build a shared `FilterSelect` and move all 117 selects onto it, or only the filter-panel ones (about 60)? Recommendation: filter-panel ones now, the form ones already have `LabeledSelect`.
 
+## Phase 24a findings register
+
+Drafted 2026-11-09 by static walk of the code (*Decided by: Agent*, the phase 3 and 18 precedent): every task was traced from the navigation to the control and the permission behind it. Every path is under `frontend/src/` unless stated. **Not covered:** a rendered walk (needs a rebuilt stack) and the owner-without-manager journey (W2), which needs one live check.
+
+**Works today** (task, route): define a workflow (Organisation Admin → Projects & workflow → Stage workflows; Project Admin → Structure → Stage workflows; `StageWorkflowEditor`: name, ordered phases, kind, reorder, delete); hide and restore an organisation workflow (project panel); create a stage and choose its workflow, change a workflow while the stage is open, move a stage between phases with the closed-phase prompt (Project Admin → Structure → Stages); turn component phases on, off or inherit (Component phases section); move a track, set its workflow, not-applicable and owner (`ComponentTrackEditor`); set expected ranges, lead time and a stage owner (Stage schedule). The backend rules for each are tested.
+
+| # | Finding | Severity | Proposed fix |
+| --- | --- | --- | --- |
+| W1 | The four related sections (Stages, Stage workflows, Component phases, Stage schedule) are separate collapsed sections on one long Structure tab; nothing tells a person that component phases exist, that they are off, or the order to set things up (workflows, then stages, then component phases, then schedule) | High | One "Workflows and phases" group in project administration (the two-level menu of phase 4) holding the four as ordered sub-pages, and the off state of component phases states what turning it on does with a link to the switch |
+| W2 | Moving a track is only possible inside Project Admin → Structure. The server lets a track's owner (who need not be a manager) move it, and the website says so, but the control lives on a settings page; whether that page loads at all for a plain member is unverified | High | A "Stages and phases" view in the project's own navigation listing the tracks the caller may move (their own first) with the phase picker; a live check of Project Admin as a plain member first |
+| W3 | With one workflow the stage's workflow picker is not shown (`stageWorkflows.length > 1`), so a person who wants a custom workflow is shown no sign it exists or where to create one | Medium | Always show the picker; "New workflow" beside it opens the same editor |
+| W4 | The workflow list is a row of badges; the order of phases, the starting phase and the closing phase are not readable | Medium | Ordered step list (requested; built in 24b) |
+| W5 | The "In use" badge states a fact nobody can act on; the server's refusal when deleting an in-use workflow already explains it | Low | Remove it (requested; built in 24b) |
+| W6 | The component phases list is every component by every stage with no filter or collapse; a project with 12 components and 6 stages shows 72 rows | Medium | Collapse per component with the current phases as a summary line; filter by stage, phase and owner |
+| W7 | A component's phase is visible nowhere outside that panel (no list column, filter or overview figure); phase 9c recorded this as not built | Medium | Phase column and `TagFilter`-style filter on the requirements list and a metric on the overview; needs the user's agreement on cost, since the inherited switch cannot be resolved cheaply in report SQL |
+| W8 | A move into a locked phase by someone without the approver role fails with the server's message only after the choice | Low | Disable the locked phases in the picker for a person who cannot enter them, with the reason in a tooltip (needs the capability from the server) |
+| W9 | Which stages and tracks follow a workflow cannot be seen, so a person editing or deleting one has to guess | Low | "Used by" list in the workflow's step list, replacing the badge's information with something useful |
+| W10 | The e2e seed has no workflow or component-phase data (the demo seed does), so no Playwright spec starts from a populated state | Low | Seed one custom workflow and a project with component phases on in `seed_e2e_dataset.py` |
+| W11 | The website describes the steps but under "Stage schedule" and "Component phases" as separate headings with no setup order | Low | One "Setting up stages and phases" page with the ordered steps and a Mermaid diagram (phase 20) |
+
+**Checkpoint passed 2026-11-09 (*Decided by: User*):** W1 to W3 and W6 to W10 built in 24b (W7 including the list column, filter and overview metric); W4 and W5 were requested and built regardless; W11 is part of phase 20. Outcomes are in `docs/decisions.md`.
+
 ## Challenges to the notes (read before approving)
 
 | # | Note | Challenge | Outcome |
@@ -135,6 +203,12 @@ Sizes: S under half a day, M about a day, L several days.
 | 13 | "Select a template when creating a project" | Already built: `is_template`, `clone_project`, the New project picker, the organisation default template. The real gaps are that a clone copies no module configuration (module enablement, Pain Point types, scoring), templates show in the project list by default, and "None" cannot override the organisation default. | Plan only the gaps. |
 | 14 | "Overview customisable with widgets" | **Settled with the user:** more than show/hide: managers add and remove widgets and configure them (for example a gauge on a metric the page does not show today). That is a small dashboard builder, so it needs a bounded metric catalogue, not an open query builder, to stay fast and safe. | Widget instances with a configured metric and visualisation. Metric source needs sign-off. |
 | 10 | "Rename modules/sub-module pages" | The terminology feature is deliberately a closed key set because renaming every string is large. A rename that changes only the navigation label leaves "Decisions" in the page title, breadcrumbs, links and reports. | **Settled with the user:** the rename covers the navigation entry, page title, breadcrumb and back link only; record nouns stay as they are. |
+| 26 | "Stages should be a list; expansion does not help" | Phase 24b's W6 collapse was the user-signed-off fix for 72-row lists. A flat list brings that back unless the filter stays. | Flat list **with** the existing stage, phase and owner filters (*Decided by: Agent*, to confirm at the start of 26). |
+| 27 | "There maybe should be a component page (not within settings)" | One exists: the **Stage phases** page in the project navigation (`/projects/:id/stage-phases`, phase 24b W2). A third surface would split the same task again. | Extend that page into the delivery plan; rename it through navigation names if wanted. |
+| 28a | "Based on this very project (decisions file, requirements, SOC details)" | `docs/decisions.md` is 16,981 lines and 1,373 headings; parsing it at seed time is brittle and loading all of it is unreadable. The SOC 2 package documents known gaps candidly, and a public demo would publish them. | Curated fixture produced by a reviewable extractor, with a drift test; known gaps excluded unless the user says otherwise (question in the phase). |
+| 29 | "A script that sets the system up as a demo" | A one-command demo that creates accounts with known credentials and wipes data is dangerous on a real deployment. | Guarded: explicit demo flag, refuses a database holding non-demo organisations, random passwords by default. |
+| 30 | "Messages do not need badges; the colours can be used for severity" | Colour alone fails WCAG 1.4.1 (use of colour) and is the only cue left for colour-blind readers. Separately, the 50-message cap per scope forces deleting old messages, which defeats a history. | Colour plus an icon and visually hidden text; the cap counts only messages that are not ended. |
+| 32 | "Remove the Custom badges and the reset to platform default" | The style guide's second principle and "Pattern: platform default vs. override" require exactly that pill and reset, and say why (a revert nobody can find). Also, an empty field today means "use the platform default" (the stored value is null), so "make the fields empty" cannot express "show nothing". | The user's instruction wins and the guide is edited in the same change (*Decided by: User*). Recommended replacement: the platform value shows as the field's placeholder, so an empty field is visibly "platform default". The logo and login background keep a remove control, since a file cannot be emptied. |
 
 ## Decisions
 
@@ -471,11 +545,196 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Outcome:** a user sign-off recorded in `docs/decisions.md`, with the items raised and their outcomes.
 - **Tests:** none of its own; each item fixed carries the stories and Playwright coverage its change needs.
 
+### Phase 21 — Organisation dashboards (21a to 21c)
+
+*Raised by: User* (2026-11-09), at review checkpoint R. The organisation overview is a fixed stat bar plus module sections, while the project overview is a widget dashboard (phases 14 and 14b). The user wants the organisation overview to be a dashboard too, to which modules contribute widgets, so Compliance needs no separate dashboard page, and wants organisations able to add further dashboard pages to organise their widgets. *Decided by: User* (2026-11-09): organisation administrators manage the pages, and each page can be limited to chosen people or groups.
+
+- **Why:** two overview pages with different mechanics make every module build its organisation tiles twice, and a fixed page cannot show an organisation's own emphasis. Compliance's organisation Dashboard page duplicates the tile idea it already registers (`orgOverviewTiles`).
+- **Risk addressed:** (1) an organisation figure that counts records in projects the caller cannot open reveals that they exist; (2) a per-page visibility check that is only a hidden link lets a person read the page by its URL or request its figures directly; (3) a module's organisation widget hand-edited into the core page breaks the module boundary; (4) a second layout editor and grid drift from the project one.
+- **Outcome:** every member sees organisation dashboards built from the same widget grid, editor and catalogue as the project overview; modules contribute organisation widgets generically; an administrator adds, reorders, renames, deletes and restricts pages.
+
+#### Phase 21a — Widget framework at organisation scope
+
+- **Design:** reuse, not copy, phase 14's pieces. The widget instance, size, text widget, grid, `OverviewEditor` and settings panel are already tier-neutral; what changes is the data source. A dashboard's `scope` is the organisation: a metric is evaluated over **the projects of the organisation the caller can open** (the same set `ProjectScope.collect` and `link_nesting.can_open_project` already define), optionally narrowed by the widget's project filter, and a figure the caller may not read is `unavailable`, never zero.
+- **Backend:** `POST /orgs/{id}/overview-metrics` (membership, not administrator, to read), validating each reference against the same catalogue. Core organisation metrics: projects, requirements, members, file storage (today's `overview-stats`), plus a record count over any registered type summed across readable projects, with the list filters. Modules add organisation metrics and widget types through generic fields on `ModuleDefinition` (`org_overview_metrics`, `org_overview_widgets`) and `TierAModuleDefinition.orgOverviewWidgets`, following `overview_metrics` and `overviewWidgets`; a widget of a module the organisation has disabled is neither offered nor drawn. The existing `orgOverviewTiles` and `orgOverviewSections` stay until 21b migrates their only user.
+- **Time budget and batching:** one request per dashboard page, identical references evaluated once, the cap and time budget the project call has; the batch reads per-project counts in bulk so the scaling probe stays flat as projects grow.
+- **Tests:** a figure never counts a project the caller cannot open; unavailable not zero; module gate; catalogue and filter validation; a flat statement count at two organisation sizes; stories for the new organisation widgets.
+
+#### Phase 21b — The organisation overview becomes a dashboard
+
+- **Work:** `OrgOverviewPage` renders the organisation's default dashboard through the shared grid; its built-in layout reproduces today's stat bar (four core tiles) so an organisation that never edits sees the same numbers. Compliance's overall percentage, standards, non-compliant projects, outstanding actions, expired and expiring evidence and reviews due become module-contributed organisation widgets, and the Compliance **Dashboard** page and its `orgOverviewSections` entry are removed (a bookmark of its URL redirects to the overview). Compliance by standard and Outstanding stay, since they are working tables rather than dashboards.
+- **Editing:** an organisation administrator edits in place with the project overview's editor (sticky bar, resize, settings panel). The Organisation Admin "overview default" panel (`OrgOverviewDefaultPanel`) continues to set the layout a project falls back to; the two layouts are separate and named so (the project default and the organisation dashboard).
+- **Decision to record:** the organisation dashboard layout is its own column, not the project default's. *Decided by: Agent* (veto if wanted): they answer different questions and share a widget schema, not a layout.
+- **Tests:** stories; Playwright for an administrator and a plain member, and a Compliance widget appearing only when the module is on; the former Dashboard URL redirects.
+
+#### Phase 21c — Extra dashboard pages
+
+- **Design:** an `organization_dashboards` table: `id`, `organization_id`, `name`, `position`, `layout` (JSONB, the phase 14 schema), `visible_to` (a list of principals, user or group, through the shared principal columns; empty means every member of the organisation) and the usual audit columns. The built-in "Overview" page is always first and cannot be deleted; it is `organization.overview_dashboard`'s layout from 21b, and an administrator may also restrict it. An organisation administrator always sees every page and can always edit.
+- **Authorisation (SOC 2 access control):** one `can_view_dashboard` predicate, used by the list endpoint, the page read and the metrics request, so a restricted page cannot be fetched, or its figures requested, by URL. A group in `visible_to` means effective membership (organisation groups, transitively), and a group from another organisation is rejected. A page the caller cannot see is a 404, not a 403, to avoid revealing that it exists. Create, rename, reorder, restrict and delete are audited through `services/audit.py`.
+- **Surfaces:** the overview's section menu lists the dashboards the caller may see, then the module sections; a "Manage dashboards" entry in the editor adds, renames, reorders, restricts (shared principal picker) and deletes pages. Field help on the visibility field says what an empty value means.
+- **Bundles and nesting:** the organisation bundle carries dashboards (`visible_to` by principal key through `principal_to_bundle`, widget configs by portable key); an organisation-scoped table with no project analogue, so no nested-project fallback (record this in `docs/decisions.md`).
+- **Tests:** CRUD and ordering; visibility for user, group, empty, administrator and a foreign-organisation group; 404 not 403; metrics refused for a restricted page; bundle round trip; scaling probe; stories and Playwright.
+- **Docs:** `docs/modules.md` (organisation widgets), `docs/solution-architecture.md`, the ux-style-guide pattern for overview editing now covering both tiers, website overview and Compliance pages, `docs/decisions.md`; demo and e2e seed scripts (a second dashboard, one restricted).
+
+### Phase 22 — Organisation compliance pages: Export beside Reports
+
+*Raised by: User* (2026-11-09).
+
+- **Why:** the organisation's Compliance by standard and Outstanding pages put **Export** on its own row below the title row where **Reports** sits, and the button's position changes when switching between the pages, so the page's actions are not found in one place.
+- **Risk addressed:** one action group per page, in the same position everywhere, is the convention of `ListPageLayout` and the title row; a per-page right-aligned row is the one-off the style guide names.
+- **Work:** `ReportExportButton` joins the title row's action group beside `ReportsButton`, on every organisation overview section that has one (Compliance by standard, Outstanding, and any later section). The mechanism is generic: a section gets its actions into the shared header through a render slot on the section definition, never by the core page naming a module. The Dashboard page's own Export row disappears with that page in 21b; until then it moves the same way.
+- **Outcome:** Export sits in the same place on every page, level with Reports, with no layout shift when switching.
+- **Tests:** a story per section; Playwright asserts that Export and Reports share a row and the same position on each section.
+
+### Phase 23 — Lock project codes after creation
+
+*Raised by: User* (2026-11-09). *Decided by: User* (2026-11-09): only organisation administrators may change a locked code.
+
+- **Why:** an organisation may create its projects through a service account and treat the code as an identifier owned by that automation. Today, with manual assignment, whoever can edit the project can change its code, and every record reference pasted elsewhere stops matching.
+- **Risk addressed:** an unintended identifier change breaks references and integrations; a lock enforced only in the form can be bypassed by the API, an import or the MCP server.
+- **Design:** a `locked` boolean on the existing `project_code_policy` structure (`code_rules.CodePolicy`), so no migration is needed beyond reading the new key with a default of `false`. With `locked` on, `services.codes.change_project_code` refuses a change unless the caller is an organisation administrator (the lock check sits in the one function every route uses, so the project edit, a bulk edit, an import into an existing project and MCP are covered together). A change by an administrator is audited with the old and new code. The lock applies from creation: **creation is never blocked**, and turning the lock on or off, like the rest of the policy, is an organisation administrator's action recorded in the audit log. A policy change never rewrites a code (existing behaviour).
+- **Nested projects and bundles:** policy is organisation-scoped, so no fallback; the organisation bundle does not carry the code policy today, so `locked` follows the rest of it. A project import numbers its code afresh (existing behaviour).
+- **Surfaces:** a "Lock codes after creation" checkbox with field help in the organisation's project code policy panel; in project settings the code field is read-only with a short explanation of who can change it when locked, and unaffected for an administrator.
+- **Outcome:** with the lock on, a project manager cannot change a project's code by any route; an organisation administrator can.
+- **Tests:** project manager refused on every route that edits a code (PATCH, import, MCP, bulk); organisation administrator allowed and audited; creation unaffected; lock off identical to today; story and Playwright; the policy docs and SOC 2 access-control matrix updated.
+
+### Phase 24 — Component stage and phase setup (24a to 24b)
+
+*Raised by: User* (2026-11-09): "I can't see how you set up a component stage/phase... Please do an in-depth review that all workflows needing to setup, configure and use component stages and phases are able to be done in the UI. The Stage workflows should not just be a bunch of badges next to each other, it should be a list of steps. Also the 'In use' badge is pointless."
+
+- **Why:** phases 9b, 9c and 9d built the stage workflows, the component tracks and the phase schedule, each as its own collapsed section on the Structure tab of project administration. The backend rules are tested, but nobody has walked the whole journey as a person using the UI, and the user could not find it.
+- **Risk addressed:** a capability with no discoverable route is a capability that does not exist for its users, and a gap here silently leaves a stage workflow impossible to set up (for example a component track editable only by someone who cannot open project administration).
+
+#### Phase 24a — Review
+
+- **Method (*Decided by: Agent*):** a static walk of every task below through the frontend code, from the nav rail to the control, plus a short live check of the three the code cannot settle; findings go in a register in this plan, with severity, like phase 18. Tasks, each traced to the page, the control and the permission that reaches it: (1) define a workflow (organisation and project; phases, kinds, start phase, reorder, rename, delete a phase in use); (2) hide and restore an organisation workflow; (3) create a stage and choose its workflow; change a stage's workflow; (4) move a stage between phases, including into a locked and a closed phase; (5) turn component phases on (project, inherited, organisation default) and learn that it is off; (6) see and move a component's track for each stage, as a project manager and as the track owner who cannot open project administration; (7) choose a component's workflow per stage, mark it not applicable, set its owner; (8) set the expected range and lead days, and see overdue; (9) find a component's phase from the component's own page, the requirements list and the overview (the phase column, filter and report field phase 9c did not build); (10) bundles, templates and the e2e and demo seeds carry all of it; (11) read the website's pages for it.
+- **Outcome:** a register of every task that cannot be done, can only be done by an unlikely route, or is not discoverable, each with a proposed fix; the user signs off the register before 24b builds anything beyond the two items already requested.
+- **Tests:** none of its own.
+
+#### Phase 24b — Fixes
+
+- **Already requested:** the workflow list shows each workflow as an ordered list of steps (a numbered step per phase with its kind, the start step marked, and the closing step marked), not a row of badges, shared by the organisation and project panels through one component, with the editor's step order matching; the "In use" badge is removed (the server's refusal message already explains why a phase cannot be removed, and a badge states nothing the person can act on).
+- **Then:** every approved finding from 24a, extracting shared components rather than patching, with stories, Playwright for each repaired journey, and the docs.
+- **Tests:** stories for the step list (own and inherited, hidden, one-phase, long names); Playwright for define workflow, create stage with it, enable component phases, move a track as an owner; the checkers pass.
+- **Docs:** website stage, workflow and component pages, `docs/decisions.md`, both seed scripts if a demonstration is missing.
+
+### Phase 25 — Collapsible workflows
+
+*Raised by: User* (2026-11-09): "Workflows should be collapsable in the Workflows and phases page (and any other places you see them in a similar view)." Planned only; the user starts it.
+
+- **Why:** the workflows panel shows every workflow fully expanded (name, phases, actions), so a project or organisation with several is a long page and the one being sought is hard to find.
+- **Risk addressed:** a third hand-written disclosure beside `CollapsibleSection` and `ComponentTracksList`'s toggle; a collapse state that resets on every visit.
+- **Work:** (1) each workflow in `StageWorkflowsPanel` (the one component both the project and the organisation pages use) becomes a disclosure row: collapsed shows the name, the step count and the source (own, inherited, hidden); expanded shows the ordered step list, used by and actions. Collapsed by default when there is more than one workflow, expanded when there is one. (2) If two disclosure rows already exist (`ComponentTracksList`), extract one shared component and move both onto it. (3) Sweep: list every page that stacks per-item cards or sections with no bound on the count (Stage schedule, scoring models, decision types, report setup and similar) and apply the shared row where an item is long; record each page examined and the decision in `docs/decisions.md`. (4) Per-viewer collapse state through `useUiPreference`, never the server.
+- **Outcome:** a long list of workflows is a short list of named rows, and every similar list behaves the same way.
+- **Tests:** story (one, many, inherited, hidden); Playwright (collapse, expand, state kept on reload); the checkers pass.
+- **Docs:** `docs/ux-style-guide.md` (the disclosure row, if extracted); website workflow page only if its steps change.
+
+### Phase 26 — Component phases setup: compact switch, flat track list
+
+*Raised by: User* (2026-11-09): the component phases section "has a very very long on/off drop down when it doesn't need to be", and "the stages section should be a list as the expansion doesn't help in any way". *Decided by: User:* this reverses phase 24b's W6 collapse. Planned only.
+
+- **Why:** the Off / On / Inherit choice (`ComponentPhasesPanel`) is a full-width select for three short options, and the track list is one disclosure per component, so seeing a stage's phases means opening each one.
+- **Risk addressed:** returning to an unfiltered 72-row list; inventing a new switch instead of using a shared control.
+- **Work:** (1) the mode becomes a compact control sized to its content, from the shared components (a segmented or toggle control if one exists, else a content-width `LabeledSelect`; check first, extract rather than add a copy) with the same help text, one line per option. (2) `ComponentTracksList` becomes a flat table with no disclosure: component, stage, workflow, phase, owner and state, one row per track, the stage, phase and owner filters kept above it. Open design point, asked with `AskUserQuestion` when the phase starts: rows per component and stage (recommended) or one row per component with a column per stage.
+- **Outcome:** the switch takes the width of its label and the tracks read as one list.
+- **Tests:** stories for the panel and list (off, on, inherited, empty, many); Playwright updated (`component-phases.spec.ts`); no backend change.
+
+### Phase 27 — Component delivery plan page
+
+*Raised by: User* (2026-11-09): a component page outside settings, "maybe like a delivery plan view, so you can see how it has progressed, estimated times, and in this page also set the states"; "putting it within settings kind of hides the functionality". Planned only.
+
+- **Why:** a component's stage position, progress and expected dates are visible only inside project administration, so the people who track delivery (and a track's owner, who need not be an administrator) have no overview.
+- **Risk addressed:** a second page for the same task (the Stage phases page, `/projects/:id/stage-phases`, nav key `stage-phases`, already lists stages and, with component phases on, the movable tracks); a plan that shows a date the data does not hold; a figure that includes a component the caller cannot see.
+- **Design:** extend the Stage phases page rather than add one (rename through navigation names if wanted). (1) **View:** components (rows) against stages and time, as a timeline with a list alternative (a table, so the page is usable without the chart). Each track shows its current phase, progress (completed phases of its workflow by kind), the expected start and end from the stage's phase plan (phase 9d), the actual dates recorded on each move, today, and overdue in the viewer's day. A track with no expected dates shows "No dates set" and no bar; nothing is inferred. (2) **Set states in place:** the track phase picker (enabled only where the server says `can_move`), and, for a manager, moving the stage itself and editing the expected range through the same editors the administration pages use (*Prefer the flexible reading*). (3) **Backend:** one bulk read for the plan, read-gated as the existing track list is, with statement counts flat in components and stages; dates are plain calendar dates, overdue through `effective_today()`; time shape stated in the change. Per-component expected dates do not exist today (phase 9c left them out); deciding whether to add them is a question for the start of the phase, recommended no until asked for. (4) Bundles and templates need nothing new unless a field is added.
+- **Outcome:** anyone who can see the project sees where each component is, how far along, and when it should finish; owners and managers change the state from the same page.
+- **Tests:** backend (visibility, `can_move`, overdue at the day boundary for UTC+10 and UTC-8, flat statements at two sizes); story (empty, no dates, overdue, many components); Playwright (manager and track owner, list alternative); perf: re-measure the read at T2.
+- **Docs:** website stage and component pages (the one "Setting up stages and phases" page of phase 20 includes it), `docs/decisions.md`.
+
+### Phase 28a — Demo project from this repository
+
+*Raised by: User* (2026-11-09): "multiple seed projects. One demo project should be based on this very project (the decisions file, the original requirements, SOC details etc.)". Planned only.
+
+- **Why:** the demo shows a fictional company; a project describing the product itself is a realistic, large and self-explanatory dataset, and shows the product managing a real compliance posture.
+- **Risk addressed:** a brittle importer that breaks when a document is reformatted; a demo that loads 1,373 decision headings and is unreadable and slow; publishing the SOC 2 package's candid known gaps on a public demo; editing `docs/requirements.md` (it is read-only to agents).
+- **Design (*Decided by: Agent*, to veto):** a committed fixture under `backend/scripts/data/`, generated by a reviewable extractor script from `docs/requirements.md` (the requirements, with codes and categories), `docs/decisions.md` (a curated set of decisions, each with its rationale and `Decided by` tag, as Decision records), `docs/soc2/` (the Security and Confidentiality criteria as a Compliance standard, the policies as its evidence and the mapping as requirement mappings), and the architecture document (components). Candidate extras, confirmed at the start: risks from the policies' known-gap sections, the platform's own stages and phases as stages and a workflow. A drift test regenerates the fixture from the documents and fails when it differs from the committed file, so the demo cannot silently go stale. The seed loads it through the API like the existing seeds, idempotently (a second run adds nothing), into its own project in the demo organisation.
+- **Questions for the start of the phase (`AskUserQuestion`):** include the known-gap sections or not (recommended: not, and a flag to include them); how many decisions (recommended: about 40, chosen for breadth); whether the project is visible to every demo account.
+- **Outcome:** a demo project of this product's own requirements, decisions, SOC 2 mapping and components.
+- **Tests:** the seed runs on a fresh database (a second backend on its own database, never the shared test database); counts asserted; the drift test; a second run is a no-op; the generated records read (rule: a generated artefact is not done until read).
+- **Docs:** `docs/development.md` demo data section, website installation page.
+
+### Phase 28b — More example template projects
+
+*Raised by: User* (2026-11-09): "some example template projects". Phase 17 already seeded two (Product Design, Project Management); this adds to them. Planned only.
+
+- **Why:** templates are the product's answer to "how should a project be set up", and two examples show too few shapes (modules, workflows, vocabularies, scoring, dashboards).
+- **Risk addressed:** templates that differ only by name; starter records that arrive approved; a template that is not read-only to ordinary members (the template guard already covers this).
+- **Work:** each template sets its enabled modules and sub-components, a custom stage workflow with phase kinds, component phases on where it fits, vocabularies (action, decision, Pain Point types), a scoring model, an overview dashboard layout and starter drafts. Proposed set, confirmed with the user at the start (`AskUserQuestion`): Software delivery, Compliance readiness (SOC 2 and ISO 27001 style), Research and discovery (stakeholders, needs, findings), Risk-led programme. Created through the API; idempotent; classified template keys covered by `test_template_content.py`.
+- **Outcome:** a project created from each template has that shape, and the templates read as examples in the project list's template filter.
+- **Tests:** create-from-template round trip per template (modules, vocabularies, workflow, dashboard, drafts only); the seed twice; the Playwright create-from-template spec extended.
+- **Docs:** website templates page lists the examples; `docs/development.md`.
+
+### Phase 29 — Demo setup script
+
+*Raised by: User* (2026-11-09): "a script in the project that allows having the system set up as a demo". Planned only; follows 28a, 28b and 30.
+
+- **Why:** a demo today needs several manual steps (start the stack, migrate, run `seed_demo_data.py`, create accounts, post a notice); a repeatable command makes a demo or an evaluation reproducible.
+- **Risk addressed:** running it against a real deployment (data loss, accounts with known passwords, a weakened posture); a demo that cannot be reset; a script that bypasses the API's validation or audit trail.
+- **Design (*Decided by: Agent*, to veto):** `scripts/demo.sh` (stack: Compose, migrate, wait for health) calling `backend/scripts/demo_setup.py` (data). It: seeds every demo project (28a, 28b and the earlier ones) through the API; creates the demo personas; sets the organisation branding; posts a server message that cannot be dismissed (phase 30) naming the demo accounts and that data is reset. `--reset` removes the demo organisation's data and seeds again. Guards: requires `--demo` (or `DEMO_MODE=1`); refuses a database that holds any organisation it did not create unless the operator types the database name; passwords are random and printed once, and fixed passwords need an explicit flag, in which case the access control policy's known gaps list says so (SOC 2: a documented exception, not a silent one); mail goes to the bundled mail catcher, never an external relay; nothing weakens the password policy, two-factor or rate limits. A `docker-compose.demo.yml` override is added only if an environment variable cannot do it.
+- **Scheduled daily reset (*Decided by: User*, 2026-11-09):** the demo can reset itself at a set time each day, for example UTC midnight. *Decided by: Agent* (to veto), following the backup scheduler's precedent (`backup-scheduler` profile in `docker-compose.yml`, `scripts/schedule/` for cron and systemd, which are alternatives, never both): a `demo-scheduler` service under a `demo-schedule` Compose profile runs `demo_setup.py schedule`, driven by `DEMO_RESET_AT` (`HH:MM` daily, default `00:00`) and `DEMO_RESET_TZ` (an IANA zone, default `UTC`), with host cron and systemd examples beside the backup ones. The reset is deliberately **not** an in-application job: a wipe running inside the backend process of a deployment that has the demo flag set by mistake is the worst case, and a separate opt-in service cannot start by accident. Every scheduled run applies the same guards as a manual `--reset`, so a database holding a non-demo organisation is refused each time, not only the first. Time shape: a recurring wall-clock time with its IANA zone, resolved with `zoneinfo` when the next run is computed (never a stored UTC offset), so a zone other than UTC keeps its local time across a daylight-saving change.
+- **Login details message (*Decided by: User*, 2026-11-09):** the script sets a **server administration message** (server-wide, `show_on_login`, so it shows on `/login` and every organisation's `/login/:slug`, and as a banner after sign-in) listing each demo account's sign-in name, role and password and a line that the data resets daily at the scheduled time. It is created through the server administration messages API as the demo server administrator, never by writing rows. Rules (*Decided by: Agent*, to veto): (1) it **replaces its own message** on every run and reset, so with random passwords (which change each reset) the text always matches the accounts; it is found by a reserved title, which the script owns, and it is removed when the demo is torn down; (2) it lists **only demo accounts**, which hold only demo data, and the script refuses to write it if any listed account is a server or organisation administrator of a non-demo organisation; (3) the password text is never logged, audited or sent as a notification: the script never uses "send as notification" (an email or in-app copy would put the passwords in mailboxes), and the audit event carries counts only, as phase 11 already requires; (4) it is plain text, which the server message rules already require, within the 1,000-character body limit (the script fails with a clear message if the accounts do not fit, rather than truncating); (5) a visible warning in the script's own output that the message publishes credentials to anyone who can reach the login page, so it is for a demo and a deployment that holds nothing else. Fixed passwords stay opt-in as above; random ones are the default and are what the message then shows. A flag `--no-login-message` skips it for a demo that distributes credentials another way. The message is a server-wide row, so it does not travel in organisation bundles (the phase 11 decision).
+- **Reset behaviour:** one reset at a time (a lock, so a manual and a scheduled run cannot overlap); signed-in sessions end, which the notice explains; the stack stays up and is reported not ready only for the seeding window if the health check would otherwise show a half-seeded demo, else the reset is quick enough to need no maintenance state (measure, then decide); the login details message is re-posted by the reset with the new accounts; a reset that fails leaves the previous data in place where it can (seed into the new state before removing the old, else say so in the log) and exits non-zero with a metric the existing monitoring can alert on. The next reset time is part of the login details message; a separate warning is shown from an hour before (phase 30's non-dismissable message, scheduled by the reset itself).
+- **Outcome:** one command produces a populated, labelled demo; one more, or the daily schedule, resets it; it cannot be pointed at a production database by accident.
+- **Tests:** the script on a fresh stack and a second run (idempotent), the guard refusals (non-demo organisation present, flag missing), the password rule; the login message (present on both login pages, text matches the accounts after a reset with new passwords, replaced not duplicated, removed on teardown, refused when a listed account has a non-demo role, never notified, body too long fails, no password in the log or audit event); the next-run calculation (UTC midnight, a UTC+10 zone and a UTC-8 zone, the week either side of a daylight-saving change), overlapping resets refused, a failed reset leaving the old data and a non-zero exit; the checkers; `check_health_probes.py` if a service is added.
+- **Docs:** `docs/development.md`, `README.md` quick start, website installation page, and the schedule setup (Compose profile, cron and systemd examples) beside the disaster recovery scheduling instructions.
+
+### Phase 30 — Messages: defaults, severity colour, non-dismissable, history
+
+*Raised by: User* (2026-11-09): a new message should default to start today and not end; messages need no badges at the start, the colours can show severity; an option to make a message not dismissable (a demo notice naming the accounts, or a degraded-performance warning); the administration panels should list previous messages and allow duplicating them. Extends phase 11. Planned only.
+
+- **Why:** the editor makes every message set its dates, the severity is shown twice (a badge and the colour), a must-see notice can be dismissed away, and an administrator re-types a recurring message.
+- **Risk addressed:** a message that never shows because its start was left empty or in the past by mistake (the default is "now"); severity carried by colour alone (accessibility); a non-dismissable notice that blocks the page (it stays a banner, never a modal); the 50-message cap (`MAX_PER_SCOPE`) forcing the deletion of history; organisation administrators using non-dismissable text for phishing (the no-web-address rule stays).
+- **Work:** (1) **Defaults:** the editor opens with start set to the current time in the person's browser (stored as a UTC instant, the past-instant shape) and the end empty, whose help says "no end". (2) **Severity:** the severity badge is removed from the banner, notices and login messages; severity is carried by the token colour of the message plus an icon and visually hidden text, so colour is never the only cue; in the administration table the severity is a coloured marker, not a badge, and the "On login" badge becomes a column. (3) **Not dismissable:** a `dismissible` boolean (default true) on `announcements`, a migration (the next number across core and module directories, after 0152), the schema, the bundle and the e2e and demo seeds; the banner hides the close control when false. Dismissal is a per-browser convenience today, so this is a display rule, not a security control, and says so in `docs/decisions.md`. (4) **History and Duplicate:** the list becomes two views, current (active and scheduled) and previous (ended), with search; the cap counts only messages not ended, or ended messages move beyond it (*Decided by: Agent*, to veto, since the cap exists to bound the table); **Duplicate** on any row opens the editor prefilled with a new start of now, no end, and the notification not sent.
+- **Time shape:** start and end are instants (UTC), unchanged; test the boundary hours at the default start (09:00 at UTC+10, 23:00 at UTC-8).
+- **Outcome:** a new message is live immediately, severity reads by colour and icon, a must-see message cannot be dismissed, and a past message is found and reused.
+- **Tests:** backend (the new field, the cap, defaults not applied server-side, bundle round trip, org administrator cannot set it on a server message); stories (each severity, non-dismissable, previous list); Playwright (create with the defaults, non-dismissable has no close control, duplicate); an accessibility check that severity has a non-colour cue.
+- **Docs:** website server and organisation messages pages; `docs/decisions.md`.
+
+### Phase 31 — Organisation settings: usage table
+
+*Raised by: User* (2026-11-09): the organisation settings overview should have, at the top, "a table of how many users are in the org, how many projects and how much storage is being used", "just a simple table, not a widget". Planned only.
+
+- **Why:** an organisation administrator has no one place to see the size of their organisation, and the figures exist (`overview-stats`) only behind the dashboard widgets.
+- **Risk addressed:** a second query path that drifts from the dashboard's figures; counting projects or storage the caller may not see (an administrator sees the organisation's totals by role, but the read still goes through the shared function); a widget where a plain table was asked for.
+- **Work:** a small table (label, value) above the existing settings overview content: users (active), projects (including archived, with the active count), storage used (human-readable, with the organisation's quota if one is set). It reads from the same service function as the dashboard's organisation metrics (phase 21a), never a second implementation. Visible to organisation administrators only, as the settings page is.
+- **Outcome:** the first thing on the settings overview is how big the organisation is.
+- **Tests:** backend (the figures equal the dashboard metrics for the same organisation; the read is administrator-gated); story; Playwright.
+- **Docs:** website administering-an-organisation page.
+
+### Phase 32 — Organisation administration UI/UX review (32a to 32b)
+
+*Raised by: User* (2026-11-09): "a UI/UX review needs to be done on the org admin settings pages, for example I do not think we need badges saying Custom on company name; I would also remove the reset to platform default for the company settings, if an org does not want them, they can just make the fields empty." *Decided by: User* for both named changes. Planned only.
+
+- **Why:** the organisation administration pages (`OrgAdminPage.tsx`) are the largest settings surface and have had only the phase 18 static scan, which did not look at each page as a whole.
+- **Risk addressed:** a change that removes the override cue without a replacement leaves the "revert nobody can find" defect the style guide was written to stop; "make the field empty" meaning two things; the style guide and the pages contradicting each other.
+
+#### Phase 32a — Review
+
+- **Method (*Decided by: Agent*):** as phases 18 and 24a: a static walk of every organisation administration section against `docs/ux-style-guide.md` (depth model, override visibility, help text, required markers, form header, confirmation tiers, selects, wording), with a register in this plan (id, page, rule, severity, proposed fix, size) and a user sign-off before 32b builds. Start with the company settings (Custom pills at `OrgAdminPage.tsx` header title, email footer name, website and address; the logo and login background controls) and record, per field, what an empty value means today.
+- **Questions for the sign-off (`AskUserQuestion`):** (1) an empty field currently means "use the platform default", so removing the pill and the reset leaves a person unable to tell a default from a custom value; recommended: show the platform value as the field's placeholder, so empty is visibly the default; (2) the logo and login background cannot be "emptied", so recommended: keep a Remove control on each; (3) whether the same applies to every override pill elsewhere (`PersonalDataPolicyPanel`, scoring, the persona page) or only to the organisation company settings, recommended the latter now with a style guide rule that names the exception.
+- **Outcome:** a register and the answers.
+- **Tests:** none of its own.
+
+#### Phase 32b — Fixes
+
+- **Work:** every approved finding, extracting shared components rather than patching; the company settings change as signed off (the Custom pills and the reset links removed from the text fields, the placeholder showing the platform value if approved); `docs/ux-style-guide.md` "Pattern: platform default vs. override" and principle 2 edited in the same change to state the new rule and its scope (*Decided by: User*), so the guide and the pages agree; the checker scripts still pass, and a new guard only where a class of defect can be detected reliably.
+- **Tests:** stories for each changed section; Playwright for company settings (set, empty, save, the platform value shown); the doc link checker.
+- **Docs:** website administering-an-organisation page and screenshots, `docs/decisions.md`.
+
 ### Phase 20 — Website documentation update
 
 *Raised by: User* (2026-11-08).
 
-- **Why:** CLAUDE.md requires the docs website (`docs/website/`) to be reviewed after every change to user-visible behaviour; this plan has changed many (phases 4 to 17: two-level admin menus, navigation names, messages, Pain Point submission and scoring, templates, overview widgets, organisation files, workflows and component phases; phases 18 to R: creation routes, help tooltips, filter selects, wording). A single pass at the end finds pages that earlier phases missed and makes the site consistent.
+- **Why:** CLAUDE.md requires the docs website (`docs/website/`) to be reviewed after every change to user-visible behaviour; this plan has changed many (phases 4 to 17: two-level admin menus, navigation names, messages, Pain Point submission and scoring, templates, overview widgets, organisation files, workflows and component phases; phases 18 to R: creation routes, help tooltips, filter selects, wording; phases 21 to 24: organisation dashboards, Export placement, project code lock, stage workflow steps; phases 25 to 32: collapsible workflows, component phases setup, the delivery plan page, demo projects, templates and setup script, messages, the organisation usage table and organisation administration fixes). A single pass at the end finds pages that earlier phases missed and makes the site consistent.
 - **Work:** (1) list every phase's user-visible change from `docs/decisions.md` and the plan's Done notes; (2) for each, decide explicitly whether a page documents it, needs a new page, or needs none, and record the judgement in the decisions log; (3) update or add pages following the site's structure, tone, formal wording and Mermaid conventions, and check the glossary (`docs/website/docs/reference/glossary.md`) for terms the phases introduced; (4) re-capture screenshots and steps for screens that changed (New project and New organisation, admin menus, filter panels, overview, Files, Messages); (5) run the site build, `scripts/check_doc_links.py` and any site link check; (6) the two performance pages (`sizing-and-performance.mdx`, `performance-testing-method.md`) are reviewed because phases 9, 12, 14 and 16 touched measured paths, and the perf scenarios not re-run are listed there as unverified.
 - **Outcome:** the site describes the product as it stands after phase R; no page names a removed screen, an old label or a superseded flow.
 - **Tests:** the site builds without warnings; the link checkers pass; a screenshot is replaced only by one captured from the current build.
@@ -503,4 +762,4 @@ Every phase follows the standing checklist at the end. "Why / Risk / Outcome" is
 - **Phase 1 is large**; running it first delays visible features but prevents every later phase adding to the debt.
 - **Phase 13 depends on bundle hooks being complete for configuration**; the spike may uncover module gaps that are fixed in that phase.
 
-When the table reads 26/26: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").
+When the table reads 46/46: move this file to `docs/plans/completed/` and run `scripts/check_doc_links.py` (see CLAUDE.md "Plan Lifecycle").

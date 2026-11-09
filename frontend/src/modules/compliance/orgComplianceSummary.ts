@@ -1,12 +1,9 @@
 /**
  * Module: modules/compliance/orgComplianceSummary
  *
- * Shared "org-wide headline compliance numbers" computation — extracted
- * so `OrgComplianceDashboard.tsx`'s
- * own Dashboard-tab stats and `ComplianceOrgOverviewTiles.tsx`'s new
- * `OrgOverviewPage.tsx` header tiles compute the exact same numbers from
- * the exact same `listOrgProjectComplianceStatus` rows, rather than two
- * copies of the same weighted-average/grouping logic drifting apart.
+ * Shared "org-wide headline compliance numbers" computation, so every place that shows them
+ * (`OrgComplianceWidgets.tsx`) computes the same numbers from the same `listOrgProjectComplianceStatus` rows, rather
+ * than two copies of the weighted-average and grouping logic drifting apart.
  */
 import type { ProjectComplianceStatus } from "./types";
 

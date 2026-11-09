@@ -156,25 +156,18 @@ export interface SearchScopeDefinition {
 }
 
 /**
- * One headline stat tile a Tier A module contributes to
- * `pages/OrgOverviewPage.tsx`'s own always-visible stats header
- * ("the org's headline compliance
- * gauges... must surface directly in the overview's own always-visible
- * stats header, not require a click into the `ResourceMenu` group at
- * all"). Mirrors `ProjectOverviewWidgetDef` (same "module hands the
- * parent a render function, parent has no idea what's inside it" shape),
- * scoped by `orgId` instead of `projectId` since this header has no project
- * in context. Deliberately distinct from `orgOverviewSections` above: that
- * contributes a whole `ResourceMenu` group of drill-down detail below the
- * header; this contributes one card *inside* the header itself, so a
- * reviewer sees the headline number without navigating anywhere. Omitted
- * (or empty) for a module with no headline gauge of its own.
+ * A widget type a module contributes to an organisation's overview dashboards
+ * (`TierAModuleDefinition.orgOverviewWidgets`), the organisation counterpart of `ProjectOverviewWidgetDef`: the
+ * module hands the page a render function and the page never imports the module. The backend declares the same key in
+ * `ModuleDefinition.org_overview_widgets`, which lets the server validate a stored layout and offer the type only
+ * while the organisation has the module enabled. It is looked up by `<module key>:<key>`.
  */
-export interface OrgOverviewTileDef {
-  /** Must be unique across every installed module's org-overview tiles —
-   * used only as this contribution's React list `key`, never rendered. */
+export interface OrgOverviewWidgetDef {
+  /** Unique within the module; the widget's type is `<module key>:<key>`. */
   key: string;
-  render: (props: { orgId: string }) => ReactNode;
+  /** Draws the widget for the organisation. `config` is the settings stored with the widget (opaque to the core);
+   * `title` is its title, already defaulted. The widget reads the module's own endpoints, and returns a card. */
+  render: (props: { orgId: string; title: string; config: Record<string, unknown> }) => ReactNode;
 }
 
 /**
@@ -347,10 +340,9 @@ export interface TierAModuleDefinition {
    * `OrgAdminPage.tsx` already filters `orgAdminSections`. Omitted (or
    * empty) for a module with no org-overview surface of its own. */
   orgOverviewSections?: OrgAdminSectionDef[];
-  /** This module's headline stat tiles on `pages/OrgOverviewPage.tsx`'s own
-   * stats header. Omitted (or empty)
-   * for a module with no headline gauge of its own. */
-  orgOverviewTiles?: OrgOverviewTileDef[];
+  /** This module's widgets for an organisation's overview dashboards, offered only while the organisation has the
+   * module enabled. Omitted (or empty) for a module with no organisation-level figures of its own. */
+  orgOverviewWidgets?: OrgOverviewWidgetDef[];
   /** This module's extra sections on `pages/RequirementDetailPage.tsx`'s
    * own Links card, gated on this
    * project's own `enabled-modules` list the same way `overviewWidgets`

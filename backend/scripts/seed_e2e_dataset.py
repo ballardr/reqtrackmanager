@@ -391,6 +391,17 @@ def create_report_pack(headers: dict, path: str, name: str, description: str, de
     return r.json()
 
 
+def create_org_workflow(headers: dict, org_id: str, name: str, phases: list[tuple[str, str]]) -> dict:
+    """An organisation stage workflow (name and ordered `(phase name, kind)` pairs), for a spec that starts from a
+    populated Stage workflows list; the first phase is the starting phase."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/stage-workflows",
+        json={"name": name, "phases": [{"name": phase, "kind": kind} for phase, kind in phases]}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_project_link_type(
     headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
 ) -> dict:
@@ -860,6 +871,11 @@ def main() -> None:
         headers=h_ab, timeout=30,
     )
     r.raise_for_status()
+
+    print("Creating Alpha's custom stage workflow (Stage workflows, step list, used-by)...")
+    create_org_workflow(h_ab, alpha["id"], "Seeded outsourced work", [
+        ("Scoping", "open"), ("Review board", "review"), ("Tendering", "on_hold"), ("Awarded", "locked"), ("Completion", "closed"),
+    ])
 
     print("Creating projects (2 per org)...")
     alpha1 = create_project(h_ab, alpha["id"], "Alpha-1 Robotic Arm Controller", "E2E seed project.")

@@ -34,7 +34,7 @@ test.describe("component phases", () => {
 
     await test.step("the manager turns component phases on in Project Admin", async () => {
       await loginAs(page, email);
-      await page.goto(`/projects/${project.projectId}/admin/structure`);
+      await page.goto(`/projects/${project.projectId}/admin/stagesPhases`);
       await ensureExpanded(page, "Component phases");
       await page.getByRole("combobox", { name: /Component phases/ }).selectOption({ label: "On" });
       await expect(page.getByRole("combobox", { name: new RegExp(`Phase of ${software.name} in`) })).toBeVisible();

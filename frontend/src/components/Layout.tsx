@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { BarChart3, Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -175,6 +175,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
             };
           });
         }),
+        { key: "stage-phases", to: `/projects/${projectId}/stage-phases`, label: navLabel(`/projects/${projectId}/stage-phases`, strings.stagePhases.title), icon: <Layers size={16} /> },
         { key: "history", to: `/projects/${projectId}/history`, label: navLabel(`/projects/${projectId}/history`, strings.history.title), icon: <History size={16} /> },
         { key: "admin", to: `/projects/${projectId}/admin`, label: navLabel(`/projects/${projectId}/admin`, strings.nav.admin), icon: <Settings size={16} /> },
       ]

@@ -198,6 +198,62 @@ def workflow_in_use(db: Session, workflow_id: uuid.UUID) -> bool:
     )
 
 
+@dataclass(frozen=True)
+class WorkflowUsage:
+    """Who follows a workflow, within the scope asked for.
+
+    Attributes:
+        stage_names: Names of the stages that follow it (only filled when the scope is one project, so one project
+            never learns another's stage names).
+        stage_count: How many stages follow it.
+        track_count: How many component tracks follow it.
+        project_count: How many projects have a stage or track following it.
+    """
+
+    stage_names: list[str]
+    stage_count: int
+    track_count: int
+    project_count: int
+
+
+def workflow_usage(db: Session, workflow_ids: Sequence[uuid.UUID], project_id: uuid.UUID | None) -> dict[uuid.UUID, WorkflowUsage]:
+    """Who follows each workflow, read with two queries however many workflows are asked about.
+
+    Args:
+        db: The session (read only).
+        workflow_ids: The workflows.
+        project_id: Count only this project's stages and tracks (and name its stages), or `None` for every project of
+            the organisation (counts only).
+    """
+    if not workflow_ids:
+        return {}
+    stage_query = select(ProjectStage.workflow_id, ProjectStage.name, ProjectStage.project_id).where(ProjectStage.workflow_id.in_(workflow_ids))
+    track_query = (
+        select(ComponentStageState.workflow_id, ProjectStage.project_id)
+        .join(ProjectStage, ProjectStage.id == ComponentStageState.stage_id)
+        .where(ComponentStageState.workflow_id.in_(workflow_ids))
+    )
+    if project_id is not None:
+        stage_query = stage_query.where(ProjectStage.project_id == project_id)
+        track_query = track_query.where(ProjectStage.project_id == project_id)
+    names: dict[uuid.UUID, list[str]] = {w: [] for w in workflow_ids}
+    stage_projects: dict[uuid.UUID, set[uuid.UUID]] = {w: set() for w in workflow_ids}
+    for workflow_id, name, owner_project in db.execute(stage_query.order_by(ProjectStage.name)):
+        names[workflow_id].append(name)
+        stage_projects[workflow_id].add(owner_project)
+    tracks: dict[uuid.UUID, int] = {w: 0 for w in workflow_ids}
+    for workflow_id, owner_project in db.execute(track_query):
+        tracks[workflow_id] += 1
+        stage_projects[workflow_id].add(owner_project)
+    return {
+        w: WorkflowUsage(
+            stage_names=names[w] if project_id is not None else [], stage_count=len(names[w]), track_count=tracks[w],
+            project_count=len(stage_projects[w]),
+        )
+        for w in workflow_ids
+    }
+
+
 def _phase_in_use(db: Session, phase_id: uuid.UUID) -> bool:
     return (
         db.scalar(select(ProjectStage.id).where(ProjectStage.phase_id == phase_id).limit(1)) is not None

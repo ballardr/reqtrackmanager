@@ -40,6 +40,7 @@ import json
 import math
 import re
 import uuid
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -49,7 +50,7 @@ from sqlalchemy.orm import Session
 
 from app.models.organization import Organization
 from app.models.project import Project
-from app.modules.registry import get_overview_widget_types, is_module_enabled, is_module_enabled_for_project
+from app.modules.registry import OverviewMetric, get_overview_widget_types, is_module_enabled, is_module_enabled_for_project
 from app.services.audit import log_event
 from app.services.bundle_common import BundleImportWarnings
 from app.services.overview_metrics import all_metrics, validate_reference
@@ -127,6 +128,27 @@ def _refuse(message: str) -> HTTPException:
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, message)
 
 
+@dataclass(frozen=True)
+class WidgetRules:
+    """What a layout may contain where it lives: which widget types exist, how a metric reference is checked, and
+    whether a widget may carry a project scope. The project overview and an organisation dashboard differ only here."""
+
+    core_types: frozenset[str]
+    module_types: Callable[[], Mapping[str, Any]]
+    metric: Callable[[Any, Any], tuple[str, dict[str, Any], OverviewMetric]]
+    scoped: bool = True
+
+
+def _project_metric(raw_metric: Any, raw_params: Any) -> tuple[str, dict[str, Any], OverviewMetric]:
+    """A metric reference checked against the project catalogue, with its definition."""
+    metric_key, params = validate_reference(raw_metric, raw_params)
+    return metric_key, params, all_metrics()[metric_key]
+
+
+#: The rules of a project overview (and an organisation's default project layout).
+PROJECT_RULES = WidgetRules(core_types=_CORE_TYPE_KEYS, module_types=lambda: get_overview_widget_types(), metric=_project_metric)
+
+
 def widget_types_for_project(db: Session, project: Project) -> list[WidgetTypeInfo]:
     """The widget types the project can add: the core types and those of each module enabled for the project."""
     found = list(CORE_WIDGET_TYPES)
@@ -159,18 +181,18 @@ def _number(raw: Any, name: str) -> float:
     return float(raw)
 
 
-def _metric_config(raw: dict[str, Any], *, need: str) -> dict[str, Any]:
+def _metric_config(raw: dict[str, Any], *, need: str, rules: WidgetRules) -> dict[str, Any]:
     """The `metric` and `params` part of a configuration, checked against the catalogue.
 
     Args:
         raw: The widget's configuration.
         need: `scalar` or `breakdown`: what the widget draws, so a metric without it is refused.
+        rules: Where the layout lives (which catalogue the metric belongs to).
 
     Raises:
         HTTPException: 422 for an unknown metric, invalid params, or a metric that cannot supply `need`.
     """
-    metric_key, params = validate_reference(raw.get("metric"), raw.get("params"))
-    metric = all_metrics()[metric_key]
+    metric_key, params, metric = rules.metric(raw.get("metric"), raw.get("params"))
     if (need == "scalar" and not metric.scalar) or (need == "breakdown" and not metric.breakdown):
         raise _refuse("This metric cannot be shown by this kind of widget.")
     cleaned: dict[str, Any] = {"metric": metric_key}
@@ -179,7 +201,7 @@ def _metric_config(raw: dict[str, Any], *, need: str) -> dict[str, Any]:
     return cleaned
 
 
-def _clean_config(widget_type: str, raw: Any) -> dict[str, Any]:
+def _clean_config(widget_type: str, raw: Any, rules: WidgetRules) -> dict[str, Any]:
     """A widget's configuration checked for its type and returned cleaned (unknown keys refused).
 
     Raises:
@@ -208,19 +230,19 @@ def _clean_config(widget_type: str, raw: Any) -> dict[str, Any]:
         unknown = sorted(set(raw) - {"metric", "params"})
         if unknown:
             raise _refuse(f"The widget does not accept: {', '.join(unknown)}.")
-        return _metric_config(raw, need="scalar")
+        return _metric_config(raw, need="scalar", rules=rules)
     if widget_type == "status_chart":
         unknown = sorted(set(raw) - {"metric", "params", "chart"})
         chart = raw.get("chart", "pie")
         if unknown or chart not in ("pie", "bar"):
             raise _refuse("A chart is a pie or a bar chart and has no other settings.")
-        return {**_metric_config(raw, need="breakdown"), "chart": chart}
+        return {**_metric_config(raw, need="breakdown", rules=rules), "chart": chart}
     if widget_type == "gauge":
         allowed = {"metric", "params", "minimum", "maximum", "warning", "critical", "direction"}
         unknown = sorted(set(raw) - allowed)
         if unknown:
             raise _refuse(f"The widget does not accept: {', '.join(unknown)}.")
-        cleaned = _metric_config(raw, need="scalar")
+        cleaned = _metric_config(raw, need="scalar", rules=rules)
         minimum = _number(raw["minimum"], "minimum") if "minimum" in raw else 0.0
         maximum = _number(raw["maximum"], "maximum") if "maximum" in raw else 100.0
         if not minimum < maximum:
@@ -264,11 +286,12 @@ def _size(raw: Any, name: str, limit: int, default: int) -> int:
     return value
 
 
-def validate_widgets(raw: Any) -> list[dict[str, Any]]:
+def validate_widgets(raw: Any, rules: WidgetRules = PROJECT_RULES) -> list[dict[str, Any]]:
     """Checks a list of widgets and returns it cleaned, in order.
 
     Args:
         raw: The widgets as sent or stored: `{id, type, title, width, height, scope, visible, config}` objects.
+        rules: Where the layout lives (default: a project overview).
 
     Returns:
         The cleaned list (title trimmed, defaults filled, configuration normalised).
@@ -282,7 +305,7 @@ def validate_widgets(raw: Any) -> list[dict[str, Any]]:
         raise _refuse("The overview layout must be a list of widgets.")
     if len(raw) > MAX_WIDGETS:
         raise _refuse(f"An overview may hold at most {MAX_WIDGETS} widgets.")
-    module_types = get_overview_widget_types()
+    module_types = rules.module_types()
     seen: set[str] = set()
     cleaned: list[dict[str, Any]] = []
     for item in raw:
@@ -293,9 +316,11 @@ def validate_widgets(raw: Any) -> list[dict[str, Any]]:
             raise _refuse("Each widget needs its own id of letters, digits, hyphens and underscores.")
         seen.add(widget_id)
         widget_type = item.get("type")
-        if not isinstance(widget_type, str) or (widget_type not in _CORE_TYPE_KEYS and widget_type not in module_types):
+        if not isinstance(widget_type, str) or (widget_type not in rules.core_types and widget_type not in module_types):
             raise _refuse("Choose a widget type from the list.")
-        scope = _scope(item.get("scope"), allow_none=True)
+        if not rules.scoped and item.get("scope") is not None:
+            raise _refuse("A widget here has no project scope.")
+        scope = _scope(item.get("scope"), allow_none=True) if rules.scoped else None
         if scope is not None and widget_type in _UNSCOPED_TYPES:
             raise _refuse("This widget always shows this project only.")
         title = item.get("title")
@@ -311,17 +336,18 @@ def validate_widgets(raw: Any) -> list[dict[str, Any]]:
         cleaned.append({
             "id": widget_id, "type": widget_type, "title": title or None,
             "width": _size(item.get("width"), "width", MAX_COLUMNS, 3), "height": _size(item.get("height"), "height", MAX_ROWS, 2),
-            "scope": scope, "visible": visible, "config": _clean_config(widget_type, item.get("config", {})),
+            "scope": scope, "visible": visible, "config": _clean_config(widget_type, item.get("config", {}), rules),
         })
     return cleaned
 
 
-def validate_layout(raw: Any) -> dict[str, Any]:
+def validate_layout(raw: Any, rules: WidgetRules = PROJECT_RULES) -> dict[str, Any]:
     """Checks a layout and returns it cleaned.
 
     Args:
         raw: `{scope, widgets}` as sent or stored. A bare list of widgets (the earlier stored shape) is accepted as
             a layout with scope `this`.
+        rules: Where the layout lives (default: a project overview).
 
     Raises:
         HTTPException: 422 for a scope that is not offered or any fault `validate_widgets` names.
@@ -330,7 +356,7 @@ def validate_layout(raw: Any) -> dict[str, Any]:
         raw = {"scope": "this", "widgets": raw}
     if not isinstance(raw, dict) or set(raw) - {"scope", "widgets"}:
         raise _refuse("The overview layout is a scope and a list of widgets.")
-    return {"scope": _scope(raw.get("scope", "this"), allow_none=False), "widgets": validate_widgets(raw.get("widgets", []))}
+    return {"scope": _scope(raw.get("scope", "this"), allow_none=False), "widgets": validate_widgets(raw.get("widgets", []), rules)}
 
 
 # --- built-in layout and resolution ------------------------------------------------------------------

@@ -6,13 +6,12 @@ import {
   COMPLIANCE_ACTION_ASSESSMENT_STATUS_LABEL, COMPLIANCE_STANDARD_VERSION_STATUS_LABEL, COMPLIANCE_STATUS_LABEL,
 } from "./types";
 import { ComplianceGlobalNavLink } from "./ComplianceGlobalNavLink";
-import { ComplianceOrgOverviewTiles } from "./ComplianceOrgOverviewTiles";
 import { ComplianceProjectOverviewTiles } from "./ComplianceProjectOverviewTiles";
 import { ComplianceSettingsPage } from "./ComplianceSettingsPage";
 import { CreateEvidenceDialog } from "./CreateEvidenceDialog";
 import { EvidenceDetailPage } from "./EvidenceDetailPage";
 import { evidencePath, projectCompliancePath } from "./paths";
-import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
+import { OrgComplianceAttentionWidget, OrgComplianceSummaryWidget } from "./OrgComplianceWidgets";
 import { OrgComplianceOutstandingPanel } from "./OrgComplianceOutstandingPanel";
 import { OrgComplianceStandardsPanel } from "./OrgComplianceStandardsPanel";
 import { ProjectCompliancePage } from "./ProjectCompliancePage";
@@ -47,8 +46,8 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * `orgAdminSections` is empty. Standards, action types and mapping types
  * management lives on the top-level `/standards` nav-rail tab
  * (`StandardListPage.tsx`/`StandardWorkspacePage.tsx`/
- * `ComplianceSettingsPage.tsx`), and the cross-project dashboard lives on the
- * Organisation Overview page (`orgOverviewSections`/`orgOverviewTiles`
+ * `ComplianceSettingsPage.tsx`), and the cross-project view lives on the
+ * Organisation Overview page (`orgOverviewSections`/`orgOverviewWidgets`
  * below). Labels are read from `i18n/strings.ts`'s own `t()` (the same static
  * English table `useStrings()` layers terminology substitution on top of)
  * rather than duplicated as literals here — none of this module's group
@@ -57,21 +56,20 @@ import { StandardWorkspacePage } from "./StandardWorkspacePage";
  * already returns the exact same string `OrgAdminPage`/`OrgOverviewPage`
  * would resolve for every other group's label.
  *
- * `orgOverviewSections` (`modules/types.ts`): three flat top-level entries
- * (Dashboard / Compliance by standard / Outstanding) below
- * `pages/OrgOverviewPage.tsx`'s own core stats header, each rendering its
+ * `orgOverviewSections` (`modules/types.ts`): two flat top-level entries
+ * (Compliance by standard / Outstanding) beside the overview's dashboard pages in
+ * `pages/OrgOverviewPage.tsx`, each rendering its
  * panel component directly, using the same `{key, label, render({orgId})}`
  * shape `orgAdminSections` established. There is deliberately no inner `Tabs`:
  * `ResourceMenu → Tabs → content` was one navigation layer too many (the style
  * guide's own "when one resource-menu group outgrows itself, split it into
  * more flat top-level groups — don't add nested sub-navigation" addendum).
  *
- * `orgOverviewTiles` (`modules/types.ts`): three headline
- * gauges (overall compliance / active standards / non-compliant projects,
- * `ComplianceOrgOverviewTiles.tsx`) contributed directly into
- * `OrgOverviewPage.tsx`'s own always-visible stats header, so a reviewer
- * sees the org's compliance posture at a glance without clicking into any
- * `orgOverviewSections` group at all.
+ * `orgOverviewWidgets` (`modules/types.ts`): the compliance posture as two
+ * widgets for the organisation's overview dashboards (a summary of the headline
+ * tiles and an attention card, `OrgComplianceWidgets.tsx`), which an
+ * administrator places like any other widget; they replace the former separate
+ * Compliance dashboard page.
  *
  * `globalNavItems`/`standaloneWorkspaces` (`modules/types.ts`):
  * the "Compliance Standards" top-level nav-rail tab and the "Standard"
@@ -150,11 +148,6 @@ export const moduleDefinition: TierAModuleDefinition = {
   ],
   orgOverviewSections: [
     {
-      key: "compliance-dashboard",
-      label: strings.orgAdmin.groupComplianceDashboard,
-      render: ({ orgId }) => createElement(OrgComplianceDashboard, { orgId }),
-    },
-    {
       key: "compliance-by-standard",
       label: strings.orgAdmin.groupComplianceByStandard,
       render: ({ orgId }) => createElement(OrgComplianceStandardsPanel, { orgId }),
@@ -165,11 +158,9 @@ export const moduleDefinition: TierAModuleDefinition = {
       render: ({ orgId }) => createElement(OrgComplianceOutstandingPanel, { orgId }),
     },
   ],
-  orgOverviewTiles: [
-    {
-      key: "headline",
-      render: ({ orgId }) => createElement(ComplianceOrgOverviewTiles, { orgId }),
-    },
+  orgOverviewWidgets: [
+    { key: "summary", render: ({ orgId }) => createElement(OrgComplianceSummaryWidget, { orgId }) },
+    { key: "attention", render: ({ orgId }) => createElement(OrgComplianceAttentionWidget, { orgId }) },
   ],
   globalNavItems: [
     {

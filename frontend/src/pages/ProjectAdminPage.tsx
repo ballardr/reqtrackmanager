@@ -44,6 +44,7 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Tooltip } from "../components/Tooltip";
+import { StageWorkflowEditor, type StageWorkflowValues } from "../components/StageWorkflowEditor";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
@@ -136,7 +137,7 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * makes its inline role-toggle safe.
  */
 type CoreProjectAdminGroupKey =
-  | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
+  | "overview" | "structure" | "stagesPhases" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
 
 /** Widened to admit a module-contributed section's own key (2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
  * `OrgAdminPage.tsx`'s own `moduleAdminSections`. */
@@ -145,6 +146,7 @@ type ProjectAdminGroupKey = CoreProjectAdminGroupKey | string;
 const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
   "overview",
   "structure",
+  "stagesPhases",
   "fieldsActions",
   "members",
   "groups",
@@ -215,6 +217,8 @@ export function ProjectAdminPage() {
   // A stage being moved into a closed phase: asks first whether to complete its approved requirements too.
   const [closingStage, setClosingStage] = useState<{ stage: ProjectStage; phase: StageWorkflowPhase } | null>(null);
   const [newStageWorkflowId, setNewStageWorkflowId] = useState("");
+  const [creatingWorkflow, setCreatingWorkflow] = useState(false);
+  const [newWorkflowError, setNewWorkflowError] = useState<string | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
@@ -268,6 +272,8 @@ export function ProjectAdminPage() {
   const [settingsName, setSettingsName] = useState("");
   const [settingsCode, setSettingsCode] = useState("");
   const [codePolicy, setCodePolicy] = useState<ProjectCodePolicy | null>(null);
+  // Manual assignment, and not locked for this person (the organisation may lock codes after creation).
+  const codeEditable = codePolicy?.assignment === "manual" && !project?.code_change_locked;
   const [settingsSummary, setSettingsSummary] = useState("");
   const [settingsReportName, setSettingsReportName] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
@@ -680,7 +686,7 @@ export function ProjectAdminPage() {
     try {
       await api.patch(`/api/v1/projects/${projectId}`, {
         name: settingsName, summary: settingsSummary, report_name: settingsReportName.trim() || null,
-        ...(codePolicy?.assignment === "manual" && settingsCode !== project?.code ? { code: normaliseProjectCode(settingsCode) } : {}),
+        ...(codeEditable && settingsCode !== project?.code ? { code: normaliseProjectCode(settingsCode) } : {}),
         allow_member_change_requests: allowMemberCr,
         // `requireCrForLinks` always
         // carries this project's own stored opt-in, even while the org
@@ -806,6 +812,20 @@ export function ProjectAdminPage() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  /** Creates a project workflow from the editor opened beside the new-stage form and selects it for the new stage. */
+  async function saveNewWorkflow(values: StageWorkflowValues) {
+    setNewWorkflowError(null);
+    try {
+      const created = await api.post<StageWorkflow>(`/api/v1/projects/${projectId}/stage-workflows`, values);
+      setNewStageWorkflowId(created.id);
+    } catch (err) {
+      setNewWorkflowError(toErrorMessage(err, strings.mutation.failure("save", strings.stageWorkflows.nounSingular)));
+      return;
+    }
+    setCreatingWorkflow(false);
+    reload();
+  }
 
   async function addStage() {
     if (!newStageName.trim()) return;
@@ -1488,6 +1508,7 @@ export function ProjectAdminPage() {
   const projectAdminGroups: ResourceMenuGroupDef<ProjectAdminGroupKey>[] = [
     { key: "overview", label: strings.admin.settings, href: `/projects/${projectId}/admin/overview` },
     { key: "structure", label: strings.admin.structure, href: `/projects/${projectId}/admin/structure` },
+    { key: "stagesPhases", label: strings.admin.stagesPhases, href: `/projects/${projectId}/admin/stagesPhases` },
     { key: "fieldsActions", label: strings.admin.fieldsAndActions, href: `/projects/${projectId}/admin/fieldsActions` },
     { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
@@ -1557,13 +1578,13 @@ export function ProjectAdminPage() {
               settingsDirtyRef.current = true;
               setSettingsCode(next.toUpperCase());
             }}
-            inputProps={{ readOnly: codePolicy?.assignment !== "manual", maxLength: codePolicy?.max_length, "aria-describedby": "project-code-hint" }}
+            inputProps={{ readOnly: !codeEditable, maxLength: codePolicy?.max_length, "aria-describedby": "project-code-hint" }}
           />
           <FormGridFull>
             <p id="project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
-            {codePolicy?.assignment === "manual"
+            {codeEditable && codePolicy
               ? strings.projects.codeEditHint(describeCodePolicy(codePolicy))
-              : strings.projects.codeFixedHint}
+              : codePolicy?.assignment === "manual" ? strings.projects.codeLockedHint : strings.projects.codeFixedHint}
             </p>
           </FormGridFull>
           <TextField help={strings.help.projectReportName}
@@ -1805,10 +1826,14 @@ export function ProjectAdminPage() {
       </div>
       )}
 
-      {activeGroup === "structure" && (
+      {activeGroup === "stagesPhases" && (
       <div className="stack">
         {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
-        <CollapsibleSection sectionKey="projectAdmin.structure.stages" title={strings.admin.stages} defaultCollapsed={false}>
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.stageWorkflows" title={strings.stageWorkflows.heading} defaultCollapsed={false}>
+          {projectId && <StageWorkflowsPanel scope={{ kind: "project", projectId }} onChanged={reload} />}
+        </CollapsibleSection>
+
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.stages" title={strings.admin.stages} defaultCollapsed={false}>
         {stages.map((s) => {
           const nameEdit = stageNameEdits[s.id] ?? s.name;
           const otherStages = stages.filter((other) => other.id !== s.id);
@@ -1855,8 +1880,12 @@ export function ProjectAdminPage() {
                 <InlineSelect
                   ariaLabel={strings.stageWorkflows.changePhaseAria(s.name)} value={s.phase_id} placeholder={null} maxWidth={220}
                   onChange={(next) => requestStageMove(s, next)}
-                  options={(stageWorkflows.find((w) => w.id === s.workflow_id)?.phases ?? [{ id: s.phase_id, name: s.phase_name }])
-                    .map((p) => ({ value: p.id, label: p.name }))}
+                  options={(stageWorkflows.find((w) => w.id === s.workflow_id)?.phases ?? [{ id: s.phase_id, name: s.phase_name, kind: s.phase_kind }])
+                    .map((p) => {
+                      // Entering or leaving a locked phase needs a project manager: show the choice as unavailable, with why.
+                      const locked = !s.can_lock && p.id !== s.phase_id && (p.kind === "locked" || s.phase_kind === "locked");
+                      return { value: p.id, label: locked ? strings.stageWorkflows.lockedNeedsManager(p.name) : p.name, disabled: locked };
+                    })}
                 />
               </div>
             </div>
@@ -1890,35 +1919,38 @@ export function ProjectAdminPage() {
         })}
         <div className="row" style={{ alignItems: "flex-end" }}>
           <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
-          {stageWorkflows.length > 1 && (
-            <LabeledSelect
-              label={strings.stageWorkflows.workflow} help={strings.help.stageWorkflowChoice} placeholder={null}
-              value={newStageWorkflowId || stageWorkflows[0]?.id || ""} onChange={setNewStageWorkflowId}
-              options={stageWorkflows.map((w) => ({ value: w.id, label: w.name }))}
-            />
-          )}
+          <LabeledSelect
+            label={strings.stageWorkflows.workflow} help={strings.help.stageWorkflowChoice} placeholder={null}
+            value={newStageWorkflowId || stageWorkflows[0]?.id || ""} onChange={setNewStageWorkflowId}
+            options={stageWorkflows.map((w) => ({ value: w.id, label: w.name }))}
+          />
+          <button className="btn" onClick={() => { setNewWorkflowError(null); setCreatingWorkflow(true); }}>
+            <Plus /> {strings.stageWorkflows.newWorkflow}
+          </button>
           <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
             <Plus /> {strings.admin.newStage}
           </button>
         </div>
         </CollapsibleSection>
 
-        <CollapsibleSection sectionKey="projectAdmin.structure.stageWorkflows" title={strings.stageWorkflows.heading} defaultCollapsed>
-          {projectId && <StageWorkflowsPanel scope={{ kind: "project", projectId }} onChanged={reload} />}
-        </CollapsibleSection>
-
-        <CollapsibleSection sectionKey="projectAdmin.structure.componentPhases" title={strings.componentPhases.heading} defaultCollapsed>
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.componentPhases" title={strings.componentPhases.heading} defaultCollapsed={false}>
           {projectId && project && (
             <ComponentPhasesPanel projectId={projectId} organizationId={project.organization_id} orgUsers={orgUsers} onChanged={reload} />
           )}
         </CollapsibleSection>
 
-        <CollapsibleSection sectionKey="projectAdmin.structure.phaseSchedule" title={strings.phaseSchedule.heading} defaultCollapsed>
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.phaseSchedule" title={strings.phaseSchedule.heading} defaultCollapsed={false}>
           {projectId && project && (
             <PhaseSchedulePanel projectId={projectId} organizationId={project.organization_id} orgUsers={orgUsers} onChanged={reload} />
           )}
         </CollapsibleSection>
 
+      </div>
+      )}
+
+      {activeGroup === "structure" && (
+      <div className="stack">
+        {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
         {/* Audit finding: the tab bar used to call this "Categories" while
             its content opened with an <h2> reading "Components" — actually
             a two-level component -> category tree. This section's own
@@ -2810,6 +2842,9 @@ export function ProjectAdminPage() {
           }}
           onCancel={() => setClosingStage(null)}
         />
+      )}
+      {creatingWorkflow && (
+        <StageWorkflowEditor workflow={null} error={newWorkflowError} onCancel={() => setCreatingWorkflow(false)} onSave={saveNewWorkflow} />
       )}
       {deletingStageId && stages.some((st) => st.id === deletingStageId) && (
         <DeleteInUseDialog

@@ -21,7 +21,7 @@
  * the exact same `statusRows` — the "way to view all projects for a
  * compliance manager", extending this tab rather than adding a fourth
  * widget shape elsewhere. `groupBy`/`stateFilter` also read an
- * initial value off the URL (`?groupBy=`/`?state=`) so `OrgComplianceDashboard.tsx`'s
+ * initial value off the URL (`?groupBy=`/`?state=`) so `OrgComplianceWidgets.tsx`'s
  * top-grid tiles can link straight into a pre-filtered, pre-pivoted view
  * rather than landing on the unfiltered default and asking the user to
  * re-apply the same filter the tile already counted.
@@ -51,7 +51,7 @@
  * nothing left to disambiguate (Decided by: User, live follow-up).
  *
  * An "Export" trigger (`ReportExportButton`, the same shape
- * `OrgComplianceDashboard.tsx`'s own report download uses) above the table,
+ * `OrgComplianceWidgets.tsx`'s own report download uses) above the table,
  * scoped to this panel's current Standard/Standard version/Project filters
  * — `complianceApi.downloadOrgComplianceReport` passes them through as
  * query params so the downloaded PDF/CSV matches what's on screen, not an
@@ -65,6 +65,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
+import { PageActions } from "../../components/PageActions";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -243,9 +244,9 @@ export function OrgComplianceStandardsPanel({ orgId }: { orgId: string }) {
   return (
     <div className="side-grid">
       <div className="stack">
-        <div className="row" style={{ justifyContent: "flex-end" }}>
+        <PageActions>
           <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
-        </div>
+        </PageActions>
         {groups.length === 0 ? (
           <p className="text-muted">No compliance assignments match these filters.</p>
         ) : (

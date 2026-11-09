@@ -16,7 +16,7 @@
  * on a row happens on the linked project's own Compliance page.
  *
  * A "Category"/"Evidence status" filter pair reads an
- * initial value off `?category=`/`?validity=` so `OrgComplianceDashboard.tsx`'s
+ * initial value off `?category=`/`?validity=` so `OrgComplianceWidgets.tsx`'s
  * top-grid tiles ("Projects with outstanding actions," "...expired
  * evidence," "...evidence approaching expiry," "...overdue compliance
  * reviews," "Assessments awaiting approval") can link straight to the one
@@ -62,6 +62,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { FilterPanel } from "../../components/FilterPanel";
 import { FilterSelect } from "../../components/FilterSelect";
+import { PageActions } from "../../components/PageActions";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -271,9 +272,9 @@ export function OrgComplianceOutstandingPanel({ orgId }: { orgId: string }) {
   return (
     <div className="side-grid">
       <div className="stack">
-        <div className="row" style={{ justifyContent: "flex-end" }}>
+        <PageActions>
           <ReportExportButton onDownload={downloadReport} kinds={complianceApi.COMPLIANCE_REPORT_KINDS} />
-        </div>
+        </PageActions>
         {(category === "" || category === "non_compliant") && (
           <section className="card stack">
             <h3 style={{ margin: 0 }}>Non-compliant requirements ({filteredNonCompliant.length})</h3>

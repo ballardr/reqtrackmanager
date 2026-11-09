@@ -21,7 +21,7 @@ test.describe("phase schedule", () => {
 
     await test.step("the manager sets an expected range that has already ended on the current phase", async () => {
       await loginAs(page, email);
-      await page.goto(`/projects/${project.projectId}/admin/structure`);
+      await page.goto(`/projects/${project.projectId}/admin/stagesPhases`);
       await ensureExpanded(page, "Stage schedule");
       await page.getByRole("button", { name: "Schedule phase Scoping" }).first().click();
       const dialog = page.getByRole("dialog");

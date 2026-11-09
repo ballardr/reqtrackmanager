@@ -42,6 +42,15 @@ class PhaseOut(BaseModel):
     sort_order: int
 
 
+class WorkflowUsageOut(BaseModel):
+    """Who follows a workflow: in a project, that project's stage names and counts; at the organisation tier, counts only."""
+
+    stage_names: list[str]
+    stage_count: int
+    track_count: int
+    project_count: int
+
+
 class WorkflowOut(BaseModel):
     id: UUID
     name: str
@@ -49,6 +58,7 @@ class WorkflowOut(BaseModel):
     sort_order: int
     phases: list[PhaseOut]
     in_use: bool
+    used_by: WorkflowUsageOut
 
 
 class HiddenWorkflowOut(BaseModel):

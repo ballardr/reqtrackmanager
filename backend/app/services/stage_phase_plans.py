@@ -247,6 +247,63 @@ def record_move(
     _send(db, recipients(db, project, stage, state, exclude={actor.id}), NotificationType.STAGE_PHASE_COMPLETED, project, stage, title, body)
 
 
+def phase_attention_counts(db: Session, project: Project, today: date) -> tuple[int, int]:
+    """How many scheduled phases of `project` are overdue and how many start soon, for the overview figures.
+
+    Overdue: a phase that is the stage's (or an applicable component track's) current one, not closed, whose expected end
+    is before `today`. Upcoming: a phase ahead of the current one whose expected start is from `today` to the project's
+    lead time ahead. The same reading as the daily reminders, evaluated for the viewer's own day; a component's plan counts
+    only while component phases are on, for a track that applies and for a phase of the workflow the track follows.
+
+    Args:
+        db: The session (read only).
+        project: The project.
+        today: The viewer's calendar day (`client_date.effective_today()`).
+
+    Returns:
+        `(overdue, upcoming)`.
+    """
+    plans = [p for p in project_plans(db, project) if p.completed_at is None and (p.expected_from or p.expected_to)]
+    if not plans:
+        return 0, 0
+    stages = {s.id: s for s in db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id)).all()}
+    enabled = component_stages.phases_enabled(db, project)
+    states = {
+        (st.component_id, st.stage_id): st
+        for st in db.scalars(select(ComponentStageState).where(ComponentStageState.project_id == project.id)).all()
+    }
+    starts = {w: start_phase(db, w).id for w in {s.workflow_id for s in stages.values()}}
+    phases = phase_index(db, {p.phase_id for p in plans} | {s.phase_id for s in stages.values()} | {st.phase_id for st in states.values()})
+    lead_end = today + timedelta(days=resolve_lead_days(db, project)[0])
+    overdue = upcoming = 0
+    for plan in plans:
+        stage, phase = stages.get(plan.stage_id), phases.get(plan.phase_id)
+        if stage is None or phase is None:
+            continue
+        state = None
+        if plan.component_id is not None:
+            state = states.get((plan.component_id, stage.id))
+            if not enabled or (state is not None and state.not_applicable):
+                continue
+        if phase.workflow_id != (state.workflow_id if state is not None else stage.workflow_id):
+            continue
+        if state is not None:
+            current_id = state.phase_id
+        elif plan.component_id is not None:
+            current_id = starts[stage.workflow_id]
+        else:
+            current_id = stage.phase_id
+        current = phases.get(current_id)
+        if current is None:
+            continue
+        if plan.phase_id == current_id:
+            if current.kind != StagePhaseKind.CLOSED and plan.expected_to is not None and plan.expected_to < today:
+                overdue += 1
+        elif phase.sort_order > current.sort_order and plan.expected_from is not None and today <= plan.expected_from <= lead_end:
+            upcoming += 1
+    return overdue, upcoming
+
+
 def send_phase_reminders(db: Session, now: datetime | None = None) -> None:
     """Daily sweep: sends the "upcoming" and "overdue" phase reminders, each once per date. Commits once.
 

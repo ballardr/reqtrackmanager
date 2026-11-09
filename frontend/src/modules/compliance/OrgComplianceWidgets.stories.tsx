@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
+import { expect, spyOn, waitFor, within } from "storybook/test";
 
 import { api } from "../../api/client";
 import { withRouter, withToast } from "../../testing/storybook-helpers";
-import { OrgComplianceDashboard } from "./OrgComplianceDashboard";
+import { OrgComplianceAttentionWidget, OrgComplianceSummaryWidget } from "./OrgComplianceWidgets";
 import type {
   ComplianceRecentActivity,
   OrgExpiringEvidence,
@@ -130,124 +130,61 @@ function mockApis() {
   });
 }
 
-const meta: Meta<typeof OrgComplianceDashboard> = {
-  title: "Modules/Compliance/OrgComplianceDashboard",
-  component: OrgComplianceDashboard,
-  decorators: [withRouter("/orgs/org-1/overview/compliance-dashboard"), withToast()],
+
+const meta: Meta<typeof OrgComplianceSummaryWidget> = {
+  title: "Modules/Compliance/OrgComplianceWidgets",
+  component: OrgComplianceSummaryWidget,
+  decorators: [withRouter("/orgs/org-1/overview"), withToast()],
   args: { orgId: ORG_ID },
 };
 export default meta;
 
-type Story = StoryObj<typeof OrgComplianceDashboard>;
+type Story = StoryObj<typeof OrgComplianceSummaryWidget>;
 
-export const Populated: Story = {
-  beforeEach: mockApis,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("Active compliance standards")).toBeInTheDocument());
-    await expect(canvas.getByText("Projects subject to compliance")).toBeInTheDocument();
-    await expect(canvas.getAllByText("Beta Tunnel").length).toBeGreaterThan(0);
-    await expect(canvas.getByText(/Access control — assessed/)).toBeInTheDocument();
-    await expect(canvas.getByText(/Standard audit/)).toBeInTheDocument();
-    await expect(canvas.getByText(/ISO-27001 — 3 issues/)).toBeInTheDocument();
-  },
-};
-
-/** "Download PDF report"/"Download CSV report" moved behind a
- * single "Export" `Popover` trigger (Principle 11), the same shape
- * `CsvImportWizard.tsx`'s own Export/Download-template pair already uses,
- * rather than two permanently-visible adjacent buttons. */
-export const DownloadReport: Story = {
-  beforeEach: () => {
-    mockApis();
-    spyOn(api, "getForBlob").mockResolvedValue(new Blob(["csv"], { type: "text/csv" }));
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await waitFor(() => expect(canvas.getByText("Active compliance standards")).toBeInTheDocument());
-    await expect(canvas.queryByText("Download CSV report")).not.toBeInTheDocument();
-    await userEvent.click(canvas.getByRole("button", { name: "Export" }));
-    const menu = within(document.body).getByRole("dialog", { name: "Export" });
-    await userEvent.click(within(menu).getByRole("button", { name: "Download CSV report" }));
-    await waitFor(() => expect(api.getForBlob).toHaveBeenCalledWith(
-      `/api/v1/orgs/${ORG_ID}/modules/compliance/reports?format=csv`
-    ));
-  },
-};
-
-/** The four headline stats and five detail stats now render as
- * one single `.grid.grid-metrics` grid rather than three separately
- * `flex-wrap`-ped rows of uneven size (4/5). */
-export const StatsRenderAsOneEqualSizeGrid: Story = {
+/** One equal-size grid of tiles: standards in use, overall compliance and the projects that need attention. */
+export const SummaryRendersOneEqualSizeGrid: Story = {
   beforeEach: mockApis,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const activeStandardsCard = await waitFor(() => canvas.getByText("Active compliance standards").closest(".card"));
     const grid = activeStandardsCard?.closest(".grid.grid-metrics");
     await expect(grid).not.toBeNull();
-    // All nine `StatCard`s (four headline + five detail) live in that same
-    // grid container, not split across separate row wrappers.
     await expect(within(grid as HTMLElement).getByText("Assessments awaiting approval")).toBeInTheDocument();
+    await expect(canvas.getByText("Projects subject to compliance")).toBeInTheDocument();
   },
 };
 
-/** The top grid's headline cards no longer embed a variable-
- * length project list as their own `children`; instead each is a
- * `MetricTile` link to a pre-filtered destination (`OrgComplianceStandardsPanel.tsx`'s
- * project pivot, or `OrgComplianceOutstandingPanel.tsx`'s category filter). */
-export const HeadlineTilesLinkToFilteredViews: Story = {
+/** Each headline tile links to the pre-filtered Compliance section it summarises, with no embedded project list. */
+export const SummaryTilesLinkToFilteredViews: Story = {
   beforeEach: mockApis,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const nonCompliantTile = await waitFor(() => canvas.getByRole("link", { name: /Non-compliant projects/ }));
     await expect(nonCompliantTile).toHaveAttribute(
-      "href",
-      `/orgs/${ORG_ID}/overview/compliance-by-standard?groupBy=project&state=non_compliant`
+      "href", `/orgs/${ORG_ID}/overview/compliance-by-standard?groupBy=project&state=non_compliant`,
     );
-    // No embedded project list inside the tile itself any more.
     await expect(within(nonCompliantTile).queryByRole("link", { name: "Beta Tunnel" })).not.toBeInTheDocument();
-
     await expect(canvas.getByRole("link", { name: /Projects with outstanding actions/ })).toHaveAttribute(
-      "href",
-      `/orgs/${ORG_ID}/overview/compliance-outstanding?category=actions`
+      "href", `/orgs/${ORG_ID}/overview/compliance-outstanding?category=actions`,
     );
     await expect(canvas.getByRole("link", { name: /Projects with expired evidence/ })).toHaveAttribute(
-      "href",
-      `/orgs/${ORG_ID}/overview/compliance-outstanding?category=evidence&validity=expired`
+      "href", `/orgs/${ORG_ID}/overview/compliance-outstanding?category=evidence&validity=expired`,
     );
     await expect(canvas.getByRole("link", { name: /Assessments awaiting approval/ })).toHaveAttribute(
-      "href",
-      `/orgs/${ORG_ID}/overview/compliance-outstanding?category=pending`
+      "href", `/orgs/${ORG_ID}/overview/compliance-outstanding?category=pending`,
     );
   },
 };
 
-/** The second block's remaining two cards ("Standards with the
- * most outstanding issues" / "Upcoming compliance deadlines/reviews") sit
- * top-aligned in one row via an explicit `alignItems: "flex-start"` (never
- * `.row`'s own `align-items: center` default, which is what actually
- * produced the "not top justified" complaint — see
- * `OrgComplianceDashboard.tsx`), while "Recently changed compliance assessments" now renders as its
- * own full-width card entirely outside that row. */
-export const DetailCardsTopAlignedAndRecentActivityFullWidth: Story = {
+/** The attention card lists the standards with the most issues, the upcoming reviews and the recently changed assessments. */
+export const AttentionListsIssuesReviewsAndActivity: Story = {
+  render: (args) => <OrgComplianceAttentionWidget orgId={args.orgId} />,
   beforeEach: mockApis,
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const standardsCard = await waitFor(() => canvas.getByText("Standards with the most outstanding issues").closest(".card"));
-    const upcomingCard = canvas.getByText("Upcoming compliance deadlines/reviews").closest(".card");
-    const recentActivityCard = canvas.getByText("Recently changed compliance assessments").closest(".card");
-
-    const sharedRow = standardsCard?.closest(".row");
-    await expect(sharedRow).not.toBeNull();
-    // Both remaining detail cards share one explicitly top-aligned row.
-    await expect(upcomingCard?.closest(".row")).toBe(sharedRow);
-    await expect((sharedRow as HTMLElement).style.alignItems).toBe("flex-start");
-
-    // "Recently changed" is no longer inside that row at all.
-    await expect(recentActivityCard?.closest(".row")).not.toBe(sharedRow);
-    await expect(within(recentActivityCard as HTMLElement).getByText(/Access control — assessed/)).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByText("Standards with the most outstanding issues")).toBeInTheDocument());
+    await expect(canvas.getByText(/ISO-27001 — 3 issues/)).toBeInTheDocument();
+    await expect(canvas.getByText(/Standard audit/)).toBeInTheDocument();
+    await expect(canvas.getByText(/Access control — assessed/)).toBeInTheDocument();
   },
 };
-
-export const LightTheme: Story = { ...Populated };
-export const DarkTheme: Story = { ...Populated, globals: { theme: "dark" } };

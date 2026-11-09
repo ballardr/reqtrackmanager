@@ -46,7 +46,7 @@ from app.schemas.requirement import (
     RequirementUpdate,
     RequirementVersionOut,
 )
-from app.services import engagement, pubsub
+from app.services import component_stages, engagement, pubsub
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
@@ -228,6 +228,7 @@ def list_requirements(
     target_stage_to_id: UUID | None = Query(None, description="Only requirements whose target stage is this stage or an earlier one."),
     has_comments: bool | None = None,
     only_watched: bool | None = None,
+    phase: str | None = Query(None, description="Only requirements whose governing phase (their component's track, else the stage's) has this name."),
     include_archived: bool = False,
     sort: str | None = Query(None, pattern="^(unique_code|name|status|created_at)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
@@ -281,7 +282,7 @@ def list_requirements(
         include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
         tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword, search=search, status=status_filter,
         target_stage_id=target_stage_id, target_stage_from_id=target_stage_from_id, target_stage_to_id=target_stage_to_id,
-        has_comments=has_comments, only_watched=only_watched,
+        has_comments=has_comments, only_watched=only_watched, phase=phase,
     )
 
     # One project, or a scope widened over related projects. With one project the database sorts and pages,
@@ -317,12 +318,16 @@ def list_requirements(
     # are fetched for this page alone, so a page of 50 costs the same in a project of 20,000.
     by_id = {r.id: r for r in requirements_by_ids(db, [row.id for row in rows])}
     prefetch = prefetch_for_list(db, list(by_id), current_user.id)
+    phase_of = component_stages.requirement_phase_lookup(db, project_or_404(db, project_id))
     out = []
     for row in rows:
         item = _to_out(db, by_id[row.id], prefetch.versions[row.id], current_user.id, prefetch)
         item.from_project_id, item.from_project_name, item.from_project_code = (
             row.from_project_id, row.from_project_name, row.from_project_code,
         )
+        # The governing phase is read for this project's own rows; a row of a related project is not annotated.
+        governing = phase_of(item.component_id, item.target_stage_id) if row.from_project_id is None else None
+        item.phase_name, item.phase_kind = (governing.name, governing.kind) if governing is not None else (None, None)
         out.append(item)
     return out
 

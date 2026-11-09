@@ -4,7 +4,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import {
   buildComponent, buildComponentPhases, buildComponentTrack, buildPhasePlan, buildPhasePlans, buildStage, buildStageWorkflow,
-  withToast,
+  buildUser, withStatefulAuth, withToast,
 } from "../testing/storybook-helpers";
 import { PhaseSchedulePanel } from "./PhaseSchedulePanel";
 
@@ -26,7 +26,7 @@ function mockReads(plans: ReturnType<typeof buildPhasePlans>, tracks = buildComp
 const meta: Meta<typeof PhaseSchedulePanel> = {
   title: "Components/PhaseSchedulePanel",
   component: PhaseSchedulePanel,
-  decorators: [withToast()],
+  decorators: [withToast(), withStatefulAuth(buildUser({ ui_preferences: {} }))],
   args: { projectId: "project-1", organizationId: "org-1", orgUsers: [] },
 };
 export default meta;

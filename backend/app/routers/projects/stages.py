@@ -53,8 +53,15 @@ from app.services.stage_workflows import (
 router = APIRouter(tags=["projects-stages"])
 
 
-def _stages_out(db: Session, stages: list[ProjectStage]) -> list[ProjectStageOut]:
-    """Stage responses with each stage's workflow and phase names, read in two queries."""
+def _stages_out(db: Session, stages: list[ProjectStage], viewer: User | None = None) -> list[ProjectStageOut]:
+    """Stage responses with each stage's workflow and phase names, read in two queries.
+
+    With a `viewer`, each carries whether that person may enter or leave a locked phase (`can_lock`).
+    """
+    can_lock = bool(
+        viewer is not None and stages
+        and ProjectRole.PROJECT_MANAGER in get_effective_project_roles(db, viewer.id, stages[0].project_id)
+    )
     phases = phase_index(db, {s.phase_id for s in stages})
     workflow_ids = {s.workflow_id for s in stages}
     workflows = {
@@ -70,14 +77,14 @@ def _stages_out(db: Session, stages: list[ProjectStage]) -> list[ProjectStageOut
             workflow_name=workflows.get(stage.workflow_id, ""), phase_id=phase.id, phase_name=phase.name,
             phase_kind=phase.kind, sort_order=stage.sort_order, is_current=stage.is_current,
             approved_at=stage.approved_at, completed_at=stage.completed_at, completed_by=stage.completed_by,
-            review_deadline=stage.review_deadline,
+            review_deadline=stage.review_deadline, can_lock=can_lock,
             owner=labels.get((owner_ref.type.value, owner_ref.id)) if owner_ref is not None else None,
         ))
     return out
 
 
-def _stage_out(db: Session, stage: ProjectStage) -> ProjectStageOut:
-    return _stages_out(db, [stage])[0]
+def _stage_out(db: Session, stage: ProjectStage, viewer: User | None = None) -> ProjectStageOut:
+    return _stages_out(db, [stage], viewer)[0]
 
 
 def _get_stage(db: Session, project: Project, stage_id: UUID) -> ProjectStage:
@@ -125,7 +132,7 @@ def create_stage(
 def list_stages(project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db)):
     return _stages_out(db, list(db.scalars(
         select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
-    ).all()))
+    ).all()), current_user)
 
 
 @router.patch("/{project_id}/stages/{stage_id}", response_model=ProjectStageOut)

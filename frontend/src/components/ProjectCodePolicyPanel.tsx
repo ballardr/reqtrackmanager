@@ -2,7 +2,7 @@
  * Module: components/ProjectCodePolicyPanel
  *
  * Org Admin form for how project codes are formed (kind, length, automatic or manual
- * assignment) and whether a record code always shows its project code. The policy applies to
+ * assignment), whether a code is locked after creation, and whether a record code always shows its project code. The policy applies to
  * codes created from now on; existing codes are never rewritten.
  *
  * Dependencies: `PUT /api/v1/orgs/{id}/code-policy`.
@@ -35,6 +35,7 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
   const [minLength, setMinLength] = useState(String(org.project_code_policy.min_length));
   const [maxLength, setMaxLength] = useState(String(org.project_code_policy.max_length));
   const [assignment, setAssignment] = useState<ProjectCodeAssignment>(org.project_code_policy.assignment);
+  const [locked, setLocked] = useState(org.project_code_policy.locked);
   const [enforce, setEnforce] = useState(org.enforce_code_everywhere);
   const [saving, setSaving] = useState(false);
 
@@ -46,7 +47,7 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
     setSaving(true);
     try {
       const saved = await api.put<Organization>(`/api/v1/orgs/${org.id}/code-policy`, {
-        kind, min_length: min, max_length: max, assignment, enforce_code_everywhere: enforce,
+        kind, min_length: min, max_length: max, assignment, locked, enforce_code_everywhere: enforce,
       });
       showToast(strings.orgAdmin.codePolicySaved);
       onSaved(saved);
@@ -92,9 +93,14 @@ export function ProjectCodePolicyPanel({ org, onSaved }: { org: Organization; on
       </FormGrid>
       {valid && (
         <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-          {strings.orgAdmin.codePolicyPreview(describeCodePolicy({ kind, min_length: min, max_length: max, assignment }))}
+          {strings.orgAdmin.codePolicyPreview(describeCodePolicy({ kind, min_length: min, max_length: max, assignment, locked }))}
         </p>
       )}
+      <CheckboxField help={strings.help.lockProjectCodes}
+        label={strings.orgAdmin.lockProjectCodes}
+        checked={locked}
+        onChange={setLocked}
+      />
       <CheckboxField help={strings.help.enforceCodeEverywhere}
         label={strings.orgAdmin.enforceCodeEverywhere}
         checked={enforce}

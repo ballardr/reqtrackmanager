@@ -174,6 +174,9 @@ class ProjectOut(BaseModel):
     # parent_project_name above, never redacted: it says nothing about any
     # other project's identity, just this one's own setting.
     can_be_parent: bool = False
+    # True when the organisation has locked project codes and the caller is not an organisation administrator, so the
+    # code is shown read-only. Computed for the caller; the server enforces the lock regardless (`services.codes`).
+    code_change_locked: bool = False
 
 
 class ProjectImportResult(BaseModel):
@@ -405,6 +408,9 @@ class ProjectStageOut(BaseModel):
     completed_by: UUID | None = None
     review_deadline: datetime | None = None
     owner: PrincipalOut | None = None
+    # Whether the caller may move the stage into or out of a locked phase (a project manager), so a picker can show
+    # the locked phases as unavailable instead of failing after the choice; the server enforces it regardless.
+    can_lock: bool = False
 
 
 class StageReviewDeadlineSet(BaseModel):

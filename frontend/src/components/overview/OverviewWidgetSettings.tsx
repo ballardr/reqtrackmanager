@@ -72,11 +72,16 @@ function SizeField({ label, help, value, max, onCommit }: { label: string; help:
  * @param onChange Called with the edited widget.
  * @param catalogue What the server offers.
  * @param projectId The project, whose component tree is offered; omit for an organisation default.
+ * @param organizationId The organisation of a dashboard page: a record count then takes tags and the type's own filters
+ *   (components are named by prefix per project, so no tree is offered).
  * @param scopes The project scopes the widget may take (the ones this project offers; all four for an organisation).
  */
 export function OverviewWidgetSettings({
-  widget, onChange, catalogue, projectId, scopes,
-}: { widget: OverviewWidget; onChange: (next: OverviewWidget) => void; catalogue: OverviewCatalogue; projectId?: string; scopes: OverviewScope[] }) {
+  widget, onChange, catalogue, projectId, organizationId, scopes,
+}: {
+  widget: OverviewWidget; onChange: (next: OverviewWidget) => void; catalogue: OverviewCatalogue; projectId?: string; organizationId?: string;
+  scopes: OverviewScope[];
+}) {
   const strings = useStrings();
   const t = strings.overviewWidgets;
   const config = widget.config;
@@ -98,7 +103,7 @@ export function OverviewWidgetSettings({
   const usesMetric = ["metric_tile", "gauge", "status_chart"].includes(widget.type);
   const metrics = catalogue.metrics.filter((m) => (SCALAR_TYPES.includes(widget.type) ? m.scalar : m.breakdown));
   const metricInfo = catalogue.metrics.find((m) => m.key === metricKey);
-  const countsRecords = metricKey === "record_count";
+  const countsRecords = metricKey === "record_count" || metricKey === "org_record_count";
   const recordType = typeof paramsOf(config).record_type === "string" ? (paramsOf(config).record_type as string) : "";
   const typeInfo = catalogue.record_types.find((r) => r.type === recordType);
   const filters = filtersOf(config);
@@ -153,7 +158,7 @@ export function OverviewWidgetSettings({
             options={catalogue.record_types.map((r) => ({ value: r.type, label: r.label }))}
             onChange={(v) => setConfig({ ...config, params: { record_type: v } })}
           />
-          {recordType && projectId && (
+          {recordType && (projectId || organizationId) && (
             <>
               <CommaListField
                 label={t.tags} help={strings.help.overviewFilterTags} value={filters.tag ?? []}

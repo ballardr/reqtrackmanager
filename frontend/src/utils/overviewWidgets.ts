@@ -15,6 +15,7 @@
  */
 import type { OverviewCatalogue, OverviewMetricSpec, OverviewScope, OverviewWidget } from "../api/types";
 import { getArtefactListPath } from "../modules/artefactPaths";
+import { formatFileSize } from "./formatFileSize";
 
 /** Columns of the overview grid, and the most rows a widget may span. */
 export const OVERVIEW_COLUMNS = 12;
@@ -81,10 +82,16 @@ export function gaugeFraction(value: number, minimum: number, maximum: number): 
   return Math.min(1, Math.max(0, (value - minimum) / (maximum - minimum)));
 }
 
-/** A figure as shown: a percentage with its sign, a count as a whole number (grouped), else trimmed to one decimal. */
-export function formatMetricValue(value: number, unit: "count" | "percent" | null): string {
+/** A figure as shown: a size in bytes in its own unit, a percentage with its sign, a count as a whole number (grouped), else trimmed to one decimal. */
+export function formatMetricValue(value: number, unit: "count" | "percent" | "bytes" | null): string {
   if (unit === "percent") return `${Math.round(value * 10) / 10}%`;
+  if (unit === "bytes") return formatFileSize(value);
   return Number.isInteger(value) ? value.toLocaleString() : (Math.round(value * 10) / 10).toLocaleString();
+}
+
+/** Where an organisation dashboard tile links, or `null` when no list shows exactly that figure. */
+export function orgTileDestination(metric: string): string | null {
+  return metric === "org_project_count" ? "/projects" : null;
 }
 
 function filtersOf(params: Record<string, unknown>): Record<string, string[]> {

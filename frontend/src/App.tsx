@@ -24,6 +24,7 @@ import { HelpRedirectPage } from "./pages/HelpRedirectPage";
 import { ReportRunPage } from "./pages/ReportRunPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
+import { ProjectStagePhasesPage } from "./pages/ProjectStagePhasesPage";
 import { OrgFilesPage } from "./pages/OrgFilesPage";
 import { ProjectFilesPage } from "./pages/ProjectFilesPage";
 import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
@@ -135,6 +136,7 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/actions/:actionId" element={<ActionDetailPage />} />
         <Route path="/projects/:projectId/files" element={<ProjectFilesPage />} />
         <Route path="/projects/:projectId/admin/:group?/:section?" element={<ProjectAdminPage />} />
+        <Route path="/projects/:projectId/stage-phases" element={<ProjectStagePhasesPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
         <Route path="/projects/:projectId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/projects/:projectId/report-packs/:packId" element={<ReportPackPage />} />

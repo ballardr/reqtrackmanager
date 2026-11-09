@@ -507,6 +507,23 @@ MODULE_DEFINITION = ModuleDefinition(
             width=12, height=2, in_default_layout=True,
         ),
     },
+    # The organisation's compliance posture as dashboard widgets (they replace the former separate dashboard page); the
+    # frontend renders them from the module's own organisation endpoints.
+    org_overview_widgets={
+        "summary": OverviewWidgetType(
+            label="Compliance summary",
+            description=(
+                "Standards in use, overall compliance, and how many projects are non-compliant or have outstanding "
+                "actions, evidence or reviews."
+            ),
+            width=12, height=3, in_default_layout=True,
+        ),
+        "attention": OverviewWidgetType(
+            label="Compliance attention",
+            description="The standards with the most outstanding issues, upcoming reviews and recently changed assessments.",
+            width=12, height=5,
+        ),
+    },
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     on_org_created=_seed_org_defaults,
     project_nav_visible=_project_nav_visible,

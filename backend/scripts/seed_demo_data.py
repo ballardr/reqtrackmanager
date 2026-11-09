@@ -614,6 +614,27 @@ def create_announcement(
     return r.json()
 
 
+def create_org_dashboard(
+    headers: dict, org_id: str, name: str, widgets: list[dict], viewer_user_ids: list[str] | None = None,
+) -> dict:
+    """Adds an organisation dashboard page with the given widgets, optionally limited to some users (an organisation
+    administrator always sees every page), so the manual-demo dataset shows a second page and a restricted one."""
+    created = httpx.post(f"{BASE}/orgs/{org_id}/dashboards", json={"name": name}, headers=headers, timeout=30)
+    created.raise_for_status()
+    page_id = created.json()["dashboard"]["id"]
+    saved = httpx.put(
+        f"{BASE}/orgs/{org_id}/dashboards/{page_id}/layout", json={"scope": "this", "widgets": widgets}, headers=headers, timeout=30,
+    )
+    saved.raise_for_status()
+    if viewer_user_ids:
+        limited = httpx.put(
+            f"{BASE}/orgs/{org_id}/dashboards/{page_id}",
+            json={"viewers": [{"type": "user", "id": user_id} for user_id in viewer_user_ids]}, headers=headers, timeout=30,
+        )
+        limited.raise_for_status()
+    return saved.json()
+
+
 def create_link_type(
     headers: dict, org_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
     allowed_source_types: list[str] | None = None, allowed_target_types: list[str] | None = None,
@@ -2426,6 +2447,16 @@ def main() -> None:
         h_pm, org["id"], title="Demonstration data",
         body="Everything in this organisation is sample data; edit or delete it freely.",
     )
+
+    print("Adding organisation dashboards...")
+    create_org_dashboard(h_pm, org["id"], "Delivery", [
+        {"id": "requirements", "type": "metric_tile", "width": 3, "height": 2, "config": {"metric": "org_requirement_count"}},
+        {"id": "by-status", "type": "status_chart", "width": 4, "height": 5, "config": {"metric": "org_projects_by_status", "chart": "pie"}},
+        {"id": "note", "type": "text", "width": 5, "height": 3, "config": {"markdown": "Delivery figures across every project."}},
+    ])
+    create_org_dashboard(h_pm, org["id"], "Engineering", [
+        {"id": "records", "type": "metric_tile", "width": 3, "height": 2, "config": {"metric": "org_record_count", "params": {"record_type": "requirement"}}},
+    ], viewer_user_ids=[demo_engineer["user_id"]])
 
     print("Setting the organisation's report look...")
     set_report_look(h_pm, org["id"], accent_color_hex="#0F62FE", footer_text="Solstice Robotics — Confidential")

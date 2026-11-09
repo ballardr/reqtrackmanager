@@ -79,6 +79,7 @@ CORE_ITEMS: tuple[NavItem, ...] = (
     NavItem("actions", "Actions", "/projects/{project_id}/actions"),
     NavItem("files", "Files", "/projects/{project_id}/files"),
     NavItem("reviews-due", "Reviews due", "/projects/{project_id}/reviews-due"),
+    NavItem("stage-phases", "Stage phases", "/projects/{project_id}/stage-phases"),
     NavItem("history", "History", "/projects/{project_id}/history"),
     NavItem("admin", "Project administration", "/projects/{project_id}/admin"),
 )

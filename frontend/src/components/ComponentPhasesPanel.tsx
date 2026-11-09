@@ -8,7 +8,6 @@
  * workflow, applicability and owner. Progression between stages is advisory: a badge says when the previous
  * stage has closed for the component, and nothing is blocked otherwise.
  */
-import { Pencil } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { api } from "../api/client";
@@ -17,12 +16,9 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
-import { Badge } from "./Badge";
+import { ComponentTracksList } from "./ComponentTracksList";
 import { ComponentTrackEditor, type ComponentTrackChanges } from "./ComponentTrackEditor";
-import { ConfirmDialog } from "./ConfirmDialog";
-import { CheckboxField } from "./FormFields";
-import { InlineSelect, LabeledSelect } from "./LabeledSelect";
-import { PrincipalBadge } from "./PrincipalBadge";
+import { LabeledSelect } from "./LabeledSelect";
 
 const INHERIT = "inherit";
 
@@ -44,8 +40,6 @@ export function ComponentPhasesPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ComponentTrack | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [closing, setClosing] = useState<{ track: ComponentTrack; phaseId: string; phaseName: string } | null>(null);
-  const [cascade, setCascade] = useState(false);
   const base = `/api/v1/projects/${projectId}`;
 
   const reload = useCallback(async () => {
@@ -73,24 +67,6 @@ export function ComponentPhasesPanel({
     if (await run(() => api.put(`${base}/component-phases-settings`, { mode }), "save", strings.componentPhases.nounModeSetting)) {
       await reload();
       onChanged?.();
-    }
-  }
-
-  async function move(track: ComponentTrack, phaseId: string, cascadeToRequirements: boolean) {
-    const path = `${base}/components/${track.component_id}/stages/${track.stage_id}/transition`;
-    if (await run(() => api.post(path, { phase_id: phaseId, cascade_to_requirements: cascadeToRequirements }), "save", strings.componentPhases.nounSingular)) {
-      await reload();
-      onChanged?.();
-    }
-  }
-
-  function requestMove(track: ComponentTrack, phaseId: string) {
-    const phase = workflows.find((w) => w.id === track.workflow_id)?.phases.find((p) => p.id === phaseId);
-    if (phase?.kind === "closed") {
-      setCascade(false);
-      setClosing({ track, phaseId, phaseName: phase.name });
-    } else {
-      void move(track, phaseId, false);
     }
   }
 
@@ -130,62 +106,18 @@ export function ComponentPhasesPanel({
       {state.mode === "on" && (components.length === 0 || stages.length === 0) && (
         <div className="text-muted">{strings.componentPhases.noTracks}</div>
       )}
-      {state.mode === "on" && components.map((component) => (
-        <div key={component.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
-          <strong>{component.name}</strong>
-          {stages.map((stage) => {
-            const track = state.tracks.find((t) => t.component_id === component.id && t.stage_id === stage.id);
-            if (!track) return null;
-            const phases = workflows.find((w) => w.id === track.workflow_id)?.phases ?? [{ id: track.phase_id, name: track.phase_name }];
-            return (
-              <div key={stage.id} className="row" style={{ justifyContent: "space-between" }}>
-                <div className="row">
-                  <span style={{ minWidth: "10rem" }}>{stage.name}</span>
-                  {track.not_applicable ? (
-                    <Badge>{strings.componentPhases.notApplicableBadge}</Badge>
-                  ) : (
-                    <InlineSelect
-                      ariaLabel={strings.componentPhases.track(component.name, stage.name)} value={track.phase_id} placeholder={null}
-                      maxWidth={220} disabled={!track.can_move} onChange={(next) => requestMove(track, next)}
-                      options={phases.map((p) => ({ value: p.id, label: p.name }))}
-                    />
-                  )}
-                  {track.customised && <Badge>{track.workflow_name}</Badge>}
-                  {track.previous_closed && <Badge tone="info">{strings.componentPhases.previousClosedBadge}</Badge>}
-                </div>
-                <div className="row">
-                  <PrincipalBadge principal={track.owner} placeholder="" />
-                  <button
-                    className="btn" aria-label={strings.componentPhases.editTrack(component.name, stage.name)}
-                    title={strings.componentPhases.editTrack(component.name, stage.name)}
-                    onClick={() => { setSaveError(null); setEditing(track); }}
-                  >
-                    <Pencil />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+      {state.mode === "on" && components.length > 0 && stages.length > 0 && (
+        <ComponentTracksList
+          projectId={projectId} state={state} stages={stages} components={components} workflows={workflows}
+          onChanged={() => { void reload(); onChanged?.(); }}
+          onEdit={(track) => { setSaveError(null); setEditing(track); }}
+        />
+      )}
       {editing && editingComponent && editingStage && (
         <ComponentTrackEditor
           track={editing} componentName={editingComponent.name} stageName={editingStage.name} workflows={workflows}
           orgUsers={orgUsers} organizationId={organizationId} projectId={projectId} error={saveError}
           onCancel={() => setEditing(null)} onSave={(changes) => void save(editing, changes)}
-        />
-      )}
-      {closing && (
-        <ConfirmDialog
-          title={strings.componentPhases.completeStage}
-          message={<CheckboxField help={strings.help.cascadeToRequirementsComponent} label={strings.componentPhases.cascadeToRequirements} checked={cascade} onChange={setCascade} />}
-          confirmLabel={closing.phaseName}
-          onConfirm={() => {
-            const { track, phaseId } = closing;
-            setClosing(null);
-            void move(track, phaseId, cascade);
-          }}
-          onCancel={() => setClosing(null)}
         />
       )}
     </div>

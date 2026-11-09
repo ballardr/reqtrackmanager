@@ -32,7 +32,7 @@ export const Default: Story = {
 };
 
 /** A module's own contributed headline stat (e.g.
- * `modules/compliance/ComplianceOrgOverviewTiles.tsx`) renders `StatBarEntry`
+ * a module's own tiles) render `StatBarEntry`
  * directly as `children`, splicing into the same row as `items` with
  * identical spacing/dividers rather than a second implementation. */
 export const WithContributedEntry: Story = {

@@ -53,6 +53,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.models.change_request import ChangeRequest, ChangeRequestTask, ChangeRequestVersion
 from app.models.engagement import Subscription
 from app.models.enums import ChangeRequestStatus, PrincipalType
+from app.models.org_dashboard import OrganizationDashboardViewer
 from app.models.organization import OrgGroup
 from app.models.project import Project, ProjectGroup, ProjectStage
 from app.models.requirement import RequirementVersion
@@ -113,6 +114,11 @@ CORE_PRINCIPAL_REFERENCES: tuple[PrincipalReference, ...] = (
         model=ComponentStageState, field="owner", label="component stage owners", audit_entity_type="component_stage_state",
     ),
     PrincipalReference(model=ProjectStage, field="owner", label="stage owners", audit_entity_type="project_stage"),
+    # Mandatory so that deleting a group that restricts a dashboard needs a replacement and never widens who may see it.
+    PrincipalReference(
+        model=OrganizationDashboardViewer, field="viewer", label="dashboard viewers", audit_entity_type="organization_dashboard",
+        mandatory=True, multi_valued=True, record_id_field="dashboard_id",
+    ),
     PrincipalReference(
         model=ChangeRequestTask, field="assignee", label="change request task assignees",
         audit_entity_type="change_request_task", live_filter=lambda: ChangeRequestTask.is_done.is_(False),

@@ -48,6 +48,8 @@ export interface StageWorkflow {
   sort_order: number;
   phases: StageWorkflowPhase[];
   in_use: boolean;
+  /** Who follows it: in a project, that project's stage names and counts; at the organisation tier, counts only. */
+  used_by: { stage_names: string[]; stage_count: number; track_count: number; project_count: number };
 }
 
 /** A phase as saved: `id` is set for an existing phase so it keeps its identity. */
@@ -440,6 +442,8 @@ export interface ProjectCodePolicy {
   min_length: number;
   max_length: number;
   assignment: ProjectCodeAssignment;
+  /** True when only an organisation administrator may change a project's code after creation. */
+  locked: boolean;
 }
 
 export const PROJECT_CODE_KIND_LABEL: Record<ProjectCodeKind, string> = {
@@ -913,6 +917,9 @@ export interface Project {
   name: string;
   // Short upper-case code that qualifies this project's record codes (`ACME-REQ-001`).
   code: string;
+  /** True when the organisation has locked project codes and the caller is not an organisation administrator
+   * (sent when a single project is read, not on list rows). */
+  code_change_locked?: boolean;
   summary: string;
   /** A short name some reports print in headers and titles instead of `name`; null when unset. */
   report_name: string | null;
@@ -1358,6 +1365,8 @@ export interface ProjectStage {
   review_deadline: string | null;
   /** Who is reminded about the stage's phase schedule; null means the project managers. */
   owner: Principal | null;
+  /** Whether the caller may move the stage into or out of a locked phase (a project manager). */
+  can_lock?: boolean;
 }
 
 export type StageReviewResponseChoice = "approved" | "rejected";
@@ -1526,6 +1535,9 @@ export interface ProjectMetrics {
 }
 
 export interface Requirement extends ProjectScopedRow {
+  /** The phase that governs the requirement (its component's track when component phases are on, else its stage's); null when not applicable. */
+  phase_name?: string | null;
+  phase_kind?: StagePhaseKind | null;
   id: string;
   project_id: string;
   unique_code: string;
@@ -2547,6 +2559,29 @@ export interface OverviewLayout extends OverviewLayoutBody {
   can_customise: boolean;
 }
 
+/** One page of an organisation's overview dashboards. */
+export interface OrgDashboard {
+  /** The page id, or `overview` for the built-in first page (stored or not). */
+  id: string;
+  name: string;
+  /** True for the built-in Overview page, which cannot be renamed or deleted. */
+  is_default: boolean;
+  /** True when the page is limited to its viewers. */
+  restricted: boolean;
+  /** Who the page is limited to; sent to an organisation administrator only. */
+  viewers: Principal[];
+  can_manage: boolean;
+}
+
+/** A dashboard page with the layout in force. */
+export interface OrgDashboardLayout {
+  dashboard: OrgDashboard;
+  scope: OverviewScope;
+  widgets: OverviewWidget[];
+  /** True while the page shows the built-in layout (nothing stored for it). */
+  built_in: boolean;
+}
+
 export interface OverviewWidgetTypeInfo {
   key: string;
   label: string;
@@ -2598,7 +2633,7 @@ export interface OverviewBreakdownRow {
 /** One figure's outcome; only `ok` carries data. `unavailable` means the caller may not read it here (never zero). */
 export interface OverviewMetricResult {
   state: "ok" | "unavailable" | "timeout" | "error";
-  unit: "count" | "percent" | null;
+  unit: "count" | "percent" | "bytes" | null;
   label: string | null;
   /** How many projects the figure covers (1 unless its scope was widened). */
   projects: number;

@@ -268,6 +268,7 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
             target_stage_from_id=uuid_filter(filters, "target_stage_from_id"),
             target_stage_to_id=uuid_filter(filters, "target_stage_to_id"),
             has_comments=filters.flag("has_comments"), only_watched=filters.flag("only_watched"),
+            phase=filters.one("phase"),
         ),
         prefetch=False,
     )
@@ -508,7 +509,7 @@ REQUIREMENT_TABLE = RecordTableProvider(
     update=_update_requirement,
     filter_params=frozenset({
         "include_archived", "is_completed", "component_id", "category_id", "keyword", "search", "status",
-        "target_stage_id", "target_stage_from_id", "target_stage_to_id", "has_comments", "only_watched",
+        "target_stage_id", "target_stage_from_id", "target_stage_to_id", "has_comments", "only_watched", "phase",
     }),
     can_create=_may_edit,
     can_update=_may_edit,

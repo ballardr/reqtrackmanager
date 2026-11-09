@@ -127,7 +127,7 @@ export const WithOutstandingItems: Story = {
   },
 };
 
-/** `OrgComplianceDashboard.tsx`'s "Projects with expired
+/** `OrgComplianceWidgets.tsx`'s "Projects with expired
  * evidence" tile links here with `?category=evidence&validity=expired`, so
  * only the Evidence section renders, narrowed to the expired row alone. */
 export const CategoryFilteredViaUrl: Story = {

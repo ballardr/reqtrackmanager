@@ -17,7 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus
+from app.models.enums import RequirementLevel, RequirementReviewOutcome, RequirementStatus, StagePhaseKind
 from app.schemas.file import FileAssetOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.schemas.project_scope import ProjectScopedRow
@@ -88,6 +88,10 @@ class RequirementOut(ProjectScopedRow):
     component_id: UUID
     category_id: UUID
     target_stage_id: UUID
+    # The phase that governs the requirement (its component's track when component phases are on, else its stage's);
+    # set on the project list only, `None` when the component is marked not applicable to the stage.
+    phase_name: str | None = None
+    phase_kind: StagePhaseKind | None = None
     level: RequirementLevel = RequirementLevel.REQUIREMENT
     sort_order: int
     creator_id: UUID

@@ -142,7 +142,7 @@ export const FilterByProject: Story = {
 };
 
 /** The "Group by" pivot, and its URL-driven initial state
- * (`?groupBy=project&state=non_compliant`) so `OrgComplianceDashboard.tsx`'s
+ * (`?groupBy=project&state=non_compliant`) so `OrgComplianceWidgets.tsx`'s
  * "Non-compliant projects" tile can link straight into a pre-filtered,
  * project-pivoted view. */
 export const GroupedByProjectViaUrl: Story = {

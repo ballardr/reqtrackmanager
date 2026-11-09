@@ -31,15 +31,17 @@ Dependencies: `services.stage_workflows` (phases, moves), `services.principals` 
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final, Literal
 
-from sqlalchemy import select
+from sqlalchemy import and_, false, or_, select, true, tuple_
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.enums import ProjectRole, StagePhaseKind
 from app.models.project import Project, ProjectComponent, ProjectStage
-from app.models.requirement import Baseline
+from app.models.requirement import Baseline, Requirement, RequirementVersion
 from app.models.stage_workflow import ComponentStageState, StageWorkflowPhase
 from app.models.user import User
 from app.schemas.principal import PrincipalRef
@@ -135,6 +137,77 @@ def tracked_component_ids(db: Session, project: Project, stage: ProjectStage) ->
             )
         ).all()
     )
+
+
+@dataclass(frozen=True)
+class PhaseRef:
+    """The phase that governs a requirement: its name and kind."""
+
+    name: str
+    kind: StagePhaseKind
+
+
+def requirement_phase_lookup(db: Session, project: Project) -> Callable[[uuid.UUID, uuid.UUID], PhaseRef | None]:
+    """A function giving the phase that governs a requirement of `project`, read once however many requirements are asked.
+
+    A requirement is governed by its component's own track for its target stage when component phases are on and the
+    component has an applicable track there, else by the stage's own phase; a component marked not applicable to the stage
+    has no governing phase (`None`). The same rule the approval and lock use (`tracked_component_ids`), so the list
+    never shows a phase that is not the one in force.
+
+    Args:
+        db: The session (read only).
+        project: The project whose requirements are listed.
+
+    Returns:
+        `lookup(component_id, target_stage_id)`.
+    """
+    stages = {s.id: s for s in db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id)).all()}
+    states: dict[tuple[uuid.UUID, uuid.UUID], ComponentStageState] = {}
+    if phases_enabled(db, project):
+        for st in db.scalars(select(ComponentStageState).where(ComponentStageState.project_id == project.id)).all():
+            states[(st.component_id, st.stage_id)] = st
+    phases = phase_index(db, {s.phase_id for s in stages.values()} | {st.phase_id for st in states.values()})
+
+    def lookup(component_id: uuid.UUID, stage_id: uuid.UUID) -> PhaseRef | None:
+        stage = stages.get(stage_id)
+        if stage is None:
+            return None
+        state = states.get((component_id, stage_id))
+        if state is not None and state.not_applicable:
+            return None
+        phase = phases.get(state.phase_id if state is not None else stage.phase_id)
+        return PhaseRef(phase.name, phase.kind) if phase is not None else None
+
+    return lookup
+
+
+def requirement_phase_clause(db: Session, project: Project, name: str) -> ColumnElement[bool]:
+    """A condition on `Requirement` and its current `RequirementVersion` that keeps the requirements whose governing phase
+    (see `requirement_phase_lookup`) is called `name` (compared without case).
+
+    Built from the project's stages and tracks read once, so the filter is a plain SQL condition and paging stays in the database.
+    """
+    needle = name.strip().lower()
+    stages = list(db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id)).all())
+    states = (
+        list(db.scalars(select(ComponentStageState).where(ComponentStageState.project_id == project.id)).all())
+        if phases_enabled(db, project) else []
+    )
+    phases = phase_index(db, {s.phase_id for s in stages} | {st.phase_id for st in states})
+
+    def named(phase_id: uuid.UUID) -> bool:
+        phase = phases.get(phase_id)
+        return phase is not None and phase.name.lower() == needle
+
+    pair = tuple_(Requirement.component_id, RequirementVersion.target_stage_id)
+    stage_ids = [s.id for s in stages if named(s.phase_id)]
+    all_pairs = [(st.component_id, st.stage_id) for st in states]
+    track_pairs = [(st.component_id, st.stage_id) for st in states if not st.not_applicable and named(st.phase_id)]
+    by_stage = (
+        and_(RequirementVersion.target_stage_id.in_(stage_ids), pair.not_in(all_pairs) if all_pairs else true()) if stage_ids else false()
+    )
+    return or_(by_stage, pair.in_(track_pairs) if track_pairs else false())
 
 
 def project_tracks(db: Session, project: Project) -> list[Track]:

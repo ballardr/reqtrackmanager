@@ -98,7 +98,7 @@ function mockProjectAdminApis(
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
-    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
+    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: false,
     allow_ai_approvals: false,
   };
@@ -276,7 +276,7 @@ export const OverviewTabCodeEditableUnderManualAssignment: Story = {
     mockProjectAdminApis({
       project: buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", code: "ATL", status_id: "st1" }),
       organization: { ...buildForcedOrg(), force_require_change_request_for_approved_links: false,
-        project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual" } },
+        project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual", locked: false } },
     });
     spyOn(api, "patch").mockResolvedValue(undefined);
   },
@@ -294,6 +294,31 @@ export const OverviewTabCodeEditableUnderManualAssignment: Story = {
     await waitFor(() =>
       expect(api.patch).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}`, expect.objectContaining({ code: "ATLAS" }))
     );
+  },
+};
+
+/** When the organisation has locked codes, a manager sees the code read-only with the reason, and never sends it. */
+export const OverviewTabCodeReadOnlyWhenLocked: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({
+      project: { ...buildProject({ id: PROJECT_ID, organization_id: "org-1", name: "Atlas Platform", code: "ATL", status_id: "st1" }), code_change_locked: true },
+      organization: { ...buildForcedOrg(), force_require_change_request_for_approved_links: false,
+        project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual", locked: true } },
+    });
+    spyOn(api, "patch").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const code = await waitFor(() => {
+      const el = canvas.getByLabelText("Code");
+      expect(el).toHaveValue("ATL");
+      return el;
+    });
+    await expect(code).toHaveAttribute("readonly");
+    await expect(canvas.getByText(/Locked by your organisation/)).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    await expect((api.patch as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][1]).not.toHaveProperty("code");
   },
 };
 
@@ -413,7 +438,7 @@ function buildForcedOrg(): Organization {
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
     disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
-    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
+    code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false }, enforce_code_everywhere: false,
     force_require_change_request_for_approved_links: true,
     allow_ai_approvals: false,
   };
@@ -462,10 +487,8 @@ export const StagesTabAddAndTransition: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    // Stages now lives inside the merged "Structure" tab, as a
-    // `CollapsibleSection` that's expanded by default — no separate expand
-    // step needed.
-    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    // Stages live under the "Stage phases" group, in a `CollapsibleSection` that is expanded by default.
+    await userEvent.click(canvas.getByRole("link", { name: "Workflows and phases" }));
     await waitFor(() => expect(canvas.getByRole("combobox", { name: "Phase of Scoping" })).toBeInTheDocument());
     // Scoped to the "Project stages" section specifically: the sibling
     // "Components & categories" section (now mounted alongside it on the
@@ -490,13 +513,54 @@ export const StagesTabClosingAPhaseOffersToCompleteRequirements: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Workflows and phases" }));
     await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Phase of Scoping" }), "Completed");
     const dialog = within(await within(document.body).findByRole("dialog"));
     await userEvent.click(dialog.getByRole("checkbox"));
     await userEvent.click(dialog.getByRole("button", { name: "Completed" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(`/api/v1/projects/${PROJECT_ID}/stages/s1/transition`, { phase_id: "phase-completed", cascade_to_requirements: true }),
+    );
+  },
+};
+
+/** Without the project manager role the locked phases are listed as unavailable, with why, instead of failing after the choice. */
+export const StagesTabLockedPhasesNeedAProjectManager: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis({ stages: stages.map((st) => ({ ...st, can_lock: false })) });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Workflows and phases" }));
+    const phase = await canvas.findByRole("combobox", { name: "Phase of Scoping" });
+    const locked = within(phase).getByRole("option", { name: "Approved (project manager only)" });
+    await expect(locked).toBeDisabled();
+    await expect(within(phase).getByRole("option", { name: "Review" })).toBeEnabled();
+  },
+};
+
+/** The workflow picker is always there, and "New workflow" beside it creates a project workflow and selects it. */
+export const StagesTabNewWorkflowFromTheNewStageForm: Story = {
+  beforeEach: () => {
+    mockProjectAdminApis();
+    spyOn(api, "post").mockResolvedValue({ id: "workflow-new" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Workflows and phases" }));
+    await expect(await canvas.findByRole("combobox", { name: /Workflow/ })).toBeInTheDocument();
+    // The workflows list has its own "New workflow" button; this is the one beside the new-stage form.
+    const stagesSection = within(canvas.getByRole("button", { name: "Project stages section" }).closest(".card")!);
+    await userEvent.click(stagesSection.getByRole("button", { name: "New workflow" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "New workflow" }));
+    await userEvent.type(dialog.getByRole("textbox", { name: /Workflow name/ }), "Tendered");
+    await userEvent.type(dialog.getByRole("textbox", { name: "Phase name 1" }), "Scoping");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        `/api/v1/projects/${PROJECT_ID}/stage-workflows`,
+        { name: "Tendered", phases: [{ name: "Scoping", kind: "open" }] },
+      ),
     );
   },
 };
@@ -515,7 +579,7 @@ export const StagesTabDeleteReassignsViaDialog: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Structure" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Workflows and phases" }));
     await waitFor(() => expect(canvas.getAllByRole("button", { name: "Delete this stage" })).toHaveLength(2));
     await userEvent.click(canvas.getAllByRole("button", { name: "Delete this stage" })[1]);
 

@@ -11,6 +11,7 @@ import type {
   OrgUser,
   Project,
   ProjectStage,
+  StageWorkflow,
   Requirement,
   RequirementStatus,
 } from "../api/types";
@@ -90,6 +91,7 @@ export function RequirementsPage() {
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [stages, setStages] = useState<ProjectStage[]>([]);
+  const [workflows, setWorkflows] = useState<StageWorkflow[]>([]);
   // The list's filters, search and sort live in the URL (`useUrlFilter`), so it comes back as it was left
   // after a visit to a record, and a dashboard glance links here with the same `status`, `stage` and
   // `completed` parameters. Completion is a separate overlay marker, not a status value.
@@ -103,6 +105,8 @@ export function RequirementsPage() {
   const [stageToParam, setStageToParam] = useUrlText("stage_to");
   const stageFrom = stageFromParam || legacyStage;
   const stageTo = stageToParam || legacyStage;
+  // The phase that governs a requirement: its component's own track when component phases are on, else its stage's.
+  const [phaseFilter, setPhaseFilter] = useUrlText("phase");
   const [componentFilter, setComponentFilter] = useUrlText("component");
   const [categoryFilter, setCategoryFilter] = useUrlText("category");
   const [hasCommentsOnly, setHasCommentsOnly] = useUrlFlag("comments");
@@ -141,6 +145,7 @@ export function RequirementsPage() {
     if (completedFilter) params.set("is_completed", "true");
     if (stageFrom) params.set("target_stage_from_id", stageFrom);
     if (stageTo) params.set("target_stage_to_id", stageTo);
+    if (phaseFilter) params.set("phase", phaseFilter);
     if (componentFilter) params.set("component_id", componentFilter);
     if (categoryFilter) params.set("category_id", categoryFilter);
     if (hasCommentsOnly) params.set("has_comments", "true");
@@ -204,19 +209,21 @@ export function RequirementsPage() {
     // from the result set entirely) — "load more" append, by contrast,
     // calls `loadRequirements` directly and never touches this.
     setSelectedIds(new Set());
-    const [comps, cats, stgs] = await Promise.all([
+    const [comps, cats, stgs, flows] = await Promise.all([
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
+      api.get<StageWorkflow[]>(`/api/v1/projects/${projectId}/stage-workflows`),
       loadRequirements(0, false),
     ]);
     setComponents(comps);
     setCategories(cats);
     setStages(stgs);
+    setWorkflows(flows);
   }
 
   useLoadOnChange(reload, [
-    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, componentFilter, categoryFilter,
+    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, phaseFilter, componentFilter, categoryFilter,
     hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query, projectScope.scope,
   ]);
 
@@ -359,6 +366,15 @@ export function RequirementsPage() {
   function categoryName(id: string) {
     return categories.find((c) => c.id === id)?.name ?? "";
   }
+  /** The phase names the project's workflows use, each once, for the phase filter. */
+  const phaseNames = [...new Set(workflows.flatMap((w) => w.phases.map((p) => p.name)))];
+
+  /** A requirement's target: its stage, with the phase that governs it, e.g. "Release 1 (Review)". */
+  function targetText(r: Requirement) {
+    if (r.from_project_id) return "—";
+    return r.phase_name ? `${stageName(r.target_stage_id)} (${r.phase_name})` : stageName(r.target_stage_id);
+  }
+
   function stageName(id: string | null) {
     return stages.find((s) => s.id === id)?.name ?? "—";
   }
@@ -436,6 +452,14 @@ export function RequirementsPage() {
               onChange={(v) => setStageRange(stageFrom, v)}
               allLabel={strings.requirements.lastVersion}
               options={stages.map((s) => ({ value: s.id, label: s.name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.phaseFilter}
+              help={strings.requirements.phaseFilterHelp}
+              value={phaseFilter}
+              onChange={setPhaseFilter}
+              allLabel={strings.requirements.allPhases}
+              options={phaseNames.map((name) => ({ value: name, label: name }))}
             />
             <FilterSelect
               label={strings.requirements.component}
@@ -631,7 +655,7 @@ export function RequirementsPage() {
                       {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
                     </div>
                     <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      Target: {r.from_project_id ? "—" : stageName(r.target_stage_id)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
+                      Target: {targetText(r)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
                     </div>
                   </div>
                 ))}
@@ -710,7 +734,7 @@ export function RequirementsPage() {
                           </div>
                         </td>
                         <td className="text-muted">
-                          {r.from_project_id ? "—" : stageName(r.target_stage_id)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
+                          {targetText(r)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
                         </td>
                         <td className="text-muted">
                           {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}

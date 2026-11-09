@@ -37,7 +37,7 @@
  * Standard-level import/export: an "Export" action sits, with Archive, in the record header menu beside
  * Edit — downloads this standard's own portable JSON document
  * (`complianceApi.exportStandard` + `downloadBlob`, the same shape
- * `OrgComplianceDashboard.tsx`'s report downloads already use), for backup
+ * `OrgComplianceWidgets.tsx`'s report downloads already use), for backup
  * or transfer into a different organisation/deployment via
  * `StandardListPage.tsx`'s "Import standard" entry point.
  *

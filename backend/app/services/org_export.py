@@ -113,7 +113,7 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, User
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
-from app.services import announcements, nav_labels, overview_widgets
+from app.services import announcements, nav_labels, org_dashboards, overview_widgets
 from app.services.audit import log_event
 from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
@@ -212,6 +212,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **nav_labels.export_names(org.nav_label_overrides),
         **overview_widgets.export_layout(org.overview_widgets),
         **announcements.export_org(db, org.id),
+        **org_dashboards.export_org(db, org.id),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -720,6 +721,7 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
+    org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, org, data, users, warnings, None)
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
@@ -865,6 +867,7 @@ def merge_org_bundle(
     if target_org.overview_widgets is None:
         target_org.overview_widgets = overview_widgets.import_layout(data, warnings)
     announcements.import_org(db, target_org.id, data, current_user, warnings)
+    org_dashboards.import_org(db, target_org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, target_org, data, users, warnings, resolutions)

@@ -45,6 +45,7 @@ from app.routers import (
     health,
     nav_labels,
     notifications,
+    org_dashboards,
     org_record_tables,
     orgs,
     overview_widgets,
@@ -389,6 +390,7 @@ app.include_router(announcements.org_router)
 app.include_router(announcements.reader_router)
 app.include_router(nav_labels.router)
 app.include_router(nav_labels.org_router)
+app.include_router(org_dashboards.router)
 app.include_router(overview_widgets.router)
 app.include_router(overview_widgets.org_router)
 app.include_router(tags.router)

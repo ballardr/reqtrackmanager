@@ -35,6 +35,7 @@ from app.schemas.stage_workflow import (
     PhaseOut,
     RestoreWorkflowsRequest,
     WorkflowOut,
+    WorkflowUsageOut,
     WorkflowWrite,
 )
 from app.services import definition_suppression
@@ -49,6 +50,7 @@ from app.services.stage_workflows import (
     effective_workflows,
     phases_by_workflow,
     workflow_in_use,
+    workflow_usage,
     write_workflow,
 )
 
@@ -56,13 +58,19 @@ org_router = APIRouter(prefix="/api/v1/orgs/{organization_id}/stage-workflows", 
 project_router = APIRouter(prefix="/api/v1/projects/{project_id}/stage-workflows", tags=["stage-workflows"])
 
 
-def _out(db: Session, workflows: list[StageWorkflow]) -> list[WorkflowOut]:
-    """Workflow responses with their phases (one query) and whether a stage follows each."""
+def _out(db: Session, workflows: list[StageWorkflow], project_id: UUID | None = None) -> list[WorkflowOut]:
+    """Workflow responses with their phases (one query), whether a stage follows each and who does.
+
+    `project_id` scopes the usage to one project (and names its stages); without it the usage is counts across the
+    organisation.
+    """
     phases = phases_by_workflow(db, [w.id for w in workflows])
+    usage = workflow_usage(db, [w.id for w in workflows], project_id)
     return [
         WorkflowOut(
             id=w.id, name=w.name, scope="organisation" if w.project_id is None else "project", sort_order=w.sort_order,
             phases=[PhaseOut.model_validate(p) for p in phases[w.id]], in_use=workflow_in_use(db, w.id),
+            used_by=WorkflowUsageOut.model_validate(usage[w.id], from_attributes=True),
         )
         for w in workflows
     ]
@@ -144,7 +152,7 @@ def list_project_workflows(
     project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
 ):
     """The workflows this project may use: the organisation's it has not hidden, then its own (or its nearest ancestor's)."""
-    return _out(db, effective_workflows(db, project_or_404(db, project_id)))
+    return _out(db, effective_workflows(db, project_or_404(db, project_id)), project_id)
 
 
 @project_router.post("", response_model=WorkflowOut, status_code=status.HTTP_201_CREATED)
@@ -155,7 +163,7 @@ def create_project_workflow(
     """Creates a workflow for this project only."""
     workflow = _write(db, payload, organization_id=project.organization_id, project_id=project.id, actor=current_user)
     db.commit()
-    return _out(db, [workflow])[0]
+    return _out(db, [workflow], project.id)[0]
 
 
 @project_router.get("/hidden", response_model=list[HiddenWorkflowOut])
@@ -200,7 +208,7 @@ def replace_project_workflow(
     workflow = _own(db, workflow_id, project.organization_id, project.id)
     _write(db, payload, organization_id=project.organization_id, project_id=project.id, actor=current_user, workflow=workflow)
     db.commit()
-    return _out(db, [workflow])[0]
+    return _out(db, [workflow], project.id)[0]
 
 
 @project_router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)

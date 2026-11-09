@@ -59,6 +59,8 @@ Under **Projects & workflow → Navigation names**, set the name each project na
 
 Under **Projects & workflow → Project codes**, decide how a project's short code is formed: which **characters** (letters, digits, or both), the **shortest** and **longest** length, and whether the code is **assigned automatically** (from the project's name, with a number added on a clash) or **chosen by the creator**. A code is unique within the organisation, never equal to the organisation's own code, and never contains a hyphen. A change applies to codes created from now on; existing codes are never rewritten.
 
+Tick **Lock codes after creation** to stop anyone but an organisation administrator changing a project's code once it exists, for example when a service account creates your projects and the code is an identifier owned by that automation. Project managers and project administrators then see the code read-only in project settings, and the server refuses a change from any other route. Creating a project with a code is never blocked, and the lock applies when codes are assigned manually (an automatically assigned code cannot be changed by anyone).
+
 The code qualifies record codes: `REQ-001` exists in every project, so a record seen outside its own project (in a link to a parent or child project, say) shows as `ACME-REQ-001`. Inside its own project each person chooses in **Preferences** whether to see the project code (on by default), unless you tick **Always show the project code**.
 
 ```mermaid

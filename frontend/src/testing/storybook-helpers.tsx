@@ -240,6 +240,7 @@ export function buildAnnouncement(overrides: Partial<Announcement> = {}): Announ
 export function buildStageWorkflow(overrides: Partial<StageWorkflow> = {}): StageWorkflow {
   return {
     id: "workflow-1", name: "Standard", scope: "organisation", sort_order: 0, in_use: true,
+    used_by: { stage_names: [], stage_count: 0, track_count: 0, project_count: 0 },
     phases: [
       { id: "phase-scoping", name: "Scoping", kind: "open", sort_order: 0 },
       { id: "phase-review", name: "Review", kind: "review", sort_order: 1 },

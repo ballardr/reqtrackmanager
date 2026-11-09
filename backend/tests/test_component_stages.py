@@ -381,3 +381,34 @@ def test_a_template_clone_copies_the_switch_and_workflow_choices_but_not_progres
     new_stage = _stages(client, admin_token, new_id)[0]
     track = _track(client, admin_token, new_id, new_components["SW"], new_stage["id"])
     assert (track["workflow_name"], track["phase_name"]) == ("Outsourced work", "Scoping")
+
+
+def test_the_requirement_list_shows_and_filters_by_the_governing_phase(client, admin_token, org_id):
+    headers = auth_headers(admin_token)
+    project, first, second, stage_one, _stage_two, requirements = _world(client, admin_token, org_id)
+    listing = lambda **params: client.get(_url(project["id"], "requirements"), params=params, headers=headers).json()  # noqa: E731
+    phase_of = lambda rows: {r["id"]: r["phase_name"] for r in rows}  # noqa: E731
+
+    # Component phases off: every requirement is governed by its stage's phase.
+    assert set(phase_of(listing(target_stage_id=stage_one["id"])).values()) == {"Scoping"}
+    assert len(listing(phase="scoping")) == 4 and listing(phase="Review") == []
+
+    # On, with one component's track moved: its requirements read that track's phase, the other component's the stage's.
+    _turn_on(client, admin_token, project["id"])
+    workflow = _workflow(client, admin_token, project["id"])
+    assert _move(client, admin_token, project["id"], first["id"], stage_one["id"], workflow, "Review").status_code == 200
+    by_phase = phase_of(listing(target_stage_id=stage_one["id"]))
+    assert by_phase[requirements[(first["id"], stage_one["id"])]] == "Review"
+    assert by_phase[requirements[(second["id"], stage_one["id"])]] == "Scoping"
+    assert [r["id"] for r in listing(phase="review")] == [requirements[(first["id"], stage_one["id"])]]
+    # The unmoved component's requirements are still governed by the stage's own phase.
+    assert requirements[(second["id"], stage_one["id"])] in [r["id"] for r in listing(phase="Scoping")]
+    assert requirements[(first["id"], stage_one["id"])] not in [r["id"] for r in listing(phase="Scoping")]
+
+    # Not applicable: no governing phase, and the requirement matches no phase filter.
+    client.patch(
+        _url(project["id"], f"components/{second['id']}/stages/{stage_one['id']}/track"), json={"not_applicable": True}, headers=headers,
+    )
+    rows = {r["id"]: r for r in listing(target_stage_id=stage_one["id"])}
+    assert rows[requirements[(second["id"], stage_one["id"])]]["phase_name"] is None
+    assert requirements[(second["id"], stage_one["id"])] not in [r["id"] for r in listing(phase="Scoping")]

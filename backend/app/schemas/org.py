@@ -91,6 +91,8 @@ class CodePolicyOut(BaseModel):
     min_length: int
     max_length: int
     assignment: Literal["auto", "manual"]
+    # Only an organisation administrator may change a code after creation.
+    locked: bool = False
 
 
 class OrgCodePolicyUpdate(CodePolicyOut):

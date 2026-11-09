@@ -2951,6 +2951,13 @@ class ModuleDefinition:
             `get_overview_metrics`. Offered and evaluated only where the module is enabled for the project.
         overview_widgets: Maps a widget key (served as `<module_key>:<key>`) to an `OverviewWidgetType` whose
             renderer the module's frontend registers; read via `get_overview_widget_types`.
+        org_overview_metrics: Maps a metric key (served as `<module_key>:<key>`) to an `OverviewMetric` for the organisation's
+            dashboards (`get_org_overview_metrics`): `evaluate(ctx, params)` receives an
+            `services.org_dashboard_metrics.OrgMetricContext` (session, caller, organisation). Offered and evaluated only
+            while the organisation has the module enabled; usable by the metric tile, gauge and chart widgets.
+        org_overview_widgets: As `overview_widgets`, for the organisation's dashboards (`get_org_overview_widget_types`):
+            a widget draws the module's own figures for the organisation (its frontend registers the renderer under
+            `TierAModuleDefinition.orgOverviewWidgets`) and is offered only while the organisation has the module enabled.
         reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -3060,6 +3067,8 @@ class ModuleDefinition:
     no_perf_generator: dict[str, str] = field(default_factory=dict)
     overview_metrics: dict[str, OverviewMetric] = field(default_factory=dict)
     overview_widgets: dict[str, OverviewWidgetType] = field(default_factory=dict)
+    org_overview_metrics: dict[str, OverviewMetric] = field(default_factory=dict)
+    org_overview_widgets: dict[str, OverviewWidgetType] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -4936,6 +4945,24 @@ def get_overview_widget_types() -> dict[str, tuple[str, OverviewWidgetType]]:
         f"{definition.key}:{widget_key}": (definition.key, widget)
         for definition in get_module_registry().values()
         for widget_key, widget in definition.overview_widgets.items()
+    }
+
+
+def get_org_overview_metrics() -> dict[str, tuple[str, OverviewMetric]]:
+    """Every module-contributed organisation dashboard metric as `{<module_key>:<key>: (module_key, metric)}`."""
+    return {
+        f"{definition.key}:{metric_key}": (definition.key, metric)
+        for definition in get_module_registry().values()
+        for metric_key, metric in definition.org_overview_metrics.items()
+    }
+
+
+def get_org_overview_widget_types() -> dict[str, tuple[str, OverviewWidgetType]]:
+    """Every module-contributed organisation dashboard widget type as `{<module_key>:<key>: (module_key, type)}`."""
+    return {
+        f"{definition.key}:{widget_key}": (definition.key, widget)
+        for definition in get_module_registry().values()
+        for widget_key, widget in definition.org_overview_widgets.items()
     }
 
 

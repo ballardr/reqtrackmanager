@@ -35,7 +35,7 @@ from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.modules.registry import ArtefactChange
 from app.schemas.principal import PrincipalOut, PrincipalRef
-from app.services import engagement
+from app.services import component_stages, engagement
 from app.services import tags as tag_service
 from app.services.artefact_changes import notify_artefact_changed, requirement_content_changed
 from app.services.custom_fields import validate_custom_field_values
@@ -415,7 +415,8 @@ class RequirementFilters:
     Attributes mirror those parameters; `status` is the version status, `search` matches the name or code.
     `target_stage_from_id`/`target_stage_to_id` bound the target stage by the stages' order (a stage's
     position in the project, never its name); either end may be left open, and a stage that is not one of
-    the project's matches nothing.
+    the project's matches nothing. `phase` keeps the requirements whose governing phase (their component's track
+    when component phases are on, else the stage's) has this name.
     """
 
     include_archived: bool = False
@@ -432,6 +433,7 @@ class RequirementFilters:
     target_stage_to_id: UUID | None = None
     has_comments: bool | None = None
     only_watched: bool | None = None
+    phase: str | None = None
 
 
 @dataclass
@@ -593,6 +595,8 @@ def filter_requirement_rows(
     stage_range = _stage_range(db, project_id, filters)
     if stage_range is not None:
         conditions.append(RequirementVersion.target_stage_id.in_(stage_range))
+    if filters.phase and filters.phase.strip():
+        conditions.append(component_stages.requirement_phase_clause(db, project_or_404(db, project_id), filters.phase))
     if filters.status:
         conditions.append(RequirementVersion.status == filters.status)
     if filters.search:
@@ -625,7 +629,7 @@ def filter_requirement_rows(
         """How many requirements match, counted from the requirement table alone unless a filter reads the version
         (status, stage, text): the version and the component and category joins only order and label the page."""
         query = select(func.count()).select_from(Requirement)
-        if filters.status or filters.target_stage_id or stage_range is not None or filters.search:
+        if filters.status or filters.target_stage_id or stage_range is not None or filters.search or filters.phase:
             query = query.outerjoin(RequirementVersion, and_(
                 RequirementVersion.requirement_id == Requirement.id, RequirementVersion.valid_to.is_(None),
             ))

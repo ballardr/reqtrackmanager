@@ -75,6 +75,36 @@ def _own_count(db: Session, user: User, provider: RecordTableProvider, project_i
     return sum(1 for row in rows if owned is None or not owned(row))
 
 
+def count_in_project(
+    db: Session, user: User, project: Project, artefact_type: str, *,
+    filters: RecordFilters | None = None, tag_filter_for: Callable[[uuid.UUID], TagFilter | None] | None = None,
+) -> int | None:
+    """How many records of one type `project` holds itself (no related projects), optionally narrowed by the list filters.
+
+    Args:
+        db: Active session (read only).
+        user: The caller.
+        project: The project.
+        artefact_type: The registered type string.
+        filters: The provider's own list filters; none counts every record.
+        tag_filter_for: `project id -> TagFilter` for the shared tag and component/category filter; `None` for none.
+
+    Returns:
+        The count, or `None` when the caller may not read the type in that project (`readable_provider`).
+    """
+    provider = readable_provider(db, user, project, artefact_type)
+    if provider is None:
+        return None
+    if not ((filters is not None and filters.values) or tag_filter_for is not None):
+        return _own_count(db, user, provider, project.id)
+    rows = provider.list_records(db, user, project.id, filters or RecordFilters())
+    tag_filter = tag_filter_for(project.id) if tag_filter_for is not None else None
+    if tag_filter is not None:
+        rows = tag_filter.keep(db, project.id, artefact_type, rows, id_of=provider.id_of)
+    owned = provider.organization_owned
+    return sum(1 for row in rows if owned is None or not owned(row))
+
+
 def readable_provider(
     db: Session, user: User, project: Project, artefact_type: str, held: set[str] | None = None,
 ) -> RecordTableProvider | None:

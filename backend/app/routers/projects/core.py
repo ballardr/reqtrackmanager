@@ -65,7 +65,7 @@ from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.bundle_common import bundle_size, iter_bundle_file
 from app.services.changes import get_project_changes
-from app.services.codes import assign_project_code, change_project_code
+from app.services.codes import assign_project_code, change_project_code, project_code_locked_for
 from app.services.definitions import get_default_project_status_id, seed_action_types
 from app.services.downloads import filename_safe
 from app.services.lookups import project_or_404
@@ -129,6 +129,7 @@ def _project_out_with_redacted_parent(db: Session, current_user: User, project: 
     value they already have the power to change is not a new disclosure.
     """
     out = ProjectOut.model_validate(project)
+    out.code_change_locked = project_code_locked_for(db, project, current_user.id)
     if project.parent_project_id is None:
         return out
     if can_manage_project_settings(db, current_user, project) or project.parent_project_id in _accessible_project_ids(
@@ -893,7 +894,7 @@ def update_project(
     if payload.name is not None:
         project.name = payload.name
     if payload.code is not None:
-        new_code = change_project_code(db, project, payload.code)
+        new_code = change_project_code(db, project, payload.code, current_user.id)
         if new_code != project.code:
             log_event(
                 db, entity_type="project", entity_id=project.id, action="code_changed", actor_id=current_user.id,

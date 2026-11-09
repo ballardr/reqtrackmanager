@@ -401,3 +401,28 @@ def test_requirements_report_the_expected_end_and_start_of_their_stage_phase(cli
     move_stage(client, project["id"], stage["id"], "review", headers=headers)
     moved = values()
     assert str(moved["target_stage_phase_expected_end"]) == "2026-12-05" and moved["target_stage_phase_started_at"] is not None
+
+
+def test_the_overview_counts_overdue_and_upcoming_phases_for_the_viewers_own_day(client, admin_token, org_id):
+    project = create_project(client, admin_token, org_id, "Phase Figures")
+    stage = _stage(client, admin_token, project["id"])
+    today = date.today()
+    scoping = _phase(client, admin_token, project["id"], "Scoping")
+    review = _phase(client, admin_token, project["id"], "Review")
+    # The current phase ended yesterday (overdue); the next one starts in three days (within the default lead time).
+    iso = lambda offset: (today + timedelta(days=offset)).isoformat()  # noqa: E731
+    assert _plan(client, admin_token, project["id"], stage["id"], scoping, iso(-9), iso(-1)).status_code == 200
+    assert _plan(client, admin_token, project["id"], stage["id"], review, iso(3), iso(9)).status_code == 200
+
+    def figures(day: date) -> dict:
+        resp = client.post(
+            _url(project["id"], "overview-metrics"),
+            json={"metrics": [{"id": "o", "metric": "phases_overdue"}, {"id": "u", "metric": "phases_upcoming"}]},
+            headers={**auth_headers(admin_token), "X-Client-Date": day.isoformat()},
+        )
+        assert resp.status_code == 200, resp.text
+        return {k: v["value"] for k, v in resp.json()["results"].items()}
+
+    assert figures(today) == {"o": 1.0, "u": 1.0}
+    # For a viewer whose own day is still the day the phase ends, it is not yet overdue (the boundary is the viewer's day).
+    assert figures(today - timedelta(days=1)) == {"o": 0.0, "u": 1.0}

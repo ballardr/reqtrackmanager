@@ -1,72 +1,53 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { Files, Settings } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Files, LayoutDashboard, Settings } from "lucide-react";
+import { Link, Navigate, useParams } from "react-router-dom";
 
 import { api } from "../api/client";
-import type { Organization, OrgModule, OrgOverviewStats } from "../api/types";
+import type { Organization, OrgDashboard, OrgModule, OrgOverviewStats } from "../api/types";
 import { useOrgLabelCapitalized } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { EntitySwitcher } from "../components/EntitySwitcher";
+import { PageActionsProvider, PageActionsSlot } from "../components/PageActions";
 import { ReportsButton } from "../components/ReportsButton";
 import { ResourceMenu, type ResourceMenuGroupDef } from "../components/ResourceMenu";
+import { ManageDashboardsDialog } from "../components/overview/ManageDashboardsDialog";
+import { OrgDashboardView } from "../components/overview/OrgDashboardView";
 import { Spinner } from "../components/Spinner";
-import { StatBar, type StatBarItem } from "../components/StatBar";
+import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useReportCatalogue } from "../hooks/useReportCatalogue";
 import { useReportPackEntries } from "../hooks/useReportPackEntries";
-import { getInstalledModule, installedModules } from "../modules/registry";
+import { installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
-import { formatFileSize } from "../utils/formatFileSize";
 
-/** The always-present first group — contributed directly by
- * this core page, not by any module, so it can never collide with a real
- * module section key. */
+/** Prefix of the route segment (`/orgs/:orgId/overview/:group`) that names a dashboard page; a module section key never starts with it. */
+const DASHBOARD_GROUP_PREFIX = "dashboard-";
+
+/** The `ResourceMenu` group key of a dashboard page: the built-in first page keeps the bare overview address. */
+function dashboardGroupKey(page: OrgDashboard): string {
+  return page.is_default ? OVERVIEW_GROUP_KEY : `${DASHBOARD_GROUP_PREFIX}${page.id}`;
+}
+
+/** The first group: the built-in Overview page, contributed by this core page, so it never collides with a module section key. */
 const OVERVIEW_GROUP_KEY = "overview";
 
 /**
- * "Organisation Overview" — a new
- * top-level, always-visible nav-rail page (unlike the module-contributed
- * "Compliance Standards" tab, this one carries general-purpose org stats every org has
- * regardless of whether compliance applies, so it's shown unconditionally
- * to any org member, the same precedent as the always-shown Projects link;
- * see `docs/decisions.md`'s "Compliance module, human review follow-ups"
- * entry). Reached via `/org-overview` (`OrgListPage`'s single-org/multi-org
- * auto-redirect, reused rather than duplicated — see that component's own
- * docstring) or directly at `/orgs/:orgId/overview`.
+ * "Organisation Overview": the always-visible, top-level page of general organisation figures, drawn as widget
+ * dashboards. Reached via `/org-overview` (`OrgListPage`'s single-org/multi-org auto-redirect) or directly at
+ * `/orgs/:orgId/overview`.
  *
- * A "Reports" button beside the title opens the Reports dialog (`ReportsButton`), shown only when the caller can
- * run at least one organisation report or pack.
+ * The page is a `ResourceMenu` of the dashboard pages the person may see (the built-in Overview first, then any the
+ * organisation's administrators added, each optionally limited to chosen people or groups), followed by the sections
+ * enabled modules contribute (`orgOverviewSections`, for example Compliance's tables). A dashboard is the same widget grid
+ * the project overview uses (`OrgDashboardView`); modules contribute widgets to it through `orgOverviewWidgets`, so this
+ * core page never imports a module. An unknown address (a removed section's old link) returns to the Overview.
  *
- * A "files" icon link beside the title opens the organisation Files page (`OrgFilesPage`), which lists only the files
- * of the projects the person can open, so it is shown to every member.
- *
- * A "settings" icon link beside the title opens the organisation admin page. It is shown to everyone who
- * can see this page, because the admin page itself loads for every member (its settings sections gate
- * themselves by role), so no separate role check is needed here (`docs/decisions.md`).
- *
- * A stats header (project/requirement/member counts, total file storage —
- * `GET /orgs/{id}/overview-stats` — plus any installed, currently-enabled
- * module's own `orgOverviewTiles`, e.g. Compliance's overall-compliance-
- * percentage/standards-count/non-compliant-projects headline gauges)
- * is always shown as one compact `StatBar` row (previously
- * a `.grid.grid-metrics` of `StatCard`s, redesigned into a tighter, table-
- * like layout since a small set of numbers meant to be scanned at a glance
- * doesn't need `.card`'s full chrome repeated per tile).
- *
- * That stats row is itself the content of a real, always-present "Overview"
- * `ResourceMenu` group contributed by this page directly, not by
- * a module — the whole page is one `ResourceMenu`-driven surface with
- * nothing separately pinned above it, rather than a stats block pinned above
- * a menu that only sometimes renders. Any installed, currently-enabled
- * module's own `orgOverviewSections` (e.g. Compliance's Dashboard/
- * Compliance-by-standard/Outstanding groups, relocated here from
- * `OrgAdminPage.tsx`'s `"compliance-overview"` group, then split
- * from one nested-`Tabs` group into three flat top-level groups)
- * become additional groups alongside "Overview" — this core page never
- * imports a specific module directly, the same "core doesn't hardcode one
- * module" boundary `Layout.tsx`/`OrgAdminPage.tsx` already establish for
- * `globalNavItems`/`orgAdminSections`. With no module contributing a
- * section, "Overview" is the only group, and `ResourceMenu` itself hides its
- * own menu chrome whenever there's nothing to switch between.
+ * Actions in the title row: a section's own actions (its Export, a dashboard's Customise) are portalled in through
+ * `PageActions`, just before Reports, so they stay level with Reports and the group does not shift when switching;
+ * "Manage dashboards" (organisation administrators) opens the page list; "Reports" opens the Reports dialog
+ * (`ReportsButton`), shown only when the caller can run at least one organisation report or pack; a "files" icon link
+ * opens the organisation Files page, shown to every member because it lists only the files of projects the person can
+ * open; a "settings" icon link opens the organisation admin page, shown to everyone who can see this page because that
+ * page itself loads for every member and gates its sections by role (`docs/decisions.md`).
  */
 export function OrgOverviewPage() {
   const { orgId, group: groupParam } = useParams<{ orgId: string; group?: string }>();
@@ -75,9 +56,15 @@ export function OrgOverviewPage() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [stats, setStats] = useState<OrgOverviewStats | null>(null);
   const [modules, setModules] = useState<OrgModule[]>([]);
+  const [dashboards, setDashboards] = useState<OrgDashboard[] | null>(null);
+  const [managing, setManaging] = useState(false);
   const reportCatalogue = useReportCatalogue("organization", orgId);
   const packScope = useMemo(() => (orgId ? { kind: "organization" as const, id: orgId } : undefined), [orgId]);
   const reportPacks = useReportPackEntries(packScope, orgId);
+
+  const loadDashboards = useCallback(async () => {
+    if (orgId) setDashboards(await api.get<OrgDashboard[]>(`/api/v1/orgs/${orgId}/dashboards`));
+  }, [orgId]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -85,36 +72,12 @@ export function OrgOverviewPage() {
     api.get<OrgOverviewStats>(`/api/v1/orgs/${orgId}/overview-stats`).then(setStats);
     api.get<OrgModule[]>(`/api/v1/orgs/${orgId}/modules`).then(setModules);
   }, [orgId]);
-
-  // Memoized on `[modules, orgId]` rather than recomputed inline in the
-  // render body — `tile.render({orgId})` builds a fresh React element each
-  // call, and this page's own `org`/`stats` state each resolve
-  // independently after mount, so an unmemoized version would hand each
-  // contributed tile a new element identity (forcing React to unmount and
-  // remount it, re-running its own effects/fetches) on every one of those
-  // unrelated re-renders, not just when `modules` itself actually changes.
-  const contributedTiles = useMemo(
-    () =>
-      orgId
-        ? modules
-            .filter((m) => m.enabled)
-            .flatMap((entry) =>
-              (getInstalledModule(entry.module_key)?.orgOverviewTiles ?? []).map((tile) => ({
-                key: `${entry.module_key}:${tile.key}`,
-                node: tile.render({ orgId }),
-              }))
-            )
-        : [],
-    [modules, orgId]
-  );
+  useLoadOnChange(loadDashboards, [orgId]);
 
   if (!orgId) return null;
-  if (!org || !stats || reportCatalogue.loading || reportPacks.loading) return <Spinner />;
+  if (!org || !stats || !dashboards || reportCatalogue.loading || reportPacks.loading) return <Spinner />;
 
-  // Same "filter installed modules to this org's actually-enabled set"
-  // pattern `OrgAdminPage.tsx` already uses for `orgAdminSections` —
-  // dropping a since-disabled module's contribution here too, not just at
-  // `OrgAdminPage.tsx`'s own admin surface.
+  // Only the sections of modules this organisation has enabled, as `OrgAdminPage.tsx` does for `orgAdminSections`.
   const enabledModuleKeys = new Set(modules.filter((m) => m.enabled).map((m) => m.module_key));
   const moduleSections = installedModules
     .filter((m) => enabledModuleKeys.has(m.key))
@@ -122,7 +85,10 @@ export function OrgOverviewPage() {
 
   const hasReports = reportCatalogue.entries.length > 0 || reportPacks.entries.length > 0;
   const groups: ResourceMenuGroupDef<string>[] = [
-    { key: OVERVIEW_GROUP_KEY, label: "Overview", href: `/orgs/${orgId}/overview` },
+    ...dashboards.map((page) => ({
+      key: dashboardGroupKey(page), label: page.name,
+      href: page.is_default ? `/orgs/${orgId}/overview` : `/orgs/${orgId}/overview/${dashboardGroupKey(page)}`,
+    })),
     ...moduleSections.map((section) => ({
       key: section.key,
       label: section.label,
@@ -130,16 +96,16 @@ export function OrgOverviewPage() {
     })),
   ];
   const activeModuleSection = moduleSections.find((s) => s.key === groupParam);
-  const active = activeModuleSection?.key ?? OVERVIEW_GROUP_KEY;
-
-  const statItems: StatBarItem[] = [
-    { key: "projects", label: "Projects", value: stats.project_count },
-    { key: "requirements", label: "Requirements", value: stats.requirement_count },
-    { key: "members", label: "Members", value: stats.member_count },
-    { key: "storage", label: "File storage", value: formatFileSize(stats.total_file_size_bytes) },
-  ];
+  const activePage = groupParam === undefined
+    ? dashboards.find((page) => page.is_default)
+    : dashboards.find((page) => dashboardGroupKey(page) === groupParam);
+  // An address that names nothing (a removed section, a dashboard the person may not see) returns to the Overview.
+  if (groupParam !== undefined && !activeModuleSection && !activePage) return <Navigate to={`/orgs/${orgId}/overview`} replace />;
+  const active = activeModuleSection?.key ?? (activePage ? dashboardGroupKey(activePage) : OVERVIEW_GROUP_KEY);
+  const canManageDashboards = dashboards.some((page) => page.can_manage);
 
   return (
+    <PageActionsProvider>
     <div className="stack">
       <div className="row" style={{ alignItems: "center", gap: "var(--space-1)" }}>
         <h1 style={{ margin: 0 }}>{org.name}</h1>
@@ -149,7 +115,16 @@ export function OrgOverviewPage() {
           loadOptions={() => loadOrgSwitcherOptions("overview")}
         />
         <div className="row" style={{ marginLeft: "auto", alignItems: "center", gap: "var(--space-1)" }}>
+          <PageActionsSlot />
           {hasReports && <ReportsButton scope={{ kind: "organization", id: orgId }} organizationId={orgId} />}
+          {canManageDashboards && (
+            <button
+              type="button" className="btn btn-icon" onClick={() => setManaging(true)}
+              aria-label={strings.orgDashboards.manage} title={strings.orgDashboards.manage}
+            >
+              <LayoutDashboard />
+            </button>
+          )}
           <Link
             to={`/orgs/${orgId}/files`} className="btn btn-icon"
             aria-label={strings.files.orgLink(orgLabelCap)} title={strings.files.orgLink(orgLabelCap)}
@@ -165,24 +140,22 @@ export function OrgOverviewPage() {
         </div>
       </div>
 
-      <ResourceMenu ariaLabel="Organisation overview sections" groups={groups} active={active}>
+      <ResourceMenu ariaLabel={strings.orgDashboards.menuAria} groups={groups} active={active}>
         {activeModuleSection ? (
           activeModuleSection.render({ orgId })
         ) : (
-          <div className="stack">
-            <StatBar items={statItems}>
-              {contributedTiles.map((t) => (
-                <Fragment key={t.key}>{t.node}</Fragment>
-              ))}
-            </StatBar>
-            {!stats.is_full_org_total && (
-              <p className="text-muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                These figures are scoped to what you can see, not this organisation's full totals.
-              </p>
-            )}
-          </div>
+          <OrgDashboardView
+            key={activePage?.id ?? OVERVIEW_GROUP_KEY} orgId={orgId} dashboardId={activePage?.id ?? OVERVIEW_GROUP_KEY}
+            scopedFigures={!stats.is_full_org_total}
+          />
         )}
       </ResourceMenu>
+      {managing && (
+        <ManageDashboardsDialog
+          organizationId={orgId} pages={dashboards} onClose={() => setManaging(false)} onChanged={() => void loadDashboards()}
+        />
+      )}
     </div>
+    </PageActionsProvider>
   );
 }
