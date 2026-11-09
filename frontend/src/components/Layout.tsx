@@ -1,4 +1,4 @@
-import { BarChart3, Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { BarChart3, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -12,6 +12,7 @@ import { NavLabelProvider } from "../context/NavLabelContext";
 import { useNavLabeler } from "../context/NavLabelValue";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useClientConfig } from "../hooks/useClientConfig";
+import { useHasReviewsDue } from "../hooks/useHasReviewsDue";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useProjectHasStages } from "../hooks/useProjectHasStages";
@@ -103,6 +104,7 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // Reactive to a favourite being toggled anywhere in the app, not just on
   // arrival at /projects or /favourites — see `FavouritesContext`.
   const { hasFavourites } = useFavourites();
+  const hasReviewsDue = useHasReviewsDue(!!user);
   const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
   const clientConfig = useClientConfig(!!user);
 
@@ -267,16 +269,6 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 member, as the page is (it lists only files the caller may see); `/org-files` resolves the
                 organisation the way `/org-overview` does, and the entry stays active on the page itself. */}
             <NavRailLink to="/org-files" exact alsoActiveOn={/^\/orgs\/[^/]+\/files(\/|$)/} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
-            {/* "Organisation Overview" — a core, always-visible
-                nav-rail link (unlike the module-contributed
-                nav links below, this one carries general-purpose org stats every org
-                has regardless of compliance, so it's shown unconditionally,
-                the same precedent as the always-shown Projects link above —
-                see docs/decisions.md's "Compliance module, human review
-                follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
-                single-org/multi-org auto-redirect convention as its entry
-                point, the same way `/orgs` already does for org admin. */}
-            <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
             {/* Module-contributed top-level nav links ("Compliance
                 Standards" is the first one) — each item owns its own
                 visibility and may render nothing at all; see this file's own
@@ -287,15 +279,28 @@ function LayoutShell({ children }: { children: ReactNode }) {
             {hasFavourites && (
               <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
             )}
-            <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
-            <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railIconOnly} />
+            {/* Shown only when a review is due (`useHasReviewsDue`); the page stays reachable by address and from
+                notifications. The full Notifications page has no entry here: the header bell links to it. */}
+            {hasReviewsDue && (
+              <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
+            )}
+            {/* "Organisation Overview" — a core, always-visible
+                nav-rail link (unlike the module-contributed
+                nav links above, this one carries general-purpose org stats every org
+                has regardless of compliance, so it's shown unconditionally,
+                the same precedent as the always-shown Projects link above —
+                see docs/decisions.md's "Compliance module, human review
+                follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
+                single-org/multi-org auto-redirect convention as its entry
+                point, the same way `/orgs` already does for org admin. */}
+            <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
             {/* The only path to org administration: /orgs already auto-redirects
                 straight to a single org's admin page, or lists every org a
                 user belongs to otherwise — it just had no rail entry before
                 this, for anyone but a server admin drilling in through
                 /server/organisations. See docs/ux-style-guide.md, "Pattern:
                 wayfinding". */}
-            <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+            <NavRailLink to="/orgs" exact label={strings.nav.orgSettings(orgLabelCap)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
             {user.is_server_admin && (
               <>
                 <div className="nav-section-label">Administration</div>

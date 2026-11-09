@@ -263,6 +263,11 @@ def test_my_reviews_due_paginates_reports_total_and_includes_project_name(client
     assert len(page2.json()) == 1
     assert {r["requirement_id"] for r in page1.json()} & {r["requirement_id"] for r in page2.json()} == set()
 
+    # The navigation asks for one row to learn whether anything is due; the total still counts every row.
+    probe = client.get("/api/v1/me/reviews/due?limit=1", headers=auth_headers(reviewer_token))
+    assert len(probe.json()) == 1
+    assert probe.headers["x-total-count"] == "3"
+
 
 def test_system_users_paginates_and_reports_total(client, admin_token, org_id):
     """The server-admin cross-org user directory (C-A-13) — the other of

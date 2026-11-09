@@ -168,7 +168,6 @@ const en = {
     preferences: "Preferences",
     signOut: "Sign out",
     myReviews: "My reviews due",
-    myOrganizations: (orgPlural: string) => `My ${orgPlural.toLowerCase()}`,
     orgOverview: (orgCap: string) => `${orgCap} overview`,
     orgSettings: (orgCap: string) => `${orgCap} settings`,
     favourites: "Favourites",

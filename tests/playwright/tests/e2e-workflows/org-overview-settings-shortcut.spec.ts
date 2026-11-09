@@ -17,7 +17,8 @@ for (const [label, persona] of [
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
     await expect(page.getByRole("heading", { name: ORG_NAMES.alpha })).toBeVisible();
 
-    await page.getByRole("link", { name: "Organisation settings" }).click();
+    // The page's own shortcut, not the navigation rail entry of the same name.
+    await page.getByRole("main").getByRole("link", { name: "Organisation settings" }).click();
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin/);
   });
 }

@@ -41,7 +41,12 @@ const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1
  * prefix — Layout composes several providers each with their own fetch, so
  * a single path-matching mock is far more maintainable than one spy per
  * story. */
-function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true) {
+function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true, reviewsDue = 0) {
+  // `useHasReviewsDue` reads one row of the personal reviews-due list; its total decides whether the entry shows.
+  spyOn(api, "getPage").mockImplementation(async (path: string): Promise<never> => {
+    if (path.startsWith("/api/v1/me/reviews/due")) return { items: [], total: reviewsDue } as never;
+    throw new Error(`unmocked page path in Layout story: ${path}`);
+  });
   spyOn(api, "get").mockImplementation(async (path: string): Promise<unknown> => {
     if (path === "/api/v1/system/branding") return SERVER_SETTINGS;
     if (path === "/api/v1/orgs") return [ORG];
@@ -107,10 +112,48 @@ export const LoggedInNoProject: Story = {
     await expect(canvas.queryByText("Project")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Administration")).not.toBeInTheDocument();
     // The only path to org administration for a non-server-admin.
-    await expect(canvas.getByRole("link", { name: "My organisations" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Organisation settings" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "My organisations" })).not.toBeInTheDocument();
     // Organisation Files sits directly below Projects in the Global section.
     const links = canvas.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
     await expect(links.indexOf("Files")).toBe(links.indexOf("Projects") + 1);
+  },
+};
+
+/** The Global section reads Projects, Files, Organisation overview, Organisation settings; the full
+ * Notifications page has no rail entry (the header bell links to it), and with nothing due there is no
+ * reviews entry. */
+export const GlobalSectionOrderWithNothingDue: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Organisation settings" });
+    // Let the reviews-due read settle, so its absence is a result and not a read still in flight.
+    await waitFor(() => expect(api.getPage).toHaveBeenCalled());
+    const rail = within(canvas.getByRole("navigation"));
+    const names = rail.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    await expect(names.slice(names.indexOf("Projects"))).toEqual(["Projects", "Files", "Organisation overview", "Organisation settings"]);
+    await expect(rail.queryByRole("link", { name: "My reviews due" })).not.toBeInTheDocument();
+    await expect(rail.queryByRole("link", { name: "Notifications" })).not.toBeInTheDocument();
+  },
+};
+
+/** A review due shows the entry, after Files and before Organisation overview. */
+export const ReviewsDueEntryShownWhenSomethingIsDue: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 2);
+  },
+  play: async ({ canvasElement }) => {
+    const rail = within(within(canvasElement).getByRole("navigation"));
+    await rail.findByRole("link", { name: "My reviews due" });
+    const names = rail.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    await expect(names.slice(names.indexOf("Projects"))).toEqual([
+      "Projects", "Files", "My reviews due", "Organisation overview", "Organisation settings",
+    ]);
   },
 };
 

@@ -27,7 +27,7 @@ test("Org Admin shows the organisation's own name as the page title, persisting 
   page,
 }) => {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-  await page.getByRole("link", { name: "My organisations" }).click();
+  await page.getByRole("link", { name: "Organisation settings" }).click();
   await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
   await expect(page).toHaveURL(/\/orgs\/[0-9a-f-]+\/admin/);
   await expect(page.getByRole("heading", { level: 1, name: ORG_NAMES.alpha })).toBeVisible();

@@ -4,7 +4,7 @@ sidebar_position: 11
 
 # Administering an organisation
 
-Reach an organisation's admin page via **My organisations** in the nav, or from **Preferences → Your access**'s **Manage organisation** link — see [Organisations and projects](./organisations-and-projects.md#finding-your-organisations) for both routes in context.
+Reach an organisation's admin page via **Organisation settings** in the nav, or from **Preferences → Your access**'s **Manage organisation** link — see [Organisations and projects](./organisations-and-projects.md#finding-your-organisations) for both routes in context.
 
 | Organisation admin |
 | --- |

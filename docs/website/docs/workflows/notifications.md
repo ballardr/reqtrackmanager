@@ -10,7 +10,7 @@ The bell icon in the top bar shows your recent notifications, with an unread cou
 
 ## The Notifications page
 
-For your full notification history — searchable, and not limited to the dropdown's recent slice — go to **Notifications** in the nav's Global section. The same click-to-open behaviour applies, plus an **Unread only** filter.
+For your full notification history — searchable, and not limited to the dropdown's recent slice — choose **View all** at the foot of the bell's dropdown in the header. The same click-to-open behaviour applies, plus an **Unread only** filter.
 
 | Notifications page |
 | --- |

@@ -41,7 +41,12 @@ def list_my_due_reviews(
     `RequirementDueForReviewOut`. `limit`/`offset` (U-P-06) are optional,
     same contract as `list_requirements`: omitting both returns everything.
     """
-    due = get_due_reviews_for_user(db, current_user.id)
+    due = [(version, req) for version, req in get_due_reviews_for_user(db, current_user.id) if version.review_date is not None]
+    response.headers["X-Total-Count"] = str(len(due))
+    # Page first, so the lookups below read only the rows returned: the navigation asks for `limit=1` on every
+    # session to learn whether anything is due, and must not pay for labelling the whole list.
+    if limit is not None:
+        due = due[offset:offset + limit]
     reviewers = reviewer_labels(db, [version for version, _ in due])
     component_ids = {req.component_id for _, req in due}
     component_names = (
@@ -57,7 +62,7 @@ def list_my_due_reviews(
     )
     project_names = {pid: name for pid, name, _ in project_rows}
     project_codes = {pid: code for pid, _, code in project_rows}
-    out = [
+    return [
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, project_name=project_names.get(req.project_id),
             project_code=project_codes.get(req.project_id),
@@ -68,7 +73,3 @@ def list_my_due_reviews(
         for version, req in due
         if version.review_date is not None
     ]
-    response.headers["X-Total-Count"] = str(len(out))
-    if limit is not None:
-        out = out[offset:offset + limit]
-    return out

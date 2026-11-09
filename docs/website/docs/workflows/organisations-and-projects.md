@@ -6,7 +6,7 @@ sidebar_position: 3
 
 ## Finding your organisations
 
-Click **My organisations** in the nav's Global section (or reach the same admin page from **Preferences → Your access**, which additionally lists your role at each one) to see every organisation you belong to, with a **Manage organisation** link wherever you hold `org_admin`. If you belong to only one organisation, this skips straight to it rather than showing a one-item list to choose from. See [Administering an organisation](./administering-an-organisation.md) for what happens once you're there.
+Click **Organisation settings** at the foot of the nav's Global section (or reach the same admin page from **Preferences → Your access**, which additionally lists your role at each one) to see every organisation you belong to, with a **Manage organisation** link wherever you hold `org_admin`. If you belong to only one organisation, this skips straight to it rather than showing a one-item list to choose from. See [Administering an organisation](./administering-an-organisation.md) for what happens once you're there.
 
 ## Organisation overview
 
@@ -37,7 +37,7 @@ A new project copies the organisation's current module and sub-component default
 
 ## Favouriting a project
 
-Click the star icon next to a project to favourite it — favourited projects always sort to the top of your list, regardless of any other filter or search applied. Once you have at least one, a **Favourites** link appears in the nav's Global section as a quick jump list.
+Click the star icon next to a project to favourite it — favourited projects always sort to the top of your list, regardless of any other filter or search applied. Once you have at least one, a **Favourites** link appears in the nav's Global section as a quick jump list. **My reviews due** appears there only while a requirement review is due for you.
 
 ## Opening a project
 
