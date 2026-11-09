@@ -87,7 +87,7 @@ import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
 import { CheckboxField, InlineTextInput, TextAreaField, TextField, ToggleField } from "../components/FormFields";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
-import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
 import { ProjectNestingFields } from "../components/ProjectNestingFields";
 import { MODES_NEEDING_CONFIRMATION } from "../utils/projectInheritance";
@@ -1791,7 +1791,7 @@ export function ProjectAdminPage() {
             across the app is a separate, deliberately-deferred roadmap
             item (see docs/decisions.md); this is only where its existing
             (still mostly-inert) UI lives now. */}
-        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "var(--space-1) 0" }} />
+        <FormDivider />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
         <FormGrid minColumn="14rem">
@@ -1811,7 +1811,7 @@ export function ProjectAdminPage() {
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveTerminology}
         </button>
-        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "var(--space-1) 0" }} />
+        <FormDivider />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.navLabels.heading}</h2>
         {projectId && <NavLabelsPanel scope={{ kind: "project", projectId }} />}
       </div>

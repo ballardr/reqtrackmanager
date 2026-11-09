@@ -2688,6 +2688,15 @@ td:has(> .disclosure-toggle) {
   grid-column: 1 / -1;
 }
 
+/* A full-width rule between groups of fields (`FormDivider`); spans the row inside a `.form-grid`. */
+.form-divider {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
+}
+
 /* Repeating rows whose trailing actions must line up: one grid for every row, so the action column is
    as wide as the widest row and each action sits in the same place (`AlignedRows`). */
 .aligned-rows {

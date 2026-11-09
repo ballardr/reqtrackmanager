@@ -412,6 +412,16 @@ export function ProjectListPage() {
                   name={newName} onNameChange={setNewName}
                   nameHelp={newOrg?.project_code_policy.assignment === "auto" ? strings.help.newProjectNameAutoCode : undefined}
                   summary={newSummary} onSummaryChange={setNewSummary}
+                  beforeName={templateOptions.length > 0 && (
+                    <LabeledSelect help={strings.help.useTemplate}
+                      label={strings.projects.useTemplate}
+                      value={templateProjectId}
+                      onChange={setTemplateProjectId}
+                      options={templateOptions.map((p) => ({ value: p.id, label: p.name }))}
+                      placeholder={strings.projects.noTemplate}
+                      inputProps={{ autoFocus: orgs.length <= 1 }}
+                    />
+                  )}
                 >
                   {newOrg?.project_code_policy.assignment === "manual" && (
                     <TextField helpNotNeeded required
@@ -429,15 +439,6 @@ export function ProjectListPage() {
                     inputProps={{ maxLength: MAX_PROJECT_REPORT_NAME_LENGTH }}
                   />
                 </ProjectIdentityFields>
-                {templateOptions.length > 0 && (
-                  <LabeledSelect help={strings.help.useTemplate}
-                    label={strings.projects.useTemplate}
-                    value={templateProjectId}
-                    onChange={setTemplateProjectId}
-                    options={templateOptions.map((p) => ({ value: p.id, label: p.name }))}
-                    placeholder={strings.projects.noTemplate}
-                  />
-                )}
                 <LabeledSelect help={strings.help.projectVisibility(orgLabel)}
                   label={strings.admin.visibility}
                   value={newVisibility}

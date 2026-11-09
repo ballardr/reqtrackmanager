@@ -118,7 +118,7 @@ import { FieldHelp } from "../components/FieldHelp";
 import { ReportColourSchemeEditor } from "../components/ReportColourSchemeEditor";
 import { DEFAULT_COLOUR_CONTEXT, type ColourEntry } from "../utils/reportColours";
 import { FormActions } from "../components/FormActions";
-import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
 
@@ -3251,7 +3251,7 @@ export function OrgAdminPage() {
                 checked={reportIncludeLogo}
                 onChange={setReportIncludeLogo}
               />
-              <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
+              <FormDivider />
               <span className="row" style={{ gap: "var(--space-2)" }}>
                 <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
                 <FieldHelp label={strings.orgAdmin.emailFooterTitle} help={strings.orgAdmin.emailFooterHint(orgLabel)} />

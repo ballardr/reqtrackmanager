@@ -17149,3 +17149,13 @@ A project created from a template now receives everything the template is config
 - **Setting it.** A **Default organisation for new projects** select on Preferences, rendered only when more than one organisation is offered (with one there is nothing to choose, and a stored value is ignored); the empty option is **None (first organisation in the list)**; a stale stored id shows as None. Changing the picker in the dialog does not change the default, and the picker's help says where it is set.
 - **Checks.** Frontend only; no table, permission, secret, bundle key or migration. Time shape: none. Tests: Storybook (`PreferencesPage`: absent for one organisation, chosen and cleared; `ProjectListPage`: starts on the default, ignores a stale one); Playwright `default-new-project-organisation.spec.ts` (written, not run).
 
+
+## New project dialog: organisation, template, name order (2026-11-10)
+
+**Raised by: User** ("When a template is available for an org, it should be the first option, prior to the name. I think organisation should also be a line above the project name with a line divider between it and the other fields").
+
+- **Order (*Decided by: Agent*, to veto).** Organisation alone on its row, a divider, then Create from template (when the organisation offers one), then the name and the remaining fields. The template cannot sit above the organisation because its options are filtered by it and the organisation's default template is preselected when it changes; this meets both halves of the note. With the grid's two columns the template and name share a row, the template on the left.
+- **Shared parts.** `FormDivider` (`components/FormGrid.tsx`) replaces the four hand-written `<hr>` rules (`OrgAdminPage`, `ServerManagementPage`, two in `ProjectAdminPage`; the margin of the two project ones is now the grid gap). `ProjectIdentityFields` draws the organisation row and rule only for several organisations, and takes a `beforeName` slot that only the create dialog fills; Import project shares the organisation row and rule and gets no template.
+- **Focus.** The first control that renders: the organisation, else the template, else the name.
+- **Style guide.** "Building a form" names `FormDivider` and the scoping-field-first rule.
+- **Checks.** Frontend only; no table, permission, secret, bundle key or migration. Time shape: none. Tests: Storybook (`ProjectIdentityFields`, `FormGrid` divider, `ProjectListPage` order and organisation switch; all pass), Playwright step in `template-projects.spec.ts` written, not run.

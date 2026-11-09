@@ -473,6 +473,35 @@ export const CreateProjectIgnoresAStaleDefaultOrganisation: Story = {
   },
 };
 
+/** New project reads organisation, rule, template, then name; switching organisation re-offers that organisation's templates. */
+export const NewProjectFieldOrderIsOrganisationTemplateName: Story = {
+  beforeEach: () => {
+    mockProjectListApis({
+      orgs: [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })],
+      projects: [
+        ...singleOrgProjects,
+        buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    const top = (el: Element) => el.getBoundingClientRect().top;
+    const organisation = within(dialog).getByLabelText(/Organisation/);
+    const template = within(dialog).getByLabelText("Create from template");
+    const rule = document.body.querySelector(".form-divider") as HTMLElement;
+    await expect(top(organisation)).toBeLessThan(top(rule));
+    await expect(top(rule)).toBeLessThan(top(template));
+    await expect(Boolean(template.compareDocumentPosition(within(dialog).getByLabelText("Name")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    await expect(organisation).toHaveFocus();
+    await userEvent.selectOptions(organisation, "org-2");
+    await waitFor(() => expect(within(dialog).queryByLabelText("Create from template")).not.toBeInTheDocument());
+  },
+};
+
 /** Choosing "None" for the template is explicit: the organisation's default template would otherwise apply. */
 export const NoTemplateChoiceIsSentExplicitly: Story = {
   beforeEach: () => {

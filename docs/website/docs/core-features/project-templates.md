@@ -64,7 +64,7 @@ To create a project from a template you must be able to view it: a team-only tem
 
 ## Finding templates
 
-Templates are left out of the project list so everyday work is not mixed with them. Tick **Show templates** in the list's filter panel to include them; each carries a **Template** badge. The **New project** form lists templates in **Create from template**; choose **None** to create a blank project even when the organisation has a default template.
+Templates are left out of the project list so everyday work is not mixed with them. Tick **Show templates** in the list's filter panel to include them; each carries a **Template** badge. The **New project** form shows the organisation first (when you can create in more than one), then a divider, then **Create from template** and the project name. The template list depends on the organisation, which is why the organisation comes first. Choose **None** to create a blank project even when the organisation has a default template.
 
 ## Organisation default template
 

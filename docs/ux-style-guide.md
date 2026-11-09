@@ -896,13 +896,14 @@ A form is made of these parts and nothing hand-rolled (`scripts/check_form_marku
 | A control inside a row or table cell, where the row or column heading is the caption (an inline rename, an "add to group" picker beside its button, a CSV column mapping) | `InlineTextInput` (`FormFields.tsx`) and `InlineSelect` (`LabeledSelect.tsx`); both require an `ariaLabel`, so the control is always named. A field in a form is never one of these |
 | Pick a person or group | `PrincipalFormField` (create/edit forms), `RecordPrincipalField` (detail pages; always the compact picker) |
 | A yes/no chosen while filling the form in, or a setting with a hint | `CheckboxField`; `ToggleField` for an on/off setting |
-| Layout | `FormGrid` with `FormGridFull` for titles, text areas and notes; `minColumn="18rem"` in a dialog (give the `Modal` `size="lg"`) |
+| Layout | `FormGrid` with `FormGridFull` for titles, text areas and notes; `minColumn="18rem"` in a dialog (give the `Modal` `size="lg"`); `FormDivider` for a rule between groups |
 | The footer | `FormActions` (error, primary; Cancel only outside a dialog; `leading` for a Back or Reset button) |
 | A pending upload that can still be dropped | `RemovableChip` |
 
 - Every field has a visible label. Where specs or users already know a field by an example placeholder, keep the placeholder as well, never instead of the label.
 - A form that two places share its fields (an action created from the Actions page and from a requirement, and edited on its own page) shares them as a component (`ActionFields`), not as two copies.
 - One or two plain fields need no grid; three or more get one.
+- A field that scopes the rest (the organisation on New project, which decides the templates offered) comes first, alone on its row, above a `FormDivider`; the fields that depend on it sit beneath. Never draw a rule with a hand-written `<hr>`.
 - Every field has `help` or `helpNotNeeded` ([Pattern: field help](#pattern-field-help)).
 
 ## Pattern: button sizes

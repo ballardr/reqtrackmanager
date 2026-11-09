@@ -32,7 +32,7 @@ import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
 import { ColorField, TextAreaField, TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
-import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
 import { PictureImage } from "../components/PictureImage";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 
@@ -742,7 +742,7 @@ function PlatformBrandingTab() {
       {settings.default_login_background_file_id && (
         <img src={fileUrl(settings.default_login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: "var(--radius-sm)" }} />
       )}
-      <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
+      <FormDivider />
       <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
       <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
       <FormGrid minColumn="18rem">

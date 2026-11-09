@@ -45,6 +45,15 @@ test.describe("template projects", () => {
       await page.getByRole("checkbox", { name: "Show templates" }).uncheck();
       await page.getByRole("button", { name: "New project" }).click();
       const dialog = page.getByRole("dialog", { name: "New project" });
+      // Reading order: the organisation, a rule, then the template, then the name.
+      await expect(dialog.locator(".form-divider")).toHaveCount(1);
+      const boxTop = async (label: string | RegExp) => (await dialog.getByLabel(label, { exact: typeof label === "string" }).boundingBox())!;
+      const ruleBox = (await dialog.locator(".form-divider").boundingBox())!;
+      expect((await boxTop(/Organisation/)).y).toBeLessThan(ruleBox.y);
+      expect(ruleBox.y).toBeLessThan((await boxTop("Create from template")).y);
+      const templateBox = await boxTop("Create from template");
+      const nameBox = await boxTop("Name");
+      expect(templateBox.y < nameBox.y || (templateBox.y === nameBox.y && templateBox.x < nameBox.x)).toBeTruthy();
       await dialog.getByLabel("Name", { exact: true }).fill(newName);
       await dialog.getByLabel("Create from template").selectOption({ label: template.projectName });
       await dialog.getByRole("button", { name: "Create", exact: true }).click();
