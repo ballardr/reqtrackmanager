@@ -2466,11 +2466,6 @@ export const ANNOUNCEMENT_SEVERITY_LABEL: Record<AnnouncementSeverity, string> =
   critical: "Critical",
 };
 export const ANNOUNCEMENT_SEVERITIES = Object.keys(ANNOUNCEMENT_SEVERITY_LABEL) as AnnouncementSeverity[];
-export const ANNOUNCEMENT_SEVERITY_TONE: Record<AnnouncementSeverity, BadgeTone> = {
-  information: "info",
-  warning: "warning",
-  critical: "danger",
-};
 
 /** Where an announcement stands in its window, resolved by the server. */
 export type AnnouncementStatus = "scheduled" | "active" | "ended";
@@ -2495,6 +2490,7 @@ export interface Announcement {
   starts_at: string | null;
   ends_at: string | null;
   show_on_login: boolean;
+  dismissible: boolean;
   status: AnnouncementStatus;
   notified_at: string | null;
   notified_count: number | null;
@@ -2510,6 +2506,7 @@ export interface AnnouncementWrite {
   starts_at: string | null;
   ends_at: string | null;
   show_on_login: boolean;
+  dismissible: boolean;
 }
 
 /** An active announcement as a reader (login page or banner) sees it. */
@@ -2519,6 +2516,8 @@ export interface AnnouncementNotice {
   body: string;
   severity: AnnouncementSeverity;
   scope: "server" | "organisation";
+  /** False when the banner offers no close control for it. */
+  dismissible: boolean;
 }
 
 // --- Project overview widgets (`backend/app/services/overview_widgets.py`) --------------------------

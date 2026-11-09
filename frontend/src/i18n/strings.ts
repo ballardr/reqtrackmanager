@@ -3608,7 +3608,11 @@ const en = {
     announcementSeverity:
       "Information: a routine notice.\nWarning: something people should plan for, such as downtime.\nCritical: an urgent problem or outage. Critical messages are listed first.",
     announcementWindow:
-      "The message is shown from the start until the end, in your local time. Leave the start empty to show it at once and the end empty to show it until it is deleted.",
+      "The message is shown from the start until the end, in your local time. A new message starts now. Leave the start empty to show it at once.",
+    announcementEnd:
+      "The first moment the message is no longer shown, in your local time. Leave it empty for no end: the message is then shown until it is deleted.",
+    announcementDismissible:
+      "Checked: a person can close the message for themselves in their browser.\nUnchecked: the message has no close control and stays visible until it ends, which suits a notice that must be seen. Closing is a convenience in each person's browser and is not a security control.",
     announcementLogin:
       "Also show the message on the login pages, before anyone signs in. Anyone who can open the login page can read it, so do not include anything confidential.",
     announcementNotify:
@@ -3885,7 +3889,16 @@ const en = {
     endsAt: "Show until",
     window: "Showing",
     showOnLogin: "Show on the login pages",
-    onLoginBadge: "Login pages",
+    loginColumn: "Login pages",
+    dismissible: "Can be dismissed",
+    dismissibleColumn: "Dismissible",
+    current: "Current",
+    previous: "Previous",
+    searchLabel: "Search messages",
+    noPrevious: "No previous messages.",
+    noMatches: "No messages match the search.",
+    duplicate: "Duplicate",
+    duplicateAria: (title: string) => `Duplicate message ${title}`,
     always: "Always",
     from: (when: string) => `From ${when}`,
     until: (when: string) => `Until ${when}`,

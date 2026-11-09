@@ -145,6 +145,66 @@ test.describe("announcements", () => {
   });
 });
 
+test.describe("announcement defaults, not dismissible and history", () => {
+  installCleanupHook();
+
+  test("a message that cannot be dismissed has no close control, and a past message is duplicated", async ({ page }) => {
+    test.setTimeout(90_000);
+    const marker = `E2E Fixed Notice ${Date.now()}`;
+    const adminEmail = PERSONAS.orgAdminAlphaBeta.email;
+    await loginAs(page, adminEmail);
+    const headers = await apiHeaders(page.request, adminEmail);
+    const orgs: { id: string; name: string }[] = await (await page.request.get(`${API}/orgs?mine=true`, { headers })).json();
+    const alpha = orgs.find((o) => o.name === ORG_NAMES.alpha)!;
+    deleteMessagesOnCleanup(marker, alpha.id, adminEmail);
+
+    await test.step("a new message starts now with no end and can be dismissed by default", async () => {
+      await page.goto(`/orgs/${alpha.id}/admin`);
+      await selectOrgAdminGroup(page, "Messages");
+      await ensureExpanded(page, "Messages");
+      await page.getByRole("button", { name: "New message" }).click();
+      const dialog = page.getByRole("dialog", { name: "New message" });
+      const start = await dialog.getByLabel("Show from").inputValue();
+      expect(Math.abs(new Date(start).getTime() - Date.now())).toBeLessThan(5 * 60_000);
+      await expect(dialog.getByLabel("Show until")).toHaveValue("");
+      await expect(dialog.getByRole("checkbox", { name: /Can be dismissed/ })).toBeChecked();
+      await dialog.getByRole("textbox", { name: /^Title/ }).fill(marker);
+      await dialog.getByRole("checkbox", { name: /Can be dismissed/ }).uncheck();
+      await dialog.getByRole("button", { name: "Save" }).click();
+      await expect(page.getByText("Message created.")).toBeVisible();
+    });
+
+    await test.step("a member sees it in the banner with no Dismiss control, and severity is not a badge", async () => {
+      await logout(page);
+      await loginAs(page, PERSONAS.stakeholderAlpha.email);
+      const notice = page.getByRole("region", { name: "Announcements" }).locator(".announcement", { hasText: marker });
+      await expect(notice).toBeVisible();
+      await expect(notice.getByRole("button", { name: /Dismiss/ })).toHaveCount(0);
+      await expect(notice.locator(".announcement-severity svg")).toBeVisible();
+    });
+
+    await test.step("it moves to Previous once it has ended, and Duplicate starts a new one now", async () => {
+      const id = await idOf(page.request, alpha.id, marker, headers);
+      const ended = await page.request.put(`${scopeUrl(alpha.id)}/${id}`, {
+        headers, data: { title: marker, body: "", severity: "information", starts_at: "2020-01-01T00:00:00Z", ends_at: "2020-01-02T00:00:00Z", show_on_login: false, dismissible: false },
+      });
+      expect(ended.ok()).toBeTruthy();
+      await logout(page);
+      await loginAs(page, adminEmail);
+      await page.goto(`/orgs/${alpha.id}/admin`);
+      await selectOrgAdminGroup(page, "Messages");
+      await ensureExpanded(page, "Messages");
+      await page.getByRole("tab", { name: "Previous" }).click();
+      await page.getByRole("searchbox", { name: "Search messages" }).fill(marker);
+      await page.getByRole("button", { name: `Duplicate message ${marker}` }).click();
+      const dialog = page.getByRole("dialog", { name: "New message" });
+      await expect(dialog.getByRole("textbox", { name: /^Title/ })).toHaveValue(marker);
+      await expect(dialog.getByLabel("Show until")).toHaveValue("");
+      await expect(dialog.getByRole("checkbox", { name: /Can be dismissed/ })).not.toBeChecked();
+    });
+  });
+});
+
 async function idOf(request: APIRequestContext, organizationId: string, title: string, headers: Record<string, string>): Promise<string> {
   const items: { id: string; title: string }[] = (await (await request.get(scopeUrl(organizationId), { headers })).json()).items;
   return items.find((i) => i.title === title)!.id;

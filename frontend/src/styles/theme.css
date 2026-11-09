@@ -3522,6 +3522,11 @@ th:has(> .th-with-action > .th-sort) > .th-with-action {
 .announcement--bar .announcement__text { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: var(--space-3); }
 .announcement--bar.announcement--warning { background: color-mix(in srgb, var(--color-warning) 18%, var(--color-surface)); }
 .announcement--bar.announcement--critical { background: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface)); }
+.announcement-severity { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: 600; }
+.announcement-severity svg { width: 1.1em; height: 1.1em; flex: none; }
+.announcement-severity--information { color: var(--color-info); }
+.announcement-severity--warning { color: var(--color-warning); }
+.announcement-severity--critical { color: var(--color-danger); }
 .announcement__body { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* The project overview's widget grid (`components/overview/OverviewWidgetGrid.tsx`): a flow of widgets on twelve

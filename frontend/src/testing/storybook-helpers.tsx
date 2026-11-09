@@ -232,7 +232,7 @@ export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): 
 export function buildAnnouncement(overrides: Partial<Announcement> = {}): Announcement {
   return {
     id: "announcement-1", organization_id: null, title: "Planned maintenance", body: "The service restarts at night.",
-    severity: "warning", starts_at: null, ends_at: null, show_on_login: true, status: "active", notified_at: null,
+    severity: "warning", starts_at: null, ends_at: null, show_on_login: true, dismissible: true, status: "active", notified_at: null,
     notified_count: null, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...overrides,
   };
 }

@@ -7,6 +7,7 @@ an optional one-time send as a notification.
 
 Responsibilities:
 - Validate text and the active window; create, replace and delete a message in one scope, audited.
+- Bound each scope: `MAX_PER_SCOPE` messages not yet ended, `MAX_STORED_PER_SCOPE` including the history.
 - Resolve which messages a reader sees: login pages (active, flagged for login), banner (active, server-wide
   plus the reader's organisation).
 - Send a message once as a `SYSTEM_ANNOUNCEMENT` notification to its audience.
@@ -23,6 +24,9 @@ Design decisions:
 - The send is idempotent: the row is locked and `notified_at` set in the same transaction as the fan-out.
 - Fan-out is synchronous in the request and uses the ordinary `notify`, so preferences and digest mode apply;
   the sender is excluded (`actor_id`).
+- The `MAX_PER_SCOPE` cap counts only messages that have not ended, so the history of past messages never forces a
+  deletion; the larger `MAX_STORED_PER_SCOPE` ceiling still bounds the table.
+- `dismissible` is a display rule for the banner (dismissal is per browser), not a security control.
 - Window edges are UTC instants; "active" is `starts_at <= now < ends_at`, each edge optional.
 
 External dependencies: `services.notifications`, `services.audit`, `services.rate_limit`.
@@ -55,8 +59,10 @@ Status = Literal["scheduled", "active", "ended"]
 
 MAX_TITLE_LENGTH = 120
 MAX_BODY_LENGTH = 1000
-#: Most messages one scope may hold, so the banner and login page stay readable and a loop cannot fill the table.
+#: Most messages one scope may hold that have not ended, so the banner and login page stay readable.
 MAX_PER_SCOPE = 50
+#: Most messages one scope may store including ended ones, so a loop cannot fill the table.
+MAX_STORED_PER_SCOPE = 1000
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _WEB_ADDRESS = re.compile(r"(?i)(?:https?:|ftp:|www\.)")
@@ -96,9 +102,14 @@ def status_of(announcement: Announcement, now: datetime) -> Status:
     """`scheduled`, `active` or `ended` at `now`."""
     if announcement.starts_at is not None and announcement.starts_at > now:
         return "scheduled"
-    if announcement.ends_at is not None and announcement.ends_at <= now:
+    if _ended(announcement.ends_at, now):
         return "ended"
     return "active"
+
+
+def _ended(ends_at: datetime | None, now: datetime) -> bool:
+    """True when a window ending at `ends_at` has closed by `now`."""
+    return ends_at is not None and ends_at <= now
 
 
 def _active(now: datetime) -> ColumnElement[bool]:
@@ -137,20 +148,31 @@ def _check_window(starts_at: datetime | None, ends_at: datetime | None) -> None:
 
 def create(
     db: Session, *, organization_id: uuid.UUID | None, actor: User, title: str, body: str, severity: AnnouncementSeverity,
-    starts_at: datetime | None, ends_at: datetime | None, show_on_login: bool,
+    starts_at: datetime | None, ends_at: datetime | None, show_on_login: bool, dismissible: bool = True,
 ) -> Announcement:
     """Creates a message in one scope; audited, not committed.
 
     Raises:
-        HTTPException: 422 for invalid text or window; 409 when the scope already holds `MAX_PER_SCOPE` messages.
+        HTTPException: 422 for invalid text or window; 409 when the scope already holds `MAX_PER_SCOPE` messages
+            that have not ended, or `MAX_STORED_PER_SCOPE` in all.
     """
     clean_title, clean_body = clean_text(title, body, organization_scope=organization_id is not None)
     _check_window(starts_at, ends_at)
-    if len(list_scope(db, organization_id)) >= MAX_PER_SCOPE:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"At most {MAX_PER_SCOPE} announcements can be kept; delete an old one first.")
+    held = list_scope(db, organization_id)
+    now = datetime.now(UTC)
+    if len(held) >= MAX_STORED_PER_SCOPE:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"At most {MAX_STORED_PER_SCOPE} announcements can be stored; delete an old one first.",
+        )
+    current = sum(status_of(a, now) != "ended" for a in held)
+    if not _ended(ends_at, now) and current >= MAX_PER_SCOPE:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"At most {MAX_PER_SCOPE} announcements can be current or scheduled; delete one or wait for it to end.",
+        )
     row = Announcement(
         organization_id=organization_id, title=clean_title, body=clean_body, severity=severity, starts_at=starts_at,
-        ends_at=ends_at, show_on_login=show_on_login, created_by=actor.id,
+        ends_at=ends_at, show_on_login=show_on_login, dismissible=dismissible, created_by=actor.id,
     )
     db.add(row)
     db.flush()
@@ -163,7 +185,7 @@ def create(
 
 def replace(
     db: Session, row: Announcement, *, actor: User, title: str, body: str, severity: AnnouncementSeverity,
-    starts_at: datetime | None, ends_at: datetime | None, show_on_login: bool,
+    starts_at: datetime | None, ends_at: datetime | None, show_on_login: bool, dismissible: bool = True,
 ) -> Announcement:
     """Replaces the editable fields of a message; audited, not committed.
 
@@ -173,7 +195,7 @@ def replace(
     clean_title, clean_body = clean_text(title, body, organization_scope=row.organization_id is not None)
     _check_window(starts_at, ends_at)
     row.title, row.body, row.severity = clean_title, clean_body, severity
-    row.starts_at, row.ends_at, row.show_on_login = starts_at, ends_at, show_on_login
+    row.starts_at, row.ends_at, row.show_on_login, row.dismissible = starts_at, ends_at, show_on_login, dismissible
     db.flush()
     log_event(
         db, entity_type="announcement", entity_id=row.id, action="updated", actor_id=actor.id,
@@ -194,7 +216,7 @@ def delete(db: Session, row: Announcement, actor: User) -> None:
 def _audit_detail(row: Announcement) -> dict[str, object]:
     """Fields safe to record: never the title or body."""
     return {
-        "severity": row.severity.value, "show_on_login": row.show_on_login,
+        "severity": row.severity.value, "show_on_login": row.show_on_login, "dismissible": row.dismissible,
         "starts_at": row.starts_at.isoformat() if row.starts_at else None,
         "ends_at": row.ends_at.isoformat() if row.ends_at else None,
     }
@@ -305,7 +327,7 @@ def export_org(db: Session, organization_id: uuid.UUID) -> dict[str, list[dict[s
     """
     return {BUNDLE_KEY: [
         {
-            "title": r.title, "body": r.body, "severity": r.severity.value, "show_on_login": r.show_on_login,
+            "title": r.title, "body": r.body, "severity": r.severity.value, "show_on_login": r.show_on_login, "dismissible": r.dismissible,
             "starts_at": r.starts_at.isoformat() if r.starts_at else None,
             "ends_at": r.ends_at.isoformat() if r.ends_at else None,
         }
@@ -331,8 +353,11 @@ def import_org(db: Session, organization_id: uuid.UUID, data: dict[str, object],
     rest are imported, never marked as sent.
     """
     raw = data.get(BUNDLE_KEY)
-    existing = {(r.title, r.body) for r in list_scope(db, organization_id)}
-    held = len(existing)
+    now = datetime.now(UTC)
+    rows = list_scope(db, organization_id)
+    existing = {(r.title, r.body) for r in rows}
+    stored = len(rows)
+    held = sum(status_of(r, now) != "ended" for r in rows)
     for entry in raw if isinstance(raw, list) else []:
         try:
             if not isinstance(entry, dict):
@@ -346,15 +371,17 @@ def import_org(db: Session, organization_id: uuid.UUID, data: dict[str, object],
             continue
         if (title, body) in existing:
             continue
-        if held >= MAX_PER_SCOPE:
-            warnings.add(f"Announcements beyond the limit of {MAX_PER_SCOPE} were not imported.")
+        is_current = not _ended(ends_at, now)
+        if stored >= MAX_STORED_PER_SCOPE or (is_current and held >= MAX_PER_SCOPE):
+            warnings.add(f"Announcements beyond the limit of {MAX_PER_SCOPE} current messages were not imported.")
             break
         db.add(Announcement(
             organization_id=organization_id, title=title, body=body, severity=severity, starts_at=starts_at, ends_at=ends_at,
-            show_on_login=bool(entry.get("show_on_login")), created_by=actor.id,
+            show_on_login=bool(entry.get("show_on_login")), dismissible=bool(entry.get("dismissible", True)), created_by=actor.id,
         ))
         existing.add((title, body))
-        held += 1
+        stored += 1
+        held += 1 if is_current else 0
     db.flush()
 
 

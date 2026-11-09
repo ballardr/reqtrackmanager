@@ -12,6 +12,8 @@ Design decisions:
   so the two scopes share one service, one API shape and one screen.
 - `starts_at`/`ends_at` are past or future instants stored in UTC (a window the browser chose in local
   time); both are optional, so a message with neither is always active until deleted.
+- `dismissible` is a display rule (the banner offers no close control when false); dismissal is a per-browser
+  convenience, so it is not a security control.
 - `notified_at` records the one-time send as a notification; a second send is refused while it is set.
 - Severity is a closed vocabulary (information, warning, critical) stored as a plain varchar.
 """
@@ -22,7 +24,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,6 +51,7 @@ class Announcement(UUIDPKMixin, TimestampMixin, Base):
         starts_at: First instant the message is active; NULL means already active.
         ends_at: First instant the message is no longer active; NULL means no end.
         show_on_login: Whether the unauthenticated login pages show it.
+        dismissible: Whether the signed-in banner lets a person close it; false keeps it showing until it ends.
         notified_at: When it was sent as a notification; NULL until sent.
         notified_count: How many people that send reached.
         created_by: The author, kept for audit; never returned by a public endpoint.
@@ -68,6 +71,7 @@ class Announcement(UUIDPKMixin, TimestampMixin, Base):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     show_on_login: Mapped[bool] = mapped_column(Boolean, default=False)
+    dismissible: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notified_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(

@@ -38,7 +38,7 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 ## Messages
 
-**Server Management → Messages** holds announcements for everyone on the deployment: a planned outage, a release, or a hint on a demonstration instance. Each message has a **title**, a plain-text **message**, a **severity** (Information, Warning or Critical) and an optional **Show from** and **Show until** time, entered in your local time. Leave both empty to show it at once until it is deleted. A scheduled message shows its status as Scheduled, Active or Ended.
+**Server Management → Messages** holds announcements for everyone on the deployment: a planned outage, a release, or a hint on a demonstration instance. Each message has a **title**, a plain-text **message**, a **severity** (Information, Warning or Critical) and a **Show from** and **Show until** time, entered in your local time. A new message starts now and has no end, so it shows at once until it is deleted; set an end to schedule its removal. A scheduled message shows its status as Scheduled, Active or Ended.
 
 ```mermaid
 flowchart LR
@@ -50,7 +50,9 @@ flowchart LR
 ```
 
 - **Show on the login pages** also shows the message on the platform login page and on every organisation's branded login page, before anyone signs in. Anyone who can open those pages can read it, so keep it free of anything confidential.
-- A message is plain text: it is shown exactly as typed, with no links or formatting. The banner stays above the top bar while the page scrolls, and people can dismiss each message in their own browser; a dismissed message returns if their browser data is cleared.
+- A message is plain text: it is shown exactly as typed, with no links or formatting. The banner stays above the top bar while the page scrolls. Severity is shown by the message's colour, an icon and its name, not by a badge.
+- **Can be dismissed** (checked by default) lets people close the message in their own browser; a dismissed message returns if their browser data is cleared. Clear it for a notice that must stay visible until it ends, such as a degraded-performance warning: the banner then has no close control. It stays a banner above the page and never blocks it.
+- The list has two views: **Current** (active and scheduled) and **Previous** (ended), with a search over the title and text. **Duplicate** on any row opens a new message with the same content, starting now, with no end and no notification sent. Ended messages do not count toward the limit of 50 current messages.
 - **Send as notification** sends the message once to every active user. Each person's [notification preferences](./notifications.md#choosing-how-youre-notified) apply, and you are not notified of your own send. The row then records how many people it reached, and it cannot be sent again. An ended message cannot be sent.
 - Organisation administrators write messages for their own organisation only; they cannot see or change yours.
 

@@ -2,28 +2,32 @@
  * Module: components/AnnouncementsPanel
  *
  * Administration of announcements for one scope, shared by Server Management (the platform's messages) and
- * Organisation Admin (that organisation's). Lists each message with its severity, window, login-page flag and
- * status; an administrator can create, edit and delete a message and send it once as a notification.
+ * Organisation Admin (that organisation's). Lists each message with its severity, window, login-page flag, whether it
+ * can be dismissed and its status, in two views: current (active and scheduled) and previous (ended), with a search
+ * over both. An administrator can create, edit, duplicate and delete a message and send it once as a notification.
  *
  * The server enforces scope and the text rules; its message is shown in the dialog. The send is a recorded,
  * one-time action, so it asks first and is replaced by a record of who it reached once done.
  */
-import { Bell, Pencil, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { Bell, Copy, Pencil, Trash2 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 
 import { api } from "../api/client";
 import type { Announcement, AnnouncementWrite } from "../api/types";
-import {
-  ANNOUNCEMENT_SEVERITY_LABEL, ANNOUNCEMENT_SEVERITY_TONE, ANNOUNCEMENT_STATUS_LABEL, ANNOUNCEMENT_STATUS_TONE,
-} from "../api/types";
+import { ANNOUNCEMENT_STATUS_LABEL, ANNOUNCEMENT_STATUS_TONE } from "../api/types";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
 import { AnnouncementEditor } from "./AnnouncementEditor";
+import { AnnouncementSeverityMark } from "./AnnouncementSeverityMark";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FieldHelp } from "./FieldHelp";
+import { TextField } from "./FormFields";
+import { Tabs, tabPanelProps } from "./Tabs";
+
+type View = "current" | "previous";
 
 /** Where the panel reads and writes: the platform's messages, or one organisation's. */
 export type AnnouncementScope = { kind: "server" } | { kind: "organisation"; organizationId: string };
@@ -43,6 +47,9 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
   const [items, setItems] = useState<Announcement[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Announcement | "new" | null>(null);
+  const [duplicating, setDuplicating] = useState<Announcement | null>(null);
+  const [view, setView] = useState<View>("current");
+  const [search, setSearch] = useState("");
   const [removing, setRemoving] = useState<Announcement | null>(null);
   const [sending, setSending] = useState<Announcement | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -61,7 +68,7 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
 
   async function save(values: AnnouncementWrite) {
     setSaveError(null);
-    const existing = editing !== "new" ? editing : null;
+    const existing = editing !== "new" && editing !== null ? editing : null;
     const verb = existing ? "save" : "create";
     try {
       if (existing) await api.put(`${path}/${existing.id}`, values);
@@ -72,6 +79,7 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
     }
     showToast(strings.mutation.success(text.noun, strings.mutation.past[verb]));
     setEditing(null);
+    setDuplicating(null);
     await reload();
   }
 
@@ -95,23 +103,41 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
     return text.always;
   };
 
+  const shown = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return (items ?? []).filter((item) => (item.status === "ended") === (view === "previous")
+      && (needle === "" || `${item.title}\n${item.body}`.toLowerCase().includes(needle)));
+  }, [items, view, search]);
+
   if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
   if (!items) return null;
   const audience = scope.kind === "server" ? text.audienceServer : text.audienceOrganisation;
   return (
     <div className="stack">
       <div className="row" style={{ justifyContent: "flex-end" }}>
-        <button className="btn btn-primary" onClick={() => { setSaveError(null); setEditing("new"); }}>{text.newMessage}</button>
+        <button className="btn btn-primary" onClick={() => { setSaveError(null); setDuplicating(null); setEditing("new"); }}>{text.newMessage}</button>
       </div>
       {items.length === 0 ? (
         <div className="text-muted">{text.noMessages}</div>
       ) : (
+        <>
+        <Tabs
+          idPrefix="announcement-views" active={view} onChange={setView}
+          tabs={[{ key: "current", label: text.current }, { key: "previous", label: text.previous }]}
+        />
+        <div {...tabPanelProps("announcement-views", view)} className="stack">
+        <TextField helpNotNeeded label={text.searchLabel} value={search} onChange={setSearch} inputProps={{ type: "search" }} />
+        {shown.length === 0 ? (
+          <div className="text-muted">{search.trim() !== "" ? text.noMatches : view === "previous" ? text.noPrevious : text.noMessages}</div>
+        ) : (
         <table className="table" aria-label={text.heading}>
           <thead>
             <tr>
               <th>{text.title}</th>
               <th>{text.severity}</th>
               <th>{text.window}</th>
+              <th>{text.loginColumn}</th>
+              <th>{text.dismissibleColumn}</th>
               <th>{text.status}</th>
               <th>
                 <span className="field-caption">
@@ -123,17 +149,16 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {shown.map((item) => (
               <tr key={item.id} data-announcement-id={item.id}>
                 <td>
                   <strong>{item.title}</strong>
                   {item.body && <div className="text-muted" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.body}</div>}
                 </td>
-                <td><Badge tone={ANNOUNCEMENT_SEVERITY_TONE[item.severity]}>{ANNOUNCEMENT_SEVERITY_LABEL[item.severity]}</Badge></td>
-                <td>
-                  <div>{windowText(item)}</div>
-                  {item.show_on_login && <Badge>{text.onLoginBadge}</Badge>}
-                </td>
+                <td><AnnouncementSeverityMark severity={item.severity} showLabel /></td>
+                <td>{windowText(item)}</td>
+                <td>{item.show_on_login ? strings.common.yes : strings.common.no}</td>
+                <td>{item.dismissible ? strings.common.yes : strings.common.no}</td>
                 <td><Badge tone={ANNOUNCEMENT_STATUS_TONE[item.status]}>{ANNOUNCEMENT_STATUS_LABEL[item.status]}</Badge></td>
                 <td>
                   {item.notified_at ? (
@@ -150,6 +175,12 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
                 <td>
                   <div className="row" style={{ justifyContent: "flex-end" }}>
                     <button
+                      className="btn" aria-label={text.duplicateAria(item.title)} title={text.duplicate}
+                      onClick={() => { setSaveError(null); setDuplicating(item); setEditing("new"); }}
+                    >
+                      <Copy />
+                    </button>
+                    <button
                       className="btn" aria-label={text.editAria(item.title)} title={text.editAria(item.title)}
                       onClick={() => { setSaveError(null); setEditing(item); }}
                     >
@@ -164,11 +195,14 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
             ))}
           </tbody>
         </table>
+        )}
+        </div>
+        </>
       )}
       {editing !== null && (
         <AnnouncementEditor
-          announcement={editing === "new" ? null : editing} organisationScope={scope.kind === "organisation"}
-          error={saveError} onCancel={() => setEditing(null)} onSave={save}
+          announcement={editing === "new" ? null : editing} duplicateOf={duplicating} organisationScope={scope.kind === "organisation"}
+          error={saveError} onCancel={() => { setEditing(null); setDuplicating(null); }} onSave={save}
         />
       )}
       {removing && (

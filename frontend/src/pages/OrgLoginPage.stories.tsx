@@ -49,8 +49,8 @@ export const NativeLoginOnly: Story = {
 export const ShowsPlatformAndOrganisationMessages: Story = {
   beforeEach: () => {
     mockLoginInfo(info({}), [
-      { id: "n1", title: "Platform notice", body: "", severity: "warning", scope: "server" },
-      { id: "n2", title: "Acme notice", body: "Badges are collected at reception.", severity: "information", scope: "organisation" },
+      { id: "n1", title: "Platform notice", body: "", severity: "warning", scope: "server", dismissible: true },
+      { id: "n2", title: "Acme notice", body: "Badges are collected at reception.", severity: "information", scope: "organisation", dismissible: true },
     ]);
   },
   play: async ({ canvasElement }) => {

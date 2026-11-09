@@ -6,7 +6,8 @@
  *
  * Responsibilities: load the active notices for that organisation, let a person dismiss one, and remember the
  * dismissal in this browser only (a per-viewer convenience: it never reaches the server, and a cleared or
- * blocked store simply shows the notice again). A failed load shows nothing.
+ * blocked store simply shows the notice again). A notice that is not dismissible has no close control and shows
+ * even if it was dismissed earlier. A failed load shows nothing.
  *
  * Design decisions: the banner is sticky, so it stays above the top bar while the page scrolls. The top bar,
  * the navigation rail and other pinned chrome sit below it by reading `--announcement-height`, which this
@@ -66,7 +67,7 @@ export function AnnouncementBanner({ organizationId }: { organizationId: string 
     });
   }, []);
 
-  const visible = notices.filter((notice) => !dismissed.includes(notice.id));
+  const visible = notices.filter((notice) => !notice.dismissible || !dismissed.includes(notice.id));
   const shown = visible.length > 0;
   const bar = useRef<HTMLDivElement>(null);
 

@@ -22,7 +22,7 @@ export default meta;
 
 type Story = StoryObj<typeof AnnouncementsPanel>;
 
-/** Each message shows its severity, status, login-page flag and whether it was already sent. */
+/** The current view lists active and scheduled messages with severity, status and flags; ended ones are in Previous. */
 export const ListsMessagesWithStatusAndSend: Story = {
   args: { scope: { kind: "server" } },
   beforeEach: () => {
@@ -32,13 +32,73 @@ export const ListsMessagesWithStatusAndSend: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText("Planned maintenance")).toBeInTheDocument();
     await expect(canvas.getByText("Warning")).toBeInTheDocument();
-    await expect(canvas.getByText("Critical")).toBeInTheDocument();
-    await expect(canvas.getAllByText("Login pages")).toHaveLength(2);
-    await expect(canvas.getByText("Ended")).toBeInTheDocument();
+    await expect(canvas.getByText("Release notes")).toBeInTheDocument();
+    await expect(canvas.queryByText("Old notice")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("columnheader", { name: "Login pages" })).toBeInTheDocument();
+    await expect(canvas.getByRole("columnheader", { name: "Dismissible" })).toBeInTheDocument();
     await expect(canvas.getByText(/Sent to 12 people on/)).toBeInTheDocument();
-    await expect(canvas.getByRole("button", { name: "Send Old notice as a notification" })).toBeDisabled();
     await expect(canvas.queryByRole("button", { name: "Send Release notes as a notification" })).not.toBeInTheDocument();
     await expect(api.get).toHaveBeenCalledWith("/api/v1/system/announcements");
+  },
+};
+
+/** Severity reads by icon and name, never by a badge. */
+export const SeverityIsAMarkNotABadge: Story = {
+  args: { scope: { kind: "server" } },
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ items: [ACTIVE] });
+  },
+  play: async ({ canvasElement }) => {
+    const mark = (await within(canvasElement).findByText("Warning")).closest(".announcement-severity")!;
+    await expect(mark.querySelector("svg")).not.toBeNull();
+    await expect(mark.closest("td")!.querySelector(".badge")).toBeNull();
+  },
+};
+
+/** Ended messages are kept in Previous, found by search, and can no longer be sent. */
+export const PreviousMessagesAreKeptAndSearchable: Story = {
+  args: { scope: { kind: "server" } },
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ items: [ACTIVE, ENDED, buildAnnouncement({ id: "announcement-4", title: "Retired notice", status: "ended", severity: "information" })] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("tab", { name: "Previous" }));
+    await expect(canvas.getByText("Old notice")).toBeInTheDocument();
+    await expect(canvas.getByText("Retired notice")).toBeInTheDocument();
+    await expect(canvas.queryByText("Planned maintenance")).not.toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Send Old notice as a notification" })).toBeDisabled();
+    await userEvent.type(canvas.getByRole("searchbox", { name: "Search messages" }), "retired");
+    await expect(canvas.queryByText("Old notice")).not.toBeInTheDocument();
+    await expect(canvas.getByText("Retired notice")).toBeInTheDocument();
+    await userEvent.type(canvas.getByRole("searchbox", { name: "Search messages" }), "zzz");
+    await expect(canvas.getByText("No messages match the search.")).toBeInTheDocument();
+  },
+};
+
+/** Duplicate opens the editor with the content, a start of now, no end and the notification not sent. */
+export const DuplicateStartsNowWithNoEndAndPostsANewMessage: Story = {
+  args: { scope: { kind: "server" } },
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ items: [buildAnnouncement({
+      starts_at: "2026-01-01T00:00:00Z", ends_at: "2026-12-31T00:00:00Z", dismissible: false, notified_at: "2026-11-02T10:00:00Z", notified_count: 3,
+    })] });
+    spyOn(api, "post").mockResolvedValue({});
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const before = Date.now();
+    await userEvent.click(await canvas.findByRole("button", { name: "Duplicate message Planned maintenance" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "New message" }));
+    await expect(dialog.getByRole("textbox", { name: /Title/ })).toHaveValue("Planned maintenance");
+    await expect(dialog.getByLabelText("Show until")).toHaveValue("");
+    await expect(dialog.getByRole("checkbox", { name: /Can be dismissed/ })).not.toBeChecked();
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/system/announcements", expect.objectContaining({
+      title: "Planned maintenance", ends_at: null, dismissible: false, show_on_login: true,
+    })));
+    const sent = (api.post as unknown as { mock: { calls: [string, { starts_at: string }][] } }).mock.calls[0][1];
+    await expect(Math.abs(new Date(sent.starts_at).getTime() - before)).toBeLessThan(120_000);
   },
 };
 
@@ -50,6 +110,22 @@ export const EmptyScopeSaysSo: Story = {
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText("No messages.")).toBeInTheDocument();
     await expect(api.get).toHaveBeenCalledWith("/api/v1/orgs/org-1/announcements");
+  },
+};
+
+/** A new message starts now with no end and can be dismissed; it is posted with its window as UTC instants and its flags. */
+export const NewMessageDefaultsToNowWithNoEnd: Story = {
+  args: { scope: { kind: "server" } },
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ items: [] });
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(await within(canvasElement).findByRole("button", { name: "New message" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "New message" }));
+    const start = (dialog.getByLabelText("Show from") as HTMLInputElement).value;
+    await expect(Math.abs(new Date(start).getTime() - Date.now())).toBeLessThan(120_000);
+    await expect(dialog.getByLabelText("Show until")).toHaveValue("");
+    await expect(dialog.getByRole("checkbox", { name: /Can be dismissed/ })).toBeChecked();
   },
 };
 
@@ -66,13 +142,15 @@ export const NewMessageSavesThroughTheApi: Story = {
     const dialog = within(await within(document.body).findByRole("dialog", { name: "New message" }));
     await userEvent.type(dialog.getByRole("textbox", { name: /Title/ }), "Office closed");
     await userEvent.type(dialog.getByRole("textbox", { name: "Message" }), "Closed on Friday.");
+    await userEvent.clear(dialog.getByLabelText("Show from"));
     await userEvent.type(dialog.getByLabelText("Show from"), "2030-05-01T09:00");
     await userEvent.type(dialog.getByLabelText("Show until"), "2030-05-02T09:00");
     await userEvent.click(dialog.getByRole("checkbox", { name: /Show on the login pages/ }));
+    await userEvent.click(dialog.getByRole("checkbox", { name: /Can be dismissed/ }));
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/orgs/org-1/announcements", {
       title: "Office closed", body: "Closed on Friday.", severity: "information",
-      starts_at: new Date(2030, 4, 1, 9, 0).toISOString(), ends_at: new Date(2030, 4, 2, 9, 0).toISOString(), show_on_login: true,
+      starts_at: new Date(2030, 4, 1, 9, 0).toISOString(), ends_at: new Date(2030, 4, 2, 9, 0).toISOString(), show_on_login: true, dismissible: false,
     }));
   },
 };
@@ -89,6 +167,7 @@ export const InvalidWindowBlocksSaveAndServerErrorsShow: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "New message" }));
     const dialog = within(await within(document.body).findByRole("dialog", { name: "New message" }));
     await userEvent.type(dialog.getByRole("textbox", { name: /Title/ }), "Notice");
+    await userEvent.clear(dialog.getByLabelText("Show from"));
     await userEvent.type(dialog.getByLabelText("Show from"), "2030-05-02T09:00");
     await userEvent.type(dialog.getByLabelText("Show until"), "2030-05-01T09:00");
     await expect(dialog.getByText("The end must be after the start.")).toBeInTheDocument();

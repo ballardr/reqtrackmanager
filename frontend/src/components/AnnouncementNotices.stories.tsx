@@ -5,8 +5,8 @@ import type { AnnouncementNotice } from "../api/types";
 import { AnnouncementNotices } from "./AnnouncementNotices";
 
 const NOTICES: AnnouncementNotice[] = [
-  { id: "n1", title: "Outage under way", body: "Saving is unavailable.\nWe are working on it.", severity: "critical", scope: "server" },
-  { id: "n2", title: "Team day", body: "", severity: "information", scope: "organisation" },
+  { id: "n1", title: "Outage under way", body: "Saving is unavailable.\nWe are working on it.", severity: "critical", scope: "server", dismissible: true },
+  { id: "n2", title: "Team day", body: "", severity: "information", scope: "organisation", dismissible: true },
 ];
 
 /** The announcements a reader sees, on the login pages and as the signed-in banner. */
@@ -24,16 +24,40 @@ export const SeverityDecidesTheAnnouncementRole: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const alert = canvas.getByRole("alert");
-    await expect(within(alert).getByText("Critical")).toBeInTheDocument();
+    await expect(within(alert).getByText("Critical:")).toBeInTheDocument();
     await expect(within(alert).getByText(/Saving is unavailable\./)).toHaveStyle({ whiteSpace: "pre-wrap" });
     await expect(canvas.getByRole("status")).toHaveTextContent("Team day");
+  },
+};
+
+/** Severity reads by an icon and its name, not by a badge, so colour is never the only cue. */
+export const SeverityHasAnIconAndATextNameNotABadge: Story = {
+  play: async ({ canvasElement }) => {
+    const marks = canvasElement.querySelectorAll(".announcement-severity");
+    await expect(marks).toHaveLength(2);
+    for (const mark of marks) await expect(mark.querySelector("svg")).not.toBeNull();
+    await expect(marks[0]).toHaveTextContent("Critical:");
+    await expect(marks[1]).toHaveTextContent("Information:");
+    await expect(canvasElement.querySelector(".badge")).toBeNull();
+  },
+};
+
+/** A notice that is not dismissible has no close control even when a handler is given. */
+export const NotDismissibleHasNoCloseControl: Story = {
+  args: {
+    onDismiss: fn(),
+    notices: [{ id: "n4", title: "Demo accounts", body: "Resets daily.", severity: "warning", scope: "server", dismissible: false }],
+  },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).queryByRole("button")).not.toBeInTheDocument();
+    await expect(within(canvasElement).getByText("Demo accounts")).toBeInTheDocument();
   },
 };
 
 /** Text is always plain: markup and links in a message are shown as typed, never rendered. */
 export const MessageTextIsNeverRenderedAsMarkup: Story = {
   args: {
-    notices: [{ id: "n3", title: "<b>Bold</b> title", body: '<a href="https://evil.example">Sign in</a>', severity: "warning", scope: "organisation" }],
+    notices: [{ id: "n3", title: "<b>Bold</b> title", body: '<a href="https://evil.example">Sign in</a>', severity: "warning", scope: "organisation", dismissible: true }],
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

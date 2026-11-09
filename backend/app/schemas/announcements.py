@@ -28,6 +28,7 @@ class AnnouncementIn(BaseModel):
         starts_at: First active instant (timezone-aware), `None` for already active.
         ends_at: First instant no longer active (timezone-aware), `None` for no end.
         show_on_login: Whether the login pages show it.
+        dismissible: Whether the banner offers a close control; false keeps the message showing until it ends.
     """
 
     title: str = Field(min_length=1, max_length=MAX_TITLE_LENGTH)
@@ -36,6 +37,7 @@ class AnnouncementIn(BaseModel):
     starts_at: AwareDatetime | None = None
     ends_at: AwareDatetime | None = None
     show_on_login: bool = False
+    dismissible: bool = True
 
 
 class AnnouncementOut(BaseModel):
@@ -56,6 +58,7 @@ class AnnouncementOut(BaseModel):
     starts_at: datetime | None
     ends_at: datetime | None
     show_on_login: bool
+    dismissible: bool
     status: Status
     notified_at: datetime | None
     notified_count: int | None
@@ -74,6 +77,7 @@ class AnnouncementReaderOut(BaseModel):
 
     Attributes:
         scope: `server` for a platform-wide message, `organisation` for the reader's organisation.
+        dismissible: Whether the banner offers a close control for it.
     """
 
     id: UUID
@@ -81,6 +85,7 @@ class AnnouncementReaderOut(BaseModel):
     body: str
     severity: AnnouncementSeverity
     scope: Scope
+    dismissible: bool
 
 
 class AnnouncementSendOut(BaseModel):

@@ -46,8 +46,9 @@ def _out(row: Announcement, now: datetime) -> AnnouncementOut:
     """The administrator view of one message, with its status at `now`."""
     return AnnouncementOut(
         id=row.id, organization_id=row.organization_id, title=row.title, body=row.body, severity=row.severity,
-        starts_at=row.starts_at, ends_at=row.ends_at, show_on_login=row.show_on_login, status=service.status_of(row, now),
-        notified_at=row.notified_at, notified_count=row.notified_count, created_at=row.created_at, updated_at=row.updated_at,
+        starts_at=row.starts_at, ends_at=row.ends_at, show_on_login=row.show_on_login, dismissible=row.dismissible,
+        status=service.status_of(row, now), notified_at=row.notified_at, notified_count=row.notified_count,
+        created_at=row.created_at, updated_at=row.updated_at,
     )
 
 
@@ -59,7 +60,7 @@ def _list(db: Session, organization_id: UUID | None) -> AnnouncementsOut:
 def _create(db: Session, organization_id: UUID | None, body: AnnouncementIn, actor: User) -> AnnouncementOut:
     row = service.create(
         db, organization_id=organization_id, actor=actor, title=body.title, body=body.body, severity=body.severity,
-        starts_at=body.starts_at, ends_at=body.ends_at, show_on_login=body.show_on_login,
+        starts_at=body.starts_at, ends_at=body.ends_at, show_on_login=body.show_on_login, dismissible=body.dismissible,
     )
     db.commit()
     return _out(row, datetime.now(UTC))
@@ -69,7 +70,7 @@ def _replace(db: Session, organization_id: UUID | None, announcement_id: UUID, b
     row = service.get_in_scope(db, announcement_id, organization_id)
     service.replace(
         db, row, actor=actor, title=body.title, body=body.body, severity=body.severity, starts_at=body.starts_at,
-        ends_at=body.ends_at, show_on_login=body.show_on_login,
+        ends_at=body.ends_at, show_on_login=body.show_on_login, dismissible=body.dismissible,
     )
     db.commit()
     return _out(row, datetime.now(UTC))
@@ -178,7 +179,7 @@ def send_org_announcement(
 
 def _reader_out(pairs: list[tuple[Announcement, Scope]]) -> list[AnnouncementReaderOut]:
     return [
-        AnnouncementReaderOut(id=r.id, title=r.title, body=r.body, severity=r.severity, scope=scope)
+        AnnouncementReaderOut(id=r.id, title=r.title, body=r.body, severity=r.severity, scope=scope, dismissible=r.dismissible)
         for r, scope in pairs
     ]
 

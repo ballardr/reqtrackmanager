@@ -105,9 +105,10 @@ See [Administering a project → Modules](./administering-a-project.md#modules) 
 
 ## Messages
 
-Under **Messages**, write announcements for the people of your organisation: a closure, a change of process, a reminder. A message has a **title**, a plain-text **message**, a **severity** (Information, Warning or Critical) and an optional **Show from** and **Show until** time in your local time. It appears as a dismissible banner above the top bar for members of the organisation, beside any [platform message](./server-administration.md#messages), and, with **Show on the login pages**, on the organisation's branded login page (`/login/<slug>`) before anyone signs in, so keep it free of anything confidential.
+Under **Messages**, write announcements for the people of your organisation: a closure, a change of process, a reminder. A message has a **title**, a plain-text **message**, a **severity** (Information, Warning or Critical) and a **Show from** and **Show until** time in your local time (a new message starts now and has no end). It appears as a banner above the top bar, dismissible unless you clear **Can be dismissed**, for members of the organisation, beside any [platform message](./server-administration.md#messages), and, with **Show on the login pages**, on the organisation's branded login page (`/login/<slug>`) before anyone signs in, so keep it free of anything confidential.
 
 - A message is plain text and cannot contain a web address, so it cannot be used to send people to another site.
+- **Current** and **Previous** views, a search and **Duplicate** work as for [platform messages](./server-administration.md#messages).
 - **Send as notification** sends the message once to every active member of the organisation (each person's notification preferences apply, and you are not notified of your own send). The row records how many people it reached, and it cannot be sent again.
 - You see and change only your organisation's messages. Messages are included when you export the organisation (without the record of the send) and again when you import it; platform messages are not.
 

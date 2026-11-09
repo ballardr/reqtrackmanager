@@ -65,7 +65,7 @@ export const Default: Story = {
 export const ShowsPlatformMessages: Story = {
   decorators: [withRouter("/login")],
   beforeEach: () => mockBrandingAndSignup("disabled", [
-    { id: "n1", title: "Demo instance", body: "Sign in with the demo account.", severity: "information", scope: "server" },
+    { id: "n1", title: "Demo instance", body: "Sign in with the demo account.", severity: "information", scope: "server", dismissible: true },
   ]),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

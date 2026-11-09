@@ -128,6 +128,56 @@ def test_a_scope_holds_a_bounded_number_of_messages(client, admin_token, monkeyp
     assert client.post(SERVER, json=_body(), headers=auth_headers(admin_token)).status_code == 409
 
 
+def test_the_cap_counts_only_messages_that_have_not_ended(client, admin_token, monkeypatch):
+    monkeypatch.setattr(service, "MAX_PER_SCOPE", 2)
+    past = datetime(2020, 1, 1, tzinfo=UTC)
+    for _ in range(4):  # history never uses up the cap
+        _create(client, admin_token, SERVER, starts_at=past.isoformat(), ends_at=(past + timedelta(days=1)).isoformat())
+    _create(client, admin_token, SERVER)
+    _create(client, admin_token, SERVER, starts_at=(datetime.now(UTC) + timedelta(days=1)).isoformat())  # scheduled counts
+    assert client.post(SERVER, json=_body(), headers=auth_headers(admin_token)).status_code == 409
+    # a message created already ended is history, so it still fits beside a full set of current ones
+    ended = _body(starts_at=past.isoformat(), ends_at=(past + timedelta(days=1)).isoformat())
+    assert client.post(SERVER, json=ended, headers=auth_headers(admin_token)).status_code == 201
+
+
+def test_the_stored_history_has_a_ceiling_that_ended_messages_count_toward(client, admin_token, monkeypatch):
+    monkeypatch.setattr(service, "MAX_STORED_PER_SCOPE", 3)
+    past = datetime(2020, 1, 1, tzinfo=UTC)
+    ended = _body(starts_at=past.isoformat(), ends_at=(past + timedelta(days=1)).isoformat())
+    for _ in range(3):
+        assert client.post(SERVER, json=ended, headers=auth_headers(admin_token)).status_code == 201
+    assert client.post(SERVER, json=ended, headers=auth_headers(admin_token)).status_code == 409
+
+
+def test_a_message_is_dismissible_unless_it_says_otherwise_and_the_flag_reaches_readers(client, admin_token):
+    plain = _create(client, admin_token, SERVER, title="Plain", show_on_login=True)
+    fixed = _create(client, admin_token, SERVER, title="Fixed", show_on_login=True, dismissible=False)
+    assert plain["dismissible"] is True and fixed["dismissible"] is False
+    login = {m["title"]: m["dismissible"] for m in _login_messages(client).json()}
+    assert login["Plain"] is True and login["Fixed"] is False
+    banner = client.get("/api/v1/announcements/active", headers=auth_headers(admin_token)).json()
+    assert {m["title"]: m["dismissible"] for m in banner}["Fixed"] is False
+    # the switch is editable, and the audit event carries it without the text
+    resp = client.put(f"{SERVER}/{fixed['id']}", json=_body(title="Fixed", dismissible=True), headers=auth_headers(admin_token))
+    assert resp.status_code == 200 and resp.json()["dismissible"] is True
+    with SessionLocal() as db:
+        detail = db.scalars(
+            select(AuditEvent).where(AuditEvent.entity_id == fixed["id"], AuditEvent.action == "updated")
+        ).one().detail
+        assert detail["dismissible"] is True and "Fixed" not in str(detail)
+
+
+def test_an_organisation_administrator_cannot_change_a_server_message_flag(client, admin_token):
+    org, token = create_org_admin_in(client, admin_token, "Dismissible scope")
+    server_row = _create(client, admin_token, SERVER, title="Server notice", dismissible=False)
+    resp = client.put(f"{_org(org['id'])}/{server_row['id']}", json=_body(dismissible=True), headers=auth_headers(token))
+    assert resp.status_code == 404
+    with SessionLocal() as db:
+        row = db.get(Announcement, server_row["id"])
+        assert row is not None and row.dismissible is False
+
+
 def test_the_window_edges_are_start_inclusive_and_end_exclusive(client, admin_token):
     start = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
     end = start + timedelta(hours=2)
@@ -180,7 +230,7 @@ def test_the_login_read_is_public_and_returns_only_flagged_active_messages_witho
     assert {m["title"] for m in branded} == {"Shown server", "Shown org"}
     assert {m["title"]: m["scope"] for m in branded} == {"Shown server": "server", "Shown org": "organisation"}
     for message in branded:
-        assert set(message) == {"id", "title", "body", "severity", "scope"}, "no author, organisation id or send data"
+        assert set(message) == {"id", "title", "body", "severity", "scope", "dismissible"}, "no author, organisation id or send data"
 
     unknown = _login_messages(client, "no-such-organisation")
     assert unknown.status_code == 200
@@ -298,7 +348,9 @@ def test_the_organisation_bundle_carries_messages_but_not_the_send_record_or_ser
     org, token = create_org_admin_in(client, admin_token, "Bundle announcements")
     headers = auth_headers(token)
     start = datetime(2030, 1, 1, 9, 0, tzinfo=timezone(timedelta(hours=10)))
-    kept = _create(client, token, _org(org["id"]), title="Kept", severity="warning", show_on_login=True, starts_at=start.isoformat())
+    kept = _create(
+        client, token, _org(org["id"]), title="Kept", severity="warning", show_on_login=True, dismissible=False, starts_at=start.isoformat(),
+    )
     client.post(f"{_org(org['id'])}/{kept['id']}/notify", headers=headers)
     _create(client, admin_token, SERVER, title="Server only")
 
@@ -314,7 +366,7 @@ def test_the_organisation_bundle_carries_messages_but_not_the_send_record_or_ser
     assert imported.status_code == 201, imported.text
     with SessionLocal() as db:
         copy = db.scalars(select(Announcement).where(Announcement.organization_id == imported.json()["organization"]["id"])).one()
-        assert (copy.title, copy.severity.value, copy.show_on_login) == ("Kept", "warning", True)
+        assert (copy.title, copy.severity.value, copy.show_on_login, copy.dismissible) == ("Kept", "warning", True, False)
         assert copy.starts_at == datetime(2029, 12, 31, 23, 0, tzinfo=UTC)
         assert copy.notified_at is None and copy.notified_count is None
 

@@ -6,8 +6,8 @@ import type { AnnouncementNotice } from "../api/types";
 import { AnnouncementBanner } from "./AnnouncementBanner";
 
 const NOTICES: AnnouncementNotice[] = [
-  { id: "n1", title: "Release tonight", body: "Expect a short pause.", severity: "warning", scope: "server" },
-  { id: "n2", title: "Team day", body: "", severity: "information", scope: "organisation" },
+  { id: "n1", title: "Release tonight", body: "Expect a short pause.", severity: "warning", scope: "server", dismissible: true },
+  { id: "n2", title: "Team day", body: "", severity: "information", scope: "organisation", dismissible: true },
 ];
 
 /** The banner above a signed-in page: platform messages plus the current organisation's. */
@@ -59,6 +59,19 @@ export const DismissIsRememberedInThisBrowser: Story = {
     await waitFor(() => expect(canvas.queryByText("Team day")).not.toBeInTheDocument());
     await expect(canvas.getByText("Release tonight")).toBeInTheDocument();
     await expect(JSON.parse(window.localStorage.getItem("announcements.dismissed") ?? "[]")).toEqual(["n2"]);
+  },
+};
+
+/** A notice that is not dismissible has no close control and shows even if it was dismissed before. */
+export const ANoticeThatIsNotDismissibleCannotBeClosed: Story = {
+  beforeEach: () => {
+    window.localStorage.setItem("announcements.dismissed", JSON.stringify(["n3"]));
+    spyOn(api, "get").mockResolvedValue([{ id: "n3", title: "Demo resets daily", body: "", severity: "critical", scope: "server", dismissible: false }]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Demo resets daily")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /Dismiss/ })).not.toBeInTheDocument();
   },
 };
 
