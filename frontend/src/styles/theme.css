@@ -1156,8 +1156,29 @@ a.figure-projects-link:hover {
    margin — the two widths above are the single source of truth for both
    the rail's own width and this offset. */
 .app-content {
-  padding: var(--space-6);
+  padding: var(--space-6) var(--space-6) var(--space-2);
+  /* A column so the footer sits at the foot of a short page; the body grows to fill. */
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--header-height) - var(--announcement-height));
+  box-sizing: border-box;
 }
+
+.app-content-body {
+  flex: 1 0 auto;
+  min-width: 0;
+}
+
+/* The page footer (components/AppFooter.tsx): one muted, wrapping line at the end of the page's content. */
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1) var(--space-3);
+  padding-top: var(--space-4);
+  font-size: 0.8rem;
+}
+
 
 .nav-rail ~ .app-content {
   margin-left: var(--nav-rail-width);
@@ -1214,7 +1235,7 @@ a.figure-projects-link:hover {
    1200px the app used everywhere before this pass, for readability on
    very wide monitors. The default is full-bleed — content simply fills
    the space next to the rail. */
-.app-content.boxed > .content-inner {
+.app-content.boxed .content-inner {
   max-width: 1200px;
   margin: 0 auto;
 }

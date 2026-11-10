@@ -87,10 +87,13 @@
         <tr>
           <td align="center" style="padding: 24px 20px 0;">
             <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">
-              &copy; {{ now_year }} {{ branding.footer_company_name }}{% if branding.footer_website %} &middot; <a href="{{ branding.footer_website }}" class="rtm-footer-link" style="text-decoration: underline;">{{ branding.footer_website }}</a>{% endif %}
+              {% if branding.footer_prefix %}{{ branding.footer_prefix }}{% else %}&copy; {{ now_year }}{% endif %} {{ branding.footer_company_name }}{% if branding.footer_website %} &middot; <a href="{{ branding.footer_website }}" class="rtm-footer-link" style="text-decoration: underline;">{{ branding.footer_website }}</a>{% endif %}
             </p>
             {% if branding.footer_address %}
             <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">{{ branding.footer_address | nl2br }}</p>
+            {% endif %}
+            {% if branding.footer_company_id %}
+            <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">{{ branding.footer_company_id }}</p>
             {% endif %}
             {% if unsubscribe_url %}
             <p class="rtm-footer-text" style="margin: 0 0 24px; font-size: 12px; line-height: 1.6;">

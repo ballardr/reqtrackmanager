@@ -1,9 +1,8 @@
 import { BarChart3, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import { api, fileUrl } from "../api/client";
-import type { SystemVersion } from "../api/types";
+import { fileUrl } from "../api/client";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
@@ -22,13 +21,12 @@ import { useUiPreference } from "../hooks/useUiPreference";
 import { resolveNavIcon } from "../modules/navIcons";
 import type { ProjectNavItem } from "../navigation/projectNav";
 import { installedModules } from "../modules/registry";
-import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
 import { AnnouncementBanner } from "./AnnouncementBanner";
+import { AppFooter } from "./AppFooter";
 import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { ReportRunsIndicator } from "./ReportRunsIndicator";
 import { NavRailLink } from "./NavRailLink";
-import { PoliciesLink } from "./PoliciesLink";
 import { PolicyAcceptNotice } from "./PolicyAcceptNotice";
 import { ProjectNavSection } from "./ProjectNavSection";
 import { Tooltip } from "./Tooltip";
@@ -113,7 +111,6 @@ function LayoutShell({ children }: { children: ReactNode }) {
   const hasReviewsDue = useHasReviewsDue(!!user);
   const serverAccess = useServerAccess(!!user);
   const showServerManagement = !!serverAccess && (serverAccess.can_administer_server || serverAccess.can_manage_entitlements);
-  const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
   const clientConfig = useClientConfig(!!user);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
@@ -195,11 +192,6 @@ function LayoutShell({ children }: { children: ReactNode }) {
         { key: "admin", to: `/projects/${projectId}/admin`, label: navLabel(`/projects/${projectId}/admin`, strings.nav.admin), icon: <Settings size={16} /> },
       ]
     : [];
-
-  useEffect(() => {
-    if (!user) return;
-    api.get<SystemVersion>("/api/v1/system/version").then(setBackendVersion);
-  }, [user]);
 
   return (
     <div style={{ minHeight: "100%" }}>
@@ -324,27 +316,6 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 )}
               </>
             )}
-            {/* Build identity — "a way to see the version and date of the
-                frontend and backend in the UI".
-                Pinned to the bottom of the rail via `marginTop: auto` on the
-                flex-column `<nav>`; hidden in icon-only mode rather than
-                squeezed into it, same as every other rail label. The sha/date
-                detail lives in `title` (plain hover text, not the shared
-                `Tooltip`) since this is supplementary static text, not an
-                interactive control needing an accessible name. */}
-            {!railIconOnly && (
-              <div
-                className="text-muted"
-                style={{ marginTop: "auto", paddingTop: "var(--space-4)", fontSize: "0.7rem", lineHeight: 1.6 }}
-              >
-                {/* The in-application footer: a link to the published policies, absent when there are none. */}
-                <div><PoliciesLink /></div>
-                <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
-                <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>
-                  {backendVersion ? strings.nav.backendVersion(backendVersion.version) : strings.nav.backendVersionLoading}
-                </div>
-              </div>
-            )}
           </div>
         </nav>
       )}
@@ -364,7 +335,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
         </Tooltip>
       )}
       <main className={`app-content${contentBoxed ? " boxed" : ""}`}>
-        {contentBoxed ? <div className="content-inner">{children}</div> : children}
+        <div className="app-content-body">
+          {contentBoxed ? <div className="content-inner">{children}</div> : children}
+        </div>
+        <AppFooter />
       </main>
     </div>
   );

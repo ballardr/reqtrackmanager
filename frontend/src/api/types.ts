@@ -558,6 +558,10 @@ export interface ServerSettings {
   email_footer_company_name: string | null;
   email_footer_website: string | null;
   email_footer_address: string | null;
+  /** Text shown before the company name in the footers ("Hosted by"). */
+  footer_prefix: string | null;
+  company_id_label: string | null;
+  company_id: string | null;
   org_label_singular: string | null;
   org_label_plural: string | null;
   /** Whether the deployment accepts new user files (the deployment-wide switch). */

@@ -83,24 +83,37 @@ function usePlatformImage(
   };
 }
 
+/** The `ServerSettings` fields the Server details form edits and compares against. */
+type FooterField =
+  | "email_footer_company_name" | "email_footer_website" | "email_footer_address" | "footer_prefix" | "company_id_label" | "company_id";
+
 /**
- * Server details: the platform logo and the company details printed in the footer of outgoing email. An organisation
+ * Server details: the platform logo and the company details printed in the page footer and the footer of outgoing email. An organisation
  * that has not set its own shows these (the organisation's own page splits the same way).
  */
 export function ServerDetailsTab() {
   const orgLabel = useOrgLabel();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
-  const [saved, setSaved] = useState<Pick<ServerSettings, "email_footer_company_name" | "email_footer_website" | "email_footer_address"> | null>(null);
+  const [saved, setSaved] = useState<Pick<ServerSettings, FooterField> | null>(null);
+  const [prefix, setPrefix] = useState("");
   const [company, setCompany] = useState("");
   const [website, setWebsite] = useState("");
   const [address, setAddress] = useState("");
+  const [companyIdLabel, setCompanyIdLabel] = useState("");
+  const [companyId, setCompanyId] = useState("");
   const logo = usePlatformImage("logo", setSettings, strings.serverSettings.logoUploaded, strings.serverSettings.logoRemoved);
 
   function adopt(s: ServerSettings) {
-    setSaved({ email_footer_company_name: s.email_footer_company_name, email_footer_website: s.email_footer_website, email_footer_address: s.email_footer_address });
+    setSaved({
+      email_footer_company_name: s.email_footer_company_name, email_footer_website: s.email_footer_website, email_footer_address: s.email_footer_address,
+      footer_prefix: s.footer_prefix, company_id_label: s.company_id_label, company_id: s.company_id,
+    });
+    setPrefix(s.footer_prefix ?? "");
     setCompany(s.email_footer_company_name ?? "");
     setWebsite(s.email_footer_website ?? "");
     setAddress(s.email_footer_address ?? "");
+    setCompanyIdLabel(s.company_id_label ?? "");
+    setCompanyId(s.company_id ?? "");
   }
 
   useLoadOnChange(async () => {
@@ -111,13 +124,17 @@ export function ServerDetailsTab() {
 
   if (!settings || !saved) return <Spinner />;
   const dirty =
-    company !== (saved.email_footer_company_name ?? "") || website !== (saved.email_footer_website ?? "") || address !== (saved.email_footer_address ?? "");
+    prefix !== (saved.footer_prefix ?? "") || company !== (saved.email_footer_company_name ?? "") || website !== (saved.email_footer_website ?? "") ||
+    address !== (saved.email_footer_address ?? "") || companyIdLabel !== (saved.company_id_label ?? "") || companyId !== (saved.company_id ?? "");
 
   async function save() {
     const updated = await api.put<ServerSettings>("/api/v1/system/branding", {
       email_footer_company_name: orNull(company),
       email_footer_website: orNull(website),
       email_footer_address: orNull(address),
+      footer_prefix: orNull(prefix),
+      company_id_label: orNull(companyIdLabel),
+      company_id: orNull(companyId),
     });
     setSettings((prev) => (prev ? { ...prev, ...updated } : updated));
     adopt(updated);
@@ -145,6 +162,10 @@ export function ServerDetailsTab() {
       <SettingsForm dirty={dirty} onSave={save} successMessage={strings.serverSettings.detailsSaved}>
         <FormGrid minColumn="18rem">
           <TextField
+            help={strings.help.serverFooterPrefix} label={strings.serverSettings.footerPrefix}
+            value={prefix} onChange={setPrefix} placeholder={strings.serverSettings.footerPrefixExample}
+          />
+          <TextField
             help={strings.help.serverEmailFooterCompanyName} label={strings.serverSettings.emailFooterCompanyName}
             value={company} onChange={setCompany} placeholder={strings.appName}
           />
@@ -152,6 +173,11 @@ export function ServerDetailsTab() {
           <FormGridFull>
             <TextAreaField help={strings.help.serverEmailFooterAddress} label={strings.serverSettings.emailFooterAddress} value={address} onChange={setAddress} rows={3} />
           </FormGridFull>
+          <TextField
+            help={strings.help.serverCompanyIdLabel} label={strings.serverSettings.companyIdLabel}
+            value={companyIdLabel} onChange={setCompanyIdLabel} placeholder={strings.serverSettings.companyIdLabelExample}
+          />
+          <TextField help={strings.help.serverCompanyId} label={strings.serverSettings.companyId} value={companyId} onChange={setCompanyId} />
         </FormGrid>
       </SettingsForm>
     </CollapsibleSection>

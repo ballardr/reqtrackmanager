@@ -383,6 +383,13 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
             falls back to the built-in product name if left unset, same as
             `default_header_title`; the website/address have no built-in
             fallback and are simply omitted from the footer when unset.
+        footer_prefix: Short text shown before the platform company name in the page footer and the email footer
+            ("Hosted by", "Managed by"), so a person using the deployment for another organisation is not led to think
+            the operator is their own company. Shown only with a platform company name, and in an email only when the
+            organisation has not set its own company name.
+        company_id_label / company_id: The company's registration identifier (label such as "ABN", and the number),
+            shown after the address in the page footer and the email footer under the same rule as `footer_prefix`.
+            The identifier shows only when it is set; a label without one is ignored.
         singleton_guard: Always `True` — see class docstring. Not read or
             written by any application code; its only job is being the
             target of a `UNIQUE` constraint.
@@ -416,6 +423,9 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    footer_prefix: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    company_id_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    company_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     org_label_singular: Mapped[str | None] = mapped_column(String(50), nullable=True)
     org_label_plural: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Module system: the deployment-

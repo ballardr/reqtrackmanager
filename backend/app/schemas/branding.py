@@ -25,6 +25,9 @@ class ServerSettingsOut(BaseModel):
     email_footer_company_name: str | None = None
     email_footer_website: str | None = None
     email_footer_address: str | None = None
+    footer_prefix: str | None = None
+    company_id_label: str | None = None
+    company_id: str | None = None
     org_label_singular: str | None = None
     org_label_plural: str | None = None
     #: Whether the deployment accepts new user files; read by every upload control.
@@ -59,6 +62,9 @@ class ServerSettingsUpdate(BaseModel):
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
     email_footer_address: str | None = Field(default=None, max_length=2000)
+    footer_prefix: str | None = Field(default=None, max_length=50)
+    company_id_label: str | None = Field(default=None, max_length=50)
+    company_id: str | None = Field(default=None, max_length=100)
     org_label_singular: str | None = Field(default=None, max_length=50)
     org_label_plural: str | None = Field(default=None, max_length=50)
 

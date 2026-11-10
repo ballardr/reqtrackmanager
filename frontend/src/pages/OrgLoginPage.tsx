@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, api, apiUrl, fileUrl } from "../api/client";
 import type { OrgLoginInfo } from "../api/types";
 import { LoginAnnouncements } from "../components/LoginAnnouncements";
-import { PoliciesLink } from "../components/PoliciesLink";
+import { AppFooter } from "../components/AppFooter";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
@@ -154,7 +154,7 @@ export function OrgLoginPage() {
             </form>
           )}
         </div>
-        <div style={{ textAlign: "center" }}><PoliciesLink className="text-muted" /></div>
+        <AppFooter />
       </div>
     </div>
   );

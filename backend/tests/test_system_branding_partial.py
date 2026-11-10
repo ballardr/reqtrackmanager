@@ -39,3 +39,16 @@ def test_the_audit_event_lists_the_fields_changed_but_not_their_values(client, a
         ).first()
         assert event is not None
         assert event.detail == {"fields": ["email_footer_address"]}
+
+
+def test_footer_prefix_and_company_id_are_stored_cleared_and_limited(client, admin_token):
+    saved = _put(client, admin_token, {"footer_prefix": "Hosted by", "company_id_label": "ABN", "company_id": "12 345 678 901"}).json()
+    assert (saved["footer_prefix"], saved["company_id_label"], saved["company_id"]) == ("Hosted by", "ABN", "12 345 678 901")
+    # Public read, as the signed-out footer uses it.
+    assert client.get(URL).json()["company_id"] == "12 345 678 901"
+    cleared = _put(client, admin_token, {"footer_prefix": None, "company_id": None}).json()
+    assert cleared["footer_prefix"] is None and cleared["company_id"] is None
+    assert cleared["company_id_label"] == "ABN"  # not sent, so unchanged
+    assert _put(client, admin_token, {"footer_prefix": "x" * 51}).status_code == 422
+    assert _put(client, admin_token, {"company_id": "x" * 101}).status_code == 422
+    _put(client, admin_token, {"company_id_label": None})

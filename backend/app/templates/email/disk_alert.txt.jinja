@@ -8,9 +8,12 @@ Free up space or expand storage capacity to avoid uploads failing.
 Open server management: {{ cta_url }}
 
 --
-{{ branding.footer_company_name }}{% if branding.footer_website %} - {{ branding.footer_website }}{% endif %}
+{% if branding.footer_prefix %}{{ branding.footer_prefix }} {% endif %}{{ branding.footer_company_name }}{% if branding.footer_website %} - {{ branding.footer_website }}{% endif %}
 
 {% if branding.footer_address %}{{ branding.footer_address }}
+
+{% endif %}
+{% if branding.footer_company_id %}{{ branding.footer_company_id }}
 
 {% endif %}
 {% if unsubscribe_url %}Manage your email preferences: {{ unsubscribe_url }}{% endif %}

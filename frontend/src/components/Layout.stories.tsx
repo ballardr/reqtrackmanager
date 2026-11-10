@@ -3,9 +3,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { page } from "vitest/browser";
 
 import { api } from "../api/client";
-import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, ServerAccess, ServerSettings, SystemVersion } from "../api/types";
+import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, PublicPolicy, ServerAccess, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
-import { buildProject, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
+import { buildProject, buildPublicPolicy, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
 
 const DEFAULT_CLIENT_CONFIG: ClientConfig = { help_enabled: true, help_url: "https://docs.example.com/" };
@@ -20,6 +20,7 @@ const SERVER_SETTINGS: ServerSettings = {
   email_footer_company_name: null,
   email_footer_website: null,
   email_footer_address: null,
+  footer_prefix: null, company_id_label: null, company_id: null,
   org_label_singular: null,
   org_label_plural: null,
   file_uploads_enabled: true,
@@ -53,7 +54,7 @@ const SERVER_ADMIN_ACCESS: ServerAccess = {
  * story. */
 function mockLayoutApis(
   clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true, reviewsDue = 0,
-  serverAccess: ServerAccess = NO_SERVER_ACCESS,
+  serverAccess: ServerAccess = NO_SERVER_ACCESS, publishedPolicies: PublicPolicy[] = [],
 ) {
   // `useHasReviewsDue` reads one row of the personal reviews-due list; its total decides whether the entry shows.
   spyOn(api, "getPage").mockImplementation(async (path: string): Promise<never> => {
@@ -68,6 +69,8 @@ function mockLayoutApis(
     if (path.startsWith("/api/v1/projects?")) return [] as ProjectListItem[];
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
+    if (path === "/api/v1/public/policies") return publishedPolicies;
+    if (path === "/api/v1/policies/mine") return [];
     if (path === "/api/v1/system/client-config") return clientConfig;
     if (path === "/api/v1/system/access") return serverAccess;
     // `useProjectEnabledModules` — Layout's nav
@@ -241,13 +244,10 @@ export const SubscriptionRemovalAuthority: Story = {
   },
 };
 
-/** The nav rail's build-identity footer — the frontend's own build constants (unset in a Storybook build,
- * so `version.ts`'s documented "dev"/"unknown" fallback applies) plus the
- * backend's, fetched from `GET /api/v1/system/version` and rendered once
- * it resolves. Hidden entirely when the rail is collapsed to icons-only,
- * same as every other rail label — not asserted here since that's
- * `useUiPreference`'s own default-false state, exercised by the collapse
- * button elsewhere, not this story's concern. */
+/** The page footer's build identity — the frontend's own build constants (unset in a Storybook build, so
+ * `version.ts`'s documented "dev"/"unknown" fallback applies) plus the backend's, fetched from
+ * `GET /api/v1/system/version` and rendered once it resolves. It is the page's footer, so it does not depend on
+ * the navigation rail's state. */
 export const ShowsVersionFooter: Story = {
   decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
   beforeEach: () => {
@@ -255,8 +255,23 @@ export const ShowsVersionFooter: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("App vdev")).toBeInTheDocument();
-    await expect(canvas.getByText("API v1.4.0")).toBeInTheDocument();
+    await expect(await canvas.findByText("Version: vdev/v1.4.0")).toBeInTheDocument();
+    await expect(canvas.getByRole("contentinfo", { name: "Page footer" })).toBeInTheDocument();
+  },
+};
+
+/** The policies link is in the page footer, so a narrow viewport (the rail forced to icons) still shows it. */
+export const PoliciesLinkSurvivesACollapsedRail: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, NO_SERVER_ACCESS, [buildPublicPolicy()]);
+  },
+  play: async ({ canvasElement }) => {
+    await page.viewport(700, 800);
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("navigation")).toHaveClass("nav-rail-icons"));
+    const footer = canvas.getByRole("contentinfo", { name: "Page footer" });
+    await expect(await within(footer).findByRole("link", { name: "Policies" })).toHaveAttribute("href", "/policies");
   },
 };
 
@@ -283,7 +298,7 @@ export const HelpLinkHiddenWhenDisabled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await canvas.findByText("API v1.4.0");
+    await canvas.findByText("Version: vdev/v1.4.0");
     await expect(canvas.queryByRole("link", { name: /^Help/ })).not.toBeInTheDocument();
   },
 };

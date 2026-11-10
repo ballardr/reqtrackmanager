@@ -43,6 +43,9 @@ class EmailBranding:
         footer_website / footer_address: `None` when not configured at
             either level, in which case that line is simply omitted from
             the footer rather than shown blank.
+        footer_prefix / footer_company_id: The platform's "Hosted by" text and its company identifier ("ABN 12 345 678
+            901"). `None` unless the platform's own company details are the ones shown: an organisation that sets its
+            own company name speaks for itself, so the operator's prefix and identifier are not added to its emails.
     """
 
     header_title: str
@@ -53,6 +56,8 @@ class EmailBranding:
     footer_company_name: str
     footer_website: str | None
     footer_address: str | None
+    footer_prefix: str | None = None
+    footer_company_id: str | None = None
 
 
 def _resolve_logo(db: Session, file_id: UUID | None) -> tuple[bytes | None, str | None]:
@@ -94,6 +99,13 @@ def resolve_email_branding(db: Session, organization_id: UUID | None = None) -> 
     footer_website = (org.email_footer_website if org else None) or platform.email_footer_website
     footer_address = (org.email_footer_address if org else None) or platform.email_footer_address
 
+    # The operator's prefix and identifier belong to the operator's own company details only.
+    platform_details_shown = not (org and org.email_footer_company_name)
+    footer_prefix = platform.footer_prefix if platform_details_shown and platform.email_footer_company_name else None
+    footer_company_id = None
+    if platform_details_shown and platform.company_id:
+        footer_company_id = " ".join(part for part in (platform.company_id_label, platform.company_id) if part)
+
     return EmailBranding(
         header_title=header_title,
         accent_color_hex=accent_color_hex,
@@ -103,4 +115,6 @@ def resolve_email_branding(db: Session, organization_id: UUID | None = None) -> 
         footer_company_name=footer_company_name,
         footer_website=footer_website,
         footer_address=footer_address,
+        footer_prefix=footer_prefix,
+        footer_company_id=footer_company_id,
     )

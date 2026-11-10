@@ -113,3 +113,71 @@ def test_platform_branding_falls_back_to_built_in_product_name_when_unset(client
     # No PUT /system/branding has set email_footer_company_name in this
     # test's fresh database, so it must fall back rather than render blank.
     assert branding.footer_company_name == "ReqTrackManager"
+
+
+def _platform_footer(client, admin_token, **fields):
+    resp = client.put("/api/v1/system/branding", json=fields, headers=auth_headers(admin_token))
+    assert resp.status_code == 200, resp.text
+
+
+def test_platform_prefix_and_company_id_appear_in_the_email_footer(client, admin_token):
+    _platform_footer(client, admin_token, email_footer_company_name="Host Pty Ltd", footer_prefix="Hosted by",
+                     company_id_label="ABN", company_id="12 345 678 901")
+    try:
+        db = SessionLocal()
+        try:
+            branding = resolve_email_branding(db, organization_id=None)
+        finally:
+            db.close()
+        assert branding.footer_prefix == "Hosted by"
+        assert branding.footer_company_id == "ABN 12 345 678 901"
+        html, text = render_email("notification", branding=branding, unsubscribe_url=None, title="t", body_text="b", cta_url=None)
+        assert "Hosted by Host Pty Ltd" in html and "ABN 12 345 678 901" in html
+        assert "&copy;" not in html  # the operator hosts the service; it is not the copyright holder
+        assert "Hosted by Host Pty Ltd" in text and "ABN 12 345 678 901" in text
+    finally:
+        _platform_footer(client, admin_token, email_footer_company_name=None, footer_prefix=None, company_id_label=None, company_id=None)
+
+
+def test_company_id_has_no_label_when_none_is_set_and_needs_a_value(client, admin_token):
+    _platform_footer(client, admin_token, company_id="99", company_id_label=None)
+    try:
+        db = SessionLocal()
+        try:
+            assert resolve_email_branding(db, organization_id=None).footer_company_id == "99"
+        finally:
+            db.close()
+        _platform_footer(client, admin_token, company_id=None, company_id_label="ABN")
+        db = SessionLocal()
+        try:
+            assert resolve_email_branding(db, organization_id=None).footer_company_id is None
+        finally:
+            db.close()
+    finally:
+        _platform_footer(client, admin_token, company_id=None, company_id_label=None)
+
+
+def test_an_organisation_with_its_own_company_name_does_not_carry_the_operators_prefix_or_id(client, admin_token, org_id):
+    _platform_footer(client, admin_token, email_footer_company_name="Host Pty Ltd", footer_prefix="Hosted by", company_id="12")
+    try:
+        # No company name of its own: the platform details (and so the prefix and identifier) are shown.
+        db = SessionLocal()
+        try:
+            shown = resolve_email_branding(db, organization_id=UUID(org_id))
+        finally:
+            db.close()
+        assert shown.footer_prefix == "Hosted by" and shown.footer_company_id == "12"
+        resp = client.put(
+            f"/api/v1/orgs/{org_id}/branding", json={"email_footer_company_name": "Tenant Ltd"}, headers=auth_headers(admin_token)
+        )
+        assert resp.status_code == 200, resp.text
+        db = SessionLocal()
+        try:
+            own = resolve_email_branding(db, organization_id=UUID(org_id))
+        finally:
+            db.close()
+        assert own.footer_company_name == "Tenant Ltd"
+        assert own.footer_prefix is None and own.footer_company_id is None
+    finally:
+        client.put(f"/api/v1/orgs/{org_id}/branding", json={"email_footer_company_name": None}, headers=auth_headers(admin_token))
+        _platform_footer(client, admin_token, email_footer_company_name=None, footer_prefix=None, company_id=None)

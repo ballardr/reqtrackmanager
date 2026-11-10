@@ -22,6 +22,7 @@ const SERVER_SETTINGS: ServerSettings = {
   default_login_background_file_id: null,
   email_footer_company_name: "ReqTrackManager", email_footer_website: "https://reqtrackmanager.example.com",
   email_footer_address: "1 Example Street\nExample City, EX1 1AA",
+  footer_prefix: null, company_id_label: null, company_id: null,
   org_label_singular: null, org_label_plural: null,
   file_uploads_enabled: true,
 };
@@ -512,7 +513,7 @@ export const PlatformBrandingSaveFailure: Story = {
   },
 };
 
-/** The email footer company details are on Server details, and saving sends only those fields. */
+/** The footer company details (prefix, name, website, address, company identifier) are on Server details, and saving sends only those fields. */
 export const ServerDetailsEmailFooter: Story = {
   beforeEach: () => {
     mockServerManagementApis([]);
@@ -527,12 +528,18 @@ export const ServerDetailsEmailFooter: Story = {
     await expect(canvas.getByLabelText("Postal address")).toHaveValue("1 Example Street\nExample City, EX1 1AA");
     await userEvent.clear(canvas.getByLabelText(/^Company name/));
     await userEvent.type(canvas.getByLabelText(/^Company name/), "Acme Platform Inc");
+    await userEvent.type(canvas.getByLabelText(/^Prefix/), "Hosted by");
+    await userEvent.type(canvas.getByLabelText(/^Company identifier label/), "ABN");
+    await userEvent.type(canvas.getByLabelText(/^Company identifier$/), "12 345 678 901");
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith("/api/v1/system/branding", {
         email_footer_company_name: "Acme Platform Inc",
         email_footer_website: "https://reqtrackmanager.example.com",
         email_footer_address: "1 Example Street\nExample City, EX1 1AA",
+        footer_prefix: "Hosted by",
+        company_id_label: "ABN",
+        company_id: "12 345 678 901",
       }),
     );
     await expect(await within(document.body).findByText("Server details saved.")).toBeInTheDocument();

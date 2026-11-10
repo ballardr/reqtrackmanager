@@ -82,10 +82,24 @@ test.describe("server policies", () => {
       await expect(page.getByRole("heading", { name: marker, level: 2 })).toBeVisible();
     });
 
-    await test.step("a signed-in member reads it in the application and finds the footer link", async () => {
+    await test.step("the sign-up and forgot-password pages carry the footer link", async () => {
+      for (const path of ["/signup", "/forgot-password"]) {
+        await page.goto(path);
+        const footer = page.getByRole("contentinfo", { name: "Page footer" });
+        await expect(footer.getByRole("link", { name: "Policies" })).toHaveAttribute("href", "/policies");
+        await expect(footer.getByText(/^Version: v\S+$/)).toBeVisible();
+      }
+    });
+
+    await test.step("a signed-in member finds the footer link with the navigation rail collapsed", async () => {
       await loginAs(page, PERSONAS.stakeholderAlpha.email);
-      await page.getByRole("link", { name: "Policies" }).click();
+      await page.getByRole("button", { name: "Collapse navigation" }).click();
+      const footer = page.getByRole("contentinfo", { name: "Page footer" });
+      await expect(footer.getByText(/^Version: v\S+\/v\S+$/)).toBeVisible();
+      await footer.getByRole("link", { name: "Policies" }).click();
       await expect(page.getByText("Use the service responsibly.")).toBeVisible();
+      // Restore the preference so no later step starts with a collapsed rail.
+      await page.getByRole("button", { name: "Expand navigation" }).click();
     });
 
     await test.step("unpublishing removes it from the page", async () => {
@@ -99,6 +113,8 @@ test.describe("server policies", () => {
       await expect(page.getByText(marker)).toHaveCount(0);
       await expect(page).toHaveURL(/\/login$/);
       await expect(page.getByRole("link", { name: "Policies" })).toHaveCount(0);
+      // The footer stays (it carries the version) but has no policies link.
+      await expect(page.getByRole("contentinfo", { name: "Page footer" }).getByText(/^Version: v\S+$/)).toBeVisible();
     });
   });
 
