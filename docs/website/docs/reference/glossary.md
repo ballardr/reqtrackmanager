@@ -90,6 +90,10 @@ The named, directional relationship a [link](#link) carries ("Derives from" / "I
 
 What happens once a requirement reaches Approved or Completed: its edit form disables, and further change must go through a [change request](#change-request) rather than a silent edit. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
 
+#### Logo band colour
+
+The colour of the band behind an organisation's or the platform's logo and name, so a logo that is white on a transparent background stays visible and the name reads as part of the logo. Its **Logo band text colour** sets the name's colour (empty is black or white by contrast). It is drawn across the top of the sign-in card, in the header of outgoing email and (once a colour is chosen) behind the logo on reports. Unset, it is the colour of the application's top bar. See [Server administration](../workflows/server-administration.md#server-management) and [Administering an organisation](../workflows/administering-an-organisation.md).
+
 #### Module
 
 A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).

@@ -46,6 +46,7 @@ from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_snippet import SavedReportSnippet
 from app.services import report_converter
 from app.services.files import delete_file, read_file, upload_file
+from app.services.logo_plate import plate_resolved
 from app.services.rate_limit import RateLimiter
 from app.services.report_layout_tree import TreeError
 from app.services.report_org_values import ORG_LOGO_FILE
@@ -190,13 +191,17 @@ def load_image(
     return _resolve_asset(asset)
 
 
-def load_org_logo(db: Session, logo_file_id: uuid.UUID | None, organization_id: uuid.UUID) -> tuple[ResolvedImage | None, str]:
+def load_org_logo(
+    db: Session, logo_file_id: uuid.UUID | None, organization_id: uuid.UUID, band_hex: str | None = None,
+) -> tuple[ResolvedImage | None, str]:
     """Reads the organisation's logo for a run (it is the organisation's own file, not a library picture).
 
     Args:
         db: Active session (read only).
         logo_file_id: `Organization.logo_file_id`.
         organization_id: The organisation; a logo file of any other is refused.
+        band_hex: The chosen logo band colour; the logo is returned on a plate of it (`services.logo_plate`). `None`
+            returns the logo as stored.
 
     Returns:
         `(image, "")`, or `(None, reason)` with a short reason for the run's warning. Never raises for a bad image.
@@ -204,7 +209,10 @@ def load_org_logo(db: Session, logo_file_id: uuid.UUID | None, organization_id: 
     asset = db.get(FileAsset, logo_file_id) if logo_file_id else None
     if asset is None or asset.organization_id != organization_id:
         return None, "has no organisation logo to use"
-    return _resolve_asset(asset)
+    image, reason = _resolve_asset(asset)
+    if image is not None and band_hex:
+        image = plate_resolved(image, band_hex)
+    return image, reason
 
 
 def _resolve_asset(asset: FileAsset) -> tuple[ResolvedImage | None, str]:

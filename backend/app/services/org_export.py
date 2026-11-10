@@ -261,7 +261,9 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         file_assets_by_id[background_asset.id] = background_asset
 
     org_json = {
-        "name": org.name, "accent_color_hex": org.accent_color_hex, "header_title": org.header_title,
+        "name": org.name, "accent_color_hex": org.accent_color_hex, "logo_band_color_hex": org.logo_band_color_hex,
+        "logo_band_text_color_hex": org.logo_band_text_color_hex,
+        "header_title": org.header_title,
         "require_2fa": org.require_2fa, "allow_self_signup": org.allow_self_signup,
         "auto_accept_email_domain": org.auto_accept_email_domain, "external_user_policy": org.external_user_policy.value,
         "smtp_host": org.smtp_host, "smtp_port": org.smtp_port, "smtp_username": org.smtp_username,
@@ -552,6 +554,11 @@ def _warn_legacy_report_content(data: dict[str, Any], warnings: BundleImportWarn
         warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
 
 
+def _hex_or_none(value: Any) -> str | None:
+    """`value` when it is a `#rrggbb` colour, otherwise `None` (a bundle is unverified and a colour reaches style attributes)."""
+    return value if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value) else None
+
+
 def _bundled_file_name(value: Any, warnings: BundleImportWarnings) -> str | None:
     """The organisation's default report file name from a bundle, or `None` (with a warning) when it is not acceptable here."""
     if not value:
@@ -665,7 +672,9 @@ def import_org_bundle(
 
     org = Organization(
         name=name if name else data.get("name", "Imported Organisation"),
-        accent_color_hex=data.get("accent_color_hex"), header_title=data.get("header_title"),
+        accent_color_hex=_hex_or_none(data.get("accent_color_hex")), header_title=data.get("header_title"),
+        logo_band_color_hex=_hex_or_none(data.get("logo_band_color_hex")),
+        logo_band_text_color_hex=_hex_or_none(data.get("logo_band_text_color_hex")),
         require_2fa=data.get("require_2fa", False), allow_self_signup=data.get("allow_self_signup", False),
         auto_accept_email_domain=data.get("auto_accept_email_domain"),
         external_user_policy=data.get("external_user_policy", "disabled"),

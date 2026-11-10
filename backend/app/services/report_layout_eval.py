@@ -87,6 +87,7 @@ from app.models.project import Project
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
 from app.services import report_font_catalogue
+from app.services.branding import explicit_logo_band_hex, get_server_settings
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.placements import PLACEMENT_TEXT_SEPARATOR, PLACEMENTS_FIELD_KEY
@@ -582,7 +583,11 @@ class _Run:
         """
         if file_ref not in self._images:
             if file_ref == ORG_LOGO_FILE:
-                image, reason = load_org_logo(self.db, self.ctx.organization.logo_file_id, self.ctx.organization.id)
+                organization = self.ctx.organization
+                image, reason = load_org_logo(
+                    self.db, organization.logo_file_id, organization.id,
+                    explicit_logo_band_hex(organization, get_server_settings(self.db)),
+                )
             else:
                 image, reason = load_image(self.db, self.ctx.organization.id, self.layout_project_id, uuid.UUID(file_ref))
             self._images[file_ref] = image

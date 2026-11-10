@@ -22,6 +22,7 @@ import { CollapsibleSection } from "../components/CollapsibleSection";
 import { CompanyDetailsFields } from "../components/CompanyDetailsFields";
 import { FieldHelp } from "../components/FieldHelp";
 import { ColorField, TextField, ToggleField } from "../components/FormFields";
+import { LogoBandField } from "../components/LogoBandField";
 import { FormDivider, FormGrid } from "../components/FormGrid";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { SettingsForm } from "../components/SettingsForm";
@@ -199,21 +200,25 @@ export function ServerDetailsTab() {
 export function PlatformBrandingTab() {
   const orgLabel = useOrgLabel();
   const [settings, setSettings] = useState<ServerSettings | null>(null);
-  const [saved, setSaved] = useState<Pick<ServerSettings, "default_header_title" | "org_label_singular" | "org_label_plural" | "accent_color_hex"> | null>(null);
+  const [saved, setSaved] = useState<Pick<ServerSettings, "default_header_title" | "org_label_singular" | "org_label_plural" | "accent_color_hex" | "logo_band_color_hex" | "logo_band_text_color_hex"> | null>(null);
   const [headerTitle, setHeaderTitle] = useState("");
   const [singular, setSingular] = useState("");
   const [plural, setPlural] = useState("");
   const [accent, setAccent] = useState("#475569");
+  const [logoBand, setLogoBand] = useState("");
+  const [logoBandText, setLogoBandText] = useState("");
   const background = usePlatformImage(
     "login_background", setSettings, strings.serverSettings.loginBackgroundUploaded, strings.serverSettings.loginBackgroundRemoved,
   );
 
   function adopt(s: ServerSettings) {
-    setSaved({ default_header_title: s.default_header_title, org_label_singular: s.org_label_singular, org_label_plural: s.org_label_plural, accent_color_hex: s.accent_color_hex });
+    setSaved({ default_header_title: s.default_header_title, org_label_singular: s.org_label_singular, org_label_plural: s.org_label_plural, accent_color_hex: s.accent_color_hex, logo_band_color_hex: s.logo_band_color_hex, logo_band_text_color_hex: s.logo_band_text_color_hex });
     setHeaderTitle(s.default_header_title ?? "");
     setSingular(s.org_label_singular ?? "");
     setPlural(s.org_label_plural ?? "");
     setAccent(s.accent_color_hex);
+    setLogoBand(s.logo_band_color_hex ?? "");
+    setLogoBandText(s.logo_band_text_color_hex ?? "");
   }
 
   useLoadOnChange(async () => {
@@ -225,7 +230,8 @@ export function PlatformBrandingTab() {
   if (!settings || !saved) return <Spinner />;
   const dirty =
     headerTitle !== (saved.default_header_title ?? "") || singular !== (saved.org_label_singular ?? "") ||
-    plural !== (saved.org_label_plural ?? "") || accent !== saved.accent_color_hex;
+    plural !== (saved.org_label_plural ?? "") || accent !== saved.accent_color_hex ||
+    logoBand !== (saved.logo_band_color_hex ?? "") || logoBandText !== (saved.logo_band_text_color_hex ?? "");
 
   async function save() {
     const updated = await api.put<ServerSettings>("/api/v1/system/branding", {
@@ -233,6 +239,8 @@ export function PlatformBrandingTab() {
       org_label_singular: orNull(singular),
       org_label_plural: orNull(plural),
       accent_color_hex: accent,
+      logo_band_color_hex: orNull(logoBand),
+      logo_band_text_color_hex: orNull(logoBandText),
     });
     setSettings((prev) => (prev ? { ...prev, ...updated } : updated));
     adopt(updated);
@@ -257,6 +265,10 @@ export function PlatformBrandingTab() {
           <TextField help={strings.help.serverHeaderTitle} label={strings.serverSettings.headerTitle} value={headerTitle} onChange={setHeaderTitle} placeholder={strings.appName} />
         </FormGrid>
         <ColorField help={strings.help.serverAccentColor} label={strings.serverSettings.accentColor} value={accent} onChange={setAccent} />
+        <LogoBandField
+          value={logoBand} onChange={setLogoBand} textValue={logoBandText} onTextChange={setLogoBandText}
+          logoFileId={settings.default_logo_file_id} title={headerTitle || strings.appName}
+        />
         <h3 style={{ margin: 0 }}>{strings.serverSettings.terminologyTitle}</h3>
         <FormGrid minColumn="18rem">
           <TextField

@@ -33,6 +33,8 @@ const GLOBAL_STATE_SPECS = [
   "e2e-workflows/self-signup.spec.ts",
   "e2e-workflows/project-admin-groups-and-fields.spec.ts",
   "e2e-workflows/org-branding-override-reset.spec.ts",
+  // Sets the platform logo band colour (read by every sign-in page) and Alpha's own.
+  "e2e-workflows/logo-band.spec.ts",
   // Added after a CI failure: this file's "an org admin
   // can disable the relaxed child-creation path" test flips Gamma's own
   // org-wide "Allow ... managers to create sub-projects" security toggle

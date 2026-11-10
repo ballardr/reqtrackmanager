@@ -8,7 +8,7 @@ import { OrgLoginPage } from "./OrgLoginPage";
 
 function info(overrides: Partial<OrgLoginInfo>): OrgLoginInfo {
   return {
-    name: "Acme Corp", slug: "acme", logo_file_id: null, login_background_file_id: null,
+    name: "Acme Corp", slug: "acme", logo_file_id: null, logo_band_color_hex: "#14161c", logo_band_text_color_hex: "#ffffff", login_background_file_id: null,
     sso_enabled: false, sso_only: false,
     ...overrides,
   };
@@ -42,6 +42,17 @@ export const NativeLoginOnly: Story = {
     await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
     await expect(canvas.getByLabelText("Email")).toBeInTheDocument();
     await expect(canvas.queryByText("Sign in with SSO")).not.toBeInTheDocument();
+  },
+};
+
+/** The organisation's resolved band colour is drawn behind its logo. */
+export const LogoBandColour: Story = {
+  beforeEach: () => {
+    mockLoginInfo(info({ logo_band_color_hex: "#7a1f3d", logo_band_text_color_hex: "#ffe9a8" }));
+  },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByText("Acme Corp");
+    await expect(canvasElement.querySelector<HTMLElement>(".logo-band")?.style.background).toBe("rgb(122, 31, 61)");
   },
 };
 
@@ -112,5 +123,7 @@ export const NativeLoginError: Story = {
   },
 };
 
+export const LogoBandLightTheme: Story = { ...LogoBandColour, globals: { theme: "light" } };
+export const LogoBandDarkTheme: Story = { ...LogoBandColour, globals: { theme: "dark" } };
 export const LightTheme: Story = { ...SsoAndNativeBothOffered, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...SsoAndNativeBothOffered, globals: { theme: "dark" } };

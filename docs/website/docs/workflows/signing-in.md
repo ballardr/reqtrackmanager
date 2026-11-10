@@ -16,7 +16,7 @@ If you cannot remember your password, choose **Forgot your password?** below the
 
 | Sign-in page |
 | --- |
-| Email/password form; a "Sign up" link appears here when public sign-up is enabled |
+| Email/password form; a "Sign up" link appears here when public sign-up is enabled. The logo and the platform or organisation name sit on a coloured band across the top of the card (the [logo band colour](../reference/glossary.md#logo-band-colour)) |
 | ![Sign-in page with email and password fields](../../static/img/screenshots/login-page.png) |
 
 If you belong to more than one organisation, an organisation switcher appears wherever an organisation context is needed (creating a new project, for example) — the same account, regardless of whether you signed in natively or via SSO.

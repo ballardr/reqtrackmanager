@@ -112,7 +112,7 @@ export function OrgLoginPage() {
       <div className="container stack" style={{ maxWidth: 380, paddingTop: "4rem" }}>
         <LoginAnnouncements organizationSlug={slug} />
         <div className="card stack">
-          <LoginBrandHeader logoFileId={info.logo_file_id} title={info.name} />
+          <LoginBrandHeader logoFileId={info.logo_file_id} title={info.name} bandColorHex={info.logo_band_color_hex} bandTextColorHex={info.logo_band_text_color_hex} />
 
           {info.sso_enabled && (
             <a

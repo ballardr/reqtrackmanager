@@ -152,6 +152,10 @@ class OrganizationOut(BaseModel):
     is_active: bool = True
     disabled_at: datetime | None = None
     accent_color_hex: str | None = None
+    #: The organisation's logo band colour (`None` = follow the platform value).
+    logo_band_color_hex: str | None = None
+    #: The organisation's title colour on the band (`None` = follow the platform value, then automatic).
+    logo_band_text_color_hex: str | None = None
     #: The organisation's report accent colour (`None` = follow the UI accent) and whether its logo is on reports.
     report_accent_color_hex: str | None = None
     report_include_logo: bool = True
@@ -287,6 +291,8 @@ class OrgBrandingUpdate(BaseModel):
     as it is, a field sent as null is cleared."""
 
     accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    logo_band_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    logo_band_text_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     header_title: str | None = Field(default=None, max_length=100)
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
@@ -947,6 +953,10 @@ class OrgLoginInfoOut(BaseModel):
     name: str
     slug: str
     logo_file_id: UUID | None = None
+    #: The resolved band behind the logo (the organisation's, else the platform's, else the top bar colour).
+    logo_band_color_hex: str
+    #: The resolved title colour on the band.
+    logo_band_text_color_hex: str
     login_background_file_id: UUID | None = None
     sso_enabled: bool
     sso_only: bool

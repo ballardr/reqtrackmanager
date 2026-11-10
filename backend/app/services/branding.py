@@ -23,9 +23,55 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.organization import ServerSettings
+from app.models.organization import Organization, ServerSettings
 
 DEFAULT_ACCENT_COLOR_HEX = "#475569"
+#: The band behind the logo when nobody sets one: the application top bar colour (`--color-header-bg` in the
+#: frontend stylesheet; a test keeps the two equal).
+DEFAULT_LOGO_BAND_HEX = "#14161c"
+
+
+def explicit_logo_band_hex(organization: Organization | None, platform: ServerSettings) -> str | None:
+    """The logo band colour an administrator chose: the organisation's, else the platform's, else `None`.
+
+    Reports draw a band only for a chosen colour, so an organisation with a dark logo and no setting keeps its
+    reports as they were.
+
+    Args:
+        organization: The organisation, or `None` for a message with no single organisation.
+        platform: The platform settings row.
+
+    Returns:
+        `#rrggbb`, or `None` when neither level sets one.
+    """
+    return (organization.logo_band_color_hex if organization else None) or platform.logo_band_color_hex or None
+
+
+def logo_band_text_hex(organization: Organization | None, platform: ServerSettings) -> str:
+    """The colour of the title drawn on the logo band: the chosen colour, else black or white by contrast.
+
+    Args:
+        organization: The organisation, or `None` for a message with no single organisation.
+        platform: The platform settings row.
+
+    Returns:
+        `#rrggbb`.
+    """
+    chosen = (organization.logo_band_text_color_hex if organization else None) or platform.logo_band_text_color_hex
+    return chosen or contrast_text_hex(logo_band_hex(organization, platform))
+
+
+def logo_band_hex(organization: Organization | None, platform: ServerSettings) -> str:
+    """The logo band colour for the login page and email: the chosen colour, else the top bar colour.
+
+    Args:
+        organization: The organisation, or `None` for a message with no single organisation.
+        platform: The platform settings row.
+
+    Returns:
+        `#rrggbb`.
+    """
+    return explicit_logo_band_hex(organization, platform) or DEFAULT_LOGO_BAND_HEX
 
 
 def get_server_settings(db: Session) -> ServerSettings:

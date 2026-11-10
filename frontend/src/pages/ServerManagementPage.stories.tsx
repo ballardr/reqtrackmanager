@@ -19,6 +19,7 @@ function systemUser(overrides: Partial<SystemUser>): SystemUser {
 
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569", default_logo_file_id: null, default_header_title: null,
+  logo_band_color_hex: null, logo_band_text_color_hex: null,
   default_login_background_file_id: null,
   email_footer_company_name: "ReqTrackManager", email_footer_website: "https://reqtrackmanager.example.com",
   email_footer_address: "1 Example Street\nExample City, EX1 1AA",
@@ -489,7 +490,7 @@ export const PlatformBrandingSave: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith("/api/v1/system/branding", {
-        default_header_title: "Acme", org_label_singular: null, org_label_plural: null, accent_color_hex: "#475569",
+        default_header_title: "Acme", org_label_singular: null, org_label_plural: null, accent_color_hex: "#475569", logo_band_color_hex: null, logo_band_text_color_hex: null,
       }),
     );
     await expect(await within(document.body).findByText("Platform branding saved.")).toBeInTheDocument();

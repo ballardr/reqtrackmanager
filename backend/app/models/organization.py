@@ -281,6 +281,12 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     report_chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Colour of the band drawn behind the organisation's logo on the login page, in outgoing email and (when set) on
+    #: reports, so a light logo stays visible. `None` follows the platform value, then the application top bar colour
+    #: (`services.branding.DEFAULT_LOGO_BAND_HEX`).
+    logo_band_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Colour of the title drawn on the band; `None` follows the platform value, then black or white by contrast.
+    logo_band_text_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -417,6 +423,10 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
 
     singleton_guard: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, unique=True)
     accent_color_hex: Mapped[str] = mapped_column(String(7), default="#475569")
+    #: Platform value of the logo band colour (see `Organization.logo_band_color_hex`); `None` is the top bar colour.
+    logo_band_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Platform value of the band title colour (see `Organization.logo_band_text_color_hex`); `None` is automatic.
+    logo_band_text_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     default_logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("file_assets.id", use_alter=True, name="fk_server_settings_default_logo_file_id"),

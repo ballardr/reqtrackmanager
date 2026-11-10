@@ -106,6 +106,7 @@ import { Badge } from "../components/Badge";
 import { ReportSetupPanel } from "../components/ReportSetupPanel";
 import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
 import { CheckboxField, ColorField, FileField, TextField, ToggleField } from "../components/FormFields";
+import { LogoBandField } from "../components/LogoBandField";
 import { FieldHelp } from "../components/FieldHelp";
 import { ReportColourSchemeEditor } from "../components/ReportColourSchemeEditor";
 import { DEFAULT_COLOUR_CONTEXT, type ColourEntry } from "../utils/reportColours";
@@ -493,6 +494,8 @@ export function OrgAdminPage() {
 
   const [useOwnAccentColor, setUseOwnAccentColor] = useState(false);
   const [accentColorInput, setAccentColorInput] = useState("#475569");
+  const [logoBandInput, setLogoBandInput] = useState("");
+  const [logoBandTextInput, setLogoBandTextInput] = useState("");
   // The report accent colour follows the UI accent until the person gives reports their own (`null` on the server).
   const [useOwnReportAccent, setUseOwnReportAccent] = useState(false);
   const [reportAccentInput, setReportAccentInput] = useState("#475569");
@@ -644,6 +647,8 @@ export function OrgAdminPage() {
     setOrg(o);
     setUseOwnAccentColor(o.accent_color_hex != null);
     setAccentColorInput(o.accent_color_hex ?? "#475569");
+    setLogoBandInput(o.logo_band_color_hex ?? "");
+    setLogoBandTextInput(o.logo_band_text_color_hex ?? "");
     setUseOwnReportAccent(o.report_accent_color_hex != null);
     setReportAccentInput(o.report_accent_color_hex ?? o.accent_color_hex ?? "#475569");
     setReportColourScheme(o.report_colour_scheme ?? []);
@@ -1524,6 +1529,8 @@ export function OrgAdminPage() {
     try {
       await api.put<Organization>(`/api/v1/orgs/${orgId}/branding`, {
         accent_color_hex: useOwnAccentColor ? accentColorInput : null,
+        logo_band_color_hex: logoBandInput || null,
+        logo_band_text_color_hex: logoBandTextInput || null,
         report_accent_color_hex: useOwnReportAccent ? reportAccentInput : null,
         report_include_logo: reportIncludeLogo,
         report_colour_scheme: reportColourScheme,
@@ -2760,6 +2767,14 @@ export function OrgAdminPage() {
               {useOwnAccentColor && (
                 <ColorField help={strings.help.orgAccentColor} label={strings.admin.accentColor} value={accentColorInput} onChange={setAccentColorInput} />
               )}
+              <LogoBandField
+                value={logoBandInput} onChange={setLogoBandInput}
+                textValue={logoBandTextInput} onTextChange={setLogoBandTextInput}
+                logoFileId={org.logo_file_id ?? platformBranding?.default_logo_file_id ?? null}
+                title={org.name}
+                platformHex={platformBranding?.logo_band_color_hex ?? null}
+                platformTextHex={platformBranding?.logo_band_text_color_hex ?? null}
+              />
               <CheckboxField
                 help={strings.help.reportAccentColor}
                 label={strings.orgAdmin.useOwnReportAccent}

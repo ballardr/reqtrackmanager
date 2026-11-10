@@ -56,9 +56,9 @@
   <tr>
     <td align="center" style="padding: 32px 12px;">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="rtm-container" style="width: 600px; max-width: 600px;">
-        <!-- Brand header: platform icon + header title on a black background (the default requested style, unthemed by design) -->
+        <!-- Brand header: logo + header title on the logo band colour (unthemed by design) -->
         <tr>
-          <td align="center" style="background-color: #000000; padding: 28px 24px; border-radius: 10px 10px 0 0;">
+          <td align="center" bgcolor="{{ branding.logo_band_hex }}" style="background-color: {{ branding.logo_band_hex }}; padding: 28px 24px; border-radius: 10px 10px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
                 {% if logo_src %}
@@ -67,7 +67,7 @@
                 </td>
                 {% endif %}
                 <td style="vertical-align: middle;">
-                  <span style="color: #ffffff; font-size: 18px; font-weight: 700; letter-spacing: 0.2px;">{{ branding.header_title }}</span>
+                  <span style="color: {{ branding.logo_band_text_hex }}; font-size: 18px; font-weight: 700; letter-spacing: 0.2px;">{{ branding.header_title }}</span>
                 </td>
               </tr>
             </table>

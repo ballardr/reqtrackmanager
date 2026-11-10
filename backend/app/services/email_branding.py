@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.organization import Organization
-from app.services.branding import contrast_text_hex, get_server_settings
+from app.services.branding import contrast_text_hex, get_server_settings, logo_band_hex, logo_band_text_hex
 from app.services.files import read_file
 
 DEFAULT_PRODUCT_NAME = "ReqTrackManager"
@@ -37,7 +37,9 @@ class EmailBranding:
             MIME type, for embedding as a `cid:` inline attachment
             (`services/email.py`) — `None` when no logo is configured
             anywhere, in which case the header banner renders as
-            `header_title` alone on its black background.
+            `header_title` alone on its band.
+        logo_band_hex: The header banner colour (the organisation's, else the platform's, else the top bar colour).
+        logo_band_text_hex: The title colour on it (chosen, else black or white by contrast with the band).
         footer_company_name: Never empty — falls back to the built-in
             product name, same as `header_title`.
         footer_website / footer_address: `None` when not configured at
@@ -51,6 +53,8 @@ class EmailBranding:
     header_title: str
     accent_color_hex: str
     accent_text_hex: str
+    logo_band_hex: str
+    logo_band_text_hex: str
     logo_bytes: bytes | None
     logo_content_type: str | None
     footer_company_name: str
@@ -116,6 +120,8 @@ def resolve_email_branding(db: Session, organization_id: UUID | None = None) -> 
         header_title=header_title,
         accent_color_hex=accent_color_hex,
         accent_text_hex=contrast_text_hex(accent_color_hex),
+        logo_band_hex=logo_band_hex(org, platform),
+        logo_band_text_hex=logo_band_text_hex(org, platform),
         logo_bytes=logo_bytes,
         logo_content_type=logo_content_type,
         footer_company_name=footer_company_name,

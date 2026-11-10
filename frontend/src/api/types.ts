@@ -509,6 +509,10 @@ export interface Organization {
   /** Whether this organisation may store new files (the operator's switch for this tenant). */
   file_uploads_enabled?: boolean;
   accent_color_hex: string | null;
+  /** The band colour behind the logo; `null` follows the platform value. */
+  logo_band_color_hex: string | null;
+  /** The colour of the title on the band; `null` follows the platform value, then black or white by contrast. */
+  logo_band_text_color_hex: string | null;
   /** The accent colour of reports; `null` follows `accent_color_hex`. */
   report_accent_color_hex: string | null;
   /** Whether reports carry the organisation's logo. */
@@ -569,6 +573,10 @@ export interface OrgMergeResult {
 
 export interface ServerSettings {
   accent_color_hex: string;
+  /** The band colour behind the logo; `null` is the top bar colour. */
+  logo_band_color_hex: string | null;
+  /** The colour of the title on the band; `null` is black or white by contrast. */
+  logo_band_text_color_hex: string | null;
   default_logo_file_id: string | null;
   default_header_title: string | null;
   default_login_background_file_id: string | null;
@@ -2485,6 +2493,10 @@ export interface OrgLoginInfo {
   name: string;
   slug: string;
   logo_file_id: string | null;
+  /** The resolved band behind the logo (the organisation's, else the platform's, else the top bar colour). */
+  logo_band_color_hex: string;
+  /** The resolved title colour on the band. */
+  logo_band_text_color_hex: string;
   login_background_file_id: string | null;
   sso_enabled: boolean;
   sso_only: boolean;

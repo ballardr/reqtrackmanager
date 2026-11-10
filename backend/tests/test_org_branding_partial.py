@@ -14,6 +14,8 @@ from tests.conftest import auth_headers
 #: Every clearable field of the endpoint with a value that is valid for it.
 CLEARABLE = {
     "accent_color_hex": "#112233",
+    "logo_band_color_hex": "#102030",
+    "logo_band_text_color_hex": "#f0e0d0",
     "report_accent_color_hex": "#445566",
     "header_title": "Acme Requirements",
     "email_footer_company_name": "Acme Ltd",

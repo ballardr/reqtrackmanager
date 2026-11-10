@@ -3770,7 +3770,16 @@ const en = {
     slowFieldHint: "(slower: reads every discussion)",
     fieldPickerSummaryLimit: 3,
   },
+  logoBand: {
+    label: "Logo band colour",
+    textLabel: "Logo band text colour",
+    previewLabel: "Preview of the logo band",
+    lightWarning: "This colour is light, so a white logo will be hard to see on it.",
+    textWarning: "The name is hard to read in this colour on the band.",
+  },
   help: {
+    logoBand: "The colour of the band behind the logo.\nLogin page: the band across the top of the sign-in card, behind the logo and the name.\nEmail: the header of every outgoing email.\nReports: the logo is drawn on a plate of this colour. Reports are unchanged until a colour is chosen.\nWhen no colour is chosen the colour of the top bar is used.",
+    logoBandText: "The colour of the name shown beside the logo on the band (the login page and the header of outgoing email).\nWhen no colour is chosen the name is black or white, whichever reads better on the band.",
     // Stage workflows
     stagePhaseKindFilter:
       "Open: requirements can be edited and reordered.\nReview: a review deadline and stakeholder responses apply.\nLocked: a baseline was written; requirements change through change requests.\nOn hold: paused or archived, with no special rules.\nClosed: the {stage} is complete.",

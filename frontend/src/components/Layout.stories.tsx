@@ -14,6 +14,7 @@ const BACKEND_VERSION: SystemVersion = { version: "1.4.0", git_sha: "abc1234", b
 
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569",
+  logo_band_color_hex: null, logo_band_text_color_hex: null,
   default_logo_file_id: null,
   default_header_title: "ReqTrack Manager",
   default_login_background_file_id: null,
@@ -29,7 +30,7 @@ const SERVER_SETTINGS: ServerSettings = {
 const ORG: Organization = {
   id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-  disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
+  disabled_at: null, accent_color_hex: null, logo_band_color_hex: null, logo_band_text_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,

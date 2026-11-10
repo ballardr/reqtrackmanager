@@ -57,8 +57,9 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.organization import Organization
-from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
+from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, explicit_logo_band_hex, get_server_settings, readable_on_white
 from app.services.files import read_file
+from app.services.logo_plate import plate_raster_bytes
 from app.services.report_fonts import active_face, draw_centred, mark_fallback, needs_fallback
 from app.services.report_model import TONE_FILL, text_on
 from app.services.report_org_values import report_accent_hex
@@ -116,7 +117,8 @@ def resolve_branding(db: Session, organization: Organization | None) -> ReportBr
 
     Returns:
         `None` when there is no organisation; otherwise the report accent colour, cover page flag, footer and (when the
-        organisation wants its logo on reports and has one) logo bytes.
+        organisation wants its logo on reports and has one) logo bytes, on a plate of the chosen logo band colour when
+        one is set.
     """
     if organization is None:
         return None
@@ -125,6 +127,9 @@ def resolve_branding(db: Session, organization: Organization | None) -> ReportBr
         logo_asset = db.get(FileAsset, organization.logo_file_id) if organization.logo_file_id else None
         if logo_asset is not None:
             logo_bytes = read_file(logo_asset)
+            band = explicit_logo_band_hex(organization, get_server_settings(db))
+            if band and logo_asset.content_type != "image/svg+xml":  # the cover draws a raster only
+                logo_bytes = plate_raster_bytes(logo_bytes, band)
     return ReportBranding(
         accent_color_hex=report_accent_hex(db, organization), include_cover_page=organization.report_include_cover_page,
         footer_text=organization.report_footer_text, logo_bytes=logo_bytes,

@@ -65,6 +65,7 @@ export const DarkTheme: Story = { ...IconAndText, globals: { theme: "dark" } };
 
 const UPLOADS_DISABLED_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569", default_logo_file_id: null, default_header_title: null,
+  logo_band_color_hex: null, logo_band_text_color_hex: null,
   default_login_background_file_id: null, email_footer_company_name: null, email_footer_website: null,
   email_footer_address: null, footer_prefix: null, company_id_label: null, company_id: null, org_label_singular: null, org_label_plural: null, file_uploads_enabled: false,
 };
