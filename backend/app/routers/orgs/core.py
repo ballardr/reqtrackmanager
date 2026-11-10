@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import OrgRole
+from app.models.enums import OrgRole, ServerRole
 from app.models.organization import Organization, UserOrgRole
 from app.models.project import Project
 from app.models.user import User
@@ -52,7 +52,15 @@ from app.services.downloads import filename_safe
 from app.services.org_deletion import delete_organization_cascade
 from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
 from app.services.org_overview_stats import org_overview_stats
-from app.services.rbac import get_effective_org_roles, memoize_user_lookups, require_org_role, require_server_admin
+from app.services.rbac import (
+    get_effective_org_roles,
+    get_granted_server_roles,
+    memoize_user_lookups,
+    require_org_role,
+    require_server_admin,
+    require_server_role,
+    server_role_used,
+)
 from app.services.report_starters import add_starter_layouts
 from app.services.stage_workflows import seed_stage_workflow
 
@@ -67,23 +75,26 @@ def _now():
 
 
 @router.get("/creation-choices", response_model=list[OrgCreationChoiceOut])
-def list_org_creation_choices(current_user: User = Depends(require_server_admin)):
+def list_org_creation_choices(
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
+):
     """Lists every registered module's optional org-creation seeding
     choices (`ModuleDefinition.org_creation_choices`, e.g. Decision
     Management's ADR template packs) for the org-creation form to render
     generically — this core router never imports a specific module's own
-    choice list. Server-admin only, matching `POST /orgs` (only a server
-    admin ever creates an organisation)."""
+    choice list. Platform subscription manager (or server administrator),
+    matching `POST /orgs`."""
     return get_org_creation_choices()
 
 
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
 def create_organization(
     payload: OrganizationCreate,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
     db: Session = Depends(get_db),
 ):
-    """Creates a new organisation. Server-admin only (I-M-05)."""
+    """Creates a new organisation. Platform subscription manager or server
+    administrator (I-M-05); the audit event names the role used."""
     org = Organization(name=payload.name)
     db.add(org)
     db.flush()
@@ -103,7 +114,10 @@ def create_organization(
     selected_keys = None if payload.module_choice_keys is None else frozenset(payload.module_choice_keys)
     run_on_org_created_hooks(db, org.id, selected_keys)
     add_starter_layouts(db, org.id, actor_id=None)
-    log_event(db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id)
+    log_event(
+        db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id,
+        detail={"role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_MANAGER)},
+    )
     db.commit()
     db.refresh(org)
     return org
@@ -112,7 +126,8 @@ def create_organization(
 @router.post("/import", response_model=OrgImportResult, status_code=status.HTTP_201_CREATED)
 async def import_organization(
     name: str | None = Form(None), file: UploadFile = File(...), skip_files: bool = Form(False),
-    current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
+    db: Session = Depends(get_db),
 ):
     """Creates a brand-new organisation from an uploaded organisation export
     bundle (`GET /{organization_id}/export` — see `services.org_export`'s
@@ -120,8 +135,9 @@ async def import_organization(
     decisions behind what is/isn't carried over: secrets are never
     included, and SSO is always left disabled post-import).
 
-    Server-admin only, matching plain organisation creation (`POST /orgs`)
-    — creating an organisation is a platform-level action either way.
+    Platform subscription manager or server administrator, matching plain
+    organisation creation (`POST /orgs`) — creating an organisation is a
+    platform-level action either way.
 
     Registered before `POST /{organization_id}/join-as-admin` (in this file's
     declaration order) purely for readability grouping with `POST ""`; it
@@ -290,15 +306,16 @@ def join_organization_as_admin(
 @router.post("/{organization_id}/disable", response_model=OrganizationOut)
 def disable_organization(
     organization_id: UUID,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
     db: Session = Depends(get_db),
 ):
     """Suspends an organisation (e.g. non-payment): every org/project-scoped
     request against it is rejected (`services.rbac._require_org_active`),
     for every user including this org's own admins, until re-enabled. No
     data is touched or removed — the reversible alternative to
-    `delete_organization` below. Server-admin only; this is tenancy
-    management, not organisation content access (I-M-05).
+    `delete_organization` below. Platform subscription manager or server
+    administrator; this is tenancy management, not organisation content
+    access (I-M-05).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -308,7 +325,10 @@ def disable_organization(
     org.is_active = False
     org.disabled_at = _now()
     org.disabled_by = current_user.id
-    log_event(db, entity_type="organization", entity_id=org.id, action="disabled", actor_id=current_user.id)
+    log_event(
+        db, entity_type="organization", entity_id=org.id, action="disabled", actor_id=current_user.id,
+        detail={"role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_MANAGER)},
+    )
     db.commit()
     db.refresh(org)
     return org
@@ -317,7 +337,7 @@ def disable_organization(
 @router.post("/{organization_id}/enable", response_model=OrganizationOut)
 def enable_organization(
     organization_id: UUID,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
     db: Session = Depends(get_db),
 ):
     """Reverses `disable_organization`, restoring normal access immediately."""
@@ -329,7 +349,10 @@ def enable_organization(
     org.is_active = True
     org.disabled_at = None
     org.disabled_by = None
-    log_event(db, entity_type="organization", entity_id=org.id, action="enabled", actor_id=current_user.id)
+    log_event(
+        db, entity_type="organization", entity_id=org.id, action="enabled", actor_id=current_user.id,
+        detail={"role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_MANAGER)},
+    )
     db.commit()
     db.refresh(org)
     return org
@@ -339,7 +362,7 @@ def enable_organization(
 def delete_organization(
     organization_id: UUID,
     payload: OrganizationDeleteConfirm,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY)),
     db: Session = Depends(get_db),
 ):
     """Permanently deletes an organisation and everything it owns: every
@@ -347,8 +370,10 @@ def delete_organization(
     group, report template, custom field definition, uploaded file (removed
     from actual storage, not just its database row), and any Personal
     Access Token's reach into this org. Irreversible — unlike
-    `disable_organization` above, there is no archive/undo. Server-admin
-    only (I-M-05: tenancy management, not organisation content access).
+    `disable_organization` above, there is no archive/undo. Subscription
+    removal authority or server administrator (I-M-05: tenancy management,
+    not organisation content access); a Platform subscription manager is
+    refused.
 
     Requires `payload.confirm_name` to exactly match the organisation's
     current name — the same "type the name to confirm" pattern used for
@@ -375,11 +400,36 @@ def delete_organization(
 
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="deleted",
-        actor_id=current_user.id, detail={"name": org.name},
+        actor_id=current_user.id,
+        detail={
+            "name": org.name,
+            "role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY),
+        },
     )
     delete_organization_cascade(db, organization_id)
     db.delete(org)
     db.commit()
+
+
+# Server-tier roles that read the organisation directory (names, state, logo
+# only). Both subscription roles need it to find the target of their action.
+_DIRECTORY_ROLES = frozenset({ServerRole.SUBSCRIPTION_MANAGER, ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY})
+
+
+def _sees_every_organization(db: Session, user: User) -> bool:
+    """Whether `user` may read every organisation's thin directory record.
+
+    True for a server administrator and for a holder of either subscription
+    role; the record carries no tenant content (see `list_organizations`).
+
+    Args:
+        db: Database session.
+        user: The caller.
+
+    Returns:
+        True when the whole directory is visible to the caller.
+    """
+    return user.is_server_admin or bool(get_granted_server_roles(db, user) & _DIRECTORY_ROLES)
 
 
 @router.get("", response_model=list[OrganizationOut])
@@ -402,7 +452,7 @@ def list_organizations(
     full server-wide directory would let a server admin with no real
     membership anywhere pick an organisation they hold no role in at all.
     """
-    if current_user.is_server_admin and not mine:
+    if not mine and _sees_every_organization(db, current_user):
         return db.scalars(select(Organization).order_by(Organization.name)).all()
     org_ids = db.scalars(
         select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)
@@ -423,7 +473,9 @@ def get_organization(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found.")
-    if not current_user.is_server_admin and not get_effective_org_roles(db, current_user.id, organization_id):
+    if not _sees_every_organization(db, current_user) and not get_effective_org_roles(
+        db, current_user.id, organization_id
+    ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
     return org
 

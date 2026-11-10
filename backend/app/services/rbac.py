@@ -2110,6 +2110,44 @@ def require_server_role(*allowed: ServerRole):
     return _dependency
 
 
+def get_granted_server_roles(db: Session, user: User) -> set[ServerRole]:
+    """Returns the server-tier roles `user` holds through `UserServerRole`.
+
+    `SERVER_ADMIN` is never a row (it lives on `User.is_server_admin`), so a
+    server administrator is reported separately by callers. Read per
+    request, so a revoked role loses effect on the next call.
+
+    Args:
+        db: Database session.
+        user: The user to look up.
+
+    Returns:
+        The granted roles (empty when none).
+    """
+    return set(db.scalars(select(UserServerRole.role).where(UserServerRole.user_id == user.id)).all())
+
+
+def server_role_used(db: Session, user: User, *allowed: ServerRole) -> str:
+    """Names the server role under which `user` acts on a route that accepts
+    any of `allowed`, for the audit trail.
+
+    A server administrator is reported as `server_admin` even when also
+    holding a narrower role, since that is the power that would pass alone.
+
+    Args:
+        db: Database session.
+        user: The acting user (already authorised by `require_server_role`).
+        *allowed: The roles the route accepts.
+
+    Returns:
+        The role value used.
+    """
+    if user.is_server_admin:
+        return ServerRole.SERVER_ADMIN.value
+    held = get_granted_server_roles(db, user) & set(allowed)
+    return sorted(role.value for role in held)[0] if held else ServerRole.SERVER_ADMIN.value
+
+
 def require_org_role(*allowed: OrgRole):
     """FastAPI dependency factory requiring one of the given org roles.
 

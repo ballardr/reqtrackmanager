@@ -32,17 +32,32 @@ class ServerRole(str, enum.Enum):
     `is_server_admin` remains the sole source of truth for that tier, left
     completely untouched by this enum's introduction (docs/decisions.md,
     "Compliance Module + Modular Feature System" entry). Only
-    MODULE_ADMINISTRATOR is ever actually granted via `UserServerRole`.
+    The other members are granted via `UserServerRole`.
 
     MODULE_ADMINISTRATOR: narrower than SERVER_ADMIN — manages module
     entitlements/enablement (the module system)
     without the full cross-tenant power `is_server_admin` implies. Grantable
     only by an existing SERVER_ADMIN (standard privilege-escalation-safe
     pattern: a narrower role can never grant itself or others a role).
+
+    SUBSCRIPTION_MANAGER ("Platform subscription manager"): provisions and
+    bounds organisations (create, import, suspend, per-organisation module
+    entitlements, storage controls) and reads their names, states and
+    counts. It never reads tenant content, joins an organisation as its
+    administrator, or deletes one.
+
+    SUBSCRIPTION_REMOVAL_AUTHORITY ("Subscription removal authority"):
+    deletes an organisation and its data, and reads the same counts-only
+    list needed to find and confirm the target. Independent of
+    SUBSCRIPTION_MANAGER (neither implies the other) so provisioning never
+    carries the power to destroy a tenant. Both are grantable only by a
+    SERVER_ADMIN.
     """
 
     SERVER_ADMIN = "server_admin"
     MODULE_ADMINISTRATOR = "module_administrator"
+    SUBSCRIPTION_MANAGER = "subscription_manager"
+    SUBSCRIPTION_REMOVAL_AUTHORITY = "subscription_removal_authority"
 
 
 class ModuleEntitlementPolicy(str, enum.Enum):

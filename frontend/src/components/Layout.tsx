@@ -15,6 +15,7 @@ import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useClientConfig } from "../hooks/useClientConfig";
 import { useHasReviewsDue } from "../hooks/useHasReviewsDue";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useServerAccess } from "../hooks/useServerAccess";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import { useProjectHasStages } from "../hooks/useProjectHasStages";
 import { useUiPreference } from "../hooks/useUiPreference";
@@ -110,6 +111,8 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // arrival at /projects or /favourites — see `FavouritesContext`.
   const { hasFavourites } = useFavourites();
   const hasReviewsDue = useHasReviewsDue(!!user);
+  const serverAccess = useServerAccess(!!user);
+  const showServerManagement = !!serverAccess && (serverAccess.can_administer_server || serverAccess.can_manage_entitlements);
   const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
   const clientConfig = useClientConfig(!!user);
 
@@ -307,11 +310,18 @@ function LayoutShell({ children }: { children: ReactNode }) {
                 /server/organisations. See docs/ux-style-guide.md, "Pattern:
                 wayfinding". */}
             <NavRailLink to="/orgs" exact label={strings.nav.orgSettings(orgLabelCap)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
-            {user.is_server_admin && (
+            {/* Each entry shows only to someone the server says may use it (`useServerAccess`): a Platform
+                subscription manager or Subscription removal authority sees Organisations, a Module administrator
+                sees Server management (Modules only), a server administrator sees both. */}
+            {serverAccess && (serverAccess.can_view_organizations || showServerManagement) && (
               <>
                 <div className="nav-section-label">Administration</div>
-                <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
-                <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
+                {serverAccess.can_view_organizations && (
+                  <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+                )}
+                {showServerManagement && (
+                  <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
+                )}
               </>
             )}
             {/* Build identity — "a way to see the version and date of the

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { ServerSettings, SignupConfig, SystemUser } from "../api/types";
+import type { ServerAccess, ServerSettings, SignupConfig, SystemUser } from "../api/types";
 import { buildPolicySummary, buildUser, withAuth, withRouter, withToast } from "../testing/storybook-helpers";
 import { ServerManagementPage } from "./ServerManagementPage";
 
@@ -10,7 +10,7 @@ function systemUser(overrides: Partial<SystemUser>): SystemUser {
   return {
     user_id: "u1", email: "orphan@example.com", display_name: "Orphan User", is_active: true,
     is_banned: false, last_login_at: "2026-02-01T09:00:00Z", is_2fa_enabled: false,
-    created_at: "2026-01-01T09:00:00Z", is_server_admin: false, is_module_administrator: false,
+    created_at: "2026-01-01T09:00:00Z", is_server_admin: false, server_roles: [],
     has_org_membership: false,
     organization_count: 0, organization_names: [], group_names: [],
     ...overrides,
@@ -26,12 +26,18 @@ const SERVER_SETTINGS: ServerSettings = {
   file_uploads_enabled: true,
 };
 
+const ADMIN_ACCESS: ServerAccess = {
+  roles: ["server_admin"], can_view_organizations: true, can_create_organizations: true, can_delete_organizations: true,
+  can_manage_entitlements: true, can_administer_server: true,
+};
+
 const SIGNUP_CONFIG: SignupConfig = { signup_mode: "disabled", self_signup_organizations: [] };
 
 function mockServerManagementApis(users: SystemUser[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/system/branding")) return SERVER_SETTINGS;
     if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+    if (path === "/api/v1/system/access") return ADMIN_ACCESS;
     throw new Error(`unmocked path: ${path}`);
   });
   spyOn(api, "getPage").mockImplementation(async (path: string) => {
@@ -225,6 +231,59 @@ export const AccessReviewGrantModuleAdministrator: Story = {
   },
 };
 
+/** The Platform subscription manager and Subscription removal authority are granted through the same dialog, each
+ * with its own confirmation naming what the role can do. */
+export const AccessReviewGrantSubscriptionRoles: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([systemUser({})]);
+    spyOn(api, "post").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("orphan@example.com")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Orphan User's actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Orphan User's actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Assign server roles" }));
+    const rolesGroup = within(document.body).getByRole("group", { name: "Orphan User's server roles" });
+    await userEvent.click(
+      within(rolesGroup).getByRole("checkbox", { name: "Grant Subscription removal authority to Orphan User" })
+    );
+
+    const dialog = within(document.body).getByRole("dialog", { name: "Grant Subscription removal authority to this user?" });
+    await expect(within(dialog).getByText(/permanently delete an organisation and all of its data/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Grant Subscription removal authority" }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/system/users/u1/server-roles", { role: "subscription_removal_authority" })
+    );
+    await expect(within(document.body).getByText("Subscription removal authority granted")).toBeInTheDocument();
+  },
+};
+
+/** A Platform subscription manager sees only per-organisation availability: no other group, no policy or defaults. */
+export const SubscriptionManagerSeesOnlyModules: Story = {
+  decorators: [withAuth(buildUser({ is_server_admin: false }))],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/system/access") {
+        return {
+          roles: ["subscription_manager"], can_view_organizations: true, can_create_organizations: true,
+          can_delete_organizations: false, can_manage_entitlements: true, can_administer_server: false,
+        } satisfies ServerAccess;
+      }
+      if (path === "/api/v1/orgs") return [];
+      throw new Error(`unmocked path: ${path}`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // One group only, so the menu is not drawn and the Modules content shows directly.
+    await expect(await canvas.findByText("Availability per organisation")).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Access review" })).not.toBeInTheDocument();
+    await expect(canvas.queryByText("Entitlement policy")).not.toBeInTheDocument();
+  },
+};
+
 /** Deactivating an account also confirms via `ConfirmDialog`; cancelling
  * leaves the account untouched (the pilot pattern's paired cancel story). */
 export const AccessReviewDeactivateCancelled: Story = {
@@ -256,6 +315,7 @@ export const AccessReviewLoadMoreAppendsTheNextPage: Story = {
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.includes("/system/branding")) return SERVER_SETTINGS;
       if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+      if (path === "/api/v1/system/access") return ADMIN_ACCESS;
       throw new Error(`unmocked path: ${path}`);
     });
     spyOn(api, "getPage").mockImplementation(async (path: string) => {
@@ -290,6 +350,7 @@ export const AccessReviewFilterPanelSearchAndFilters: Story = {
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.includes("/system/branding")) return SERVER_SETTINGS;
       if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+      if (path === "/api/v1/system/access") return ADMIN_ACCESS;
       throw new Error(`unmocked path: ${path}`);
     });
     spyOn(api, "getPage").mockImplementation(async (path: string) => {
@@ -558,6 +619,7 @@ export const PoliciesAndPersonalDataExportAreSeparateGroups: Story = {
   decorators: [withAuth(buildUser({ is_server_admin: true }))],
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/system/access") return ADMIN_ACCESS;
       if (path === "/api/v1/system/policies") {
         return ["privacy", "data"].map((key) => buildPolicySummary({
           id: null, key: key as "privacy" | "data", title: key === "privacy" ? "Privacy policy" : "Data policy",
@@ -570,7 +632,7 @@ export const PoliciesAndPersonalDataExportAreSeparateGroups: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByRole("link", { name: "Personal data in exports" })).toBeInTheDocument();
+    await expect(await canvas.findByRole("link", { name: "Personal data in exports" })).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("link", { name: "Policies" }));
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/v1/system/policies"));
     await expect(await canvas.findByRole("button", { name: "Write Privacy policy" })).toBeInTheDocument();

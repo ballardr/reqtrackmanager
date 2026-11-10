@@ -114,6 +114,10 @@ A role governing organisation-wide administration (`org_admin`, `project_creator
 
 A long-lived, org/project-scoped bearer credential for non-interactive use, such as scripting against the REST API or connecting an AI assistant. See [Core Features → Personal access tokens](../core-features/personal-access-tokens.md).
 
+#### Platform subscription manager
+
+A server role, granted by a server administrator, that provisions and bounds organisations: create, import, suspend and enable an organisation, set its module entitlements, and see the organisation list. It cannot delete an organisation, join one as its administrator or read any organisation's records. See [Server administration](../workflows/server-administration.md#server-roles).
+
 #### Policy
 
 A written document published by a server administrator (a privacy policy or a data policy, readable at `/policies` without signing in) or by an organisation's administrators (an access policy or a confidentiality agreement, readable only by that organisation's members, optionally limited to chosen people or groups). Written in a visual editor. Saving changes a working copy; **Publish** records a new version. Distinct from the **Personal data in exports** setting, which decides whether personal data columns may leave the application in a record export. See [Server administration](../workflows/server-administration.md#policies) and [Administering an organisation](../workflows/administering-an-organisation.md#policies).
@@ -177,6 +181,10 @@ A per-project setting under which each component follows its own [stage workflow
 #### Phase schedule
 
 The expected range (an expected start and end, both calendar dates) of a phase of a stage or of a component's track, with its actual start and completion and the upcoming, overdue and completed reminders sent about it. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#phase-schedule-and-reminders).
+
+#### Subscription removal authority
+
+A server role, granted by a server administrator, that permanently deletes an organisation and all of its data after its name is typed to confirm. It holds no other power: it cannot create, suspend or read records. Independent of the Platform subscription manager. See [Server administration](../workflows/server-administration.md#server-roles).
 
 #### Task (change request task)
 

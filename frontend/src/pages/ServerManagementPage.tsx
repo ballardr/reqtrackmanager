@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { Navigate, useParams } from "react-router-dom";
 
 import { ApiError, api, fileUrl } from "../api/client";
-import type { BulkRevokeResult, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import type { BulkRevokeResult, GrantableServerRole, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
 import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { AddUserMenu } from "../components/AddUserMenu";
@@ -12,6 +12,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { ForceCredentialResetModal } from "../components/ForceCredentialResetModal";
+import { FieldHelp } from "../components/FieldHelp";
 import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
@@ -38,10 +39,16 @@ import { LabeledSelect } from "../components/LabeledSelect";
 import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
 import { PictureImage } from "../components/PictureImage";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
 
 const PAGE_SIZE = 30;
+
+/** The server roles in the order the assignment dialog lists them. */
+const SERVER_ROLE_ORDER: ServerRole[] = [
+  "server_admin", "module_administrator", "subscription_manager", "subscription_removal_authority",
+];
 
 type ReviewView = "orphaned" | "server_admins" | "all";
 
@@ -51,8 +58,8 @@ type AccessReviewConfirmKind =
   | "forceReset"
   | "grantServerAdmin"
   | "revokeServerAdmin"
-  | "grantModuleAdministrator"
-  | "revokeModuleAdministrator";
+  | "grantServerRole"
+  | "revokeServerRole";
 
 /** Sortable columns of the Access Review `DirectoryTable` — mirrors `list_org_users`'s own
  * `sort`/`order` contract; `created_at` is the one addition `/system/users`
@@ -77,7 +84,7 @@ function AccessReviewTab() {
   // ConfirmDialog (Tier 1) state for the account/access actions below —
   // converted from `window.confirm` per the sixth-pass audit's
   // "Confirmation and feedback rollout, precisely" list.
-  const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string; role?: GrantableServerRole } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [addUserMode, setAddUserMode] = useState<AddUserMode | null>(null);
   // Password reset: one person's emailed link (Tier 1 dialog) and the wide "force a credential reset" dialog.
@@ -204,17 +211,17 @@ function AccessReviewTab() {
     setConfirmAction({ kind: "revokeServerAdmin", userId });
   }
 
-  function grantModuleAdministrator(userId: string) {
-    setConfirmAction({ kind: "grantModuleAdministrator", userId });
+  function grantServerRole(userId: string, role: GrantableServerRole) {
+    setConfirmAction({ kind: "grantServerRole", userId, role });
   }
 
-  function revokeModuleAdministrator(userId: string) {
-    setConfirmAction({ kind: "revokeModuleAdministrator", userId });
+  function revokeServerRole(userId: string, role: GrantableServerRole) {
+    setConfirmAction({ kind: "revokeServerRole", userId, role });
   }
 
   function confirmPendingAction() {
     if (!confirmAction) return;
-    const { kind, userId } = confirmAction;
+    const { kind, userId, role } = confirmAction;
     setConfirmAction(null);
     switch (kind) {
       case "deactivate":
@@ -244,17 +251,21 @@ function AccessReviewTab() {
           strings.system.revokedServerAdminToast
         );
         break;
-      case "grantModuleAdministrator":
-        runAction(
-          () => api.post(`/api/v1/system/users/${userId}/server-roles`, { role: "module_administrator" }),
-          strings.system.grantedModuleAdministratorToast
-        );
+      case "grantServerRole":
+        if (role) {
+          runAction(
+            () => api.post(`/api/v1/system/users/${userId}/server-roles`, { role }),
+            strings.system.serverRoleCopy[role].granted
+          );
+        }
         break;
-      case "revokeModuleAdministrator":
-        runAction(
-          () => api.delete(`/api/v1/system/users/${userId}/server-roles/module_administrator`),
-          strings.system.revokedModuleAdministratorToast
-        );
+      case "revokeServerRole":
+        if (role) {
+          runAction(
+            () => api.delete(`/api/v1/system/users/${userId}/server-roles/${role}`),
+            strings.system.serverRoleCopy[role].revoked
+          );
+        }
         break;
     }
   }
@@ -287,15 +298,15 @@ function AccessReviewTab() {
       message: strings.system.revokeServerAdminConfirm,
       confirmLabel: strings.system.revokeServerAdmin,
     },
-    grantModuleAdministrator: {
-      title: strings.system.grantModuleAdministratorTitle,
-      message: strings.system.grantModuleAdministratorConfirm,
-      confirmLabel: strings.system.grantModuleAdministrator,
+    grantServerRole: {
+      title: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].grantTitle : "",
+      message: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].grantConfirm : "",
+      confirmLabel: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].grant : "",
     },
-    revokeModuleAdministrator: {
-      title: strings.system.revokeModuleAdministratorTitle,
-      message: strings.system.revokeModuleAdministratorConfirm,
-      confirmLabel: strings.system.revokeModuleAdministrator,
+    revokeServerRole: {
+      title: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].revokeTitle : "",
+      message: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].revokeConfirm : "",
+      confirmLabel: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].revoke : "",
     },
   };
 
@@ -541,31 +552,37 @@ function AccessReviewTab() {
             className="stack"
             style={{ gap: "0.6rem" }}
           >
-            {(["server_admin", "module_administrator"] as ServerRole[]).map((role) => {
-              const checked = role === "server_admin" ? assignRolesUser.is_server_admin : assignRolesUser.is_module_administrator;
+            {SERVER_ROLE_ORDER.map((role) => {
+              const checked = role === "server_admin" ? assignRolesUser.is_server_admin : assignRolesUser.server_roles.includes(role);
               const roleLabel = SERVER_ROLE_LABEL[role];
               return (
-                <label key={role} className="row" style={{ gap: "var(--space-3)" }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    aria-label={
-                      checked
-                        ? strings.system.revokeServerRole(roleLabel, assignRolesUser.display_name)
-                        : strings.system.grantServerRole(roleLabel, assignRolesUser.display_name)
-                    }
-                    onChange={() =>
-                      role === "server_admin"
-                        ? checked
-                          ? revokeServerAdmin(assignRolesUser.user_id)
-                          : grantServerAdmin(assignRolesUser.user_id)
-                        : checked
-                          ? revokeModuleAdministrator(assignRolesUser.user_id)
-                          : grantModuleAdministrator(assignRolesUser.user_id)
-                    }
+                <div key={role} className="row" style={{ gap: "var(--space-3)" }}>
+                  <label className="row" style={{ gap: "var(--space-3)" }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={
+                        checked
+                          ? strings.system.revokeServerRole(roleLabel, assignRolesUser.display_name)
+                          : strings.system.grantServerRole(roleLabel, assignRolesUser.display_name)
+                      }
+                      onChange={() =>
+                        role === "server_admin"
+                          ? checked
+                            ? revokeServerAdmin(assignRolesUser.user_id)
+                            : grantServerAdmin(assignRolesUser.user_id)
+                          : checked
+                            ? revokeServerRole(assignRolesUser.user_id, role)
+                            : grantServerRole(assignRolesUser.user_id, role)
+                      }
+                    />
+                    {roleLabel}
+                  </label>
+                  <FieldHelp
+                    label={roleLabel}
+                    help={role === "server_admin" ? strings.system.serverAdminRoleHelp : strings.system.serverRoleCopy[role].help}
                   />
-                  {roleLabel}
-                </label>
+                </div>
               );
             })}
           </div>
@@ -954,18 +971,19 @@ const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview"
  */
 export function ServerManagementPage() {
   const { group: groupParam } = useParams<{ group?: string }>();
+  const access = useServerAccess();
 
   // "Data policy" is now the published document; the export rule this group held was renamed, so an older address
   // or bookmark lands on the renamed group.
   if (groupParam === "dataPolicy") return <Navigate to="/server/management/personalDataExport" replace />;
 
-  const activeGroup: ServerManagementGroupKey = SERVER_MANAGEMENT_GROUP_KEYS.includes(
+  const requestedGroup: ServerManagementGroupKey = SERVER_MANAGEMENT_GROUP_KEYS.includes(
     groupParam as ServerManagementGroupKey
   )
     ? (groupParam as ServerManagementGroupKey)
     : "accessReview";
 
-  const groups: ResourceMenuGroupDef<ServerManagementGroupKey>[] = [
+  const allGroups: ResourceMenuGroupDef<ServerManagementGroupKey>[] = [
     { key: "accessReview", label: strings.orgAdmin.accessReview, href: "/server/management/accessReview" },
     { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
@@ -977,6 +995,16 @@ export function ServerManagementPage() {
     { key: "policies", label: strings.policies.heading, href: "/server/management/policies" },
     { key: "personalDataExport", label: strings.personalDataPolicy.groupTitle, href: "/server/management/personalDataExport" },
   ];
+  // Only the sections this person may use, from the server's own answer: every group needs the server
+  // administrator except Modules, which a Module administrator or Platform subscription manager also uses.
+  const groups = allGroups.filter((g) =>
+    access?.can_administer_server ? true : g.key === "modules" && !!access?.can_manage_entitlements
+  );
+  if (access === null) return <Spinner />;
+  if (groups.length === 0) return <Navigate to="/" replace />;
+
+  // A group the person may not use falls back to the first one they may (the server refuses its data anyway).
+  const activeGroup = groups.some((g) => g.key === requestedGroup) ? requestedGroup : groups[0].key;
 
   return (
     <div className="stack">

@@ -8,7 +8,7 @@ Server administration is a narrow, cross-tenant management role — a server adm
 
 ## Seeing every organisation
 
-**Server Management → Organisations** lists every organisation on the deployment — creation date, active/disabled status — regardless of whether the server admin belongs to any of them.
+**Server Management → Organisations** lists every organisation on the deployment — creation date, active/disabled status — regardless of whether the server admin belongs to any of them. A Platform subscription manager or Subscription removal authority sees the same list (see [Server roles](#server-roles)); the row actions each person sees depend on their role.
 
 | Server: organisations |
 | --- |
@@ -16,6 +16,29 @@ Server administration is a narrow, cross-tenant management role — a server adm
 | ![Server organisations list](../../static/img/screenshots/server-organisations.png) |
 
 Opening any one org's admin page from here as a server admin (rather than an org member) reveals nothing about its actual content — users, groups, and resources all refuse access, so the org's requirements and change requests stay off-limits even to this role.
+
+## Server roles
+
+Besides the full server administrator, a server administrator can grant narrower **server roles** from **Access review → ⋮ → Assign server roles**. A role is checked on every request, so revoking it takes effect at once. A holder cannot grant a role to anyone, and a personal access token never carries one.
+
+```mermaid
+flowchart LR
+    A[Server administrator] -->|grants| M[Platform subscription manager]
+    A -->|grants| R[Subscription removal authority]
+    A -->|grants| D[Module administrator]
+    M --> M1[Create, import, suspend, enable organisations]
+    M --> M2[Module entitlements per organisation]
+    R --> R1[Delete an organisation]
+    D --> D1[Module policy, defaults and entitlements]
+```
+
+| Role | Can | Cannot |
+| --- | --- | --- |
+| **Platform subscription manager** | Create, import, suspend and enable an organisation; see the organisation list; set an organisation's module entitlements | Delete an organisation; join one as its administrator; change any other server setting; read any organisation's records |
+| **Subscription removal authority** | See the organisation list; permanently delete an organisation and all of its data after typing its name | Create, suspend or change an organisation; read any organisation's records |
+| **Module administrator** | Set the module entitlement policy, the module defaults and each organisation's entitlements | Create or delete an organisation |
+
+The two subscription roles are independent: holding one does not give the other, so provisioning and deletion can be held by different people. They read only the organisation directory (names, state and counts), never the records an organisation holds. Each person sees only the sections their role allows: the navigation shows **Organisations** to either subscription role and **Server management** to a server administrator, a Module administrator or a Platform subscription manager (**Modules** only). Every action is recorded in the audit log under the person's name and the role used.
 
 ## Server Management
 

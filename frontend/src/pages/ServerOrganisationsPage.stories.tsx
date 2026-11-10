@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
-import type { Organization, OrgCreationChoice } from "../api/types";
+import type { Organization, OrgCreationChoice, ServerAccess } from "../api/types";
 import { withRouter, withToast } from "../testing/storybook-helpers";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { ServerOrganisationsPage } from "./ServerOrganisationsPage";
@@ -27,10 +27,16 @@ function org(overrides: Partial<Organization>): Organization {
 // every call. `choices` defaults to empty (a plain "no module offers
 // anything" org-creation flow); stories that exercise the picker itself
 // pass a non-empty list explicitly.
-function mockOrgsGet(orgs: Organization[], choices: OrgCreationChoice[] = []) {
-  spyOn(api, "get").mockImplementation(async (path: string) =>
-    path === "/api/v1/orgs/creation-choices" ? choices : orgs
-  );
+const ADMIN_ACCESS: ServerAccess = {
+  roles: ["server_admin"], can_view_organizations: true, can_create_organizations: true, can_delete_organizations: true,
+  can_manage_entitlements: true, can_administer_server: true,
+};
+
+function mockOrgsGet(orgs: Organization[], choices: OrgCreationChoice[] = [], access: ServerAccess = ADMIN_ACCESS) {
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === "/api/v1/system/access") return access;
+    return path === "/api/v1/orgs/creation-choices" ? choices : orgs;
+  });
 }
 
 const DECISION_TEMPLATE_CHOICES: OrgCreationChoice[] = [
@@ -90,6 +96,45 @@ export const RowActionsOpenInActionMenu: Story = {
     await expect(within(menu).getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
     await expect(within(menu).getByRole("menuitem", { name: "Disable" })).toBeInTheDocument();
     await expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  },
+};
+
+/** A Platform subscription manager provisions and suspends but cannot delete or open an organisation's administration. */
+export const PlatformSubscriptionManagerActions: Story = {
+  beforeEach: () => {
+    mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })], [], {
+      roles: ["subscription_manager"], can_view_organizations: true, can_create_organizations: true,
+      can_delete_organizations: false, can_manage_entitlements: true, can_administer_server: false,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await expect(await canvas.findByRole("button", { name: /^New organisation/i })).toBeInTheDocument();
+    await userEvent.click(await canvas.findByRole("button", { name: "Acme Corp actions" }));
+    const menu = body.getByRole("menu", { name: "Acme Corp actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "Disable" })).toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: "Delete" })).not.toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: "Edit" })).not.toBeInTheDocument();
+  },
+};
+
+/** A Subscription removal authority sees the list and Delete only: no New organisation, no Disable. */
+export const SubscriptionRemovalAuthorityActions: Story = {
+  beforeEach: () => {
+    mockOrgsGet([org({ id: "org-1", name: "Acme Corp", is_active: true })], [], {
+      roles: ["subscription_removal_authority"], can_view_organizations: true, can_create_organizations: false,
+      can_delete_organizations: true, can_manage_entitlements: false, can_administer_server: false,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const body = within(document.body);
+    await userEvent.click(await canvas.findByRole("button", { name: "Acme Corp actions" }));
+    const menu = body.getByRole("menu", { name: "Acme Corp actions" });
+    await expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: "Disable" })).not.toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: /^New organisation/i })).not.toBeInTheDocument();
   },
 };
 

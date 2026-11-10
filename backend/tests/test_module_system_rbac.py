@@ -29,7 +29,7 @@ def test_server_admin_can_grant_and_revoke_module_administrator(client, admin_to
     _grant_module_administrator(client, admin_token, user_id)
     resp = client.get("/api/v1/system/users", headers=auth_headers(admin_token))
     by_id = {u["user_id"]: u for u in resp.json()}
-    assert by_id[user_id]["is_module_administrator"] is True
+    assert by_id[user_id]["server_roles"] == ["module_administrator"]
 
     resp = client.delete(
         f"/api/v1/system/users/{user_id}/server-roles/module_administrator", headers=auth_headers(admin_token)
@@ -37,7 +37,7 @@ def test_server_admin_can_grant_and_revoke_module_administrator(client, admin_to
     assert resp.status_code == 204
     resp = client.get("/api/v1/system/users", headers=auth_headers(admin_token))
     by_id = {u["user_id"]: u for u in resp.json()}
-    assert by_id[user_id]["is_module_administrator"] is False
+    assert by_id[user_id]["server_roles"] == []
 
 
 def test_granting_module_administrator_twice_is_idempotent(client, admin_token, org_id):

@@ -23,6 +23,7 @@ import { FormActions } from "../components/FormActions";
 import { FormGrid } from "../components/FormGrid";
 import { TextField, CheckboxField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useServerAccess } from "../hooks/useServerAccess";
 import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
 
 /**
@@ -48,6 +49,11 @@ export function ServerOrganisationsPage() {
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
+  // Each action shows only to a caller the server allows it for (`useServerAccess`): a Platform subscription manager
+  // provisions and suspends, a Subscription removal authority deletes, a server administrator does all of them.
+  const access = useServerAccess();
+  const canCreate = !!access?.can_create_organizations;
+  const canDelete = !!access?.can_delete_organizations;
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   // Search and the status filter live in the URL so the list comes back as it was left after a visit to an organisation.
   const [search, setSearch] = useUrlText("q");
@@ -85,14 +91,16 @@ export function ServerOrganisationsPage() {
 
   useEffect(() => {
     // Fetched once, independent of the modal opening — the checkboxes only
-    // need to be ready by the time a server admin opens the "New Org" form,
-    // and this page's own load is a rare, admin-only action so the extra
-    // request is not worth deferring behind `showNewForm`.
+    // need to be ready by the time the "New Org" form opens, and this page's
+    // own load is a rare, admin-only action so the extra request is not worth
+    // deferring behind `showNewForm`. Only a caller who may create reads it
+    // (a Subscription removal authority is refused).
+    if (!canCreate) return;
     api.get<OrgCreationChoice[]>("/api/v1/orgs/creation-choices").then((choices) => {
       setCreationChoices(choices);
       setSelectedChoiceKeys(new Set(choices.filter((c) => c.default_selected).map((c) => c.key)));
     });
-  }, []);
+  }, [canCreate]);
 
   function toggleChoiceKey(key: string) {
     setSelectedChoiceKeys((prev) => {
@@ -186,19 +194,39 @@ export function ServerOrganisationsPage() {
     return true;
   });
 
+  /** The row actions this caller may use: Edit opens the organisation's own administration, which only a server
+   * administrator reaches; the subscription roles never see content. */
+  function rowActions(o: Organization) {
+    return [
+      ...(access?.can_administer_server
+        ? [{ label: strings.common.edit, icon: <Pencil size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) }]
+        : []),
+      ...(canCreate
+        ? [
+            o.is_active
+              ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
+              : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
+          ]
+        : []),
+      ...(canDelete ? [{ label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) }] : []),
+    ];
+  }
+
   return (
     <div className="stack">
       <ListPageLayout
         title={strings.orgAdmin.organizations(orgLabelPlural)}
         actions={
-          <SplitButtonTrigger
-            icon={<Plus />}
-            label={strings.serverOrgs.newOrganization(orgLabel)}
-            onDefaultAction={() => setShowNewForm(true)}
-            menuTitle={strings.serverOrgs.newOrganization(orgLabel)}
-            moreOptionsLabel={strings.common.moreOptions}
-            alternatives={[{ label: strings.serverOrgs.importOrganization(orgLabel), onSelect: () => setShowImportForm(true) }]}
-          />
+          canCreate ? (
+            <SplitButtonTrigger
+              icon={<Plus />}
+              label={strings.serverOrgs.newOrganization(orgLabel)}
+              onDefaultAction={() => setShowNewForm(true)}
+              menuTitle={strings.serverOrgs.newOrganization(orgLabel)}
+              moreOptionsLabel={strings.common.moreOptions}
+              alternatives={[{ label: strings.serverOrgs.importOrganization(orgLabel), onSelect: () => setShowImportForm(true) }]}
+            />
+          ) : undefined
         }
         filter={
           <FilterPanel sectionKey="serverOrganisationsFilters">
@@ -328,16 +356,9 @@ export function ServerOrganisationsPage() {
                               still opens the exact same dialog/navigation as
                               before — the menu is just the entry point, not a
                               replacement for either `ConfirmDialog` tier. */}
-                          <ActionMenu
-                            triggerLabel={strings.serverOrgs.actionsFor(o.name)}
-                            items={[
-                              { label: strings.common.edit, icon: <Pencil size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) },
-                              o.is_active
-                                ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
-                                : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
-                              { label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) },
-                            ]}
-                          />
+                          {rowActions(o).length > 0 && (
+                            <ActionMenu triggerLabel={strings.serverOrgs.actionsFor(o.name)} items={rowActions(o)} />
+                          )}
                         </div>
                       </td>
                     </tr>

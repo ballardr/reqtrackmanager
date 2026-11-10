@@ -816,6 +816,16 @@ def main() -> None:
     stakeholder_a2 = create_org_user(h_admin, alpha["id"], "e2e-stakeholder-a2@example.com", "E2E Stakeholder AlphaOnly Two", "member")
     member_ab = create_org_user(h_admin, alpha["id"], "e2e-member-ab@example.com", "E2E Member AlphaBeta", "member")
     create_org_user(h_admin, alpha["id"], "e2e-orphan@example.com", "E2E Orphan Candidate", "member")
+    # Server-tier subscription roles: ordinary Alpha members who additionally hold one cross-tenant role each.
+    for email, name, role in (
+        ("e2e-subscription-manager@example.com", "E2E Platform Subscription Manager", "subscription_manager"),
+        ("e2e-removal-authority@example.com", "E2E Subscription Removal Authority", "subscription_removal_authority"),
+    ):
+        holder = create_org_user(h_admin, alpha["id"], email, name, "member")
+        r = httpx.post(
+            f"{BASE}/system/users/{holder['user_id']}/server-roles", json={"role": role}, headers=h_admin, timeout=30,
+        )
+        r.raise_for_status()
     # No org-level role at all — deliberately, for project-hierarchy.spec.ts:
     # exercises the relaxed parent-manage-only child-creation path (decision
     # 11, docs/decisions.md), which must work for a plain project manager
@@ -1271,6 +1281,8 @@ def main() -> None:
     print("  e2e-stakeholder-a@example.com - stakeholder on Alpha-1 only")
     print("  e2e-stakeholder-a2@example.com - second stakeholder on Alpha-1 only (for vote-tally coverage)")
     print("  e2e-member-ab@example.com     - member on Alpha-1 and Beta-1; no org-admin/project-creator rights anywhere")
+    print("  e2e-subscription-manager@example.com - Alpha member holding the Platform subscription manager server role")
+    print("  e2e-removal-authority@example.com     - Alpha member holding the Subscription removal authority server role")
     print("  e2e-orphan@example.com        - zero org memberships (left Alpha via self-service); for user-directory/ban workflow")
     print("  e2e-projectmgr-g@example.com  - Gamma member only (no org-admin/project-creator); PM on Gamma-1,"
           " stakeholder on Gamma-3 (direct, shows up as forward-inherited on Gamma-4)")

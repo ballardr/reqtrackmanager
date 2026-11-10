@@ -14,7 +14,9 @@ export type OrgRole = "org_admin" | "project_creator" | "member";
 // backend docstring — it is never granted/revoked through the
 // `/server-roles` endpoints this type also describes, only through the
 // existing `/server-admin` boolean endpoint.
-export type ServerRole = "server_admin" | "module_administrator";
+export type ServerRole = "server_admin" | "module_administrator" | "subscription_manager" | "subscription_removal_authority";
+/** The server roles granted by row (every `ServerRole` except `server_admin`). */
+export type GrantableServerRole = Exclude<ServerRole, "server_admin">;
 export type ModuleEntitlementPolicy = "open" | "closed";
 /** What a stage workflow phase does, whatever it is called (backend `StagePhaseKind`). */
 export type StagePhaseKind = "open" | "review" | "locked" | "on_hold" | "closed";
@@ -217,6 +219,8 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
 export const SERVER_ROLE_LABEL: Record<ServerRole, string> = {
   server_admin: "Server admin",
   module_administrator: "Module administrator",
+  subscription_manager: "Platform subscription manager",
+  subscription_removal_authority: "Subscription removal authority",
 };
 
 /**
@@ -876,7 +880,8 @@ export interface SystemUser {
   is_2fa_enabled: boolean;
   created_at: string;
   is_server_admin: boolean;
-  is_module_administrator: boolean;
+  /** Server roles granted by row (never `server_admin`, which is `is_server_admin`). */
+  server_roles: GrantableServerRole[];
   has_org_membership: boolean;
   organization_count: number;
   organization_names: string[];
@@ -2806,4 +2811,14 @@ export interface OverviewMetricResult {
 
 export interface OverviewMetricsResponse {
   results: Record<string, OverviewMetricResult>;
+}
+
+/** The signed-in person's server-tier access (`GET /system/access`): which server sections they may use. */
+export interface ServerAccess {
+  roles: ServerRole[];
+  can_view_organizations: boolean;
+  can_create_organizations: boolean;
+  can_delete_organizations: boolean;
+  can_manage_entitlements: boolean;
+  can_administer_server: boolean;
 }

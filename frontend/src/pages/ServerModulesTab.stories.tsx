@@ -37,6 +37,7 @@ function orgModules(entitledBeta: boolean): OrgModuleEntitlement[] {
 function mockApis() {
   let entitledBeta = true;
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path === "/api/v1/system/access") return { roles: ["server_admin"] };
     if (path === "/api/v1/system/module-entitlement-policy") return { default_module_entitlement_policy: "open" };
     if (path === "/api/v1/system/module-defaults") return DEFAULTS;
     if (path === "/api/v1/orgs") return [ORG];

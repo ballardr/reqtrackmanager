@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { page } from "vitest/browser";
 
 import { api } from "../api/client";
-import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
+import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, ServerAccess, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
 import { buildProject, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
@@ -37,12 +37,24 @@ const ORG: Organization = {
 
 const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1" });
 
+const NO_SERVER_ACCESS: ServerAccess = {
+  roles: [], can_view_organizations: false, can_create_organizations: false, can_delete_organizations: false,
+  can_manage_entitlements: false, can_administer_server: false,
+};
+const SERVER_ADMIN_ACCESS: ServerAccess = {
+  roles: ["server_admin"], can_view_organizations: true, can_create_organizations: true, can_delete_organizations: true,
+  can_manage_entitlements: true, can_administer_server: true,
+};
+
 /** Routes every `api.get` call Layout's provider tree can make (branding,
  * terminology, favourites probe, notifications) to fixture data by path
  * prefix — Layout composes several providers each with their own fetch, so
  * a single path-matching mock is far more maintainable than one spy per
  * story. */
-function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true, reviewsDue = 0) {
+function mockLayoutApis(
+  clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true, reviewsDue = 0,
+  serverAccess: ServerAccess = NO_SERVER_ACCESS,
+) {
   // `useHasReviewsDue` reads one row of the personal reviews-due list; its total decides whether the entry shows.
   spyOn(api, "getPage").mockImplementation(async (path: string): Promise<never> => {
     if (path.startsWith("/api/v1/me/reviews/due")) return { items: [], total: reviewsDue } as never;
@@ -57,6 +69,7 @@ function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enab
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
     if (path === "/api/v1/system/client-config") return clientConfig;
+    if (path === "/api/v1/system/access") return serverAccess;
     // `useProjectEnabledModules` — Layout's nav
     // rail calls this whenever a project route is active, independently of
     // whether any module is actually registered; found as a real,
@@ -185,12 +198,46 @@ export const LoggedInWithProjectRoute: Story = {
 export const ServerAdmin: Story = {
   decorators: [withAuth(buildUser({ display_name: "Sam Admin", is_server_admin: true })), withRouter("/projects")],
   beforeEach: () => {
-    mockLayoutApis();
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, SERVER_ADMIN_ACCESS);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Administration")).toBeInTheDocument();
+    await expect(await canvas.findByText("Administration")).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /Server management/ })).toBeInTheDocument();
+  },
+};
+
+/** A Platform subscription manager sees Organisations and Server management (Modules only). */
+export const PlatformSubscriptionManager: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Pat Manager", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, {
+      roles: ["subscription_manager"], can_view_organizations: true, can_create_organizations: true,
+      can_delete_organizations: false, can_manage_entitlements: true, can_administer_server: false,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Administration")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Organisations" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: /Server management/ })).toBeInTheDocument();
+  },
+};
+
+/** A Subscription removal authority sees only Organisations, never Server management. */
+export const SubscriptionRemovalAuthority: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Robin Remover", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, {
+      roles: ["subscription_removal_authority"], can_view_organizations: true, can_create_organizations: false,
+      can_delete_organizations: true, can_manage_entitlements: false, can_administer_server: false,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Administration")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Organisations" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: /Server management/ })).not.toBeInTheDocument();
   },
 };
 

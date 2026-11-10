@@ -7,6 +7,10 @@ module entitlement overrides, and the module-contributed MCP tool
 manifest. The entitlement-policy and registry/entitlement endpoints accept
 either `SERVER_ADMIN` or the narrower `MODULE_ADMINISTRATOR` server role —
 the one place this router's gating isn't uniformly `require_server_admin`.
+The per-organisation entitlement endpoints (module registry listing and
+entitlement read/write) also accept `SUBSCRIPTION_MANAGER`, who bounds
+what an organisation may use; the deployment-wide policy and defaults stay
+with `MODULE_ADMINISTRATOR`.
 
 Split out of the former flat `routers/system.py` as a pure code-organization
 refactor — see `routers/system/__init__.py`'s module docstring for the
@@ -44,9 +48,13 @@ from app.services.module_defaults import (
     list_server_module_defaults,
     set_server_module_default,
 )
-from app.services.rbac import require_server_role
+from app.services.rbac import require_server_role, server_role_used
 
 router = APIRouter(tags=["system-modules"])
+
+# Roles that may read the registry and read or write one organisation's
+# entitlements.
+_ENTITLEMENT_ROLES = (ServerRole.MODULE_ADMINISTRATOR, ServerRole.SUBSCRIPTION_MANAGER)
 
 
 class ModuleEntitlementPolicyOut(BaseModel):
@@ -223,7 +231,7 @@ def update_module_entitlement_policy(
 
 @router.get("/modules", response_model=list[ModuleOut])
 def list_modules(
-    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    current_user: User = Depends(require_server_role(*_ENTITLEMENT_ROLES)),
 ):
     """Returns every module in the registry — "what modules exist," with
     no per-organisation entitlement/enablement data (see
@@ -242,7 +250,7 @@ def list_modules(
 @router.get("/orgs/{organization_id}/module-entitlements", response_model=list[OrgModuleEntitlementOut])
 def list_org_module_entitlements(
     organization_id: UUID,
-    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    current_user: User = Depends(require_server_role(*_ENTITLEMENT_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Lists every registered module combined with `organization_id`'s
@@ -271,7 +279,7 @@ def list_org_module_entitlements(
 )
 def update_org_module_entitlement(
     organization_id: UUID, module_key: str, payload: OrgModuleEntitlementUpdate,
-    current_user: User = Depends(require_server_role(ServerRole.MODULE_ADMINISTRATOR)),
+    current_user: User = Depends(require_server_role(*_ENTITLEMENT_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Sets an explicit server-tier entitlement override for one
@@ -306,7 +314,10 @@ def update_org_module_entitlement(
     log_event(
         db, entity_type="organization_module", entity_id=f"{organization_id}:{module_key}",
         action="module.entitlement_updated", actor_id=current_user.id, organization_id=organization_id,
-        detail={"module_key": module_key, "entitled": payload.entitled},
+        detail={
+            "module_key": module_key, "entitled": payload.entitled,
+            "role_used": server_role_used(db, current_user, *_ENTITLEMENT_ROLES),
+        },
     )
     db.commit()
     db.refresh(row)

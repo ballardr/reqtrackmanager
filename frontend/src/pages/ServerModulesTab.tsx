@@ -9,6 +9,9 @@
  * - Per-organisation availability: grant or withdraw a module for one organisation and see
  *   which tier decides its effective state.
  *
+ * The policy and defaults levers are shown only to a Module administrator or server administrator; a Platform
+ * subscription manager sees per-organisation availability alone.
+ *
  * Design decisions:
  * - Rows are the shared `ModuleSettingsList` and the three-state `ModuleAvailabilitySelect`
  *   the organisation and project pages use, so a module reads the same at every tier.
@@ -41,6 +44,7 @@ import { ToggleSwitch } from "../components/ToggleSwitch";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { t } from "../i18n/strings";
+import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
 
@@ -246,10 +250,14 @@ function OrganisationAvailabilitySection() {
 
 /** The Server Management "Modules" group. */
 export function ServerModulesTab() {
+  // The deployment-wide policy and defaults belong to a Module administrator or server administrator; a
+  // Platform subscription manager sets only one organisation's availability (the server refuses the rest).
+  const access = useServerAccess();
+  const deploymentWide = !!access?.roles.some((r) => r === "server_admin" || r === "module_administrator");
   return (
     <div className="stack">
-      <EntitlementPolicySection />
-      <ServerDefaultsSection />
+      {deploymentWide && <EntitlementPolicySection />}
+      {deploymentWide && <ServerDefaultsSection />}
       <OrganisationAvailabilitySection />
     </div>
   );

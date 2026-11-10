@@ -24,16 +24,16 @@ from app.models.enums import ServerRole
 class UserServerRole(UUIDPKMixin, TimestampMixin, Base):
     """Grants a user a server-tier role, mirroring `UserOrgRole`'s shape.
 
-    Only `ServerRole.MODULE_ADMINISTRATOR` is ever actually written here in
-    V1 — `ServerRole.SERVER_ADMIN`-equivalent power stays exclusively on
+    Every `ServerRole` except `SERVER_ADMIN` is written here;
+    `ServerRole.SERVER_ADMIN`-equivalent power stays exclusively on
     `User.is_server_admin`, never duplicated into a row here, so there is
     never a second, independently-driftable source of truth for it (see
     `ServerRole`'s own docstring).
 
     Attributes:
         user_id: The user being granted the role.
-        role: The server role granted (in practice, always
-            `MODULE_ADMINISTRATOR` — see class docstring).
+        role: The server role granted (never `SERVER_ADMIN` — see class
+            docstring).
         granted_at: When the grant was made (`TimestampMixin.created_at`
             serves this; no separate column).
         granted_by: The server admin who made the grant, for audit

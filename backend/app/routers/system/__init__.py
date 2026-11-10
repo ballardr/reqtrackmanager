@@ -1,7 +1,7 @@
 """
 Module: routers.system
 
-Aggregates the `system` package's per-concern routers — `users` (server
+Aggregates the `system` package's per-concern routers — `access` (the caller's own server-tier roles and the sections they unlock), `users` (server
 admin grant/revoke, server-tier role grant/revoke, the system-wide user
 access-review directory, the merged orphaned-user status endpoint,
 platform-wide PAT bulk revocation), `branding` (platform-wide branding
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.routers.system import branding, config, modules, record_policy, report_fonts, users
+from app.routers.system import access, branding, config, modules, record_policy, report_fonts, users
 
 _PREFIX = "/api/v1/system"
 
@@ -31,6 +31,7 @@ _PREFIX = "/api/v1/system"
 # this package's own bucket routers happens to have a bare `""`-path route
 # that would force the workaround.
 router = APIRouter()
+router.include_router(access.router, prefix=_PREFIX)
 router.include_router(users.router, prefix=_PREFIX)
 router.include_router(branding.router, prefix=_PREFIX)
 router.include_router(modules.router, prefix=_PREFIX)

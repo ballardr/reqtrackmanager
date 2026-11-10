@@ -79,7 +79,8 @@ class SystemUserOut(BaseModel):
     is_2fa_enabled: bool
     created_at: datetime
     is_server_admin: bool
-    is_module_administrator: bool
+    #: Server-tier roles granted by row (never `server_admin`, which is `is_server_admin`).
+    server_roles: list[ServerRole]
     has_org_membership: bool
     organization_count: int
     organization_names: list[str]
@@ -524,15 +525,12 @@ def list_system_users(
     if limit is not None:
         users = users[offset:offset + limit]
     user_ids = [u.id for u in users]
-    module_admin_ids: set[UUID] = set()
+    server_roles_by_user: dict[UUID, list[ServerRole]] = {}
     if user_ids:
-        module_admin_ids = set(
-            db.scalars(
-                select(UserServerRole.user_id).where(
-                    UserServerRole.user_id.in_(user_ids), UserServerRole.role == ServerRole.MODULE_ADMINISTRATOR
-                )
-            ).all()
-        )
+        for user_id, role in db.execute(
+            select(UserServerRole.user_id, UserServerRole.role).where(UserServerRole.user_id.in_(user_ids))
+        ).all():
+            server_roles_by_user.setdefault(user_id, []).append(role)
     org_ids_by_user: dict[UUID, set[UUID]] = {}
     if user_ids:
         for user_id, organization_id in db.execute(
@@ -566,7 +564,7 @@ def list_system_users(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
             is_banned=u.is_banned,
             last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
-            is_server_admin=u.is_server_admin, is_module_administrator=u.id in module_admin_ids,
+            is_server_admin=u.is_server_admin, server_roles=sorted(server_roles_by_user.get(u.id, []), key=lambda r: r.value),
             has_org_membership=u.id in org_ids_by_user,
             organization_count=len(org_ids_by_user.get(u.id, ())),
             organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
