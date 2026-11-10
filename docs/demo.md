@@ -19,7 +19,8 @@ Open https://localhost (the browser warns about the certificate until the local 
 | `scripts/demo.sh --teardown` | Removes the demonstration organisation and the messages it owns, and seeds nothing. Accounts remain (accounts are never deleted). |
 | `scripts/demo.sh --rotate-passwords` | A new random password for every account on each run (default: fixed). |
 | `scripts/demo.sh --clarity <project id>` | Also loads Microsoft Clarity (see [Microsoft Clarity](#microsoft-clarity)). |
-| `scripts/demo.sh --schedule` | Also starts the daily reset service. |
+| `scripts/demo.sh --schedule` | Also starts the in-container daily reset service (which cannot update images). |
+| `scripts/demo.sh --pull [--reset]` | Pulls the latest published images, recreates only the services whose image changed, then seeds or resets (see [Daily reset](#daily-reset)). Refused with `--schedule`. `--no-prune` skips the disk clean-up. |
 | `scripts/demo.sh --no-metrics` | Does not start the usage-metrics Prometheus (it starts by default). |
 | `scripts/demo.sh --export-metrics [path] [--since 7d] [--no-snapshot]` | Writes a metrics bundle and starts nothing (see [Usage metrics](#usage-metrics)). |
 | `scripts/demo.sh --view-metrics <bundle>` | Opens a bundle in a throwaway Prometheus on `127.0.0.1:9091`. |
@@ -54,6 +55,8 @@ Each option defaults from the environment variable shown.
 | `--status-dir DIR` | `DEMO_STATUS_DIR` | Holds the metrics file (default `/demo/status`). |
 | `--reset-at HH:MM` | `DEMO_RESET_AT` | Daily reset time; also shown in the messages. |
 | `--reset-tz ZONE` | `DEMO_RESET_TZ` | IANA zone of the reset time (default `UTC`). |
+| `--image-update OUTCOME` | `DEMO_IMAGE_UPDATE` | `updated`, `unchanged` or `failed`: the image refresh that preceded the run. Set by `demo.sh --pull`. |
+| `--image-report JSON` | `DEMO_IMAGE_REPORT` | Image identifier and changed flag per service, recorded in the reset history. Set by `demo.sh --pull`. |
 | `schedule` (command) | | Stay running and reset at each `DEMO_RESET_AT`; needs it set. |
 
 ### Other variables
@@ -64,6 +67,9 @@ Each option defaults from the environment variable shown.
 | `DEMO_PASSWORD` | `seed_demo_data.py` | The shared demonstration password when run on its own (default `DemoDemo123!`). |
 | `DEMO_CLARITY_PROJECT_ID` | Compose (`frontend`) | Becomes `CLARITY_PROJECT_ID` in the frontend; empty loads nothing. |
 | `DEMO_RESET_AT`, `DEMO_RESET_TZ`, `DEMO_ROTATE_PASSWORDS`, `DEMO_ALLOW_UPLOADS`, `DEMO_CONFIRM_DATABASE` | Compose (`demo-scheduler`) | Passed to the scheduler (defaults `00:00`, `UTC`, off, off, empty). |
+| `DEMO_RESET_AT`, `DEMO_RESET_TZ` | `demo.sh` | When set, passed to the run so the sign-in details and the warning state the next reset. Must equal the host timer's time and zone. |
+| `IMAGE_TAG`, `GHCR_IMAGE_PREFIX` | `demo.sh --pull` | The published image tag (default `latest`, the tip of `main`; a version or commit SHA pins) and registry prefix (default `ghcr.io/ballardr/reqtrackmanager`). |
+| `DEMO_HOST_STATE_DIR` | `demo.sh --pull` | Holds the host-side lock (default `${XDG_STATE_HOME:-~/.local/state}/reqtrack-demo`). |
 
 Exit status: `0` done, `1` failed, `2` refused or invalid options, `75` another run holds the lock.
 
@@ -134,9 +140,56 @@ flowchart LR
 
 ## Daily reset
 
-`demo-scheduler` (Compose profile `demo-schedule`) runs `demo_setup.py schedule`: at `DEMO_RESET_AT` in `DEMO_RESET_TZ` it removes the demonstration organisation and seeds again. The local time is kept across a daylight-saving change. A message warns for the hour before. It is a separate opt-in service, never a backend job, so a deployment cannot reset itself by accident; every run applies the guards above. A host cron entry running `scripts/demo.sh --reset` is an alternative; use one or the other.
+A reset removes the demonstration organisation and seeds again at `DEMO_RESET_AT` in `DEMO_RESET_TZ` (the local time is kept across a daylight-saving change). A message warns for the hour before. Every run applies the guards above, and none is a backend job, so a deployment cannot reset itself by accident. Three arrangements exist; use **one**:
 
-A failed seed removes the partly seeded organisation (names and accounts are unique, so the previous data cannot be kept beside it) and exits `1`. The status directory also holds `reqtrack-demo-resets.jsonl`, the start and finish of every run, for the [usage metrics](#usage-metrics) bundle. It holds `reqtrack-demo-reset.prom` with `reqtrack_demo_reset_last_success`, `reqtrack_demo_reset_last_run_timestamp_seconds` and `reqtrack_demo_reset_next_timestamp_seconds`, for monitoring to alert on.
+| Arrangement | Updates images | Use when |
+| --- | --- | --- |
+| Host timer or cron entry running `scripts/demo.sh --pull --reset` | Yes | The demonstration should always show the latest published build. |
+| `demo-scheduler` (Compose profile `demo-schedule`, `scripts/demo.sh --schedule`) | No | The demonstration builds the working tree and only needs its data reset. |
+| Host cron entry running `scripts/demo.sh --reset` | No | As above, with the host's own scheduler. |
+
+### Latest images on each reset
+
+The demonstration stack builds from source. `--pull` loads `tests/container/docker-compose.demo-images.yml`, which names the images CI publishes on every passing merge to `main` (`ghcr.io/ballardr/reqtrackmanager-backend`, `-frontend`, `-mcp-server`, `-converter`, `-docs`), and runs the steps below. A developer or test run of the stack never loads that file and keeps building the working tree. The reset is the one moment the demonstration is already empty and its users already signed out, so the update costs no extra outage. It runs on the host because a container cannot replace its own image or its neighbours without the Docker socket, which is host-root access and is never mounted.
+
+```mermaid
+flowchart TD
+    T["Host timer or cron"] --> S["demo.sh --pull --reset"]
+    S --> L{"Host lock free?"}
+    L -- no --> X75["Exit 75"]
+    L -- yes --> P["docker compose pull"]
+    P -- failed --> K["Keep current images, outcome failed"]
+    P -- ok --> R["Keep the replaced image as :previous"]
+    K --> U
+    R --> U["docker compose up --no-build --wait<br/>recreates only changed services"]
+    U -- unhealthy --> X1["Exit 1, no rollback"]
+    U -- healthy --> D["demo_setup.py --demo --reset<br/>in the new backend"]
+    D --> H["History and metric record the outcome"]
+```
+
+- **Order.** The update precedes the wipe, so the seed (part of the backend image) always matches the running code. The new backend runs its migrations on start.
+- **Failed pull.** The registry being unreachable or rate limited keeps the images already present and the reset proceeds; the run records `image_update=failed` and `reqtrack_demo_image_update_last_success 0`, which monitoring can alert on.
+- **Unhealthy new image.** The run exits `1` before seeding and prints the previous image identifiers. There is no automatic rollback, because migrations only go forward and the previous backend may not run against the migrated database. The replaced image of each updated service stays tagged `:previous`; run a published version with `IMAGE_TAG=<version or commit SHA> scripts/demo.sh --pull`.
+- **Which tag.** `latest` tracks `main`, so the demonstration shows the tip of the main branch (how releases are made today). The packages are public and multi-architecture. The build publishes a provenance attestation but no signature, and `--pull` does not verify either; this is a recorded gap in the [vendor management policy](soc2/policies/vendor-and-subprocessor-management-policy.md). Third-party images (database, storage, Prometheus, proxy) are pinned and never updated automatically.
+- **Disk.** After a healthy update the displaced `:previous` image of each updated service is removed, then dangling images (superseded layers, partial pulls) and build cache older than seven days are pruned. Tagged images, containers and volumes are never touched. The prune is host-wide, so a host shared with other Docker projects passes `--no-prune`. Container logs are limited to three files of 10 MB per service in the demonstration stack, so an unattended host does not fill its disk with them.
+- **Visibility.** `reset_started` in the history carries the outcome and each service's image identifier and changed flag, so the [metrics bundle](#usage-metrics) shows which build served each period. The script prints the running identifiers at the end.
+
+Install the host timer (systemd) or the cron line; the time in it must equal `DEMO_RESET_AT` and `DEMO_RESET_TZ`, because the timer starts the run and the variables are what the messages state.
+
+```bash
+sudo cp scripts/schedule/reqtrack-demo-reset.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now reqtrack-demo-reset.timer
+```
+
+`scripts/schedule/crontab.example` has the equivalent cron line. Registry authentication (`docker login ghcr.io`, held in the operator's Docker credential store) is needed only if the packages are made private; an authentication failure is then a failed pull.
+
+### The in-container scheduler
+
+`demo-scheduler` (Compose profile `demo-schedule`) runs `demo_setup.py schedule` and resets at each slot without touching images. It is a separate opt-in service. A failed seed removes the partly seeded organisation (names and accounts are unique, so the previous data cannot be kept beside it) and exits `1`.
+
+### Status files
+
+The status directory holds `reqtrack-demo-resets.jsonl`, the start and finish of every run, for the [usage metrics](#usage-metrics) bundle. It holds `reqtrack-demo-reset.prom` with `reqtrack_demo_reset_last_success`, `reqtrack_demo_reset_last_run_timestamp_seconds`, `reqtrack_demo_reset_next_timestamp_seconds` and, after `--pull`, `reqtrack_demo_image_update_last_success`, for monitoring to alert on.
 
 ## Usage metrics
 

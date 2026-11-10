@@ -35,6 +35,7 @@ from __future__ import annotations
 import fcntl
 import ipaddress
 import json
+import re
 import secrets
 import string
 from collections.abc import Iterator
@@ -299,13 +300,77 @@ def reset_lock(directory: Path) -> Iterator[None]:
         handle.close()
 
 
-def reset_metrics_text(*, succeeded: bool, finished: datetime, next_reset: datetime | None) -> str:
+IMAGE_UPDATE_OUTCOMES = ("updated", "unchanged", "failed")
+"""What `scripts/demo.sh --pull` reports: new images in use, nothing newer published, or the pull failed (the run
+carried on with the images already present)."""
+
+_IMAGE_ID = re.compile(r"^(?:sha256:[0-9a-f]{12,64}|none)$")
+_SERVICE_NAME = re.compile(r"^[a-z][a-z0-9-]{0,40}$")
+
+
+@dataclass(frozen=True)
+class ImageUpdate:
+    """The container image refresh that preceded a run (`demo.sh --pull`).
+
+    Attributes:
+        outcome: One of `IMAGE_UPDATE_OUTCOMES`.
+        images: Per service: `{"image_id": "sha256:...", "changed": bool}`. Identifiers only, never a registry
+            credential or a path.
+    """
+
+    outcome: str
+    images: dict[str, dict[str, object]]
+
+    @property
+    def succeeded(self) -> bool:
+        """True unless the pull failed: an unchanged set of images is a healthy outcome."""
+        return self.outcome != "failed"
+
+
+def parse_image_update(outcome: str | None, report: str | None) -> ImageUpdate | None:
+    """Validates the image refresh reported by `demo.sh --pull`.
+
+    Args:
+        outcome: `updated`, `unchanged` or `failed`; None or empty when the run did not refresh images.
+        report: JSON object `{service: {"image_id": ..., "changed": bool}}`; may be empty.
+
+    Returns:
+        The refresh, or None when the run did not refresh images.
+
+    Raises:
+        ValueError: The outcome is unknown or the report is not the documented shape.
+    """
+    if not outcome:
+        return None
+    if outcome not in IMAGE_UPDATE_OUTCOMES:
+        raise ValueError(f"image update outcome must be one of {', '.join(IMAGE_UPDATE_OUTCOMES)}")
+    try:
+        loaded = json.loads(report) if report else {}
+    except json.JSONDecodeError as exc:
+        raise ValueError("image report is not valid JSON") from exc
+    if not isinstance(loaded, dict):
+        raise ValueError("image report must be an object")
+    images: dict[str, dict[str, object]] = {}
+    for name, entry in loaded.items():
+        if not (isinstance(name, str) and _SERVICE_NAME.match(name) and isinstance(entry, dict)):
+            raise ValueError("image report holds an invalid service entry")
+        image_id, changed = entry.get("image_id"), entry.get("changed")
+        if not (isinstance(image_id, str) and _IMAGE_ID.match(image_id) and isinstance(changed, bool)):
+            raise ValueError(f"image report entry for {name} is invalid")
+        images[name] = {"image_id": image_id, "changed": changed}
+    return ImageUpdate(outcome=outcome, images=images)
+
+
+def reset_metrics_text(
+    *, succeeded: bool, finished: datetime, next_reset: datetime | None, image_update: ImageUpdate | None = None,
+) -> str:
     """The Prometheus textfile for a finished run (counts and times only).
 
     Args:
         succeeded: Whether the run completed.
         finished: When it finished (UTC).
         next_reset: The next scheduled reset, if any.
+        image_update: The image refresh that preceded the run, if there was one.
     """
     lines = [
         "# HELP reqtrack_demo_reset_last_success 1 when the last demonstration setup or reset succeeded, else 0.",
@@ -321,10 +386,18 @@ def reset_metrics_text(*, succeeded: bool, finished: datetime, next_reset: datet
             "# TYPE reqtrack_demo_reset_next_timestamp_seconds gauge",
             f"reqtrack_demo_reset_next_timestamp_seconds {next_reset.astimezone(UTC).timestamp():.0f}",
         ]
+    if image_update is not None:
+        lines += [
+            "# HELP reqtrack_demo_image_update_last_success 1 when the last image refresh pulled or confirmed the latest images, else 0.",
+            "# TYPE reqtrack_demo_image_update_last_success gauge",
+            f"reqtrack_demo_image_update_last_success {1 if image_update.succeeded else 0}",
+        ]
     return "\n".join(lines) + "\n"
 
 
-def write_reset_metrics(directory: Path, *, succeeded: bool, finished: datetime, next_reset: datetime | None) -> None:
+def write_reset_metrics(
+    directory: Path, *, succeeded: bool, finished: datetime, next_reset: datetime | None, image_update: ImageUpdate | None = None,
+) -> None:
     """Writes `reqtrack-demo-reset.prom` atomically.
 
     Args:
@@ -332,12 +405,18 @@ def write_reset_metrics(directory: Path, *, succeeded: bool, finished: datetime,
         succeeded: Whether the run completed.
         finished: When it finished (UTC).
         next_reset: The next scheduled reset, if any.
+        image_update: The image refresh that preceded the run, if there was one.
     """
-    write_atomic(directory / METRICS_FILENAME, reset_metrics_text(succeeded=succeeded, finished=finished, next_reset=next_reset))
+    write_atomic(
+        directory / METRICS_FILENAME,
+        reset_metrics_text(succeeded=succeeded, finished=finished, next_reset=next_reset, image_update=image_update),
+    )
     append_reset_event(directory, "reset_finished", at=finished, succeeded=succeeded)
 
 
-def append_reset_event(directory: Path, event: str, *, at: datetime, succeeded: bool | None = None) -> None:
+def append_reset_event(
+    directory: Path, event: str, *, at: datetime, succeeded: bool | None = None, image_update: ImageUpdate | None = None,
+) -> None:
     """Appends one line to `reqtrack-demo-resets.jsonl` (the last `HISTORY_LIMIT` lines are kept).
 
     The history holds times and outcomes only. A failure to write it never fails the run (the history is a
@@ -348,10 +427,15 @@ def append_reset_event(directory: Path, event: str, *, at: datetime, succeeded: 
         event: `reset_started` or `reset_finished`.
         at: When it happened (UTC instant).
         succeeded: For `reset_finished`, whether the run completed.
+        image_update: For `reset_started`, the image refresh that preceded the run (outcome and image identifiers),
+            so a metrics bundle shows which build served each period.
     """
     entry: dict[str, object] = {"event": event, "at": at.astimezone(UTC).isoformat().replace("+00:00", "Z")}
     if succeeded is not None:
         entry["succeeded"] = succeeded
+    if image_update is not None:
+        entry["image_update"] = image_update.outcome
+        entry["images"] = image_update.images
     path = directory / HISTORY_FILENAME
     try:
         lines = path.read_text().splitlines() if path.exists() else []

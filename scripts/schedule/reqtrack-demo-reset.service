@@ -1,0 +1,27 @@
+# systemd service for the demonstration's daily image refresh and reset (docs/demo.md, "Daily reset").
+# Install:  sudo cp scripts/schedule/reqtrack-demo-reset.{service,timer} /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now reqtrack-demo-reset.timer
+# Adjust WorkingDirectory/ExecStart to where the repository is checked out, and User to a user that may run Docker.
+# Settings (DEMO_PUBLIC_HOST, DEMO_ACME_EMAIL, IMAGE_TAG, ...) go in /etc/reqtrack/demo.env.
+#
+# DEMO_RESET_AT and DEMO_RESET_TZ below must match the timer's OnCalendar time and zone: the timer starts the run and
+# the variables are what the sign-in details message and the hour-before warning state as the next reset.
+# Use this OR the crontab entry OR the in-container demo-scheduler service (which cannot update images): not more than one.
+[Unit]
+Description=ReqTrackManager demonstration: pull the latest images, reset and seed
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=reqtrack
+WorkingDirectory=/opt/reqtrackmanager
+EnvironmentFile=-/etc/reqtrack/demo.env
+Environment=DEMO_RESET_AT=00:00
+Environment=DEMO_RESET_TZ=UTC
+ExecStart=/opt/reqtrackmanager/scripts/demo.sh --pull --reset
+# 75: another run was already in progress. Not a failure of this unit; the run that holds the lock reports itself.
+SuccessExitStatus=75
+# Loading the repository project's decisions takes several minutes.
+TimeoutStartSec=2h
+Nice=10

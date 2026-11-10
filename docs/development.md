@@ -47,7 +47,7 @@ Idempotent (skips if already seeded) and API-driven, same as the E2E persona dat
 
 ### Demonstration setup and daily reset
 
-`scripts/demo.sh` sets the stack up as a demonstration (seed, sign-in details on the login page), `--reset` starts again, and an opt-in service resets it daily. The demonstration is served over HTTPS by a Caddy proxy at `https://localhost` (a public host name gets a real certificate); developer and test runs of the stack keep their direct ports. Commands, options, variables, guards, HTTPS, usage metrics (collected in Prometheus and bundled with `--export-metrics`) and Microsoft Clarity are in [demo.md](demo.md).
+`scripts/demo.sh` sets the stack up as a demonstration (seed, sign-in details on the login page), `--reset` starts again, and a daily reset is available either as an opt-in service or as a host timer that first pulls the latest published images (`--pull`). The demonstration is served over HTTPS by a Caddy proxy at `https://localhost` (a public host name gets a real certificate); developer and test runs of the stack keep their direct ports. Commands, options, variables, guards, HTTPS, usage metrics (collected in Prometheus and bundled with `--export-metrics`) and Microsoft Clarity are in [demo.md](demo.md).
 
 ## Backend
 

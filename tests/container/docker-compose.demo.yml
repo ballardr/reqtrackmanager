@@ -8,8 +8,18 @@
 #
 # DEMO_PUBLIC_URL is set by scripts/demo.sh from DEMO_PUBLIC_HOST; every address below derives from it so they
 # cannot disagree.
+# Container logs are bounded: Docker's default driver keeps them without limit, which fills the disk of an unattended
+# host. Three 10 MB files a service keep recent history for diagnosis (the Loki setup in docs/deployment.md is the
+# long-term store).
+x-logging: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   caddy:
+    logging: *bounded_logs
     image: caddy:2.10-alpine
     environment:
       DEMO_PUBLIC_HOST: ${DEMO_PUBLIC_HOST:-localhost}
@@ -59,6 +69,7 @@ services:
         condition: service_healthy
 
   backend:
+    logging: *bounded_logs
     environment:
       CORS_ORIGINS: ${DEMO_PUBLIC_URL:?scripts/demo.sh sets DEMO_PUBLIC_URL}
       PUBLIC_BACKEND_URL: ${DEMO_PUBLIC_URL}
@@ -77,30 +88,43 @@ services:
           - backend-edge
 
   frontend:
+    logging: *bounded_logs
     environment:
       # Empty on purpose: API calls are relative paths on the page's own origin.
       VITE_API_BASE_URL: ""
     ports: !reset []
 
   mcp-server:
+    logging: *bounded_logs
     environment:
       REQTRACK_PUBLIC_API_URL: ${DEMO_PUBLIC_URL}
     ports: !reset []
 
+  converter:
+    logging: *bounded_logs
+  demo-scheduler:
+    logging: *bounded_logs
+  prometheus:
+    logging: *bounded_logs
   db:
+    logging: *bounded_logs
     ports: !override
       - "127.0.0.1:5432:5432"
   storage:
+    logging: *bounded_logs
     ports: !override
       - "127.0.0.1:9000:9000"
   mailhog:
+    logging: *bounded_logs
     ports: !override
       - "127.0.0.1:1025:1025"
       - "127.0.0.1:8025:8025"
   keycloak:
+    logging: *bounded_logs
     ports: !override
       - "127.0.0.1:8080:8080"
   docs:
+    logging: *bounded_logs
     ports: !override
       - "127.0.0.1:3001:3001"
 

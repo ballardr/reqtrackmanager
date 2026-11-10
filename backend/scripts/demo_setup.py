@@ -299,6 +299,7 @@ def _locked_run(args: argparse.Namespace, schedule: Schedule | None, state_dir: 
     """The body of `run_once`, with the lock held."""
     now = datetime.now(UTC)
     next_reset = rules.next_reset_at(schedule, now) if schedule is not None else None
+    image_update = getattr(args, "image_update_parsed", None)
     try:
         base.BASE = args.api_base
         admin = base.h(base.login(base.ADMIN_EMAIL, base.ADMIN_PASSWORD))
@@ -314,17 +315,17 @@ def _locked_run(args: argparse.Namespace, schedule: Schedule | None, state_dir: 
         return EXIT_REFUSED
     except httpx.HTTPError as exc:
         print(f"demo: cannot reach the API ({type(exc).__name__})", file=sys.stderr, flush=True)
-        rules.write_reset_metrics(status_dir, succeeded=False, finished=now, next_reset=next_reset)
+        rules.write_reset_metrics(status_dir, succeeded=False, finished=now, next_reset=next_reset, image_update=image_update)
         return EXIT_FAILED
 
-    rules.append_reset_event(status_dir, "reset_started", at=now)
+    rules.append_reset_event(status_dir, "reset_started", at=now, image_update=image_update)
     seeding = False
     try:
         if args.reset or args.teardown:
             log(f"removed {remove_demo_organisations(admin)} demonstration organisation(s) and {remove_own_messages(admin)} message(s)")
             if args.teardown:
                 set_file_uploads(admin, True)
-                rules.write_reset_metrics(status_dir, succeeded=True, finished=datetime.now(UTC), next_reset=None)
+                rules.write_reset_metrics(status_dir, succeeded=True, finished=datetime.now(UTC), next_reset=None, image_update=image_update)
                 return 0
         password = rotate_accounts(admin, state_dir) if args.rotate_passwords else rules.DEFAULT_PASSWORD
         base.PASSWORD = password
@@ -339,21 +340,22 @@ def _locked_run(args: argparse.Namespace, schedule: Schedule | None, state_dir: 
         if not args.no_login_message:
             verify_demo_accounts_only(password)
             post_messages(admin, password, schedule, datetime.now(UTC))
-        rules.write_reset_metrics(status_dir, succeeded=True, finished=datetime.now(UTC), next_reset=next_reset)
+        rules.write_reset_metrics(status_dir, succeeded=True, finished=datetime.now(UTC), next_reset=next_reset, image_update=image_update)
         return 0
     except rules.DemoGuardError as exc:
         print(f"demo: {exc}", file=sys.stderr, flush=True)
-        _fail(admin, status_dir, next_reset, remove_partial=seeding, allow_uploads=args.allow_uploads)
+        _fail(admin, status_dir, next_reset, remove_partial=seeding, allow_uploads=args.allow_uploads, image_update=image_update)
         return EXIT_REFUSED
     except (httpx.HTTPError, rules.MessageTooLongError, OSError, StopIteration) as exc:
         reason = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else exc
         print(f"demo: failed ({type(exc).__name__}): {reason}", file=sys.stderr, flush=True)
-        _fail(admin, status_dir, next_reset, remove_partial=seeding, allow_uploads=args.allow_uploads)
+        _fail(admin, status_dir, next_reset, remove_partial=seeding, allow_uploads=args.allow_uploads, image_update=image_update)
         return EXIT_FAILED
 
 
 def _fail(
     admin: dict, status_dir: Path, next_reset: datetime | None, *, remove_partial: bool, allow_uploads: bool = False,
+    image_update: rules.ImageUpdate | None = None,
 ) -> None:
     """Records the failure and, when the seed had started, removes the partly seeded demonstration.
 
@@ -364,6 +366,7 @@ def _fail(
         status_dir: Where the metrics file is written.
         next_reset: The next scheduled reset, if any.
         allow_uploads: True when the run keeps file uploads enabled; otherwise they are disabled first.
+        image_update: The image refresh that preceded the run, if there was one.
         remove_partial: True when the seed had started, so a half-seeded organisation exists to remove; a failure
             before it (a password change, the guards) leaves existing data untouched.
     """
@@ -382,7 +385,7 @@ def _fail(
             )
         except (httpx.HTTPError, OSError) as exc:
             log(f"clean-up after the failure also failed ({type(exc).__name__})")
-    rules.write_reset_metrics(status_dir, succeeded=False, finished=datetime.now(UTC), next_reset=next_reset)
+    rules.write_reset_metrics(status_dir, succeeded=False, finished=datetime.now(UTC), next_reset=next_reset, image_update=image_update)
 
 
 def serve_schedule(args: argparse.Namespace, schedule: Schedule) -> int:
@@ -435,6 +438,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--confirm-database", default=os.environ.get("DEMO_CONFIRM_DATABASE") or None,
         help="the database name, to run beside organisations this command did not create (DEMO_CONFIRM_DATABASE)",
     )
+    parser.add_argument(
+        "--image-update", default=os.environ.get("DEMO_IMAGE_UPDATE", ""),
+        help="outcome of the image refresh that preceded this run: updated, unchanged or failed; set by scripts/demo.sh --pull (DEMO_IMAGE_UPDATE)",
+    )
+    parser.add_argument(
+        "--image-report", default=os.environ.get("DEMO_IMAGE_REPORT", ""),
+        help='JSON {"service": {"image_id": "sha256:...", "changed": true}} recorded in the reset history (DEMO_IMAGE_REPORT)',
+    )
     parser.add_argument("--api-base", default=base.BASE, help="API base URL (DEMO_API_BASE)")
     parser.add_argument("--state-dir", default=os.environ.get("DEMO_STATE_DIR", STATE_DIR_DEFAULT))
     parser.add_argument("--status-dir", default=os.environ.get("DEMO_STATUS_DIR", STATUS_DIR_DEFAULT))
@@ -453,6 +464,11 @@ def main(argv: list[str] | None = None) -> int:
         The process exit status: 0 done, 1 failed, 2 refused or invalid, 75 another run holds the lock.
     """
     args = build_parser().parse_args(argv)
+    try:
+        args.image_update_parsed = rules.parse_image_update(args.image_update, args.image_report)
+    except ValueError as exc:
+        print(f"demo: invalid image update: {exc}", file=sys.stderr)
+        return EXIT_REFUSED
     schedule: Schedule | None = None
     if args.command == "schedule" and not args.reset_at:
         print("demo: schedule needs DEMO_RESET_AT (HH:MM)", file=sys.stderr)

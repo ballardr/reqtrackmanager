@@ -403,3 +403,55 @@ def test_an_unusable_reset_time_is_refused(routed, dirs):
     assert _run("--demo", "--reset-at", "25:99", *dirs) == command.EXIT_REFUSED
     assert _run("schedule", "--demo", *dirs) == command.EXIT_REFUSED
     assert _run("--demo", "--reset-at", "00:00", "--reset-tz", "Nowhere/Land", *dirs) == command.EXIT_REFUSED
+
+
+# ---- image refresh (scripts/demo.sh --pull) ---------------------------------------------------------------
+
+_REPORT = json.dumps({"backend": {"image_id": "sha256:" + "a" * 64, "changed": True}, "docs": {"image_id": "sha256:" + "b" * 64, "changed": False}})
+
+
+def test_an_image_refresh_is_recorded_in_the_history_and_the_metric(routed, admin_token, stand_in_seed, dirs):
+    assert _run("--demo", "--reset", "--image-update", "updated", "--image-report", _REPORT, *_confirm(), *dirs) == 0
+    status = Path(dirs[3])
+    started, finished = (json.loads(line) for line in (status / rules.HISTORY_FILENAME).read_text().splitlines())
+    assert started["image_update"] == "updated" and started["images"]["backend"] == {"image_id": "sha256:" + "a" * 64, "changed": True}
+    assert "image_update" not in finished, "the outcome is recorded once, at the start"
+    assert "reqtrack_demo_image_update_last_success 1" in (status / rules.METRICS_FILENAME).read_text()
+
+
+def test_a_failed_pull_is_a_metric_that_monitoring_can_alert_on_and_the_reset_still_succeeds(routed, admin_token, stand_in_seed, dirs):
+    assert _run("--demo", "--reset", "--image-update", "failed", "--image-report", _REPORT, *_confirm(), *dirs) == 0
+    text = (Path(dirs[3]) / rules.METRICS_FILENAME).read_text()
+    assert "reqtrack_demo_image_update_last_success 0" in text and "reqtrack_demo_reset_last_success 1" in text
+
+
+def test_a_run_without_a_refresh_writes_no_image_metric_or_history_keys(routed, admin_token, stand_in_seed, dirs):
+    assert _run("--demo", *_confirm(), *dirs) == 0
+    status = Path(dirs[3])
+    assert "image_update" not in (status / rules.METRICS_FILENAME).read_text()
+    assert "images" not in (status / rules.HISTORY_FILENAME).read_text()
+
+
+@pytest.mark.parametrize("outcome", ["unchanged", "updated"])
+def test_unchanged_and_updated_images_are_both_a_healthy_refresh(outcome):
+    update = rules.parse_image_update(outcome, "")
+    assert update is not None and update.succeeded and update.images == {}
+
+
+@pytest.mark.parametrize(
+    ("outcome", "report"),
+    [
+        ("rolled-back", ""),
+        ("updated", "not json"),
+        ("updated", "[]"),
+        ("updated", '{"backend": {"image_id": "latest", "changed": true}}'),
+        ("updated", '{"backend": {"image_id": "sha256:' + "a" * 64 + '", "changed": "yes"}}'),
+        ("updated", '{"Back End": {"image_id": "none", "changed": false}}'),
+        ("updated", '{"backend": "ghcr.io/x/y:latest"}'),
+    ],
+)
+def test_an_image_report_that_is_not_the_documented_shape_is_refused(outcome, report, dirs, capsys):
+    with pytest.raises(ValueError):
+        rules.parse_image_update(outcome, report)
+    assert _run("--demo", "--image-update", outcome, "--image-report", report, *dirs) == command.EXIT_REFUSED
+    assert "invalid image update" in capsys.readouterr().err

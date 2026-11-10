@@ -13,3 +13,9 @@ PATH=/usr/local/bin:/usr/bin:/bin
 
 # Restore-test every Sunday at 04:00, after the nightly backup has finished. Weekly is the default the alert expects.
 0 4 * * 0 cd /opt/reqtrackmanager && nice -n 10 ./scripts/dr-scheduled.sh restore-test >> /var/log/reqtrack/restore-test.log 2>&1
+
+# Demonstration (docs/demo.md, "Daily reset"): pull the latest published images, recreate what changed, reset and seed
+# every night at 00:00 UTC. DEMO_RESET_AT and DEMO_RESET_TZ must match the schedule (cron has no zone: use CRON_TZ where
+# supported, or the systemd timer). Use this OR the systemd timer OR the in-container demo-scheduler service.
+# Exit 75 means a run was already in progress.
+0 0 * * * cd /opt/reqtrackmanager && DEMO_RESET_AT=00:00 DEMO_RESET_TZ=UTC ./scripts/demo.sh --pull --reset >> /var/log/reqtrack/demo-reset.log 2>&1
