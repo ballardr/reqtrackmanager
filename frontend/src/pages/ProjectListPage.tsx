@@ -17,6 +17,8 @@ import type {
 import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
 import { stageBadgeText } from "../utils/stageBadge";
 import { BundleImportDialog } from "../components/BundleImportDialog";
+import { UploadsDisabledPrompt } from "../components/UploadsDisabledPrompt";
+import { uploadsDisabledInfo, type UploadsDisabledInfo } from "../utils/uploadsDisabled";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Badge } from "../components/Badge";
@@ -98,6 +100,7 @@ export function ProjectListPage() {
   const [templateProjectId, setTemplateProjectId] = useState("");
   const [newVisibility, setNewVisibility] = useState<"only_specified" | "org_wide">("only_specified");
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createFilesPrompt, setCreateFilesPrompt] = useState<UploadsDisabledInfo | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
   const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
@@ -262,7 +265,7 @@ export function ProjectListPage() {
     setStagePhaseKindFilter((current) => (current === status ? "" : status));
   }
 
-  async function createProject() {
+  async function createProject(skipFiles = false) {
     setCreateError(null);
     try {
       const project = await api.post<Project>("/api/v1/projects", {
@@ -274,6 +277,8 @@ export function ProjectListPage() {
         template_project_id: templateProjectId || null,
         // "None" is an explicit choice: without it the organisation's default template would apply.
         use_template: templateProjectId !== "",
+        // Honoured by the server only while the template's files cannot be stored (uploads disabled).
+        skip_files: skipFiles,
         visibility: newVisibility,
         parent_project_id: parentProjectId || null,
         role_inheritance_mode: roleInheritanceMode,
@@ -282,7 +287,9 @@ export function ProjectListPage() {
       showToast(strings.projects.created);
       navigate(`/projects/${project.id}`);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : strings.common.error);
+      const filesInfo = skipFiles ? null : uploadsDisabledInfo(err);
+      if (filesInfo) setCreateFilesPrompt(filesInfo);
+      else setCreateError(err instanceof Error ? err.message : strings.common.error);
     }
   }
 
@@ -291,9 +298,9 @@ export function ProjectListPage() {
    * the bundle carries its own structure and history and may come from a different organisation entirely.
    * An error is thrown to `BundleImportDialog`, which shows it.
    */
-  async function importProject(file: File) {
+  async function importProject(file: File, skipFiles: boolean) {
     const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", file, {
-      organization_id: newOrgId, name: newName, summary: newSummary,
+      organization_id: newOrgId, name: newName, summary: newSummary, ...(skipFiles ? { skip_files: "true" } : {}),
     });
     if (result.warnings.length > 0) setImportWarnings(result.warnings);
     showToast(strings.projects.created);
@@ -306,6 +313,7 @@ export function ProjectListPage() {
 
   function closeNewForm() {
     setShowNewForm(false);
+    setCreateFilesPrompt(null);
     setNewCode("");
     setParentProjectId("");
     setRoleInheritanceMode("none");
@@ -405,6 +413,9 @@ export function ProjectListPage() {
             inline block that reflows the list underneath it. */}
         {showNewForm && (
           <Modal title={strings.projects.newProject} onClose={closeNewForm} size="lg">
+            {createFilesPrompt ? (
+              <UploadsDisabledPrompt info={createFilesPrompt} onCancel={closeNewForm} onContinue={() => createProject(true)} />
+            ) : (
             <div className="stack">
               <FormGrid minColumn="18rem">
                 <ProjectIdentityFields
@@ -475,11 +486,12 @@ export function ProjectListPage() {
               <FormActions
                 error={createError}
                 onCancel={closeNewForm}
-                onSave={createProject}
+                onSave={() => createProject()}
                 saveLabel={strings.common.create}
                 saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !newCode)}
               />
             </div>
+            )}
           </Modal>
         )}
         {showImportForm && (

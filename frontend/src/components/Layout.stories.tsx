@@ -22,6 +22,7 @@ const SERVER_SETTINGS: ServerSettings = {
   email_footer_address: null,
   org_label_singular: null,
   org_label_plural: null,
+  file_uploads_enabled: true,
 };
 
 const ORG: Organization = {

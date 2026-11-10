@@ -101,7 +101,7 @@ def copy_component_tracks(
 
 def clone_project(
     db: Session, source: Project, *, name: str, summary: str, creator: User, parent_project_id: UUID | None = None,
-    code: str | None = None, report_name: str | None = None,
+    code: str | None = None, report_name: str | None = None, skip_files: bool = False,
 ) -> Project:
     """Creates a new project by copying a template project's configuration.
 
@@ -123,9 +123,15 @@ def clone_project(
             generated from `name` under the organisation's policy. The template's own code
             is never copied.
         report_name: The new project's Project report name; the template's is never copied (a name identifies one project).
+        skip_files: Copy the template without its files (report pictures, starter record attachments); honoured only
+            while files cannot be stored (`services.files.resolve_bundle_files`).
 
     Returns:
         The newly created Project.
+
+    Raises:
+        HTTPException: 403 (`uploads_disabled`) when the template has files, they cannot be stored and `skip_files`
+            is not set; nothing is committed.
     """
     new_project = Project(
         organization_id=source.organization_id, name=name, summary=summary, report_name=report_name,
@@ -289,8 +295,8 @@ def clone_project(
     # settings, tags and report setup, then each module's configuration and starter records (`template_content`).
     warnings = BundleImportWarnings()
     copy_module_enablement(db, source, new_project)
-    copy_project_setup(db, source, new_project, creator, warnings)
-    copy_module_content(db, source, new_project, creator, warnings)
+    copy_project_setup(db, source, new_project, creator, warnings, skip_files=skip_files)
+    copy_module_content(db, source, new_project, creator, warnings, skip_files=skip_files)
 
     return new_project
 

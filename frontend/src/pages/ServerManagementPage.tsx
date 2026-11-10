@@ -23,6 +23,7 @@ import { SendPasswordResetDialog } from "../components/SendPasswordResetDialog";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
+import { BRANDING_CHANGED_EVENT } from "../context/brandingEvents";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
@@ -31,7 +32,8 @@ import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
 import { PoliciesPanel } from "../components/PoliciesPanel";
 import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
-import { ColorField, TextAreaField, TextField } from "../components/FormFields";
+import { ColorField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
+import { InlineMessage } from "../components/InlineMessage";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
 import { PictureImage } from "../components/PictureImage";
@@ -878,6 +880,52 @@ function SignupModeTab() {
 }
 
 /**
+ * The deployment-wide file upload switch. Off stops new files only; existing files stay readable and deletable
+ * (`services.files.assert_uploads_allowed`). The value is read from the public branding read every page already
+ * makes, and the provider is told to read it again after a save.
+ */
+function FileUploadsTab() {
+  const { showToast } = useToast();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [saved, setSaved] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useLoadOnChange(async () => {
+    const settings = await api.get<ServerSettings>("/api/v1/system/branding");
+    setEnabled(settings.file_uploads_enabled);
+  }, []);
+
+  async function save() {
+    setError(null);
+    try {
+      await api.put("/api/v1/system/file-uploads", { file_uploads_enabled: enabled });
+      setSaved(true);
+      window.dispatchEvent(new Event(BRANDING_CHANGED_EVENT));
+      showToast(strings.fileUploads.saved);
+    } catch (err) {
+      setError(toErrorMessage(err, strings.common.error));
+    }
+  }
+
+  if (enabled === null) return <Spinner />;
+
+  return (
+    <div className="card stack">
+      <ToggleField
+        label={strings.fileUploads.enabled}
+        checked={enabled}
+        onChange={(next) => { setEnabled(next); setSaved(false); }}
+        help={strings.help.fileUploadsEnabled}
+      />
+      <InlineMessage>{error}</InlineMessage>
+      <button className="btn btn-primary" onClick={save} disabled={saved} style={{ alignSelf: "flex-start" }}>
+        {strings.common.save}
+      </button>
+    </div>
+  );
+}
+
+/**
  * The 4 resource-menu groups Server Admin's previous 4-tab bar was
  * converted into. Each key is also the route segment under
  * `/server/management/:group?` (App.tsx), so a group selection is a real
@@ -891,9 +939,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "messages" | "modules" | "reportFonts" | "policies" | "personalDataExport";
+type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "files" | "email" | "messages" | "modules" | "reportFonts" | "policies" | "personalDataExport";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "messages", "modules", "reportFonts", "policies", "personalDataExport"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "files", "email", "messages", "modules", "reportFonts", "policies", "personalDataExport"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -921,6 +969,7 @@ export function ServerManagementPage() {
     { key: "accessReview", label: strings.orgAdmin.accessReview, href: "/server/management/accessReview" },
     { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
+    { key: "files", label: strings.fileUploads.title, href: "/server/management/files" },
     { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
     { key: "messages", label: strings.announcements.heading, href: "/server/management/messages" },
     { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
@@ -940,6 +989,7 @@ export function ServerManagementPage() {
         {activeGroup === "accessReview" && <AccessReviewTab />}
         {activeGroup === "branding" && <PlatformBrandingTab />}
         {activeGroup === "signup" && <SignupModeTab />}
+        {activeGroup === "files" && <FileUploadsTab />}
         {activeGroup === "email" && <TestEmailTab />}
         {activeGroup === "messages" && (
           <CollapsibleSection sectionKey="serverManagement.messages" title={strings.announcements.heading}>

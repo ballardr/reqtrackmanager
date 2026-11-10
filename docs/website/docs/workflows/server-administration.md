@@ -23,13 +23,14 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 | Server management |
 | --- |
-| Access review, platform branding, public sign-up, email, messages, module, report font, policy and personal data settings |
+| Access review, platform branding, public sign-up, file uploads, email, messages, module, report font, policy and personal data settings |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
 - **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators. **Add user** creates a person from here (see [Adding a user](#adding-a-user)).
 - **Password help** — each person's **⋮** menu offers **Send password reset link** (emailed to them, never shown to you) and **Require new password**; **Force a credential reset…** covers everyone, one organisation or the server administrators after an incident. See [Password resets and credential recovery](./password-reset-and-credential-recovery.md), including the command-line tool for when no administrator can sign in.
 - **Platform branding** — the deployment's own logo and login-page styling, distinct from an organisation's own branding.
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
+- **File uploads** — one switch, **Allow file uploads**, that is on by default. When it is off, no new file is accepted anywhere on the deployment: record and comment attachments, evidence, profile pictures, logos and login backgrounds, shared resources and report pictures. Existing files stay readable and can still be deleted. Every upload control stays visible but unavailable, and a tooltip says that uploads are disabled on this deployment. Reports run in the background still store their output, so reporting keeps working. See [Importing when uploads are disabled](../core-features/zip-export-import.md#importing-when-uploads-are-disabled).
 - **Email** — deployment-wide outbound email configuration.
 - **Messages** — platform-wide announcements (see [below](#messages)).
 - **Policies** — the privacy policy, the data policy and any other policy the deployment publishes (see [below](#policies)).

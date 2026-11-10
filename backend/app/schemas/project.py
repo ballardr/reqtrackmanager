@@ -89,6 +89,9 @@ class ProjectCreate(BaseModel):
     #: With no `template_project_id`: `True` falls back to the organisation's default template (C-E-04), `False`
     #: creates a blank project even when a default exists ("None" in the New project form).
     use_template: bool = True
+    #: With a template whose files cannot be stored (uploads disabled): create the project without them. Ignored
+    #: while files can be stored, so the default is always to copy them.
+    skip_files: bool = False
     # The project's short code. Required when the organisation's policy is manual assignment,
     # rejected when it is automatic (`services.codes.assign_project_code`).
     code: str | None = None

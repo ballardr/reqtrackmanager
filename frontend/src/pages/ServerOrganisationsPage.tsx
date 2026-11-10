@@ -126,8 +126,10 @@ export function ServerOrganisationsPage() {
    * bundle carries its own settings, so there is nothing fresh to seed. An error is thrown to
    * `BundleImportDialog`, which shows it.
    */
-  async function importOrg(file: File) {
-    const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", file, { name: newName });
+  async function importOrg(file: File, skipFiles: boolean) {
+    const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", file, {
+      name: newName, ...(skipFiles ? { skip_files: "true" } : {}),
+    });
     if (result.warnings.length > 0) setImportWarnings(result.warnings);
     setNewName("");
     setShowImportForm(false);

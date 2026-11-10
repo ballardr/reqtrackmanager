@@ -1043,6 +1043,17 @@ const en = {
     widenConfirm: "Allow",
     loadError: "Could not load the personal data policy.",
   },
+  fileUploads: {
+    title: "File uploads",
+    enabled: "Allow file uploads",
+    saved: "The file upload setting was saved.",
+    loadError: "Could not load the file upload setting.",
+    unavailable: "File uploads are disabled on this deployment by the server administrator. Existing files remain available.",
+    cannotStore: (count: number, size: string) =>
+      `${count} ${count === 1 ? "file" : "files"} (${size}) cannot be stored because file uploads are disabled on this deployment.`,
+    cancelImport: "Cancel import",
+    importWithoutFiles: "Import without files",
+  },
   signupSettings: {
     title: "Public sign-up",
     hint: "Controls whether anyone can create their own account without an admin or invite.",
@@ -3819,6 +3830,7 @@ const en = {
     newProjectOrganization: "The organisation the new {project} belongs to. Its defaults, roles and project code policy apply. The organisation this starts on is set in Preferences.",
     newProjectNameAutoCode: "The project code is assigned automatically from the name.",
     importProjectName: "The name of the new {project}. A bundle brings its own structure, so no template applies.",
+    fileUploadsEnabled: "Allows people to attach and upload files: record and comment attachments, evidence, profile pictures, logos and report pictures.\nWhen disabled, no new file is accepted. Existing files remain readable and can be deleted, and an import can proceed without the files in its bundle.\nGenerated report outputs are still stored.",
     importProjectBundle: "A .zip file produced by the {project} export. Its structure, records and history are recreated in the organisation chosen here.",
     importOrganizationName: (org: string) => `The name of the new ${org}. When left blank, the name stored in the bundle is used.`,
     importOrganizationBundle: (org: string) => `A .zip file produced by the ${org} export. Its settings, members and projects are recreated as a new ${org}; no starter content is added.`,

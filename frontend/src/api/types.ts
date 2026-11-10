@@ -553,7 +553,12 @@ export interface ServerSettings {
   email_footer_address: string | null;
   org_label_singular: string | null;
   org_label_plural: string | null;
+  /** Whether the deployment accepts new user files (the deployment-wide switch). */
+  file_uploads_enabled: boolean;
 }
+
+/** The `code` of the 403 a refused upload or file-carrying import returns. */
+export const UPLOADS_DISABLED_CODE = "uploads_disabled";
 
 export type SignupMode = "disabled" | "always_on" | "org_specified";
 

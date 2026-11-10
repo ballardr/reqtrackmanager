@@ -342,6 +342,58 @@ def test_a_failed_seed_leaves_nothing_half_made_and_says_so(routed, admin_token,
     assert "reqtrack_demo_reset_last_success 0" in (Path(dirs[3]) / rules.METRICS_FILENAME).read_text()
 
 
+@pytest.fixture
+def uploads_restored(client, admin_token):
+    """Switches file uploads back on after a test that leaves the demonstration's setting behind."""
+    yield
+    client.put("/api/v1/system/file-uploads", json={"file_uploads_enabled": True}, headers=auth_headers(admin_token))
+
+
+def _uploads_enabled(client) -> bool:
+    return client.get("/api/v1/system/branding").json()["file_uploads_enabled"]
+
+
+def test_the_demonstration_disables_file_uploads_but_the_seed_can_store_files(
+    routed, admin_token, stand_in_seed, dirs, uploads_restored, monkeypatch,
+):
+    seen: list[bool] = []
+    original = seed.main
+
+    def seed_that_checks():
+        seen.append(_uploads_enabled(routed))
+        original()
+
+    monkeypatch.setattr(seed, "main", seed_that_checks)
+    assert _run("--demo", *_confirm(), *dirs) == 0
+    assert seen == [True], "the seed stores pictures, so uploads are on while it runs"
+    assert _uploads_enabled(routed) is False
+    assert _run("--demo", *_confirm(), *dirs) == 0, "a second run changes nothing"
+    assert _uploads_enabled(routed) is False
+    assert _run("--demo", "--reset", *_confirm(), *dirs) == 0
+    assert seen == [True, True] and _uploads_enabled(routed) is False
+
+
+def test_allow_uploads_keeps_them_enabled(routed, admin_token, stand_in_seed, dirs, uploads_restored):
+    assert _run("--demo", "--allow-uploads", *_confirm(), *dirs) == 0
+    assert _uploads_enabled(routed) is True
+
+
+def test_a_failed_seed_does_not_leave_uploads_enabled(routed, admin_token, stand_in_seed, dirs, uploads_restored):
+    def failing_seed():
+        raise httpx.ConnectError("seed failed")
+
+    seed.main = failing_seed
+    assert _run("--demo", *_confirm(), *dirs) == command.EXIT_FAILED
+    assert _uploads_enabled(routed) is False
+
+
+def test_teardown_restores_the_default(routed, admin_token, stand_in_seed, dirs, uploads_restored):
+    assert _run("--demo", *_confirm(), *dirs) == 0
+    assert _uploads_enabled(routed) is False
+    assert _run("--demo", "--teardown", *_confirm(), *dirs) == 0
+    assert _uploads_enabled(routed) is True
+
+
 def test_overlapping_runs_are_refused(routed, stand_in_seed, dirs):
     with rules.reset_lock(Path(dirs[1])):
         assert _run("--demo", *_confirm(), *dirs) == command.EXIT_BUSY

@@ -23,6 +23,7 @@ const SERVER_SETTINGS: ServerSettings = {
   email_footer_company_name: "ReqTrackManager", email_footer_website: "https://reqtrackmanager.example.com",
   email_footer_address: "1 Example Street\nExample City, EX1 1AA",
   org_label_singular: null, org_label_plural: null,
+  file_uploads_enabled: true,
 };
 
 const SIGNUP_CONFIG: SignupConfig = { signup_mode: "disabled", self_signup_organizations: [] };
@@ -423,6 +424,24 @@ export const SignupModeTab: Story = {
     await waitFor(() => expect(canvas.getByLabelText("Sign-up mode")).toBeInTheDocument());
     await userEvent.selectOptions(canvas.getByLabelText("Sign-up mode"), "org_specified");
     await expect(canvas.getByText(/Organisations opt in/)).toBeInTheDocument();
+  },
+};
+
+/** The deployment-wide file upload switch: turning it off and saving sends the setting and tells the provider to read it again. */
+export const FileUploadsSwitch: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([]);
+    spyOn(api, "put").mockResolvedValue({ file_uploads_enabled: false });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "File uploads" }));
+    const toggle = await canvas.findByRole("switch", { name: "Allow file uploads" });
+    await expect(toggle).toBeChecked();
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.click(toggle);
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/system/file-uploads", { file_uploads_enabled: false }));
   },
 };
 

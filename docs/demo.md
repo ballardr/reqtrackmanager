@@ -44,6 +44,7 @@ Each option defaults from the environment variable shown.
 | `--reset` | | Remove the demonstration organisation, then seed. |
 | `--teardown` | | Remove the demonstration organisation and messages; seed nothing. |
 | `--rotate-passwords` | `DEMO_ROTATE_PASSWORDS=1` | A new random password on every run. |
+| `--allow-uploads` | `DEMO_ALLOW_UPLOADS=1` | Keep file uploads enabled (by default the demonstration disables them). |
 | `--no-login-message` | `DEMO_NO_LOGIN_MESSAGE=1` | Do not publish the sign-in details (distribute them another way). |
 | `--confirm-database NAME` | `DEMO_CONFIRM_DATABASE` | Repeat the database name to run beside organisations this command did not create. |
 | `--api-base URL` | `DEMO_API_BASE` | API address (default `http://localhost:8000/api/v1`). |
@@ -60,7 +61,7 @@ Each option defaults from the environment variable shown.
 | `DEMO_ADMIN_EMAIL`, `DEMO_ADMIN_PASSWORD` | `seed_demo_data.py` | The server administrator the seed signs in as (default `admin@example.com` / `ChangeMe123!`, the stack's bootstrap account). |
 | `DEMO_PASSWORD` | `seed_demo_data.py` | The shared demonstration password when run on its own (default `DemoDemo123!`). |
 | `DEMO_CLARITY_PROJECT_ID` | Compose (`frontend`) | Becomes `CLARITY_PROJECT_ID` in the frontend; empty loads nothing. |
-| `DEMO_RESET_AT`, `DEMO_RESET_TZ`, `DEMO_ROTATE_PASSWORDS`, `DEMO_CONFIRM_DATABASE` | Compose (`demo-scheduler`) | Passed to the scheduler (defaults `00:00`, `UTC`, off, empty). |
+| `DEMO_RESET_AT`, `DEMO_RESET_TZ`, `DEMO_ROTATE_PASSWORDS`, `DEMO_ALLOW_UPLOADS`, `DEMO_CONFIRM_DATABASE` | Compose (`demo-scheduler`) | Passed to the scheduler (defaults `00:00`, `UTC`, off, off, empty). |
 
 Exit status: `0` done, `1` failed, `2` refused or invalid options, `75` another run holds the lock.
 
@@ -71,13 +72,16 @@ flowchart TD
     A["demo_setup.py --demo"] --> B{"Guards: flag, mail catcher,<br/>only demonstration organisations?"}
     B -- no --> X["Refuse, exit 2"]
     B -- yes --> C["--reset: delete Solstice Robotics"]
-    C --> D["Seed through the API"]
-    D --> E{"Every listed account<br/>holds demonstration data only?"}
+    C --> D["Enable uploads, seed through the API"]
+    D --> U["Disable file uploads"]
+    U --> E{"Every listed account<br/>holds demonstration data only?"}
     E -- no --> X
     E -- yes --> F["Replace the sign-in details message<br/>(and the reset warning)"]
 ```
 
 Everything is created through the real HTTP API (`seed_demo_data.py`, which also seeds the repository project and the example templates), so validation, versioning and audit apply as for a person. Loading the repository project's decisions takes several minutes.
+
+**File uploads are disabled** once the seed has finished, because anyone can sign in to a demonstration and it must not host files they upload (malware, for example). Uploads are on only while the seed stores its own pictures and attachments, and a failed seed disables them again. Existing files stay readable. `--teardown` restores the default (uploads enabled). The setting is the deployment-wide one in Server Management → **File uploads**.
 
 ## Guards
 

@@ -300,6 +300,7 @@ def create_project(
         project = clone_project(
             db, template, name=payload.name, summary=payload.summary, creator=current_user,
             parent_project_id=payload.parent_project_id, code=project_code, report_name=payload.report_name,
+            skip_files=payload.skip_files,
         )
         db.flush()
         _ensure_project_has_a_manager(db, project, current_user.id)
@@ -388,7 +389,7 @@ def create_project(
 async def import_project(
     request: Request,
     organization_id: UUID = Form(...), name: str = Form(...), summary: str | None = Form(None),
-    file: UploadFile = File(...),
+    file: UploadFile = File(...), skip_files: bool = Form(False),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     """Creates a brand-new project in `organization_id` from an uploaded
@@ -401,6 +402,9 @@ async def import_project(
     is what makes cross-organisation import safe: the bundle itself carries
     no ids or org references, only names/prefixes/emails resolved fresh
     against whatever org the caller is authorized to create in.
+
+    The bundle's files are imported whenever they can be stored. While uploads are disabled the call is refused
+    (403 `uploads_disabled`, with the file count and size) unless `skip_files` is set, which imports without them.
 
     Registered before `GET /{project_id}` so the static "/import" path
     isn't swallowed by that dynamic route.
@@ -415,7 +419,8 @@ async def import_project(
     # each scope's tag list is read once, not once per record.
     with memoize_user_lookups(), tag_service.reuse_offered_tags():
         project, warnings = import_project_bundle(
-            db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes, current_user=current_user
+            db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes,
+            current_user=current_user, skip_files=skip_files,
         )
     return ProjectImportResult(project=ProjectOut.model_validate(project), warnings=warnings)
 

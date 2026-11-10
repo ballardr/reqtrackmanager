@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { Organization, Project, ServerSettings } from "../api/types";
 import { t } from "../i18n/strings";
 import { contrastTextHex, ensureContrast } from "../utils/color";
+import { BRANDING_CHANGED_EVENT } from "./brandingEvents";
 import { resolveEffectiveTheme, useTheme } from "./ThemeContext";
 
 const strings = t();
@@ -20,6 +21,8 @@ export interface Branding {
   accentColorHex: string;
   orgLabel: string;
   orgLabelPlural: string;
+  /** Whether new user files may be stored; false disables every upload control. */
+  fileUploadsEnabled: boolean;
 }
 
 const DEFAULT_ORG_LABEL = "organisation";
@@ -32,6 +35,7 @@ const DEFAULT_BRANDING: Branding = {
   accentColorHex: DEFAULT_ACCENT_HEX,
   orgLabel: DEFAULT_ORG_LABEL,
   orgLabelPlural: DEFAULT_ORG_LABEL_PLURAL,
+  fileUploadsEnabled: true,
 };
 
 const BrandingContext = createContext<Branding>(DEFAULT_BRANDING);
@@ -47,6 +51,7 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
     // just carried through from the platform default unchanged.
     orgLabel: serverDefault.orgLabel,
     orgLabelPlural: serverDefault.orgLabelPlural,
+    fileUploadsEnabled: serverDefault.fileUploadsEnabled,
   };
 }
 
@@ -74,7 +79,14 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
  */
 export function BrandingProvider({ projectId, children }: { projectId: string | null; children: ReactNode }) {
   const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
+  const [version, setVersion] = useState(0);
   const { theme } = useTheme();
+
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    window.addEventListener(BRANDING_CHANGED_EVENT, bump);
+    return () => window.removeEventListener(BRANDING_CHANGED_EVENT, bump);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +99,7 @@ export function BrandingProvider({ projectId, children }: { projectId: string | 
         accentColorHex: serverSettings.accent_color_hex,
         orgLabel: serverSettings.org_label_singular || DEFAULT_ORG_LABEL,
         orgLabelPlural: serverSettings.org_label_plural || DEFAULT_ORG_LABEL_PLURAL,
+        fileUploadsEnabled: serverSettings.file_uploads_enabled !== false,
       };
 
       if (projectId) {
@@ -103,7 +116,7 @@ export function BrandingProvider({ projectId, children }: { projectId: string | 
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, version]);
 
   useEffect(() => {
     const effectiveTheme = resolveEffectiveTheme(theme);
@@ -142,4 +155,10 @@ export function useOrgLabelCapitalized(): string {
  * if no override is set. */
 export function useOrgLabelPlural(): string {
   return useContext(BrandingContext).orgLabelPlural;
+}
+
+/** Whether new user files may be stored on this deployment (the server administrator's upload switch); every
+ * upload control reads this and renders unavailable, with the reason, when it is false. */
+export function useFileUploadsEnabled(): boolean {
+  return useContext(BrandingContext).fileUploadsEnabled;
 }

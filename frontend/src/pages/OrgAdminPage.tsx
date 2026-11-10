@@ -1,6 +1,8 @@
 import { useMutation } from "../hooks/useMutation";
 import { usePlatformBranding } from "../hooks/usePlatformBranding";
 import { ImportWarnings } from "../components/ImportWarnings";
+import { UploadsDisabledPrompt } from "../components/UploadsDisabledPrompt";
+import { uploadsDisabledInfo, type UploadsDisabledInfo } from "../utils/uploadsDisabled";
 import { Download, Eye, KeyRound, Lock, Pencil, Plus, Send, Trash2, Unlock, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
@@ -2033,6 +2035,7 @@ export function OrgAdminPage() {
   const [importMergePreviewing, setImportMergePreviewing] = useState(false);
   const [importMergeSubmitting, setImportMergeSubmitting] = useState(false);
   const [importMergeError, setImportMergeError] = useState<string | null>(null);
+  const [importMergeFilesPrompt, setImportMergeFilesPrompt] = useState<UploadsDisabledInfo | null>(null);
   const [importMergeResult, setImportMergeResult] = useState<OrgMergeResult | null>(null);
 
   async function previewImportMerge() {
@@ -2051,27 +2054,31 @@ export function OrgAdminPage() {
     }
   }
 
-  async function confirmImportMerge() {
+  async function confirmImportMerge(skipFiles = false) {
     if (!orgId || !importMergeFile) return;
     setImportMergeError(null);
     setImportMergeSubmitting(true);
     try {
       const result = await api.postFile<OrgMergeResult>(`/api/v1/orgs/${orgId}/import/merge`, importMergeFile, {
-        resolutions: JSON.stringify(importMergeResolutions),
+        resolutions: JSON.stringify(importMergeResolutions), ...(skipFiles ? { skip_files: "true" } : {}),
       });
+      setImportMergeFilesPrompt(null);
       setImportMergeResult(result);
       setImportMergeFile(null);
       setImportMergeConflicts(null);
       setImportMergeResolutions({});
       reload();
     } catch (err) {
-      setImportMergeError(err instanceof ApiError ? err.message : "Something went wrong.");
+      const filesInfo = skipFiles ? null : uploadsDisabledInfo(err);
+      if (filesInfo) setImportMergeFilesPrompt(filesInfo);
+      else setImportMergeError(err instanceof ApiError ? err.message : "Something went wrong.");
     } finally {
       setImportMergeSubmitting(false);
     }
   }
 
   function cancelImportMerge() {
+    setImportMergeFilesPrompt(null);
     setImportMergeFile(null);
     setImportMergeConflicts(null);
     setImportMergeResolutions({});
@@ -2562,7 +2569,13 @@ export function OrgAdminPage() {
                   </button>
                 </div>
               )}
-              {importMergeConflicts && !importMergeResult && (
+              {importMergeConflicts && !importMergeResult && importMergeFilesPrompt && (
+                <UploadsDisabledPrompt
+                  info={importMergeFilesPrompt} onCancel={cancelImportMerge} onContinue={() => confirmImportMerge(true)}
+                  busy={importMergeSubmitting}
+                />
+              )}
+              {importMergeConflicts && !importMergeResult && !importMergeFilesPrompt && (
                 <div className="stack">
                   {importMergeConflicts.length === 0 ? (
                     <p>{strings.importMerge.noConflicts}</p>
@@ -2575,7 +2588,7 @@ export function OrgAdminPage() {
                   )}
                   <div className="row">
                     <button
-                      className="btn btn-primary" onClick={confirmImportMerge} disabled={importMergeSubmitting}
+                      className="btn btn-primary" onClick={() => confirmImportMerge()} disabled={importMergeSubmitting}
                     >
                       {importMergeSubmitting ? strings.importMerge.importing : strings.importMerge.confirmImport}
                     </button>

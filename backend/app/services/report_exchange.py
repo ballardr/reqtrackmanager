@@ -75,7 +75,7 @@ from app.services import (
 )
 from app.services.audit import log_event
 from app.services.bundle_common import BundleImportWarnings, new_bundle_file, write_json_entry
-from app.services.files import read_file, upload_file
+from app.services.files import read_file, upload_file, uploads_allowed
 from app.services.report_copy import free_name, layout_warnings
 from app.services.report_file_names import clean_filename
 from app.services.report_images import SVG_TYPE, image_nodes, max_image_bytes, sniff_image
@@ -507,9 +507,12 @@ def _store_pictures(
     """Stores the wanted pictures in the tier's library and returns `{old file id: new file id}`.
 
     Each is re-sniffed from its bytes (the declared type is ignored) and an SVG is re-sanitised. One that fails is reported
-    and left unmapped. An organisation picture the importing organisation already has maps to itself.
+    and left unmapped. An organisation picture the importing organisation already has maps to itself. While file
+    uploads are disabled a picture cannot be stored: it is reported in the preview and left unmapped, so the person
+    sees the loss before applying.
     """
     mapping: dict[str, str] = {}
+    can_store = uploads_allowed(db, organization_id)
     for entry in parsed.images:
         old = str(entry.get("id", ""))
         if old not in wanted:
@@ -525,6 +528,9 @@ def _store_pictures(
         data = parsed.pictures.get(str(entry.get("file_ref", "")))
         if data is None:
             warnings.add(f'Picture "{filename}" has no file in the report file.')
+            continue
+        if not can_store:
+            warnings.add(f'Picture "{filename}" was not imported because file uploads are disabled.')
             continue
         try:
             content_type = sniff_image(data)

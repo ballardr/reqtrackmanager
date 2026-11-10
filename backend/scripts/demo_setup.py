@@ -7,6 +7,8 @@ Responsibilities:
 - Seed every demonstration project through the real HTTP API (`seed_demo_data`, which also seeds the repository
   project and the example templates), so validation, versioning and audit apply as for a person.
 - Remove the demonstration organisation on `--reset` and `--teardown` through the organisation deletion route.
+- Disable file uploads for the deployment once the demonstration is seeded (the public can sign in, so the demo must
+  not host files they upload); uploads are switched on only while the seed itself stores its pictures.
 - Post the server-wide sign-in details message (and a warning for the hour before a scheduled reset) through the
   server administration messages API, replacing its own earlier messages.
 - Run the daily reset (`schedule`), applying the same guards on every run.
@@ -20,6 +22,9 @@ Design decisions:
   0600) so the next run can sign in and change it, because accounts outlive the organisation's removal.
 - The password appears only in the sign-in details message and the state file: never in a log line, an audit
   event or a notification (the message is never sent as a notification).
+- Uploads are disabled through the real server setting (`PUT /system/file-uploads`), after the seed and also on a
+  failed seed, so an interrupted run never leaves them on. `--allow-uploads` keeps them on; `--teardown` restores the
+  default (on), because the stack is no longer a demonstration.
 - A failed seed removes the partly seeded organisation (accounts and names are unique, so the previous data
   cannot be kept alongside it), says so, writes the failure metric and exits non-zero.
 - The reset is not an in-application job: a wipe inside the backend of a deployment that had the flag set by
@@ -168,6 +173,20 @@ def remove_own_messages(admin: dict) -> int:
     return removed
 
 
+def set_file_uploads(admin: dict, enabled: bool) -> None:
+    """Sets the deployment-wide file upload switch through the server administration API.
+
+    Args:
+        admin: Server administrator headers.
+        enabled: True to allow new files, False to disable uploads.
+
+    Raises:
+        httpx.HTTPStatusError: When the API refuses the change.
+    """
+    api("PUT", "/system/file-uploads", admin, json={"file_uploads_enabled": enabled}).raise_for_status()
+    log(f"file uploads {'enabled' if enabled else 'disabled'}")
+
+
 def rotate_accounts(admin: dict, state_dir: Path) -> str:
     """Chooses a new random password and changes it on every demonstration account that already exists.
 
@@ -304,6 +323,7 @@ def _locked_run(args: argparse.Namespace, schedule: Schedule | None, state_dir: 
         if args.reset or args.teardown:
             log(f"removed {remove_demo_organisations(admin)} demonstration organisation(s) and {remove_own_messages(admin)} message(s)")
             if args.teardown:
+                set_file_uploads(admin, True)
                 rules.write_reset_metrics(status_dir, succeeded=True, finished=datetime.now(UTC), next_reset=None)
                 return 0
         password = rotate_accounts(admin, state_dir) if args.rotate_passwords else rules.DEFAULT_PASSWORD
@@ -312,8 +332,10 @@ def _locked_run(args: argparse.Namespace, schedule: Schedule | None, state_dir: 
             log("the demonstration data is already present; use --reset to start again")
         else:
             seeding = True
+            set_file_uploads(admin, True)  # the seed stores pictures and attachments
             base.main()
             seeding = False
+        set_file_uploads(admin, args.allow_uploads)
         if not args.no_login_message:
             verify_demo_accounts_only(password)
             post_messages(admin, password, schedule, datetime.now(UTC))
@@ -321,16 +343,18 @@ def _locked_run(args: argparse.Namespace, schedule: Schedule | None, state_dir: 
         return 0
     except rules.DemoGuardError as exc:
         print(f"demo: {exc}", file=sys.stderr, flush=True)
-        _fail(admin, status_dir, next_reset, remove_partial=seeding)
+        _fail(admin, status_dir, next_reset, remove_partial=seeding, allow_uploads=args.allow_uploads)
         return EXIT_REFUSED
     except (httpx.HTTPError, rules.MessageTooLongError, OSError, StopIteration) as exc:
         reason = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else exc
         print(f"demo: failed ({type(exc).__name__}): {reason}", file=sys.stderr, flush=True)
-        _fail(admin, status_dir, next_reset, remove_partial=seeding)
+        _fail(admin, status_dir, next_reset, remove_partial=seeding, allow_uploads=args.allow_uploads)
         return EXIT_FAILED
 
 
-def _fail(admin: dict, status_dir: Path, next_reset: datetime | None, *, remove_partial: bool) -> None:
+def _fail(
+    admin: dict, status_dir: Path, next_reset: datetime | None, *, remove_partial: bool, allow_uploads: bool = False,
+) -> None:
     """Records the failure and, when the seed had started, removes the partly seeded demonstration.
 
     Accounts and names are unique, so the previous data cannot be kept beside a second copy; the log says so.
@@ -339,9 +363,15 @@ def _fail(admin: dict, status_dir: Path, next_reset: datetime | None, *, remove_
         admin: Server administrator headers.
         status_dir: Where the metrics file is written.
         next_reset: The next scheduled reset, if any.
+        allow_uploads: True when the run keeps file uploads enabled; otherwise they are disabled first.
         remove_partial: True when the seed had started, so a half-seeded organisation exists to remove; a failure
             before it (a password change, the guards) leaves existing data untouched.
     """
+    if not allow_uploads:
+        try:
+            set_file_uploads(admin, False)
+        except (httpx.HTTPError, OSError) as exc:
+            log(f"could not disable file uploads after the failure ({type(exc).__name__}); disable them in Server Management")
     if remove_partial:
         try:
             removed = remove_demo_organisations(admin)
@@ -396,6 +426,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-login-message", action="store_true", default=env_flag("DEMO_NO_LOGIN_MESSAGE"),
         help="do not publish the sign-in details (DEMO_NO_LOGIN_MESSAGE=1)",
+    )
+    parser.add_argument(
+        "--allow-uploads", action="store_true", default=env_flag("DEMO_ALLOW_UPLOADS"),
+        help="keep file uploads enabled; by default the demonstration disables them (DEMO_ALLOW_UPLOADS=1)",
     )
     parser.add_argument(
         "--confirm-database", default=os.environ.get("DEMO_CONFIRM_DATABASE") or None,

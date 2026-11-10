@@ -42,7 +42,7 @@ from app.modules.registry import (
     resolve_org_subcomponent_state,
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver
-from app.services.files import read_file
+from app.services.files import read_file, resolve_bundle_files
 from app.services.report_folder_bundle import export_project_folders, import_project_folders
 from app.services.report_layout_bundle import export_project_layouts, import_project_layouts
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
@@ -93,7 +93,10 @@ def copy_module_enablement(db: Session, source: Project, new_project: Project) -
     db.flush()
 
 
-def copy_project_setup(db: Session, source: Project, new_project: Project, creator: User, warnings: BundleImportWarnings) -> None:
+def copy_project_setup(
+    db: Session, source: Project, new_project: Project, creator: User, warnings: BundleImportWarnings,
+    skip_files: bool = False,
+) -> None:
     """Copies plain settings, the tag vocabulary and report setup from the template.
 
     Args:
@@ -102,6 +105,11 @@ def copy_project_setup(db: Session, source: Project, new_project: Project, creat
         new_project: The new project (already flushed).
         creator: The user creating the project (recorded as the actor of the copied rows).
         warnings: Collects anything that could not be copied.
+        skip_files: Copy without the template's files; honoured only while files cannot be stored.
+
+    Raises:
+        HTTPException: 403 (`uploads_disabled`) when the template has files, they cannot be stored and `skip_files`
+            is not set.
     """
     new_project.review_reminder_lead_days_default = source.review_reminder_lead_days_default
     import_vocabulary(db, new_project, export_vocabulary(db, source), creator.id)
@@ -113,6 +121,7 @@ def copy_project_setup(db: Session, source: Project, new_project: Project, creat
         **export_project_folders(db, source),
     }
     file_bytes = {f"{a.id}_{a.filename}": read_file(a) for a in assets.values()}
+    file_bytes = resolve_bundle_files(db, new_project.organization_id, file_bytes, skip_files=skip_files, warn=warnings.add)
     import_project_layouts(db, new_project, data, creator, warnings, file_bytes)
     import_project_packs(db, new_project, data, creator, warnings)
     import_project_snippets(db, new_project, data, creator, warnings, file_bytes)
@@ -123,6 +132,7 @@ def copy_project_setup(db: Session, source: Project, new_project: Project, creat
 
 def copy_module_content(
     db: Session, source: Project, new_project: Project, creator: User, warnings: BundleImportWarnings,
+    skip_files: bool = False,
 ) -> None:
     """Copies every module's configuration and starter records from the template into the new project.
 
@@ -136,6 +146,11 @@ def copy_module_content(
         new_project: The new project, with its components, categories and tag vocabulary already copied.
         creator: The user creating the project; owns every copied record whose original creator is dropped.
         warnings: Collects anything that could not be matched (a group, a persona, a link end).
+        skip_files: Copy without the template's files; honoured only while files cannot be stored.
+
+    Raises:
+        HTTPException: 403 (`uploads_disabled`) when the template has files, they cannot be stored and `skip_files`
+            is not set.
     """
     users = UserResolver(db, creator, warnings)
     prepared = []
@@ -153,6 +168,7 @@ def copy_module_content(
         assets.update(exported_assets)
         prepared.append((hooks, data))
     file_bytes = {f"{a.id}_{a.filename}": read_file(a) for a in assets.values() if f"{a.id}_{a.filename}" in refs}
+    file_bytes = resolve_bundle_files(db, new_project.organization_id, file_bytes, skip_files=skip_files, warn=warnings.add)
     for hooks, data in prepared:
         hooks.import_(db, new_project, data, file_bytes, creator, users, warnings)
     for hooks, data in prepared:

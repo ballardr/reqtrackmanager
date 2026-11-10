@@ -49,6 +49,10 @@ Beside the name of a picture (JPEG, PNG, GIF, WebP or SVG) in any file list, an 
 
 Beyond per-item attachments, an organisation admin can upload **shared resources** (**Organisation admin → Shared resources**) — files that aren't specific to one requirement or change request, such as a standards document or a reference spec. A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report — see [Reports and export](./reports-and-export.md).
 
+## When uploads are disabled
+
+A server administrator can disable file uploads for the whole deployment (see [Server administration](../workflows/server-administration.md#server-management)). Every upload control then stays visible but unavailable, with a tooltip saying that uploads are disabled on this deployment. Files already attached stay readable and can still be deleted.
+
 ## Where this fits
 
 See [Workflows → Files, comments, and history](../workflows/files-comments-and-history.md) for the end-to-end task walkthrough.

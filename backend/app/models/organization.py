@@ -380,6 +380,9 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
             entitlement (`ModuleEntitlementPolicy`; see its docstring in
             `models/enums.py`), used by the entitlement resolution
             when an organisation has no explicit override row.
+        file_uploads_enabled: Whether the deployment accepts new user files
+            at all (`services/files.py::assert_uploads_allowed`). Off stops
+            new files only; existing files stay readable and deletable.
     """
 
     __tablename__ = "server_settings"
@@ -414,6 +417,7 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     default_module_entitlement_policy: Mapped[ModuleEntitlementPolicy] = mapped_column(
         str_enum(ModuleEntitlementPolicy), default=ModuleEntitlementPolicy.OPEN
     )
+    file_uploads_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
 
 class PendingInvite(UUIDPKMixin, TimestampMixin, Base):

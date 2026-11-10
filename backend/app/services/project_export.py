@@ -122,7 +122,7 @@ from app.services.bundle_common import (
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
 from app.services.definitions import get_default_project_status_id
-from app.services.files import read_file
+from app.services.files import read_file, resolve_bundle_files
 from app.services.link_type_scope import resolve_link_type_scope
 from app.services.lookups import get_or_404
 from app.services.placements import prime_record_placements, record_placements, restore_record_placements
@@ -1076,19 +1076,31 @@ def apply_project_data(
 
 def import_project_bundle(
     db: Session, *, organization_id: UUID, name: str, summary: str | None, zip_bytes: bytes, current_user: User,
+    skip_files: bool = False,
 ) -> tuple[Project, list[str]]:
     """Creates a brand-new project in `organization_id` from an exported
     project bundle. Never merges into an existing project — a fresh project
     keeps unique_code/prefix collisions and partial-import states impossible.
 
+    Args:
+        skip_files: Import without the bundle's files; honoured only while files cannot be stored
+            (`services.files.resolve_bundle_files`).
+
     Returns:
         The new Project and a list of human-readable import warnings (e.g.
         user references that fell back to `current_user`).
+
+    Raises:
+        HTTPException: 403 (`uploads_disabled`) when the bundle has files, they cannot be stored and `skip_files`
+            is not set; nothing is written.
     """
     _manifest, data, zf = _read_bundle(zip_bytes, PROJECT_BUNDLE_KIND)
     file_bytes_by_ref = {n.removeprefix("files/"): zf.read(n) for n in zf.namelist() if n.startswith("files/")}
 
     warnings = BundleImportWarnings()
+    file_bytes_by_ref = resolve_bundle_files(
+        db, organization_id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
+    )
     users = UserResolver(db, current_user, warnings)
     project = new_project_from_bundle_data(db, organization_id, name, summary, data)
     db.add(project)

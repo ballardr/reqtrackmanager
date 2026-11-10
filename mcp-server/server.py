@@ -331,13 +331,19 @@ def _detail(response: httpx.Response) -> str:
     string when present, falling back to the raw response text otherwise —
     used so a validation/conflict error (e.g. "this requirement is approved;
     changes must be made via a change request") reaches the AI assistant as
-    a clean sentence rather than a raw JSON blob."""
+    a clean sentence rather than a raw JSON blob. A structured detail (`{"code", "message"}`, such as
+    `uploads_disabled` when the deployment has disabled file uploads) is returned as its message followed by its
+    code, so the assistant can tell the user why and stop retrying."""
     try:
         body = response.json()
     except ValueError:
         return response.text
     if isinstance(body, dict) and isinstance(body.get("detail"), str):
         return body["detail"]
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict) and isinstance(detail.get("message"), str):
+        code = detail.get("code")
+        return f"{detail['message']} ({code})" if isinstance(code, str) else detail["message"]
     return response.text
 
 

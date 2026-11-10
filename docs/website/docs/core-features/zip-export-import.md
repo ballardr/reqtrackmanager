@@ -54,6 +54,26 @@ Project-level **group membership** is deliberately excluded — only group struc
 
 **Import**: from **Organisation admin → Import into this organisation**, choose a previously exported zip file to stand up a new project (or, for an organisation-level bundle, a new organisation) from it.
 
+### Importing when uploads are disabled
+
+A bundle's files are imported whenever they can be stored. When the server administrator has [disabled file uploads](../workflows/server-administration.md#server-management) and the bundle carries files, the import stops before anything is written and says how many files (and how much data) cannot be stored. The dialog then offers exactly two actions:
+
+- **Cancel import** — nothing is created.
+- **Import without files** — every record, link, tag and field is created, but no file attachment is. Merging into an organisation and creating a project from a template that carries files follow the same rule. A bundle with no files imports as usual.
+
+```mermaid
+flowchart TD
+    A[Import] --> B{Bundle has files?}
+    B -- No --> D[Records created]
+    B -- Yes --> C{Uploads allowed?}
+    C -- Yes --> E[Records and files created]
+    C -- No --> F{Person chooses}
+    F -- Cancel import --> G[Nothing created]
+    F -- Import without files --> H[Records created, files left out]
+```
+
+A report file imported with its pictures lists, in its preview, each picture that cannot be stored.
+
 ## Where this fits
 
 See [Enterprise & Security → Encryption and secrets handling](../enterprise-security/encryption-and-secrets-handling.md) for the classification reasoning behind why secrets are never included in an export bundle, and [Project templates](./project-templates.md) for the other, template-based way to seed a new project's structure without history.

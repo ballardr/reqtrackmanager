@@ -27,6 +27,14 @@ class ServerSettingsOut(BaseModel):
     email_footer_address: str | None = None
     org_label_singular: str | None = None
     org_label_plural: str | None = None
+    #: Whether the deployment accepts new user files; read by every upload control.
+    file_uploads_enabled: bool = True
+
+
+class FileUploadsConfig(BaseModel):
+    """The deployment-wide file upload switch (`PUT /system/file-uploads`)."""
+
+    file_uploads_enabled: bool
 
 
 class ServerSettingsUpdate(BaseModel):

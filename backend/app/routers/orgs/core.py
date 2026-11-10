@@ -111,7 +111,7 @@ def create_organization(
 
 @router.post("/import", response_model=OrgImportResult, status_code=status.HTTP_201_CREATED)
 async def import_organization(
-    name: str | None = Form(None), file: UploadFile = File(...),
+    name: str | None = Form(None), file: UploadFile = File(...), skip_files: bool = Form(False),
     current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
 ):
     """Creates a brand-new organisation from an uploaded organisation export
@@ -128,9 +128,14 @@ async def import_organization(
     doesn't need static-route-ordering protection like `/import` in
     `routers/projects.py` does, since no bare `POST /{organization_id}`
     route exists here to collide with.
+
+    The bundle's files are imported whenever they can be stored. While uploads are disabled the call is refused
+    (403 `uploads_disabled`, with the file count and size) unless `skip_files` is set, which imports without them.
     """
     zip_bytes = await file.read()
-    org, warnings = import_org_bundle(db, name=name, zip_bytes=zip_bytes, current_user=current_user)
+    org, warnings = import_org_bundle(
+        db, name=name, zip_bytes=zip_bytes, current_user=current_user, skip_files=skip_files,
+    )
     return OrgImportResult(organization=OrganizationOut.model_validate(org), warnings=warnings)
 
 
@@ -197,7 +202,7 @@ async def preview_organization_merge(
 
 @router.post("/{organization_id}/import/merge", response_model=OrgMergeResult)
 async def merge_organization_bundle(
-    organization_id: UUID, file: UploadFile = File(...), resolutions: str = Form("{}"),
+    organization_id: UUID, file: UploadFile = File(...), resolutions: str = Form("{}"), skip_files: bool = Form(False),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
     """Merges an uploaded organisation export bundle's users, groups,
@@ -209,7 +214,7 @@ async def merge_organization_bundle(
     `merge_org_bundle`'s docstrings for the exact id/value shapes.
 
     Same `ORG_ADMIN`-only, no-server-admin-bypass authorization as
-    `preview_organization_merge` above.
+    `preview_organization_merge` above. Files follow the same rule as `POST /import` (`skip_files`).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -223,6 +228,7 @@ async def merge_organization_bundle(
     zip_bytes = await file.read()
     warnings, summary = merge_org_bundle(
         db, target_org=org, zip_bytes=zip_bytes, resolutions=parsed_resolutions, current_user=current_user,
+        skip_files=skip_files,
     )
     return OrgMergeResult(warnings=warnings, **summary)
 

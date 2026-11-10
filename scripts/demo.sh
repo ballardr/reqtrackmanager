@@ -6,6 +6,7 @@
 #   scripts/demo.sh --reset              remove the demonstration organisation and seed again
 #   scripts/demo.sh --teardown           remove the demonstration organisation and its messages
 #   scripts/demo.sh --rotate-passwords   a new random password for every account (default: DemoDemo123!)
+#   scripts/demo.sh --allow-uploads      keep file uploads enabled (default: the demonstration disables them)
 #   scripts/demo.sh --clarity <id>       also load Microsoft Clarity (project id from your Clarity dashboard)
 #   scripts/demo.sh --schedule           also start the daily reset (DEMO_RESET_AT, DEMO_RESET_TZ; default 00:00 UTC)
 #   scripts/demo.sh --no-metrics         do not start the usage-metrics Prometheus (started by default)
@@ -39,6 +40,7 @@ while [ $# -gt 0 ]; do
     --clarity)
       [ $# -ge 2 ] || { echo "--clarity needs a project id" >&2; exit 2; }
       export DEMO_CLARITY_PROJECT_ID="$2"; shift 2 ;;
+    --allow-uploads) export DEMO_ALLOW_UPLOADS=1; pass+=("$1"); shift ;;
     --schedule) schedule=true; shift ;;
     *) pass+=("$1"); shift ;;
   esac

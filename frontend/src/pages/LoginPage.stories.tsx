@@ -12,6 +12,7 @@ const SERVER_SETTINGS: ServerSettings = {
   default_login_background_file_id: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   org_label_singular: null, org_label_plural: null,
+  file_uploads_enabled: true,
 };
 
 function mockBrandingAndSignup(signupMode: SignupConfig["signup_mode"] = "disabled", announcements: AnnouncementNotice[] = []) {

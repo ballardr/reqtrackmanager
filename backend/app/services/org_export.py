@@ -127,7 +127,7 @@ from app.services.bundle_common import (
 )
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
-from app.services.files import read_file
+from app.services.files import read_file, resolve_bundle_files
 from app.services.invites import create_pending_invite
 from app.services.lookups import present
 from app.services.org_membership import external_account_refusal, holds_org_role
@@ -637,7 +637,9 @@ def _import_projects(
     return project_id_by_ref
 
 
-def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, current_user: User) -> tuple[Organization, list[str]]:
+def import_org_bundle(
+    db: Session, *, name: str | None, zip_bytes: bytes, current_user: User, skip_files: bool = False,
+) -> tuple[Organization, list[str]]:
     """Creates a brand-new organisation from an exported org bundle,
     including every project it contains. Never merges into an existing
     organisation — see the module docstring for why (mirrors
@@ -649,12 +651,18 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         name: Overrides the bundle's own org name if given.
         zip_bytes: The uploaded bundle's raw bytes.
         current_user: The server admin performing the import.
+        skip_files: Import without the bundle's files; honoured only while files cannot be stored.
 
     Returns:
         The new Organization and a list of human-readable import warnings.
+
+    Raises:
+        HTTPException: 403 (`uploads_disabled`) when the bundle has files, they cannot be stored and `skip_files`
+            is not set; nothing is written.
     """
     _manifest, data, file_bytes_by_ref, project_data_by_ref = _parse_org_bundle(zip_bytes)
     warnings = BundleImportWarnings()
+    file_bytes_by_ref = resolve_bundle_files(db, None, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add)
 
     org = Organization(
         name=name if name else data.get("name", "Imported Organisation"),
@@ -789,6 +797,7 @@ def detect_merge_conflicts(db: Session, target_org: Organization, zip_bytes: byt
 
 def merge_org_bundle(
     db: Session, *, target_org: Organization, zip_bytes: bytes, resolutions: dict[str, str], current_user: User,
+    skip_files: bool = False,
 ) -> tuple[list[str], dict[str, int]]:
     """Imports an org bundle's users, groups and projects
     into `target_org` — an organisation that already exists,
@@ -824,6 +833,7 @@ def merge_org_bundle(
             -> `"skip"`/`"import_as_copy"` for a `"project"` or
             `"compliance_standard"` conflict, or `"keep_existing"`/
         current_user: The org admin performing the import.
+        skip_files: Import without the bundle's files; honoured only while files cannot be stored.
 
     Returns:
         Human-readable warnings (same shape as `import_org_bundle`'s), and
@@ -855,6 +865,9 @@ def merge_org_bundle(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid resolution value for: {', '.join(invalid)}.")
 
     warnings = BundleImportWarnings()
+    file_bytes_by_ref = resolve_bundle_files(
+        db, target_org.id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
+    )
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
     users = UserResolver(db, acting_user, warnings)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)

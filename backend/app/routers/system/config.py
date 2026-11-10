@@ -27,6 +27,7 @@ from app.deps import get_current_user
 from app.models.enums import SignupMode
 from app.models.organization import Organization
 from app.models.user import User
+from app.schemas.branding import FileUploadsConfig
 from app.schemas.email import TestEmailRequest
 from app.schemas.signup import SelfSignupOrgOut, SignupConfigOut, SignupConfigUpdate
 from app.services.audit import log_event
@@ -186,3 +187,25 @@ def update_signup_config(
     db.commit()
     db.refresh(server_settings)
     return get_signup_config(db)
+
+
+# --- File uploads ------------------------------------------------------------------------------------------
+
+
+@router.put("/file-uploads", response_model=FileUploadsConfig)
+def update_file_uploads(
+    payload: FileUploadsConfig,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+) -> FileUploadsConfig:
+    """Enables or disables new file uploads for the whole deployment (server-admin only).
+
+    Disabling stops new files only: existing files stay readable and deletable. The current value is read by every
+    client from `GET /system/branding`. The audit event carries the new value and nothing about any file.
+    """
+    server_settings = get_server_settings(db)
+    server_settings.file_uploads_enabled = payload.file_uploads_enabled
+    log_event(db, entity_type="system", entity_id="platform", action="file_uploads_updated",
+              actor_id=current_user.id, detail={"file_uploads_enabled": payload.file_uploads_enabled})
+    db.commit()
+    return FileUploadsConfig(file_uploads_enabled=server_settings.file_uploads_enabled)

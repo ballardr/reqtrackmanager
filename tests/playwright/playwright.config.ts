@@ -58,6 +58,9 @@ const GLOBAL_STATE_SPECS = [
   // account with zero orgs. Same shared-org-setting class as the other
   // entries in this list. See docs/decisions.md.
   "e2e-workflows/sso.spec.ts",
+  // Switches the deployment-wide file upload switch off while it runs: any spec uploading a file in parallel
+  // would be refused. Each test restores the switch in its cleanup hook.
+  "e2e-workflows/file-uploads-switch.spec.ts",
 ];
 
 export default defineConfig({

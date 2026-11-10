@@ -5,25 +5,36 @@ File upload/download/delete built on top of the pluggable storage backend
 (I-M-10). Generates a collision-proof storage key per file rather than
 trusting the client-supplied filename, and records metadata in `FileAsset`
 regardless of which backend actually holds the bytes.
+
+`assert_uploads_allowed` is the one gate for every user-supplied file: the deployment-wide switch
+(`ServerSettings.file_uploads_enabled`) stops new files only, so reading and deleting existing files keep working.
+`resolve_bundle_files` applies the same rule to the files embedded in an imported bundle. Generated report outputs
+are written by `services/report_run_jobs.py` directly and are not uploads (see `docs/decisions.md`).
 """
 
 from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Callable
 from functools import lru_cache
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.file import FileAsset
+from app.models.organization import ServerSettings
 from app.storage_backends import FileStorageBackend, LocalFileStorageBackend, S3CompatibleFileStorageBackend
 
 settings = get_settings()
 
 _UNSAFE_KEY_CHARS = re.compile(r"[^A-Za-z0-9_.-]+")
+
+UPLOADS_DISABLED_CODE = "uploads_disabled"
+UPLOADS_DISABLED_MESSAGE = "File uploads are disabled on this deployment."
 
 
 def _safe_key_component(filename: str) -> str:
@@ -71,6 +82,75 @@ def get_storage_backend() -> FileStorageBackend:
     return LocalFileStorageBackend(settings.storage_local_dir)
 
 
+def uploads_allowed(db: Session, organization_id: UUID | None = None) -> bool:
+    """Whether new user files may be stored.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation the file would belong to (reserved for per-organisation rules).
+
+    Returns:
+        False when the deployment-wide switch is off; True otherwise, including before the settings row exists.
+    """
+    enabled = db.scalar(select(ServerSettings.file_uploads_enabled))
+    return enabled is not False
+
+
+def assert_uploads_allowed(db: Session, organization_id: UUID | None = None) -> None:
+    """Refuses a new file while uploads are disabled.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation the file would belong to.
+
+    Raises:
+        HTTPException: 403 with `UPLOADS_DISABLED_CODE` in the detail.
+    """
+    if not uploads_allowed(db, organization_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail={"code": UPLOADS_DISABLED_CODE, "message": UPLOADS_DISABLED_MESSAGE},
+        )
+
+
+def resolve_bundle_files(
+    db: Session, organization_id: UUID | None, file_bytes_by_ref: dict[str, bytes], *, skip_files: bool, warn: Callable[[str], None],
+) -> dict[str, bytes]:
+    """Decides what happens to the files embedded in a bundle being imported.
+
+    Files are imported whenever they can be stored. When they cannot, the import either stops before any row is
+    written, or (with `skip_files`) goes ahead without them and reports how many were left out. Every importer
+    already skips a record file that has no bytes, so returning an empty map is the whole mechanism.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation that would own the files.
+        file_bytes_by_ref: The bundle's embedded files, by reference.
+        skip_files: The person's choice to import without files; ignored while files can be stored.
+        warn: Records one import warning (`BundleImportWarnings.add`).
+
+    Returns:
+        `file_bytes_by_ref` unchanged when files can be stored or there are none, else an empty map.
+
+    Raises:
+        HTTPException: 403 with `UPLOADS_DISABLED_CODE`, the file count and the total size in bytes when files
+            cannot be stored and `skip_files` is not set.
+    """
+    if not file_bytes_by_ref or uploads_allowed(db, organization_id):
+        return file_bytes_by_ref
+    count = len(file_bytes_by_ref)
+    if not skip_files:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": UPLOADS_DISABLED_CODE, "message": UPLOADS_DISABLED_MESSAGE,
+                "file_count": count, "file_bytes": sum(len(data) for data in file_bytes_by_ref.values()),
+            },
+        )
+    noun, verb = ("files", "were") if count != 1 else ("file", "was")
+    warn(f"{count} {noun} in the bundle {verb} not imported because file uploads are disabled.")
+    return {}
+
+
 def upload_file(
     db: Session,
     *,
@@ -100,8 +180,10 @@ def upload_file(
         The created FileAsset (not yet committed).
 
     Raises:
-        HTTPException: 413 when `data` is larger than `Settings.max_upload_bytes`.
+        HTTPException: 403 (`uploads_disabled`) while uploads are disabled; 413 when `data` is larger than
+            `Settings.max_upload_bytes`.
     """
+    assert_uploads_allowed(db, organization_id)
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE,
