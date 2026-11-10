@@ -2905,6 +2905,9 @@ class ModuleDefinition:
             that is not searchable says why in `not_searchable`.
         not_searchable: `{artefact type: reason}` for a type deliberately left out of the
             global search. A backend test fails for a type that has neither.
+        activity_action_kinds: `{audit action: kind}` classifying the actions this module writes for the project
+            History page's Event filter (`services.activity_kinds`); a kind is one of its keys (`created`, `edited`,
+            `status`, `links`, `tags`, `access`, `comments`, `deleted`). An action left out shows under Other.
         search_scopes: `{scope key: SearchScope}` the module adds to the search page's
             Scope filter (Compliance: one standard). Addressed in a request as
             `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
@@ -3057,6 +3060,7 @@ class ModuleDefinition:
     principal_references: tuple[PrincipalReference, ...] = field(default=())
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
+    activity_action_kinds: dict[str, str] = field(default_factory=dict)
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
     not_reportable: dict[str, str] = field(default_factory=dict)
@@ -4784,6 +4788,14 @@ def get_search_providers() -> dict[str, ArtefactSearchProvider]:
         for artefact_type, provider in definition.search_providers.items():
             merged.setdefault(artefact_type, provider)
     return merged
+
+
+def get_activity_action_kinds() -> dict[str, str]:
+    """`{audit action: kind}` merged from every module's `activity_action_kinds`."""
+    kinds: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        kinds.update(definition.activity_action_kinds)
+    return kinds
 
 
 def get_not_searchable_types() -> dict[str, str]:

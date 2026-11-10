@@ -56,7 +56,11 @@ const meta: Meta<typeof OverviewWidgetGrid> = {
   args: { widgets, metrics, projectId: "project-1", scope: "this" },
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {
-      if (path.endsWith("/changes")) return [buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" }), buildChangeEntry({ actor_display_name: "Sam Lee" })];
+      if (path.split("?")[0].endsWith("/changes")) {
+        // The server returns one page of `limit` entries, as the widget asks.
+        const limit = Number(new URL(path, "http://x").searchParams.get("limit"));
+        return [buildChangeEntry({ action: "updated", actor_display_name: "Alex Morgan" }), buildChangeEntry({ actor_display_name: "Sam Lee" })].slice(0, limit);
+      }
       return [];
     });
   },

@@ -39,6 +39,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_registered_artefact_types, get_artefact_type_label
 from app.schemas.changes import ChangeEntryOut, RecordActivityOut
+from app.services.activity_kinds import action_kinds, kind_of
 from app.services.changes import attach_actor_names, get_project_changes
 from app.services.link_graph import ArtefactResolver
 
@@ -199,4 +200,7 @@ def get_record_activity(
     entries.sort(key=lambda e: e.timestamp, reverse=True)
     size = max(1, min(limit, MAX_PAGE_SIZE))
     page = entries[offset:offset + size]
+    known = action_kinds()
+    for entry in page:
+        entry.kind = kind_of(entry.action, known)
     return RecordActivityOut(entries=page, has_more=len(entries) > offset + size)

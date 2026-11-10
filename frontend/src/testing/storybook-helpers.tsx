@@ -585,6 +585,8 @@ export function buildChangeEntry(overrides: Partial<ChangeEntry> = {}): ChangeEn
     actor_id: "user-1",
     actor_display_name: "Alex Morgan",
     detail: null,
+    kind: "edited",
+    record_label: null,
     ...overrides,
   };
 }

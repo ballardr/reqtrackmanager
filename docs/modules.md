@@ -380,6 +380,7 @@ class ModuleDefinition:
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
+    activity_action_kinds: dict[str, str] = {}  # {audit action: kind} for the project History page's Event filter (§4l7)
     search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
     record_tables: dict[str, RecordTableProvider] = {}  # a type's list as an exportable, importable table (§4l)
     not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
@@ -1422,6 +1423,10 @@ flowchart LR
 | Scaling | | Placements are read for a page at once (`placements_for_records`, `GET .../placements/{type}`); `perf_dataset.records.add_tags` also places each batch, so generators need no extra call. |
 
 The taxonomy endpoints keep the tree consistent: deleting a category moves its placements to the replacement, and deleting a component that records sit in is refused.
+
+### 4l7. Activity kinds (the History page's Event filter)
+
+The project History page filters events by **kind** (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, `deleted`, `other`), a fixed vocabulary over the open-ended `AuditEvent.action` strings (`services/activity_kinds.py`). Core actions are classified there once; a module classifies the actions **it** writes through `ModuleDefinition.activity_action_kinds = {"superseded": "status"}`, never an edit to the core map. An action nobody classified is `other`, so a filter by kind never hides an event. A test fails for a module value that is not a kind. A record of a module's type is named on the page by its `artefact_summary_providers` label and linked through `TierAModuleDefinition.artefactPaths`, with no further registration.
 
 ### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
 

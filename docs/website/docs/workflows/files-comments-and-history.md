@@ -35,12 +35,24 @@ A project's **Files** page lists every file the project holds — attached to re
 
 ## Reviewing project history
 
-A project's **Project history** page is a unified timeline of everything that's happened — requirement and change-request version history, plus other audit events (stage transitions, group membership changes, and more) — filterable by date range and entity type.
+A project's **Project history** page is a unified timeline of everything that's happened — requirement and change-request version history, plus other audit events (stage transitions, group membership changes, and more). It is a table with one line per event: **Time** (the day is written once, on the first event of each day), **Type**, **Event**, **Record** and **Person**. A requirement, a change request, an action or any other record you may open is named by its code and title, and links to its page. Click **Time** to put the oldest events first.
+
+The filter panel on the right narrows the table; every filter is kept in the address, so a reload, the browser's Back button and a copied link restore the same view.
+
+| Filter | What it does |
+| --- | --- |
+| **Period** | Any time, Today, Last 7 days, Last 30 days, or a Custom range. A custom range uses your own time zone, and the **To** time includes the whole minute you pick. |
+| **Type** | The kind of record or setting the event is about. Only types the project has events for are listed. |
+| **Event** | One or more kinds of event: Created, Edited, Status changes (submitted, approved, rejected, completed, archived and similar), Links and files, Tags and places, Access, Comments, Deleted, Other. |
+| **Person or group** | Only what these people did. A group stands for its current members, including members of groups nested in it. |
+| **Include discussion comments** | Discussion comments are left out unless ticked or the Event filter includes Comments. |
+
+**List actions** (the menu beside the title) downloads the filtered history as CSV, PDF, Word, ODT or ODS. The **Person** column is included only where your organisation's policy and your permission to export personal data allow it, as for every record list, and each download is recorded in the audit trail with its counts and filter names, never the entries.
 
 | Project history |
 | --- |
 | A unified activity timeline, filterable by date range and entity type |
-| ![Project history page showing a filterable activity timeline](../../static/img/screenshots/project-history.png) |
+| ![Project history page showing a filterable activity table](../../static/img/screenshots/project-history.png) |
 
 Discussion comments are excluded from the timeline by default, since they're informal discussion rather than the formal change log — tick **Include discussion comments** to bring them into view alongside everything else.
 

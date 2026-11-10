@@ -19,6 +19,10 @@ class ChangeEntryOut(BaseModel):
     actor_id: UUID | None
     actor_display_name: str | None = None
     detail: dict[str, Any] | None = None
+    kind: str = "other"
+    """How the record changed (`services.activity_kinds`): created, edited, status, links, tags, access, comments, deleted or other."""
+    record_label: str | None = None
+    """The record's code and title when it is of a registered type the viewer may see (requirements and change requests carry theirs in `detail`)."""
 
 
 class RecordActivityOut(BaseModel):

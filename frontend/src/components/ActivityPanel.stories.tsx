@@ -123,15 +123,11 @@ export const NoActivity: Story = {
 export const LightTheme: Story = { ...Entries, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Entries, globals: { theme: "dark" } };
 
-/** `getLink`/`fullWidth` — what
- * `ProjectHistoryPage.tsx` now passes: a project-wide list spans many
- * different requirements/change requests, so each row needs its own link
- * to say which item it's about, unlike the single-entity detail-page side
- * panels (`Entries` above) which omit `getLink` entirely. */
+/** `getLink`: a list that spans many records gives each row its own link to say which record it is about, unlike
+ * the single-record detail-page side panels (`Entries` above) which omit `getLink` entirely. */
 export const WithLinksToRelatedEntities: Story = {
   decorators: [withRouter("/")],
   args: {
-    fullWidth: true,
     entries: [
       buildChangeEntry({
         entity_type: "requirement",

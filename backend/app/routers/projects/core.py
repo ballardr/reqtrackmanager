@@ -15,6 +15,7 @@ package) as a pure code-organization refactor — see
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
@@ -47,6 +48,7 @@ from app.models.user import User
 from app.modules.registry import memoize_module_state, run_on_project_created_hooks, snapshot_project_module_state
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import ProjectFileOut, ProjectFileSearchIn, ProjectFileUploaderOut
+from app.schemas.principal import PrincipalOut
 from app.schemas.project import (
     ProjectAncestorOut,
     ProjectCreate,
@@ -65,10 +67,11 @@ from app.schemas.project import (
 from app.services import tags as tag_service
 from app.services.audit import log_event
 from app.services.bundle_common import bundle_size, iter_bundle_file
-from app.services.changes import get_project_changes
+from app.services.changes import ChangeFilter, build_filter, get_project_changes_page, history_entity_types, named_actors
+from app.services.changes_export import MAX_DOCUMENT_ROWS, MAX_EXPORT_ROWS, audit_history_export, build_history_result, history_csv
 from app.services.codes import assign_project_code, change_project_code, project_code_locked_for
 from app.services.definitions import get_default_project_status_id, seed_action_types
-from app.services.downloads import filename_safe
+from app.services.downloads import file_response, filename_safe
 from app.services.lookups import project_or_404
 from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
@@ -93,6 +96,8 @@ from app.services.rbac import (
     require_project_view_or_manage,
 )
 from app.services.record_counts import count_records_by_type
+from app.services.report_document import resolve_branding
+from app.services.report_framework import DOCUMENT_FORMATS, ReportFormat, render_result
 from app.services.stage_workflows import new_stage, phase_index
 from app.services.template_guard import ensure_may_publish_template
 from app.services.templates import clone_project
@@ -1121,33 +1126,116 @@ def get_project_changes_endpoint(
     until: datetime | None = None,
     include_comments: bool = False,
     entity_type: str | None = None,
-    limit: int | None = Query(None, ge=1),
+    kind: list[str] = Query(
+        [], description="Only these kinds of event (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, `deleted`, `other`).",
+    ),
+    actor: list[str] = Query(
+        [], description="Only events by these people or groups, each `user:<id>`, `org_group:<id>` or `project_group:<id>`.",
+    ),
+    order: Literal["newest", "oldest"] = Query("newest", description="Which end of the timeline the page starts from."),
+    limit: int = Query(30, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
-    """Project changes-over-time view (C-A-10): a unified timeline of
-    requirement/change-request/audit events, with an optional time range
-    and entity-type filter. Discussion comments are excluded unless
-    `include_comments=true`.
+    """Project changes-over-time view (C-A-10): a unified timeline of requirement/change-request/audit events,
+    narrowed by time range, entity type, kind of event and person or group. Discussion comments are excluded
+    unless `include_comments=true` or the `comments` kind is asked for.
 
-    `limit`/`offset` (U-P-06) are optional, same contract as
-    `list_requirements`: omitting both returns the full timeline unchanged
-    from before pagination existed. When `limit` is given, the total match
-    count (before slicing) is returned in the `X-Total-Count` response
-    header. Slicing happens here rather than in `get_project_changes`
-    itself, since that function has two other, unpaginated callers
-    (`requirements.py`/`change_requests.py`'s per-entity activity panels)
-    that need its complete merged-and-sorted result to filter down
-    themselves.
+    One page is read: every filter is part of each source's query and each source reads only its newest
+    `offset + limit` rows, so the cost follows the page and not the size of the project
+    (`services.changes.get_project_changes_page`). The match count, before slicing, is in `X-Total-Count`. Each
+    entry carries its `kind` and, for a record of a registered type the caller may see, its `record_label`.
+
+    Raises:
+        HTTPException: 404 the project; 422 an unknown kind, a malformed person or a group of another
+            organisation or project.
     """
-    entries = get_project_changes(
-        db, project_id, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+    project = project_or_404(db, project_id)
+    flt = build_filter(
+        db, project, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+        kinds=kind, actors=actor, oldest_first=order == "oldest",
     )
-    response.headers["X-Total-Count"] = str(len(entries))
-    if limit is not None:
-        entries = entries[offset:offset + limit]
+    entries, total = get_project_changes_page(db, project, flt, limit=limit, offset=offset, viewer_id=current_user.id)
+    response.headers["X-Total-Count"] = str(total)
     return entries
+
+
+@router.get("/{project_id}/changes/facets")
+def get_project_changes_facets(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """What the History page's filters offer for this project: the entity types it has events for, and how many
+    events the unfiltered history holds (the filter panel's "N total")."""
+    project = project_or_404(db, project_id)
+    _, total = get_project_changes_page(db, project, ChangeFilter(), limit=1)
+    return {"entity_types": history_entity_types(db, project_id), "total": total}
+
+
+@router.get("/{project_id}/changes/actors", response_model=list[PrincipalOut])
+def get_project_changes_actors(
+    project_id: UUID,
+    actor: list[str] = Query([], description="`user:<id>`, `org_group:<id>` or `project_group:<id>`, as the History filter sends them."),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+):
+    """The people and groups of a History filter, named for display (a filter restored from a link shows names)."""
+    return named_actors(db, project_or_404(db, project_id), actor)
+
+
+@router.get("/{project_id}/changes/export", responses={200: {"content": {"application/pdf": {}, "text/csv": {}}}})
+def export_project_changes(
+    project_id: UUID,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    include_comments: bool = False,
+    entity_type: str | None = None,
+    kind: list[str] = Query([]),
+    actor: list[str] = Query([]),
+    format: ReportFormat = Query("csv", description="csv (default), pdf, docx, odt, ods, xlsx or html."),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The filtered timeline as a file, with the page's own filters (never the full history).
+
+    The Person column follows the personal-data export rule of the record lists. One `records_exported` audit
+    event records the format, counts and filter names, never the entries.
+
+    Raises:
+        HTTPException: 404 the project; 413 more than `MAX_EXPORT_ROWS` entries (or `MAX_DOCUMENT_ROWS` for a
+            PDF or Word document); 422 a bad filter.
+    """
+    project = project_or_404(db, project_id)
+    flt = build_filter(
+        db, project, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+        kinds=kind, actors=actor,
+    )
+    entries, total = get_project_changes_page(db, project, flt, limit=MAX_EXPORT_ROWS, viewer_id=current_user.id)
+    if total > MAX_EXPORT_ROWS or (format in DOCUMENT_FORMATS and total > MAX_DOCUMENT_ROWS):
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"This history has {total} entries, more than one file holds. Narrow the filters"
+            + ("" if format in DOCUMENT_FORMATS and total <= MAX_EXPORT_ROWS else "."),
+        )
+    filter_keys = sorted(
+        name for name, given in (
+            ("since", since), ("until", until), ("include_comments", include_comments or None),
+            ("entity_type", entity_type), ("kind", kind or None), ("actor", actor or None),
+        ) if given
+    )
+    result, include_person = build_history_result(db, current_user, project, entries, filter_keys=filter_keys)
+    stem = f"{filename_safe(project.name, fallback='project')}-history"
+    if format == "csv":
+        content, ext = history_csv(result), "csv"
+    else:
+        organization = db.get(Organization, project.organization_id)
+        rendered = render_result(result, format, branding=resolve_branding(db, organization))
+        content, ext = rendered.content, rendered.extension
+    audit_history_export(
+        db, current_user, project, fmt=ext, rows=len(entries), columns=len(result.sections[0].columns),
+        filter_keys=filter_keys, omitted=not include_person,
+    )
+    return file_response(content, stem, ext)
 
 
 @router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)

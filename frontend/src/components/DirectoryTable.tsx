@@ -66,6 +66,10 @@ export interface DirectoryColumn<Row> {
    * beside the header text. It is a sibling of the sort button, not inside it,
    * so pressing it never changes the sort. */
   headerAction?: ReactNode;
+  /** A CSS width (`"40%"`) for a column that should take a set share of the table; a column of long text
+   * (a record's title) gets the room a short one (a badge) does not need. Applied to a plain header cell, so
+   * it has no effect on a `sortable` column. */
+  width?: string;
   render: (row: Row) => ReactNode;
 }
 
@@ -147,7 +151,7 @@ export function DirectoryTable<Row>({
                 column.sortable && onSort ? (
                   <SortableHeader key={column.key} label={column.label} sortKey={column.key} sort={sort} onSort={onSort} action={column.headerAction} />
                 ) : (
-                  <th key={column.key}>
+                  <th key={column.key} style={column.width ? { width: column.width } : undefined}>
                     {column.headerAction ? <span className="th-with-action">{column.label}{column.headerAction}</span> : column.label}
                   </th>
                 )

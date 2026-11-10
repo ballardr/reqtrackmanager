@@ -30,7 +30,8 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, api } from "../../api/client";
 import type { ChangeEntry, OverviewScope, OverviewWidget } from "../../api/types";
-import { activityEntityLabel, activityEntryLink, activityEntryNotes, describeActivityEntry } from "../../api/types";
+import { activityEntityLabel, activityEntryNotes, describeActivityEntry } from "../../api/types";
+import { activityRecordLink } from "../../utils/activityLink";
 import type { ProjectScope } from "../../api/projectScope";
 import { useOrgLabelCapitalized } from "../../context/BrandingContext";
 import { useStrings } from "../../context/TerminologyContext";
@@ -71,9 +72,9 @@ function ActivityWidget({ projectId, title, limit }: { projectId: string; title:
   useEffect(() => {
     let cancelled = false;
     api
-      .get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes`)
-      .then((all) => {
-        if (!cancelled) setEntries(all.slice(0, limit));
+      .get<ChangeEntry[]>(`/api/v1/projects/${projectId}/changes?limit=${Math.min(limit, 200)}`)
+      .then((page) => {
+        if (!cancelled) setEntries(page);
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof ApiError ? err.message : strings.overviewWidgets.figureError);
@@ -88,7 +89,7 @@ function ActivityWidget({ projectId, title, limit }: { projectId: string; title:
       <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{title}</h2>
       {entries && entries.length === 0 && <p className="text-muted">{strings.history.empty}</p>}
       {entries?.map((c, idx) => {
-        const link = activityEntryLink(c, projectId);
+        const link = activityRecordLink(c, projectId);
         return (
           <div
             key={idx}

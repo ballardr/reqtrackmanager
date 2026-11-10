@@ -1164,6 +1164,18 @@ flowchart LR
 
 Read left to right: the preview is the only gate before anything is written, and apply goes through the type's own path, so an import cannot do what the same person could not do by hand.
 
+## Pattern: a list of events (the project History table)
+
+The project History page is a list that is **not** a registered record type, so it has no Import, no `code` column and no `records` prop on `ListPageLayout`. It still follows the list patterns: `ListPageLayout` with a side `FilterPanel`; every filter and the sort in the URL (`useUrl*`), with `ready` and `loadedRows` for the list position; a `DirectoryTable` with the Time column sortable (the only order that means anything) and a width for the long-text columns (`DirectoryColumn.width`).
+
+- **One line per event.** Time, Type (badge), Event, Record, Person. A day is written once, on the first row of each local day; the rows under it carry the time alone. A record is named by its code and title and links to its page through `activityRecordLink` (requirements and change requests from `detail`, every other registered type from the server's `record_label` and `getArtefactPath`), never a per-type case in a page.
+- **One wording.** `describeActivityAction` (the Event column) and `describeActivityEntry` (the sentence in a record's Activity aside, `ActivityRow`) share one text, so a change reaches both.
+- **Time range.** `PeriodFilter`: a preset (Today, Last 7 days, Last 30 days) or a custom range of two date-times. The range is the person's own wall-clock time converted to UTC instants in the browser (`utils/historyPeriod`); the upper bound is the end of the chosen minute.
+- **Person or group.** `PrincipalListField` (users and groups on parity); a group means its current members.
+- **Kind of event.** A multi-select of a fixed vocabulary, each kind described in the caption's `(?)`, one line per option.
+- **Export.** `ListExportMenu` offers Download shown items (CSV, PDF, Word, ODT, ODS) with the page's filters; the one list-without-a-record-type exception to "Every record list exports and imports" (docs/decisions.md).
+- **A changed filter dims the rows and keeps them** until the new ones arrive, so the panel and the table do not jump; an empty result with a filter set names the cause and offers **Clear filters**.
+
 ## Pattern: list position
 
 A list page keeps its place. After opening a record and returning (Back, or the record's own "back to list" link), the list shows the same rows at the same scroll offset, including rows loaded by "Show more". Reason: editing down a list is the working pattern, and starting from the top each time makes the person find their place again.

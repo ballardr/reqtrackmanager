@@ -100,7 +100,7 @@ export const Dashboard: Story = {
     spyOn(api, "post").mockImplementation(overviewMetricsMock());
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/overview-layout")) return layout;
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       // No parent/children for this fixture — a plain top-level project,
       // so neither the breadcrumb nor the "Child of/Parent of" labels
       // render (see `WithHierarchy` below for the populated case).
@@ -133,7 +133,7 @@ export const TemplateBadge: Story = {
     spyOn(api, "post").mockImplementation(overviewMetricsMock());
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/overview-layout")) return layout;
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
       return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements.", is_template: true });
     });
@@ -152,7 +152,7 @@ export const NoRecords: Story = {
     spyOn(api, "post").mockImplementation(overviewMetricsMock(() => ({ ...metrics, records_by_type: [], record_total: 0 })));
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/overview-layout")) return layout;
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
       return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
     });
@@ -173,7 +173,7 @@ export const WithHierarchy: Story = {
     spyOn(api, "post").mockImplementation(overviewMetricsMock());
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/overview-layout")) return layout;
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors")) {
         return [
           { id: "grandparent-1", name: "Solstice Programme" },
@@ -233,7 +233,7 @@ export const EntitySwitcherOffersSiblingProjects: Story = {
     spyOn(api, "post").mockImplementation(overviewMetricsMock());
     spyOn(api, "get").mockImplementation(async (path: string) => {
       if (path.endsWith("/overview-layout")) return layout;
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors")) return [];
       if (path.endsWith("/children")) return [];
       if (path.endsWith("/enabled-modules")) return [];
@@ -273,7 +273,7 @@ export const ManagerCanCustomise: Story = {
           record_types: [], max_widgets: 24,
         };
       }
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
       return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
     });
@@ -333,7 +333,7 @@ export const ComplianceWidgetSitsWhereItIsPlaced: Story = {
           overall_compliance_state: "in_progress", overall_approval_state: "not_assessed", from_project_id: null,
         }];
       }
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
       return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
     });
@@ -365,7 +365,7 @@ export const WidenedToTheParent: Story = {
           widgets: [{ ...cell("total", "metric_tile", 3, 2, { metric: "requirement_count" }), title: "All requirements" }, ...layout.widgets.slice(1)],
         };
       }
-      if (path.endsWith("/changes")) return activity;
+      if (path.split("?")[0].endsWith("/changes")) return activity;
       if (path.endsWith("/ancestors") || path.endsWith("/children") || path.endsWith("/enabled-modules")) return [];
       return buildProject({ id: "project-1", name: "Atlas Platform", summary: "Core platform requirements." });
     });

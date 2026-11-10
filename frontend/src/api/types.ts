@@ -339,6 +339,21 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   reclassified: "reclassified",
 };
 
+/** The kinds of activity event the History page filters and labels by (`services/activity_kinds.py` holds the same keys). */
+export type ActivityKind = "created" | "edited" | "status" | "links" | "tags" | "access" | "comments" | "deleted" | "other";
+
+export const ACTIVITY_KIND_LABEL: Record<ActivityKind, string> = {
+  created: "Created",
+  edited: "Edited",
+  status: "Status changes",
+  links: "Links and files",
+  tags: "Tags and places",
+  access: "Access",
+  comments: "Comments",
+  deleted: "Deleted",
+  other: "Other",
+};
+
 export function activityActionLabel(action: string): string {
   return ACTIVITY_ACTION_LABEL[action] ?? action.replace(/_/g, " ");
 }
@@ -1914,6 +1929,10 @@ export interface ChangeEntry {
   actor_id: string | null;
   actor_display_name: string | null;
   detail: Record<string, unknown> | null;
+  /** How the record changed; the Event filter's value. */
+  kind: ActivityKind;
+  /** The record's code and title when it is of a registered type the viewer may see (requirements and change requests carry theirs in `detail`). */
+  record_label: string | null;
 }
 
 /** Actor + action text for one activity entry (the entity-type badge, and
@@ -1925,18 +1944,24 @@ export interface ChangeEntry {
  * The note or comment typed with the change is not part of the sentence;
  * `activityEntryNotes` returns it for the caller to show beneath. */
 export function describeActivityEntry(entry: ChangeEntry): string {
-  const who = entry.actor_display_name ?? "Someone";
+  return `${entry.actor_display_name ?? "Someone"} ${describeActivityAction(entry)}`;
+}
+
+/** What an entry did, without who did it ("approved", `added the tag "Security"`): the Event column of the
+ * project History table, and the second half of `describeActivityEntry`'s sentence, so a wording change
+ * reaches the table and the record's Activity aside together. */
+export function describeActivityAction(entry: ChangeEntry): string {
   if (entry.entity_type === "artefact_link" && entry.detail && typeof entry.detail.other_label === "string") {
     const removed = entry.action === "deleted";
     const preposition = entry.detail.direction === "incoming" ? "from" : "to";
     const kind = typeof entry.detail.other_type_label === "string" ? ` (${entry.detail.other_type_label})` : "";
-    return `${who} ${removed ? "removed a link" : "added a link"} ${preposition} ${entry.detail.other_label}${kind}`;
+    return `${removed ? "removed a link" : "added a link"} ${preposition} ${entry.detail.other_label}${kind}`;
   }
   if ((entry.action === "tagged" || entry.action === "untagged") && typeof entry.detail?.tag === "string") {
-    return `${who} ${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
+    return `${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
   }
   if ((entry.action === "placed" || entry.action === "unplaced") && typeof entry.detail?.place === "string") {
-    return `${who} ${entry.action === "placed" ? "placed this in" : "removed this from"} ${entry.detail.place}`;
+    return `${entry.action === "placed" ? "placed this in" : "removed this from"} ${entry.detail.place}`;
   }
   const action = activityActionLabel(entry.action);
   // AI approval via MCP (docs/decisions.md): every approval/decision/
@@ -1945,7 +1970,7 @@ export function describeActivityEntry(entry: ChangeEntry): string {
   // callers (ActivityPanel, ProjectHistoryPage, requirement/CR Activity
   // tabs) without each needing its own change.
   const viaMcp = entry.detail?.via === "mcp" ? " (via MCP)" : "";
-  return `${who} ${action}${viaMcp}`;
+  return `${action}${viaMcp}`;
 }
 
 /**
