@@ -372,6 +372,7 @@ class ProjectListItemOut(ProjectOut):
     is_favorite: bool = False
     organization_name: str = ""
     requirement_count: int = 0
+    is_member: Literal[True] = True
     # Both None unless the caller has effective view access to the parent —
     # deliberately redacted for casual list/tile browsing, never a hint that
     # a hidden parent exists. See `list_projects`'s population logic.
@@ -379,6 +380,25 @@ class ProjectListItemOut(ProjectOut):
     # Direct children only, filtered to ones the caller can view — no count
     # of hidden ones either, for the same reason.
     children: list[ProjectAncestorOut] = []
+
+
+class UnjoinedProjectListItemOut(BaseModel):
+    """Project list row for a project the caller administers the organisation of but holds no role in
+    (`GET /projects?include_unjoined=true`). Identity only: no summary, counts, stage, status, dates of work or
+    owners, so a wider list never carries project content (an organisation administrator may manage who has access
+    but not read the project)."""
+
+    id: UUID
+    organization_id: UUID
+    organization_name: str = ""
+    name: str
+    code: str
+    is_archived: bool = False
+    is_template: bool = False
+    # The organisation administrator sees the true hierarchy of every project in their organisation.
+    parent_project_id: UUID | None = None
+    parent_project_name: str | None = None
+    is_member: Literal[False] = False
 
 
 class ProjectStageCreate(BaseModel):

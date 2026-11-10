@@ -220,7 +220,7 @@ app.add_middleware(
     # `Content-Disposition` carries the server's chosen name for a generated file (a pack's zip is named by its
     # file-name template); a cross-origin browser hides it from JS unless exposed, and the download would fall back
     # to a client-side guess.
-    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count", "Content-Disposition"],
+    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count", "X-Can-Include-Unjoined", "Content-Disposition"],
 )
 
 

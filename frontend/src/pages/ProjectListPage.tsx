@@ -1,4 +1,4 @@
-import { Plus, Star } from "lucide-react";
+import { Plus, Settings, Star } from "lucide-react";
 import { ImportWarnings } from "../components/ImportWarnings";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -13,6 +13,7 @@ import type {
   ProjectRoleInheritanceMode,
   ProjectTreeNode,
   StagePhaseKind,
+  UnjoinedProjectListItem,
 } from "../api/types";
 import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
 import { stageBadgeText } from "../utils/stageBadge";
@@ -27,6 +28,7 @@ import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { ManageProjectUsersModal } from "../components/ManageProjectUsersModal";
 import { Modal } from "../components/Modal";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
 import { ProjectIdentityFields } from "../components/ProjectIdentityFields";
@@ -34,6 +36,7 @@ import { ProjectNestingFields } from "../components/ProjectNestingFields";
 import { MODES_NEEDING_CONFIRMATION } from "../utils/projectInheritance";
 import { ProjectTree } from "../components/ProjectTree";
 import { Spinner } from "../components/Spinner";
+import { Tooltip } from "../components/Tooltip";
 import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
@@ -57,6 +60,28 @@ import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 
 const PAGE_SIZE = 30;
 
+/** One row of the project list: a project the caller belongs to, or one they only administer the organisation of. */
+type ProjectListRow = ProjectListItem | UnjoinedProjectListItem;
+
+/**
+ * The gear on a project the person is not a member of, opening the dialog that manages who has access to it.
+ *
+ * @param props.project The non-member row.
+ * @param props.onOpen Called with the row when the gear is pressed.
+ * @returns A square icon button with a tooltip naming the project.
+ */
+function ManageUsersGear({ project, onOpen }: { project: UnjoinedProjectListItem; onOpen: (project: UnjoinedProjectListItem) => void }) {
+  const strings = useStrings();
+  const label = strings.projects.manageUsersOf(project.name);
+  return (
+    <Tooltip label={label}>
+      <button type="button" className="btn btn-sm btn-icon" aria-label={label} onClick={() => onOpen(project)} style={{ flexShrink: 0 }}>
+        <Settings />
+      </button>
+    </Tooltip>
+  );
+}
+
 /**
  * Project list view (U-E-03): active projects across all organisations the
  * user can access, with an archived filter (U-E-04), search, project
@@ -72,7 +97,7 @@ export function ProjectListPage() {
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
-  const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
+  const [projects, setProjects] = useState<ProjectListRow[] | null>(null);
   const [total, setTotal] = useState(0);
   // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
@@ -86,6 +111,10 @@ export function ProjectListPage() {
   const [orgFilter, setOrgFilter] = useUrlText("org");
   const [favoriteOnly, setFavoriteOnly] = useUrlFlag("favourites");
   const [showTemplates, setShowTemplates] = useUrlFlag("templates");
+  // Organisation administrators only: also list the projects of their organisations that they hold no role in.
+  const [includeUnjoined, setIncludeUnjoined] = useUrlFlag("not_member");
+  const [canIncludeUnjoined, setCanIncludeUnjoined] = useState(false);
+  const [managedProject, setManagedProject] = useState<UnjoinedProjectListItem | null>(null);
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -173,6 +202,7 @@ export function ProjectListPage() {
     // than hiding already-loaded rows.
     if (favoriteOnly) params.set("favorite_only", "true");
     if (showTemplates) params.set("include_templates", "true");
+    if (includeUnjoined) params.set("include_unjoined", "true");
     return params;
   }
 
@@ -191,8 +221,9 @@ export function ProjectListPage() {
 
   async function loadProjects(offset: number, append: boolean) {
     const isLatest = beginLoad();
-    const page = await api.getPage<ProjectListItem>(`/api/v1/projects?${listParamsRef.current(offset).toString()}`);
+    const page = await api.getPage<ProjectListRow>(`/api/v1/projects?${listParamsRef.current(offset).toString()}`);
     if (!isLatest()) return;
+    setCanIncludeUnjoined(page.canIncludeUnjoined ?? false);
     setProjects((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
     setTotalUnfiltered(page.totalUnfiltered ?? page.total);
@@ -223,7 +254,7 @@ export function ProjectListPage() {
     if (!newOrgId && activeOrgs[0]) setNewOrgId(resolveNewProjectOrgId(activeOrgs, defaultNewOrgId));
   }
 
-  useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly, showTemplates]);
+  useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly, showTemplates, includeUnjoined]);
 
   // C-E-04: pre-select the organisation's default template project (if
   // one is configured) whenever the target org changes, rather than
@@ -375,6 +406,14 @@ export function ProjectListPage() {
           >
             <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
             <FilterCheckbox label={strings.projects.showTemplates} checked={showTemplates} onChange={setShowTemplates} />
+            {canIncludeUnjoined && (
+              <FilterCheckbox
+                label={strings.projects.includeUnjoined}
+                checked={includeUnjoined}
+                onChange={setIncludeUnjoined}
+                help={strings.help.includeUnjoinedProjects(orgLabel)}
+              />
+            )}
             <FilterSelect
               label={strings.filters.status}
               value={showArchived ? "archived" : "active"}
@@ -510,6 +549,7 @@ export function ProjectListPage() {
             />
           </BundleImportDialog>
         )}
+        {managedProject && <ManageProjectUsersModal project={managedProject} onClose={() => setManagedProject(null)} />}
         {pendingInheritMode && selectedParent && (
           <ConfirmDialog
             title={strings.projects.inheritConfirmTitle}
@@ -553,7 +593,22 @@ export function ProjectListPage() {
             {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
             {projects && projects.length > 0 && viewMode === "tiles" && (
               <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
-                {projects.map((p) => (
+                {projects.map((p) => p.is_member === false ? (
+                  <div key={p.id} className="card stack text-muted" style={{ gap: "var(--space-3)" }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
+                      <span style={{ fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.name}>
+                        {p.name}
+                      </span>
+                      <ManageUsersGear project={p} onOpen={setManagedProject} />
+                    </div>
+                    <div className="row" style={{ gap: "var(--space-2)" }}>
+                      <Badge>{strings.projects.notMember}</Badge>
+                      {p.is_template && <Badge>{strings.projects.template}</Badge>}
+                    </div>
+                    {showOrgColumn && <div style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
+                    <ProjectHierarchyLabels project={{ ...p, children: [] }} />
+                  </div>
+                ) : (
                   <div key={p.id} className="card stack" style={{ gap: "var(--space-3)" }}>
                     <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
                       <Link
@@ -625,7 +680,22 @@ export function ProjectListPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {projects.map((p) => (
+                    {projects.map((p) => p.is_member === false ? (
+                      <tr key={p.id} className="text-muted">
+                        <td><ManageUsersGear project={p} onOpen={setManagedProject} /></td>
+                        <td>
+                          {p.name}
+                          <Badge className="badge-after">{strings.projects.notMember}</Badge>
+                          {p.is_template && <Badge className="badge-after">{strings.projects.template}</Badge>}
+                          <ProjectHierarchyLabels project={{ ...p, children: [] }} />
+                        </td>
+                        {showOrgColumn && <td>{p.organization_name}</td>}
+                        <td />
+                        <td>—</td>
+                        <td>—</td>
+                        <td>—</td>
+                      </tr>
+                    ) : (
                       <tr key={p.id}>
                         <td>
                           <button

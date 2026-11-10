@@ -8,6 +8,9 @@ Responsibilities:
   it is reached (direct role, project group, organisation-wide visibility, an organisation
   group, or inheritance through the project hierarchy / member sources).
 
+- `administered_org_ids`: the active organisations whose administrator role the user holds,
+  which is what widens the project list to projects the user is not a member of.
+
 Design decisions:
 - One definition shared by the project list, the hierarchy endpoints, the organisation
   overview and the global search, so "can this user see this project" never has two answers.
@@ -24,8 +27,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
-from app.models.enums import ProjectRoleInheritanceMode, ProjectVisibility
-from app.models.organization import UserOrgRole
+from app.models.enums import OrgRole, ProjectRoleInheritanceMode, ProjectVisibility
+from app.models.organization import Organization, UserOrgRole
 from app.models.project import (
     OrgGroupProjectRole,
     Project,
@@ -35,6 +38,7 @@ from app.models.project import (
     ProjectMemberSource,
     UserProjectRole,
 )
+from app.models.user import User
 from app.services.rbac import get_effective_project_roles, get_user_org_group_ids
 
 _ACCESSIBLE_EXPANSION_ITERATION_CAP = 50
@@ -193,3 +197,33 @@ def accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
         frontier = new_frontier
 
     return accessible_ids
+
+
+def administered_org_ids(db: Session, user: User, pat_allowed_org_ids: set[UUID] | None = None) -> set[UUID]:
+    """Organisations in which the user holds the organisation administrator role and may use that role now.
+
+    The same conditions as `require_org_role(OrgRole.ORG_ADMIN)`: the organisation is active, the user satisfies its
+    two-factor requirement, and a Personal Access Token is scoped to it. A server administrator is not included
+    unless they hold the role (no server-administrator bypass).
+
+    Args:
+        db: Database session.
+        user: The caller.
+        pat_allowed_org_ids: The organisations a Personal Access Token is limited to, or None for an ordinary session.
+
+    Returns:
+        The set of organisation ids, empty for a person who administers none.
+    """
+    rows = db.execute(
+        select(Organization.id, Organization.require_2fa)
+        .join(UserOrgRole, UserOrgRole.organization_id == Organization.id)
+        .where(
+            UserOrgRole.user_id == user.id,
+            UserOrgRole.role == OrgRole.ORG_ADMIN,
+            Organization.is_active.is_(True),
+        )
+    ).all()
+    return {
+        org_id for org_id, require_2fa in rows
+        if (not require_2fa or user.is_2fa_enabled) and (pat_allowed_org_ids is None or org_id in pat_allowed_org_ids)
+    }

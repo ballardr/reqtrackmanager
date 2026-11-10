@@ -233,6 +233,9 @@ const en = {
     unfavorite: "Remove from favourites",
     favouritesOnly: "Favourites only",
     showTemplates: "Show templates",
+    includeUnjoined: "Include {projects} I am not a member of",
+    notMember: "Not a member",
+    manageUsersOf: (projectName: string) => `Manage users of ${projectName}`,
     template: "Template",
     organisationDefaultTemplate: "Organisation default template",
     templateReadOnlyHelp: "This {project} is a template. Only project managers and project administrators can change it; everyone else can read it.",
@@ -1300,7 +1303,6 @@ const en = {
     emailFooterAddress: "Postal address",
     defaultTemplate: "Default {project} template",
     projects: "{Projects}",
-    projectsHint: (org: string) => `Every {project} in this ${org}, including ones you do not otherwise have a role on — lets you manage a {project}'s users without needing its own admin access.`,
     manageUsers: "Manage users",
     // (docs/decisions.md): the inline "Manage users" expand-in-place
     // became a `Modal` wrapping the same `ProjectMembersTable`
@@ -3838,6 +3840,7 @@ const en = {
     searchDefaultFields: "Which fields the header search and a new search look in. ID and Title are always included. You can still change the fields for any one search from the search page.",
     // Project and organisation codes
     orgCode: "A short code for this organisation, used to qualify the codes of organisation-level records (for example ACME-PER-001). Letters and digits only, and different from every project code.",
+    includeUnjoinedProjects: (org: string) => `Adds the {projects} of the ${org}s you administer that you hold no role in. These {projects} cannot be opened; use the gear on a row to manage who has access.`,
     projectReportName: "Some reports use this short name in headers, footers and titles when it is set, so a long {project} name does not have to fit. Leave it blank to use the {project} name.",
     projectCode: "The short code that qualifies this {project}'s record codes outside it (for example ACME-REQ-001). It must be unique in the organisation and follow the organisation's code rules.",
     codeCharacters: "Which characters a project code may use: letters only, digits only, or both.",

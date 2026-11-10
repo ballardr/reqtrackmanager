@@ -53,6 +53,7 @@ import type {
   ProposedLink,
   ProjectFile,
   ProjectListItem,
+  UnjoinedProjectListItem,
   ProjectStage,
   StageWorkflow,
   ProjectStatusDefinition,
@@ -230,8 +231,18 @@ export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): 
     is_favorite: false,
     organization_name: "Acme Corp",
     requirement_count: 24,
+    is_member: true,
     children: [],
     ...overrides,
+  };
+}
+
+/** A project row for a project the caller administers the organisation of but holds no role in. */
+export function buildUnjoinedProjectListItem(overrides: Partial<UnjoinedProjectListItem> = {}): UnjoinedProjectListItem {
+  return {
+    id: nextId("unjoined"), organization_id: "org-1", organization_name: "Acme Corp", name: "Unjoined project",
+    code: "UNJ", is_archived: false, is_template: false, parent_project_id: null, parent_project_name: null,
+    is_member: false, ...overrides,
   };
 }
 

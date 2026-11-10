@@ -192,7 +192,7 @@ The setting is only half of the rule. A person also needs the **Export personal 
 
 ## Seeing every project in the organisation
 
-An org admin can see every project belonging to the organisation — including ones without a direct role on them — from the admin page's **Projects** section. This is visibility into which projects exist, not a grant of access to their requirements or change requests; see [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md) for why that distinction is deliberate.
+An org admin can list every project belonging to the organisation — including ones without a direct role on them — from the main [project list](./organisations-and-projects.md#browsing-and-finding-projects): tick **Include projects I am not a member of** (off by default). These projects appear muted, labelled **Not a member**, with the name and organisation only and no link. The gear on a row opens **Manage users** for that project, the same members table as the project's own Members page. This is visibility into which projects exist and who has access, not a grant of access to their requirements or change requests; see [Roles, groups, and access control](../concepts/roles-groups-and-access-control.md) for why that distinction is deliberate.
 
 ## Organisation overview isn't here
 

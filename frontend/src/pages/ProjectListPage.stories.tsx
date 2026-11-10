@@ -3,7 +3,7 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
-import { buildProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { buildProjectListItem, buildUnjoinedProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
 import { requiredCaptions } from "../testing/requiredMarkers";
 import { ProjectListPage } from "./ProjectListPage";
 
@@ -570,6 +570,76 @@ export const CreateProjectOffersEligibleParent: Story = {
     // Not offered: opted-out sibling projects.
     await expect(within(dialog).queryByRole("option", { name: "Beacon Mobile" })).not.toBeInTheDocument();
     await expect(within(dialog).getByRole("option", { name: "Eligible Parent" })).toBeInTheDocument();
+  },
+};
+
+// Organisation administrators: the filter that adds projects they are not a member of.
+const unjoinedProject = buildUnjoinedProjectListItem({ id: "u1", name: "Hidden Ledger", organization_name: "Acme Corp" });
+
+function mockUnjoinedApis(opts: { canIncludeUnjoined: boolean }) {
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/orgs?mine=true")) return [org({})];
+    if (path.includes("/effective-members") || path.includes("/group-roles") || path.includes("/pending-invites")) return [];
+    if (path.includes("/module-roles")) return [];
+    if (path.includes("/orgs/org-1/groups")) return [];
+    return singleOrgProjects;
+  });
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    const items = path.includes("/orgs/org-1/users") ? [] : path.includes("include_unjoined=true") ? [...singleOrgProjects, unjoinedProject] : singleOrgProjects;
+    return { items, total: items.length, canIncludeUnjoined: opts.canIncludeUnjoined };
+  });
+}
+
+export const UnjoinedFilterAbsentForNonAdministrator: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: false }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await expect(canvas.queryByRole("checkbox", { name: "Include projects I am not a member of" })).not.toBeInTheDocument();
+  },
+};
+
+/** Off by default; ticking it adds the non-member rows, which are muted, labelled and not links. */
+export const UnjoinedFilterAddsNonMemberRows: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    const filter = canvas.getByRole("checkbox", { name: "Include projects I am not a member of" });
+    await expect(filter).not.toBeChecked();
+    await expect(canvas.queryByText("Hidden Ledger")).not.toBeInTheDocument();
+
+    await userEvent.click(filter);
+    await waitFor(() => expect(canvas.getByText("Hidden Ledger")).toBeInTheDocument());
+    await expect(canvas.getByText("Not a member")).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Hidden Ledger" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Atlas Platform" })).toBeInTheDocument();
+  },
+};
+
+/** The same rows in the list view, with the gear in the first column. */
+export const UnjoinedRowInListView: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "Include projects I am not a member of" }));
+    await waitFor(() => expect(canvas.getByText("Hidden Ledger")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    const row = canvas.getByText("Hidden Ledger").closest("tr")!;
+    await expect(within(row).getByText("Not a member")).toBeInTheDocument();
+    await expect(within(row).getByRole("button", { name: "Manage users of Hidden Ledger" })).toBeInTheDocument();
+  },
+};
+
+/** The gear opens the shared Manage users dialog for the project. */
+export const UnjoinedGearOpensManageUsers: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "Include projects I am not a member of" }));
+    await waitFor(() => expect(canvas.getByText("Hidden Ledger")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users of Hidden Ledger" }));
+    await expect(await within(document.body).findByRole("dialog", { name: "Manage users — Hidden Ledger" })).toBeInTheDocument();
   },
 };
 

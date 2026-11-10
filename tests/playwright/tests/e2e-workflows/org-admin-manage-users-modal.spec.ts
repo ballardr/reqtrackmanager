@@ -1,48 +1,60 @@
 import { expect, test } from "@playwright/test";
 
-import { loginAs, ORG_NAMES, PERSONAS, selectOrgAdminGroup } from "./helpers";
+import { loginAs, ORG_NAMES, PERSONAS, PROJECT_NAMES, selectOrgAdminGroup } from "./helpers";
 
 /**
- * Job to be done: (docs/decisions.md) Org Admin's per-project "Manage users" opens a
- * `Modal` wrapping the exact same `ProjectMembersTable`
- * `ProjectAdminPage.tsx`'s own Members section uses, fed by the same
- * `GET /effective-members`/`GET /pending-invites` endpoints — one real
- * shared implementation, not a parallel reimplementation. This is what
- * actually satisfies "org admin's view should look like project admin's,"
- * precisely.
+ * Job to be done: an organisation administrator finds a project they hold no role in on the main project list (the
+ * "Include projects I am not a member of" filter, off by default), and its gear opens a "Manage users" dialog wrapping
+ * the exact same `ProjectMembersTable` the project's own Members section uses, fed by the same
+ * `GET /effective-members`/`GET /pending-invites` endpoints. The row carries identity only and is not a link.
  *
- * Uses a brand-new, dedicated throwaway project (created via the API under
- * the shared single-admin Gamma org) rather than a shared seeded project —
- * this mutates project role grants, and Gamma-1/Gamma-2/Gamma-3/Gamma-4 are
- * all depended on by project-hierarchy.spec.ts's own exact configuration.
+ * Uses a brand-new, dedicated throwaway project (created via the API under the shared single-admin Gamma org, then
+ * handed to another manager so the administrator holds no role in it) rather than a shared seeded project: this
+ * mutates project role grants, and Gamma-1/Gamma-2/Gamma-3/Gamma-4 are all depended on by other specs.
  */
-test.describe("org admin: Manage users modal", () => {
-  test("shows the identical ProjectMembersTable Project Admin's own Members section uses, and its role controls work", async ({ page }) => {
+test.describe("org admin: Manage users from the project list", () => {
+  test("lists a project they are not a member of behind a filter, and its gear opens the shared members table", async ({ page }) => {
     await loginAs(page, PERSONAS.orgAdminGamma.email);
     const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
     const authHeaders = { Authorization: `Bearer ${token}` };
-    const orgs = await (await page.request.get("http://localhost:8000/api/v1/orgs", { headers: authHeaders })).json();
+    const api = "http://localhost:8000/api/v1";
+    const orgs = await (await page.request.get(`${api}/orgs`, { headers: authHeaders })).json();
     const gammaOrg = orgs.find((o: { name: string }) => o.name === ORG_NAMES.gamma);
+    const me = await (await page.request.get(`${api}/auth/me`, { headers: authHeaders })).json();
+    const users = await (await page.request.get(`${api}/orgs/${gammaOrg.id}/users?limit=100`, { headers: authHeaders })).json();
+    const manager = users.find((u: { email: string }) => u.email === PERSONAS.projectMgrGamma.email);
 
     const suffix = Date.now();
     const projectName = `E2E Manage Users Project ${suffix}`;
     const project = await (
-      await page.request.post("http://localhost:8000/api/v1/projects", {
+      await page.request.post(`${api}/projects`, {
         headers: authHeaders,
         data: { organization_id: gammaOrg.id, name: projectName, summary: "" },
       })
     ).json();
+    // Hand the project to another manager, then drop the administrator's own role: they now hold none in it.
+    await page.request.post(`${api}/projects/${project.id}/roles`, {
+      headers: authHeaders, data: { user_id: manager.user_id, role: "project_manager" },
+    });
+    await page.request.delete(`${api}/projects/${project.id}/roles/${me.id}/project_manager`, { headers: authHeaders });
 
-    await page.goto("/orgs");
-    await selectOrgAdminGroup(page, "Projects");
-    // `.last()`, not `.first()`: every ancestor wrapper up to the whole
-    // "Projects" group also matches `.stack:has-text(name)`
-    // (the project name is somewhere within all of them too) — document
-    // order lists outer wrappers before the specific per-project row, so
-    // the *last* match is this project's own row, not the broadest one.
-    const projectRow = page.locator(".stack", { hasText: projectName }).last();
-    await projectRow.getByRole("button", { name: "Manage users" }).click();
+    await page.goto("/projects");
+    const filter = page.getByRole("checkbox", { name: "Include projects I am not a member of" });
+    await test.step("the filter is offered to the administrator, off by default, and the project is not listed", async () => {
+      await expect(filter).toBeVisible();
+      await expect(filter).not.toBeChecked();
+      await expect(page.getByText(PROJECT_NAMES.gamma1)).toBeVisible();
+      await expect(page.getByText(projectName)).toHaveCount(0);
+    });
 
+    await test.step("ticking it adds the project as a muted row that is not a link, with a gear", async () => {
+      await filter.check();
+      await expect(page.getByText(projectName)).toBeVisible();
+      await expect(page.getByRole("link", { name: projectName })).toHaveCount(0);
+      await expect(page.getByText("Not a member").first()).toBeVisible();
+    });
+
+    await page.getByRole("button", { name: `Manage users of ${projectName}` }).click();
     const modal = page.getByRole("dialog", { name: `Manage users — ${projectName}` });
     await expect(modal).toBeVisible();
 
@@ -59,19 +71,17 @@ test.describe("org admin: Manage users modal", () => {
       expect(panelBox!.width).toBeGreaterThanOrEqual(tableBox!.width - 1);
     });
 
-    await test.step("shows the project's creator as a direct manager, disabled as the only manager source (C-U-08)", async () => {
-      // The project's creator (this org admin) holds their manager role via
-      // a direct grant on a brand-new project — no default group exists any
-      // more (2026-08-31) — and is its only
+    await test.step("shows the manager as a direct manager, disabled as the only manager source (C-U-08)", async () => {
+      // The manager holds their role via a direct grant and is its only
       // manager source, the same client-side last-manager hint
       // `ProjectAdminPage.tsx`'s own Members section gives.
-      const rolesButton = modal.getByRole("button", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
+      const rolesButton = modal.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` });
       await rolesButton.click();
       // Not scoped to `modal`: `MultiSelectDropdown`'s opened checkbox list
       // renders via `Popover`, which portals to `document.body` rather than
       // the modal's own DOM subtree.
-      const rolesGroup = page.getByRole("group", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
-      const managerCheckbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Project manager from ${PERSONAS.orgAdminGamma.name}`) });
+      const rolesGroup = page.getByRole("group", { name: `${PERSONAS.projectMgrGamma.name}'s roles` });
+      const managerCheckbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Project manager from ${PERSONAS.projectMgrGamma.name}`) });
       await expect(managerCheckbox).toBeChecked();
       await expect(managerCheckbox).toBeDisabled();
       await expect(managerCheckbox).toHaveAttribute("title", /only manager source/);
@@ -81,13 +91,13 @@ test.describe("org admin: Manage users modal", () => {
     await test.step("adding a direct member via the modal's own add control (members/groups directory rework: 'Add member' opens the control in a second, nested Modal instead of it sitting permanently inside this outer 'Manage users' Modal, per docs/ux-style-guide.md Principle 3; rebuilt onto the shared `AddMembersModal` staged multi-add — see that component's own module docstring)", async () => {
       await modal.getByRole("button", { name: "Add member" }).click();
       const addMemberModal = page.getByRole("dialog", { name: "Add member" });
-      await addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.projectMgrGamma.name);
-      await addMemberModal.getByRole("option", { name: new RegExp(PERSONAS.projectMgrGamma.name) }).click();
+      await addMemberModal.getByPlaceholder("Type a name to add, or an email to invite…").fill(PERSONAS.orgAdminGamma.name);
+      await addMemberModal.getByRole("option", { name: new RegExp(PERSONAS.orgAdminGamma.name) }).click();
 
       // Picking a match only stages it — nothing is granted, and both
       // modals stay open, until the commit button is pressed.
-      await expect(addMemberModal.getByText(`${PERSONAS.projectMgrGamma.name} (${PERSONAS.projectMgrGamma.email})`)).toBeVisible();
-      await expect(modal.getByRole("cell", { name: PERSONAS.projectMgrGamma.name, exact: true })).toHaveCount(0);
+      await expect(addMemberModal.getByText(`${PERSONAS.orgAdminGamma.name} (${PERSONAS.orgAdminGamma.email})`)).toBeVisible();
+      await expect(modal.getByRole("cell", { name: PERSONAS.orgAdminGamma.name, exact: true })).toHaveCount(0);
 
       await addMemberModal.getByRole("button", { name: "Add 1 member" }).click();
       // Committing (with no other staged entries pending) closes only the
@@ -98,14 +108,14 @@ test.describe("org admin: Manage users modal", () => {
       // match the same row's Role cell, whose `MultiSelectDropdown`
       // trigger button's own accessible name ("<name>'s roles") contains
       // this name as a substring.
-      await expect(modal.getByRole("cell", { name: PERSONAS.projectMgrGamma.name, exact: true })).toBeVisible();
+      await expect(modal.getByRole("cell", { name: PERSONAS.orgAdminGamma.name, exact: true })).toBeVisible();
     });
 
     await test.step("toggling that same direct role off calls DELETE .../roles, same as Project Admin's own Members page", async () => {
-      const rolesButton = modal.getByRole("button", { name: `${PERSONAS.projectMgrGamma.name}'s roles` });
+      const rolesButton = modal.getByRole("button", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
       await rolesButton.click();
-      const rolesGroup = page.getByRole("group", { name: `${PERSONAS.projectMgrGamma.name}'s roles` });
-      const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Member from ${PERSONAS.projectMgrGamma.name}`) });
+      const rolesGroup = page.getByRole("group", { name: `${PERSONAS.orgAdminGamma.name}'s roles` });
+      const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Member from ${PERSONAS.orgAdminGamma.name}`) });
       await expect(checkbox).toBeEnabled();
       await checkbox.click();
       // Revoking the user's only role removes their row — and its dropdown
@@ -114,15 +124,29 @@ test.describe("org admin: Manage users modal", () => {
       // row-gone check pass vacuously and the "Close" step below hang).
       // Wait for the row to go, and only press Escape if the dropdown
       // survived.
-      await expect(modal.getByRole("cell", { name: PERSONAS.projectMgrGamma.name, exact: true })).toHaveCount(0);
+      await expect(modal.getByRole("cell", { name: PERSONAS.orgAdminGamma.name, exact: true })).toHaveCount(0);
       if (await rolesGroup.isVisible()) await page.keyboard.press("Escape");
       await expect(modal).toBeVisible();
     });
 
-    await test.step("closing the modal returns to the plain project list row", async () => {
+    await test.step("closing the dialog returns to the list; the project is still not a link", async () => {
       await modal.getByRole("button", { name: "Close" }).click();
       await expect(modal).not.toBeVisible();
-      await expect(projectRow.getByRole("button", { name: "Manage users" })).toBeVisible();
+      await expect(page.getByRole("button", { name: `Manage users of ${projectName}` })).toBeVisible();
     });
+
+    await test.step("Organisation administration no longer lists projects", async () => {
+      await page.goto("/orgs");
+      await selectOrgAdminGroup(page, "Projects");
+      await expect(page.getByRole("button", { name: "Manage users", exact: true })).toHaveCount(0);
+      await expect(page.getByText(projectName)).toHaveCount(0);
+    });
+  });
+
+  test("the filter is not offered to a person who does not administer an organisation", async ({ page }) => {
+    await loginAs(page, PERSONAS.projectMgrGamma.email);
+    await page.goto("/projects");
+    await expect(page.getByRole("checkbox", { name: "Favourites only" })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Include projects I am not a member of" })).toHaveCount(0);
   });
 });

@@ -5,7 +5,7 @@ import { loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup, closeDialogWitho
 /**
  * Job to be done: `AddMembersModal` (frontend/src/components/AddMembersModal.tsx)
  * replaced two near-identical bespoke "pick one person, submit immediately,
- * close the modal" flows (`OrgAdminPage.tsx`'s "Manage users" add-member
+ * close the modal" flows (`ManageProjectUsersModal`'s add-member
  * step, `ProjectAdminPage.tsx`'s own Members-section add-member modal) with
  * a staged multi-add: pick several people/groups, set each one's own role,
  * then commit them all with a single button press instead of one full

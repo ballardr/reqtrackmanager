@@ -184,12 +184,18 @@ export function FilterCheckbox({
   label,
   checked,
   onChange,
+  help,
 }: {
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  /** Tooltip saying what ticking the box adds or removes; omitted for a self-explanatory filter. */
+  help?: string;
 }) {
-  return (
+  return help ? (
+    <CheckboxField help={help} label={label} checked={checked} onChange={onChange} />
+  ) : (
     <CheckboxField helpNotNeeded label={label} checked={checked} onChange={onChange} />
   );
 }
+

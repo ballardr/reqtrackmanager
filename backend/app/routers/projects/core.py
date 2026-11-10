@@ -19,7 +19,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -60,6 +60,7 @@ from app.schemas.project import (
     RecordTypeCountOut,
     StageProgressOut,
     TerminologyUpdate,
+    UnjoinedProjectListItemOut,
 )
 from app.services import tags as tag_service
 from app.services.audit import log_event
@@ -71,6 +72,7 @@ from app.services.downloads import filename_safe
 from app.services.lookups import project_or_404
 from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
+from app.services.project_access import administered_org_ids
 from app.services.project_counts import project_counts, project_stage_progress
 from app.services.project_export import build_project_bundle, import_project_bundle
 from app.services.project_files import FileFilters, project_file_rows, project_uploaders, row_identity
@@ -444,8 +446,9 @@ def get_project_tree(
     return build_project_tree(db, organization_id, accessible_ids)
 
 
-@router.get("", response_model=list[ProjectListItemOut])
+@router.get("", response_model=list[ProjectListItemOut | UnjoinedProjectListItemOut])
 def list_projects(
+    request: Request,
     response: Response,
     archived: bool = False,
     search: str | None = None,
@@ -455,6 +458,7 @@ def list_projects(
     favorite_only: bool = False,
     include_templates: bool = False,
     templates_only: bool = False,
+    include_unjoined: bool = False,
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
@@ -482,6 +486,14 @@ def list_projects(
     `limit`/`offset` (U-P-06) are optional pagination — see
     `list_requirements` for the same pattern and its rationale.
 
+    `include_unjoined` adds the projects of every organisation the caller administers that the caller holds no
+    role in, as identity-only rows (`UnjoinedProjectListItemOut`: no summary, counts, stage or status). It is
+    honoured only for those organisations and ignored for anyone else, never widened; `X-Can-Include-Unjoined`
+    tells the page whether the caller administers any organisation, so the filter is offered only to them. The
+    extra rows follow the same archived, template, organisation and search filters; the `role`,
+    `stage_phase_kind` and `favorite_only` filters describe membership and so exclude them. Opening such a
+    project is still refused (`require_project_view`); the only action on a row is managing its users.
+
     `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory accessible-projects + default
     archived-visibility scope, before `organization_id`/`search`/`role`/
@@ -498,6 +510,14 @@ def list_projects(
         # organisations", so even server admins only see projects they hold a
         # genuine role in, same as anyone else.
         accessible_ids = _accessible_project_ids(db, current_user.id)
+        administered_ids = administered_org_ids(db, current_user, getattr(request.state, "pat_allowed_org_ids", None))
+        response.headers["X-Can-Include-Unjoined"] = "true" if administered_ids else "false"
+        unjoined_scope = [
+            Project.organization_id.in_(administered_ids),
+            Project.id.not_in(accessible_ids) if accessible_ids else true(),
+            Project.is_archived == archived,
+        ]
+        unjoined_projects: list[Project] = []
         projects: list[Project]
         if not accessible_ids:
             projects = []
@@ -538,14 +558,30 @@ def list_projects(
                 select(Project).join(Organization, Organization.id == Project.organization_id).where(*conditions)
             ).all())
 
+        if include_unjoined and administered_ids:
+            # One extra read of the administered organisations' projects the caller holds no role in. Which of them
+            # count towards the unfiltered total follows the same mandatory scope as the member projects above.
+            unjoined_projects = list(db.scalars(select(Project).where(*unjoined_scope)).all())
+            response.headers["X-Total-Unfiltered-Count"] = str(
+                int(response.headers["X-Total-Unfiltered-Count"]) + len(unjoined_projects)
+            )
+            if organization_id is not None:
+                unjoined_projects = [p for p in unjoined_projects if p.organization_id == organization_id]
+
         if templates_only:
             projects = [p for p in projects if p.is_template]
+            unjoined_projects = [p for p in unjoined_projects if p.is_template]
         elif not include_templates:
             projects = [p for p in projects if not p.is_template]
+            unjoined_projects = [p for p in unjoined_projects if not p.is_template]
 
         if search:
             needle = search.lower()
             projects = [p for p in projects if needle in p.name.lower() or needle in p.summary.lower()]
+            unjoined_projects = [p for p in unjoined_projects if needle in p.name.lower()]
+        # Membership-only filters have nothing to say about a project the caller holds no role in.
+        if role is not None or stage_phase_kind is not None or favorite_only:
+            unjoined_projects = []
 
         favorite_ids = set(
             db.scalars(select(FavoriteProject.project_id).where(FavoriteProject.user_id == current_user.id)).all()
@@ -553,7 +589,7 @@ def list_projects(
         org_names = dict(
             db.execute(
                 select(Organization.id, Organization.name).where(
-                    Organization.id.in_({p.organization_id for p in projects})
+                    Organization.id.in_({p.organization_id for p in (*projects, *unjoined_projects)})
                 )
             ).tuples().all()
         )
@@ -584,11 +620,11 @@ def list_projects(
         # present in `projects`, not per row.
         admin_org_ids = {
             oid for oid in {p.organization_id for p in projects} if is_org_admin(db, current_user.id, oid)
-        }
+        } | {p.organization_id for p in unjoined_projects}
         visible_parent_ids = {p.parent_project_id for p in projects if p.parent_project_id is not None} & accessible_ids
         visible_parent_ids |= {
             p.parent_project_id
-            for p in projects
+            for p in (*projects, *unjoined_projects)
             if p.parent_project_id is not None and p.organization_id in admin_org_ids
         }
         parent_names = (
@@ -623,7 +659,7 @@ def list_projects(
         # so the per-row `get_effective_project_roles` below doesn't query.
         prefetch_project_roles(db, current_user.id, project_ids)
 
-        out = []
+        out: list[ProjectListItemOut] = []
         for p in projects:
             stage = current_stages.get(p.id)
             phase = phases.get(stage.phase_id) if stage else None
@@ -662,12 +698,22 @@ def list_projects(
             )
         if favorite_only:
             out = [item for item in out if item.is_favorite]
-        out.sort(key=lambda item: (not item.is_favorite, item.name.lower()))
+        rows: list[ProjectListItemOut | UnjoinedProjectListItemOut] = [*out]
+        rows.extend(
+            UnjoinedProjectListItemOut(
+                id=p.id, organization_id=p.organization_id, organization_name=org_names.get(p.organization_id, ""),
+                name=p.name, code=p.code, is_archived=p.is_archived, is_template=p.is_template,
+                parent_project_id=p.parent_project_id if p.parent_project_id in parent_names else None,
+                parent_project_name=parent_names.get(p.parent_project_id) if p.parent_project_id else None,
+            )
+            for p in unjoined_projects
+        )
+        rows.sort(key=lambda item: (not getattr(item, "is_favorite", False), item.name.lower()))
 
-        response.headers["X-Total-Count"] = str(len(out))
+        response.headers["X-Total-Count"] = str(len(rows))
         if limit is not None:
-            out = out[offset:offset + limit]
-        return out
+            rows = rows[offset:offset + limit]
+        return rows
 
 
 @router.put("/{project_id}/favorite", status_code=status.HTTP_204_NO_CONTENT)

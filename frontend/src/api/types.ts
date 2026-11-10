@@ -1361,9 +1361,25 @@ export interface ProjectListItem extends Project {
   is_favorite: boolean;
   organization_name: string;
   requirement_count: number;
+  is_member: true;
   // Direct children, filtered to ones the caller can view (visibility
   // boundary — see `Project`'s note). No count of hidden ones either.
   children: ProjectAncestor[];
+}
+
+/** A project row for an organisation the caller administers and holds no role in (`include_unjoined`): identity
+ * only, never content. */
+export interface UnjoinedProjectListItem {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  name: string;
+  code: string;
+  is_archived: boolean;
+  is_template: boolean;
+  parent_project_id: string | null;
+  parent_project_name: string | null;
+  is_member: false;
 }
 
 /** The subset of `ProjectListItem`'s fields `ProjectHierarchyLabels` actually

@@ -168,6 +168,9 @@ export interface Page<T> {
   totalUnfiltered?: number;
   /** Set when the server says the list was cut short (`X-Projects-Truncated`, the organisation Files list). */
   truncated?: boolean;
+  /** Set by the project list: whether the caller administers an organisation, so the filter that adds projects they
+   * are not a member of applies to them (`X-Can-Include-Unjoined`). */
+  canIncludeUnjoined?: boolean;
 }
 
 async function requestPage<T>(path: string, options: RequestInit = {}): Promise<Page<T>> {
@@ -180,6 +183,9 @@ async function requestPage<T>(path: string, options: RequestInit = {}): Promise<
     total: totalHeader ? Number(totalHeader) : items.length,
     totalUnfiltered: totalUnfilteredHeader ? Number(totalUnfilteredHeader) : undefined,
     truncated: response.headers.get("x-projects-truncated") === "true" ? true : undefined,
+    canIncludeUnjoined: response.headers.has("x-can-include-unjoined")
+      ? response.headers.get("x-can-include-unjoined") === "true"
+      : undefined,
   };
 }
 

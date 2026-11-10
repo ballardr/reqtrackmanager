@@ -14,7 +14,7 @@ function project(overrides: Partial<ProjectListItem>): ProjectListItem {
     visibility: "only_specified",
     terminology: {}, status_id: "s1", parent_project_id: null, role_inheritance_mode: "none",
     role_inheritance_filter_role: null, can_be_parent: false, current_stage_name: null, current_stage_phase_name: null, current_stage_phase_kind: null,
-    my_roles: [], is_favorite: false, organization_name: "Acme", requirement_count: 0, children: [],
+    my_roles: [], is_favorite: false, organization_name: "Acme", requirement_count: 0, is_member: true, children: [],
     ...overrides,
   };
 }

@@ -13,18 +13,14 @@ import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../conte
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import type {
-  AssignByEmailOutcome,
   CustomRoleDefinition,
   CustomRolePreset,
-  EffectiveMember,
   EntityScope,
   ExternalUserPolicy,
-  MaterializeResult,
   MergeConflict,
   ModuleRoleDefinition,
   OrgAdvancedSettings,
   OrgGroup,
-  OrgGroupProjectRoleSummary,
   OrgModule,
   OrgModuleSubComponent,
   OrgMergePreviewResult,
@@ -37,10 +33,8 @@ import type {
   OrgUser,
   Organization,
   OutsideDomainUser,
-  PendingInvite,
   Permission,
   ProjectListItem,
-  ProjectRole,
   ProjectStatusDefinition,
   ScimTokenCreated,
   ScimTokenStatus,
@@ -59,8 +53,6 @@ import {
 import { OrgTagsPanel } from "../components/OrgTagsPanel";
 import { ActionMenu } from "../components/ActionMenu";
 import { Tooltip } from "../components/Tooltip";
-import type { StagedMember } from "../components/AddMembersModal";
-import { AddMembersModal } from "../components/AddMembersModal";
 import { AddToGroupControl } from "../components/AddToGroupControl";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { FileNameField } from "../components/FileNameField";
@@ -86,7 +78,6 @@ import { MultiSelectDropdown } from "../components/MultiSelectDropdown";
 import { BrandingImageField } from "../components/BrandingImageField";
 import { InlineMessage } from "../components/InlineMessage";
 import { PermissionPicker } from "../components/PermissionPicker";
-import { ProjectMembersTable } from "../components/ProjectMembersTable";
 import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
 import { PoliciesPanel } from "../components/PoliciesPanel";
 import { NavLabelsPanel } from "../components/NavLabelsPanel";
@@ -410,10 +401,6 @@ export function OrgAdminPage() {
   // which entity (e.g. which standard) each such role's grant/revoke
   // pickers currently target, keyed by `CustomRoleDefinition.id`.
   const [customRoleGrantEntityId, setCustomRoleGrantEntityId] = useState<Record<string, string>>({});
-  // Same, but project-scoped — for the "manage users" modal's own
-  // `ProjectMembersTable`, keyed by whichever project that modal currently
-  // has open (see `openManageUsers` below).
-  const [manageUsersAvailableModuleRoles, setManageUsersAvailableModuleRoles] = useState<ModuleRoleDefinition[]>([]);
   // Users table filters : the
   // three access-review filters used to be a single-select "" | "stale" |
   // "no2fa" | "noaccess" toggle-button row (mutually exclusive, so e.g.
@@ -492,35 +479,6 @@ export function OrgAdminPage() {
   const defaultTemplateOptions: { id: string; name: string }[] = orgProjects
     ? orgProjects.filter((p) => p.is_template && !p.is_archived)
     : templateProjects;
-  // "Manage users" (docs/decisions.md): the old inline expand-in-place
-  // (`expandedProjectId`/`expandedProjectGroups`/`toggleExpandedProject`/
-  // `addExpandedProjectGroupMember`/`removeExpandedProjectGroupMember`) is
-  // now a `Modal` wrapping the same `ProjectMembersTable`
-  // `ProjectAdminPage.tsx`'s own Members section uses — literally the same
-  // component, not a duplicate, worse reimplementation (the concrete
-  // complaint this fixes). `manageUsersProjectId` is which project's
-  // modal is open (`null` = closed); its effective-members/pending-invites
-  // are fetched fresh on open, the same two endpoints `ProjectAdminPage.tsx`
-  // itself uses.
-  const [manageUsersProjectId, setManageUsersProjectId] = useState<string | null>(null);
-  const [manageUsersProjectName, setManageUsersProjectName] = useState("");
-  const [manageUsersMembers, setManageUsersMembers] = useState<EffectiveMember[]>([]);
-  // This modal's own copy
-  // of `ProjectMembersTable`'s third data source — same "fetched fresh on
-  // open, re-fetched after every mutation" treatment `manageUsersMembers`
-  // already gets.
-  const [manageUsersGroupRoles, setManageUsersGroupRoles] = useState<OrgGroupProjectRoleSummary[]>([]);
-  const [manageUsersInvites, setManageUsersInvites] = useState<PendingInvite[]>([]);
-  const [manageUsersResendingInviteId, setManageUsersResendingInviteId] = useState<string | null>(null);
-  // Style guide "Pattern: modal dialog for entity create/rename" (Principle
-  // 3) — the inline add-member sub-form used to render permanently inside
-  // this outer "Manage users" Modal; it's now a button that opens a second,
-  // nested Modal (`useDialogA11y`'s own docstring explains why a nested
-  // Modal's Escape/focus handling is already safe here). The outer Modal
-  // remains the right container for "manage users for this project" as a
-  // whole — only the always-visible add sub-form within it is modal-ified.
-  const [manageUsersAddMemberModalOpen, setManageUsersAddMemberModalOpen] = useState(false);
-
   const [ssoConfig, setSsoConfig] = useState<OrgSsoConfig | null>(null);
   const [slugInput, setSlugInput] = useState("");
   const [ssoEnabled, setSsoEnabled] = useState(false);
@@ -968,254 +926,6 @@ export function OrgAdminPage() {
   async function setDefaultTemplate(projectId: string) {
     if (!(await run(() => api.put(`/api/v1/orgs/${orgId}/default-template`, { project_id: projectId || null }), "set", "default template"))) return;
     reload();
-  }
-
-  /** Opens the "Manage users" `Modal` for one project
-   * (docs/decisions.md) — fetches its effective-members + pending invites fresh every open,
-   * the same two calls `ProjectAdminPage.tsx`'s own Members section makes
-   * on its own `reload()`. */
-  async function openManageUsers(project: OrgProjectSummary) {
-    setManageUsersProjectId(project.id);
-    setManageUsersProjectName(project.name);
-    const [members, groupRoles, invites, moduleRoles] = await Promise.all([
-      api.get<EffectiveMember[]>(`/api/v1/projects/${project.id}/effective-members`),
-      // This modal's own copy of `ProjectMembersTable`'s third
-      // data source — fetched fresh per open, same as `members` above.
-      api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${project.id}/group-roles`),
-      api.get<PendingInvite[]>(`/api/v1/projects/${project.id}/pending-invites`),
-      // This project's own available project-scoped
-      // module roles — fetched fresh per open, same as `members`/`invites`
-      // above, since a different project can have a different owning org
-      // (and therefore a different set of currently-enabled modules).
-      api.get<ModuleRoleDefinition[]>(`/api/v1/projects/${project.id}/module-roles`),
-    ]);
-    setManageUsersAvailableModuleRoles(moduleRoles);
-    setManageUsersMembers(members);
-    setManageUsersGroupRoles(groupRoles);
-    setManageUsersInvites(invites);
-  }
-
-  function closeManageUsers() {
-    setManageUsersProjectId(null);
-    setManageUsersProjectName("");
-    setManageUsersMembers([]);
-    setManageUsersGroupRoles([]);
-    setManageUsersInvites([]);
-    setManageUsersAvailableModuleRoles([]);
-    setManageUsersAddMemberModalOpen(false);
-  }
-
-  async function reloadManageUsersMembers() {
-    if (!manageUsersProjectId) return;
-    setManageUsersMembers(await api.get<EffectiveMember[]>(`/api/v1/projects/${manageUsersProjectId}/effective-members`));
-  }
-
-  /** `ProjectMembersTable`'s own third data source, scoped to
-   * `manageUsersProjectId` — same "re-fetch just this" treatment
-   * `reloadManageUsersMembers` uses. */
-  async function reloadManageUsersGroupRoles() {
-    if (!manageUsersProjectId) return;
-    setManageUsersGroupRoles(
-      await api.get<OrgGroupProjectRoleSummary[]>(`/api/v1/projects/${manageUsersProjectId}/group-roles`)
-    );
-  }
-
-  /** `ProjectMembersTable`'s own `onToggleRole` — only ever called for an
-   * option whose sole source is `direct_role` (see that component's
-   * docstring). Same "re-fetch just effective-members" treatment
-   * `ProjectAdminPage.tsx`'s own `toggleProjectMemberRole` uses. */
-  async function toggleManageUsersRole(userId: string, role: ProjectRole, checked: boolean) {
-    if (!manageUsersProjectId) return;
-    try {
-      if (checked) {
-        await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
-      } else {
-        await api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`);
-      }
-      await reloadManageUsersMembers();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  /** `ProjectMembersTable`'s `onToggleModuleRole`,
-   * scoped to `manageUsersProjectId` — same "re-fetch just effective-
-   * members" treatment `toggleManageUsersRole` above uses. */
-  async function toggleManageUsersModuleRole(userId: string, moduleKey: string, roleKey: string, grant: boolean) {
-    if (!manageUsersProjectId) return;
-    try {
-      if (grant) {
-        await api.post(`/api/v1/projects/${manageUsersProjectId}/members/${userId}/module-roles`, {
-          module_key: moduleKey, role_key: roleKey,
-        });
-      } else {
-        await api.delete(
-          `/api/v1/projects/${manageUsersProjectId}/members/${userId}/module-roles/${moduleKey}/${roleKey}`
-        );
-      }
-      await reloadManageUsersMembers();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  async function addManageUsersMember(userId: string, role: ProjectRole) {
-    if (!manageUsersProjectId) return;
-    await api.post(`/api/v1/projects/${manageUsersProjectId}/roles`, { user_id: userId, role });
-  }
-
-  /** The group branch of the same add-control — `UserAutocomplete`'s combined user-or-group
-   * autocomplete calls this instead of `addManageUsersMember` when the
-   * selected match is an org group, granting it a role *directly* on
-   * `manageUsersProjectId` via the new mechanism, the same pattern
-   * `ProjectAdminPage.tsx`'s own `addProjectGroupRole` uses. No
-   * `ProjectGroup` wrapper is created, and nesting stays out of scope for
-   * this control — see that function's own docstring for the full
-   * rationale, shared verbatim here. Reloading (both members and group
-   * roles) is the caller's job now — see `AddMembersModal`'s `onCommitted`,
-   * fired once per staged-add commit rather than once per entry. */
-  async function addManageUsersGroupRole(orgGroupId: string, role: ProjectRole) {
-    if (!manageUsersProjectId) return;
-    await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role });
-  }
-
-  /** `ProjectMembersTable`'s own `onToggleGroupRole`, scoped to
-   * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
-   * `toggleProjectMemberOrgGroupRole` uses. */
-  async function toggleManageUsersOrgGroupRole(orgGroupId: string, role: ProjectRole, checked: boolean) {
-    if (!manageUsersProjectId) return;
-    try {
-      if (checked) {
-        await api.post(`/api/v1/projects/${manageUsersProjectId}/group-roles`, { org_group_id: orgGroupId, role });
-      } else {
-        await api.delete(`/api/v1/projects/${manageUsersProjectId}/group-roles/${orgGroupId}/${role}`);
-      }
-      await reloadManageUsersGroupRoles();
-      await reloadManageUsersMembers();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  /** `ProjectMembersTable`'s own "Remove group", scoped to
-   * `manageUsersProjectId` — same pattern `ProjectAdminPage.tsx`'s own
-   * `removeProjectMemberOrgGroup` uses. */
-  async function removeManageUsersOrgGroup(orgGroupId: string) {
-    if (!manageUsersProjectId) return;
-    const group = manageUsersGroupRoles.find((g) => g.org_group_id === orgGroupId);
-    if (!group) return;
-    try {
-      await Promise.all(
-        group.roles.map((role) =>
-          api.delete(`/api/v1/projects/${manageUsersProjectId}/group-roles/${orgGroupId}/${role}`)
-        )
-      );
-      showToast(strings.membersTable.removeGroupSuccess(group.org_group_name));
-      await reloadManageUsersGroupRoles();
-      await reloadManageUsersMembers();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  /** `ProjectMembersTable`'s per-row "Remove all access" (Actions column,
-   * the members/groups directory rework) — same treatment
-   * `ProjectAdminPage.tsx`'s own `removeAllProjectMemberAccess` uses,
-   * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
-  async function removeAllManageUsersMemberAccess(userId: string) {
-    if (!manageUsersProjectId) return;
-    const member = manageUsersMembers.find((m) => m.user_id === userId);
-    if (!member) return;
-    try {
-      const roles = [...new Set(member.sources.map((s) => s.role))];
-      await Promise.all(
-        roles.map((role) => api.delete(`/api/v1/projects/${manageUsersProjectId}/roles/${userId}/${role}`))
-      );
-      showToast(strings.membersTable.removeAllAccessSuccess(member.display_name));
-      await reloadManageUsersMembers();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  /** `ProjectMembersTable`'s per-row "Convert inherited access to direct
-   * roles" (Actions column) — same treatment
-   * `ProjectAdminPage.tsx`'s own `convertProjectMemberToDirect` uses,
-   * scoped to `manageUsersProjectId`/`manageUsersMembers`. */
-  async function convertManageUsersMemberToDirect(userId: string) {
-    if (!manageUsersProjectId) return;
-    const member = manageUsersMembers.find((m) => m.user_id === userId);
-    try {
-      const result = await api.post<MaterializeResult>(
-        `/api/v1/projects/${manageUsersProjectId}/materialize-inherited-access/${userId}`
-      );
-      const name = member?.display_name ?? "";
-      showToast(
-        result.created.length > 0
-          ? strings.membersTable.convertToDirectSuccess(name)
-          : strings.membersTable.convertToDirectNoOp(name)
-      );
-      await reloadManageUsersMembers();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  /** The by-email counterpart, for a user outside this org entirely — same
-   * endpoint and outcome messaging `ProjectAdminPage.tsx`'s own
-   * `addExternalMember` uses, reused here via a `Toast` instead of that
-   * page's inline result banner (this Modal has no equivalent persistent
-   * banner slot). Left to throw on failure (rather than catching and
-   * toasting here) so `AddMembersModal` can show the error inline on this
-   * entry's own staged row instead — see that component's `onAddEntry`
-   * contract. */
-  async function addManageUsersExternalMember(email: string, role: ProjectRole) {
-    if (!manageUsersProjectId) return;
-    const result = await api.post<{ outcome: AssignByEmailOutcome }>(
-      `/api/v1/projects/${manageUsersProjectId}/roles/by-email`,
-      { email, role },
-    );
-    const messages: Record<AssignByEmailOutcome, (email: string, role: string, org: string) => string> = {
-      added: strings.admin.externalAddedDirectly,
-      invited: strings.admin.externalInvited,
-      sso_provisioned: strings.admin.externalSsoProvisioned,
-    };
-    showToast(messages[result.outcome](email, role, orgLabel));
-  }
-
-  /** `AddMembersModal`'s `onAddEntry` for the "Manage users" modal's own
-   * add-member step — dispatches a staged entry to whichever of the three
-   * handlers above matches its `kind`. */
-  async function handleManageUsersAddEntry(entry: StagedMember) {
-    if (entry.kind === "user") await addManageUsersMember(entry.id, entry.role);
-    else if (entry.kind === "group") await addManageUsersGroupRole(entry.id, entry.role);
-    else await addManageUsersExternalMember(entry.id, entry.role);
-  }
-
-  /** `AddMembersModal`'s `onCommitted` — fires once per commit pass (not
-   * once per staged entry), re-fetching everything a successful add could
-   * have changed: effective members, group roles (a newly-granted group
-   * needs its own `ProjectMembersTable` row), and pending invites (an
-   * external "invited" outcome adds one). */
-  async function handleManageUsersAddCommitted() {
-    if (!manageUsersProjectId) return;
-    await reloadManageUsersMembers();
-    await reloadManageUsersGroupRoles();
-    setManageUsersInvites(await api.get<PendingInvite[]>(`/api/v1/projects/${manageUsersProjectId}/pending-invites`));
-  }
-
-  async function resendManageUsersInvite(invite: PendingInvite) {
-    if (!manageUsersProjectId) return;
-    setManageUsersResendingInviteId(invite.id);
-    try {
-      await api.post(`/api/v1/projects/${manageUsersProjectId}/pending-invites/${invite.id}/resend`);
-      showToast(strings.admin.resendInviteSuccess(invite.email));
-      setManageUsersInvites(await api.get<PendingInvite[]>(`/api/v1/projects/${manageUsersProjectId}/pending-invites`));
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.admin.resendInviteError), "error");
-    } finally {
-      setManageUsersResendingInviteId(null);
-    }
   }
 
   async function addProjectStatus(name: string) {
@@ -3041,75 +2751,6 @@ export function OrgAdminPage() {
 
         {activeGroup === "projects" && (
           <div className="stack">
-            {orgProjects && (
-              <CollapsibleSection sectionKey="orgAdmin.projects" title={strings.orgAdmin.projects} help={strings.orgAdmin.projectsHint(orgLabel)}>
-                {orgProjects.map((p) => (
-                  <div key={p.id} className="stack" style={{ borderBottom: "1px solid var(--color-border)", paddingBottom: "var(--space-3)" }}>
-                    <div className="row" style={{ justifyContent: "space-between" }}>
-                      <span className="row" style={{ gap: "var(--space-3)" }}>
-                        {p.name}
-                        {p.is_archived && <Badge>{strings.projects.archived}</Badge>}
-                      </span>
-                      <button className="btn" onClick={() => openManageUsers(p)}>
-                        {strings.orgAdmin.manageUsers}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </CollapsibleSection>
-            )}
-
-            {manageUsersProjectId && (
-              // (docs/decisions.md): the same `ProjectMembersTable`
-              // `ProjectAdminPage.tsx`'s own Members section renders — this
-              // is the direct fix for "should show up in a similar way to
-              // the project admin page," not a parallel reimplementation.
-              <Modal title={strings.orgAdmin.manageUsersModalTitle(manageUsersProjectName)} onClose={closeManageUsers} size="lg">
-                <div className="row" style={{ gap: "var(--space-3)", flexWrap: "wrap" }}>
-                  <button className="btn btn-primary" onClick={() => setManageUsersAddMemberModalOpen(true)}>
-                    <Plus /> {strings.admin.addMember}
-                  </button>
-                  {/* No sibling "Add group" button (corrected during the own
-                      review): the autocomplete below is expanded to match
-                      org groups too — see UserAutocomplete's own module
-                      docstring. */}
-                </div>
-                {manageUsersAddMemberModalOpen && (
-                  // the members/groups directory rework
-                  // originally opened a nested Modal here submitting one
-                  // person at a time; now the shared staged multi-add
-                  // component (`AddMembersModal`) — see that component's own
-                  // module docstring for why it replaced this and
-                  // `ProjectAdminPage.tsx`'s equivalent bespoke modal at once.
-                  <AddMembersModal
-                    title={strings.admin.addMember}
-                    onClose={() => setManageUsersAddMemberModalOpen(false)}
-                    users={users}
-                    groups={allGroups}
-                    organizationId={orgId}
-                    projectId={manageUsersProjectId}
-                    onAddEntry={handleManageUsersAddEntry}
-                    onCommitted={handleManageUsersAddCommitted}
-                  />
-                )}
-                <ProjectMembersTable
-                  members={manageUsersMembers}
-                  invites={manageUsersInvites}
-                  groupRoles={manageUsersGroupRoles}
-                  onToggleRole={toggleManageUsersRole}
-                  onToggleGroupRole={toggleManageUsersOrgGroupRole}
-                  onResendInvite={resendManageUsersInvite}
-                  resendingInviteId={manageUsersResendingInviteId}
-                  onRemoveAllAccess={removeAllManageUsersMemberAccess}
-                  onConvertToDirect={convertManageUsersMemberToDirect}
-                  onRemoveGroup={removeManageUsersOrgGroup}
-                  ariaLabel={strings.orgAdmin.manageUsers}
-                  availableModuleRoles={manageUsersAvailableModuleRoles}
-                  onToggleModuleRole={toggleManageUsersModuleRole}
-                />
-              </Modal>
-            )}
-
             <CollapsibleSection sectionKey="orgAdmin.projectCodes" title={strings.orgAdmin.projectCodes} help={strings.orgAdmin.codePolicyHint}>
               <ProjectCodePolicyPanel org={org} onSaved={setOrg} />
             </CollapsibleSection>

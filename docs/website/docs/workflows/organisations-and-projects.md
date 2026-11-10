@@ -18,6 +18,8 @@ Organisation administrators choose **Customise** to place, resize, add and remov
 
 Open **Projects** in the nav. The list is filterable by active/archived status, by your role on the project, by the project's current stage status, and — if you belong to more than one organisation — by which organisation it's in, and is searchable by name or summary. Each card shows the project's organisation and how many requirements it currently has.
 
+An organisation administrator also has **Include projects I am not a member of** (off by default). It adds the projects of the organisations they administer that they hold no role in: the rows are muted, marked **Not a member**, show only the name and organisation, and cannot be opened. The gear on such a row opens **Manage users** for the project. Other people do not see the filter.
+
 | Projects list |
 | --- |
 | Filterable, searchable project list with role and organisation filters |
