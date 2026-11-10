@@ -170,6 +170,10 @@ One historical or current state of a requirement's content (name, reasoning, des
 
 A Risk owner's judgement of whether one linked Requirement or Action actually reduces the Risk: Proposed, Effective, Ineffective or Needs reassessment. Only Effective counts. See [Risk Management → Treatment and relationships](../modules/risk-management-module/treatment-and-relationships.md).
 
+#### Shared resource
+
+A file owned by the organisation rather than by one project, such as a standards document. Any requirement in the organisation can link it and a report can append it. It is listed on the organisation Files page, where only a person holding the `manage_org_resources` permission (organisation administrators, or anyone given it through a custom role) can upload or delete it. See [File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md#organisation-wide-shared-resources).
+
 #### Stage workflow
 
 A named, ordered list of phases a project stage moves through. Each phase has a free-text name and a kind (Open, Review, Locked, On hold or Closed) that decides what entering it does. Defined by the organisation (available to every project, which can hide it) or by one project. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).

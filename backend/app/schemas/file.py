@@ -25,6 +25,19 @@ class FileAssetOut(BaseModel):
     created_at: datetime
 
 
+class OrgResourceOut(FileAssetOut):
+    """One organisation shared resource in `GET /orgs/{id}/resources`: the file, who uploaded it and how many records link it."""
+
+    uploaded_by_display_name: str = ""
+    link_count: int = 0
+
+
+class OrgResourceAccessOut(BaseModel):
+    """Body of `GET /orgs/{id}/resources/access`: whether the caller may upload and delete shared resources."""
+
+    can_manage: bool
+
+
 class FileConfidentialIn(BaseModel):
     """Body of `PATCH /files/{id}/confidential`."""
 

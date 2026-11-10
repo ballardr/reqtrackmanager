@@ -19,7 +19,6 @@ import type {
   EffectiveMember,
   EntityScope,
   ExternalUserPolicy,
-  FileAsset,
   MaterializeResult,
   MergeConflict,
   ModuleRoleDefinition,
@@ -72,8 +71,6 @@ import { DefinitionList } from "../components/DefinitionList";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { EntitySwitcher } from "../components/EntitySwitcher";
-import { FileDetailsToggle } from "../components/FileDetailsPanel";
-import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
 import { ImportConflictPanel } from "../components/ImportConflictPanel";
@@ -305,8 +302,7 @@ export function OrgAdminPage() {
   // `PATCH` the "Save sync settings" button already uses (see
   // `toggleGroupSync` below) — no backend schema change needed.
   const [syncEnabledEdits, setSyncEnabledEdits] = useState<Record<string, boolean>>({});
-  const [resources, setResources] = useState<FileAsset[]>([]);
-  const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
+    const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
   // Fine-Grained Access Control (core): this org's projects the
   // *caller* has some visibility into (`GET /api/v1/projects`, already
   // fetched unconditionally for `templateProjects` above) — the Role
@@ -651,18 +647,17 @@ export function OrgAdminPage() {
     // a whole for exactly that case — caught here so it surfaces as a
     // real message instead of leaving `org` unset and the page spinning
     // forever (its loading gate is just `if (!org) return <Spinner />`).
-    let o: Organization, allG: OrgGroup[], r: FileAsset[], projects: ProjectListItem[];
+    let o: Organization, allG: OrgGroup[], projects: ProjectListItem[];
     let statuses: ProjectStatusDefinition[];
     let permissionsList: Permission[], customRoleList: CustomRoleDefinition[], entityScopeList: EntityScope[];
     try {
-      [o, allG, r, projects, statuses, permissionsList, customRoleList, entityScopeList] =
+      [o, allG, projects, statuses, permissionsList, customRoleList, entityScopeList] =
         await Promise.all([
         api.get<Organization>(`/api/v1/orgs/${orgId}`),
         // Unpaginated — nested-group name resolution and the "add nested
         // group" dropdown both need every group in the org regardless of
         // the Groups section's own search/page state (see `allGroups`).
         api.get<OrgGroup[]>(`/api/v1/orgs/${orgId}/groups`),
-        api.get<FileAsset[]>(`/api/v1/orgs/${orgId}/resources`),
         // Scoped to this org server-side: only its projects are used below,
         // and the unscoped list spanned every org the caller belongs to.
         api.get<ProjectListItem[]>(`/api/v1/projects?archived=false&include_templates=true&organization_id=${orgId}`),
@@ -706,7 +701,6 @@ export function OrgAdminPage() {
     setEmailFooterWebsiteInput(o.email_footer_website ?? "");
     setEmailFooterAddressInput(o.email_footer_address ?? "");
     setAllGroups(allG);
-    setResources(r);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
     setThisOrgVisibleProjects(projects.filter((p) => p.organization_id === orgId));
     setProjectStatuses(statuses);
@@ -1968,16 +1962,6 @@ export function OrgAdminPage() {
     }
   }
 
-  async function uploadResource(file: File) {
-    if (!(await run(() => api.postFile(`/api/v1/orgs/${orgId}/resources`, file), "upload", "resource"))) return;
-    reload();
-  }
-
-  async function deleteResource(fileId: string) {
-    if (!(await run(() => api.delete(`/api/v1/orgs/${orgId}/resources/${fileId}`), "delete", "resource"))) return;
-    reload();
-  }
-
   /** Toggles one user's display-name lock and updates just that row, with a
    * toast — not a full `reload()`, which refetched the whole page (~15
    * requests) and re-rendered the users table, closing any menu the admin
@@ -2612,30 +2596,6 @@ export function OrgAdminPage() {
                 </div>
               )}
               <InlineMessage>{importMergeError}</InlineMessage>
-            </CollapsibleSection>
-
-            <CollapsibleSection sectionKey="orgAdmin.resources" title={strings.orgAdmin.resources} defaultCollapsed help={strings.orgAdmin.resourcesHint(orgLabel)}>
-              {resources.map((r) => (
-                <div key={r.id} className="row" style={{ justifyContent: "space-between" }}>
-                  <a href={fileUrl(r.id)} target="_blank" rel="noreferrer">
-                    {r.filename}
-                  </a>
-                  <span className="row" style={{ gap: "var(--space-1)" }}>
-                    <FileDetailsToggle file={r} />
-                    <button
-                      className="btn btn-danger"
-                      title={strings.orgAdmin.deleteResource(r.filename)}
-                      aria-label={strings.orgAdmin.deleteResource(r.filename)}
-                      onClick={() => deleteResource(r.id)}
-                    >
-                      <Trash2 />
-                    </button>
-                  </span>
-                </div>
-              ))}
-              <FileUploadTrigger onSelect={uploadResource}>
-                <Upload size={14} /> {strings.common.chooseFile}
-              </FileUploadTrigger>
             </CollapsibleSection>
           </div>
         )}

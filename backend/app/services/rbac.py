@@ -3147,6 +3147,9 @@ EXPORT_PERSONAL_DATA = "export_personal_data"
 MANAGE_ORG_REPORT_LAYOUTS = "manage_org_report_layouts"
 """The administrative permission that lets a person manage the organisation's custom report layouts."""
 
+MANAGE_ORG_RESOURCES = "manage_org_resources"
+"""The administrative permission that lets a person upload and delete the organisation's shared resources."""
+
 MANAGE_PROJECT_REPORT_LAYOUTS = "manage_project_report_layouts"
 """The administrative permission that lets a person manage a project's custom report layouts."""
 

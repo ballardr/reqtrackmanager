@@ -618,6 +618,12 @@ export interface FileAsset {
   created_at: string;
 }
 
+/** One organisation shared resource (`GET /orgs/{id}/resources`): the file, its uploader's name and how many {requirements} link it. */
+export interface OrgResource extends FileAsset {
+  uploaded_by_display_name: string;
+  link_count: number;
+}
+
 /** Where a project's file hangs from (`ProjectFile.source`); labelled by `strings.files.sources` (the labels carry the organisation's terminology). */
 export type ProjectFileSource = "requirement_attachment" | "action_attachment" | "comment_attachment" | "report_image";
 

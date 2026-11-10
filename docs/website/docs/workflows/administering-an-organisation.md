@@ -33,7 +33,7 @@ Deleting a group never leaves a project without a Project Manager. Every project
 
 ## Shared resource files
 
-**Shared resources** are files that aren't specific to one requirement or change request — a standards document, a reference spec — available to link into any project in the organisation and to append as an extra section on a generated report. See [Core Features → File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md).
+**Shared resources** are files that aren't specific to one requirement or change request — a standards document, a reference spec — available to link into any project in the organisation and to append as an extra section on a generated report. They are uploaded, listed and deleted on the organisation's **Files** page (the **Shared resources** tab), not in Organisation administration. See [Core Features → File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md).
 
 ## Branding and the report look
 

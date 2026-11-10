@@ -47,7 +47,11 @@ Beside the name of a picture (JPEG, PNG, GIF, WebP or SVG) in any file list, an 
 
 ## Organisation-wide shared resources
 
-Beyond per-item attachments, an organisation admin can upload **shared resources** (**Organisation admin → Shared resources**) — files that aren't specific to one requirement or change request, such as a standards document or a reference spec. A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report — see [Reports and export](./reports-and-export.md).
+Beyond per-item attachments, an organisation has **shared resources**: files that aren't specific to one requirement or change request, such as a standards document or a reference spec. They are on the organisation's **Files** page, on the **Shared resources** tab. Every member of the organisation can list and download them; the tab shows who uploaded each one, when, its size and how many requirements link it.
+
+Only people who manage shared resources see **Upload shared resource** and a delete button on each row. Organisation administrators manage them, and an administrator can give the right to a person or an organisation group through a [custom role](./role-management.md#the-shared-resource-permission) holding the `manage_org_resources` permission. Deleting a resource asks for confirmation; a resource that requirements link names how many, removes those links with it, and asks for the file name to be typed.
+
+A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report. A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report — see [Reports and export](./reports-and-export.md).
 
 ## When uploads are disabled
 

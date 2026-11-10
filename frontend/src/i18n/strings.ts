@@ -517,7 +517,7 @@ const en = {
     attachments: "Attachments",
     selectAttachment: (org: string) => `Select from ${org} resources`,
     noAttachmentsAvailable: (org: string, orgCap: string) =>
-      `No ${org} resources uploaded yet — upload one from ${orgCap} administration first.`,
+      `No ${org} resources uploaded yet — a person who manages them uploads one on the ${orgCap} Files page first.`,
     viewComments: "View comments",
     voteComments: "Vote comments",
     noVoteComments: "No comments were left with any vote.",
@@ -1395,8 +1395,6 @@ const en = {
     ssoNotConfiguredHint: (org: string) => `Set up SSO/OIDC for this ${org} first to grant a role here.`,
     saveIdpSync: "Save sync settings",
     groupSyncUpdated: "Sync settings updated",
-    resources: "Shared resources",
-    resourcesHint: (org: string) => `Uploaded resources can be linked to {requirements} in any {project} in this ${org}.`,
     // Users table Actions column (docs/decisions.md) — the two existing bare buttons
     // (View access, lock/unlock display name) consolidated into one
     // `ActionMenu`, plus two new actions: "Remove from {org}" (a genuinely
@@ -1716,7 +1714,6 @@ const en = {
     projectCustomisationLockConfirm: "Switch off",
     projectCustomisationUpdated: "{Project} customisation updated.",
     projectCustomisationFailed: "Could not update {project} customisation.",
-    deleteResource: (name: string) => `Delete ${name}`,
   },
   importMerge: {
     action: (org: string) => `Import into this ${org}`,
@@ -3183,6 +3180,28 @@ const en = {
     allProjects: "All projects",
     includeArchivedProjects: "Include archived projects",
     projectsTruncated: "This list covers the first 250 projects you can open. Choose a project to see the rest.",
+    tabsLabel: "Files",
+    tabProjectFiles: "Project files",
+    tabSharedResources: "Shared resources",
+    // The Shared resources tab of the organisation Files page.
+    resources: {
+      searchLabel: "Search shared resource names",
+      loadError: "Could not load the shared resources.",
+      empty: "No shared resources have been uploaded yet.",
+      emptyFiltered: "No shared resources match this search.",
+      noun: "shared resource",
+      upload: "Upload shared resource",
+      columnLinked: "Linked {requirements}",
+      columnActions: "Actions",
+      help: (org: string) => `Shared resources are files owned by the ${org}, not by one {project}. A {requirement} in any {project} of the ${org} can link one, and a report can append it. Everyone in the ${org} can list and download them; only people who manage shared resources can upload or delete.`,
+      deleteLabel: (name: string) => `Delete ${name}`,
+      deleteTitle: (name: string) => `Delete ${name}?`,
+      deleteMessage: (linked: number) =>
+        linked === 0
+          ? "The file is removed from the shared resources and from storage. It is not linked to any {requirement}."
+          : `The file is removed from the shared resources and from storage, and its link is removed from ${linked === 1 ? "1 {requirement}" : `${linked} {requirements}`}. Type the file name to confirm.`,
+      deleteConfirm: "Delete",
+    },
   },
   history: {
     title: "{Project} history",
