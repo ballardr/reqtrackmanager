@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { ApiError, api, fileUrl } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
-import { AppFooter } from "../components/AppFooter";
 import { LoginAnnouncements } from "../components/LoginAnnouncements";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
+import { SignedOutPage } from "../components/SignedOutPage";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { TextField } from "../components/FormFields";
@@ -100,19 +100,9 @@ export function LoginPage() {
     }
   }
 
-  const backgroundStyle = loginBackgroundFileId
-    ? {
-        backgroundImage: `url(${fileUrl(loginBackgroundFileId)})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        minHeight: "100vh",
-      }
-    : { minHeight: "100vh" };
-
   if (challengeToken) {
     return (
-      <div style={backgroundStyle}>
-      <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+      <SignedOutPage backgroundFileId={loginBackgroundFileId}>
         <form className="card stack" onSubmit={handleVerify2fa}>
           <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} bandColorHex={brandBandColorHex} bandTextColorHex={brandBandTextColorHex} />
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.twoFactorTitle}</h2>
@@ -128,15 +118,12 @@ export function LoginPage() {
             {submitting ? "…" : strings.login.submit}
           </button>
         </form>
-        <AppFooter />
-      </div>
-      </div>
+      </SignedOutPage>
     );
   }
 
   return (
-    <div style={backgroundStyle}>
-    <div className="container stack" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+    <SignedOutPage backgroundFileId={loginBackgroundFileId}>
       <LoginAnnouncements />
       <form className="card stack" onSubmit={handleSubmit}>
         <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} bandColorHex={brandBandColorHex} bandTextColorHex={brandBandTextColorHex} />
@@ -167,8 +154,6 @@ export function LoginPage() {
           </div>
         )}
       </form>
-      <AppFooter />
-    </div>
-    </div>
+    </SignedOutPage>
   );
 }

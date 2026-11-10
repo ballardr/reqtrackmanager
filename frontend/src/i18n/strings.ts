@@ -1000,6 +1000,7 @@ const en = {
     companyId: "Company identifier",
     footerPrefixExample: "Hosted by",
     companyIdLabelExample: "ABN",
+    footerPosition: "Footer position",
   },
   reportFonts: {
     title: "Report fonts",
@@ -3770,6 +3771,10 @@ const en = {
     slowFieldHint: "(slower: reads every discussion)",
     fieldPickerSummaryLimit: 3,
   },
+  footerPosition: {
+    /** The empty option of an organisation's select: no choice of its own, so the platform value applies. */
+    followPlatform: (platformLabel: string) => `Platform setting (${platformLabel})`,
+  },
   logoBand: {
     label: "Logo band colour",
     textLabel: "Logo band text colour",
@@ -3779,6 +3784,8 @@ const en = {
   },
   help: {
     logoBand: "The colour of the band behind the logo.\nLogin page: the band across the top of the sign-in card, behind the logo and the name.\nEmail: the header of every outgoing email.\nReports: the logo is drawn on a plate of this colour. Reports are unchanged until a colour is chosen.\nWhen no colour is chosen the colour of the top bar is used.",
+    serverFooterPosition: "Where the footer of the signed-out pages (sign in, sign up, password reset) sits.\nAfter the content: directly below the sign-in card.\nBottom of the page: at the bottom edge of the window. When the window is shorter than the page the footer follows the content.\nAn organisation may choose its own position for its sign-in page.",
+    orgFooterPosition: "Where the footer of this organisation's sign-in page sits.\nPlatform setting: the position chosen for the whole service.\nAfter the content: directly below the sign-in card.\nBottom of the page: at the bottom edge of the window. When the window is shorter than the page the footer follows the content.",
     logoBandText: "The colour of the name shown beside the logo on the band (the login page and the header of outgoing email).\nWhen no colour is chosen the name is black or white, whichever reads better on the band.",
     // Stage workflows
     stagePhaseKindFilter:

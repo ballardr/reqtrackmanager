@@ -1169,7 +1169,7 @@ a.figure-projects-link:hover {
   min-width: 0;
 }
 
-/* The page footer (components/AppFooter.tsx): one muted, wrapping line at the end of the page's content. */
+/* The page footer (components/AppFooter.tsx): muted, wrapping, centred lines at the end of the page's content. */
 .app-footer {
   display: flex;
   flex-wrap: wrap;
@@ -1177,6 +1177,42 @@ a.figure-projects-link:hover {
   gap: var(--space-1) var(--space-3);
   padding-top: var(--space-4);
   font-size: 0.8rem;
+}
+
+/* The separator sits in the gap before a group that shares its line with the previous one (the component marks
+   it `data-joined`). It is positioned out of flow, so drawing it never changes where a group wraps; the empty
+   alternative text keeps it out of the spoken text. */
+.app-footer-group {
+  position: relative;
+}
+
+.app-footer-group[data-joined="true"]::before {
+  content: "|" / "";
+  position: absolute;
+  left: calc(var(--space-3) / -2);
+  transform: translateX(-50%);
+}
+
+/* The page shell of the signed-out pages (components/SignedOutPage.tsx). The content area takes the free height
+   when the footer rests at the bottom of the window; otherwise the footer follows the content. */
+.signed-out-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.signed-out-content {
+  width: 100%;
+  max-width: 380px;
+  padding-top: 4rem;
+}
+
+.signed-out-page[data-footer-position="bottom_of_page"] .signed-out-main {
+  flex: 1 0 auto;
+}
+
+.signed-out-page[data-footer-position="bottom_of_page"] > .app-footer {
+  padding: var(--space-4) var(--space-5);
 }
 
 

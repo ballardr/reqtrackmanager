@@ -216,6 +216,12 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
   project_creator: "Project creator",
   member: "Member",
 };
+/** Where the footer of the signed-out pages sits (the values the backend stores). */
+export type FooterPosition = "after_content" | "bottom_of_page";
+export const FOOTER_POSITION_LABEL: Record<FooterPosition, string> = {
+  after_content: "After the content",
+  bottom_of_page: "Bottom of the page",
+};
 export const SERVER_ROLE_LABEL: Record<ServerRole, string> = {
   server_admin: "Server admin",
   module_administrator: "Module administrator",
@@ -513,6 +519,8 @@ export interface Organization {
   logo_band_color_hex: string | null;
   /** The colour of the title on the band; `null` follows the platform value, then black or white by contrast. */
   logo_band_text_color_hex: string | null;
+  /** Where the footer of this organisation's sign-in page sits; `null` follows the platform value. */
+  footer_position: FooterPosition | null;
   /** The accent colour of reports; `null` follows `accent_color_hex`. */
   report_accent_color_hex: string | null;
   /** Whether reports carry the organisation's logo. */
@@ -577,6 +585,8 @@ export interface ServerSettings {
   logo_band_color_hex: string | null;
   /** The colour of the title on the band; `null` is black or white by contrast. */
   logo_band_text_color_hex: string | null;
+  /** Where the footer of the signed-out pages sits. */
+  footer_position: FooterPosition;
   default_logo_file_id: string | null;
   default_header_title: string | null;
   default_login_background_file_id: string | null;
@@ -2497,6 +2507,8 @@ export interface OrgLoginInfo {
   logo_band_color_hex: string;
   /** The resolved title colour on the band. */
   logo_band_text_color_hex: string;
+  /** The resolved footer position (the organisation's, else the platform's). */
+  footer_position: FooterPosition;
   login_background_file_id: string | null;
   sso_enabled: boolean;
   sso_only: boolean;

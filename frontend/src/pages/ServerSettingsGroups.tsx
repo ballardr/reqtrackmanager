@@ -16,7 +16,7 @@
 import { useState } from "react";
 
 import { api } from "../api/client";
-import type { ServerSettings, SignupConfig, SignupMode } from "../api/types";
+import { FOOTER_POSITION_LABEL, type FooterPosition, type ServerSettings, type SignupConfig, type SignupMode } from "../api/types";
 import { BrandingImageField } from "../components/BrandingImageField";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { CompanyDetailsFields } from "../components/CompanyDetailsFields";
@@ -33,6 +33,7 @@ import { BRANDING_CHANGED_EVENT } from "../context/brandingEvents";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { labelOptions } from "../utils/labelOptions";
 import { joinStorageLimit, splitStorageLimit, type StorageUnit } from "../utils/storageLimit";
 
 const strings = t();
@@ -87,7 +88,8 @@ function usePlatformImage(
 
 /** The `ServerSettings` fields the Server details form edits and compares against. */
 type FooterField =
-  | "email_footer_company_name" | "email_footer_website" | "email_footer_address" | "footer_prefix" | "company_id_label" | "company_id";
+  | "email_footer_company_name" | "email_footer_website" | "email_footer_address" | "footer_prefix" | "company_id_label" | "company_id"
+  | "footer_position";
 
 /**
  * Server details: the platform logo and the company details printed in the page footer and the footer of outgoing email. An organisation
@@ -103,13 +105,16 @@ export function ServerDetailsTab() {
   const [address, setAddress] = useState("");
   const [companyIdLabel, setCompanyIdLabel] = useState("");
   const [companyId, setCompanyId] = useState("");
+  const [position, setPosition] = useState<FooterPosition>("after_content");
   const logo = usePlatformImage("logo", setSettings, strings.serverSettings.logoUploaded, strings.serverSettings.logoRemoved);
 
   function adopt(s: ServerSettings) {
     setSaved({
       email_footer_company_name: s.email_footer_company_name, email_footer_website: s.email_footer_website, email_footer_address: s.email_footer_address,
       footer_prefix: s.footer_prefix, company_id_label: s.company_id_label, company_id: s.company_id,
+      footer_position: s.footer_position,
     });
+    setPosition(s.footer_position);
     setPrefix(s.footer_prefix ?? "");
     setCompany(s.email_footer_company_name ?? "");
     setWebsite(s.email_footer_website ?? "");
@@ -127,7 +132,8 @@ export function ServerDetailsTab() {
   if (!settings || !saved) return <Spinner />;
   const dirty =
     prefix !== (saved.footer_prefix ?? "") || company !== (saved.email_footer_company_name ?? "") || website !== (saved.email_footer_website ?? "") ||
-    address !== (saved.email_footer_address ?? "") || companyIdLabel !== (saved.company_id_label ?? "") || companyId !== (saved.company_id ?? "");
+    address !== (saved.email_footer_address ?? "") || companyIdLabel !== (saved.company_id_label ?? "") || companyId !== (saved.company_id ?? "") ||
+    position !== saved.footer_position;
 
   async function save() {
     const updated = await api.put<ServerSettings>("/api/v1/system/branding", {
@@ -137,6 +143,7 @@ export function ServerDetailsTab() {
       footer_prefix: orNull(prefix),
       company_id_label: orNull(companyIdLabel),
       company_id: orNull(companyId),
+      footer_position: position,
     });
     setSettings((prev) => (prev ? { ...prev, ...updated } : updated));
     adopt(updated);
@@ -185,6 +192,10 @@ export function ServerDetailsTab() {
                 value={companyIdLabel} onChange={setCompanyIdLabel} placeholder={strings.serverSettings.companyIdLabelExample}
               />
               <TextField help={strings.help.serverCompanyId} label={strings.serverSettings.companyId} value={companyId} onChange={setCompanyId} />
+              <LabeledSelect
+                help={strings.help.serverFooterPosition} label={strings.serverSettings.footerPosition} placeholder={null}
+                value={position} onChange={(value) => setPosition(value as FooterPosition)} options={labelOptions(FOOTER_POSITION_LABEL)} autoWidth
+              />
             </>
           )}
         />

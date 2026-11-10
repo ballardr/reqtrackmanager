@@ -13,7 +13,7 @@ const ORG_ID = "org-1";
 const org: Organization = {
   id: ORG_ID, name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-  disabled_at: null, accent_color_hex: null, logo_band_color_hex: null, logo_band_text_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
+  disabled_at: null, accent_color_hex: null, logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
   code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
@@ -59,7 +59,7 @@ const defaultArtefactRules: ArtefactLinkRule[] = [
 /** The platform branding the company settings show as placeholders. */
 const PLATFORM_BRANDING = {
   accent_color_hex: "#475569", default_logo_file_id: "platform-logo", default_header_title: "Platform Requirements",
-  logo_band_color_hex: null, logo_band_text_color_hex: null,
+  logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: "after_content",
   default_login_background_file_id: null, email_footer_company_name: "Platform Co", email_footer_website: "https://platform.example.com",
   email_footer_address: "1 Platform Way", org_label_singular: null, org_label_plural: null,
 };
@@ -844,6 +844,47 @@ export const BrandingSetsTheReportAccentAndLogo: Story = {
         `/api/v1/orgs/${ORG_ID}/branding`,
         expect.objectContaining({ report_accent_color_hex: expect.stringMatching(/^#[0-9a-fA-F]{6}$/), report_include_logo: false }),
       ),
+    );
+  },
+};
+
+/** The footer position follows the platform unless the organisation chooses its own; choosing the empty option goes back to following. */
+export const BrandingChoosesTheSignInFooterPosition: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(org);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
+    const position = await canvas.findByLabelText("Footer position");
+    await expect(position).toHaveValue("");
+    await expect(within(position).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Platform setting (After the content)", "After the content", "Bottom of the page",
+    ]);
+    await userEvent.selectOptions(position, "bottom_of_page");
+    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding`, expect.objectContaining({ footer_position: "bottom_of_page" })),
+    );
+  },
+};
+
+/** An organisation with its own position shows it selected, and returning to the platform setting sends `null`. */
+export const ClearingTheFooterPositionSendsNull: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis({ org: { ...org, footer_position: "bottom_of_page" } });
+    spyOn(api, "put").mockResolvedValue(org);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
+    const position = await canvas.findByLabelText("Footer position");
+    await expect(position).toHaveValue("bottom_of_page");
+    await userEvent.selectOptions(position, "");
+    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding`, expect.objectContaining({ footer_position: null })),
     );
   },
 };

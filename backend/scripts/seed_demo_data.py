@@ -2543,6 +2543,8 @@ def main() -> None:
             "accent_color_hex": None, "header_title": None,
             # The band behind the logo on the sign-in page and in email headers (the demo shows a chosen colour).
             "logo_band_color_hex": "#0B2545",
+            # The sign-in page footer rests at the bottom of the window (the platform default is below the card).
+            "footer_position": "bottom_of_page",
             "email_footer_company_name": "Solstice Robotics, Inc.",
             "email_footer_website": "https://solsticerobotics.example.com",
             "email_footer_address": "400 Aerodrome Way, Suite 210\nAustin, TX 78701",

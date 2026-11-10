@@ -8,7 +8,7 @@ import { OrgLoginPage } from "./OrgLoginPage";
 
 function info(overrides: Partial<OrgLoginInfo>): OrgLoginInfo {
   return {
-    name: "Acme Corp", slug: "acme", logo_file_id: null, logo_band_color_hex: "#14161c", logo_band_text_color_hex: "#ffffff", login_background_file_id: null,
+    name: "Acme Corp", slug: "acme", logo_file_id: null, logo_band_color_hex: "#14161c", logo_band_text_color_hex: "#ffffff", footer_position: "after_content", login_background_file_id: null,
     sso_enabled: false, sso_only: false,
     ...overrides,
   };
@@ -42,6 +42,18 @@ export const NativeLoginOnly: Story = {
     await waitFor(() => expect(canvas.getByText("Acme Corp")).toBeInTheDocument());
     await expect(canvas.getByLabelText("Email")).toBeInTheDocument();
     await expect(canvas.queryByText("Sign in with SSO")).not.toBeInTheDocument();
+  },
+};
+
+/** The organisation's resolved footer position places the footer at the bottom edge of the window. */
+export const FooterAtTheBottomOfThePage: Story = {
+  beforeEach: () => {
+    mockLoginInfo(info({ footer_position: "bottom_of_page" }));
+  },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByText("Acme Corp");
+    const footer = await within(canvasElement).findByRole("contentinfo", { name: "Page footer" });
+    await waitFor(() => expect(Math.abs(footer.getBoundingClientRect().bottom - canvasElement.querySelector(".signed-out-page")!.getBoundingClientRect().bottom)).toBeLessThanOrEqual(1));
   },
 };
 

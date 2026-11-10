@@ -43,12 +43,14 @@ import type {
 import type { ModuleAvailability, PrincipalRef, PrincipalUsage } from "../api/types";
 import {
   collapseProjectRoles,
+  FOOTER_POSITION_LABEL,
   fromModuleAvailability,
   MODULE_AVAILABILITY_LABEL,
   ORG_ROLE_LABEL,
   PENDING_INVITE_STATUS_LABEL,
   PROJECT_ROLE_LABEL,
   toModuleAvailability,
+  type FooterPosition,
 } from "../api/types";
 import { OrgTagsPanel } from "../components/OrgTagsPanel";
 import { ActionMenu } from "../components/ActionMenu";
@@ -97,6 +99,7 @@ import { buildAdminMenuEntries, resolveAdminSection } from "../modules/adminMenu
 import { installedModules } from "../modules/registry";
 import { loadOrgSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { downloadBlob } from "../utils/download";
+import { labelOptions } from "../utils/labelOptions";
 import { defaultResolutions } from "../utils/mergeConflicts";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { reportLayoutApi } from "../api/reportLayouts";
@@ -496,6 +499,7 @@ export function OrgAdminPage() {
   const [accentColorInput, setAccentColorInput] = useState("#475569");
   const [logoBandInput, setLogoBandInput] = useState("");
   const [logoBandTextInput, setLogoBandTextInput] = useState("");
+  const [footerPositionInput, setFooterPositionInput] = useState<FooterPosition | "">("");
   // The report accent colour follows the UI accent until the person gives reports their own (`null` on the server).
   const [useOwnReportAccent, setUseOwnReportAccent] = useState(false);
   const [reportAccentInput, setReportAccentInput] = useState("#475569");
@@ -649,6 +653,7 @@ export function OrgAdminPage() {
     setAccentColorInput(o.accent_color_hex ?? "#475569");
     setLogoBandInput(o.logo_band_color_hex ?? "");
     setLogoBandTextInput(o.logo_band_text_color_hex ?? "");
+    setFooterPositionInput(o.footer_position ?? "");
     setUseOwnReportAccent(o.report_accent_color_hex != null);
     setReportAccentInput(o.report_accent_color_hex ?? o.accent_color_hex ?? "#475569");
     setReportColourScheme(o.report_colour_scheme ?? []);
@@ -1531,6 +1536,7 @@ export function OrgAdminPage() {
         accent_color_hex: useOwnAccentColor ? accentColorInput : null,
         logo_band_color_hex: logoBandInput || null,
         logo_band_text_color_hex: logoBandTextInput || null,
+        footer_position: footerPositionInput || null,
         report_accent_color_hex: useOwnReportAccent ? reportAccentInput : null,
         report_include_logo: reportIncludeLogo,
         report_colour_scheme: reportColourScheme,
@@ -2774,6 +2780,12 @@ export function OrgAdminPage() {
                 title={org.name}
                 platformHex={platformBranding?.logo_band_color_hex ?? null}
                 platformTextHex={platformBranding?.logo_band_text_color_hex ?? null}
+              />
+              <LabeledSelect
+                help={strings.help.orgFooterPosition} label={strings.serverSettings.footerPosition}
+                placeholder={strings.footerPosition.followPlatform(FOOTER_POSITION_LABEL[platformBranding?.footer_position ?? "after_content"])}
+                value={footerPositionInput} onChange={(value) => setFooterPositionInput(value as FooterPosition | "")}
+                options={labelOptions(FOOTER_POSITION_LABEL)} autoWidth
               />
               <CheckboxField
                 help={strings.help.reportAccentColor}

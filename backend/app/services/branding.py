@@ -29,6 +29,24 @@ DEFAULT_ACCENT_COLOR_HEX = "#475569"
 #: The band behind the logo when nobody sets one: the application top bar colour (`--color-header-bg` in the
 #: frontend stylesheet; a test keeps the two equal).
 DEFAULT_LOGO_BAND_HEX = "#14161c"
+#: Where the footer of the signed-out pages sits: below the card, or at the bottom edge of the window. A registry
+#: value (a plain validated string in the database), so a further layout is an entry here, not a migration.
+FOOTER_POSITIONS: tuple[str, ...] = ("after_content", "bottom_of_page")
+DEFAULT_FOOTER_POSITION = "after_content"
+
+
+def footer_position(organization: Organization | None, platform: ServerSettings) -> str:
+    """The footer position of a sign-in page: the organisation's choice, else the platform's.
+
+    Args:
+        organization: The organisation whose sign-in page it is, or `None` for the platform sign-in page.
+        platform: The platform settings row.
+
+    Returns:
+        One of `FOOTER_POSITIONS`.
+    """
+    chosen = (organization.footer_position if organization else None) or platform.footer_position
+    return chosen if chosen in FOOTER_POSITIONS else DEFAULT_FOOTER_POSITION
 
 
 def explicit_logo_band_hex(organization: Organization | None, platform: ServerSettings) -> str | None:

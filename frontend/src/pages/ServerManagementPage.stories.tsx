@@ -19,7 +19,7 @@ function systemUser(overrides: Partial<SystemUser>): SystemUser {
 
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569", default_logo_file_id: null, default_header_title: null,
-  logo_band_color_hex: null, logo_band_text_color_hex: null,
+  logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: "after_content",
   default_login_background_file_id: null,
   email_footer_company_name: "ReqTrackManager", email_footer_website: "https://reqtrackmanager.example.com",
   email_footer_address: "1 Example Street\nExample City, EX1 1AA",
@@ -532,6 +532,11 @@ export const ServerDetailsEmailFooter: Story = {
     await userEvent.type(canvas.getByLabelText(/^Prefix/), "Hosted by");
     await userEvent.type(canvas.getByLabelText(/^Company identifier label/), "ABN");
     await userEvent.type(canvas.getByLabelText(/^Company identifier$/), "12 345 678 901");
+    // The footer position has no empty choice: both placements are listed by their formal names.
+    const position = canvas.getByLabelText("Footer position");
+    await expect(position).toHaveValue("after_content");
+    await expect(within(position).getAllByRole("option").map((o) => o.textContent)).toEqual(["After the content", "Bottom of the page"]);
+    await userEvent.selectOptions(position, "bottom_of_page");
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith("/api/v1/system/branding", {
@@ -541,6 +546,7 @@ export const ServerDetailsEmailFooter: Story = {
         footer_prefix: "Hosted by",
         company_id_label: "ABN",
         company_id: "12 345 678 901",
+        footer_position: "bottom_of_page",
       }),
     );
     await expect(await within(document.body).findByText("Server details saved.")).toBeInTheDocument();

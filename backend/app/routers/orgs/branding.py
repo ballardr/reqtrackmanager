@@ -27,7 +27,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.org import DefaultTemplateUpdate, OrganizationOut, OrgBrandingUpdate, OrgLoginInfoOut
 from app.services.audit import log_event
-from app.services.branding import get_server_settings, logo_band_hex, logo_band_text_hex
+from app.services.branding import footer_position, get_server_settings, logo_band_hex, logo_band_text_hex
 from app.services.files import delete_file, upload_file
 from app.services.lookups import get_or_404
 from app.services.rbac import require_org_role
@@ -36,8 +36,8 @@ router = APIRouter(tags=["organizations-branding"])
 
 #: Branding columns a request clears by sending null (the rest of `OrgBrandingUpdate` has no "cleared" state).
 _CLEARABLE_BRANDING_FIELDS = frozenset({
-    "accent_color_hex", "logo_band_color_hex", "logo_band_text_color_hex", "header_title", "email_footer_company_name",
-    "email_footer_website", "email_footer_address", "report_accent_color_hex",
+    "accent_color_hex", "logo_band_color_hex", "logo_band_text_color_hex", "footer_position", "header_title",
+    "email_footer_company_name", "email_footer_website", "email_footer_address", "report_accent_color_hex",
 })
 
 
@@ -181,6 +181,7 @@ def get_org_login_info(slug: str, db: Session = Depends(get_db)):
     return OrgLoginInfoOut(
         name=org.name, slug=slug, logo_file_id=org.logo_file_id,
         logo_band_color_hex=logo_band_hex(org, platform), logo_band_text_color_hex=logo_band_text_hex(org, platform),
+        footer_position=footer_position(org, platform),
         login_background_file_id=org.login_background_file_id,
         sso_enabled=org.sso_enabled, sso_only=org.sso_only,
     )

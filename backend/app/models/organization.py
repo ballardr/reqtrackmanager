@@ -287,6 +287,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     logo_band_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     #: Colour of the title drawn on the band; `None` follows the platform value, then black or white by contrast.
     logo_band_text_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Where the footer of this organisation's sign-in page sits (`services.branding.FOOTER_POSITIONS`); `None`
+    #: follows the platform value.
+    footer_position: Mapped[str | None] = mapped_column(String(20), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -427,6 +430,10 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     logo_band_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
     #: Platform value of the band title colour (see `Organization.logo_band_text_color_hex`); `None` is automatic.
     logo_band_text_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Where the footer of the signed-out pages sits: `after_content` (below the card) or `bottom_of_page`; one of
+    #: `services.branding.FOOTER_POSITIONS`, validated by the update schema. An organisation may override it for its own
+    #: sign-in page (`Organization.footer_position`).
+    footer_position: Mapped[str] = mapped_column(String(20), nullable=False, default="after_content", server_default="after_content")
     default_logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("file_assets.id", use_alter=True, name="fk_server_settings_default_logo_file_id"),

@@ -114,6 +114,7 @@ from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
 from app.services import announcements, nav_labels, org_dashboards, org_policies, overview_widgets
 from app.services.audit import log_event
+from app.services.branding import FOOTER_POSITIONS
 from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
     BundleImportWarnings,
@@ -262,7 +263,7 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
 
     org_json = {
         "name": org.name, "accent_color_hex": org.accent_color_hex, "logo_band_color_hex": org.logo_band_color_hex,
-        "logo_band_text_color_hex": org.logo_band_text_color_hex,
+        "logo_band_text_color_hex": org.logo_band_text_color_hex, "footer_position": org.footer_position,
         "header_title": org.header_title,
         "require_2fa": org.require_2fa, "allow_self_signup": org.allow_self_signup,
         "auto_accept_email_domain": org.auto_accept_email_domain, "external_user_policy": org.external_user_policy.value,
@@ -675,6 +676,7 @@ def import_org_bundle(
         accent_color_hex=_hex_or_none(data.get("accent_color_hex")), header_title=data.get("header_title"),
         logo_band_color_hex=_hex_or_none(data.get("logo_band_color_hex")),
         logo_band_text_color_hex=_hex_or_none(data.get("logo_band_text_color_hex")),
+        footer_position=data.get("footer_position") if data.get("footer_position") in FOOTER_POSITIONS else None,
         require_2fa=data.get("require_2fa", False), allow_self_signup=data.get("allow_self_signup", False),
         auto_accept_email_domain=data.get("auto_accept_email_domain"),
         external_user_policy=data.get("external_user_policy", "disabled"),

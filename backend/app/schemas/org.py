@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
+from app.services.branding import FOOTER_POSITIONS
 from app.services.report_colours import palette_problems
 
 
@@ -156,6 +157,8 @@ class OrganizationOut(BaseModel):
     logo_band_color_hex: str | None = None
     #: The organisation's title colour on the band (`None` = follow the platform value, then automatic).
     logo_band_text_color_hex: str | None = None
+    #: Where the footer of this organisation's sign-in page sits (`None` = follow the platform value).
+    footer_position: str | None = None
     #: The organisation's report accent colour (`None` = follow the UI accent) and whether its logo is on reports.
     report_accent_color_hex: str | None = None
     report_include_logo: bool = True
@@ -293,6 +296,7 @@ class OrgBrandingUpdate(BaseModel):
     accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     logo_band_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     logo_band_text_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    footer_position: str | None = None
     header_title: str | None = Field(default=None, max_length=100)
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
@@ -310,6 +314,13 @@ class OrgBrandingUpdate(BaseModel):
             problems = palette_problems([e.model_dump() for e in value], "report_colour_scheme")
             if problems:
                 raise ValueError(problems[0][1])
+        return value
+
+    @field_validator("footer_position")
+    @classmethod
+    def _known_footer_position(cls, value: str | None) -> str | None:
+        if value is not None and value not in FOOTER_POSITIONS:
+            raise ValueError("Unknown footer position.")
         return value
 
     @field_validator("header_title", "email_footer_company_name", "email_footer_website", "email_footer_address")
@@ -957,6 +968,8 @@ class OrgLoginInfoOut(BaseModel):
     logo_band_color_hex: str
     #: The resolved title colour on the band.
     logo_band_text_color_hex: str
+    #: The resolved footer position (the organisation's, else the platform's).
+    footer_position: str
     login_background_file_id: UUID | None = None
     sso_enabled: bool
     sso_only: bool

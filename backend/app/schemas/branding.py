@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.org import _HEX_COLOR_PATTERN
+from app.services.branding import FOOTER_POSITIONS
 
 
 class ServerSettingsOut(BaseModel):
@@ -23,6 +24,8 @@ class ServerSettingsOut(BaseModel):
     logo_band_color_hex: str | None = None
     #: The chosen title colour on the band; `None` is black or white by contrast with the band.
     logo_band_text_color_hex: str | None = None
+    #: Where the footer of the signed-out pages sits (one of `FOOTER_POSITIONS`).
+    footer_position: str = "after_content"
     default_logo_file_id: UUID | None = None
     default_header_title: str | None = None
     default_login_background_file_id: UUID | None = None
@@ -65,6 +68,7 @@ class ServerSettingsUpdate(BaseModel):
     #: `null` removes the setting (the band follows the top bar colour).
     logo_band_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     logo_band_text_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    footer_position: str | None = None
     default_header_title: str | None = Field(default=None, max_length=100)
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
@@ -75,8 +79,17 @@ class ServerSettingsUpdate(BaseModel):
     org_label_singular: str | None = Field(default=None, max_length=50)
     org_label_plural: str | None = Field(default=None, max_length=50)
 
+    @field_validator("footer_position")
+    @classmethod
+    def _known_footer_position(cls, value: str | None) -> str | None:
+        if value is not None and value not in FOOTER_POSITIONS:
+            raise ValueError("Unknown footer position.")
+        return value
+
     @model_validator(mode="after")
     def _accent_is_not_cleared(self) -> ServerSettingsUpdate:
         if "accent_color_hex" in self.model_fields_set and self.accent_color_hex is None:
             raise ValueError("The accent colour cannot be cleared.")
+        if "footer_position" in self.model_fields_set and self.footer_position is None:
+            raise ValueError("The footer position cannot be cleared.")
         return self
