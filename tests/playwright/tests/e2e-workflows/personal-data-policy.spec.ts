@@ -125,8 +125,8 @@ test("a server admin changes the server default for a sensitivity tag", async ({
 
   await loginAs(page, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
   await page.goto("/server/management");
+  // The server group is a headed card, not a collapsible section, so there is nothing to open.
   await selectServerManagementGroup(page, "Personal data in exports");
-  await openSection(page);
   const row = tagRow(page, "Free text that can quote people");
   await expect(row).toBeVisible();
   await expect(row.getByText(original ? "Allowed on this server." : "Excluded on this server.")).toBeVisible();

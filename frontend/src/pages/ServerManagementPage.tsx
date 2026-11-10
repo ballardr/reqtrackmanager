@@ -1,19 +1,19 @@
-import { Ban, Eye, KeyRound, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
-import { useRef, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Ban, Eye, KeyRound, ShieldCheck, UserCheck, UserX } from "lucide-react";
+import { useState } from "react";
+import { Link, Navigate, useParams } from "react-router-dom";
 
-import { ApiError, api, fileUrl } from "../api/client";
-import type { BulkRevokeResult, GrantableServerRole, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import { api } from "../api/client";
+import type { BulkRevokeResult, GrantableServerRole, ServerRole, SystemUser } from "../api/types";
 import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { AddUserMenu } from "../components/AddUserMenu";
+import { Badge } from "../components/Badge";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { ForceCredentialResetModal } from "../components/ForceCredentialResetModal";
 import { FieldHelp } from "../components/FieldHelp";
-import { FileUploadTrigger } from "../components/FileUploadTrigger";
 import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
 import { Modal } from "../components/Modal";
@@ -24,7 +24,6 @@ import { SendPasswordResetDialog } from "../components/SendPasswordResetDialog";
 import { cycleSort, type SortState } from "../components/sortState";
 import { Spinner } from "../components/Spinner";
 import { useOrgLabel, useOrgLabelPlural } from "../context/BrandingContext";
-import { BRANDING_CHANGED_EVENT } from "../context/brandingEvents";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
@@ -33,14 +32,8 @@ import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
 import { PoliciesPanel } from "../components/PoliciesPanel";
 import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
-import { ColorField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
-import { InlineMessage } from "../components/InlineMessage";
-import { LabeledSelect } from "../components/LabeledSelect";
-import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
-import { PictureImage } from "../components/PictureImage";
+import { FileUploadsTab, PlatformBrandingTab, ServerDetailsTab, SignupModeTab, TestEmailTab } from "./ServerSettingsGroups";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
-import { joinStorageLimit, splitStorageLimit, type StorageUnit } from "../utils/storageLimit";
-import { StorageLimitField } from "../components/StorageLimitField";
 import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
@@ -78,8 +71,6 @@ function AccessReviewTab() {
   // (`PAGE_SIZE`/`LoadMoreButton`), so sorting has to be honoured
   // server-side, same reasoning as Org Admin's Users table.
   const [sort, setSort] = useState<SortState<SystemUserSortKey> | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [patResult, setPatResult] = useState<string | null>(null);
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
   const { showToast } = useToast();
@@ -163,13 +154,12 @@ function AccessReviewTab() {
   }
 
   async function runAction(action: () => Promise<void>, successMessage?: string) {
-    setActionError(null);
     try {
       await action();
       await reload();
       if (successMessage) showToast(successMessage);
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -276,7 +266,7 @@ function AccessReviewTab() {
     setRevokeAllPatsOpen(false);
     try {
       const result = await api.post<BulkRevokeResult>("/api/v1/system/pats/revoke-all");
-      setPatResult(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+      showToast(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -344,12 +334,7 @@ function AccessReviewTab() {
           <span className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
             <span>{shownNames.join(", ")}</span>
             {canExpand && (
-              <button
-                type="button"
-                className="btn"
-                style={{ fontSize: "0.75rem", padding: "0.15rem var(--space-3)" }}
-                onClick={() => toggleExpandedOrgs(u.user_id)}
-              >
+              <button type="button" className="btn btn-sm" onClick={() => toggleExpandedOrgs(u.user_id)}>
                 {expanded
                   ? strings.system.showFewerOrganizations
                   : strings.system.showAllOrganizations(u.organization_names.length)}
@@ -371,6 +356,17 @@ function AccessReviewTab() {
         const shown = u.group_names.slice(0, 2).join(", ");
         return u.group_names.length > 2 ? `${shown}, ${strings.system.groupsMore(u.group_names.length - 2)}` : shown;
       },
+    },
+    {
+      key: "status", label: strings.system.status,
+      render: (u) =>
+        u.is_banned ? (
+          <Badge tone="danger">{strings.system.bannedBadge}</Badge>
+        ) : !u.is_active ? (
+          <Badge tone="warning">{strings.system.deactivated}</Badge>
+        ) : (
+          <Badge tone="accent">{strings.system.statusActive}</Badge>
+        ),
     },
     {
       key: "last_login_at", label: strings.system.lastLogin, sortable: true,
@@ -398,8 +394,6 @@ function AccessReviewTab() {
       key: "actions", label: "",
       render: (u) => (
         <div className="row" style={{ gap: "var(--space-2)", justifyContent: "flex-end" }}>
-          {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
-          {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
           <ActionMenu
             triggerLabel={strings.system.usersActionsFor(u.display_name)}
             items={[
@@ -431,17 +425,13 @@ function AccessReviewTab() {
 
   return (
     <div className="stack">
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
-          <div className="row">
-            <button className="btn" onClick={() => setForceResetOpen(true)}>{strings.passwordReset.forceOpen}</button>
-            <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
-          </div>
+      <CollapsibleSection
+        sectionKey="serverManagement.users" title={strings.system.users} help={strings.system.usersHint(orgLabel)} collapsible={false}
+      >
+        <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          <button className="btn" onClick={() => setForceResetOpen(true)}>{strings.passwordReset.forceOpen}</button>
+          <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
         </div>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
-
-        {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
 
         {!users ? (
           <Spinner />
@@ -486,16 +476,15 @@ function AccessReviewTab() {
             />
           </div>
         )}
-      </div>
+      </CollapsibleSection>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.patRevokeAll}</h2>
-        <p className="text-muted">{strings.system.patRevokeAllHint(orgLabelPlural)}</p>
+      <CollapsibleSection
+        sectionKey="serverManagement.tokens" title={strings.system.patRevokeAll} help={strings.system.patRevokeAllHint(orgLabelPlural)} collapsible={false}
+      >
         <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
           {strings.system.patRevokeAll}
         </button>
-        {patResult && <div style={{ color: "var(--color-accent)" }}>{patResult}</div>}
-      </div>
+      </CollapsibleSection>
 
       {addUserMode && <AddUserModal mode={addUserMode} onClose={() => setAddUserMode(null)} onCreated={userAdded} />}
       {resetLinkUser && (
@@ -518,8 +507,9 @@ function AccessReviewTab() {
       {revokeAllPatsOpen && (
         <ConfirmDialog
           title={strings.system.patRevokeAllTitle}
-          message={strings.system.patRevokeAllConfirm}
+          message={strings.system.patRevokeAllConfirm(strings.system.patRevokeAllTyped)}
           confirmLabel={strings.system.patRevokeAll}
+          requireTypedText={strings.system.patRevokeAllTyped}
           onConfirm={revokeAllPatsPlatformWide}
           onCancel={() => setRevokeAllPatsOpen(false)}
         />
@@ -594,377 +584,6 @@ function AccessReviewTab() {
   );
 }
 
-function PlatformBrandingTab() {
-  const currentOrgLabel = useOrgLabel();
-  const [settings, setSettings] = useState<ServerSettings | null>(null);
-  const [accentColor, setAccentColor] = useState("#475569");
-  const [headerTitle, setHeaderTitle] = useState("");
-  const [orgLabelSingular, setOrgLabelSingular] = useState("");
-  const [orgLabelPlural, setOrgLabelPlural] = useState("");
-  const [emailFooterCompanyName, setEmailFooterCompanyName] = useState("");
-  const [emailFooterWebsite, setEmailFooterWebsite] = useState("");
-  const [emailFooterAddress, setEmailFooterAddress] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Guards the branding fields above against `reload()` — also called
-  // from `uploadLogo`/`uploadLoginBackground` below, not just this
-  // component's own mount/save. If a background upload's own reload() is
-  // still in flight when the user edits and saves a text field right
-  // after starting that upload, its response clobbers the edit back to
-  // the last-saved value before Save is even clicked. Same real,
-  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
-  // own comment and docs/decisions.md.
-  const brandingDirtyRef = useRef(false);
-
-  async function reload() {
-    const s = await api.get<ServerSettings>("/api/v1/system/branding");
-    setSettings(s);
-    if (!brandingDirtyRef.current) {
-      setAccentColor(s.accent_color_hex);
-      setHeaderTitle(s.default_header_title ?? "");
-      setOrgLabelSingular(s.org_label_singular ?? "");
-      setOrgLabelPlural(s.org_label_plural ?? "");
-      setEmailFooterCompanyName(s.email_footer_company_name ?? "");
-      setEmailFooterWebsite(s.email_footer_website ?? "");
-      setEmailFooterAddress(s.email_footer_address ?? "");
-    }
-  }
-
-  useLoadOnChange(reload, []);
-
-  async function save() {
-    setError(null);
-    setSaved(false);
-    try {
-      await api.put("/api/v1/system/branding", {
-        accent_color_hex: accentColor,
-        default_header_title: headerTitle || null,
-        org_label_singular: orgLabelSingular || null,
-        org_label_plural: orgLabelPlural || null,
-        email_footer_company_name: emailFooterCompanyName || null,
-        email_footer_website: emailFooterWebsite || null,
-        email_footer_address: emailFooterAddress || null,
-      });
-      setSaved(true);
-      brandingDirtyRef.current = false;
-      reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : strings.common.error);
-    }
-  }
-
-  const [logoUploading, setLogoUploading] = useState(false);
-  const [logoUploaded, setLogoUploaded] = useState(false);
-  const [logoError, setLogoError] = useState<string | null>(null);
-
-  async function uploadLogo(file: File) {
-    setLogoError(null);
-    setLogoUploaded(false);
-    setLogoUploading(true);
-    try {
-      await api.postFile("/api/v1/system/branding/image", file, { kind: "logo" });
-      await reload();
-      setLogoUploaded(true);
-    } catch (err) {
-      setLogoError(err instanceof Error ? err.message : strings.common.error);
-    } finally {
-      setLogoUploading(false);
-    }
-  }
-
-  const [loginBackgroundUploading, setLoginBackgroundUploading] = useState(false);
-  const [loginBackgroundUploaded, setLoginBackgroundUploaded] = useState(false);
-  const [loginBackgroundError, setLoginBackgroundError] = useState<string | null>(null);
-
-  async function uploadLoginBackground(file: File) {
-    setLoginBackgroundError(null);
-    setLoginBackgroundUploaded(false);
-    setLoginBackgroundUploading(true);
-    try {
-      await api.postFile("/api/v1/system/branding/image", file, { kind: "login_background" });
-      await reload();
-      setLoginBackgroundUploaded(true);
-    } catch (err) {
-      setLoginBackgroundError(err instanceof Error ? err.message : strings.common.error);
-    } finally {
-      setLoginBackgroundUploading(false);
-    }
-  }
-
-  if (!settings) return <Spinner />;
-
-  return (
-    <div className="card stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.hint(currentOrgLabel)}</p>
-      <div className="stack" style={{ gap: "var(--space-1)" }}>
-        <label htmlFor="platform-logo-input">{strings.serverSettings.logo}</label>
-        <FileUploadTrigger id="platform-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
-          <Upload size={14} /> {strings.common.chooseFile}
-        </FileUploadTrigger>
-      </div>
-      {logoUploading && <Spinner />}
-      {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
-      {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.logoUploaded}</div>}
-      {settings.default_logo_file_id && (
-        <PictureImage src={fileUrl(settings.default_logo_file_id)} style={{ height: 40 }} />
-      )}
-      <FormGrid minColumn="18rem">
-        <TextField help={strings.help.serverHeaderTitle}
-          label={strings.serverSettings.headerTitle}
-          value={headerTitle}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setHeaderTitle(next);
-          }}
-          placeholder={strings.appName}
-        />
-        <TextField help={strings.help.serverOrgLabelSingular}
-          label={strings.serverSettings.orgLabelSingular}
-          value={orgLabelSingular}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setOrgLabelSingular(next);
-          }}
-          placeholder="organisation"
-        />
-        <TextField help={strings.help.serverOrgLabelPlural}
-          label={strings.serverSettings.orgLabelPlural}
-          value={orgLabelPlural}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setOrgLabelPlural(next);
-          }}
-          placeholder="Organisations"
-        />
-      </FormGrid>
-      <ColorField help={strings.help.serverAccentColor}
-        label={strings.serverSettings.accentColor}
-        value={accentColor}
-        onChange={(next) => {
-          brandingDirtyRef.current = true;
-          setAccentColor(next);
-        }}
-      />
-      <div className="stack" style={{ gap: "var(--space-1)" }}>
-        <label htmlFor="platform-login-background-input">{strings.serverSettings.loginBackground}</label>
-        <FileUploadTrigger
-          id="platform-login-background-input"
-          accept="image/*"
-          disabled={loginBackgroundUploading}
-          onSelect={uploadLoginBackground}
-        >
-          <Upload size={14} /> {strings.common.chooseFile}
-        </FileUploadTrigger>
-      </div>
-      {loginBackgroundUploading && <Spinner />}
-      {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
-      {loginBackgroundUploaded && (
-        <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.loginBackgroundUploaded}</div>
-      )}
-      {settings.default_login_background_file_id && (
-        <img src={fileUrl(settings.default_login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: "var(--radius-sm)" }} />
-      )}
-      <FormDivider />
-      <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
-      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
-      <FormGrid minColumn="18rem">
-        <TextField help={strings.help.serverEmailFooterCompanyName}
-          label={strings.serverSettings.emailFooterCompanyName}
-          value={emailFooterCompanyName}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterCompanyName(next);
-          }}
-          placeholder={strings.appName}
-        />
-        <TextField help={strings.help.serverEmailFooterWebsite}
-          label={strings.serverSettings.emailFooterWebsite}
-          value={emailFooterWebsite}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterWebsite(next);
-          }}
-        />
-        <FormGridFull>
-          <TextAreaField help={strings.help.serverEmailFooterAddress}
-          label={strings.serverSettings.emailFooterAddress}
-          value={emailFooterAddress}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterAddress(next);
-          }}
-          rows={3}
-        />
-        </FormGridFull>
-      </FormGrid>
-      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-      <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
-        {strings.serverSettings.save}
-      </button>
-      {saved && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.saved}</div>}
-    </div>
-  );
-}
-
-function TestEmailTab() {
-  const [recipient, setRecipient] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  async function send() {
-    setError(null);
-    setSuccess(false);
-    setSending(true);
-    try {
-      await api.post("/api/v1/system/test-email", recipient ? { to_email: recipient } : {});
-      setSuccess(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : strings.common.error);
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <div className="card stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.system.testEmailHint}</p>
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        <TextField help={strings.help.testEmailRecipient}
-          label={strings.system.testEmailRecipient}
-          value={recipient}
-          onChange={setRecipient}
-          inputProps={{ type: "email" }}
-        />
-        <button className="btn btn-primary" onClick={send} disabled={sending}>
-          {sending ? strings.system.testEmailSending : strings.system.testEmail}
-        </button>
-      </div>
-      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-      {success && <div style={{ color: "var(--color-accent)" }}>{strings.system.testEmailSent}</div>}
-    </div>
-  );
-}
-
-function SignupModeTab() {
-  const orgLabel = useOrgLabel();
-  const orgLabelPlural = useOrgLabelPlural();
-  const [config, setConfig] = useState<SignupConfig | null>(null);
-  const [mode, setMode] = useState<SignupMode>("disabled");
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function reload() {
-    const c = await api.get<SignupConfig>("/api/v1/system/signup-config");
-    setConfig(c);
-    setMode(c.signup_mode);
-  }
-
-  useLoadOnChange(reload, []);
-
-  async function save() {
-    setError(null);
-    setSaved(false);
-    try {
-      await api.put("/api/v1/system/signup-config", { signup_mode: mode });
-      setSaved(true);
-      reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : strings.common.error);
-    }
-  }
-
-  if (!config) return <Spinner />;
-
-  return (
-    <div className="card stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.signupSettings.hint}</p>
-      <LabeledSelect help={strings.help.signupMode}
-        label={strings.signupSettings.mode}
-        value={mode}
-        onChange={(next) => setMode(next as SignupMode)}
-        options={[{ value: "disabled", label: strings.signupSettings.modeDisabled }, { value: "always_on", label: strings.signupSettings.modeAlwaysOn(orgLabel) }, { value: "org_specified", label: strings.signupSettings.modeOrgSpecified(orgLabel) }]}
-        placeholder={null}
-      />
-      {mode === "org_specified" && (
-        <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.signupSettings.modeOrgSpecifiedHint(orgLabelPlural)}</p>
-      )}
-      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-      <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
-        {strings.signupSettings.save}
-      </button>
-      {saved && <div style={{ color: "var(--color-accent)" }}>{strings.signupSettings.saved}</div>}
-    </div>
-  );
-}
-
-/**
- * The deployment-wide file upload switch and the default storage limit of organisations that have none of their own.
- * Off stops new files only; existing files stay readable and deletable
- * (`services.files.assert_uploads_allowed`). The value is read from the public branding read every page already
- * makes, and the provider is told to read it again after a save.
- */
-function FileUploadsTab() {
-  const { showToast } = useToast();
-  const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [limitAmount, setLimitAmount] = useState("");
-  const [limitUnit, setLimitUnit] = useState<StorageUnit>("GB");
-  const [saved, setSaved] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useLoadOnChange(async () => {
-    const [settings, defaults] = await Promise.all([
-      api.get<ServerSettings>("/api/v1/system/branding"),
-      api.get<{ default_storage_quota_bytes: number | null }>("/api/v1/system/default-storage-quota"),
-    ]);
-    const parts = splitStorageLimit(defaults.default_storage_quota_bytes);
-    setEnabled(settings.file_uploads_enabled);
-    setLimitAmount(parts.amount);
-    setLimitUnit(parts.unit);
-  }, []);
-
-  async function save() {
-    const limit = joinStorageLimit(limitAmount, limitUnit);
-    if (limit === undefined) {
-      setError(strings.orgStorage.invalidLimit);
-      return;
-    }
-    setError(null);
-    try {
-      await api.put("/api/v1/system/file-uploads", { file_uploads_enabled: enabled });
-      await api.put("/api/v1/system/default-storage-quota", { default_storage_quota_bytes: limit });
-      setSaved(true);
-      window.dispatchEvent(new Event(BRANDING_CHANGED_EVENT));
-      showToast(strings.fileUploads.saved);
-    } catch (err) {
-      setError(toErrorMessage(err, strings.common.error));
-    }
-  }
-
-  if (enabled === null) return <Spinner />;
-
-  return (
-    <div className="card stack">
-      <ToggleField
-        label={strings.fileUploads.enabled}
-        checked={enabled}
-        onChange={(next) => { setEnabled(next); setSaved(false); }}
-        help={strings.help.fileUploadsEnabled}
-      />
-      <StorageLimitField
-        label={strings.fileUploads.defaultLimit} amount={limitAmount} unit={limitUnit} placeholder={strings.fileUploads.defaultLimitNone}
-        onAmountChange={(next) => { setLimitAmount(next); setSaved(false); }}
-        onUnitChange={(next) => { setLimitUnit(next); setSaved(false); }}
-        help={strings.help.defaultStorageLimit}
-      />
-      <InlineMessage>{error}</InlineMessage>
-      <button className="btn btn-primary" onClick={save} disabled={saved} style={{ alignSelf: "flex-start" }}>
-        {strings.common.save}
-      </button>
-    </div>
-  );
-}
-
 /**
  * The 4 resource-menu groups Server Admin's previous 4-tab bar was
  * converted into. Each key is also the route segment under
@@ -979,9 +598,9 @@ function FileUploadsTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "files" | "email" | "messages" | "modules" | "reportFonts" | "policies" | "personalDataExport";
+type ServerManagementGroupKey = "accessReview" | "signup" | "branding" | "details" | "reportFonts" | "files" | "policies" | "personalDataExport" | "email" | "messages" | "modules";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "files", "email", "messages", "modules", "reportFonts", "policies", "personalDataExport"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "signup", "branding", "details", "reportFonts", "files", "policies", "personalDataExport", "email", "messages", "modules"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -1006,17 +625,19 @@ export function ServerManagementPage() {
     ? (groupParam as ServerManagementGroupKey)
     : "accessReview";
 
+  // Flat list ordered by relatedness: people and access, appearance, data handling, communication, then modules.
   const allGroups: ResourceMenuGroupDef<ServerManagementGroupKey>[] = [
-    { key: "accessReview", label: strings.orgAdmin.accessReview, href: "/server/management/accessReview" },
-    { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
+    { key: "accessReview", label: strings.system.users, href: "/server/management/accessReview" },
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
+    { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
+    { key: "details", label: strings.serverSettings.detailsTitle, href: "/server/management/details" },
+    { key: "reportFonts", label: strings.reportFonts.title, href: "/server/management/reportFonts" },
     { key: "files", label: strings.fileUploads.title, href: "/server/management/files" },
+    { key: "policies", label: strings.policies.heading, href: "/server/management/policies" },
+    { key: "personalDataExport", label: strings.personalDataPolicy.groupTitle, href: "/server/management/personalDataExport" },
     { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
     { key: "messages", label: strings.announcements.heading, href: "/server/management/messages" },
     { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
-    { key: "reportFonts", label: strings.reportFonts.title, href: "/server/management/reportFonts" },
-    { key: "policies", label: strings.policies.heading, href: "/server/management/policies" },
-    { key: "personalDataExport", label: strings.personalDataPolicy.groupTitle, href: "/server/management/personalDataExport" },
   ];
   // Only the sections this person may use, from the server's own answer: every group needs the server
   // administrator except Modules, which a Module administrator or Platform subscription manager also uses.
@@ -1024,10 +645,22 @@ export function ServerManagementPage() {
     access?.can_administer_server ? true : g.key === "modules" && !!access?.can_manage_entitlements
   );
   if (access === null) return <Spinner />;
-  if (groups.length === 0) return <Navigate to="/" replace />;
+  if (groups.length === 0) {
+    return (
+      <div className="card stack" role="alert">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.nav.serverManagement}</h2>
+        <p>{strings.system.accessDenied}</p>
+        <Link to="/" className="btn" style={{ alignSelf: "flex-start" }}>{strings.system.accessDeniedHome}</Link>
+      </div>
+    );
+  }
 
-  // A group the person may not use falls back to the first one they may (the server refuses its data anyway).
+  // A group the person may not use falls back to the first one they may (the server refuses its data anyway); the
+  // address is replaced so it names the group shown.
   const activeGroup = groups.some((g) => g.key === requestedGroup) ? requestedGroup : groups[0].key;
+  if (groupParam !== undefined && groupParam !== activeGroup) {
+    return <Navigate to={`/server/management/${activeGroup}`} replace />;
+  }
 
   return (
     <div className="stack">
@@ -1038,27 +671,31 @@ export function ServerManagementPage() {
         active={activeGroup}
       >
         {activeGroup === "accessReview" && <AccessReviewTab />}
-        {activeGroup === "branding" && <PlatformBrandingTab />}
         {activeGroup === "signup" && <SignupModeTab />}
-        {activeGroup === "files" && <FileUploadsTab />}
-        {activeGroup === "email" && <TestEmailTab />}
-        {activeGroup === "messages" && (
-          <CollapsibleSection sectionKey="serverManagement.messages" title={strings.announcements.heading}>
-            <AnnouncementsPanel scope={{ kind: "server" }} />
-          </CollapsibleSection>
-        )}
-        {activeGroup === "modules" && <ServerModulesTab />}
+        {activeGroup === "branding" && <PlatformBrandingTab />}
+        {activeGroup === "details" && <ServerDetailsTab />}
         {activeGroup === "reportFonts" && <ServerReportFontsTab />}
+        {activeGroup === "files" && <FileUploadsTab />}
         {activeGroup === "policies" && (
-          <CollapsibleSection sectionKey="serverManagement.policies" title={strings.policies.heading}>
+          <CollapsibleSection sectionKey="serverManagement.policies" title={strings.policies.heading} collapsible={false}>
             <PoliciesPanel scope={{ kind: "server" }} />
           </CollapsibleSection>
         )}
         {activeGroup === "personalDataExport" && (
-          <CollapsibleSection sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.title} help={strings.personalDataPolicy.serverHint}>
+          <CollapsibleSection
+            sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.groupTitle}
+            help={strings.personalDataPolicy.serverHint} collapsible={false}
+          >
             <PersonalDataPolicyPanel scope={{ kind: "server" }} />
           </CollapsibleSection>
         )}
+        {activeGroup === "email" && <TestEmailTab />}
+        {activeGroup === "messages" && (
+          <CollapsibleSection sectionKey="serverManagement.messages" title={strings.announcements.heading} collapsible={false}>
+            <AnnouncementsPanel scope={{ kind: "server" }} />
+          </CollapsibleSection>
+        )}
+        {activeGroup === "modules" && <ServerModulesTab />}
       </ResourceMenu>
     </div>
   );

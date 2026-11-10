@@ -8,6 +8,8 @@ installCleanupHook();
 const apiBaseUrl = "http://localhost:8000";
 const MANAGER = { email: "e2e-subscription-manager@example.com" } as const;
 const REMOVER = { email: "e2e-removal-authority@example.com" } as const;
+const MODULE_ADMIN = { email: "e2e-module-admin@example.com" } as const;
+const PLAIN_MEMBER = { email: "e2e-member-ab@example.com" } as const;
 
 /** Creates a disposable organisation as the server administrator and schedules its removal. */
 async function createDisposableOrg(request: import("@playwright/test").APIRequestContext, label: string) {
@@ -40,7 +42,7 @@ test("a Platform subscription manager suspends an organisation and has no Delete
     const menu = page.getByRole("menu", { name: `${org.name} actions` });
     await expect(menu.getByRole("menuitem", { name: "Disable" })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Delete" })).toHaveCount(0);
-    await expect(menu.getByRole("menuitem", { name: "Edit" })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Administration" })).toHaveCount(0);
   });
 
   await test.step("suspending the organisation takes effect", async () => {
@@ -54,6 +56,8 @@ test("a Platform subscription manager suspends an organisation and has no Delete
 
   await test.step("only the module entitlements of Server management are available, and other settings are refused", async () => {
     await page.goto("/server/management/accessReview");
+    // A group this person may not use falls back to the first they may, and the address names it.
+    await expect(page).toHaveURL(/\/server\/management\/modules$/);
     await expect(page.getByRole("heading", { name: "Availability per organisation" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Entitlement policy" })).toHaveCount(0);
     const token = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
@@ -97,4 +101,27 @@ test("a Subscription removal authority deletes an organisation and cannot create
     await dialog.getByRole("button", { name: "Permanently delete" }).click();
     await expect(page.getByRole("button", { name: `${org.name} actions` })).toHaveCount(0);
   });
+});
+
+/**
+ * Job to be done: a Module administrator reaches only the Modules group of Server management, with the deployment-wide
+ * policy and defaults that a Platform subscription manager does not see, and cannot see the organisation list's actions.
+ */
+test("a Module administrator reaches only the Modules group, with the policy and defaults", async ({ page }) => {
+  await loginAs(page, MODULE_ADMIN.email);
+  await page.goto("/server/management/accessReview");
+  await expect(page).toHaveURL(/\/server\/management\/modules$/);
+  await expect(page.getByRole("heading", { name: "Entitlement policy" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Module defaults" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Availability per organisation" })).toBeVisible();
+});
+
+/** Job to be done: a person with no server role who opens Server management is told they have no access. */
+test("a person with no server role is told Server management is not available to them", async ({ page }) => {
+  await loginAs(page, PLAIN_MEMBER.email);
+  await page.goto("/server/management");
+  await expect(page.getByText("You do not have access to server management.")).toBeVisible();
+  await page.getByRole("link", { name: "Return to the home page" }).click();
+  // The home page redirects to the person's landing page; the point is that they have left Server management.
+  await expect(page).not.toHaveURL(/\/server\//);
 });

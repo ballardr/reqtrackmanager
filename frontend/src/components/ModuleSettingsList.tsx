@@ -41,7 +41,7 @@ export interface ModuleSettingsItem {
   name: string;
   version?: string;
   description?: string;
-  hint?: string | null;
+  hint?: ReactNode;
   muted?: boolean;
   control: ReactNode;
   subItems?: ModuleSettingsSubItem[];

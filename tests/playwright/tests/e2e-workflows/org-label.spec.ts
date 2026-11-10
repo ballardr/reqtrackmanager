@@ -76,9 +76,9 @@ test.describe("deployment-wide organisation label override", () => {
       await page.getByLabel(/^Organisation label \(plural\)/).fill("Tenants");
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/system/branding") && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Save platform branding" }).click(),
+        page.getByRole("button", { name: "Save", exact: true }).click(),
       ]);
-      await expect(page.getByText("Saved.")).toBeVisible();
+      await expect(page.getByText("Platform branding saved.")).toBeVisible();
     });
 
     await test.step("the nav rail now reads the custom label", async () => {
@@ -103,7 +103,7 @@ test.describe("deployment-wide organisation label override", () => {
       await page.getByLabel(/^Organisation label \(plural\)/).fill("");
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/system/branding") && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Save platform branding" }).click(),
+        page.getByRole("button", { name: "Save", exact: true }).click(),
       ]);
       await page.reload();
       await expect(page.getByRole("link", { name: "Organisations", exact: true })).toBeVisible();

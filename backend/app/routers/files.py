@@ -102,10 +102,7 @@ def _authorise_read(request: Request, db: Session, file_asset: FileAsset, curren
     # Tokens" section). The platform-wide defaults
     # (`ServerSettings.default_logo_file_id` /
     # `default_login_background_file_id`) belong in this same bucket for the
-    # same reason, even though their `FileAsset` rows are nominally owned by
-    # whichever organisation they happened to be stored against (see
-    # `routers/system.py::upload_branding_image`) — that ownership is a
-    # storage-key implementation detail, not an access rule.
+    # same reason; their `FileAsset` rows are platform-owned (no organisation).
     is_public_branding = (
         db.scalar(select(Organization).where(Organization.logo_file_id == file_id)) is not None
         or db.scalar(select(Organization).where(Organization.login_background_file_id == file_id)) is not None
@@ -116,6 +113,11 @@ def _authorise_read(request: Request, db: Session, file_asset: FileAsset, curren
     if not is_public_branding:
         if current_user is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+        # A platform-owned file that is no longer the platform logo or login background (replaced or removed) has no
+        # organisation whose members could read it.
+        if file_asset.organization_id is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
+        owner_org_id = file_asset.organization_id
         # Avatars are the one remaining category open to any authenticated
         # user regardless of org membership (shown in shared UI chrome), but
         # unlike the public-branding bucket above, not to anonymous callers.
@@ -130,9 +132,9 @@ def _authorise_read(request: Request, db: Session, file_asset: FileAsset, curren
                 # org-scope restriction those factories apply isn't
                 # automatic here and must be checked explicitly, in addition
                 # to (not instead of) the real RBAC role check below.
-                check_pat_scope(request, file_asset.organization_id)
-                _require_org_active(db, file_asset.organization_id)
-                if not get_effective_org_roles(db, current_user.id, file_asset.organization_id):
+                check_pat_scope(request, owner_org_id)
+                _require_org_active(db, owner_org_id)
+                if not get_effective_org_roles(db, current_user.id, owner_org_id):
                     raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
             else:
                 # A picture in a project's report-image library belongs to that project directly.
@@ -267,7 +269,7 @@ def set_file_confidential(
     allowed = file_asset.uploaded_by == current_user.id
     if not allowed and project is not None:
         allowed = can_manage_project_settings(db, current_user, project)
-    if not allowed and file_asset.is_org_resource:
+    if not allowed and file_asset.is_org_resource and file_asset.organization_id is not None:
         allowed = is_org_admin(db, current_user.id, file_asset.organization_id)
     if not allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the uploader or a project manager can change this.")

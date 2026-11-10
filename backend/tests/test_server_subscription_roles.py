@@ -342,6 +342,7 @@ EXPECTED_GATES: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/api/v1/system/branding"): _NONE,
     ("PUT", "/api/v1/system/branding"): _ADMIN,
     ("POST", "/api/v1/system/branding/image"): _ADMIN,
+    ("DELETE", "/api/v1/system/branding/image"): _ADMIN,
     ("GET", "/api/v1/system/module-entitlement-policy"): _MODULE,
     ("PUT", "/api/v1/system/module-entitlement-policy"): _MODULE,
     ("GET", "/api/v1/system/modules"): _ENTITLE,

@@ -8,7 +8,7 @@ Server administration is a narrow, cross-tenant management role — a server adm
 
 ## Seeing every organisation
 
-**Server Management → Organisations** lists every organisation on the deployment — creation date, active/disabled status — regardless of whether the server admin belongs to any of them. A Platform subscription manager or Subscription removal authority sees the same list (see [Server roles](#server-roles)); the row actions each person sees depend on their role.
+**Server Management → Organisations** lists every organisation on the deployment — creation date, active/disabled status — regardless of whether the server admin belongs to any of them. Click a column heading to sort, and use the search and **Status** filter beside the list; a server administrator opens an organisation's administration from its name or the **Administration** row action. A Platform subscription manager or Subscription removal authority sees the same list (see [Server roles](#server-roles)); the row actions each person sees depend on their role.
 
 | Server: organisations |
 | --- |
@@ -19,7 +19,7 @@ Opening any one org's admin page from here as a server admin (rather than an org
 
 ## Server roles
 
-Besides the full server administrator, a server administrator can grant narrower **server roles** from **Access review → ⋮ → Assign server roles**. A role is checked on every request, so revoking it takes effect at once. A holder cannot grant a role to anyone, and a personal access token never carries one.
+Besides the full server administrator, a server administrator can grant narrower **server roles** from **Users → ⋮ → Assign server roles**. A role is checked on every request, so revoking it takes effect at once. A holder cannot grant a role to anyone, and a personal access token never carries one.
 
 ```mermaid
 flowchart LR
@@ -46,15 +46,18 @@ The two subscription roles are independent: holding one does not give the other,
 
 | Server management |
 | --- |
-| Access review, platform branding, public sign-up, file uploads, email, messages, module, report font, policy and personal data settings |
+| Users, public sign-up, platform branding, server details, report fonts, file uploads, policies, personal data in exports, email, messages and modules |
 | ![Server management page with section navigation](../../static/img/screenshots/server-management.png) |
 
-- **Access review** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators. **Add user** creates a person from here (see [Adding a user](#adding-a-user)).
+The groups are listed in the order above, related ones together. Each group of fields has one **Save**, which is unavailable until something changes; a picture or a single switch acts at once. A person sees only the groups their server role allows, and one with no server role is told that Server management is not available to them.
+
+- **Users** — the platform-wide user directory: every user on the deployment, filterable to orphaned accounts (no organisation membership at all) or other server administrators, with a **Status** column (Active, Deactivated or Banned). **Add user** creates a person from here (see [Adding a user](#adding-a-user)). **Revoke all Personal Access Tokens platform-wide**, an incident-response action, is on the same page and needs the word shown to be typed before it runs.
 - **Password help** — each person's **⋮** menu offers **Send password reset link** (emailed to them, never shown to you) and **Require new password**; **Force a credential reset…** covers everyone, one organisation or the server administrators after an incident. See [Password resets and credential recovery](./password-reset-and-credential-recovery.md), including the command-line tool for when no administrator can sign in.
-- **Platform branding** — the deployment's own logo and login-page styling, distinct from an organisation's own branding.
+- **Platform branding** — the header title, the accent colour, the login page background and the word used for an organisation throughout the interface (**Terminology**). An organisation that has not set its own value shows these.
+- **Server details** — the deployment's logo and the company name, website and postal address printed in the footer of outgoing email. An organisation that has not set its own shows these. The logo and the login page background belong to the deployment, not to any organisation, and each has a **Remove** button that returns to the built-in picture.
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
 - **File uploads** — one switch, **Allow file uploads**, that is on by default, and a **Default storage limit** (in MB or GB) for organisations that have no limit of their own; leave it empty for no limit. Only a server administrator changes either. When it is off, no new file is accepted anywhere on the deployment: record and comment attachments, evidence, profile pictures, logos and login backgrounds, shared resources and report pictures. Existing files stay readable and can still be deleted. Every upload control stays visible but unavailable, and a tooltip says that uploads are disabled on this deployment. Reports run in the background still store their output, so reporting keeps working. See [Importing when uploads are disabled](../core-features/zip-export-import.md#importing-when-uploads-are-disabled). An organisation's own switch and limit are set per organisation (see [Organisation storage](#organisation-storage)).
-- **Email** — deployment-wide outbound email configuration.
+- **Email** — send a test message to confirm that outgoing email works.
 - **Messages** — platform-wide announcements (see [below](#messages)).
 - **Policies** — the privacy policy, the data policy and any other policy the deployment publishes (see [below](#policies)).
 - **Personal data in exports** — the deployment default for personal data in record exports and imports (see [below](#personal-data-in-exports-and-imports)).

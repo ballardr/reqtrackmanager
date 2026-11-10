@@ -19,12 +19,17 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
+import { sortRows } from "../utils/sortRows";
 import { AnnouncementEditor } from "./AnnouncementEditor";
 import { AnnouncementSeverityMark } from "./AnnouncementSeverityMark";
 import { Badge } from "./Badge";
 import { ConfirmDialog } from "./ConfirmDialog";
+import type { DirectoryColumn } from "./DirectoryTable";
+import { DirectoryTable } from "./DirectoryTable";
 import { FieldHelp } from "./FieldHelp";
 import { TextField } from "./FormFields";
+import { InlineMessage } from "./InlineMessage";
+import { cycleSort, type SortState } from "./sortState";
 import { Tabs, tabPanelProps } from "./Tabs";
 
 type View = "current" | "previous";
@@ -53,6 +58,7 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
   const [removing, setRemoving] = useState<Announcement | null>(null);
   const [sending, setSending] = useState<Announcement | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
   const path = basePath(scope);
 
   const reload = useCallback(async () => {
@@ -109,8 +115,60 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
       && (needle === "" || `${item.title}\n${item.body}`.toLowerCase().includes(needle)));
   }, [items, view, search]);
 
-  if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
+  if (loadError) return <InlineMessage>{loadError}</InlineMessage>;
   if (!items) return null;
+  const columns: DirectoryColumn<Announcement>[] = [
+    {
+      key: "title", label: text.title, sortable: true,
+      render: (item) => (
+        <>
+          <strong>{item.title}</strong>
+          {item.body && <div className="text-muted" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.body}</div>}
+        </>
+      ),
+    },
+    { key: "severity", label: text.severity, sortable: true, render: (item) => <AnnouncementSeverityMark severity={item.severity} showLabel /> },
+    { key: "window", label: text.window, sortable: true, render: (item) => windowText(item) },
+    { key: "login", label: text.loginColumn, render: (item) => (item.show_on_login ? strings.common.yes : strings.common.no) },
+    { key: "dismissible", label: text.dismissibleColumn, render: (item) => (item.dismissible ? strings.common.yes : strings.common.no) },
+    { key: "status", label: text.status, sortable: true, render: (item) => <Badge tone={ANNOUNCEMENT_STATUS_TONE[item.status]}>{ANNOUNCEMENT_STATUS_LABEL[item.status]}</Badge> },
+    {
+      key: "notify",
+      label: text.sendNotification,
+      headerAction: <FieldHelp label={text.sendNotification} help={strings.help.announcementNotify} />,
+      render: (item) =>
+        item.notified_at ? (
+          <span className="text-muted">{text.sentTo(item.notified_count ?? 0, new Date(item.notified_at).toLocaleString())}</span>
+        ) : (
+          <button className="btn" disabled={item.status === "ended"} aria-label={text.sendAria(item.title)} onClick={() => setSending(item)}>
+            <Bell /> {text.sendNotification}
+          </button>
+        ),
+    },
+    {
+      key: "actions", label: "",
+      render: (item) => (
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <button
+            className="btn" aria-label={text.duplicateAria(item.title)} title={text.duplicate}
+            onClick={() => { setSaveError(null); setDuplicating(item); setEditing("new"); }}
+          >
+            <Copy />
+          </button>
+          <button
+            className="btn" aria-label={text.editAria(item.title)} title={text.editAria(item.title)}
+            onClick={() => { setSaveError(null); setEditing(item); }}
+          >
+            <Pencil />
+          </button>
+          <button className="btn btn-danger" aria-label={text.deleteAria(item.title)} title={text.deleteAria(item.title)} onClick={() => setRemoving(item)}>
+            <Trash2 />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   const audience = scope.kind === "server" ? text.audienceServer : text.audienceOrganisation;
   return (
     <div className="stack">
@@ -130,71 +188,20 @@ export function AnnouncementsPanel({ scope }: { scope: AnnouncementScope }) {
         {shown.length === 0 ? (
           <div className="text-muted">{search.trim() !== "" ? text.noMatches : view === "previous" ? text.noPrevious : text.noMessages}</div>
         ) : (
-        <table className="table" aria-label={text.heading}>
-          <thead>
-            <tr>
-              <th>{text.title}</th>
-              <th>{text.severity}</th>
-              <th>{text.window}</th>
-              <th>{text.loginColumn}</th>
-              <th>{text.dismissibleColumn}</th>
-              <th>{text.status}</th>
-              <th>
-                <span className="field-caption">
-                  <span>{text.sendNotification}</span>
-                  <FieldHelp label={text.sendNotification} help={strings.help.announcementNotify} />
-                </span>
-              </th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((item) => (
-              <tr key={item.id} data-announcement-id={item.id}>
-                <td>
-                  <strong>{item.title}</strong>
-                  {item.body && <div className="text-muted" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.body}</div>}
-                </td>
-                <td><AnnouncementSeverityMark severity={item.severity} showLabel /></td>
-                <td>{windowText(item)}</td>
-                <td>{item.show_on_login ? strings.common.yes : strings.common.no}</td>
-                <td>{item.dismissible ? strings.common.yes : strings.common.no}</td>
-                <td><Badge tone={ANNOUNCEMENT_STATUS_TONE[item.status]}>{ANNOUNCEMENT_STATUS_LABEL[item.status]}</Badge></td>
-                <td>
-                  {item.notified_at ? (
-                    <span className="text-muted">{text.sentTo(item.notified_count ?? 0, new Date(item.notified_at).toLocaleString())}</span>
-                  ) : (
-                    <button
-                      className="btn" disabled={item.status === "ended"} aria-label={text.sendAria(item.title)}
-                      onClick={() => setSending(item)}
-                    >
-                      <Bell /> {text.sendNotification}
-                    </button>
-                  )}
-                </td>
-                <td>
-                  <div className="row" style={{ justifyContent: "flex-end" }}>
-                    <button
-                      className="btn" aria-label={text.duplicateAria(item.title)} title={text.duplicate}
-                      onClick={() => { setSaveError(null); setDuplicating(item); setEditing("new"); }}
-                    >
-                      <Copy />
-                    </button>
-                    <button
-                      className="btn" aria-label={text.editAria(item.title)} title={text.editAria(item.title)}
-                      onClick={() => { setSaveError(null); setEditing(item); }}
-                    >
-                      <Pencil />
-                    </button>
-                    <button className="btn btn-danger" aria-label={text.deleteAria(item.title)} title={text.deleteAria(item.title)} onClick={() => setRemoving(item)}>
-                      <Trash2 />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DirectoryTable
+          ariaLabel={text.heading}
+          columns={columns}
+          rows={sortRows(shown, sort, {
+            title: (item) => item.title,
+            severity: (item) => item.severity,
+            window: (item) => item.starts_at ?? null,
+            status: (item) => ANNOUNCEMENT_STATUS_LABEL[item.status],
+          })}
+          rowKey={(item) => item.id}
+          sort={sort}
+          onSort={(key) => setSort(cycleSort(sort, key))}
+          emptyState={null}
+        />
         )}
         </div>
         </>

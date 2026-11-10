@@ -93,9 +93,33 @@ export const RowActionsOpenInActionMenu: Story = {
 
     await userEvent.click(canvas.getByRole("button", { name: "Acme Corp actions" }));
     const menu = body.getByRole("menu", { name: "Acme Corp actions" });
-    await expect(within(menu).getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("menuitem", { name: "Administration" })).toBeInTheDocument();
     await expect(within(menu).getByRole("menuitem", { name: "Disable" })).toBeInTheDocument();
     await expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+  },
+};
+
+/** The list is the shared directory table: sortable columns, the name a link to the organisation's administration, and
+ * search in the filter panel beside Status. */
+export const DirectoryTableSortSearchAndLink: Story = {
+  beforeEach: () => {
+    mockOrgsGet([
+      org({ id: "org-1", name: "Beta Inc", is_active: true }),
+      org({ id: "org-2", name: "Acme Corp", is_active: true }),
+      org({ id: "org-3", name: "Gamma Ltd", is_active: true }),
+    ]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("link", { name: "Acme Corp" })).toHaveAttribute("href", "/orgs/org-2/admin");
+    const names = () => within(canvas.getByRole("table")).getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[0].textContent);
+    await userEvent.click(canvas.getByRole("button", { name: /Name/ }));
+    await waitFor(() => expect(names()).toEqual(["Acme Corp", "Beta Inc", "Gamma Ltd"]));
+    await userEvent.click(canvas.getByRole("button", { name: /Name/ }));
+    await waitFor(() => expect(names()).toEqual(["Gamma Ltd", "Beta Inc", "Acme Corp"]));
+    // The search field sits in the filter panel with Status, not above the table.
+    await userEvent.type(canvas.getByRole("textbox", { name: "Search organisations" }), "gam");
+    await waitFor(() => expect(names()).toEqual(["Gamma Ltd"]));
   },
 };
 

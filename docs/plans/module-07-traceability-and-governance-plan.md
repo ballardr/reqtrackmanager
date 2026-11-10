@@ -8,7 +8,8 @@ this module is its heaviest *consumer*.
 
 **Source:** [future-modules-2026-09-overview.md](completed/future-modules-2026-09-overview.md)
 §17–28 (Traceability) and §29–36 (Governance), plus §14/11.1 (Requirement Types),
-moved here from Module 5 Phase 1. This plan replaces the former separate Module 7
+moved here from Module 5 Phase 1, and the requests in
+[issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (Q18). This plan replaces the former separate Module 7
 and Module 8 plans; Module 8 is no longer a separate number.
 
 **Status:** Proposed, 2026-11-09. Not started. **Decision tags:** every decision says
@@ -82,6 +83,7 @@ The merge costs, and the plan answers:
 | Q15 | A traceability exception is a registered artefact type (`TEX-nnn`) | User |
 | Q16 | Users and groups on parity: review owners and exception requesters/approvers use the shared principal picker; approval policies name roles, satisfied by a user or a group holding the role | User |
 | Q17 | MCP: write-enabled configuration for both halves (needs `MCP_WRITES_ENABLED` and the caller's RBAC); no tool can execute an approval or finalise a blocked transition | User |
+| Q18 | [Issue #41](https://github.com/ballardr/reqtrackmanager/issues/41) (a requirement traceability matrix, "derived from" / "source of" columns in the requirements report, and orphan detection in the requirements list) is covered explicitly in Phases 15 and 16. These need no rules: they belong to `traceability_matrices` and work with `traceability_rules` off. "Orphan" means a record with no links of any kind; "no required link" is a separate rule-based status (Phase 12). The list filter and the link columns reach the core Requirements list and export through a generic extension point, never a Requirements-specific edit | Agent (scope from the issue) |
 
 ## Sub-components
 
@@ -363,6 +365,21 @@ requirement traces to the parent's business requirement.
 separately maintained structure; saved definitions and ad hoc views (Q12); coverage metrics
 (percentage with required links, percentage verified, orphans, exception-covered).
 
+**Issue #41 deliverables** (Q18), all independent of `traceability_rules`:
+
+- **Requirement traceability matrix.** A saved or ad hoc matrix of requirements against
+  requirements (or any registered type), with a cell per link, exportable as CSV, PDF and Word.
+- **Link columns on the list, export and reports.** "Derived from" and "Source of" columns
+  (the two directions of the project's derivation link type, labelled from the link type
+  rather than hard-coded) for the Requirements list, its export (`record_tables`) and the
+  requirements report, each showing record codes through `ReportContext.code`. Offered
+  for every linkable type with a named direction pair, not only requirements.
+- **Orphan detection.** An "Orphans" measure in coverage, and a generic list filter
+  (a record with no links of any kind, respecting the caller's project scope and the
+  token's project scope) contributed through a `ModuleDefinition` hook consumed by
+  `TagFilter`-style list filters. The Requirements list takes no module-specific code.
+  Export respects the filter.
+
 **MCP tools** (write-enabled per Q17; names **Decided by: Agent**): list/create traceability
 rules, get matrix, get coverage report, request traceability exception (the request, not
 the decision). Approving an exception is excluded (`APPROVAL_ACTION_ROUTE_EXTRA`). Update
@@ -373,7 +390,9 @@ the decision). Approving an exception is excluded (`APPROVAL_ACTION_ROUTE_EXTRA`
 Requirement type screens, rule configuration (the three §19 presets as a quick-setup path
 over the full editor), the hierarchy tree derived from rules, per-record status with
 exceptions shown distinctly, matrix viewer and saved definitions, coverage dashboard,
-exception request and approval flow. Playwright e2e and Storybook coverage; label maps.
+exception request and approval flow, and the issue #41 surfaces: an "Orphans only" filter
+on record lists (state kept in the URL via `useUrlFlag`), "Derived from" / "Source of"
+columns in the list column chooser, and an orphan badge on the record header. Playwright e2e and Storybook coverage; label maps.
 
 ## Phase 17 — Traceability docs website coverage
 
@@ -439,6 +458,10 @@ reason in `docs/decisions.md`.
 - Traceability can prevent approval/baselining where configured *(through the baseline policy)*.
 - Exceptions can be formally approved and are shown distinctly from satisfaction.
 - Matrices are generated from actual relationships.
+- A requirements traceability matrix can be produced and exported, and the requirements list,
+  export and report show "Derived from" and "Source of" columns *(issue #41)*.
+- Records with no links can be found with a list filter and counted in coverage, with
+  `traceability_rules` switched off *(issue #41)*.
 - Cross-project relationships are supported subject to permissions.
 
 **Combined**

@@ -11,7 +11,10 @@
  *
  * Design decisions:
  * - Rows are the shared `ItemRowList` with the gear (`SettingsPopoverButton`) for the rarely used settings, as for columns.
- * - Every change saves at once and ends in a toast. Hiding is reversible, so it needs no confirmation (style guide, tier 1).
+ * - Every change saves at once and ends in a toast; the Word name is typed text, so it has its own Save. Hiding is
+ *   reversible, so it needs no confirmation (style guide, tier 1).
+ * - What the page is and how PDF and Word differ is in the heading's `(?)` help; only the licence responsibility stays
+ *   visible, beside Rescan, because it is needed before a font is provided.
  * - Bundled families are listed for completeness and carry no controls: they are always offered and are not configurable.
  */
 import { useEffect, useState } from "react";
@@ -26,6 +29,8 @@ import { LabeledSelect } from "../components/LabeledSelect";
 import { SettingsPopoverButton } from "../components/SettingsPopoverButton";
 import { Spinner } from "../components/Spinner";
 import { ToggleSwitch } from "../components/ToggleSwitch";
+import { Badge } from "../components/Badge";
+import { SettingsForm } from "../components/SettingsForm";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 
@@ -37,23 +42,30 @@ const GENERIC_OPTIONS = (Object.keys(REPORT_FONT_GENERIC_LABEL) as ReportFontGen
 }));
 
 /** The settings of one provided family: its name for Word and OpenDocument, and its generic fallback. */
-function FontSettings({ font, onSave }: { font: ReportFont; onSave: (font: ReportFont, change: Partial<ReportFont>) => void }) {
+function FontSettings({
+  font, onPersist, onSave,
+}: {
+  font: ReportFont;
+  onPersist: (font: ReportFont, change: Partial<ReportFont>) => Promise<void>;
+  onSave: (font: ReportFont, change: Partial<ReportFont>) => void;
+}) {
   const [name, setName] = useState(font.word_name);
   return (
     <div className="stack">
-      <TextField
-        label={strings.reportFonts.wordNameLabel}
-        value={name}
-        onChange={setName}
-        hint={strings.reportFonts.wordNameHint}
-        help={strings.help.reportFontWordName}
-        inputProps={{
-          maxLength: 100,
-          onBlur: () => {
-            if (name.trim() !== font.word_name) onSave(font, { word_name: name.trim() });
-          },
-        }}
-      />
+      <SettingsForm
+        dirty={name.trim() !== font.word_name}
+        onSave={() => onPersist(font, { word_name: name.trim() })}
+        successMessage={strings.reportFonts.saved(font.label)}
+      >
+        <TextField
+          label={strings.reportFonts.wordNameLabel}
+          value={name}
+          onChange={setName}
+          hint={strings.reportFonts.wordNameHint}
+          help={strings.help.reportFontWordName}
+          inputProps={{ maxLength: 100 }}
+        />
+      </SettingsForm>
       <LabeledSelect
         label={strings.reportFonts.genericLabel}
         value={font.generic}
@@ -78,10 +90,16 @@ export function ServerReportFontsTab() {
       .catch((err) => showToast(toErrorMessage(err, strings.reportFonts.loadError), "error"));
   }, [showToast]);
 
-  async function save(font: ReportFont, change: Partial<ReportFont>) {
+  /** Sends one family's settings; rejects on failure so the caller chooses how to report it. */
+  async function persist(font: ReportFont, change: Partial<ReportFont>) {
     const next = { word_name: font.word_name, generic: font.generic, enabled: font.enabled, ...change };
+    setPage(await api.put<ReportFontsPage>(`/api/v1/system/report-fonts/${font.key}`, next));
+  }
+
+  /** A change that acts at once (a switch, a select): a toast reports the outcome. */
+  async function save(font: ReportFont, change: Partial<ReportFont>) {
     try {
-      setPage(await api.put<ReportFontsPage>(`/api/v1/system/report-fonts/${font.key}`, next));
+      await persist(font, change);
       showToast(strings.reportFonts.saved(font.label));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
@@ -102,10 +120,16 @@ export function ServerReportFontsTab() {
   const provided = page.families.filter((f) => !f.bundled);
   return (
     <div className="stack">
-      <CollapsibleSection sectionKey="serverManagement.reportFonts" title={strings.reportFonts.title}>
-        <p className="text-muted">{strings.reportFonts.intro}</p>
-        <p className="text-muted">{strings.reportFonts.pdfNote}</p>
-        <p className="text-muted">{strings.reportFonts.licenceNote}</p>
+      <CollapsibleSection
+        sectionKey="serverManagement.reportFonts" title={strings.reportFonts.title}
+        help={`${strings.reportFonts.intro}\n${strings.reportFonts.pdfNote}`} collapsible={false}
+      >
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          <span className="text-muted">{strings.reportFonts.licenceNote}</span>
+          <button type="button" className="btn" onClick={rescan}>
+            {strings.reportFonts.rescan}
+          </button>
+        </div>
         {!page.directory_configured && <p>{strings.reportFonts.notConfigured}</p>}
         {page.directory_configured && provided.length === 0 && <p>{strings.reportFonts.noneFound}</p>}
         <ItemRowList
@@ -114,11 +138,17 @@ export function ServerReportFontsTab() {
           items={page.families.map((font) => ({
             id: font.key,
             name: font.label,
-            detail: [
-              font.bundled ? strings.reportFonts.bundled : font.missing ? strings.reportFonts.missing : strings.reportFonts.provided,
-              font.bundled ? "" : strings.reportFonts.faces(font.faces.map((f) => `${REPORT_FONT_STYLE_LABEL[f.style]} (${f.permission})`).join(", ")),
-              strings.reportFonts.wordNameDetail(font.word_name, REPORT_FONT_GENERIC_LABEL[font.generic]),
-            ].filter(Boolean).join(" · "),
+            detail: (
+              <>
+                <Badge tone={font.missing ? "warning" : "muted"}>
+                  {font.bundled ? strings.reportFonts.bundled : font.missing ? strings.reportFonts.missing : strings.reportFonts.provided}
+                </Badge>
+                {!font.bundled && (
+                  <span>{strings.reportFonts.faces(font.faces.map((f) => `${REPORT_FONT_STYLE_LABEL[f.style]} (${f.permission})`).join(", "))}</span>
+                )}
+                <span>{strings.reportFonts.wordNameDetail(font.word_name, REPORT_FONT_GENERIC_LABEL[font.generic])}</span>
+              </>
+            ),
             actions: font.bundled ? undefined : (
               <>
                 <ToggleSwitch
@@ -127,17 +157,12 @@ export function ServerReportFontsTab() {
                   onChange={(next) => save(font, { enabled: next })}
                 />
                 <SettingsPopoverButton label={strings.reportFonts.settingsLabel(font.label)} title={strings.reportFonts.settingsTitle}>
-                  <FontSettings key={font.word_name} font={font} onSave={save} />
+                  <FontSettings key={font.word_name} font={font} onPersist={persist} onSave={save} />
                 </SettingsPopoverButton>
               </>
             ),
           }))}
         />
-        <div>
-          <button type="button" className="btn" onClick={rescan}>
-            {strings.reportFonts.rescan}
-          </button>
-        </div>
       </CollapsibleSection>
       {page.skipped.length > 0 && (
         <CollapsibleSection sectionKey="serverManagement.reportFontsSkipped" title={strings.reportFonts.skippedTitle}>

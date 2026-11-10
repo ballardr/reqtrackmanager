@@ -172,7 +172,7 @@ def resolve_bundle_files(
 def upload_file(
     db: Session,
     *,
-    organization_id: UUID,
+    organization_id: UUID | None,
     uploaded_by: UUID,
     filename: str,
     content_type: str,
@@ -186,7 +186,8 @@ def upload_file(
         db: An active database session (the FileAsset row is added but not
             committed; the caller commits as part of its own transaction).
         organization_id: The owning organisation, used both for storage-key
-            namespacing and access control.
+            namespacing and access control; `None` stores a platform-owned file (only the deployment-wide switch and the
+            size limit apply, and no organisation's usage counts it).
         uploaded_by: The user performing the upload.
         filename: The original filename, shown back to users.
         content_type: The file's MIME type.
@@ -207,9 +208,10 @@ def upload_file(
             status.HTTP_413_CONTENT_TOO_LARGE,
             f"The file is too large (limit {settings.max_upload_bytes // (1024 * 1024)} MB).",
         )
-    storage_usage.note_upload(db, organization_id, len(data))
+    if organization_id is not None:
+        storage_usage.note_upload(db, organization_id, len(data))
     backend = get_storage_backend()
-    key = f"{organization_id}/{uuid.uuid4()}_{_safe_key_component(filename)}"
+    key = f"{organization_id or 'platform'}/{uuid.uuid4()}_{_safe_key_component(filename)}"
     backend.save(key, data)
 
     file_asset = FileAsset(

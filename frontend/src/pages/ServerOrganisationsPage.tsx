@@ -1,14 +1,16 @@
-import { HardDrive, Pencil, Power, Trash2 } from "lucide-react";
+import { HardDrive, Settings, Power, Trash2 } from "lucide-react";
 import { ImportWarnings } from "../components/ImportWarnings";
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ApiError, api } from "../api/client";
+import { api } from "../api/client";
 import type { Organization, OrgCreationChoice, OrgImportResult } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { BundleImportDialog } from "../components/BundleImportDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import type { DirectoryColumn } from "../components/DirectoryTable";
+import { DirectoryTable } from "../components/DirectoryTable";
 import { FilterBadge } from "../components/FilterBadge";
 import { FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
@@ -16,16 +18,18 @@ import { ListPageLayout } from "../components/ListPageLayout";
 import { Modal } from "../components/Modal";
 import { OrgStorageDialog } from "../components/OrgStorageDialog";
 import { Spinner } from "../components/Spinner";
+import { cycleSort } from "../components/sortState";
+import { sortRows } from "../utils/sortRows";
 import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
-import { useToast } from "../context/ToastContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { FormActions } from "../components/FormActions";
 import { FormGrid } from "../components/FormGrid";
 import { TextField, CheckboxField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useServerAccess } from "../hooks/useServerAccess";
-import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
+import { useUrlChoice, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -46,6 +50,9 @@ import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
 type StatusFilter = "active" | "disabled" | "all";
 const STATUS_PARAMS: readonly StatusFilter[] = ["disabled", "all"];
 
+type OrgSortKey = "name" | "status" | "created_at";
+const ORG_SORT_KEYS: readonly OrgSortKey[] = ["name", "status", "created_at"];
+
 export function ServerOrganisationsPage() {
   const strings = useStrings();
   const navigate = useNavigate();
@@ -63,6 +70,7 @@ export function ServerOrganisationsPage() {
   // Defaults to "active" (C-A-13-adjacent hygiene): a deployment that's
   // been running a while accumulates disabled orgs (non-payment, offboarded
   // customers, ...) that would otherwise dominate a plain, unfiltered list.
+  const [sort, setSort] = useUrlSort(ORG_SORT_KEYS);
   const [statusParam, setStatusParam] = useUrlChoice("status", STATUS_PARAMS);
   const statusFilter: StatusFilter = statusParam || "active";
   const setStatusFilter = (next: StatusFilter) => setStatusParam(next === "active" ? "" : next);
@@ -78,7 +86,6 @@ export function ServerOrganisationsPage() {
   const [selectedChoiceKeys, setSelectedChoiceKeys] = useState<Set<string> | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
   // ConfirmDialog (Tier 1) state for disable — converted from
   // `window.confirm` per the sixth-pass audit's "Confirmation and feedback
@@ -150,13 +157,12 @@ export function ServerOrganisationsPage() {
   }
 
   async function runAction(action: () => Promise<void>, successMessage?: string) {
-    setActionError(null);
     try {
       await action();
       await reload();
       if (successMessage) showToast(successMessage);
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -174,7 +180,6 @@ export function ServerOrganisationsPage() {
   }
 
   function startDelete(org: Organization) {
-    setActionError(null);
     setDeletingOrgId(org.id);
   }
 
@@ -189,21 +194,28 @@ export function ServerOrganisationsPage() {
     setDeletingOrgId(null);
   }
 
+  const visibleOrgs = useMemo(() => {
+    const needle = search.toLowerCase();
+    const rows = (orgs ?? []).filter((o) => {
+      if (statusFilter === "active" && !o.is_active) return false;
+      if (statusFilter === "disabled" && o.is_active) return false;
+      return !needle || o.name.toLowerCase().includes(needle);
+    });
+    return sortRows(rows, sort, {
+      name: (o) => o.name,
+      status: (o) => (o.is_active ? 0 : 1),
+      created_at: (o) => o.created_at,
+    });
+  }, [orgs, search, statusFilter, sort]);
+
   if (!orgs) return <Spinner />;
 
-  const filteredOrgs = orgs.filter((o) => {
-    if (statusFilter === "active" && !o.is_active) return false;
-    if (statusFilter === "disabled" && o.is_active) return false;
-    if (search && !o.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  /** The row actions this caller may use: Edit opens the organisation's own administration, which only a server
+  /** The row actions this caller may use: Administration opens the organisation's own administration, which only a server
    * administrator reaches; the subscription roles never see content. */
   function rowActions(o: Organization) {
     return [
       ...(access?.can_administer_server
-        ? [{ label: strings.common.edit, icon: <Pencil size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) }]
+        ? [{ label: strings.serverOrgs.administration, icon: <Settings size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) }]
         : []),
       ...(canCreate
         ? [
@@ -218,6 +230,40 @@ export function ServerOrganisationsPage() {
       ...(canDelete ? [{ label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) }] : []),
     ];
   }
+
+  // Row actions sit in one menu (style guide "Pattern: action menu"); each item opens the same dialog or page as before.
+  const columns: DirectoryColumn<Organization>[] = [
+    { key: "name", label: strings.serverOrgs.name, sortable: true, render: (o) => o.name },
+    {
+      key: "status", label: strings.serverOrgs.status, sortable: true,
+      render: (o) =>
+        o.is_active ? (
+          <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+            {strings.serverOrgs.active}
+          </FilterBadge>
+        ) : (
+          <FilterBadge
+            active={statusFilter === "disabled"}
+            onClick={() => setStatusFilter("disabled")}
+            style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+          >
+            {strings.serverOrgs.disabled}
+          </FilterBadge>
+        ),
+    },
+    { key: "created_at", label: strings.serverOrgs.created, sortable: true, render: (o) => <span className="text-muted">{new Date(o.created_at).toLocaleDateString()}</span> },
+    {
+      key: "actions", label: "",
+      render: (o) => {
+        const items = rowActions(o);
+        return items.length > 0 ? (
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <ActionMenu triggerLabel={strings.serverOrgs.actionsFor(o.name)} items={items} />
+          </div>
+        ) : null;
+      },
+    },
+  ];
 
   return (
     <div className="stack">
@@ -236,7 +282,12 @@ export function ServerOrganisationsPage() {
           ) : undefined
         }
         filter={
-          <FilterPanel sectionKey="serverOrganisationsFilters">
+          <FilterPanel
+            sectionKey="serverOrganisationsFilters"
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={strings.serverOrgs.search(orgLabelPlural)}
+          >
             <FilterSelect
               label={strings.filters.status}
               value={statusFilter}
@@ -272,10 +323,10 @@ export function ServerOrganisationsPage() {
                       {creationChoices
                         .filter((c) => c.group_label === groupLabel)
                         .map((choice) => (
-                          <CheckboxField helpNotNeeded
+                          <CheckboxField
                             key={choice.key}
                             label={choice.label}
-                            title={choice.description}
+                            help={choice.description}
                             checked={selectedChoiceKeys?.has(choice.key) ?? false}
                             onChange={() => toggleChoiceKey(choice.key)}
                           />
@@ -312,70 +363,20 @@ export function ServerOrganisationsPage() {
         )}
         <ImportWarnings warnings={importWarnings} title={strings.projects.importWarnings} />
 
-        {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-          <div className="stack">
-            <input
-              className="input"
-              style={{ maxWidth: 280 }}
-              placeholder={strings.serverOrgs.search(orgLabelPlural)}
-              aria-label={strings.serverOrgs.search(orgLabelPlural)}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-
-            <div className="card" style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredOrgs.map((o) => (
-                    <tr key={o.id}>
-                      <td>{o.name}</td>
-                      <td>
-                        {o.is_active ? (
-                          <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-                            {strings.serverOrgs.active}
-                          </FilterBadge>
-                        ) : (
-                          <FilterBadge
-                            active={statusFilter === "disabled"}
-                            onClick={() => setStatusFilter("disabled")}
-                            style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
-                          >
-                            {strings.serverOrgs.disabled}
-                          </FilterBadge>
-                        )}
-                      </td>
-                      <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
-                      <td>
-                        <div className="row" style={{ justifyContent: "flex-end" }}>
-                          {/* Style guide "Pattern: action menu" — three
-                              standalone row buttons (Edit/Disable-Enable/
-                              Delete) consolidated into one `ActionMenu`, per
-                              the addendum applying the same two-or-more-
-                              actions threshold inside a table row. Each item
-                              still opens the exact same dialog/navigation as
-                              before — the menu is just the entry point, not a
-                              replacement for either `ConfirmDialog` tier. */}
-                          {rowActions(o).length > 0 && (
-                            <ActionMenu triggerLabel={strings.serverOrgs.actionsFor(o.name)} items={rowActions(o)} />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
-              {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
-            </div>
-          </div>
+        <DirectoryTable
+          ariaLabel={strings.orgAdmin.organizations(orgLabelPlural)}
+          columns={columns}
+          rows={visibleOrgs}
+          rowKey={(o) => o.id}
+          sort={sort}
+          onSort={(key) => setSort(cycleSort(sort, key as OrgSortKey))}
+          rowHref={access?.can_administer_server ? (o) => `/orgs/${o.id}/admin` : undefined}
+          emptyState={
+            <p className="text-muted">
+              {orgs.length === 0 ? strings.serverOrgs.none(orgLabelPlural) : strings.serverOrgs.empty(orgLabelPlural)}
+            </p>
+          }
+        />
       </ListPageLayout>
 
       {deletingOrgId &&

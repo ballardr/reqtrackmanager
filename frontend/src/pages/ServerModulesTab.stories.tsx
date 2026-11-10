@@ -126,3 +126,23 @@ export const WithdrawAModuleFromAnOrganisation: Story = {
     await expect(within(document.body).getByText("Beta module withdrawn.")).toBeInTheDocument();
   },
 };
+
+/** Changing the default entitlement policy changes what every organisation without an override may use, so it asks first. */
+export const ChangeThePolicyAsksFirst: Story = {
+  beforeEach: () => {
+    mockApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("button", { name: "Entitlement policy section" }));
+    await userEvent.selectOptions(await canvas.findByRole("combobox", { name: "Default entitlement policy" }), "closed");
+    // Nothing is saved until the change is confirmed.
+    await expect(api.put).not.toHaveBeenCalled();
+    const dialog = within(document.body).getByRole("dialog", { name: "Change the default entitlement policy?" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change policy" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(
+      "/api/v1/system/module-entitlement-policy", { default_module_entitlement_policy: "closed" },
+    ));
+    await expect(await within(document.body).findByText("Entitlement policy saved.")).toBeInTheDocument();
+  },
+};

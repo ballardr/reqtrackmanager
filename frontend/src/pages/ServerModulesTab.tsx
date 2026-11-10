@@ -15,8 +15,10 @@
  * Design decisions:
  * - Rows are the shared `ModuleSettingsList` and the three-state `ModuleAvailabilitySelect`
  *   the organisation and project pages use, so a module reads the same at every tier.
- * - Every control saves at once and ends in a toast; "apply to all" is Tier 2 because it
- *   overwrites other organisations' own choices (style guide, confirmation tiers).
+ * - Every control saves at once and ends in a toast. Changing the entitlement policy is Tier 1 (it changes what every
+ *   organisation without an override may use) and "apply to all" is Tier 2 because it overwrites other organisations'
+ *   own choices (style guide, confirmation tiers).
+ * - What a lever means is in its section's `(?)` help, not in the layout.
  * - Nothing here names a module: the lists come from the API (module boundary).
  */
 import { useEffect, useState } from "react";
@@ -36,7 +38,9 @@ import {
   toModuleAvailability,
 } from "../api/types";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { Badge } from "../components/Badge";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { TextField } from "../components/FormFields";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { ModuleAvailabilitySelect, ModuleSettingsList } from "../components/ModuleSettingsList";
 import { Spinner } from "../components/Spinner";
@@ -48,6 +52,9 @@ import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
 
+/** The number of organisations above which the picker offers a search field. */
+const ORG_SEARCH_FROM = 10;
+
 const POLICY_OPTIONS = (Object.keys(MODULE_ENTITLEMENT_POLICY_LABEL) as ModuleEntitlementPolicy[]).map((value) => ({
   value,
   label: MODULE_ENTITLEMENT_POLICY_LABEL[value],
@@ -58,6 +65,7 @@ function EntitlementPolicySection() {
   const { showToast } = useToast();
   const orgLabelPlural = useOrgLabelPlural().toLowerCase();
   const [policy, setPolicy] = useState<ModuleEntitlementPolicy | null>(null);
+  const [pending, setPending] = useState<ModuleEntitlementPolicy | null>(null);
 
   useEffect(() => {
     api
@@ -67,6 +75,7 @@ function EntitlementPolicySection() {
   }, [showToast]);
 
   async function change(next: ModuleEntitlementPolicy) {
+    setPending(null);
     try {
       await api.put("/api/v1/system/module-entitlement-policy", { default_module_entitlement_policy: next });
       setPolicy(next);
@@ -78,15 +87,23 @@ function EntitlementPolicySection() {
 
   if (policy === null) return <Spinner />;
   return (
-    <CollapsibleSection sectionKey="serverModules.policy" title={strings.serverModules.policyTitle}>
-      <p className="text-muted">{strings.serverModules.policyHint(orgLabelPlural)}</p>
+    <CollapsibleSection sectionKey="serverModules.policy" title={strings.serverModules.policyTitle} help={strings.serverModules.policyHint(orgLabelPlural)}>
       <LabeledSelect help={strings.help.moduleEntitlementPolicy}
         label={strings.serverModules.policyLabel}
         value={policy}
-        onChange={(next) => change(next as ModuleEntitlementPolicy)}
+        onChange={(next) => setPending(next as ModuleEntitlementPolicy)}
         options={POLICY_OPTIONS}
         placeholder={null}
       />
+      {pending && pending !== policy && (
+        <ConfirmDialog
+          title={strings.serverModules.policyConfirmTitle}
+          message={strings.serverModules.policyConfirmMessage(orgLabelPlural, MODULE_ENTITLEMENT_POLICY_LABEL[pending])}
+          confirmLabel={strings.serverModules.policyConfirm}
+          onConfirm={() => change(pending)}
+          onCancel={() => setPending(null)}
+        />
+      )}
     </CollapsibleSection>
   );
 }
@@ -131,8 +148,7 @@ function ServerDefaultsSection() {
 
   if (defaults === null) return <Spinner />;
   return (
-    <CollapsibleSection sectionKey="serverModules.defaults" title={strings.serverModules.defaultsTitle}>
-      <p className="text-muted">{strings.serverModules.defaultsHint(orgLabelPlural)}</p>
+    <CollapsibleSection sectionKey="serverModules.defaults" title={strings.serverModules.defaultsTitle} help={strings.serverModules.defaultsHint(orgLabelPlural)}>
       <ModuleSettingsList
         items={defaults.map((d) => ({
           key: d.module_key,
@@ -149,7 +165,6 @@ function ServerDefaultsSection() {
         }))}
       />
       <div className="stack">
-        <p className="text-muted">{strings.serverModules.applyHint(orgLabelPlural)}</p>
         <button className="btn" onClick={() => setConfirmApply(true)} style={{ alignSelf: "flex-start" }}>
           {strings.serverModules.applyButton(orgLabelPlural)}
         </button>
@@ -175,6 +190,7 @@ function OrganisationAvailabilitySection() {
   const orgCapitalized = useOrgLabelCapitalized();
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   const [orgId, setOrgId] = useState("");
+  const [orgSearch, setOrgSearch] = useState("");
   // Rows are stored with the organisation they were loaded for, so a stale list is never shown
   // for a newly chosen organisation and no reset is needed when the choice changes.
   const [loaded, setLoaded] = useState<{ orgId: string; rows: OrgModuleEntitlement[] } | null>(null);
@@ -212,18 +228,28 @@ function OrganisationAvailabilitySection() {
   }
 
   return (
-    <CollapsibleSection sectionKey="serverModules.organisations" title={strings.serverModules.orgTitle(orgLower)}>
-      <p className="text-muted">{strings.serverModules.orgHint(orgLower)}</p>
+    <CollapsibleSection sectionKey="serverModules.organisations" title={strings.serverModules.orgTitle(orgLower)} help={strings.serverModules.orgHint(orgLower)}>
       {orgs === null ? (
         <Spinner />
       ) : (
-        <LabeledSelect helpNotNeeded
-          label={orgCapitalized}
-          value={orgId}
-          onChange={setOrgId}
-          options={orgs.map((o) => ({ value: o.id, label: o.name }))}
-          placeholder={strings.serverModules.orgPickerPlaceholder(orgLower)}
-        />
+        <>
+          {orgs.length > ORG_SEARCH_FROM && (
+            <TextField helpNotNeeded
+              label={strings.serverModules.searchOrganizations(orgLower)}
+              value={orgSearch}
+              onChange={setOrgSearch}
+            />
+          )}
+          <LabeledSelect helpNotNeeded
+            label={orgCapitalized}
+            value={orgId}
+            onChange={setOrgId}
+            options={orgs
+              .filter((o) => o.id === orgId || !orgSearch || o.name.toLowerCase().includes(orgSearch.toLowerCase()))
+              .map((o) => ({ value: o.id, label: o.name }))}
+            placeholder={strings.serverModules.orgPickerPlaceholder(orgLower)}
+          />
+        </>
       )}
       {orgId && modules === null && <Spinner />}
       {modules && (
@@ -231,9 +257,16 @@ function OrganisationAvailabilitySection() {
           items={modules.map((m) => ({
             key: m.module_key,
             name: m.name,
-            hint: `${strings.serverModules.stateSummary(m.enabled, MODULE_ENABLED_SOURCE_LABEL[m.enabled_source])} · ${
-              m.has_override ? strings.serverModules.overridden : strings.serverModules.followsPolicy
-            }`,
+            hint: (
+              <span className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
+                <Badge tone={m.enabled ? "accent" : "muted"}>
+                  {strings.serverModules.stateSummary(m.enabled, MODULE_ENABLED_SOURCE_LABEL[m.enabled_source])}
+                </Badge>
+                <Badge tone={m.has_override ? "info" : "muted"}>
+                  {m.has_override ? strings.serverModules.overridden : strings.serverModules.followsPolicy}
+                </Badge>
+              </span>
+            ),
             control: (
               <ToggleSwitch
                 checked={m.entitled}

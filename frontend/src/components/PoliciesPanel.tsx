@@ -28,14 +28,19 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useMutation } from "../hooks/useMutation";
 import { formatPlainDate } from "../utils/localDate";
+import { sortRows } from "../utils/sortRows";
 import { Badge } from "./Badge";
+import type { DirectoryColumn } from "./DirectoryTable";
+import { DirectoryTable } from "./DirectoryTable";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FormActions } from "./FormActions";
+import { InlineMessage } from "./InlineMessage";
 import { CheckboxField, TextAreaField, ToggleField } from "./FormFields";
 import { Modal } from "./Modal";
 import { PolicyAcceptancesDialog } from "./PolicyAcceptancesDialog";
 import { PolicyEditor } from "./PolicyEditor";
 import { PrincipalBadge } from "./PrincipalBadge";
+import { cycleSort, type SortState } from "./sortState";
 import { Spinner } from "./Spinner";
 
 /** Where the panel reads and writes: the server's policies, or one organisation's. */
@@ -112,6 +117,7 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
   const [history, setHistory] = useState<Policy | null>(null);
   const [acceptances, setAcceptances] = useState<PolicySummary | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortState | null>(null);
   const path = basePath(scope);
   const organisation = scope.kind === "organisation";
 
@@ -198,8 +204,70 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
     if (await run(() => api.delete(`${path}/${item.id}`), "delete", text.noun)) await reload();
   }
 
-  if (loadError) return <div style={{ color: "var(--color-danger)" }}>{loadError}</div>;
+  if (loadError) return <InlineMessage>{loadError}</InlineMessage>;
   if (!items) return <Spinner />;
+  const columns: DirectoryColumn<PolicySummary | OrgPolicySummary>[] = [
+    { key: "title", label: text.title, sortable: true, render: (item) => <strong>{item.title}</strong> },
+    {
+      key: "state", label: text.state, sortable: true,
+      render: (item) =>
+        item.id === null ? (
+          <span className="text-muted">{text.notWritten}</span>
+        ) : (
+          <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
+            <Badge tone={POLICY_STATE_TONE[item.state]}>{POLICY_STATE_LABEL[item.state]}</Badge>
+            {item.current_version > 0 && item.has_unpublished_changes && <Badge tone="warning">{text.unpublishedChanges}</Badge>}
+            {item.requires_acknowledgement && <Badge tone="accent">{text.acceptanceRequired}</Badge>}
+          </div>
+        ),
+    },
+    { key: "version", label: text.version, sortable: true, render: (item) => (item.current_version > 0 ? item.current_version : "") },
+    ...(organisation
+      ? [{
+          key: "audience", label: text.audience,
+          render: (item: PolicySummary | OrgPolicySummary) =>
+            "audience" in item && item.audience.length > 0 ? (
+              <div className="row" style={{ gap: "var(--space-1)", flexWrap: "wrap" }}>
+                {item.audience.map((p) => <PrincipalBadge key={`${p.type}:${p.id}`} principal={p} />)}
+              </div>
+            ) : (
+              <span className="text-muted">{text.audienceEveryone}</span>
+            ),
+        }]
+      : []),
+    { key: "effective_from", label: text.effectiveFromLabel, sortable: true, render: (item) => (item.effective_from ? formatPlainDate(item.effective_from) : "") },
+    { key: "updated_at", label: text.updated, sortable: true, render: (item) => (item.updated_at ? new Date(item.updated_at).toLocaleString() : "") },
+    {
+      key: "actions", label: "",
+      render: (item) => (
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          {item.id === null ? (
+            <button className="btn" onClick={() => void openEditor(item)}>{text.writeSlot(item.title)}</button>
+          ) : (
+            <>
+              {(item.state === "draft" || item.has_unpublished_changes) && (
+                <button className="btn btn-primary" aria-label={text.publishAria(item.title)} onClick={() => { setSaveError(null); setPublishing(item); }}>
+                  {text.publish}
+                </button>
+              )}
+              {item.state === "published" && (
+                <button className="btn" aria-label={text.unpublishAria(item.title)} onClick={() => setUnpublishing(item)}>{text.unpublish}</button>
+              )}
+              {item.requires_acknowledgement && (
+                <button className="btn" aria-label={text.acceptanceAria(item.title)} title={text.acceptanceAria(item.title)} onClick={() => setAcceptances(item)}><ClipboardCheck /></button>
+              )}
+              <button className="btn" aria-label={`${text.history}: ${item.title}`} title={text.history} onClick={() => void openHistory(item)}><History /></button>
+              <button className="btn" aria-label={text.editAria(item.title)} title={text.editAria(item.title)} onClick={() => void openEditor(item)}><Pencil /></button>
+              {item.key === null && (
+                <button className="btn btn-danger" aria-label={text.deleteAria(item.title)} title={text.deleteAria(item.title)} onClick={() => setRemoving(item)}><Trash2 /></button>
+              )}
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="stack">
       {settings && (
@@ -208,77 +276,21 @@ export function PoliciesPanel({ scope }: { scope: PolicyScope }) {
       <div className="row" style={{ justifyContent: "flex-end" }}>
         <button className="btn btn-primary" onClick={() => { setSaveError(null); setEditing({ kind: "new" }); }}>{text.newPolicy}</button>
       </div>
-      <table className="table" aria-label={text.heading}>
-        <thead>
-          <tr>
-            <th>{text.title}</th>
-            <th>{text.state}</th>
-            <th>{text.version}</th>
-            {organisation && <th>{text.audience}</th>}
-            <th>{text.effectiveFromLabel}</th>
-            <th>{text.updated}</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr key={item.id ?? item.key} data-policy-key={item.key ?? undefined}>
-              <td><strong>{item.title}</strong></td>
-              <td>
-                {item.id === null ? (
-                  <span className="text-muted">{text.notWritten}</span>
-                ) : (
-                  <div className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap" }}>
-                    <Badge tone={POLICY_STATE_TONE[item.state]}>{POLICY_STATE_LABEL[item.state]}</Badge>
-                    {item.current_version > 0 && item.has_unpublished_changes && <Badge tone="warning">{text.unpublishedChanges}</Badge>}
-                    {item.requires_acknowledgement && <Badge tone="accent">{text.acceptanceRequired}</Badge>}
-                  </div>
-                )}
-              </td>
-              <td>{item.current_version > 0 ? item.current_version : ""}</td>
-              {organisation && (
-                <td>
-                  {"audience" in item && item.audience.length > 0 ? (
-                    <div className="row" style={{ gap: "var(--space-1)", flexWrap: "wrap" }}>
-                      {item.audience.map((p) => <PrincipalBadge key={`${p.type}:${p.id}`} principal={p} />)}
-                    </div>
-                  ) : (
-                    <span className="text-muted">{text.audienceEveryone}</span>
-                  )}
-                </td>
-              )}
-              <td>{item.effective_from ? formatPlainDate(item.effective_from) : ""}</td>
-              <td>{item.updated_at ? new Date(item.updated_at).toLocaleString() : ""}</td>
-              <td>
-                <div className="row" style={{ justifyContent: "flex-end" }}>
-                  {item.id === null ? (
-                    <button className="btn" onClick={() => void openEditor(item)}>{text.writeSlot(item.title)}</button>
-                  ) : (
-                    <>
-                      {(item.state === "draft" || item.has_unpublished_changes) && (
-                        <button className="btn btn-primary" aria-label={text.publishAria(item.title)} onClick={() => { setSaveError(null); setPublishing(item); }}>
-                          {text.publish}
-                        </button>
-                      )}
-                      {item.state === "published" && (
-                        <button className="btn" aria-label={text.unpublishAria(item.title)} onClick={() => setUnpublishing(item)}>{text.unpublish}</button>
-                      )}
-                      {item.requires_acknowledgement && (
-                        <button className="btn" aria-label={text.acceptanceAria(item.title)} title={text.acceptanceAria(item.title)} onClick={() => setAcceptances(item)}><ClipboardCheck /></button>
-                      )}
-                      <button className="btn" aria-label={`${text.history}: ${item.title}`} title={text.history} onClick={() => void openHistory(item)}><History /></button>
-                      <button className="btn" aria-label={text.editAria(item.title)} title={text.editAria(item.title)} onClick={() => void openEditor(item)}><Pencil /></button>
-                      {item.key === null && (
-                        <button className="btn btn-danger" aria-label={text.deleteAria(item.title)} title={text.deleteAria(item.title)} onClick={() => setRemoving(item)}><Trash2 /></button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DirectoryTable
+        ariaLabel={text.heading}
+        columns={columns}
+        rows={sortRows(items, sort, {
+          title: (item) => item.title,
+          state: (item) => (item.id === null ? "" : POLICY_STATE_LABEL[item.state]),
+          version: (item) => (item.current_version > 0 ? item.current_version : null),
+          effective_from: (item) => item.effective_from ?? null,
+          updated_at: (item) => item.updated_at ?? null,
+        })}
+        rowKey={(item) => item.id ?? item.key ?? item.title}
+        sort={sort}
+        onSort={(key) => setSort(cycleSort(sort, key))}
+        emptyState={<p className="text-muted">{text.noPolicies}</p>}
+      />
       {editing !== null && (
         <PolicyEditor
           policy={editing.kind === "edit" ? editing.policy : null} slot={editing.kind === "slot" ? editing.slot : null}

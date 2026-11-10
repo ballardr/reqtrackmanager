@@ -187,7 +187,13 @@ An organisation's own pages (company settings, personal data policy, scoring) do
 - **A file, or any value that cannot be emptied** (logo, login background, a band set, the models shown): a **Remove** or **Reset to module default** button, shown only while the organisation has its own value (`BrandingImageField`; `OverridePill` with `platformFallback`). A file with none of its own shows the platform picture muted under a "Platform default" caption.
 - **A toggle that has a platform value** (personal data policy): the row's hint states the platform value; setting the toggle equal to it follows the platform again.
 
-The pill stays wherever the fallback is a **tier**: a project's value inherited from its organisation or a parent project (the next pattern). Server administrator pages are not organisation pages and keep their own controls.
+The pill stays wherever the fallback is a **tier**: a project's value inherited from its organisation or a parent project (the next pattern). Server administrator pages are not organisation pages: they *set* the platform defaults, so they keep their own controls. They follow the same shapes as the organisation pages where one exists (a text field whose empty state means "use the built-in value" with the built-in value as the placeholder; a picture with a **Remove** button that reverts to the built-in picture, `BrandingImageField` with no platform picture), and the help of each platform field says what an organisation that has not set its own value shows.
+
+## Pattern: settings group save
+
+A group of fields that belong together has **one Save** beneath the group (`SettingsForm`, `frontend/src/components/SettingsForm.tsx`): unavailable until a field differs from the saved value and while the request runs, a toast on success, a failure drawn beside the button that stays until the next attempt. Nothing persistent says "Saved": it would sit beside the next, unsaved edit. The caller keeps the field state and sends only its own group's fields (the platform branding update is partial, so the Server details and Platform branding pages cannot overwrite each other).
+
+A **lone toggle, a per-row control or a file** is not a group and acts at once with a toast (Principle 7); a file cannot be staged, so a picture uploads when chosen. A lone select whose change affects who may use the product or what every organisation may use keeps a Save (public sign-up) or asks first with a Tier 1 confirmation (the default module entitlement policy). The same applies at every tier: server administration, organisation administration and project settings.
 
 ## Pattern: scoring and inherited settings
 

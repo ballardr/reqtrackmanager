@@ -820,6 +820,7 @@ def main() -> None:
     for email, name, role in (
         ("e2e-subscription-manager@example.com", "E2E Platform Subscription Manager", "subscription_manager"),
         ("e2e-removal-authority@example.com", "E2E Subscription Removal Authority", "subscription_removal_authority"),
+        ("e2e-module-admin@example.com", "E2E Module Administrator", "module_administrator"),
     ):
         holder = create_org_user(h_admin, alpha["id"], email, name, "member")
         r = httpx.post(
@@ -1283,6 +1284,7 @@ def main() -> None:
     print("  e2e-member-ab@example.com     - member on Alpha-1 and Beta-1; no org-admin/project-creator rights anywhere")
     print("  e2e-subscription-manager@example.com - Alpha member holding the Platform subscription manager server role")
     print("  e2e-removal-authority@example.com     - Alpha member holding the Subscription removal authority server role")
+    print("  e2e-module-admin@example.com          - Alpha member holding the Module administrator server role")
     print("  e2e-orphan@example.com        - zero org memberships (left Alpha via self-service); for user-directory/ban workflow")
     print("  e2e-projectmgr-g@example.com  - Gamma member only (no org-admin/project-creator); PM on Gamma-1,"
           " stakeholder on Gamma-3 (direct, shows up as forward-inherited on Gamma-4)")

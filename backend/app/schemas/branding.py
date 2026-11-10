@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.org import _HEX_COLOR_PATTERN
 
@@ -48,10 +48,22 @@ class DefaultStorageQuota(BaseModel):
 
 
 class ServerSettingsUpdate(BaseModel):
-    accent_color_hex: str = Field(pattern=_HEX_COLOR_PATTERN)
+    """A partial update of the platform branding (`PUT /system/branding`): only the fields sent are changed.
+
+    The Server details and Branding pages each send their own fields, so neither can overwrite the other's. An empty
+    text field is sent as `null`, which clears the value; the accent colour has no empty state, so `null` for it is refused.
+    """
+
+    accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     default_header_title: str | None = Field(default=None, max_length=100)
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
     email_footer_address: str | None = Field(default=None, max_length=2000)
     org_label_singular: str | None = Field(default=None, max_length=50)
     org_label_plural: str | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def _accent_is_not_cleared(self) -> ServerSettingsUpdate:
+        if "accent_color_hex" in self.model_fields_set and self.accent_color_hex is None:
+            raise ValueError("The accent colour cannot be cleared.")
+        return self
