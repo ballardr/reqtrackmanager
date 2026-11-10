@@ -69,6 +69,7 @@ import { ImportConflictPanel } from "../components/ImportConflictPanel";
 import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { Modal } from "../components/Modal";
+import { OrganisationDetailsPanel } from "../components/OrganisationDetailsPanel";
 import { OrgUsageTable } from "../components/OrgUsageTable";
 import { AddUserMenu } from "../components/AddUserMenu";
 import { NewUserFields } from "../components/NewUserFields";
@@ -104,12 +105,12 @@ import { reportPlacementApi } from "../api/reportPlacements";
 import { Badge } from "../components/Badge";
 import { ReportSetupPanel } from "../components/ReportSetupPanel";
 import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
-import { CheckboxField, ColorField, FileField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
+import { CheckboxField, ColorField, FileField, TextField, ToggleField } from "../components/FormFields";
 import { FieldHelp } from "../components/FieldHelp";
 import { ReportColourSchemeEditor } from "../components/ReportColourSchemeEditor";
 import { DEFAULT_COLOUR_CONTEXT, type ColourEntry } from "../utils/reportColours";
 import { FormActions } from "../components/FormActions";
-import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
+import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
 
@@ -145,6 +146,7 @@ import { RecordFieldGroup } from "../components/RecordDetailParts";
  */
 const CORE_ORG_ADMIN_GROUP_KEYS = [
   "overview",
+  "details",
   "users",
   "groups",
   "projects",
@@ -227,12 +229,6 @@ export function OrgAdminPage() {
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
   const [org, setOrg] = useState<Organization | null>(null);
-  const [orgNameEdit, setOrgNameEdit] = useState("");
-  const [renameError, setRenameError] = useState<string | null>(null);
-  // Rename now opens in a `Modal` from the Overview group's `ActionMenu`
-  // (style guide "Pattern: action menu") rather than an always-visible
-  // inline input.
-  const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [degradedOrgName, setDegradedOrgName] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
@@ -501,9 +497,6 @@ export function OrgAdminPage() {
   const [reportColourScheme, setReportColourScheme] = useState<ColourEntry[]>([]);
   const [reportIncludeLogo, setReportIncludeLogo] = useState(true);
   const [headerTitleInput, setHeaderTitleInput] = useState("");
-  const [emailFooterCompanyNameInput, setEmailFooterCompanyNameInput] = useState("");
-  const [emailFooterWebsiteInput, setEmailFooterWebsiteInput] = useState("");
-  const [emailFooterAddressInput, setEmailFooterAddressInput] = useState("");
   const [brandingError, setBrandingError] = useState<string | null>(null);
 
   const USERS_PAGE_SIZE = 30;
@@ -647,7 +640,6 @@ export function OrgAdminPage() {
     setLoadError(null);
     setDegradedOrgName(null);
     setOrg(o);
-    setOrgNameEdit(o.name);
     setUseOwnAccentColor(o.accent_color_hex != null);
     setAccentColorInput(o.accent_color_hex ?? "#475569");
     setUseOwnReportAccent(o.report_accent_color_hex != null);
@@ -655,9 +647,6 @@ export function OrgAdminPage() {
     setReportColourScheme(o.report_colour_scheme ?? []);
     setReportIncludeLogo(o.report_include_logo);
     setHeaderTitleInput(o.header_title ?? "");
-    setEmailFooterCompanyNameInput(o.email_footer_company_name ?? "");
-    setEmailFooterWebsiteInput(o.email_footer_website ?? "");
-    setEmailFooterAddressInput(o.email_footer_address ?? "");
     setAllGroups(allG);
     setTemplateProjects(projects.filter((p) => p.is_template && p.organization_id === orgId));
     setThisOrgVisibleProjects(projects.filter((p) => p.organization_id === orgId));
@@ -813,21 +802,6 @@ export function OrgAdminPage() {
       setOutsideDomainUsers(await api.get<OutsideDomainUser[]>(`/api/v1/orgs/${orgId}/users/outside-domain`));
     } catch (err) {
       setOutsideDomainError(err instanceof ApiError ? err.message : strings.common.error);
-    }
-  }
-
-  async function renameOrg() {
-    if (!orgId || !orgNameEdit.trim() || !org || orgNameEdit === org.name) return;
-    setRenameError(null);
-    try {
-      const updated = await api.put<Organization>(`/api/v1/orgs/${orgId}/name`, { name: orgNameEdit });
-      setOrg(updated);
-      setOrgNameEdit(updated.name);
-      setRenameModalOpen(false);
-      showToast(strings.orgAdmin.renamed);
-    } catch (err) {
-      setRenameError(err instanceof ApiError ? err.message : strings.common.error);
-      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -1540,41 +1514,6 @@ export function OrgAdminPage() {
     }
   }
 
-  const [logoUploading, setLogoUploading] = useState(false);
-  const [logoUploaded, setLogoUploaded] = useState(false);
-  const [logoError, setLogoError] = useState<string | null>(null);
-
-  async function uploadLogo(file: File) {
-    setLogoError(null);
-    setLogoUploaded(false);
-    setLogoUploading(true);
-    try {
-      await api.postFile(`/api/v1/orgs/${orgId}/branding-image`, file, { kind: "logo" });
-      await reload();
-      setLogoUploaded(true);
-    } catch (err) {
-      setLogoError(err instanceof ApiError ? err.message : strings.common.error);
-    } finally {
-      setLogoUploading(false);
-    }
-  }
-
-  async function removeLogo() {
-    setLogoError(null);
-    setLogoUploaded(false);
-    setLogoUploading(true);
-    try {
-      await api.delete(`/api/v1/orgs/${orgId}/branding-image?kind=logo`);
-      await reload();
-      showToast(strings.orgAdmin.logoRemoved);
-    } catch (err) {
-      setLogoError(err instanceof ApiError ? err.message : strings.common.error);
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    } finally {
-      setLogoUploading(false);
-    }
-  }
-
   async function saveBranding() {
     setBrandingError(null);
     try {
@@ -1584,9 +1523,6 @@ export function OrgAdminPage() {
         report_include_logo: reportIncludeLogo,
         report_colour_scheme: reportColourScheme,
         header_title: headerTitleInput || null,
-        email_footer_company_name: emailFooterCompanyNameInput || null,
-        email_footer_website: emailFooterWebsiteInput || null,
-        email_footer_address: emailFooterAddressInput || null,
       });
       showToast(strings.orgAdmin.brandingSaved);
       reload();
@@ -1928,6 +1864,7 @@ export function OrgAdminPage() {
 
   const orgAdminGroups: ResourceMenuGroupDef<OrgAdminGroupKey>[] = [
     { key: "overview", label: strings.orgAdmin.groupOverview, href: `/orgs/${orgId}/admin/overview` },
+    { key: "details", label: strings.orgAdmin.groupOrganisationDetails(orgLabelCap), href: `/orgs/${orgId}/admin/details` },
     { key: "users", label: strings.orgAdmin.groupUsers, href: `/orgs/${orgId}/admin/users` },
     { key: "groups", label: strings.orgAdmin.groupGroups, href: `/orgs/${orgId}/admin/groups` },
     { key: "projects", label: strings.orgAdmin.groupProjects, href: `/orgs/${orgId}/admin/projects` },
@@ -2219,9 +2156,6 @@ export function OrgAdminPage() {
                   triggerLabel={strings.orgAdmin.orgActions(orgLabelCap)}
                   disabled={exportingOrg}
                   items={[
-                    ...(advanced
-                      ? [{ label: strings.orgAdmin.rename, icon: <Pencil size={14} />, onSelect: () => setRenameModalOpen(true) }]
-                      : []),
                     {
                       label: strings.orgAdmin.exportBundle(orgLabel),
                       icon: <Download size={14} />,
@@ -2231,25 +2165,6 @@ export function OrgAdminPage() {
                 />
               </div>
             </div>
-
-            {renameModalOpen && (
-              <Modal title={strings.orgAdmin.rename} onClose={() => setRenameModalOpen(false)}>
-                <div className="stack">
-                  <TextField required help={strings.orgAdmin.renameHint(orgLabel)}
-                    label={strings.orgAdmin.rename}
-                    value={orgNameEdit}
-                    onChange={setOrgNameEdit}
-                    inputProps={{ autoFocus: true }}
-                  />
-                  <InlineMessage>{renameError}</InlineMessage>
-                  <FormActions
-                    onCancel={() => setRenameModalOpen(false)}
-                    onSave={renameOrg}
-                    saveDisabled={!orgNameEdit.trim() || orgNameEdit === org.name}
-                  />
-                </div>
-              </Modal>
-            )}
 
             <CollapsibleSection sectionKey="orgAdmin.importMerge" title={strings.importMerge.action(orgLabel)} defaultCollapsed help={strings.importMerge.hint(orgLabel)}>
               {!importMergeConflicts && !importMergeResult && (
@@ -2796,22 +2711,17 @@ export function OrgAdminPage() {
           </div>
         )}
 
+        {activeGroup === "details" && (
+          <div className="stack">
+            <CollapsibleSection sectionKey="orgAdmin.details" title={strings.orgAdmin.groupOrganisationDetails(orgLabelCap)} collapsible={false}>
+              <OrganisationDetailsPanel org={org} platformBranding={platformBranding} onOrgChange={setOrg} />
+            </CollapsibleSection>
+          </div>
+        )}
+
         {activeGroup === "branding-defaults" && (
           <div className="stack">
             <CollapsibleSection sectionKey="orgAdmin.branding" title={strings.orgAdmin.branding}>
-              <BrandingImageField
-                id="org-logo-input"
-                label={strings.orgAdmin.logo(orgLabel)}
-                fileId={org.logo_file_id ?? null}
-                platformFileId={platformBranding?.default_logo_file_id ?? null}
-                busy={logoUploading}
-                onSelect={uploadLogo}
-                onRemove={removeLogo}
-                error={logoError}
-                uploaded={logoUploaded ? strings.orgAdmin.logoUploaded : null}
-                height={40}
-              />
-
               {/* Login-background sits alongside the org logo (style guide
                   "after" diagram, G4a: "Branding — logo, colour, footer") —
                   moved here from the SSO section, where it previously sat
@@ -2868,36 +2778,6 @@ export function OrgAdminPage() {
                 checked={reportIncludeLogo}
                 onChange={setReportIncludeLogo}
               />
-              <FormDivider />
-              <span className="row" style={{ gap: "var(--space-2)" }}>
-                <h4 style={{ margin: 0 }}>{strings.orgAdmin.emailFooterTitle}</h4>
-                <FieldHelp label={strings.orgAdmin.emailFooterTitle} help={strings.orgAdmin.emailFooterHint(orgLabel)} />
-              </span>
-              <FormGrid minColumn="18rem">
-                <TextField help={strings.help.orgEmailFooterCompanyName}
-                  label={strings.orgAdmin.emailFooterCompanyName}
-                  placeholder={platformBranding?.email_footer_company_name ?? undefined}
-                  value={emailFooterCompanyNameInput}
-                  onChange={setEmailFooterCompanyNameInput}
-                  inputProps={{ id: "org-email-footer-company" }}
-                />
-                <TextField help={strings.help.orgEmailFooterWebsite}
-                  label={strings.orgAdmin.emailFooterWebsite}
-                  placeholder={platformBranding?.email_footer_website ?? undefined}
-                  value={emailFooterWebsiteInput}
-                  onChange={setEmailFooterWebsiteInput}
-                  inputProps={{ id: "org-email-footer-website" }}
-                />
-                <FormGridFull>
-                  <TextAreaField help={strings.help.orgEmailFooterAddress}
-                    label={strings.orgAdmin.emailFooterAddress}
-                    rows={3}
-                    value={emailFooterAddressInput}
-                    onChange={setEmailFooterAddressInput}
-                    inputProps={{ id: "org-email-footer-address", placeholder: platformBranding?.email_footer_address ?? undefined }}
-                  />
-                </FormGridFull>
-              </FormGrid>
               <InlineMessage>{brandingError}</InlineMessage>
               <button className="btn btn-primary" onClick={saveBranding} style={{ alignSelf: "flex-start" }}>
                 {strings.orgAdmin.saveBranding}

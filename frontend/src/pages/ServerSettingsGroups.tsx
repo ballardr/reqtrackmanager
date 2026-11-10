@@ -19,9 +19,10 @@ import { api } from "../api/client";
 import type { ServerSettings, SignupConfig, SignupMode } from "../api/types";
 import { BrandingImageField } from "../components/BrandingImageField";
 import { CollapsibleSection } from "../components/CollapsibleSection";
+import { CompanyDetailsFields } from "../components/CompanyDetailsFields";
 import { FieldHelp } from "../components/FieldHelp";
-import { ColorField, TextAreaField, TextField, ToggleField } from "../components/FormFields";
-import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
+import { ColorField, TextField, ToggleField } from "../components/FormFields";
+import { FormDivider, FormGrid } from "../components/FormGrid";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { SettingsForm } from "../components/SettingsForm";
 import { Spinner } from "../components/Spinner";
@@ -160,25 +161,32 @@ export function ServerDetailsTab() {
         <FieldHelp label={strings.serverSettings.emailFooterTitle} help={strings.serverSettings.emailFooterHint(orgLabel)} />
       </span>
       <SettingsForm dirty={dirty} onSave={save} successMessage={strings.serverSettings.detailsSaved}>
-        <FormGrid minColumn="18rem">
-          <TextField
-            help={strings.help.serverFooterPrefix} label={strings.serverSettings.footerPrefix}
-            value={prefix} onChange={setPrefix} placeholder={strings.serverSettings.footerPrefixExample}
-          />
-          <TextField
-            help={strings.help.serverEmailFooterCompanyName} label={strings.serverSettings.emailFooterCompanyName}
-            value={company} onChange={setCompany} placeholder={strings.appName}
-          />
-          <TextField help={strings.help.serverEmailFooterWebsite} label={strings.serverSettings.emailFooterWebsite} value={website} onChange={setWebsite} />
-          <FormGridFull>
-            <TextAreaField help={strings.help.serverEmailFooterAddress} label={strings.serverSettings.emailFooterAddress} value={address} onChange={setAddress} rows={3} />
-          </FormGridFull>
-          <TextField
-            help={strings.help.serverCompanyIdLabel} label={strings.serverSettings.companyIdLabel}
-            value={companyIdLabel} onChange={setCompanyIdLabel} placeholder={strings.serverSettings.companyIdLabelExample}
-          />
-          <TextField help={strings.help.serverCompanyId} label={strings.serverSettings.companyId} value={companyId} onChange={setCompanyId} />
-        </FormGrid>
+        <CompanyDetailsFields
+          idPrefix="platform-company"
+          value={{ companyName: company, website, address }}
+          onChange={(field, text) => ({ companyName: setCompany, website: setWebsite, address: setAddress })[field](text)}
+          help={{
+            companyName: strings.help.serverEmailFooterCompanyName,
+            website: strings.help.serverEmailFooterWebsite,
+            address: strings.help.serverEmailFooterAddress,
+          }}
+          placeholders={{ companyName: strings.appName }}
+          leading={(
+            <TextField
+              help={strings.help.serverFooterPrefix} label={strings.serverSettings.footerPrefix}
+              value={prefix} onChange={setPrefix} placeholder={strings.serverSettings.footerPrefixExample}
+            />
+          )}
+          trailing={(
+            <>
+              <TextField
+                help={strings.help.serverCompanyIdLabel} label={strings.serverSettings.companyIdLabel}
+                value={companyIdLabel} onChange={setCompanyIdLabel} placeholder={strings.serverSettings.companyIdLabelExample}
+              />
+              <TextField help={strings.help.serverCompanyId} label={strings.serverSettings.companyId} value={companyId} onChange={setCompanyId} />
+            </>
+          )}
+        />
       </SettingsForm>
     </CollapsibleSection>
   );

@@ -33,6 +33,12 @@ from app.services.rbac import require_org_role
 
 router = APIRouter(tags=["organizations-branding"])
 
+#: Branding columns a request clears by sending null (the rest of `OrgBrandingUpdate` has no "cleared" state).
+_CLEARABLE_BRANDING_FIELDS = frozenset({
+    "accent_color_hex", "header_title", "email_footer_company_name", "email_footer_website", "email_footer_address",
+    "report_accent_color_hex",
+})
+
 
 @router.post("/{organization_id}/branding-image", response_model=OrganizationOut)
 async def upload_org_branding_image(
@@ -110,27 +116,28 @@ def update_org_branding(
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
     db: Session = Depends(get_db),
 ):
-    """Sets (or clears, with null values) this organisation's UI accent
-    colour, report accent colour and logo-on-reports choice, header wordmark override (U-C-01 override), and outgoing-email
-    footer identity, and the report colour scheme. All fall back to the platform default
-    (`GET /system/branding`) when null — this endpoint never needs to know
-    what that default is, it just clears its own override."""
+    """Sets (or clears, with null values) this organisation's UI accent colour, report accent colour, logo-on-reports
+    choice, report colour scheme, header wordmark override (U-C-01 override) and outgoing-email footer identity. All fall
+    back to the platform default (`GET /system/branding`) when null — this endpoint never needs to know what that default
+    is, it just clears its own override.
+
+    A partial update: only the fields in the request body change (a field sent as null is cleared), so the Organisation
+    details and Branding & defaults pages cannot overwrite each other. The audit event names the fields changed, never
+    their values.
+    """
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    org.accent_color_hex = payload.accent_color_hex
-    org.header_title = payload.header_title
-    org.email_footer_company_name = payload.email_footer_company_name
-    org.email_footer_website = payload.email_footer_website
-    org.email_footer_address = payload.email_footer_address
-    if "report_accent_color_hex" in payload.model_fields_set:
-        org.report_accent_color_hex = payload.report_accent_color_hex
+    sent = payload.model_fields_set
+    for field in _CLEARABLE_BRANDING_FIELDS & sent:
+        setattr(org, field, getattr(payload, field))
+    # A boolean and a list have no "cleared" state: null means "leave as it is", and `[]` clears the colour scheme.
     if payload.report_include_logo is not None:
         org.report_include_logo = payload.report_include_logo
     if payload.report_colour_scheme is not None:
         org.report_colour_scheme = [e.model_dump() for e in payload.report_colour_scheme] or None
     log_event(db, entity_type="organization", entity_id=organization_id, action="branding_updated",
-              actor_id=current_user.id, organization_id=organization_id)
+              actor_id=current_user.id, organization_id=organization_id, detail={"fields": sorted(sent)})
     db.commit()
     db.refresh(org)
     return org

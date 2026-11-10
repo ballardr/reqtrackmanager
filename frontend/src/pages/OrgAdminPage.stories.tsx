@@ -1079,11 +1079,8 @@ export const EntitySwitcherOffersOtherOrgs: Story = {
   },
 };
 
-/** Style guide "Pattern: action menu": rename now lives behind the
- * Overview group's kebab (`ActionMenu`, "Organisation actions") instead of an
- * always-visible inline input — selecting "Rename" from the menu opens a
- * `Modal` containing the rename field and its own Save/Cancel row. */
-export const RenameOrganization: Story = {
+/** The name is edited on the Details group; Save renames through the name endpoint and sends no company details. */
+export const OrganisationDetailsRenamesTheOrganisation: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
     spyOn(api, "put").mockImplementation(async (path: string) =>
@@ -1093,24 +1090,72 @@ export const RenameOrganization: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Acme Corp" })).toBeInTheDocument());
+    await expect(canvas.queryByRole("button", { name: "Organisation actions" })).toBeInTheDocument();
 
-    await userEvent.click(canvas.getByRole("button", { name: "Organisation actions" }));
-    const menu = within(document.body).getByRole("menu", { name: "Organisation actions" });
-    await userEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Organisation details" }));
+    const name = await canvas.findByLabelText(/^Name/);
+    await expect(name).toHaveValue("Acme Corp");
+    await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+    await userEvent.clear(name);
+    await userEvent.type(name, "Renamed Corp");
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
 
-    const dialog = within(document.body).getByRole("dialog", { name: "Rename" });
-    await expect(within(dialog).getByLabelText("Rename")).toHaveValue("Acme Corp");
-    await userEvent.clear(within(dialog).getByLabelText("Rename"));
-    await userEvent.type(within(dialog).getByLabelText("Rename"), "Renamed Corp");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/name`, { name: "Renamed Corp" })
-    );
+    await waitFor(() => expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/name`, { name: "Renamed Corp" }));
+    await expect(api.put).toHaveBeenCalledTimes(1);
     await expect(canvas.getByRole("heading", { name: "Renamed Corp" })).toBeInTheDocument();
     // Principle 7 — every mutation ends with feedback.
-    await expect(within(document.body).getByText("Renamed")).toBeInTheDocument();
-    await expect(within(document.body).queryByRole("dialog", { name: "Rename" })).not.toBeInTheDocument();
+    await expect(within(document.body).getByText("Details saved")).toBeInTheDocument();
+  },
+};
+
+/** The company details show the platform values as placeholders, and Save sends only the field that changed. */
+export const OrganisationDetailsSavesOnlyTheChangedCompanyField: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue({ ...org, email_footer_company_name: "Acme Pty Ltd" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Organisation details" }));
+    const company = await canvas.findByLabelText("Company name");
+    await expect(company).toHaveValue("");
+    // With no logo of its own the platform logo is shown under a muted caption, and there is nothing to remove.
+    await expect(canvas.getByText("Platform default")).toBeVisible();
+    await expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull();
+    await expect(company).toHaveAttribute("placeholder", "Platform Co");
+    await expect(canvas.getByLabelText("Postal address")).toHaveAttribute("placeholder", "1 Platform Way");
+    await userEvent.type(company, "Acme Pty Ltd");
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding`, { email_footer_company_name: "Acme Pty Ltd" }),
+    );
+    await expect(api.put).toHaveBeenCalledTimes(1);
+  },
+};
+
+/** The logo and the company details are on Organisation details; Branding & defaults keeps the appearance only. */
+export const BrandingNoLongerHoldsTheLogoOrCompanyDetails: Story = {
+  beforeEach: () => {
+    mockOrgAdminApis();
+    spyOn(api, "put").mockResolvedValue(org);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Organisation details" }));
+    await canvas.findByLabelText("Organisation logo");
+    await expect(canvas.getByLabelText("Company name")).toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
+    await canvas.findByLabelText(/^Header title/);
+    await expect(canvas.queryByLabelText("Organisation logo")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Company name")).not.toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Postal address")).not.toBeInTheDocument();
+    await expect(canvas.getByLabelText("Login page background image")).toBeInTheDocument();
+    await userEvent.type(canvas.getByLabelText(/^Header title/), "Acme");
+    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
+    await waitFor(() => expect(api.put).toHaveBeenCalled());
+    const [, body] = (api.put as unknown as { mock: { calls: [string, Record<string, unknown>][] } }).mock.calls[0];
+    await expect(Object.keys(body).filter((key) => key.startsWith("email_footer"))).toEqual([]);
   },
 };
 
@@ -1172,12 +1217,8 @@ export const BrandingSectionPlatformValueIsThePlaceholder: Story = {
 
     await expect(canvas.queryByText("Custom")).toBeNull();
     await expect(canvas.queryByRole("button", { name: "Reset to platform default" })).toBeNull();
-    // With no logo of its own the platform logo is shown under a muted caption, and there is nothing to remove.
-    await expect(canvas.getByText("Platform default")).toBeVisible();
+    // With no login background of its own there is nothing to remove.
     await expect(canvas.queryByRole("button", { name: "Remove" })).toBeNull();
-    await expect(canvas.getByLabelText("Company name")).toHaveAttribute("placeholder", "Platform Co");
-    await expect(canvas.getByLabelText("Website")).toHaveAttribute("placeholder", "https://platform.example.com");
-    await expect(canvas.getByLabelText("Postal address")).toHaveAttribute("placeholder", "1 Platform Way");
 
     // Emptying a field and saving sends null, which is the platform value again.
     const header = canvas.getByLabelText(/^Header title/);
@@ -1192,8 +1233,8 @@ export const BrandingSectionPlatformValueIsThePlaceholder: Story = {
 };
 
 /** The logo and the login background cannot be emptied, so each has a Remove button (no pill) while the
- * organisation has its own file; the platform picture is shown muted when it has none. */
-export const BrandingSectionLogoAndLoginBackgroundRemove: Story = {
+ * organisation has its own file; the logo is on Organisation details and the login background on Branding & defaults. */
+export const LogoAndLoginBackgroundRemove: Story = {
   beforeEach: () => {
     mockOrgAdminApis({ org: { ...org, logo_file_id: "file-logo-1", login_background_file_id: "file-bg-1" } });
     spyOn(api, "delete").mockImplementation(async (path: string) =>
@@ -1202,16 +1243,16 @@ export const BrandingSectionLogoAndLoginBackgroundRemove: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
-    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Remove" })).toHaveLength(2));
+    await userEvent.click(canvas.getByRole("link", { name: "Organisation details" }));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Remove" })).toHaveLength(1));
     await expect(canvas.queryByText("Custom")).toBeNull();
-
-    await userEvent.click(canvas.getAllByRole("button", { name: "Remove" })[0]);
+    await userEvent.click(canvas.getByRole("button", { name: "Remove" }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=logo`));
     await expect(within(document.body).getByText("Logo removed.")).toBeInTheDocument();
 
-    // The mocked organisation keeps both files after the first removal, so the second Remove is the login background's.
-    await userEvent.click(canvas.getAllByRole("button", { name: "Remove" })[1]);
+    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
+    await waitFor(() => expect(canvas.getAllByRole("button", { name: "Remove" })).toHaveLength(1));
+    await userEvent.click(canvas.getByRole("button", { name: "Remove" }));
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(`/api/v1/orgs/${ORG_ID}/branding-image?kind=login_background`)
     );
@@ -1219,24 +1260,23 @@ export const BrandingSectionLogoAndLoginBackgroundRemove: Story = {
   },
 };
 
-export const BrandingSectionEmailFooterSave: Story = {
+/** The company details are saved together, each field that changed. */
+export const OrganisationDetailsSaveSeveralCompanyFields: Story = {
   beforeEach: () => {
     mockOrgAdminApis();
     spyOn(api, "put").mockResolvedValue(org);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole("link", { name: "Branding & defaults" }));
+    await userEvent.click(canvas.getByRole("link", { name: "Organisation details" }));
     await waitFor(() => expect(canvas.getByLabelText("Company name")).toBeInTheDocument());
     await userEvent.type(canvas.getByLabelText("Company name"), "Acme Requirements Ltd");
     await userEvent.type(canvas.getByLabelText("Website"), "https://acme.example.com");
-    await userEvent.click(canvas.getByRole("button", { name: "Save branding" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(api.put).toHaveBeenCalledWith(
         `/api/v1/orgs/${ORG_ID}/branding`,
-        expect.objectContaining({
-          email_footer_company_name: "Acme Requirements Ltd", email_footer_website: "https://acme.example.com",
-        }),
+        { email_footer_company_name: "Acme Requirements Ltd", email_footer_website: "https://acme.example.com" },
       )
     );
   },

@@ -8,7 +8,8 @@ const apiBaseUrl = "http://localhost:8000";
  * Style guide "Pattern: platform default vs. override": an organisation's company settings carry no "Custom" pill
  * and no reset link. An empty text field uses the platform value, which the field shows as its placeholder; the
  * logo and login background cannot be emptied, so each has a Remove button while the organisation has its own file.
- * The seeded Alpha org has its email footer fields set (`seed_e2e_dataset.py`) and its header title empty.
+ * The seeded Alpha org has its email footer fields set (`seed_e2e_dataset.py`) and its header title empty. The header
+ * title is on Branding & defaults; the company details and the logo are on Organisation details.
  *
  * Mutates real org branding, so it restores the seeded values afterward
  * (`afterEach`, runs even if an assertion above it fails) rather than
@@ -56,18 +57,20 @@ test.describe("org branding: the platform value is the placeholder; files have a
       await expect(page.getByRole("button", { name: "Reset to platform default" })).toHaveCount(0);
       await expect(page.getByLabel(/^Header title/)).toHaveValue("");
       await expect(page.getByLabel(/^Header title/)).toHaveAttribute("placeholder", platform.default_header_title || "ReqTrackManager");
-      await expect(page.getByLabel("Company name")).toHaveValue(original.email_footer_company_name);
+      await expect(page.getByLabel("Company name")).toHaveCount(0);
     });
+
+    await selectOrgAdminGroup(page, "Organisation details");
+    await expect(page.getByLabel("Company name")).toHaveValue(original.email_footer_company_name);
 
     await test.step("emptying the company name and saving reverts it to the platform value", async () => {
       await page.getByLabel("Company name").fill("");
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/branding") && r.request().method() === "PUT"),
-        page.getByRole("button", { name: "Save branding" }).click(),
+        page.getByRole("button", { name: "Save", exact: true }).click(),
       ]);
       await page.reload();
-      await selectOrgAdminGroup(page, "Branding & defaults");
-      await ensureExpanded(page, "Branding");
+      await selectOrgAdminGroup(page, "Organisation details");
       await expect(page.getByLabel("Company name")).toHaveValue("");
       if (platform.email_footer_company_name) {
         await expect(page.getByLabel("Company name")).toHaveAttribute("placeholder", platform.email_footer_company_name);
@@ -84,8 +87,7 @@ test.describe("org branding: the platform value is the placeholder; files have a
     alphaOrgId = orgs.find((o: { name: string; id: string }) => o.name === ORG_NAMES.alpha).id;
 
     await page.goto(`/orgs/${alphaOrgId}/admin`);
-    await selectOrgAdminGroup(page, "Branding & defaults");
-    await ensureExpanded(page, "Branding");
+    await selectOrgAdminGroup(page, "Organisation details");
 
     await test.step("uploading a logo shows a Remove button and no pill", async () => {
       const logoRow = page.locator('label[for="org-logo-input"]').locator("../..");
@@ -108,7 +110,9 @@ test.describe("org branding: the platform value is the placeholder; files have a
       await expect(logoRow.getByRole("button", { name: "Remove" })).toHaveCount(0);
     });
 
-    await test.step("the login background has the same behaviour", async () => {
+    await test.step("the login background, on Branding & defaults, has the same behaviour", async () => {
+      await selectOrgAdminGroup(page, "Branding & defaults");
+      await ensureExpanded(page, "Branding");
       const backgroundRow = page.locator('label[for="org-login-background-input"]').locator("../..");
       await page.locator("#org-login-background-input").setInputFiles({
         name: "bg.png", mimeType: "image/png", buffer: Buffer.from("fake-png-bytes"),

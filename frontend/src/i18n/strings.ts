@@ -972,9 +972,6 @@ const en = {
     loginBackgroundUploaded: "Background image uploaded.",
     emailFooterTitle: "Footer details",
     emailFooterHint: (org: string) => `Shown in the footer of every page and of every outgoing email. Any ${org} that has set its own company name shows its own details in its emails instead, without the prefix or company identifier.`,
-    emailFooterCompanyName: "Company name",
-    emailFooterWebsite: "Website",
-    emailFooterAddress: "Postal address",
     footerPrefix: "Prefix",
     companyIdLabel: "Company identifier label",
     companyId: "Company identifier",
@@ -1147,6 +1144,11 @@ const en = {
     // once more than one can appear on the same page).
     actionsFor: (name: string) => `${name} actions`,
   },
+  companyDetails: {
+    companyName: "Company name",
+    website: "Website",
+    address: "Postal address",
+  },
   orgAdmin: {
     projectCodes: "Project codes",
     organizationCode: "Organisation code",
@@ -1174,6 +1176,10 @@ const en = {
     // 2026-08-24 — a flat regroup, no new navigation capability) — new
     // strings rather than reusing `groupPeople` for one of the two.
     groupOverview: "Overview",
+    groupOrganisationDetails: (orgCap: string) => `${orgCap} details`,
+    detailsName: "Name",
+    detailsNameHelp: (org: string) => `The name of this ${org}. It is used everywhere the ${org} is displayed, including its own delete-confirmation prompt.`,
+    detailsSaved: "Details saved",
     usage: {
       title: "Usage",
       measure: "Measure",
@@ -1277,11 +1283,7 @@ const en = {
     sectionsNav: "Organisation admin sections",
     adminSubtitle: (orgCap: string) => `${orgCap} admin`,
     organizations: (orgPlural: string) => orgPlural,
-    rename: "Rename",
-    renameHint: (org: string) => `The new name is used everywhere this ${org} is displayed, including its own delete-confirmation prompt.`,
-    renamed: "Renamed",
-    // Style guide "Pattern: action menu" — the kebab trigger combining
-    // Rename and Export on the Overview group.
+    // The kebab trigger on the Overview group (Export).
     orgActions: (orgCap: string) => `${orgCap} actions`,
     backToOrganizations: (orgPlural: string) => `Back to ${orgPlural.toLowerCase()}`,
     notAMemberTitle: (org: string) => `You are not a member of this ${org}`,
@@ -1298,9 +1300,6 @@ const en = {
     brandingSaved: "Branding saved",
     emailFooterTitle: "Outgoing email footer",
     emailFooterHint: (org: string) => `Overrides the platform default footer identity for this ${org}'s outgoing emails. Leave blank to use the platform default.`,
-    emailFooterCompanyName: "Company name",
-    emailFooterWebsite: "Website",
-    emailFooterAddress: "Postal address",
     defaultTemplate: "Default {project} template",
     projects: "{Projects}",
     manageUsers: "Manage users",

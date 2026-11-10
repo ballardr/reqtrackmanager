@@ -283,7 +283,8 @@ class OrgBrandingUpdate(BaseModel):
     """Sets (or clears, with a null value) this organisation's UI accent
     colour, header wordmark override, and outgoing-email footer identity
     (`email_footer_*`). All fall back to the platform default
-    (`ServerSettings`) when null."""
+    (`ServerSettings`) when null. A partial update: a field not sent is left
+    as it is, a field sent as null is cleared."""
 
     accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
     header_title: str | None = Field(default=None, max_length=100)

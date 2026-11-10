@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { deleteOrgOnCleanup, installCleanupHook, loginAs, PERSONAS, selectOrgAdminGroup, selectServerManagementGroup } from "./helpers";
+import { deleteOrgOnCleanup, ensureExpanded, installCleanupHook, loginAs, PERSONAS, selectOrgAdminGroup, selectServerManagementGroup } from "./helpers";
 
 // Deletes this file's disposable orgs after each test (see deleteOrgOnCleanup).
 installCleanupHook();
@@ -94,6 +94,7 @@ test.describe("organisation rename and test-email actions", () => {
     const suffix = Date.now();
     const orgName = `E2E Rename Org ${suffix}`;
     const renamedName = `E2E Renamed Org ${suffix}`;
+    const companyName = `E2E Details Ltd ${suffix}`;
     const orgAdminEmail = `e2e-rename-admin-${suffix}@example.com`;
     const testEmailRecipient = `e2e-org-test-email-${suffix}@example.com`;
 
@@ -123,26 +124,32 @@ test.describe("organisation rename and test-email actions", () => {
     await page.goto(`/orgs/${org.id}/admin`);
     await expect(page.getByRole("heading", { name: orgName })).toBeVisible();
 
-    await test.step("rename via the Overview group's action menu and its Rename modal", async () => {
-      // Style guide "Pattern: action menu" — rename and export now live
-      // behind one kebab trigger instead of an always-visible inline
-      // input; selecting "Rename" opens a Modal with the field.
-      await page.getByRole("button", { name: "Organisation actions" }).click();
-      // See the identical fix (and its full explanation) in
-      // org-merge-import.spec.ts: clicking the menuitem before the
-      // `Popover`-based menu finishes positioning can silently miss it.
-      await expect(page.getByRole("menu", { name: "Organisation actions" })).toBeVisible();
-      await page.getByRole("menuitem", { name: "Rename" }).click();
-      const dialog = page.getByRole("dialog", { name: "Rename" });
-      const nameInput = dialog.getByLabel("Rename", { exact: true });
+    await test.step("rename and set the company name on the Organisation details group, in one Save", async () => {
+      await selectOrgAdminGroup(page, "Organisation details");
+      const nameInput = page.getByLabel("Name", { exact: true });
       await expect(nameInput).toHaveValue(orgName);
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
       await nameInput.fill(renamedName);
+      await page.getByLabel("Company name").fill(companyName);
       await Promise.all([
         page.waitForResponse((r) => r.url().includes(`/orgs/${org.id}/name`) && r.request().method() === "PUT"),
-        dialog.getByRole("button", { name: "Save" }).click(),
+        page.waitForResponse((r) => r.url().includes(`/orgs/${org.id}/branding`) && r.request().method() === "PUT"),
+        page.getByRole("button", { name: "Save", exact: true }).click(),
       ]);
       await expect(page.getByRole("heading", { name: renamedName })).toBeVisible();
-      await expect(dialog).not.toBeVisible();
+      await expect(page.getByText("Details saved")).toBeVisible();
+    });
+
+    await test.step("saving the appearance on Branding & defaults leaves the company name as it was", async () => {
+      await selectOrgAdminGroup(page, "Branding & defaults");
+      await ensureExpanded(page, "Branding");
+      await page.getByLabel(/^Header title/).fill("E2E Details Header");
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes(`/orgs/${org.id}/branding`) && r.request().method() === "PUT"),
+        page.getByRole("button", { name: "Save branding" }).click(),
+      ]);
+      await selectOrgAdminGroup(page, "Organisation details");
+      await expect(page.getByLabel("Company name")).toHaveValue(companyName);
     });
 
     await test.step("the new name survives a reload", async () => {
@@ -191,6 +198,7 @@ test.describe("organisation rename and test-email actions", () => {
       expect(html).toContain("<!DOCTYPE html>");
       expect(html).toContain("prefers-color-scheme: dark");
       expect(html).toContain(renamedName);
+      expect(html).toContain(companyName);
     });
   });
 
