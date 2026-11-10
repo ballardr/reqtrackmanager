@@ -16,6 +16,15 @@ This table is ported from the project [README](https://github.com/ballardr/reqtr
 | `POSTGRES_PASSWORD` | `reqtrack` | Recommended | Postgres password, shared by the `db` service and the backend's `DATABASE_URL` |
 | `JWT_SECRET` | `change-me-in-production` | **Yes** | Access token signing secret |
 | `APP_SECRET_ENCRYPTION_KEY` | `change-me-in-production` | **Yes** | Encrypts SSO client secrets, per-org SMTP passwords, and TOTP secrets at rest (application-layer, distinct from `JWT_SECRET` so the two can be rotated independently) |
+| `APP_SECRET_ENCRYPTION_KEY_PREVIOUS` | — | During rotation | Earlier key values (comma-separated) kept only so stored secrets stay readable while the key is rotated; run `scripts/rotate_secret_key.py`, then remove them |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | **Yes**, behind a proxy | The proxy addresses whose `X-Forwarded-For` and `X-Forwarded-Proto` the backend believes; without it every client shows as the proxy |
+| `REQUIRE_EMAIL_CONFIRMATION` | `true` | — | A public sign-up must open an emailed link before the account can sign in |
+| `FORCE_PASSWORD_CHANGE_ON_ADMIN_SET` | `true` | — | An account whose password an administrator typed must change it at first sign-in |
+| `LOGIN_DELAY_WINDOW_MINUTES` / `LOGIN_DELAY_FREE_ATTEMPTS_ACCOUNT` / `LOGIN_DELAY_FREE_ATTEMPTS_ADDRESS` / `LOGIN_DELAY_BASE_SECONDS` / `LOGIN_DELAY_MAX_SECONDS` | `15` / `5` / `30` / `5` / `300` | — | The progressive sign-in delay after repeated failures |
+| `AUDIT_RUNTIME_ROLE` / `DATABASE_MIGRATION_URL` | — | Recommended | Make the audit trail append-only for the application's database role; see Deployment → Database roles |
+| `BACKEND_BIND_ADDRESS` / `OBSERVABILITY_BIND_ADDRESS` | `127.0.0.1` | — | The host address the backend and the observability ports are published on |
+| `GRAFANA_ADMIN_PASSWORD` | — | With the observability profile | Grafana does not start without it |
+| `CSP_SCRIPT_SRC_EXTRA` / `MODULE_FRAME_ALLOWED_ORIGINS` | — | — | Origins the front end's Content-Security-Policy allows for federated modules and module frames |
 | `JWT_ALGORITHM` | `HS256` | — | JWT signing algorithm |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `720` | — | Access token lifetime |
 | `SERVER_ADMIN_ENABLED` | `true` | — | Whether to bootstrap the server-admin user |

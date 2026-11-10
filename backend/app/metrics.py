@@ -53,6 +53,9 @@ change_requests_submitted_total = Counter("change_requests_submitted_total", "Ch
 change_requests_approved_total = Counter("change_requests_approved_total", "Change requests approved")
 change_requests_rejected_total = Counter("change_requests_rejected_total", "Change requests rejected")
 
+secret_decrypt_failures_total = Counter(
+    "secret_decrypt_failures_total", "Stored secrets that could not be decrypted with the configured keys"
+)
 login_attempts_total = Counter("login_attempts_total", "Login attempts", ["result"])
 
 # 1 while the last file-storage write probe succeeded, 0 while it is failing (services/storage_health.py).

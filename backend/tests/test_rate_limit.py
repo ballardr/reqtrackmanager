@@ -91,3 +91,35 @@ def test_a_zero_limit_turns_the_search_limiter_off(client, admin_token, monkeypa
     _, token = create_org_admin_in(client, admin_token, f"Rate Limit Off {uuid.uuid4().hex[:6]}")
     codes = {client.post("/api/v1/search", json={"q": "anything", "scope": "all"}, headers=auth_headers(token)).status_code for _ in range(8)}
     assert codes == {200}
+
+
+def test_a_shared_limiter_holds_across_instances_because_the_buckets_are_in_the_database():
+    """Two limiters with the same shared name (two workers) spend one bucket; a different key or name has its own."""
+    first = RateLimiter(capacity=2, refill_per_second=0.001, shared="test-shared")
+    second = RateLimiter(capacity=2, refill_per_second=0.001, shared="test-shared")
+    assert first.acquire("a") is None
+    assert second.acquire("a") is None
+    wait = first.acquire("a")
+    assert wait is not None and wait > 100  # the third call, from either worker, is refused for a long time
+    assert second.acquire("b") is None
+    assert RateLimiter(capacity=2, refill_per_second=0.001, shared="other-name").acquire("a") is None
+
+
+def test_a_shared_limiter_refills_with_database_time():
+    limiter = RateLimiter(capacity=1, refill_per_second=1000.0, shared="test-refill")
+    assert limiter.acquire("a") is None
+    import time
+
+    time.sleep(0.01)  # ten tokens at this rate, capped at the capacity
+    assert limiter.acquire("a") is None
+
+
+def test_the_public_routes_limit_across_workers(client):
+    """The reset route's allowance is the database's, not one process's: clearing the process state does not reset it."""
+    from app.services import credential_reset
+
+    codes = []
+    for index in range(12):
+        credential_reset._limiters.clear()  # a different worker would hold none of this process's state
+        codes.append(client.post("/api/v1/auth/forgot-password", json={"email": f"u{index}@example.com"}).status_code)
+    assert 429 in codes

@@ -71,6 +71,8 @@ services:
   backend:
     logging: *bounded_logs
     environment:
+      # The demonstration may be served on a public name: it refuses to start on a placeholder secret.
+      REQUIRE_STRONG_SECRETS: "true"
       CORS_ORIGINS: ${DEMO_PUBLIC_URL:?scripts/demo.sh sets DEMO_PUBLIC_URL}
       PUBLIC_BACKEND_URL: ${DEMO_PUBLIC_URL}
       FRONTEND_BASE_URL: ${DEMO_PUBLIC_URL}

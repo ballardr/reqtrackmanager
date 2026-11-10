@@ -39,7 +39,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_registered_artefact_types, get_artefact_type_label
 from app.schemas.changes import ChangeEntryOut, RecordActivityOut
-from app.services.activity_kinds import action_kinds, kind_of
+from app.services.activity_kinds import AUDIT_TRAIL_ONLY_ACTIONS, AUDIT_TRAIL_ONLY_ENTITY_TYPES, action_kinds, kind_of
 from app.services.changes import attach_actor_names, get_project_changes
 from app.services.link_graph import ArtefactResolver
 
@@ -76,7 +76,11 @@ def _own_events(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> list
             AuditEvent.entity_type == artefact_type, AuditEvent.entity_id == str(artefact_id)
         )
     ).all()
-    return [_entry(e, detail=_scrub(e.detail) if e.detail else None) for e in events]
+    return [
+        _entry(e, detail=_scrub(e.detail) if e.detail else None)
+        for e in events
+        if not (artefact_type in AUDIT_TRAIL_ONLY_ENTITY_TYPES and e.action in AUDIT_TRAIL_ONLY_ACTIONS)
+    ]
 
 
 def _generic_link_entries(

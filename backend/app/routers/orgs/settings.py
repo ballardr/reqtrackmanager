@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.code_rules import CodePolicy
 from app.config import get_settings
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.enums import OrgRole
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleSubComponentDefault
 from app.models.organization import Organization
@@ -100,10 +101,15 @@ def get_advanced_settings(
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
         force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
         allow_ai_approvals=org.allow_ai_approvals,
+        allow_imported_approval_state=org.allow_imported_approval_state,
     )
 
 
-@router.put("/{organization_id}/advanced-settings", response_model=OrgAdvancedSettingsOut)
+@router.put(
+    "/{organization_id}/advanced-settings", response_model=OrgAdvancedSettingsOut,
+    # Sets the token lifetime cap, the mail relay, two-factor and sign-up rules: a token must not widen its own limits.
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def update_advanced_settings(
     organization_id: UUID, payload: OrgAdvancedSettingsUpdate,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
@@ -185,6 +191,8 @@ def update_advanced_settings(
     # validate server-side.
     if "allow_ai_approvals" in sent:
         org.allow_ai_approvals = payload.allow_ai_approvals
+    if "allow_imported_approval_state" in sent:
+        org.allow_imported_approval_state = payload.allow_imported_approval_state
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
         actor_id=current_user.id, organization_id=organization_id,
@@ -207,6 +215,7 @@ def update_advanced_settings(
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
         force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
         allow_ai_approvals=org.allow_ai_approvals,
+        allow_imported_approval_state=org.allow_imported_approval_state,
     )
 
 
@@ -599,10 +608,11 @@ def get_sso_config(
         slug=org.slug, sso_enabled=org.sso_enabled, sso_only=org.sso_only,
         oidc_issuer_url=org.oidc_issuer_url, oidc_client_id=org.oidc_client_id,
         oidc_required_group=org.oidc_required_group,
+        oidc_allow_account_creation=org.oidc_allow_account_creation,
     )
 
 
-@router.put("/{organization_id}/sso-config", response_model=OrgSsoConfigOut)
+@router.put("/{organization_id}/sso-config", response_model=OrgSsoConfigOut, dependencies=[Depends(refuse_personal_access_token)])
 def update_sso_config(
     organization_id: UUID, payload: OrgSsoConfigUpdate,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
@@ -644,6 +654,7 @@ def update_sso_config(
         # Blank means "leave unchanged" — same pattern as smtp_password above.
         org.oidc_client_secret = payload.oidc_client_secret
     org.oidc_required_group = payload.oidc_required_group
+    org.oidc_allow_account_creation = payload.oidc_allow_account_creation
     log_event(db, entity_type="organization", entity_id=organization_id, action="sso_config_updated",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
@@ -652,6 +663,7 @@ def update_sso_config(
         slug=org.slug, sso_enabled=org.sso_enabled, sso_only=org.sso_only,
         oidc_issuer_url=org.oidc_issuer_url, oidc_client_id=org.oidc_client_id,
         oidc_required_group=org.oidc_required_group,
+        oidc_allow_account_creation=org.oidc_allow_account_creation,
     )
 
 
@@ -670,7 +682,7 @@ def get_scim_token_status(
     return ScimTokenStatusOut(enabled=org.scim_token_hash is not None, token_prefix=org.scim_token_prefix)
 
 
-@router.post("/{organization_id}/scim-token", response_model=ScimTokenCreatedOut)
+@router.post("/{organization_id}/scim-token", response_model=ScimTokenCreatedOut, dependencies=[Depends(refuse_personal_access_token)])
 def regenerate_scim_token(
     organization_id: UUID,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
@@ -692,7 +704,7 @@ def regenerate_scim_token(
     return ScimTokenCreatedOut(token=raw_token, token_prefix=token_prefix)
 
 
-@router.delete("/{organization_id}/scim-token", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{organization_id}/scim-token", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_scim_token(
     organization_id: UUID,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),

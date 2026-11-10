@@ -41,7 +41,7 @@ import httpx
 
 BASE = os.environ.get("DEMO_API_BASE", "http://localhost:8000/api/v1")
 ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@example.com")
-ADMIN_PASSWORD = os.environ.get("DEMO_ADMIN_PASSWORD", "ChangeMe123!")
+ADMIN_PASSWORD = os.environ.get("DEMO_ADMIN_PASSWORD") or os.environ.get("SERVER_ADMIN_PASSWORD", "ChangeMe123!")
 # Shared by every demonstration account; `demo_setup.py` replaces it when it rotates the password.
 PASSWORD = os.environ.get("DEMO_PASSWORD", "DemoDemo123!")
 

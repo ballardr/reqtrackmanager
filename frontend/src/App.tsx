@@ -39,6 +39,8 @@ import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { ServerManagementPage } from "./pages/ServerManagementPage";
 import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
+import { ConfirmEmailPage } from "./pages/ConfirmEmailPage";
+import { ForcedPasswordChangePage } from "./pages/ForcedPasswordChangePage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
@@ -91,6 +93,8 @@ function ProtectedRoutes() {
   // The Policies page is public: the people a privacy policy concerns most have not signed in yet.
   if (!user && /^\/policies(\/|$)/.test(location.pathname)) return <PublicPoliciesPage />;
   if (!user) return <Navigate to="/login" replace />;
+  // An administrator-set password is changed before anything else is shown (the server refuses every other request).
+  if (user.must_change_password) return <ForcedPasswordChangePage />;
 
   return (
     <Layout>
@@ -187,6 +191,7 @@ export function App() {
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/confirm-email" element={<ConfirmEmailPage />} />
       <Route path="/oidc-complete" element={<OidcCompletePage />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>

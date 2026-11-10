@@ -27,7 +27,8 @@ if config.config_file_name is not None:
     # while (see docs/decisions.md).
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# The owner connection when the deployment separates it from the application's own role (`audit_runtime_role`).
+config.set_main_option("sqlalchemy.url", get_settings().database_migration_url or get_settings().database_url)
 
 target_metadata = Base.metadata
 

@@ -26,6 +26,12 @@ class Settings(BaseSettings):
         database_url: SQLAlchemy connection string for PostgreSQL.
         jwt_secret: Symmetric secret used to sign access tokens.
         jwt_algorithm: JWT signing algorithm.
+        database_migration_url: The connection the schema is migrated and protected with, when it differs from
+            `database_url` (the owner role, with the right to change tables). The application itself then connects as
+            the runtime role in `database_url`. Unset: both are `database_url`.
+        audit_runtime_role: The name of the database role the application connects as, when it is not the table owner.
+            At start-up the audit tables are made append-only for that role (`services.audit_protection`). Empty: no
+            protection (the application owns its tables, so a revoke would change nothing).
         app_secret_encryption_key: Symmetric key used to encrypt genuine
             secrets at rest at the application layer — `Organization.
             oidc_client_secret`, `Organization.smtp_password`, and `User.
@@ -35,6 +41,9 @@ class Settings(BaseSettings):
             `jwt_secret`, this must be a strong random value distinct per
             deployment — the production Compose stack fails fast if it's
             left unset.
+        app_secret_encryption_key_previous: Comma-separated earlier values of `app_secret_encryption_key`, kept only
+            so values written under them still decrypt while the key is being rotated (new values always use the
+            current key; `scripts/rotate_secret_key.py` re-encrypts the stored ones, after which this is emptied).
         access_token_expire_minutes: Access token lifetime in minutes.
         server_admin_enabled: Whether the deployment-config server admin
             bootstrap user is created/enabled on startup (I-M-06).
@@ -133,6 +142,17 @@ class Settings(BaseSettings):
             for a given account once `two_factor_max_failed_attempts` is
             reached. The lockout is per-*account*, not per-challenge-token,
             so re-authenticating for a fresh token does not reset it.
+        require_email_confirmation: Whether an account created by public self-sign-up (no invitation) must open a link emailed
+            to its address before it can sign in (`services.email_confirmation`). On by default.
+        force_password_change_on_admin_set: Whether an account whose password an administrator typed must change it at
+            its first sign-in (`User.must_change_password`). On by default; a person who sets their own password (sign-up,
+            invitation, reset link) is never asked.
+        login_delay_window_minutes / login_delay_free_attempts_account / login_delay_free_attempts_address /
+            login_delay_base_seconds / login_delay_max_seconds: The progressive delay on `/auth/login`
+            (`services.login_throttle`). Failed attempts inside the window count against the account (since its
+            last success) and against the source address; past the free allowance each further failure doubles
+            the wait from the base up to the maximum. A delay, not a lock: it ends by itself, so a third party
+            cannot keep a person out for longer than the maximum.
         oidc_allow_private_network_targets: Deployment-level opt-in that
             disables the SSRF guard's public-IP check for org-configured
             OIDC endpoints (`services.oidc_client._assert_safe_external_url`),
@@ -297,8 +317,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack"
+    database_migration_url: str | None = None
+    audit_runtime_role: str = ""
     jwt_secret: str = "change-me-in-production"
     app_secret_encryption_key: str = "change-me-in-production"
+    app_secret_encryption_key_previous: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 12
 
@@ -347,6 +370,13 @@ class Settings(BaseSettings):
     report_run_record_retention_days: int = 400
     two_factor_max_failed_attempts: int = 5
     two_factor_lockout_minutes: int = 15
+    force_password_change_on_admin_set: bool = True
+    require_email_confirmation: bool = True
+    login_delay_window_minutes: int = Field(default=15, ge=1, le=1440)
+    login_delay_free_attempts_account: int = Field(default=5, ge=1)
+    login_delay_free_attempts_address: int = Field(default=30, ge=1)
+    login_delay_base_seconds: int = Field(default=5, ge=1)
+    login_delay_max_seconds: int = Field(default=300, ge=1)
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
     org_smtp_allow_private_network_targets: bool = False

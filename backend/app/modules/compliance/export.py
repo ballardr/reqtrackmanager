@@ -117,6 +117,7 @@ from app.services.placements import prime_record_placements, record_placements, 
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import is_retired
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -1323,14 +1324,14 @@ def reset_for_template(data: dict[str, Any]) -> None:
     """`ModuleProjectBundleHooks.template_reset`: starter assignments keep their assessments and evidence, with every
     approval returned to `assessed` (no decision, decider or note) and no revalidation history; archived assignments
     and evidence are left out."""
-    assignments = [pc for pc in data.get("compliance_project_compliances", []) if not pc.get("is_archived")]
+    assignments = [pc for pc in data.get("compliance_project_compliances", []) if not is_retired(pc)]
     for assignment in assignments:
         for requirement in assignment.get("requirements", []):
             if requirement.get("approval_state") not in (None, ComplianceApprovalState.NOT_ASSESSED.value):
                 requirement["approval_state"] = ComplianceApprovalState.ASSESSED.value
             requirement.update(approval_decided_at=None, approval_decided_by_email=None, decision_note="")
     data["compliance_project_compliances"] = assignments
-    evidence = [e for e in data.get("compliance_evidence", []) if not e.get("is_archived")]
+    evidence = [e for e in data.get("compliance_evidence", []) if not is_retired(e)]
     for entry in evidence:
         entry["revalidations"] = []
     data["compliance_evidence"] = evidence

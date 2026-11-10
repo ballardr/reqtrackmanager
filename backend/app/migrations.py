@@ -34,6 +34,7 @@ from alembic import command
 from alembic.config import Config
 from app.database import engine
 from app.modules.registry import apply_external_module_migrations, configure_alembic_version_locations
+from app.services.audit_protection import apply_audit_protection
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -48,3 +49,4 @@ def run_migrations() -> None:
     configure_alembic_version_locations(cfg)
     command.upgrade(cfg, "head")
     apply_external_module_migrations(engine)
+    apply_audit_protection()

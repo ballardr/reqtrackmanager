@@ -15,6 +15,7 @@ are written by `services/report_run_jobs.py` directly and are not uploads (see `
 
 from __future__ import annotations
 
+import io
 import re
 import uuid
 from collections.abc import Callable
@@ -22,6 +23,7 @@ from functools import lru_cache
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from PIL import Image as PilImage
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -169,6 +171,38 @@ def resolve_bundle_files(
     return {}
 
 
+_RASTER_BY_FORMAT = {"PNG": "image/png", "JPEG": "image/jpeg", "GIF": "image/gif", "WEBP": "image/webp"}
+_OCTET_STREAM = "application/octet-stream"
+
+
+def trusted_content_type(claimed: str, data: bytes) -> str:
+    """The content type to store: the client's claim, except that an `image/*` claim must match the bytes.
+
+    A PNG, JPEG, GIF or WebP is stored as what its header says (whatever the claim); an SVG claim is kept when the
+    bytes look like SVG text; any other bytes claimed as an image are stored as `application/octet-stream`, so a
+    file cannot pass as a picture (an outgoing email's logo, a branded page) it is not. Downloads of anything that is
+    not a raster picture or a PDF are already forced to save rather than display.
+
+    Args:
+        claimed: The `Content-Type` the client sent (may be empty).
+        data: The file's bytes.
+
+    Returns:
+        The content type to store.
+    """
+    claim = (claimed or _OCTET_STREAM).split(";")[0].strip().lower() or _OCTET_STREAM
+    if not claim.startswith("image/"):
+        return claim
+    try:
+        with PilImage.open(io.BytesIO(data), formats=list(_RASTER_BY_FORMAT)) as image:
+            return _RASTER_BY_FORMAT.get(image.format or "", _OCTET_STREAM)
+    except Exception:  # noqa: BLE001 - Pillow raises several types for bytes that are not an image
+        pass
+    if claim == "image/svg+xml" and b"<svg" in data[:4096].lower():
+        return claim
+    return _OCTET_STREAM
+
+
 def upload_file(
     db: Session,
     *,
@@ -219,7 +253,7 @@ def upload_file(
         storage_backend=backend.name,
         storage_key=key,
         filename=filename,
-        content_type=content_type,
+        content_type=trusted_content_type(content_type, data),
         size_bytes=len(data),
         uploaded_by=uploaded_by,
         is_org_resource=is_org_resource,

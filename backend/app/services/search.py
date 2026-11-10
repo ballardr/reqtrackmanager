@@ -49,7 +49,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import HTTPException, status
-from sqlalchemy import String, and_, case, cast, exists, func, literal, or_, select, text
+from sqlalchemy import String, and_, case, cast, exists, func, literal, or_, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -1051,7 +1051,7 @@ def _run_search(db: Session, user: User, params: SearchParams) -> SearchResult:
     """`run_search` without the timeout translation."""
     _validate(params)
     started = time.monotonic()
-    db.execute(text(f"SET LOCAL statement_timeout = {STATEMENT_TIMEOUT_MS}"))
+    db.execute(select(func.set_config("statement_timeout", str(STATEMENT_TIMEOUT_MS), True)))
     with memoize_user_lookups(), memoize_module_state():
         context = _authorised_projects(db, user, params)
     providers = get_search_providers()

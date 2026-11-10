@@ -445,6 +445,7 @@ export function OrgAdminPage() {
   // opt-in gate. Enabling it (not disabling) requires acknowledging the
   // accountability trade-off first — see `aiApprovalsAckPending` below.
   const [allowAiApprovals, setAllowAiApprovals] = useState(false);
+  const [allowImportedApprovalState, setAllowImportedApprovalState] = useState(true);
   const [aiApprovalsAckPending, setAiApprovalsAckPending] = useState(false);
   const [aiApprovalsAckChecked, setAiApprovalsAckChecked] = useState(false);
   // Guards the advanced-settings form fields above against `reload()` —
@@ -483,6 +484,7 @@ export function OrgAdminPage() {
   const [oidcClientId, setOidcClientId] = useState("");
   const [oidcClientSecret, setOidcClientSecret] = useState("");
   const [oidcRequiredGroup, setOidcRequiredGroup] = useState("");
+  const [oidcAllowAccountCreation, setOidcAllowAccountCreation] = useState(true);
 
   const [scimStatus, setScimStatus] = useState<ScimTokenStatus | null>(null);
   const [scimGeneratedToken, setScimGeneratedToken] = useState<string | null>(null);
@@ -685,6 +687,7 @@ export function OrgAdminPage() {
         setAllowRelaxedChildProjectCreation(a.allow_relaxed_child_project_creation);
         setForceRequireCrForLinks(a.force_require_change_request_for_approved_links);
         setAllowAiApprovals(a.allow_ai_approvals);
+        setAllowImportedApprovalState(a.allow_imported_approval_state ?? true);
       }
       setOrgPats(await api.get<OrgPersonalAccessToken[]>(`/api/v1/orgs/${orgId}/pats`));
       setOrgProjects(await api.get<OrgProjectSummary[]>(`/api/v1/orgs/${orgId}/projects`));
@@ -712,6 +715,7 @@ export function OrgAdminPage() {
       setOidcIssuerUrl(sso.oidc_issuer_url ?? "");
       setOidcClientId(sso.oidc_client_id ?? "");
       setOidcRequiredGroup(sso.oidc_required_group ?? "");
+      setOidcAllowAccountCreation(sso.oidc_allow_account_creation ?? true);
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 403)) throw err;
     }
@@ -854,6 +858,7 @@ export function OrgAdminPage() {
         allow_relaxed_child_project_creation: allowRelaxedChildProjectCreation,
         force_require_change_request_for_approved_links: forceRequireCrForLinks,
         allow_ai_approvals: allowAiApprovals,
+        allow_imported_approval_state: allowImportedApprovalState,
       },
     };
     try {
@@ -1577,6 +1582,7 @@ export function OrgAdminPage() {
         oidc_client_id: oidcClientId || null,
         oidc_client_secret: oidcClientSecret || null,
         oidc_required_group: oidcRequiredGroup || null,
+        oidc_allow_account_creation: oidcAllowAccountCreation,
       });
       setSsoConfig(saved);
       setOidcClientSecret("");
@@ -2900,6 +2906,8 @@ export function OrgAdminPage() {
                   value={oidcRequiredGroup}
                   onChange={setOidcRequiredGroup}
                 />
+                <CheckboxField help={strings.help.ssoAllowAccountCreation} label={strings.orgAdmin.oidcAllowAccountCreation}
+                  checked={oidcAllowAccountCreation} onChange={setOidcAllowAccountCreation} />
 
                 {/* SSO group → org-role mapping used to live here, as a
                     flat, disconnected list (`sso_group_mappings`) — it's
@@ -3092,6 +3100,15 @@ export function OrgAdminPage() {
                   onChange={(next) => {
                     advancedDirtyRef.current.security = true;
                     setForceRequireCrForLinks(next);
+                  }}
+                />
+
+                <ToggleField help={strings.help.allowImportedApprovalState}
+                  label={strings.orgAdmin.allowImportedApprovalState}
+                  checked={allowImportedApprovalState}
+                  onChange={(next) => {
+                    advancedDirtyRef.current.security = true;
+                    setAllowImportedApprovalState(next);
                   }}
                 />
 

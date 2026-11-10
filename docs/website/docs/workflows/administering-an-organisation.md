@@ -98,6 +98,8 @@ A qualified code can be looked up from the API (`GET /api/v1/orgs/{id}/records/b
 
 ## Single sign-on
 
+Under **Advanced settings → Security**, **Keep approval state on imported projects** (on by default) decides whether a project imported from a bundle keeps its approvals, decisions and votes; switched off, imported records return to drafts. The SCIM token, single sign-on settings, advanced settings, role grants and account creation with a typed password are interactive actions: a personal access token cannot perform them. An account you create with a typed password must change it at its first sign-in.
+
 Configure an identity provider for the organisation under **SSO** — see [API & Integrations → Single sign-on](../api-integrations/single-sign-on.md) for the full setup.
 
 ## Modules

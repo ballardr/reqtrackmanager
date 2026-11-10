@@ -94,7 +94,6 @@ Security decisions (see `docs/decisions.md` and
 
 from __future__ import annotations
 
-import io
 import json
 import re
 import zipfile
@@ -119,10 +118,11 @@ from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
     BundleImportWarnings,
     UserResolver,
-    enforce_upload_size_limit,
-    enforce_zip_uncompressed_size_limit,
     import_bundled_file,
     new_bundle_file,
+    open_bundle_zip,
+    read_bundle_files,
+    read_bundle_json,
     write_json_entry,
 )
 from app.services.custom_role_presets import seed_custom_role_presets
@@ -266,10 +266,12 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         "auto_accept_email_domain": org.auto_accept_email_domain, "external_user_policy": org.external_user_policy.value,
         "smtp_host": org.smtp_host, "smtp_port": org.smtp_port, "smtp_username": org.smtp_username,
         "smtp_use_tls": org.smtp_use_tls,
+        "allow_imported_approval_state": org.allow_imported_approval_state,
         # Reference only — never re-applied on import (see module docstring).
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
-        "oidc_required_group": org.oidc_required_group, "pat_max_lifetime_days": org.pat_max_lifetime_days,
+        "oidc_required_group": org.oidc_required_group, "oidc_allow_account_creation": org.oidc_allow_account_creation,
+        "pat_max_lifetime_days": org.pat_max_lifetime_days,
         "report_output_retention_days": org.report_output_retention_days,
         "report_file_name": org.report_file_name,
         "logo_file_ref": f"{logo_asset.id}_{logo_asset.filename}" if logo_asset else None,
@@ -304,14 +306,11 @@ def _parse_org_bundle(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, Any],
         HTTPException: 400/413 for a malformed, wrong-kind, too-large, or
             too-new bundle.
     """
-    enforce_upload_size_limit(zip_bytes, what="Bundle upload")
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-        enforce_zip_uncompressed_size_limit(zf)
-        manifest = json.loads(zf.read("manifest.json"))
-        data = json.loads(zf.read("org.json"))
-    except (zipfile.BadZipFile, KeyError, json.JSONDecodeError):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    zf = open_bundle_zip(zip_bytes)
+    manifest = read_bundle_json(zf, "manifest.json")
+    data = read_bundle_json(zf, "org.json")
+    if not isinstance(manifest, dict) or not isinstance(data, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.")
     if manifest.get("kind") != ORG_BUNDLE_KIND:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Expected an {ORG_BUNDLE_KIND!r} bundle, got {manifest.get('kind')!r}.")
     if manifest.get("format_version", 0) > ORG_BUNDLE_FORMAT_VERSION:
@@ -322,12 +321,12 @@ def _parse_org_bundle(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, Any],
     # Each project is its own `projects/<ref>/project.json` zip entry (see
     # `build_org_bundle`), not nested inside org.json — this discovers them
     # by path rather than assuming a `data["projects"]` key that doesn't exist.
-    file_bytes_by_ref = {n.removeprefix("files/"): zf.read(n) for n in zf.namelist() if n.startswith("files/")}
+    file_bytes_by_ref = read_bundle_files(zf)
     project_data_by_ref: dict[str, dict[str, Any]] = {}
     for entry in zf.namelist():
         if entry.startswith("projects/") and entry.endswith("/project.json"):
             ref = entry.removeprefix("projects/").removesuffix("/project.json")
-            project_data_by_ref[ref] = json.loads(zf.read(entry))
+            project_data_by_ref[ref] = read_bundle_json(zf, entry)
     return manifest, data, file_bytes_by_ref, project_data_by_ref
 
 
@@ -672,10 +671,12 @@ def import_org_bundle(
         external_user_policy=data.get("external_user_policy", "disabled"),
         smtp_host=data.get("smtp_host"), smtp_port=data.get("smtp_port"), smtp_username=data.get("smtp_username"),
         smtp_use_tls=data.get("smtp_use_tls", True),
+        allow_imported_approval_state=data.get("allow_imported_approval_state", True),
         # Deliberately not carried over from the bundle — see module docstring.
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),
-        oidc_required_group=data.get("oidc_required_group"), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
+        oidc_required_group=data.get("oidc_required_group"),
+        oidc_allow_account_creation=data.get("oidc_allow_account_creation", True), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
         report_output_retention_days=data.get("report_output_retention_days"),
         report_file_name=_bundled_file_name(data.get("report_file_name"), warnings),
     )
@@ -728,7 +729,7 @@ def import_org_bundle(
         org.login_background_file_id = asset.id
 
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
-    users = UserResolver(db, acting_user, warnings)
+    users = UserResolver(db, acting_user, warnings, organization_id=org.id)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
     org_dashboards.import_org(db, org.id, data, acting_user, warnings)
     org_policies.import_org(db, org.id, data, acting_user, warnings)
@@ -869,7 +870,7 @@ def merge_org_bundle(
         db, target_org.id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
     )
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
-    users = UserResolver(db, acting_user, warnings)
+    users = UserResolver(db, acting_user, warnings, organization_id=target_org.id)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)

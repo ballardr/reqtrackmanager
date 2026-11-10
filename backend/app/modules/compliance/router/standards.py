@@ -318,7 +318,7 @@ async def import_standard(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This file is not valid JSON.") from None
 
     warnings = BundleImportWarnings()
-    users = UserResolver(db, current_user, warnings)
+    users = UserResolver(db, current_user, warnings, organization_id=organization_id)
     org = get_or_404(db, Organization, organization_id, "Organisation")
     standard, skipped = import_standard_data(db, org, data, users, warnings, resolution=resolution)
     if skipped or standard is None:

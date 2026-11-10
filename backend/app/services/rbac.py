@@ -262,6 +262,32 @@ def session_may_reach_project(db: Session, project_id: UUID) -> bool:
     return True
 
 
+def restrict_to_session_scope(db: Session, project_ids: set[UUID]) -> set[UUID]:
+    """The members of `project_ids` that `session_may_reach_project` allows, in one query.
+
+    Ordinary session requests return the set unchanged without a query. A Personal Access Token keeps only
+    projects inside its organisations (and its projects, when it names any); a Tier B `<ModuleFrame>` token
+    keeps only its single project. This is what makes every list built on `accessible_project_ids` (the project
+    list and tree, the overview, reviews due, notifications' project filter) honour the credential's scope.
+    """
+    allowed_projects = db.info.get("pat_allowed_project_ids")
+    allowed_orgs = db.info.get("pat_allowed_org_ids")
+    frame_project = db.info.get("module_frame_project_id")
+    if allowed_projects is None and allowed_orgs is None and frame_project is None:
+        return project_ids
+    kept = set(project_ids)
+    if allowed_projects is not None:
+        kept &= set(allowed_projects)
+    if frame_project is not None:
+        kept = {p for p in kept if str(p) == str(frame_project)}
+    if allowed_orgs is not None and kept:
+        in_scope = set(
+            db.scalars(select(Project.id).where(Project.id.in_(kept), Project.organization_id.in_(allowed_orgs))).all()
+        )
+        kept &= in_scope
+    return kept
+
+
 def is_org_active(db: Session, organization_id: UUID) -> bool:
     """Boolean form of the check `_require_org_active` raises on. Exists for
     call sites that can't raise an `HTTPException` and need to translate

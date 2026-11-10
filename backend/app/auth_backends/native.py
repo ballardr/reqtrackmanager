@@ -20,6 +20,9 @@ from app.models.organization import Organization, UserOrgRole
 from app.models.user import User
 from app.security import hash_password, verify_password
 
+CONFIRMATION_REQUIRED_MESSAGE = (
+    "Confirm your email address before signing in. Open the link in the email we sent when you signed up."
+)
 RESET_REQUIRED_MESSAGE = (
     "Your password must be reset before you can sign in. Choose \"Forgot your password?\" to get a reset link."
 )
@@ -74,6 +77,9 @@ class NativeAuthBackend:
             # someone enumerating accounts. The old password is suspect (forced reset), so no session is
             # issued; the person gets a reset link instead.
             return AuthResult(success=False, user=user, error=RESET_REQUIRED_MESSAGE, reset_required=True)
+        if user.email_confirmation_pending:
+            # Only after a correct password, like the messages around it, so it cannot be used to find accounts.
+            return AuthResult(success=False, user=user, error=CONFIRMATION_REQUIRED_MESSAGE, confirmation_required=True)
         if all_orgs_sso_only(db, user.id):
             # Deliberately a distinct, specific message rather than the
             # generic one above: the caller already proved they know the

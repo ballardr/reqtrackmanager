@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -163,6 +163,14 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     totp_secret: Mapped[str | None] = mapped_column(EncryptedString(255), nullable=True)
     failed_2fa_attempts: Mapped[int] = mapped_column(Integer, default=0)
     failed_2fa_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: True from public self-sign-up until the person opens the link emailed to the address: the account cannot sign in
+    #: before then (`auth_backends.native`). Invitations, administrators, SCIM and a verified identity provider never set it.
+    email_confirmation_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    #: True after an administrator typed this account's password: until the person changes it, the only requests the
+    #: account may make are reading itself, changing the password and signing out (`services.password_change_gate`).
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    #: The latest TOTP time step already accepted; a code for that step or an earlier one is refused (no replay).
+    last_totp_step: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     email_digest_mode: Mapped[DigestMode] = mapped_column(str_enum(DigestMode, 20), default=DigestMode.INSTANT)
 

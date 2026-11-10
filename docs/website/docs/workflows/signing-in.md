@@ -10,6 +10,8 @@ sidebar_position: 1
 2. If your account has [two-factor authentication](./two-factor-authentication.md) enabled, you're prompted for a code from your authenticator app after the password is accepted — a second step, not a replacement for it.
 3. If your organisation requires 2FA for every member and you haven't set it up yet, you can still sign in, but nothing else works until you enrol from **Preferences → Security**.
 
+After several wrong passwords for the same address, or from the same place, the next attempt must wait a little first, and the page says how long (up to five minutes). The wait grows with each further failure and ends by itself; a correct password is not checked while it applies, and anyone who knows your address can only slow you down, never lock you out. If an administrator created your account and typed your password, you are asked to choose your own before anything else.
+
 If you cannot remember your password, choose **Forgot your password?** below the form, enter your email address, and follow the link you are sent. See [Password resets and credential recovery](./password-reset-and-credential-recovery.md). If an administrator has forced a reset (for example after a security incident), your correct old password is refused with a message saying so; use the same link.
 
 | Sign-in page |
@@ -41,6 +43,9 @@ If a server admin has turned on public sign-up (**Server Management → Public s
 
 1. Click **Sign up** and fill in your display name, email, and a password.
 2. Depending on how sign-up is configured, this either creates an account with no organisation yet (an admin assigns you to one afterward), or — if it's restricted to specific organisations by email domain — joins you to the matching organisation as a member immediately.
+3. Most deployments then ask you to **confirm your email address**: the page says to check your email, and you cannot sign in until you open the link in it (it works once and expires after a day). If the email does not arrive, choose **Send the email again**. A person who joins from an invitation is not asked, because the invitation already went to that address.
+
+A password you choose must be 8 to 72 bytes long and must not be a very common password or your email address. Existing passwords keep working until you next change them.
 
 | Sign-up page |
 | --- |

@@ -116,14 +116,29 @@ def test_html_attachment_is_forced_to_download_not_rendered_inline(client, admin
     assert download.headers["content-disposition"].startswith("attachment")
     assert download.headers["x-content-type-options"] == "nosniff"
 
-    # A genuine image still renders inline (no regression for the normal case).
+    # A genuine image still renders inline (no regression for the normal case); bytes that are not an image do not
+    # become one by claiming to be (`services.files.trusted_content_type`).
+    import io
+
+    from PIL import Image
+
+    png = io.BytesIO()
+    Image.new("RGB", (2, 2)).save(png, "PNG")
     img_resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
-        files={"file": ("photo.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        files={"file": ("photo.png", png.getvalue(), "image/png")},
         headers=auth_headers(admin_token),
     )
     img_download = client.get(f"/api/v1/files/{img_resp.json()['id']}", headers=auth_headers(admin_token))
     assert img_download.headers["content-disposition"].startswith("inline")
+
+    fake = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
+        files={"file": ("fake.png", b"<html><script>1</script></html>", "image/png")},
+        headers=auth_headers(admin_token),
+    )
+    fake_download = client.get(f"/api/v1/files/{fake.json()['id']}", headers=auth_headers(admin_token))
+    assert fake_download.headers["content-disposition"].startswith("attachment")
 
 
 def test_project_metrics_includes_file_count(client, admin_token, org_id):

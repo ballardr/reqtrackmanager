@@ -81,6 +81,16 @@ CORE_ACTION_KINDS: dict[str, str] = {
 }
 
 
+#: Audit events kept for the audit trail only, never listed on a History or Activity page: the discussion shows the
+#: comment itself (`services.changes` merges the comments in), and a reaction or a removed attachment is not a change to
+#: the record. Written by `services.engagement.audit_comment`.
+AUDIT_TRAIL_ONLY_ACTIONS: frozenset[str] = frozenset({
+    "comment_added", "comment_edited", "comment_reacted", "comment_reaction_removed", "comment_attachment_removed",
+})
+#: The record types whose comments those events are written against.
+AUDIT_TRAIL_ONLY_ENTITY_TYPES: frozenset[str] = frozenset({"requirement", "change_request", "requirement_action"})
+
+
 def action_kinds() -> dict[str, str]:
     """Every known action with its kind: the core map overlaid with each registered module's own.
 

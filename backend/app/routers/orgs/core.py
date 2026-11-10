@@ -19,7 +19,7 @@ import json
 from datetime import UTC
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -53,6 +53,7 @@ from app.services.org_deletion import delete_organization_cascade
 from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
 from app.services.org_overview_stats import org_overview_stats
 from app.services.rbac import (
+    check_pat_scope,
     get_effective_org_roles,
     get_granted_server_roles,
     memoize_user_lookups,
@@ -452,11 +453,17 @@ def list_organizations(
     full server-wide directory would let a server admin with no real
     membership anywhere pick an organisation they hold no role in at all.
     """
+    allowed_orgs = db.info.get("pat_allowed_org_ids")  # a Personal Access Token lists only its own organisations
     if not mine and _sees_every_organization(db, current_user):
-        return db.scalars(select(Organization).order_by(Organization.name)).all()
+        everything = select(Organization).order_by(Organization.name)
+        if allowed_orgs is not None:
+            everything = everything.where(Organization.id.in_(allowed_orgs))
+        return db.scalars(everything).all()
     org_ids = db.scalars(
         select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)
     ).all()
+    if allowed_orgs is not None:
+        org_ids = [o for o in org_ids if o in allowed_orgs]
     if not org_ids:
         return []
     return db.scalars(
@@ -467,9 +474,11 @@ def list_organizations(
 @router.get("/{organization_id}", response_model=OrganizationOut)
 def get_organization(
     organization_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    check_pat_scope(request, organization_id)
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found.")

@@ -521,13 +521,21 @@ def swap_databases(admin: Engine, *, live: str, new: str, keep_old_as: str | Non
                     {"live": live, "new": new},
                 )
                 if keep_old_as is None:
+                    # DDL cannot take bind parameters; every name is quoted by the dialect's identifier preparer (`_quote`).
+                    # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                     conn.execute(text(f"DROP DATABASE {_quote(admin, live)}"))
                 else:
+                    # DDL cannot take bind parameters; every name is quoted by the dialect's identifier preparer (`_quote`).
+                    # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                     conn.execute(text(f"ALTER DATABASE {_quote(admin, live)} RENAME TO {_quote(admin, keep_old_as)}"))
                 try:
+                    # DDL cannot take bind parameters; every name is quoted by the dialect's identifier preparer (`_quote`).
+                    # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                     conn.execute(text(f"ALTER DATABASE {_quote(admin, new)} RENAME TO {_quote(admin, live)}"))
                 except SQLAlchemyError:
                     if keep_old_as is not None:
+                        # DDL cannot take bind parameters; every name is quoted by the dialect's identifier preparer (`_quote`).
+                        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                         conn.execute(text(f"ALTER DATABASE {_quote(admin, keep_old_as)} RENAME TO {_quote(admin, live)}"))
                     raise
             return
@@ -910,7 +918,11 @@ def _restore(config: BackupConfig, deps: RestoreDeps, options: RestoreOptions, r
             live = make_url(deps.db_url).database or ""
             scratch_db = scratch_database_name(live, info.set_id)
             with admin.connect() as conn:
+                # DDL cannot take bind parameters; every name is quoted by the dialect's identifier preparer (`_quote`).
+                # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                 conn.execute(text(f"DROP DATABASE IF EXISTS {_quote(admin, scratch_db)}"))
+                # DDL cannot take bind parameters; every name is quoted by the dialect's identifier preparer (`_quote`).
+                # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                 conn.execute(text(f"CREATE DATABASE {_quote(admin, scratch_db)}"))
             scratch_url = make_url(deps.db_url).set(database=scratch_db).render_as_string(hide_password=False)
             restore_dump(config, scratch_url, set_dir / manifest.components[ComponentKind.DATABASE].path, redact)
@@ -942,6 +954,8 @@ def _restore(config: BackupConfig, deps: RestoreDeps, options: RestoreOptions, r
             if scratch_db is not None:
                 try:
                     with admin.connect() as conn:
+                        # DDL cannot take bind parameters; every name is quoted by the dialect's identifier preparer (`_quote`).
+                        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                         conn.execute(text(f"DROP DATABASE IF EXISTS {_quote(admin, scratch_db)} WITH (FORCE)"))
                 except SQLAlchemyError:
                     report.warnings.append(f"the scratch database {scratch_db} could not be removed; drop it by hand")

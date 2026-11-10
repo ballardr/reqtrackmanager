@@ -22,7 +22,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, refuse_personal_access_token
 from app.models.custom_role import CustomRoleDefinition, UserCustomRoleGrant
 from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.module_role import UserModuleRole
@@ -76,7 +76,10 @@ from app.services.user_provisioning import create_native_user, invite_user
 router = APIRouter(tags=["organizations-membership"])
 
 
-@router.post("/{organization_id}/users", response_model=OrgUserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{organization_id}/users", response_model=OrgUserOut, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def create_org_user(
     organization_id: UUID,
     payload: OrgUserCreate,
@@ -643,7 +646,7 @@ def set_display_name_lock(
     db.commit()
 
 
-@router.post("/{organization_id}/users/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{organization_id}/users/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_org_role(
     organization_id: UUID,
     user_id: UUID,
@@ -714,7 +717,10 @@ def assign_org_role(
         db.commit()
 
 
-@router.delete("/{organization_id}/users/{user_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{organization_id}/users/{user_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_org_role(
     organization_id: UUID,
     user_id: UUID,
@@ -790,7 +796,10 @@ def list_org_module_roles(
     ]
 
 
-@router.post("/{organization_id}/users/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{organization_id}/users/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def assign_org_module_role(
     organization_id: UUID,
     user_id: UUID,
@@ -862,7 +871,7 @@ def assign_org_module_role(
 
 @router.delete(
     "/{organization_id}/users/{user_id}/module-roles/{module_key}/{role_key}", status_code=status.HTTP_204_NO_CONTENT
-)
+, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_org_module_role(
     organization_id: UUID,
     user_id: UUID,
@@ -896,7 +905,7 @@ def revoke_org_module_role(
         db.commit()
 
 
-@router.delete("/{organization_id}/membership", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{organization_id}/membership", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def leave_organization(
     organization_id: UUID,
     current_user: User = Depends(get_current_user),

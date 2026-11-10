@@ -30,6 +30,7 @@ from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.report import ReportRequest
 from app.services import tags as tag_service
+from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
@@ -136,6 +137,11 @@ def generate_report(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     rows = _collect_rows(db, project_id, payload)
+    log_event(
+        db, entity_type="project", entity_id=project_id, action="requirements_report_generated", actor_id=current_user.id,
+        organization_id=project.organization_id, project_id=project_id, detail={"format": payload.format, "rows": len(rows)},
+    )
+    db.commit()
 
     org = db.get(Organization, project.organization_id)
     stem = org_default_stem(

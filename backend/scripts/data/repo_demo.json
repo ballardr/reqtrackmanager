@@ -5885,6 +5885,690 @@
    "type": "Engineering",
    "section": "Demo project from this repository (2026-11-09)",
    "decided_by": "Agent"
+  },
+  {
+   "key": "dec14a",
+   "title": "More example template projects: The set",
+   "statement": "Software delivery, Compliance readiness, Research and discovery, and a Hardware design example \"like some IoT sensor or datalogger\".",
+   "rationale": "The proposed Risk-led programme was not chosen. The Hardware design template is an IoT data logger.",
+   "type": "Engineering",
+   "section": "More example template projects (2026-11-09)",
+   "decided_by": "User"
+  },
+  {
+   "key": "0f397e",
+   "title": "Each template differs in kind, not only in name",
+   "statement": "Its own stage workflow with different phase kinds (a release train with a locked release candidate; audit readiness with a locked audit window; a research cycle; hardware design gates with an on-hold validation phase), component phases switched on, its own Pain Point, action, decision and risk types, its own enabled modules, a custom requirement field and an overview dashboard.",
+   "rationale": "A test asserts that the four workflows, action types and Pain Point types are pairwise different.",
+   "type": "Engineering",
+   "section": "More example template projects (2026-11-09)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "f04ae2",
+   "title": "More example template projects: Starter records stay drafts",
+   "statement": "Requirements always; plus decisions, risks, actions, Pain Points, a persona, stakeholder, need, open question and an engagement with a finding where the module is on.",
+   "rationale": "Nothing is approved, so a template never carries an approval into a new project. A project created from each template is tested to receive the requirements as drafts, the workflow and the dashboard.",
+   "type": "Engineering",
+   "section": "More example template projects (2026-11-09)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "ef3479",
+   "title": "Compliance readiness assigns an example standard",
+   "statement": "\"Information security baseline (example)\", four criteria in two groups, published and assigned, so the template shows assessments without depending on another seed.",
+   "rationale": "It is an organisation-level standard, visible to the demonstration organisation only.",
+   "type": "Strategy",
+   "section": "More example template projects (2026-11-09)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "0620cb",
+   "title": "More example template projects: Idempotent by skipping",
+   "statement": "A template whose name exists is left unchanged.",
+   "rationale": "The existence check passes `include_templates`, because templates are left out of the project list by default; the first version of the check missed them and recreated all four on the second run, which the test caught.",
+   "type": "Engineering",
+   "section": "More example template projects (2026-11-09)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "1323a3",
+   "title": "Messages: Not dismissible",
+   "statement": "`announcements.dismissible` (migration 0153, default true, so existing messages keep their close control), on the create and replace payload, the reader shape, the audit detail (a flag, never the text) and the organisation bundle.",
+   "rationale": "The banner shows no close control for a message with the flag cleared, and shows it even when it was dismissed earlier in that browser. It stays a banner above the page and never becomes a modal. **It is a display rule, not a security control:** dismissal was already only a per-browser convenience, and a person can hide the banner with their own tools. Organisation administrators may clear it on their own organisation's messages; the no-web-address rule still applies, so it adds no phishing route, and a server-wide message stays out of their reach (a 404 test covers it).",
+   "type": "Engineering",
+   "section": "Messages: defaults, severity mark, not dismissible, history (2026-11-09)",
+   "decided_by": "User"
+  },
+  {
+   "key": "76d55a",
+   "title": "Messages: Cap and history",
+   "statement": "`MAX_PER_SCOPE` (50) now counts only messages that have not ended, so history never forces a deletion; a new ceiling `MAX_STORED_PER_SCOPE` (1,000, ended messages included) still bounds the table against a loop, since a message can be created already ended.",
+   "rationale": "Bundle import follows the same two limits.",
+   "type": "Engineering",
+   "section": "Messages: defaults, severity mark, not dismissible, history (2026-11-09)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "9ee2e5",
+   "title": "Messages: History and Duplicate",
+   "statement": "The panel has Current (active and scheduled) and Previous (ended) views and a search over the title and text, in the browser over the scope's list.",
+   "rationale": "Duplicate opens the editor with the content, severity, login flag and dismissible flag, a start of now, no end and no notification, and saves as a new message; no endpoint was added.",
+   "type": "Engineering",
+   "section": "Messages: defaults, severity mark, not dismissible, history (2026-11-09)",
+   "decided_by": "User"
+  },
+  {
+   "key": "1ad40b",
+   "title": "Demonstration accounts survive a reset",
+   "statement": "Organisation deletion exists (`DELETE /orgs/{id}`), but accounts are never deleted (audit rows reference users), so a second seed finds `demo.admin@example.com` already present.",
+   "rationale": "The user chose a fixed password by default, with password rotation as an option (`--rotate-passwords` or `DEMO_ROTATE_PASSWORDS=1`). `seed_demo_data.create_org_user` now re-joins an existing account to the new organisation through the roles route. Rotation keeps the current random password in `DEMO_STATE_DIR` (mode 0600, a volume shared by the backend and the scheduler) and changes it through `/auth/change-password` before seeding; if the stored password no longer signs in, the run stops and says why.",
+   "type": "Engineering",
+   "section": "Demonstration setup command and daily reset (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "055937",
+   "title": "Demonstration setup command and daily reset: Failure handling",
+   "statement": "Names and account emails are unique, so the new data cannot be seeded beside the old.",
+   "rationale": "A failed seed therefore removes the partly seeded organisation, says the previous data could not be kept, writes `reqtrack_demo_reset_last_success 0` to the status directory and exits 1. A failure before seeding (guards, password change) leaves existing data alone. One run at a time through a file lock (exit 75).",
+   "type": "Engineering",
+   "section": "Demonstration setup command and daily reset (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "2b317d",
+   "title": "Demonstration setup command and daily reset: Microsoft Clarity",
+   "statement": "Off unless `DEMO_CLARITY_PROJECT_ID` is set (`scripts/demo.sh --clarity <id>`), which becomes `CLARITY_PROJECT_ID` in the frontend's runtime `env-config.js`.",
+   "rationale": "The identifier is restricted to letters and digits in the entrypoint and again in `utils/clarity.ts` before it is used in a script address. Masking is configured in the operator's Clarity project; the documentation says to use Strict and never to enable it on a deployment with real data, because the sign-in details message is on screen. Recorded as a vendor exception in the vendor management policy (known gap 6). No content security policy exists to amend (only `frame-ancestors`).",
+   "type": "Engineering",
+   "section": "Demonstration setup command and daily reset (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "ac0c01",
+   "title": "Organisation settings: usage table: One read path",
+   "statement": "`OrgUsageTable` reads `GET /orgs/{id}/overview-stats`, the function the organisation dashboards' core metrics already use (`services/org_overview_stats.py`), so the table and the widgets cannot disagree; a backend test pins the equality for project count, member count and file storage.",
+   "rationale": "",
+   "type": "Architecture",
+   "section": "Organisation settings: usage table (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "0d16c2",
+   "title": "Organisation settings: usage table: Archived projects",
+   "statement": "The stats gained `archived_project_count` (the plan asked for projects including archived, with the active count) rather than changing `project_count`, which the project list and the dashboards define as active only.",
+   "rationale": "",
+   "type": "Architecture",
+   "section": "Organisation settings: usage table (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "cc2819",
+   "title": "Organisation settings: usage table: No quota row",
+   "statement": "The plan said \"with the organisation's quota if one is set\"; no organisation storage quota exists in the product, so there is nothing to show.",
+   "rationale": "A quota, if added later, becomes a further row.",
+   "type": "Architecture",
+   "section": "Organisation settings: usage table (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "072059",
+   "title": "Empty means the platform value",
+   "statement": "On the organisation company settings (header title, email footer name, website, address) the Custom pill and the reset link are removed.",
+   "rationale": "An empty field already stores null and uses the platform value, so the platform value is shown as the field's placeholder to make that visible. The logo and login background keep a Remove control without a pill, and show the platform file muted when none is set.",
+   "type": "Design",
+   "section": "Organisation administration UI/UX review (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "426a1b",
+   "title": "Organisation administration UI/UX review: Scope of the rule",
+   "statement": "The removal concerns **platform defaults** only, because organisations do not manage them.",
+   "rationale": "A pill that says a project's value comes from its organisation or a parent project stays. The style guide's Principle 2 and \"Pattern: platform default vs. override\" are edited in the fixing change to say so.",
+   "type": "Design",
+   "section": "Organisation administration UI/UX review (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "8a695b",
+   "title": "Platform defaults are not shown to an organisation",
+   "statement": "On the company settings the \"Custom\" pill and the reset link are gone; an empty text field uses the platform value, which is its placeholder (`usePlatformBranding`, the public branding read `BrandingContext` already makes).",
+   "rationale": "The logo and login background use `BrandingImageField`: a **Remove** button while the organisation has its own file, the platform picture shown dimmed under a \"Platform default\" caption otherwise. The style guide's Principle 2 and \"Pattern: platform default vs. override\" now say this, with the tier pills (\"Inherited from organisation\") unchanged.",
+   "type": "Design",
+   "section": "Organisation administration UI/UX fixes (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "bbc4f1",
+   "title": "A deviation from \"remove the reset\"",
+   "statement": "A band set, a set of models or a link rule cannot be emptied, so removing the reset would remove the only way back to the module default (the *Prefer the flexible reading* rule).",
+   "rationale": "`OverridePill` gained `platformFallback`: no pill, and a reset button only while the value differs, the same shape as the files' Remove button. Text fields and the personal data switch lose the control entirely, as the user asked.",
+   "type": "Design",
+   "section": "Organisation administration UI/UX fixes (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "8d7e56",
+   "title": "One settings save per page",
+   "statement": "`PUT /orgs/{id}/advanced-settings` reset every field a request did not send to its default, so a partial request would have turned off, for example, the two-factor requirement.",
+   "rationale": "It is now a partial update (`model_fields_set`): an omitted field is left as it is, an explicit null still clears. The page saves email, security, token lifetime and report configuration separately (`saveAdvanced(group)`); the token lifetime had no Save of its own and the hint \"Saved with the Security settings above\" is gone. The audit event now lists the field names sent, never values. Test: `backend/tests/test_org_advanced_settings_partial.py`. The 14 invite, import and OIDC tests that fail on a host without the mail catcher fail identically before and after.",
+   "type": "Design",
+   "section": "Organisation administration UI/UX fixes (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "fa14e0",
+   "title": "Compact row, editor in a Modal",
+   "statement": "The Default overview section keeps its place and heading (with a `(?)` stating what the default affects) but its body is one row: \"Built-in layout\" or \"Customised: N widgets\", and **Edit overview default**.",
+   "rationale": "The button opens the unchanged `OverviewEditor` in a `Modal` of size `lg` (900 px, the widest the shared dialog offers). A `SidePanel` was rejected: the style guide gives it the job of detail about the content pane, and a 12-column grid needs the width. No behaviour change to what is saved; the project overview and the organisation dashboard pages still share the one editor.",
+   "type": "Design",
+   "section": "Organisation default overview: edited in a dialog (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "0ac91d",
+   "title": "Organisation Files in the navigation rail: Entry and route",
+   "statement": "A **Files** link directly below Projects in the Global section, to `/org-files`, which renders `OrgListPage` with `target=\"files\"`: it redirects to `/orgs/{id}/files` for one organisation and lists the organisations otherwise, exactly as `/org-overview` does, so the rail never needs an organisation id.",
+   "rationale": "The overview icon link stays as the in-context route.",
+   "type": "Design",
+   "section": "Organisation Files in the navigation rail (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "449822",
+   "title": "Organisation Files in the navigation rail: Active state",
+   "statement": "`NavRailLink` gained `alsoActiveOn` (a pattern for a second route family), because the entry's own path redirects away and would never otherwise show as active on the page it opens.",
+   "rationale": "",
+   "type": "Design",
+   "section": "Organisation Files in the navigation rail (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "960cfd",
+   "title": "Organisation Files in the navigation rail: Not renamable",
+   "statement": "The plan asked for the entry to join the navigation names.",
+   "rationale": "Those are project-scoped (resolved per project through its ancestors and organisation, then looked up by route in `NavLabelContext`), and the Global section entries (Projects, Organisation overview) are outside it, so a Global entry has no project to resolve against. Making it renamable needs an organisation-only name map for the Global section, which is a separate feature; the label reuses `strings.files.title`, the project entry's term.",
+   "type": "Design",
+   "section": "Organisation Files in the navigation rail (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "8b6d59",
+   "title": "Navigation rail: Reviews due",
+   "statement": "`useHasReviewsDue` reads `GET /me/reviews/due?limit=1` and uses the `X-Total-Count` header; it runs when the person is signed in and on the notification poll's 30-second interval, never per navigation.",
+   "rationale": "Unknown counts as nothing due, so the entry appears once known; a failed read keeps the last answer. The endpoint now pages before it looks up reviewers, components and projects, so the one-row probe no longer labels the whole list (the response for any page is unchanged). The page stays reachable by address and from notifications.",
+   "type": "Design",
+   "section": "Navigation rail: order, Notifications, reviews due, Organisation settings (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "7b5485",
+   "title": "Demo usage metrics: Scope of the metrics",
+   "statement": "System behaviour only (routes, latency, status, lifecycle counts, sign-in results, database and worker load), used together with Microsoft Clarity for on-screen behaviour, matched by time only.",
+   "rationale": "No session identifier or other use label is added to a metric (an unbounded label on the unauthenticated `/metrics` output); no use-metric extension point is built.",
+   "type": "Operational",
+   "section": "Demo usage metrics: Prometheus collection and a downloadable bundle (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "d6d79a",
+   "title": "Demo usage metrics: Marking resets",
+   "statement": "The plan proposed recording reset start and end \"as metrics\".",
+   "rationale": "The reset command runs outside the application and its existing metrics file is a textfile only Alloy reads, so putting them on `/metrics` would need a demonstration-only code path in the backend or a Pushgateway for one pair of times. Instead each run appends `reset_started` and `reset_finished` (UTC instant and outcome, nothing else) to `reqtrack-demo-resets.jsonl` in the status volume (500 lines kept; a write failure never fails a run) and the manifest lists the ones inside the range. This explains counter drops the same way and adds no service.",
+   "type": "Operational",
+   "section": "Demo usage metrics: Prometheus collection and a downloadable bundle (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "3d9c03",
+   "title": "Demo usage metrics: Scrub check",
+   "statement": "Every series is checked before anything is written against an allow-list of label names and a value shape per label (a `path` must be `unmatched` or a route template and may not contain a UUID or a query string).",
+   "rationale": "A failure names the label, never the value, and writes no file. A test compares the allow-list with the labels `app.metrics` defines, so a new label fails there until it is reviewed.",
+   "type": "Operational",
+   "section": "Demo usage metrics: Prometheus collection and a downloadable bundle (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "97fabe",
+   "title": "Server policies: Name clash",
+   "statement": "The existing Server Management group \"Data policy\" (the personal data rule for exports and imports) was renamed **Personal data in exports** (route `dataPolicy` became `personalDataExport`, the old address redirects), so \"Data policy\" now means only the published document.",
+   "rationale": "",
+   "type": "Strategy",
+   "section": "Server policies: privacy policy, data policy and others (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "fa038f",
+   "title": "Server policies: Body format",
+   "statement": "A visual editor (TipTap, a new frontend dependency `@tiptap/react`, `@tiptap/pm`, `@tiptap/starter-kit`) was chosen over a Markdown subset or plain text when asked.",
+   "rationale": "The stored body is the editor's ProseMirror JSON, validated on write against a closed vocabulary (paragraph, heading 1 to 3, bulleted and numbered lists, quotation, horizontal rule, line break; bold, italic, link) and rebuilt field by field , never accepted as markup. The frontend renders it as React elements (no HTML insertion), so there is no sanitiser to bypass. A link may use https, http or mailto, checked on write, in the editor and on render; the rendered link carries `rel=\"noopener noreferrer\"`.",
+   "type": "Design",
+   "section": "Server policies: privacy policy, data policy and others (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "bb0938",
+   "title": "Server policies: One table, nullable owner",
+   "statement": "`organization_id` is NULL for a server policy, so the organisation policies of the next piece of work reuse the table, service, API shape and editor.",
+   "rationale": "`key` marks the two built-in slots (unique per owner, partial indexes); a slot keeps its title and cannot be deleted, only unpublished. Any other policy has a title of its own (a server administrator may add an acceptable use policy or terms of service).",
+   "type": "Architecture",
+   "section": "Server policies: privacy policy, data policy and others (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "5fd5a7",
+   "title": "Server policies: Working copy and versions",
+   "statement": "Saving writes the working copy only; readers get `current_version`, so an edit never changes the public text until it is published again, as a new immutable version with its date and an optional change note (administrators only).",
+   "rationale": "Unpublishing hides the policy and keeps every version.",
+   "type": "Strategy",
+   "section": "Server policies: privacy policy, data policy and others (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "951406",
+   "title": "Server policies: Public read",
+   "statement": "Two unauthenticated endpoints return published server policies only, with no author, working copy, change note or organisation id; an unpublished, unknown or organisation policy is the same 404.",
+   "rationale": "`Cache-Control: no-store`. Throttled per client address in a bucket of its own using the existing `PUBLIC_ANNOUNCEMENT_RATE_LIMIT_*` settings (no new setting; the configuration reference says so).",
+   "type": "Strategy",
+   "section": "Server policies: privacy policy, data policy and others (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "fd69c7",
+   "title": "Server policies: Where it is linked",
+   "statement": "The plan named the login-page footer, the user menu and the in-application footer.",
+   "rationale": "The application has no user menu and no footer, so the link (\"Policies\", shown only while a policy is published) sits below the sign-in form on both login pages and in the footer block at the foot of the navigation rail, where the build identity already is. A header icon was not added. With no policy published the page itself is not shown either : `/policies` redirects to the front page (the sign-in page, or the project list when signed in), so no empty page exists; the administration group stays, since it is where policies are written.",
+   "type": "Strategy",
+   "section": "Server policies: privacy policy, data policy and others (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "55851f",
+   "title": "Organisation policies: No built-in slots",
+   "statement": "An organisation adds policies by title; a key is refused.",
+   "rationale": "Starter titles (Access policy, Confidentiality agreement, Acceptable use policy, Code of conduct) only fill the title field of the add dialog.",
+   "type": "Engineering",
+   "section": "Organisation policies (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "664155",
+   "title": "Organisation policies: Links setting",
+   "statement": "`allow_policy_links`, off by default, kept as its own column and its own endpoint (`/policies/settings`, applied at once from a switch in the panel) rather than another field on the organisation settings endpoint, so the toggle sits beside the policies it governs.",
+   "rationale": "The page is members-only, so the phishing concern that bars web addresses from organisation messages does not apply; a setting is the flexible reading. The setting is checked on save and again at publication, so turning it off blocks publishing a working copy that still has a link, and never changes a version already published.",
+   "type": "Engineering",
+   "section": "Organisation policies (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "13dc43",
+   "title": "Organisation policies: Audience labels",
+   "statement": "The editor keeps the audience as display values, and a person or group picked there is named by `POST /policies/audience-labels` (organisation administrators only, validated against the organisation exactly as a save is), because the administration page's user list is paged and filtered and cannot name every pick.",
+   "rationale": "",
+   "type": "Design",
+   "section": "Organisation policies (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "276bbf",
+   "title": "Live requirement, no per-version snapshot",
+   "statement": "`policy_documents.requires_acknowledgement` is a setting of the policy, not copied into each version.",
+   "rationale": "The plan's per-version \"required from\" field would have meant that switching a requirement off needs a new publication, which is the opposite of the escape hatch the same plan asks for (\"a server administrator can switch a requirement off\"). With a live flag, switching it off takes effect at once; accepting is always against the current published version, so a new version asks again.",
+   "type": "Strategy",
+   "section": "Policy acceptance (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "45a150",
+   "title": "Policy acceptance: Who is asked",
+   "statement": "A server policy: every active, non-archived user.",
+   "rationale": "An organisation policy: the people who may read it (`org_policies.can_view`: the audience with effective group membership, and always the organisation's administrators). Acceptance is personal, so a group is never asked as a unit; a requirement reaches a group through its members (users and groups on parity as the audience does). An organisation administrator cannot require acceptance of a server policy (the server routes are server-administrator only; tested).",
+   "type": "Strategy",
+   "section": "Policy acceptance (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "c6c0d4",
+   "title": "Policy acceptance: The block",
+   "statement": "`deps._require_policies_accepted` runs where every bearer-token dependency resolves its user (session token, access token and module frame), and `services/policy_acknowledgements.enforce_accepted` refuses a request that changes data (403, `detail.code = policy_acknowledgement_required`, with the ids to accept) while a required, published policy that applies to the person is unaccepted at its…",
+   "rationale": "current version. Open requests: any GET, HEAD or OPTIONS; `/api/v1/auth/` (sign-in, sign-out, account); `/api/v1/policies/` (read and accept); `/api/v1/system/policies` and `/api/v1/orgs/{id}/policies` (so an administrator can switch the requirement off or unpublish the policy while blocked); `/api/v1/search`, `/api/v1/notifications` and `…/files/search` (reads sent as POST, or marking a notification read). This is a rule over the request, not a per-route annotation, so a new route is covered without a change; the price is that a *new read sent as POST* is blocked until added to the open list (`test_which_requests_stay_open` pins the list). It applies to access tokens and the MCP server too, because the obligation is the person's; an agent acting for a blocked person gets the same 403 and message. A module-frame token is covered.",
+   "type": "Strategy",
+   "section": "Policy acceptance (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "591639",
+   "title": "Policy acceptance: Sign-in prompt",
+   "statement": "After sign-in a dialog shows the first pending policy (full text, Accept in the header; the close button leaves), once per person per browser session (`sessionStorage`, keyed by user id so a second person on the same tab is also asked); a notice stays at the top of every page, with a link to the policy, until everything is accepted; the Policies page shows an accept panel above a pending policy.",
+   "rationale": "The list reloads when the window regains focus. A failed read leaves the last list: a notice must never block the page it sits on, and the server enforces the rule either way.",
+   "type": "Strategy",
+   "section": "Policy acceptance (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "5d3069",
+   "title": "Policy acceptance: Status and export",
+   "statement": "An **Acceptance** action on a required policy lists everyone it applies to with their latest acceptance (those yet to accept the current version first, capped at 2,000 rows with the cap stated), an **Export** (CSV; formula-guarded cells through `csv_safe`; audited as one event with a row count) and **Send reminder**.",
+   "rationale": "The plan said \"through the shared list actions\"; those exist for registered artefact types with a `RecordTableProvider`, and a policy is not one, so the export is on this dialog, with the same cell-safety rule and no cell values in the audit event.",
+   "type": "Strategy",
+   "section": "Policy acceptance (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "1dc33b",
+   "title": "File uploads: deployment-wide switch: One gate",
+   "statement": "`services.files.upload_file` calls `assert_uploads_allowed(db, organization_id)` first (403, `detail.code = uploads_disabled`).",
+   "rationale": "The `organization_id` argument is for the per-organisation rules a later phase adds to the same function. The check reads the one `server_settings` column (a single-row select, no commit, unlike `get_server_settings`).",
+   "type": "Operational",
+   "section": "File uploads: deployment-wide switch (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "7e1336",
+   "title": "Deletion needs no prior suspension",
+   "statement": "Delete keeps the typed-name confirmation, the audit event and the cascade unchanged.",
+   "rationale": "",
+   "type": "Design",
+   "section": "Server roles: Platform subscription manager and Subscription removal authority (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "8b7d18",
+   "title": "Server roles: Counts only",
+   "statement": "The roles read the same thin `OrganizationOut` directory a server administrator already reads (`list_organizations`/`get_organization` now admit a holder of either role through `_sees_every_organization`); no record titles, files or member emails.",
+   "rationale": "No per-organisation usage read exists yet; phase 44 adds one and must keep this rule.",
+   "type": "Design",
+   "section": "Server roles: Platform subscription manager and Subscription removal authority (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "236ff7",
+   "title": "Organisation file uploads: Server default limit",
+   "statement": "Settable by a server administrator only, in Server management → File uploads (`PUT /system/default-storage-quota`): it is a deployment-wide setting, which the subscription roles' allow-list keeps with the server administrator; a manager sets a limit per organisation instead.",
+   "rationale": "Resolution: own limit, else the server default, else none (`services.storage_usage.effective_quota`).",
+   "type": "Operational",
+   "section": "Organisation file uploads: disable and storage limit (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "ddc235",
+   "title": "Organisation file uploads: One gate, extended",
+   "statement": "`assert_uploads_allowed(db, organization_id, incoming_bytes)` checks the deployment switch (`uploads_disabled`), the organisation switch (`organization_uploads_disabled`), then `used + incoming > limit` (`storage_quota_exceeded`, with `quota_bytes`, `used_bytes`, `remaining_bytes`), so the interface and a person can tell which rule applied.",
+   "rationale": "The refusal message names who to ask. The static test that every storage writer is gated is unchanged and now also pins the `len(data)` argument.",
+   "type": "Operational",
+   "section": "Organisation file uploads: disable and storage limit (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "b6facf",
+   "title": "Organisation file uploads: Lowering below usage",
+   "statement": "Only blocks new files: existing files stay readable and deletable, deleting frees space.",
+   "rationale": "",
+   "type": "Operational",
+   "section": "Organisation file uploads: disable and storage limit (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "2f7269",
+   "title": "Organisation file uploads: Who may change it",
+   "statement": "`PUT /orgs/{id}/storage` needs the Platform subscription manager role or server administrator (a personal access token never does); an organisation administrator reads (`GET`, counts only, `can_edit` false) but cannot write, so they cannot lift their own limit.",
+   "rationale": "A Subscription removal authority alone may not read or write. Audited as `storage_rules_updated` with the role used and the old and new values; the 90% notice as `storage_limit_near` with counts only.",
+   "type": "Operational",
+   "section": "Organisation file uploads: disable and storage limit (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "d13445",
+   "title": "Organisation file uploads: Notice at 90%",
+   "statement": "After allowing an upload, the gate notifies the organisation's administrators once (`storage_limit_near`, in-app and email per their preferences) and sets `storage_warned`; the flag clears when usage before the new file is below 90% or when the limit changes, so a later crossing is announced again.",
+   "rationale": "The usage table shows a warning at or above 90%. No separate email was added.",
+   "type": "Operational",
+   "section": "Organisation file uploads: disable and storage limit (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "a6fe64",
+   "title": "Request inbox: organisation level only: Generic field",
+   "statement": "`ModuleSubComponentDefinition.organization_only` (default false); Product Feedback sets it on `organization_requests`.",
+   "rationale": "No core file names the key and no core enum or column gains a value (Modular Feature System Boundary). Project API: the sub-component list omits such entries and the `PUT` answers 404, so a stale client cannot store an override that does nothing. Resolver: `is_module_subcomponent_enabled` returns the organisation's state for it and never reads a project row, so a row stored by an earlier version can neither enable nor disable it; `snapshot_project_module_state`, `freeze_projects_subcomponent_default` and the template copy (`copy_module_enablement`) write no row for it. No migration: nothing ever read such rows.",
+   "type": "Engineering",
+   "section": "Request inbox: organisation level only (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "3910f0",
+   "title": "Audit of the other sub-components",
+   "statement": "Every other sub-component is also gated by a project route (`require_project_subcomponent_enabled`) or is read at project level (references card, research extras), so none has the dead-toggle shape.",
+   "rationale": "Only the inbox is flagged, as asked.",
+   "type": "Engineering",
+   "section": "Request inbox: organisation level only (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "32334d",
+   "title": "Three nullable columns on server_settings",
+   "statement": "(migration 0160): `footer_prefix` (50), `company_id_label` (50) and `company_id` (100); partial update, public read (the signed-out footer needs them), audit event naming the fields only.",
+   "rationale": "The identifier is a label and a value : any country's identifier fits and the label can change; a label without a value is ignored, a value without a label shows alone.",
+   "type": "Engineering",
+   "section": "Footer prefix and company identifier (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "ecda40",
+   "title": "Shown in the page footer and the email footer",
+   "statement": "Page footer: `Prefix Company name | address | label identifier | Policies | Version`.",
+   "rationale": "Email: the prefix replaces the copyright mark (\"Hosted by Host Pty Ltd\", not \"(c) 2026 Host Pty Ltd\", since the host is not the copyright holder), the identifier is a line after the address, and the plain-text templates carry both.",
+   "type": "Design",
+   "section": "Footer prefix and company identifier (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "29b4bd",
+   "title": "Operator details stay with the operator",
+   "statement": "The prefix needs a platform company name, and neither the prefix nor the identifier is added to an email for an organisation that has set its own company name (`resolve_email_branding`), because they describe the operator and not that organisation.",
+   "rationale": "The page footer is server-level and always shows them.",
+   "type": "Engineering",
+   "section": "Footer prefix and company identifier (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "36bb0a",
+   "title": "Who may upload and delete : organisation administrators and a named organisation group",
+   "statement": "Implemented as one new administrative permission atom, `manage_org_resources` (`services/permissions.py`, `services/rbac.py`), not a new setting: organisation administrators hold it through the role table, and a custom role can give it to a user or an organisation group (nested groups count), so users and groups are on parity with no new group column.",
+   "rationale": "`POST` and `DELETE /orgs/{id}/resources` use `require_permission(MANAGE_ORG_RESOURCES)` (the server-administrator bypass is unchanged from the previous `ORG_ADMIN` gate, which also admitted a server administrator); `GET` stays open to every member.",
+   "type": "Design",
+   "section": "Organisation shared resources on the Files page (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "ba1ab7",
+   "title": "The server decides what the page shows",
+   "statement": "`GET /orgs/{id}/resources/access` returns `can_manage`; the page never infers it from a role name.",
+   "rationale": "The list response (`OrgResourceOut`) now carries `uploaded_by_display_name` and `link_count` from two bulk reads (statement count pinned flat in the test).",
+   "type": "Design",
+   "section": "Organisation shared resources on the Files page (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "67d5f9",
+   "title": "Delete states its links",
+   "statement": "The confirmation names the number of requirements that link the file, which are removed with it (the existing behaviour), and asks for the file name to be typed (Tier 2) when there are any, a plain Tier 1 confirm when there are none.",
+   "rationale": "The count comes with the list, so there is no extra preflight request.",
+   "type": "Design",
+   "section": "Organisation shared resources on the Files page (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "f5341b",
+   "title": "Organisation administrator: Identity-only rows",
+   "statement": "`ProjectListItemOut` could not be trimmed (its parent `ProjectOut` requires `summary`, `status_id` and settings), so the extra rows are a separate narrower schema, `UnjoinedProjectListItemOut` (id, organisation, name, code, archived, template, parent, `is_member: false`), and the response is a union discriminated by `is_member`.",
+   "rationale": "No summary, counts, stage, status, dates or owners. Search on these rows matches the name only (the summary is content).",
+   "type": "Engineering",
+   "section": "Organisation administrator: all projects in the project list (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "09db9d",
+   "title": "Organisation administrator: Challenge to the plan",
+   "statement": "The plan added a `templates_only` read on `GET /orgs/{id}/projects` for the Default template picker.",
+   "rationale": "That endpoint has a second reader, the role-grant project picker, and is already name-only, so it is unchanged; Organisation administration still reads it for both. Only the list, its Manage users buttons and their strings are removed. The Projects section was a collapsible section, not a routed address, so no redirect is needed; the group's own address is unchanged.",
+   "type": "Strategy",
+   "section": "Organisation administrator: all projects in the project list (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "9e76ba",
+   "title": "Organisation details page: Partial branding update first",
+   "statement": "`PUT /orgs/{id}/branding` overwrote the accent colour, header title and the three footer fields with whatever the request held, so two pages saving their own fields through it would have erased each other's values.",
+   "rationale": "It is now partial by `model_fields_set` (a field not sent is left alone, null clears it); a boolean and the colour scheme still treat null as \"leave as it is\" (`[]` clears the scheme). The audit event names the fields changed, never their values (the pattern of the platform endpoint). Tested in `test_org_branding_partial.py` for every clearable field.",
+   "type": "Design",
+   "section": "Organisation details page (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "e7d0c3",
+   "title": "Organisation details page: Name moves, slug stays",
+   "statement": "The organisation name is a field on the new page (saved through the existing rename endpoint in the same Save as the company details, each call only when its field changed); the Rename entry and dialog on the Overview menu are removed.",
+   "rationale": "The slug stays under OAuth / SSO because it is the SSO login address and saves with the SSO configuration.",
+   "type": "Design",
+   "section": "Organisation details page (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "23ed6a",
+   "title": "Logo moves, report logo option stays",
+   "statement": "The logo is edited only on the new page.",
+   "rationale": "**Include logo** on reports stays on Branding & defaults: it is a report setting, not identity.",
+   "type": "Design",
+   "section": "Organisation details page (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "a157eb",
+   "title": "Project History page redesign: Table, not a timeline",
+   "statement": "`DirectoryTable` with Time (the only sortable column; oldest first is a server `order` parameter), Type, Event, Record and Person.",
+   "rationale": "A day is written once per local day. Roughly twice the events fit on a screen. `DirectoryColumn.width` is a new optional prop for a column of long text.",
+   "type": "Design",
+   "section": "Project History page redesign (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "9062d1",
+   "title": "Record names for every type",
+   "statement": "The server adds `record_label` for an entry about a record of any registered type the viewer may see, through `ArtefactResolver` (the Links panel's visibility rule, one lookup per type, for the returned page only); the browser links it through `getArtefactPath`.",
+   "rationale": "A record the viewer cannot open keeps its type and gets no label, so the page reveals what happened and not the title of a hidden record. Requirements and change requests keep carrying code and title in `detail`.",
+   "type": "Design",
+   "section": "Project History page redesign (2026-11-10)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "994acd",
+   "title": "Project History page redesign: Kinds of event",
+   "statement": "`services/activity_kinds.py`: created, edited, status, links, tags, access, comments, deleted, other.",
+   "rationale": "An unclassified action is Other, so no event is hidden. A module classifies its own actions through the new generic `ModuleDefinition.activity_action_kinds` (a test fails for an unknown kind); no per-module entry in core. Not built: a \"changed to Approved\" status-value filter. The events carry the new status for requirements and change requests only (`detail.status`), not for module records, so a filter would be partial; recorded as a gap.",
+   "type": "Design",
+   "section": "Project History page redesign (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "c82e4b",
+   "title": "Project History page redesign: Person or group",
+   "statement": "`actor=user:<id>|org_group:<id>|project_group:<id>`, repeatable; a group resolves to its effective members (`principal_member_ids`); a group of another organisation or project is refused (422), a user is not checked against the organisation so a person who has left can still be filtered by.",
+   "rationale": "An empty group matches nothing (not \"no filter\"). `GET .../changes/actors` names the chips from a restored link; it names a user only when they belong to the organisation or have acted in the project, so it cannot be used to read an arbitrary account's name.",
+   "type": "Design",
+   "section": "Project History page redesign (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "8c7b4a",
+   "title": "Paging is bounded by the page",
+   "statement": "Every filter is part of each source query (audit events, requirement versions, change request versions, comments); each source returns its newest `offset + limit` rows and its own count; the merge sorts `(timestamp, source, id)` so equal timestamps page deterministically.",
+   "rationale": "Statements per page no longer grow with the history (`test_a_page_costs_the_same_statements_however_large_the_project_history_is`). The record activity panels keep using the whole filtered timeline through `get_project_changes`. **Behaviour change:** `GET .../changes` without `limit` used to return every entry; it now returns the newest 30 (maximum 1000). The only callers were this page and the overview's activity widget, which now passes its `limit` (it used to download the whole timeline and discard all but a few); there is no MCP or API consumer in the repository.",
+   "type": "Design",
+   "section": "Project History page redesign (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "1d4ae3",
+   "title": "Export is an exception to \"Every record list exports and imports\"",
+   "statement": "The history is not a registered record type (an event is never authored), so it has no `RecordTableProvider`, no Import and no `code` column; its Export is `GET .../changes/export` (CSV, PDF, Word, ODT, ODS, Excel, HTML) with the page's filters, formula-guarded cells, the Person column governed by the one personal-data decision (`tag_decisions`), UTC times, record codes through `display_code`…",
+   "rationale": "one `records_exported` audit event with counts and filter names only, and a row cap (50,000; 5,000 for a PDF or Word document, 413 above it).",
+   "type": "Design",
+   "section": "Project History page redesign (2026-11-10)",
+   "decided_by": "User"
+  },
+  {
+   "key": "da5fb6",
+   "title": "S1, S2, J2, NEW-4 (sign-in)",
+   "statement": "`get_client_ip` now returns the connecting address as uvicorn determined it (the forwarded address only from `FORWARDED_ALLOW_IPS`), cut to 64 characters.",
+   "rationale": "Sign-in has a progressive delay (`services.login_throttle`): failed password attempts in a 15-minute window count per address typed (since its last success) and per source address; past 5 (30 for an address) each further failure doubles a 5-second wait up to 5 minutes, refused attempts are stored (`login_events.kind = throttled`) and do not count, and an advisory lock per account refuses parallel guesses. A delay, not a lock, so a third party can slow a person by at most the maximum (). Sign-up has a limit per address. Tests: `test_login_throttle.py`.",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "User"
+  },
+  {
+   "key": "c85fb9",
+   "title": "P1, P3, J1 (credentials a token must not use)",
+   "statement": "`refuse_personal_access_token` (a route dependency) is on every route that grants or revokes access, creates an account with a typed password, issues the SCIM token, changes single sign-on or `advanced-settings`, and on leaving an organisation; the media-token URL can no longer mark a file confidential.",
+   "rationale": "Guard: `test_session_only_routes.py` walks the route table for the whole class. `advanced-settings` was added after the register review because it sets the token lifetime cap and the mail relay (, asked to fix).",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "User"
+  },
+  {
+   "key": "405d7a",
+   "title": "P2, P4",
+   "statement": "The scope of a token (organisations, projects) is applied centrally in `accessible_project_ids` (`rbac.restrict_to_session_scope`), and to the organisation list and record, memberships, reviews due and notifications; this amends the earlier \"personal endpoints untouched by token scoping\" decision ().",
+   "rationale": "A redeemed reset link and switching two-factor off revoke the person's tokens; a routine password change does not (, reverses the recorded independence for recovery paths only).",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "User"
+  },
+  {
+   "key": "44d0ac",
+   "title": "C1 to C5 (import)",
+   "statement": "A person named in a bundle must hold a role in the target organisation, else they are unmatched exactly like an unknown address (also removes the registered-address oracle).",
+   "rationale": "Replayed audit events are attributed to the importer with the original actor and time in the detail. An organisation setting `allow_imported_approval_state` (default allowed, ) returns imported records to drafts when off, through the modules' existing `template_reset` hooks run in `keeping_history()` (archived records and authorship kept), and the import audit counts records that arrived beyond draft. Bundles are bounded by entry count, per-entry size, JSON size and compression ratio, and a corrupt entry is a 400. An `image/*` claim must match the bytes (`trusted_content_type`); the email logo is a raster picture only.",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "User"
+  },
+  {
+   "key": "7b6fdc",
+   "title": "SC1 to SC3, M1, M2, S7, NEW-1",
+   "statement": "SCIM `active` is parsed strictly; operations and names are type-checked (400, not 500); lists page in SQL; a platform administrator or deactivated account is not provisioned.",
+   "rationale": "The MCP sign-in page mints a personal access token and discards the session token (: the token is scoped to the person's organisations and cannot manage the account). The server instructions say tool text is data. The identity provider client caps responses at 1 MiB, pins the connection to the checked address, caches discovery for 5 minutes and is rate-limited per address.",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "f76977",
+   "title": "G1 to G5, G7",
+   "statement": "The demonstration generates its own secrets into an untracked file and refuses placeholders ().",
+   "rationale": "The observability profile binds to loopback, has no anonymous access, requires `GRAFANA_ADMIN_PASSWORD`, and Alloy reads containers through a read-only socket proxy. The backend port binds to loopback by default. Keys can be rotated (`APP_SECRET_ENCRYPTION_KEY_PREVIOUS`, `scripts/rotate_secret_key.py`); an unreadable stored secret is counted, logged and checked at start-up. A TOTP code is accepted once and attempts are counted under a row lock. Passwords are 8 to 72 bytes and not on a built-in common list (`services.password_policy`).",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "User"
+  },
+  {
+   "key": "3f4cfa",
+   "title": "Audit completeness (H2 to H4)",
+   "statement": "Comment add, edit, reaction and attachment removal on requirements, change requests and actions are audited (comment id and a body digest, never the body) and kept off the History and Activity pages (`AUDIT_TRAIL_ONLY_ACTIONS`); display name changes, second-factor enrolment, avatar removal, report run output deletion and requirements report downloads are audited; removing a comment attachment now…",
+   "rationale": "deletes the stored object. Guard: `test_mutating_routes_audited.py` follows calls from every mutating handler to an audit write and requires a stated reason for each exemption. Audit rows are append-only for the runtime database role (`AUDIT_RUNTIME_ROLE`, `DATABASE_MIGRATION_URL`, `services.audit_protection`); two roles, not a trigger, because the table owner can drop a trigger (). It is off until an operator provisions the role (`docs/deployment.md`).",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "Agent"
+  },
+  {
+   "key": "e1ed6c",
+   "title": "S3 to S6, NEW-2, NEW-3, C6",
+   "statement": "The front end sends a Content-Security-Policy built at container start from checked values (`script-src 'self'` plus listed origins, `object-src 'none'`, `base-uri`, `form-action`), HSTS behind an HTTPS proxy, a Permissions-Policy and cache headers; API JSON is `no-store`.",
+   "rationale": "Actions are pinned to commit SHAs with Dependabot for actions, pip, npm and Docker; publishing is limited to `main` and to a `release` environment; CI gains Bandit (high severity), Semgrep (error severity, Python and front end), Gitleaks over history and tree, and a weekly OWASP ZAP baseline against the test stack, each failing on a high finding with no baseline (). `.gitleaks.toml` lists seven earlier commits whose fake test credentials cannot be rewritten; the sources were changed so the working tree is clean. Findings the first run raised were fixed in code (a weak hash used for a name, a world-writable directory, `text()` with a variable that is now a bound `set_config`); the DDL in disaster recovery keeps a reasoned `nosemgrep`. The converter's memory ceiling, queueing and restart policy were corrected and a person's conversions are rate limited.",
+   "type": "Engineering",
+   "section": "Security hardening of the whole product (fixes and guards)",
+   "decided_by": "User"
   }
  ],
  "standard": {
@@ -5970,7 +6654,7 @@
       "control": "Policies are documented (this package); formal internal communication/training program",
       "evidence": "This package's [policies/](policies/)",
       "status": "non_compliant",
-      "status_note": "Documented, but not yet formally communicated/attested by staff — Company action required",
+      "status_note": "Documented, but not yet formally communicated/attested by staff — Company action required (the product can record per-person acceptance of published policies once the Company publishes this set there and requires it)",
       "policies": []
      },
      {
@@ -6112,8 +6796,8 @@
      {
       "reference": "CC6.3",
       "name": "Role-based access consistent with least privilege and segregation of duties",
-      "control": "Org roles (org_admin, project_creator, member) and project roles (project manager, project administrator, stakeholder, member), independently scoped; server admin explicitly does not inherit organization content access; the global search authorises each project and record type (genuine role, module on, `view`) before it queries and omits rather than redacts, so counts disclose nothing",
-      "evidence": "`backend/app/services/rbac.py`; `backend/app/models/enums.py`; `backend/app/services/search.py`",
+      "control": "Org roles (org_admin, project_creator, member) and project roles (project manager, project administrator, stakeholder, member), independently scoped; server admin explicitly does not inherit organization content access; server-tier roles are explicit route allow-lists, and organisation creation and deletion are held by two independent roles (`SUBSCRIPTION_MANAGER`, `SUBSCRIPTION_REMOVAL_AUTHORITY`) so provisioning and destruction can be segregated; the global search authorises each project and record type (genuine role, module on, `view`) before it queries and omits rather than redacts, so counts disclose nothing",
+      "evidence": "`backend/app/services/rbac.py`; `backend/app/models/enums.py`; `backend/app/services/search.py`; `backend/tests/test_server_subscription_roles.py`",
       "status": "compliant",
       "status_note": "A follow-up review found and fixed two endpoints (`deactivate_org_user`, `archive_org_user`) that scoped the caller's role correctly but not the *target* of the action to the same organization — see [policies/access-control-policy.md](policies/access-control-policy.md)",
       "policies": []
@@ -6140,9 +6824,9 @@
       "reference": "CC6.6",
       "name": "Implements controls to protect against threats from outside system boundaries",
       "control": "TLS termination and network exposure are the deployer's responsibility (the app serves plain HTTP internally by design); CORS origin allow-list; SSRF guard on org-configured OIDC endpoints; per-account lockout on the 2FA challenge step after repeated failed codes",
-      "evidence": "[deployment.md](../deployment.md) §TLS and reverse proxy; `backend/app/main.py` (`CORSMiddleware`); `backend/app/services/oidc_client.py` (`_assert_safe_external_url`); `backend/app/routers/auth.py` (`verify_2fa`)",
+      "evidence": "[deployment.md](../deployment.md) §TLS and reverse proxy; `backend/app/main.py` (`CORSMiddleware`); `backend/app/services/oidc_client.py` (`_assert_safe_external_url`); `backend/app/routers/auth.py` (`verify_2fa`); `backend/app/services/login_throttle.py`; `backend/app/services/rate_limit.py`; `frontend/docker/env-config-entrypoint.sh`",
       "status": "in_progress",
-      "status_note": "No rate limiting or brute-force/account-lockout protection on the first-factor *password* check exists yet; the second-factor (2FA) step is now locked out after repeated failures — see [policies/access-control-policy.md](policies/access-control-policy.md) Known Gaps",
+      "status_note": "The first-factor password check has a progressive delay per account and per source address, the second factor a lockout, and the unauthenticated routes shared limits across workers; the client address is the connecting one (`FORWARDED_ALLOW_IPS`). The front end sends a Content-Security-Policy and HSTS behind an HTTPS proxy. TLS termination remains the operator's — see [policies/access-control-policy.md](policies/access-control-policy.md) Known Gaps",
       "policies": []
      },
      {
@@ -6160,7 +6844,7 @@
       "control": "Endpoint/host-level malware protection, dependency vulnerability scanning",
       "evidence": "CI `dependency-scan` job (`pip-audit` for the backend and mcp-server, `npm audit --omit=dev` at high for the frontend and Playwright) and a Trivy scan of every production image before it is pushed (`.github/workflows/ci.yml`); fixable HIGH/CRITICAL findings fail the build",
       "status": "in_progress",
-      "status_note": "Dependency and image scanning is automated and gating. Open: the documentation site's `braces` advisory has no patched release, so that audit is reported, not gating; host-level malware protection and the third-party Compose images are outside this scan — see [policies/change-management-and-secure-development-policy.md](policies/change-management-and-secure-development-policy.md). **Note (modular feature system):** the modular feature system's third-party discovery sources (Python entry points, `EXTRA_MODULES_PATH`) are gated behind `ALLOW_EXTERNAL_MODULES`, default `false` — a deliberate, documented mitigation layered on top of this still-open gap (a plugin-loading mechanism that can auto-import and run third-party code materially raises the stakes of having no automated scanning), not a closure of it; see [policies/vendor-and-subprocessor-management-policy.md](policies/vendor-and-subprocessor-management-policy.md) point 7 and its Known Gaps entry. **Note (module system follow-up, 2026-09-07 — Tier C / Module Federation):** a Tier C frontend module raises these same stakes further still, not merely in the same way as point 7's backend module — it runs with **no sandbox at all** (same origin/DOM/cookies/component tree as the host), where a backend module is at least bounded by the backend process's own authorization checks and Tier B (the modular feature system's *other* dynamic frontend option) is bounded by an iframe sandbox. Gated by the same `ALLOW_EXTERNAL_MODULES` flag, not a second one; see [policies/vendor-and-subprocessor-management-policy.md](policies/vendor-and-subprocessor-management-policy.md) point 8 and its Known Gaps entry 5.",
+      "status_note": "Dependency, image, static-analysis (Bandit, Semgrep) and secret (Gitleaks) scanning is automated and gating, and a weekly OWASP ZAP baseline runs against the test stack (`.github/workflows/dynamic-scan.yml`); actions are pinned to commit SHAs. Open: the documentation site's `braces` advisory has no patched release, so that audit is reported, not gating; host-level malware protection and the third-party Compose images are outside this scan — see [policies/change-management-and-secure-development-policy.md](policies/change-management-and-secure-development-policy.md). **Note (modular feature system):** the modular feature system's third-party discovery sources (Python entry points, `EXTRA_MODULES_PATH`) are gated behind `ALLOW_EXTERNAL_MODULES`, default `false` — a deliberate, documented mitigation layered on top of this still-open gap (a plugin-loading mechanism that can auto-import and run third-party code materially raises the stakes of having no automated scanning), not a closure of it; see [policies/vendor-and-subprocessor-management-policy.md](policies/vendor-and-subprocessor-management-policy.md) point 7 and its Known Gaps entry. **Note (module system follow-up, 2026-09-07 — Tier C / Module Federation):** a Tier C frontend module raises these same stakes further still, not merely in the same way as point 7's backend module — it runs with **no sandbox at all** (same origin/DOM/cookies/component tree as the host), where a backend module is at least bounded by the backend process's own authorization checks and Tier B (the modular feature system's *other* dynamic frontend option) is bounded by an iframe sandbox. Gated by the same `ALLOW_EXTERNAL_MODULES` flag, not a second one; see [policies/vendor-and-subprocessor-management-policy.md](policies/vendor-and-subprocessor-management-policy.md) point 8 and its Known Gaps entry 5.",
       "policies": []
      }
     ]
@@ -6331,50 +7015,14 @@
  "gaps": [
   {
    "policy": "access-control-policy",
-   "title": "No account lockout / brute-force protection on the first-factor password check",
-   "statement": "There is no limit on failed `/login` password attempts. Recommendation: add rate limiting and/or progressive lockout on repeated failures per account/IP. **Partially addressed for the second factor** (hardening review, round 3): a bounded 6-digit TOTP keyspace, unlike a password, made the *2FA challenge* step (`/2fa/verify`) a materially different risk — a stolen password plus an unthrottled, freely re-mintable 5-minute challenge converges toward a near-certain eventual bypass given enough repeated windows, unlike password guessing's effectively-unbounded keyspace. `/2fa/verify` now locks the account (not just the challenge token) for a configurable cooldown after a configurable number of consecutive wrong codes (`User.failed_2fa_attempts`/`failed_2fa_locked_until`, `Settings.two_factor_max_failed_attempts`/`two_factor_lockout_minutes`), so restarting the login flow for a fresh challenge token does not reset it. The first-factor password check itself remains unprotected by this fix — its keyspace is large enough that the same repeated-window compounding doesn't apply the same way, which is why it remains an open (not urgent) gap.",
-   "type": "Security"
-  },
-  {
-   "policy": "access-control-policy",
-   "title": "No password complexity or rotation policy",
-   "statement": ", only a minimum length. Recommendation: consider a breach-list check (e.g. HaveIBeenPwned range API) over forced periodic rotation, which is broadly considered better practice than rotation alone.",
-   "type": "Security"
-  },
-  {
-   "policy": "access-control-policy",
-   "title": "Self-signup and invite-based provisioning trust the caller-typed email address, with no confirmation-link-before-activation step",
-   "statement": "Unlike the SSO path (which only ever provisions against an identity-provider-verified email claim), a native sign-up or an invite redemption creates a fully active, logged-in account the instant the form is submitted — nothing confirms the person submitting it actually controls that mailbox. In practice this is bounded by what an unverified email can actually reach: an org-specified self-signup only grants membership in an organization whose admin already opted in and configured that domain, and an invite only grants access to whatever a project admin explicitly targeted that address for — but a squatted or mistyped email could still receive an invite meant for someone else, or complete a domain-matched self-signup it wasn't the intended recipient of. Recommendation: an email-verification step (confirm-before-activate, or at minimum confirm-before-any-org/project-role-grant) before this gap should be considered closed. **Reviewed against the \"resend a pending invite\" addition** (`GET/POST /projects/{id}/pending-invites[/{id}/resend]`, `services.invites.resend_pending_invite`): resending rotates the token and re-sends the same email to the same caller-typed address the original invite already targeted — it does not create a new grant, target a new address, or otherwise widen who can be reached. Same risk profile as the original send, not a new instance of this gap. **Also reviewed against the \"org-level invites\" addition** (`GET/POST /orgs/{id}/pending-invites[/{id}/resend]`, `create_org_pending_invite`/`resend_org_pending_invite`): an org-only invite is the same caller-typed-email flow scoped to organization membership alone (no project role), created via the same `services.invites.create_pending_invite`/`resend_pending_invite` this gap already covers — not a new mechanism, and rejected outright (400) for an `sso_only` organization rather than falling back to a different, unreviewed provisioning path. Same risk profile as the existing entries above, not a new instance of this gap.",
-   "type": "Security"
-  },
-  {
-   "policy": "access-control-policy",
-   "title": "The search rate limit is per worker process, not shared",
-   "statement": "`POST /search` and `GET /search/fields` share one per-person token bucket (`services/rate_limit.py`, a reserve of 60 then 120 requests a minute by default, answering 429 with `Retry-After`), alongside the client debounce and the server's minimum length, depth limit, project cap and 5-second statement timeout. Each backend worker keeps its own bucket, so a person's ceiling is the limit times the number of workers, and a restart clears it. Recommendation: a shared store behind the same limiter class, which the first-factor lockout gap above could also use.",
-   "type": "Security"
-  },
-  {
-   "policy": "access-control-policy",
-   "title": "An administrator-set password is not forced to change at first login, and the account-creation rate limit is per worker process",
-   "statement": "A server admin (or an org admin) who creates a user with a typed password knows it until the person changes it; there is no must-change flag. The invite route avoids this (the person sets their own). `POST /system/users` shares one per-administrator token bucket per worker (`services/rate_limit.py`), so the effective ceiling is the limit times the number of workers, as for the search limit above. Recommendation: a `must_change_password` flag cleared by change-password, if the organisation's risk assessment requires it. The forced-reset marker (`must_reset_credentials`) and its clearing on redemption now exist, so this reduces to setting it at account creation.",
-   "type": "Security"
-  },
-  {
-   "policy": "access-control-policy",
-   "title": "Password-reset limits are per worker process and the client address is spoofable",
-   "statement": "The \"forgot password\" and \"reset password\" rate limits are token buckets kept in each backend worker (`services/rate_limit.py`) and keyed on the first `X-Forwarded-For` hop, which a client can set when the backend is reached directly; the per-account one-link-a-minute cooldown, the single-use hashed 256-bit secret and the uniform responses are the controls that hold regardless. A mailbox compromise is a password compromise by design (the link is the proof of control). The unauthenticated read of login-page messages (`GET /announcements/login`) has the same per-worker, spoofable-address limit (`public_announcement_rate_limit_*`). A forced reset does not rotate SCIM tokens, `JWT_SECRET` or `APP_SECRET_ENCRYPTION_KEY`; those are rotated by hand.",
-   "type": "Security"
-  },
-  {
-   "policy": "access-control-policy",
    "title": "The backup credential on the bundled object store can write",
    "statement": "The backup only reads the object store, but SeaweedFS 3.97 refuses an identity every operation unless it holds `Write` on the bucket, so the bundled `backup` service uses the application's own S3 identity (the `restore` service must, because it writes objects back). A defect in the backup tool could therefore modify the store; the compensating control is a test that fails if a backup run makes any call other than list and get. With an external S3 service a genuinely read-only identity (`s3:ListBucket`, `s3:GetObject`) is configured through `BACKUP_STORAGE_ACCESS_KEY` and `BACKUP_STORAGE_SECRET_KEY`; that path is unit-tested but has not been exercised against a read-only-capable store. The `backup` and `restore` services hold database credentials, have no listener or Docker socket and run with all capabilities dropped; authority to run a restore or a credential reset comes from shell access to the deployment, and each use is audited (`cli:<os user>`). See docs/disaster-recovery.md.",
    "type": "Security"
   },
   {
    "policy": "access-control-policy",
-   "title": "A tenant's identity provider can still create a new account for an address nobody has registered",
-   "statement": "The link rule above stops it signing in as an existing account, but it may provision a fresh `oidc` account for a not-yet-registered address, which then blocks that person's later invite or self-signup (409). Recommendation: a per-organisation list of verified email domains the IdP may assert, or a server-level approval of an organisation's IdP. Also recorded: a tenant administrator can infer whether an address already has an account (an SSO link refusal, a SCIM 403 versus 201), a consequence of one global account per address.",
+   "title": "The demonstration command publishes a fixed password",
+   "statement": "`scripts/demo_setup.py --demo` (a demonstration deployment only) creates three accounts with the documented password `DemoDemo123!` and publishes the sign-in details in a server-wide, non-dismissible message on the login pages; `--rotate-passwords` replaces it with a random password per run. This is a deliberate exception (a demonstration holds sample data only): the command requires `--demo`, a mail catcher as the SMTP relay, and refuses a database holding any organisation it did not create unless the database name is typed; it refuses to publish if a listed account is a server administrator or belongs to another organisation, and never sends the message as a notification or logs the password. It does not weaken the password rule, two-factor or rate limits. See `docs/decisions.md`.",
    "type": "Security"
   },
   {
@@ -6494,7 +7142,7 @@
   {
    "policy": "system-operations-monitoring-and-logging-policy",
    "title": "cAdvisor (observability profile only) mounts the Docker socket read-only and /sys, and holds the SYSLOG capability",
-   "statement": "to read OOM kills from the kernel log. A read-only socket mount still exposes the full Docker API to the process, as Grafana Alloy's does; the compensating controls are that it lives only in the opt-in profile, publishes no port, is not privileged and has no write mounts (pinned by `backend/tests/test_resource_dashboard.py`). It lists every container the daemon runs, not only this stack's.",
+   "statement": "to read OOM kills from the kernel log. A read-only socket mount still exposes the full Docker API to the process; Grafana Alloy no longer holds the socket and reads container metadata and logs through a read-only socket proxy that allows container calls only; the compensating controls are that it lives only in the opt-in profile, publishes no port, is not privileged and has no write mounts (pinned by `backend/tests/test_resource_dashboard.py`). It lists every container the daemon runs, not only this stack's.",
    "type": "Operational"
   },
   {
@@ -6526,6 +7174,18 @@
    "title": "No sandboxing at all exists for a Tier C frontend module",
    "statement": "(point 8 above) — beyond the shared `ALLOW_EXTERNAL_MODULES` opt-in gate and the deployment operator's own manual review, there is no runtime isolation standing between a loaded Tier C module's code and the rest of the running application (no iframe, no separate origin, no restricted permissions of any kind). This is a materially larger gap than point 4 above, not the same gap restated: point 4 is about the *absence of automated vetting before/after* installing code that then runs behind further architectural boundaries (a backend process boundary for point 7's module, an iframe sandbox for Tier B); this point is about the *absence of any such boundary at all* for a Tier C module once it loads. Mitigating this with a real sandbox (e.g. running Tier C code in a separate worker/origin with a narrow message-passing contract, the same shape as Tier B's own iframe/Host-UI-Bridge design) was considered and explicitly rejected for Tier C specifically, since native, unmediated component-tree/shared-React-instance reuse — which a sandbox boundary would preclude — was the entire stated reason to choose Tier C over Tier B for a given third-party module in the first place; an operator wanting a sandboxed third-party module should choose Tier B instead.",
    "type": "Security"
+  },
+  {
+   "policy": "vendor-and-subprocessor-management-policy",
+   "title": "Microsoft Clarity is an optional, demonstration-only subprocessor",
+   "statement": "When an operator sets `DEMO_CLARITY_PROJECT_ID` (`scripts/demo.sh --clarity`), the frontend loads Microsoft Clarity's script from `clarity.ms`, which records sessions in the browser and sends them to Microsoft. It is off unless set, the identifier is validated before it is placed in a script address, and masking is configured in the operator's own Clarity project (Strict is recommended). A production deployment must not set it: Clarity would receive screen content that may be Confidential or Restricted. No due-diligence record exists for the vendor, which is the same gap as item 2.",
+   "type": "Security"
+  },
+  {
+   "policy": "vendor-and-subprocessor-management-policy",
+   "title": "ghcr.io is the demonstration's image source, trusted without a signature check",
+   "statement": "`scripts/demo.sh --pull` (daily, from a host timer) runs whatever this repository's CI published under the `latest` tag (or the pinned `IMAGE_TAG`) on ghcr.io; the pushing job runs only from a passing `main` build. The packages are public and carry a provenance attestation, but they are not signed and `--pull` verifies neither, so the demonstration trusts the registry's content for this repository's name. Third-party images are pinned versions. Accepted for a demonstration that holds sample data only (**Decided by: Agent**, to veto); signing the images and verifying before recreating closes it.",
+   "type": "Security"
   }
  ],
  "principles": [
@@ -6539,7 +7199,7 @@
   },
   {
    "name": "Container-first deployment",
-   "statement": "The application is designed to run in containers from the start. Docker Compose provides a development and test environment, and the same model can be used for lightweight production deployments."
+   "statement": "The application is designed to run in containers from the start. Docker Compose provides a development and test environment, and the same model can be used for lightweight production deployments. The demonstration stack adds a Caddy reverse proxy in front of the same application images. It terminates TLS, redirects HTTP to HTTPS, serves the application on one origin and is the only published listener ([demo.md](demo.md#https)). Production keeps the operator's own proxy. The demonstration can also refresh its images on the daily reset: a host timer runs `scripts/demo.sh --pull --reset`, which pulls the published images, recreates only the services whose image changed and then resets and seeds with the new code (no container is given the Docker socket). ```mermaid flowchart LR T[\"Host timer\"] --> S[\"demo.sh --pull --reset\"] S --> R[\"ghcr.io: pull\"] S --> C[\"Recreate changed services\"] C --> D[\"demo_setup.py reset and seed\"] ``` ```mermaid flowchart LR B[\"Browser\"] -->|HTTPS| C[\"Caddy (demonstration only)\"] C -->|\"/api/*\"| BE[\"Backend\"] C -->|\"/\"| F[\"Frontend\"] C -->|\"mcp host\"| M[\"MCP server\"] BE --> DB[(\"PostgreSQL\")] ```"
   },
   {
    "name": "Secure-by-default design",

@@ -12,7 +12,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
 
-import pyotp
 import pytest
 
 from app.cli import credentials as cli
@@ -24,6 +23,7 @@ from app.models.user import User
 from app.security import hash_pat
 from app.services import credential_reset
 from tests.conftest import auth_headers, create_org_admin_in, create_org_user, login
+from tests.totp_helpers import next_code
 
 _TOKEN = re.compile(r"/reset-password#token=([\w-]+)")
 NEW_PASSWORD = "BrandNewPassw0rd!"
@@ -195,7 +195,7 @@ def test_redeeming_one_link_spends_the_others(client, member, mail):
 def test_reset_leaves_two_factor_in_place(client, member, mail):
     token = login(client, member, "OldPassword123!")
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(token)).json()
-    code = pyotp.TOTP(enroll["secret"]).now()
+    code = next_code(enroll["secret"])
     assert client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=auth_headers(token)).status_code == 204
     _forgot(client, member)
     assert _reset(client, _token_from(mail)).status_code == 204
@@ -376,7 +376,7 @@ def test_force_reset_can_clear_two_factor(client, admin_token, member, mail):
     token = login(client, member, "OldPassword123!")
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(token)).json()
     client.post(
-        "/api/v1/auth/2fa/status", json={"action": "confirm", "code": pyotp.TOTP(enroll["secret"]).now()}, headers=auth_headers(token)
+        "/api/v1/auth/2fa/status", json={"action": "confirm", "code": next_code(enroll["secret"])}, headers=auth_headers(token)
     )
 
     kept = _force(client, admin_token, scope="user", user_id=str(_db_user(member).id)).json()
@@ -391,12 +391,12 @@ def test_a_two_factor_challenge_issued_before_a_forced_reset_is_dead(client, adm
     token = login(client, member, "OldPassword123!")
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(token)).json()
     secret = enroll["secret"]
-    client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": pyotp.TOTP(secret).now()}, headers=auth_headers(token))
+    client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": next_code(secret)}, headers=auth_headers(token))
     challenge = client.post("/api/v1/auth/login", json={"email": member, "password": "OldPassword123!"}).json()["challenge_token"]
 
     _force(client, admin_token, scope="user", user_id=str(_db_user(member).id))
 
-    resp = client.post("/api/v1/auth/2fa/verify", json={"challenge_token": challenge, "code": pyotp.TOTP(secret).now()})
+    resp = client.post("/api/v1/auth/2fa/verify", json={"challenge_token": challenge, "code": next_code(secret)})
     assert resp.status_code == 401
 
 
@@ -545,3 +545,43 @@ def test_spent_and_long_expired_tokens_are_purged_but_live_and_recent_ones_stay(
         assert kept == {hash_pat(n) for n in ("live", "used_recently", "expired_recently")}
     finally:
         db.close()
+
+
+def _make_pat(client, token, org_id) -> str:
+    resp = client.post("/api/v1/me/pats", json={"name": "ci", "allowed_organization_ids": [org_id]}, headers=auth_headers(token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()["token"]
+
+
+def test_a_routine_password_change_keeps_tokens_but_a_reset_link_revokes_them(client, member, org_id, mail):
+    session = login(client, member, "OldPassword123!")
+    pat = _make_pat(client, session, org_id)
+    assert client.get("/api/v1/auth/me", headers=auth_headers(pat)).status_code == 200
+
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "OldPassword123!", "new_password": "ChangedPassw0rd!"}, headers=auth_headers(session),
+    )
+    assert changed.status_code == 204
+    assert client.get("/api/v1/auth/me", headers=auth_headers(pat)).status_code == 200  # an integration is not reconfigured
+
+    _forgot(client, member)
+    assert _reset(client, _token_from(mail)).status_code == 204
+    assert client.get("/api/v1/auth/me", headers=auth_headers(pat)).status_code == 401
+
+
+def test_switching_two_factor_off_revokes_tokens(client, member, org_id, mail):
+    session = login(client, member, "OldPassword123!")
+    enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(session)).json()
+    secret = enroll["secret"]
+    assert client.post(
+        "/api/v1/auth/2fa/status", json={"action": "confirm", "code": next_code(secret)}, headers=auth_headers(session)
+    ).status_code == 204
+    pat = _make_pat(client, session, org_id)
+    assert client.get("/api/v1/auth/me", headers=auth_headers(pat)).status_code == 200
+
+    off = client.post(
+        "/api/v1/auth/2fa/status", json={"action": "disable", "code": next_code(secret)}, headers=auth_headers(session)
+    )
+    assert off.status_code == 204, off.text
+    assert client.get("/api/v1/auth/me", headers=auth_headers(pat)).status_code == 401

@@ -19,6 +19,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.enums import OrgRole, PrincipalType
 from app.models.organization import OrgGroup, OrgGroupMember
 from app.models.user import User
@@ -309,7 +310,10 @@ def _get_org_group_in_org(db: Session, organization_id: UUID, group_id: UUID) ->
     return group
 
 
-@router.post("/{organization_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{organization_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def add_org_group_member(
     organization_id: UUID,
     group_id: UUID,
@@ -384,7 +388,10 @@ def add_org_group_member(
             db.commit()
 
 
-@router.delete("/{organization_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{organization_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def remove_org_group_member(
     organization_id: UUID,
     group_id: UUID,

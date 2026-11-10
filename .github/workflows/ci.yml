@@ -102,6 +102,50 @@ env:
   TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0
 
 jobs:
+  # Security-specific scans (docs/development.md, "Security scanning"). Each fails the run on a high finding, and a
+  # clean first run was reached by fixing the code, not by a baseline or a suppression; an unavoidable false
+  # positive carries its reason beside it (`# nosemgrep`, `.gitleaks.toml`).
+  static-analysis:
+    name: Static analysis (Python and front end)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # High severity only; the pinned version keeps a new rule from failing an unrelated change.
+      - name: Bandit (Python, high severity)
+        run: |
+          python3 -m pip install --quiet bandit==1.8.6
+          python3 -m bandit -r backend/app mcp-server/server.py converter/converter.py scripts \
+            --severity-level high -x '*/tests/*' -q
+
+      - name: Semgrep (Python, TypeScript and React, error severity)
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep:1.108.0 semgrep scan \
+            --config p/python --config p/flask --config p/jwt --config p/javascript --config p/typescript --config p/react \
+            --severity ERROR --error --metrics=off \
+            --exclude tests --exclude node_modules --exclude storybook-static --exclude dist --exclude coverage \
+            /src/backend/app /src/mcp-server /src/converter /src/scripts /src/frontend/src /src/frontend/docker
+
+  secret-scan:
+    name: Secret scan (history and working tree)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks over the whole history
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 git /repo \
+            --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+
+      - name: Gitleaks over the working tree
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.3 dir /repo \
+            --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+
   frontend:
     name: Frontend lint, build & test
     runs-on: ubuntu-latest
@@ -141,7 +185,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Fails fast, with an actionable message, if this job's Playwright image
       # tag has drifted from its lockfile — otherwise the browser can't launch
@@ -162,7 +206,7 @@ jobs:
       - name: Fix git safe.directory for containerized steps
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: npm
@@ -259,7 +303,7 @@ jobs:
       # these three are reporting/artifact-attachment conveniences layered
       # on top.
       - name: Publish frontend test results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
         continue-on-error: true
         with:
@@ -269,7 +313,7 @@ jobs:
           fail-on-error: true
 
       - name: Upload frontend coverage report (HTML)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         continue-on-error: true
         with:
@@ -278,7 +322,7 @@ jobs:
           retention-days: 14
 
       - name: Upload frontend coverage/test reports (raw)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         continue-on-error: true
         with:
@@ -309,9 +353,9 @@ jobs:
       # for why.
       checks: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # Pre-build via buildx directly (rather than letting `docker compose
       # up --build` build it) so it can use its own GitHub Actions cache
@@ -328,7 +372,7 @@ jobs:
       # this file's own top comment for why that small duplication is
       # preferable to a third, shared "build images" job.
       - name: Build backend image (cached)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./backend
           tags: container-backend:latest
@@ -337,7 +381,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend
 
       - name: Build converter image (cached)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./converter
           tags: container-converter:latest
@@ -505,7 +549,7 @@ jobs:
       # ACTIONS_RUNTIME_TOKEN), which surfaced the same underlying gap:
       # this job's step graph, not just this local limitation.
       - name: Publish backend test results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
         continue-on-error: true
         with:
@@ -515,7 +559,7 @@ jobs:
           fail-on-error: true
 
       - name: Upload backend coverage report (HTML)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         continue-on-error: true
         with:
@@ -524,7 +568,7 @@ jobs:
           retention-days: 14
 
       - name: Upload backend coverage/test reports (raw)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         continue-on-error: true
         with:
@@ -559,7 +603,7 @@ jobs:
       # (dorny/test-reporter creating a check run).
       checks: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Fails fast, with an actionable message, if this job's Playwright image
       # tag has drifted from its lockfile — otherwise the browser can't launch
@@ -567,13 +611,13 @@ jobs:
       - name: Check Playwright image matches lockfile
         run: python3 "$GITHUB_WORKSPACE/scripts/check-playwright-image-sync.py"
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: tests/playwright/package-lock.json
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # Pre-build each of tests/container/docker-compose.yml's three
       # buildable images via buildx directly (rather than letting `docker
@@ -592,7 +636,7 @@ jobs:
       # file's own top comment for why that small duplication is
       # preferable to a third, shared "build images" job.
       - name: Build backend image (cached)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./backend
           tags: container-backend:latest
@@ -601,7 +645,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend
 
       - name: Build converter image (cached)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./converter
           tags: container-converter:latest
@@ -610,7 +654,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=converter
 
       - name: Build frontend image (cached)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./frontend
           tags: container-frontend:latest
@@ -619,7 +663,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
 
       - name: Build mcp-server image (cached)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./mcp-server
           tags: container-mcp-server:latest
@@ -777,7 +821,7 @@ jobs:
       # pass/fail gate via its own exit code; these two are reporting
       # conveniences that must not be able to mask whether it actually ran.
       - name: Publish E2E test results
-        uses: dorny/test-reporter@v3
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3
         if: always()
         continue-on-error: true
         with:
@@ -787,7 +831,7 @@ jobs:
           fail-on-error: true
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         continue-on-error: true
         with:
@@ -806,6 +850,7 @@ jobs:
     name: Publish coverage/test badges
     runs-on: ubuntu-latest
     needs: [frontend, backend-tests]
+    if: always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     # Normal runs finish in ~10 seconds; see backend-tests'
     # timeout-minutes comment for why every job here now has a ceiling.
     timeout-minutes: 10
@@ -842,14 +887,14 @@ jobs:
       # directory's contents — no `tests/container/`/`frontend/` prefix to
       # account for below.
       - name: Download backend test reports
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         continue-on-error: true
         with:
           name: backend-test-reports
           path: backend-reports
 
       - name: Download frontend test reports
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         continue-on-error: true
         with:
           name: frontend-test-reports
@@ -964,9 +1009,9 @@ jobs:
     # needs it so a vulnerable dependency stops the images being published.
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
 
@@ -1011,16 +1056,16 @@ jobs:
     # so a vulnerable image is still never published.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # Documentation site image, for hosting the docs inside a deployment
       # (HELP_URL). The first build uses a non-default base path and is smoke
       # tested, because a wrong base path is the way this image breaks: the
       # home page would load but every asset and nested page would 404.
       - name: Build docs image for smoke test (base path /docs/)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./docs/website
           file: ./docs/website/Dockerfile.prod
@@ -1046,7 +1091,7 @@ jobs:
       # label the image are omitted); docker-build rebuilds them to push. The
       # docs image is the smoke-test build above.
       - name: Build backend image for scanning
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./backend
           load: true
@@ -1054,7 +1099,7 @@ jobs:
           tags: scan-backend:ci
 
       - name: Build backup image for scanning
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./backend
           target: backup
@@ -1063,7 +1108,7 @@ jobs:
           tags: scan-backup:ci
 
       - name: Build frontend image for scanning
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./frontend
           load: true
@@ -1071,7 +1116,7 @@ jobs:
           tags: scan-frontend:ci
 
       - name: Build mcp-server image for scanning
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./mcp-server
           load: true
@@ -1079,7 +1124,7 @@ jobs:
           tags: scan-mcp-server:ci
 
       - name: Build converter image for scanning
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ./converter
           load: true
@@ -1121,9 +1166,9 @@ jobs:
     # Roughly 20 to 30 minutes (the seed and six restores dominate).
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Backup, restore, verify and prove the checks fail
         env:
@@ -1131,7 +1176,7 @@ jobs:
         run: ./scripts/restore-test-selfcheck.sh
 
       - name: Upload restore-test reports
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         continue-on-error: true
         with:
@@ -1156,12 +1201,12 @@ jobs:
       # GitVersion below to compute a version from the repo's actual commit
       # graph rather than the single shallow commit Actions checks out by
       # default.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v3
+        uses: gittools/actions/gitversion/setup@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3
         with:
           versionSpec: "6.x"
 
@@ -1172,7 +1217,7 @@ jobs:
       # and increments from there.
       - name: Determine version
         id: gitversion
-        uses: gittools/actions/gitversion/execute@v3
+        uses: gittools/actions/gitversion/execute@51d325634925d7d9ce0a7efc2c586c0bc2b9eee6 # v3
 
       # Feeds the APP_VERSION/GIT_SHA/BUILD_DATE build args of the images that
       # report their own build identity (GET /api/v1/system/version, the nav
@@ -1196,7 +1241,7 @@ jobs:
   docker-build:
     name: Build ${{ matrix.image }} (${{ matrix.arch }})
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
-    needs: [frontend, backend-tests, e2e-tests, dependency-scan, image-scan, restore-test, version]
+    needs: [frontend, backend-tests, e2e-tests, dependency-scan, image-scan, restore-test, static-analysis, secret-scan, version]
     # Normal runs finish in ~5 minutes; the arm64 backend leg adds the smoke test (a database, migrations, a login).
     timeout-minutes: 30
     # Pushes digests to ghcr.io only when this isn't a pull_request run — a same-repo PR's GITHUB_TOKEN could
@@ -1230,15 +1275,16 @@ jobs:
             context: ./docs/website
             file: ./docs/website/Dockerfile.prod
     env:
-      PUSH: ${{ github.event_name != 'pull_request' }}
+      # Only `main` publishes: a manual run (workflow_dispatch) from any other branch must not retag `latest`.
+      PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to ghcr.io
         if: env.PUSH == 'true'
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -1266,7 +1312,7 @@ jobs:
       # Proves the Dockerfile builds on this architecture. On arm64 the image is also loaded into the runner's
       # Docker so the smoke test and scan below can run it.
       - name: Build image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
@@ -1301,7 +1347,7 @@ jobs:
       - name: Push image by digest
         id: push
         if: env.PUSH == 'true'
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
@@ -1320,7 +1366,7 @@ jobs:
 
       - name: Upload digest
         if: env.PUSH == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: digests-${{ matrix.image }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
@@ -1335,21 +1381,24 @@ jobs:
     name: Publish multi-arch image tags
     runs-on: ubuntu-latest
     needs: [docker-build, version]
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    # The protected `release` environment (Settings, Environments) is limited to `main` by its branch rule, so a branch
+    # that edits this file still cannot reach the registry credentials.
+    environment: release
     timeout-minutes: 15
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: digests-*
           path: ${{ runner.temp }}/digests
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to ghcr.io
-        uses: docker/login-action@v4
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -1421,8 +1470,8 @@ jobs:
       run:
         working-directory: docs/website
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: npm
@@ -1463,8 +1512,8 @@ jobs:
       run:
         working-directory: docs/website
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "24"
           cache: npm
@@ -1479,10 +1528,10 @@ jobs:
         working-directory: .
         run: python3 mcp-server/scripts/build_skill_zip.py
       - run: npm run build
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: docs/website/build
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

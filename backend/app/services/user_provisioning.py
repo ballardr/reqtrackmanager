@@ -29,12 +29,14 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.enums import OrgRole
 from app.models.organization import Organization, PendingInvite, UserOrgRole
 from app.models.user import User
-from app.security import MIN_PASSWORD_LENGTH, hash_password
+from app.security import hash_password
 from app.services import invites
 from app.services.audit import log_event
+from app.services.password_policy import password_problem
 
 
 def _require_unused_email(db: Session, email: str) -> None:
@@ -56,6 +58,7 @@ def create_native_user(
     organization_id: UUID | None,
     role: OrgRole,
     actor_id: UUID,
+    must_change_password: bool | None = None,
 ) -> User:
     """Creates a password-credentialed account, in an organisation when one is given.
 
@@ -67,20 +70,21 @@ def create_native_user(
         organization_id: Organisation to join with `role`, or `None` for an account with no membership.
         role: The organisation role granted (ignored when `organization_id` is `None`).
         actor_id: The administrator creating the account (audit actor).
+        must_change_password: Whether the person must change this password at first sign-in; `None` follows
+            `Settings.force_password_change_on_admin_set` (an administrator knows a password they typed).
 
     Returns:
         The created (uncommitted) `User`.
 
     Raises:
-        HTTPException: 400 password shorter than `MIN_PASSWORD_LENGTH`, or an `sso_only` organisation;
+        HTTPException: 400 password refused by `services.password_policy`, or an `sso_only` organisation;
             404 organisation not found; 409 email already in use.
     """
     email = email.lower()
     _require_unused_email(db, email)
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
-        )
+    problem = password_problem(password, email)
+    if problem:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, problem)
     if organization_id is not None:
         org = db.get(Organization, organization_id)
         if org is None:
@@ -93,7 +97,8 @@ def create_native_user(
                 "This organisation is SSO-only; native accounts cannot be created for it directly.",
             )
     user = User(
-        email=email, display_name=display_name, password_hash=hash_password(password), auth_backend="native"
+        email=email, display_name=display_name, password_hash=hash_password(password), auth_backend="native",
+        must_change_password=get_settings().force_password_change_on_admin_set if must_change_password is None else must_change_password,
     )
     db.add(user)
     db.flush()

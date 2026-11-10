@@ -350,6 +350,7 @@ class OrgAdvancedSettingsOut(BaseModel):
     allow_relaxed_child_project_creation: bool = True
     force_require_change_request_for_approved_links: bool = False
     allow_ai_approvals: bool = False
+    allow_imported_approval_state: bool = True
 
 
 class OrgAdvancedSettingsUpdate(BaseModel):
@@ -372,6 +373,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_relaxed_child_project_creation: bool = True
     force_require_change_request_for_approved_links: bool = False
     allow_ai_approvals: bool = False
+    allow_imported_approval_state: bool = True
 
 
 class ManifestNavEntryOut(BaseModel):
@@ -909,6 +911,7 @@ class OrgSsoConfigUpdate(BaseModel):
     oidc_client_id: str | None = None
     oidc_client_secret: str | None = None
     oidc_required_group: str | None = None
+    oidc_allow_account_creation: bool = True
 
 
 class OrgSsoConfigOut(BaseModel):
@@ -918,6 +921,7 @@ class OrgSsoConfigOut(BaseModel):
     oidc_issuer_url: str | None = None
     oidc_client_id: str | None = None
     oidc_required_group: str | None = None
+    oidc_allow_account_creation: bool = True
 
 
 class ScimTokenStatusOut(BaseModel):

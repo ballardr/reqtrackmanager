@@ -34,6 +34,7 @@ RUN apk upgrade --no-cache
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/env-config-entrypoint.sh /docker/env-config-entrypoint.sh
+COPY docker/security-headers.inc /etc/nginx/security-headers.inc
 
 # Hardening review: ran as root with no reason to. The official nginx
 # alpine image already ships an unprivileged `nginx` user (this listens on
@@ -48,7 +49,9 @@ RUN chmod +x /docker/env-config-entrypoint.sh \
     && sed -i '/^user /d' /etc/nginx/nginx.conf \
     && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx \
     && touch /var/run/nginx.pid \
-    && chown nginx:nginx /var/run/nginx.pid
+    && chown nginx:nginx /var/run/nginx.pid \
+    && echo 'add_header Content-Security-Policy "frame-ancestors '"'"'none'"'"'" always;' > /var/cache/nginx/content-security-policy.inc \
+    && chown nginx:nginx /var/cache/nginx/content-security-policy.inc
 
 # Tier C ("federated" / Module Federation) frontend modules — reserved,
 # normally-empty directory `nginx.conf`'s `/external-modules/` location

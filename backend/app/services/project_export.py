@@ -53,7 +53,6 @@ time by a portable `(standard reference, version label)` key.
 
 from __future__ import annotations
 
-import io
 import json
 import zipfile
 from datetime import UTC, date, datetime
@@ -109,14 +108,16 @@ from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks
 from app.services import nav_labels, overview_widgets
 from app.services.audit import log_event
+from app.services.bundle_approval_state import count_approval_state, strip_approval_state
 from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
     BundleImportWarnings,
     UserResolver,
-    enforce_upload_size_limit,
-    enforce_zip_uncompressed_size_limit,
     import_bundled_file,
     new_bundle_file,
+    open_bundle_zip,
+    read_bundle_files,
+    read_bundle_json,
     write_json_entry,
 )
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
@@ -636,14 +637,11 @@ def build_project_bundle(db: Session, project: Project, exported_by: User) -> IO
 
 
 def _read_bundle(zip_bytes: bytes, expected_kind: str) -> tuple[dict, dict, zipfile.ZipFile]:
-    enforce_upload_size_limit(zip_bytes, what="Bundle upload")
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-        enforce_zip_uncompressed_size_limit(zf)
-        manifest = json.loads(zf.read("manifest.json"))
-        data = json.loads(zf.read("project.json"))
-    except (zipfile.BadZipFile, KeyError, json.JSONDecodeError):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    zf = open_bundle_zip(zip_bytes)
+    manifest = read_bundle_json(zf, "manifest.json")
+    data = read_bundle_json(zf, "project.json")
+    if not isinstance(manifest, dict) or not isinstance(data, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.")
     if manifest.get("kind") != expected_kind:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Expected a {expected_kind!r} bundle, got {manifest.get('kind')!r}.")
     if manifest.get("format_version", 0) > PROJECT_BUNDLE_FORMAT_VERSION:
@@ -709,6 +707,11 @@ def apply_project_data(
             to be looked up once even if referenced from several projects).
         warnings: Accumulates human-readable import warnings.
     """
+    organization = db.get(Organization, project.organization_id)
+    if organization is not None and not organization.allow_imported_approval_state:
+        strip_approval_state(data)
+        warnings.add("This organisation does not keep imported approval state: imported records were returned to drafts.")
+    approved_count = count_approval_state(data)
     organization_id = project.organization_id
 
     # The bundle's own action types; a bundle that lists none (one written before action types were carried)
@@ -1053,16 +1056,21 @@ def apply_project_data(
     # After every module: the project's custom scoring models and axes exist by now, and the configuration names them.
     import_project_scoring(db, project, data, warnings)
 
-    # Replays the source project's structural audit trail as its own
-    # events (rather than trying to preserve original ids/timestamps
-    # verbatim) — it's the only durable record of some structural changes
-    # (group/role/stage/component history), so dropping it on import would
-    # be a real, silent loss of project history.
+    # Replays the source project's structural audit trail so its history is not lost on a move. The importer is the
+    # recorded actor (a bundle cannot attribute an event to anyone else); the original actor and time are kept in
+    # the detail, and the entry is marked as imported so it is never read as an action taken in this project.
     for ev in data.get("audit_events", []):
+        if not (
+            isinstance(ev.get("entity_type"), str) and isinstance(ev.get("action"), str) and isinstance(ev.get("entity_id"), str)
+            and len(ev["entity_type"]) <= 50 and len(ev["action"]) <= 50 and len(ev["entity_id"]) <= 64
+        ):
+            continue
+        original = ev.get("detail")
+        detail = dict(original) if isinstance(original, dict) else {}
+        detail["imported_from_bundle"] = {"original_actor_email": ev.get("actor_email"), "original_created_at": ev.get("created_at")}
         log_event(
             db, entity_type=ev["entity_type"], entity_id=ev["entity_id"], action=ev["action"],
-            actor_id=users.resolve(ev.get("actor_email"), required=False, context="Audit event actor"),
-            organization_id=organization_id, project_id=project.id, detail=ev.get("detail"),
+            actor_id=current_user.id, organization_id=organization_id, project_id=project.id, detail=detail,
         )
 
     if not get_effective_project_managers(db, project.id):
@@ -1070,7 +1078,8 @@ def apply_project_data(
 
     log_event(
         db, entity_type="project", entity_id=project.id, action="imported_from_bundle", actor_id=current_user.id,
-        organization_id=organization_id, project_id=project.id, detail={"warning_count": len(warnings.messages)},
+        organization_id=organization_id, project_id=project.id,
+        detail={"warning_count": len(warnings.messages), "records_with_approval_state": approved_count},
     )
 
 
@@ -1095,13 +1104,13 @@ def import_project_bundle(
             is not set; nothing is written.
     """
     _manifest, data, zf = _read_bundle(zip_bytes, PROJECT_BUNDLE_KIND)
-    file_bytes_by_ref = {n.removeprefix("files/"): zf.read(n) for n in zf.namelist() if n.startswith("files/")}
+    file_bytes_by_ref = read_bundle_files(zf)
 
     warnings = BundleImportWarnings()
     file_bytes_by_ref = resolve_bundle_files(
         db, organization_id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
     )
-    users = UserResolver(db, current_user, warnings)
+    users = UserResolver(db, current_user, warnings, organization_id=organization_id)
     project = new_project_from_bundle_data(db, organization_id, name, summary, data)
     db.add(project)
     db.flush()

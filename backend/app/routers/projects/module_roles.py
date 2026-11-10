@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, refuse_personal_access_token
 from app.models.module import (
     ProjectModuleEnablement,
     ProjectModuleSubComponentEnablement,
@@ -556,7 +556,10 @@ def update_project_module_subcomponent_enablement(
     return _project_subcomponent_out(db, project, module_key, subcomponent, row)
 
 
-@router.post("/{project_id}/members/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{project_id}/members/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def assign_project_module_role(
     project_id: UUID,
     user_id: UUID,
@@ -619,7 +622,7 @@ def assign_project_module_role(
 
 @router.delete(
     "/{project_id}/members/{user_id}/module-roles/{module_key}/{role_key}", status_code=status.HTTP_204_NO_CONTENT
-)
+, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_project_module_role(
     project_id: UUID,
     user_id: UUID,

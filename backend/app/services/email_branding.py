@@ -60,11 +60,17 @@ class EmailBranding:
     footer_company_id: str | None = None
 
 
+_EMAIL_LOGO_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+
+
 def _resolve_logo(db: Session, file_id: UUID | None) -> tuple[bytes | None, str | None]:
     if file_id is None:
         return None, None
     asset = db.get(FileAsset, file_id)
     if asset is None:
+        return None, None
+    # Only a raster picture is embedded in mail: the stored type was decided from the bytes at upload.
+    if asset.content_type not in _EMAIL_LOGO_TYPES:
         return None, None
     return read_file(asset), asset.content_type
 

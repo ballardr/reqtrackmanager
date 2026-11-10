@@ -776,6 +776,9 @@ def test_login_with_valid_credentials_returns_a_usable_token():
     assert "Signed in" in response.text
     assert "/mcp" in response.text
     assert "no-store" in response.headers.get("cache-control", "")
+    # What the page shows is a personal access token, never the session token: it cannot manage the account.
+    assert "rtm_pat_" in response.text
+    assert "personal access token" in response.text
 
 
 def test_login_2fa_with_bad_challenge_token_shows_generic_error():

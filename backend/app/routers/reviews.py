@@ -20,6 +20,7 @@ from app.models.project import Project, ProjectComponent
 from app.models.user import User
 from app.schemas.requirement import RequirementDueForReviewOut
 from app.services.principals import label_of
+from app.services.rbac import restrict_to_session_scope
 from app.services.reviews import get_due_reviews_for_user, reviewer_labels
 
 router = APIRouter(prefix="/api/v1/me", tags=["me"])
@@ -42,6 +43,9 @@ def list_my_due_reviews(
     same contract as `list_requirements`: omitting both returns everything.
     """
     due = [(version, req) for version, req in get_due_reviews_for_user(db, current_user.id) if version.review_date is not None]
+    # A Personal Access Token or module frame reaches only the projects it is scoped to.
+    reachable = restrict_to_session_scope(db, {req.project_id for _, req in due})
+    due = [(version, req) for version, req in due if req.project_id in reachable]
     response.headers["X-Total-Count"] = str(len(due))
     # Page first, so the lookups below read only the rows returned: the navigation asks for `limit=1` on every
     # session to learn whether anything is due, and must not pay for labelling the whole list.

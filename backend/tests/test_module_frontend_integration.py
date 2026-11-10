@@ -58,6 +58,8 @@ class _FakeRequest:
 
     def __init__(self):
         self.state = SimpleNamespace()
+        self.method = "GET"  # read by the request gates every credential passes (`deps._require_policies_accepted`)
+        self.url = SimpleNamespace(path="/api/v1/auth/me")
 
 
 def _fake_module(**overrides) -> ModuleDefinition:

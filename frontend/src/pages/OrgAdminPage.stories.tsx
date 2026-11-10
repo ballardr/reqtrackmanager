@@ -34,11 +34,12 @@ const advanced: OrgAdvancedSettings = {
   external_user_policy: "disabled", allow_relaxed_child_project_creation: true,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
+  allow_imported_approval_state: true,
 };
 
 const ssoConfig: OrgSsoConfig = {
   slug: "acme", sso_enabled: true, sso_only: false, oidc_issuer_url: "https://idp.example.com",
-  oidc_client_id: "client-1", oidc_required_group: null,
+  oidc_client_id: "client-1", oidc_required_group: null, oidc_allow_account_creation: true,
 };
 
 const groups: OrgGroup[] = [
@@ -1695,7 +1696,7 @@ export const GroupsSectionToggleSyncOffClearsFields: Story = {
  * all; only the role select was actually gated. Only the muted hint
  * renders here. */
 export const GroupsSectionSsoSyncSectionHiddenWithoutSso: Story = {
-  beforeEach: () => mockOrgAdminApis({ sso: { slug: null, sso_enabled: false, sso_only: false, oidc_issuer_url: null, oidc_client_id: null, oidc_required_group: null } }),
+  beforeEach: () => mockOrgAdminApis({ sso: { slug: null, sso_enabled: false, sso_only: false, oidc_issuer_url: null, oidc_client_id: null, oidc_required_group: null, oidc_allow_account_creation: true } }),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole("link", { name: "Groups" }));

@@ -42,7 +42,7 @@ flowchart TD
     Tempo --> Grafana
 ```
 
-This adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, cAdvisor and Grafana (http://localhost:3300 — anonymous viewer access enabled for local use; put it behind authentication before running this in production).
+This adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, cAdvisor and Grafana (http://localhost:3300). Every port is published on the loopback address only, anonymous access is off, and Grafana will not start until `GRAFANA_ADMIN_PASSWORD` is set (for example `GRAFANA_ADMIN_PASSWORD=… docker compose --profile observability up -d`). Put it behind your own authentication before widening access in production.
 
 ## Health checks and metrics
 

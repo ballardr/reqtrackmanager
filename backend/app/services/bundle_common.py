@@ -26,17 +26,21 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
+from app.models.organization import UserOrgRole
 from app.models.user import User
 from app.services.files import upload_file
 
-# Bounds a bundle/CSV import's memory footprint. No deployment-wide request
-# body size limit exists yet (see docs/soc2/policies/information-security-
-# policy.md's Known Gaps), and DEFLATE's ~1032:1 worst-case ratio means an
-# unchecked zip well under any sane upload cap could still decompress to
-# many gigabytes — these two limits are checked before any entry is read,
-# not just before the whole request is accepted.
+# Bounds a bundle/CSV import's memory footprint. DEFLATE's ~1032:1 worst-case ratio means an unchecked zip well
+# under the upload cap could still decompress to many gigabytes, so the declared sizes, the entry count and the
+# compression ratio are checked from the central directory before any entry is read, and every read is capped at
+# the entry's own limit (a stored size can lie).
 MAX_IMPORT_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_BUNDLE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+MAX_BUNDLE_ENTRIES = 50_000
+MAX_BUNDLE_ENTRY_BYTES = 200 * 1024 * 1024
+MAX_BUNDLE_JSON_BYTES = 256 * 1024 * 1024
+#: Entries over 1 MiB that compress better than this are refused (a legitimate JSON document compresses about 20:1).
+MAX_BUNDLE_RATIO = 250
 
 #: Keys older bundles carried report introductions, chapters, appendices and a default branding template under.
 #: They are no longer imported; a bundle that holds any gets one warning.
@@ -109,6 +113,67 @@ def enforce_zip_uncompressed_size_limit(zf: zipfile.ZipFile) -> None:
         )
 
 
+def open_bundle_zip(zip_bytes: bytes, *, what: str = "Bundle upload") -> zipfile.ZipFile:
+    """Opens an uploaded bundle after the size, entry-count, duplicate-name and compression-ratio checks.
+
+    Raises:
+        HTTPException: 413 when the upload, its declared contents or its entry count are too large, or an entry
+            compresses suspiciously well; 400 when it is not a zip or repeats an entry name.
+    """
+    enforce_upload_size_limit(zip_bytes, what=what)
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    infos = zf.infolist()
+    if len(infos) > MAX_BUNDLE_ENTRIES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"Bundle holds too many entries (max {MAX_BUNDLE_ENTRIES}).")
+    names = [i.filename for i in infos]
+    if len(set(names)) != len(names):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.")
+    for info in infos:
+        if info.file_size > MAX_BUNDLE_ENTRY_BYTES:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "A file in the bundle is larger than the maximum allowed.")
+        if info.compress_size and info.file_size > 1024 * 1024 and info.file_size / info.compress_size > MAX_BUNDLE_RATIO:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "The bundle compresses suspiciously well and was refused.")
+    enforce_zip_uncompressed_size_limit(zf)
+    return zf
+
+
+def read_bundle_entry(zf: zipfile.ZipFile, name: str, *, limit: int = MAX_BUNDLE_ENTRY_BYTES) -> bytes:
+    """Reads one entry, never more than `limit` bytes whatever its header claims.
+
+    Raises:
+        KeyError: The entry does not exist.
+        HTTPException: 413 when the entry is larger than `limit`; 400 when it cannot be decompressed (a CRC error).
+    """
+    try:
+        with zf.open(name) as handle:
+            data = handle.read(limit + 1)
+    except zipfile.BadZipFile:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    if len(data) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "A file in the bundle is larger than the maximum allowed.")
+    return data
+
+
+def read_bundle_json(zf: zipfile.ZipFile, name: str) -> Any:
+    """Reads and parses one JSON entry (capped at `MAX_BUNDLE_JSON_BYTES`).
+
+    Raises:
+        HTTPException: 400 when it is missing, not valid JSON or cannot be decompressed; 413 when too large.
+    """
+    try:
+        return json.loads(read_bundle_entry(zf, name, limit=MAX_BUNDLE_JSON_BYTES))
+    except (KeyError, json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+
+
+def read_bundle_files(zf: zipfile.ZipFile) -> dict[str, bytes]:
+    """Every `files/<ref>` entry, keyed by `ref`, each read with the per-entry cap."""
+    return {n.removeprefix("files/"): read_bundle_entry(zf, n) for n in zf.namelist() if n.startswith("files/") and not n.endswith("/")}
+
+
 class BundleImportWarnings:
     """Accumulates human-readable warnings during a bundle import — e.g. a
     user reference that didn't match anyone in the target deployment and
@@ -128,13 +193,18 @@ class UserResolver:
     `User` ids in the target deployment, caching lookups within one import.
 
     A `User` is global (one row can hold roles in many organisations, see
-    `models.user.User.email`'s uniqueness), so "does this email exist here"
-    is a single deployment-wide lookup, independent of which org/project is
-    being imported into.
+    `models.user.User.email`'s uniqueness), but a bundle may only name people who
+    belong to the organisation being imported into: an email that matches an account
+    with no role there is treated as unmatched, with the same warning as an unknown
+    address. Otherwise a bundle could attribute records to another tenant's users and
+    the warning would reveal which addresses are registered on the server.
     """
 
-    def __init__(self, db: Session, importing_user: User, warnings: BundleImportWarnings) -> None:
+    def __init__(
+        self, db: Session, importing_user: User, warnings: BundleImportWarnings, *, organization_id: UUID
+    ) -> None:
         self._db = db
+        self._organization_id = organization_id
         self._importing_user = importing_user
         self._warnings = warnings
         self._cache: dict[str, UUID | None] = {}
@@ -151,7 +221,12 @@ class UserResolver:
         if not normalized:
             return None
         if normalized not in self._cache:
-            user = self._db.scalar(select(User).where(User.email == normalized))
+            user = self._db.scalar(
+                select(User)
+                .join(UserOrgRole, UserOrgRole.user_id == User.id)
+                .where(User.email == normalized, UserOrgRole.organization_id == self._organization_id)
+                .limit(1)
+            )
             self._cache[normalized] = user.id if user else None
         return self._cache[normalized]
 

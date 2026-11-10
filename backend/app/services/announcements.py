@@ -398,7 +398,7 @@ def enforce_public_rate_limit(client_ip: str) -> None:
     """
     cfg = get_settings()
     burst, per_minute = cfg.public_announcement_rate_limit_burst, cfg.public_announcement_rate_limit_per_minute
-    limiter = _limiters.setdefault((burst, per_minute), RateLimiter(burst, per_minute / 60))
+    limiter = _limiters.setdefault((burst, per_minute), RateLimiter(burst, per_minute / 60, shared="public-announcements"))
     wait = limiter.acquire(client_ip)
     if wait is not None:
         seconds = max(1, math.ceil(wait))

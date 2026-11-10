@@ -11,11 +11,12 @@ from __future__ import annotations
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.models.enums import OrgRole, ProjectRole
 from app.models.notification import DigestMode
 from app.security import MIN_PASSWORD_LENGTH
+from app.services.password_policy import validate_new_password
 
 
 class LoginRequest(BaseModel):
@@ -40,6 +41,30 @@ class SignupRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
     invite_token: str | None = None
 
+    @model_validator(mode="after")
+    def _password_follows_the_rule(self) -> SignupRequest:
+        validate_new_password(self.password, str(self.email))
+        return self
+
+
+class SignupPendingResponse(BaseModel):
+    """Answer to a public sign-up that must confirm its email address first: no session is issued."""
+
+    confirmation_required: bool = True
+    message: str = "Check your email for a link that confirms your address. You can sign in once you have opened it."
+
+
+class ConfirmEmailRequest(BaseModel):
+    """Spends an email confirmation link (`POST /auth/confirm-email`)."""
+
+    token: str = Field(min_length=20, max_length=200)
+
+
+class ResendConfirmationRequest(BaseModel):
+    """Asks for the confirmation email again (`POST /auth/resend-confirmation`)."""
+
+    email: EmailStr
+
 
 class UserOut(BaseModel):
     """A user as returned to API clients (never includes password_hash/totp_secret)."""
@@ -57,6 +82,7 @@ class UserOut(BaseModel):
     avatar_file_id: UUID | None = None
     display_name_locked: bool
     is_2fa_enabled: bool
+    must_change_password: bool = False
     email_digest_mode: DigestMode
     ui_preferences: dict[str, Any] = Field(default_factory=dict)
 
@@ -126,6 +152,11 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
 
+    @field_validator("new_password")
+    @classmethod
+    def _password_follows_the_rule(cls, value: str) -> str:
+        return validate_new_password(value)
+
 
 class ForgotPasswordRequest(BaseModel):
     """Asks for a password-reset link to be emailed (`POST /auth/forgot-password`)."""
@@ -138,6 +169,11 @@ class ResetPasswordRequest(BaseModel):
 
     token: str = Field(min_length=20, max_length=200)
     new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_follows_the_rule(cls, value: str) -> str:
+        return validate_new_password(value)
 
 
 class UserPreferencesUpdate(BaseModel):

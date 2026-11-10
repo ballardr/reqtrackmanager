@@ -63,7 +63,7 @@ Each option defaults from the environment variable shown.
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `DEMO_ADMIN_EMAIL`, `DEMO_ADMIN_PASSWORD` | `seed_demo_data.py` | The server administrator the seed signs in as (default `admin@example.com` / `ChangeMe123!`, the stack's bootstrap account). |
+| `DEMO_ADMIN_EMAIL`, `DEMO_ADMIN_PASSWORD` | `seed_demo_data.py` | The server administrator the seed signs in as (default `admin@example.com` and the `SERVER_ADMIN_PASSWORD` the backend runs with: `scripts/demo.sh` generates the password, `JWT_SECRET` and `APP_SECRET_ENCRYPTION_KEY` once into the untracked `tests/container/.demo-secrets.env`, and the demonstration refuses to start on a placeholder secret). |
 | `DEMO_PASSWORD` | `seed_demo_data.py` | The shared demonstration password when run on its own (default `DemoDemo123!`). |
 | `DEMO_CLARITY_PROJECT_ID` | Compose (`frontend`) | Becomes `CLARITY_PROJECT_ID` in the frontend; empty loads nothing. |
 | `DEMO_RESET_AT`, `DEMO_RESET_TZ`, `DEMO_ROTATE_PASSWORDS`, `DEMO_ALLOW_UPLOADS`, `DEMO_CONFIRM_DATABASE` | Compose (`demo-scheduler`) | Passed to the scheduler (defaults `00:00`, `UTC`, off, off, empty). |

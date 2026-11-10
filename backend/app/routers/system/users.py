@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.enums import OrgRole, ServerRole
 from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.server_role import UserServerRole
@@ -270,7 +271,7 @@ def force_credential_reset(
     )
 
 
-@router.post("/users", response_model=SystemUserCreated, status_code=status.HTTP_201_CREATED)
+@router.post("/users", response_model=SystemUserCreated, status_code=status.HTTP_201_CREATED, dependencies=[Depends(refuse_personal_access_token)])
 def create_system_user(
     payload: SystemUserCreate,
     current_user: User = Depends(require_server_admin),
@@ -368,7 +369,7 @@ def set_server_admin(
     db.commit()
 
 
-@router.post("/users/{user_id}/server-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/users/{user_id}/server-roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def grant_server_role(
     user_id: UUID,
     payload: ServerRoleAssign,
@@ -407,7 +408,7 @@ def grant_server_role(
         db.commit()
 
 
-@router.delete("/users/{user_id}/server-roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/users/{user_id}/server-roles/{role}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_server_role(
     user_id: UUID,
     role: ServerRole,

@@ -46,7 +46,15 @@ from app.models.user import User
 from app.modules.registry import get_all_registered_artefact_types
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.principal import PrincipalOut, PrincipalRef
-from app.services.activity_kinds import COMMENTS, KIND_LABELS, action_kinds, actions_for_kinds, kind_of
+from app.services.activity_kinds import (
+    AUDIT_TRAIL_ONLY_ACTIONS,
+    AUDIT_TRAIL_ONLY_ENTITY_TYPES,
+    COMMENTS,
+    KIND_LABELS,
+    action_kinds,
+    actions_for_kinds,
+    kind_of,
+)
 from app.services.link_graph import ArtefactResolver
 from app.services.principals import UNKNOWN_USER_LABEL, principal_labels, principal_member_ids
 from app.services.rbac import get_effective_org_roles
@@ -135,6 +143,9 @@ def _audit_source(project_id: UUID, flt: ChangeFilter) -> _Source:
         and_(AuditEvent.entity_type == entity_type, AuditEvent.action.in_(actions))
         for entity_type, actions in VERSION_HISTORY_COVERED_ACTIONS.items()
     ]
+    covered.append(
+        and_(AuditEvent.entity_type.in_(AUDIT_TRAIL_ONLY_ENTITY_TYPES), AuditEvent.action.in_(AUDIT_TRAIL_ONLY_ACTIONS))
+    )
     query = query.where(not_(or_(*covered)))
 
     def build(event: AuditEvent) -> ChangeEntryOut:

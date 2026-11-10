@@ -331,6 +331,8 @@ def collect_stats(
     import_all_module_models()
     db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
     if snapshot_id is not None:
+        # `SET TRANSACTION SNAPSHOT` takes no bind parameter; the id is quoted as a literal by `_quote_literal`.
+        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
         db.execute(text(f"SET TRANSACTION SNAPSHOT {_quote_literal(snapshot_id)}"))
     tables = table_counts(db)
     return DrStats(

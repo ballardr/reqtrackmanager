@@ -37,7 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user_header_or_query_optional
+from app.deps import get_current_user, get_current_user_header_or_query_optional
 from app.models.change_request import ChangeRequest, ReviewComment
 from app.models.enums import ReviewTargetType
 from app.models.file import CommentFile, FileAsset, RequirementActionFile, RequirementFile
@@ -246,7 +246,7 @@ def set_file_confidential(
     file_id: UUID,
     body: FileConfidentialIn,
     request: Request,
-    current_user: User | None = Depends(get_current_user_header_or_query_optional),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> FileAsset:
     """Marks a file confidential (or clears the mark): a confidential file is never printed by a report.
@@ -256,14 +256,15 @@ def set_file_confidential(
     else who can read the file gets 403, so the mark cannot be removed by a reader. Audited with the file id and the new
     value, never the file name.
 
+    A write: it takes the bearer header only, never the URL media token (which exists to load files into the page and
+    nothing else), and so also passes the policy acknowledgement gate.
+
     Raises:
         HTTPException: 401 without a credential, 404 for an unknown file, 403 when the caller may not change the mark.
     """
     file_asset = db.get(FileAsset, file_id)
     if file_asset is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.")
-    if current_user is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
     project_id = _authorise_read(request, db, file_asset, current_user)
     project = db.get(Project, project_id) if project_id is not None else None
     allowed = file_asset.uploaded_by == current_user.id

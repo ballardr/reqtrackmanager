@@ -25,6 +25,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, GroupCustomRoleGrant, UserCustomRoleGrant
 from app.models.enums import OrgRole
 from app.models.notification import NotificationType
@@ -418,7 +419,10 @@ def delete_custom_role(
     db.commit()
 
 
-@router.post("/{organization_id}/custom-roles/{role_id}/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{organization_id}/custom-roles/{role_id}/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def grant_custom_role_to_user(
     organization_id: UUID,
     role_id: UUID,
@@ -498,7 +502,10 @@ def grant_custom_role_to_user(
         db.commit()
 
 
-@router.delete("/{organization_id}/custom-roles/{role_id}/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{organization_id}/custom-roles/{role_id}/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_custom_role_from_user(
     organization_id: UUID,
     role_id: UUID,
@@ -551,7 +558,10 @@ def revoke_custom_role_from_user(
         db.commit()
 
 
-@router.post("/{organization_id}/custom-roles/{role_id}/groups/{org_group_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{organization_id}/custom-roles/{role_id}/groups/{org_group_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def grant_custom_role_to_group(
     organization_id: UUID,
     role_id: UUID,
@@ -611,7 +621,7 @@ def grant_custom_role_to_group(
 
 @router.delete(
     "/{organization_id}/custom-roles/{role_id}/groups/{org_group_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_custom_role_from_group(
     organization_id: UUID,
     role_id: UUID,

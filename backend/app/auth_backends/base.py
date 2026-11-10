@@ -29,12 +29,15 @@ class AuthResult:
         error: A human-readable failure reason, if success is False.
         reset_required: The password was correct but a forced credential reset is pending, so no session
             is issued (the login endpoint answers 403 instead of 401).
+        confirmation_required: The password was correct but the account has not confirmed its email address yet
+            (`services.email_confirmation`); answered like `reset_required`.
     """
 
     success: bool
     user: User | None = None
     error: str | None = None
     reset_required: bool = False
+    confirmation_required: bool = False
 
 
 class AuthBackend(Protocol):

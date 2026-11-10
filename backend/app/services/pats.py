@@ -78,6 +78,19 @@ def is_usable(db: Session, pat: PersonalAccessToken) -> bool:
     return pat.revoked_at is None and datetime.now(UTC) < effective_expiry(db, pat)
 
 
+def revoke_all_for_user(db: Session, user_id: UUID) -> int:
+    """Revokes every active Personal Access Token the user owns (a response to suspected compromise).
+
+    Called when a password is reset through an emailed link and when two-factor authentication is switched off:
+    both are recovery or weakening steps after which a token created earlier, with no second factor, must not
+    survive. A routine password change does not call it, so an integration is not reconfigured by it.
+
+    Returns:
+        How many tokens were revoked.
+    """
+    return revoke_matching(db, PersonalAccessToken.user_id == user_id)
+
+
 def revoke_matching(db: Session, predicate) -> int:
     """Revokes every currently-active PAT matching `predicate` in one
     statement, returning how many rows were affected. Shared by the

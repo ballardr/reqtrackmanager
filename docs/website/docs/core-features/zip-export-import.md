@@ -54,6 +54,10 @@ Project-level **group membership** is deliberately excluded — only group struc
 
 **Import**: from **Organisation admin → Import into this organisation**, choose a previously exported zip file to stand up a new project (or, for an organisation-level bundle, a new organisation) from it.
 
+### Who and what an import may bring
+
+People named in a bundle (authors, approvers, owners, voters) are matched by email address, and only people who already belong to the **target** organisation are matched; anyone else is left unset or attributed to you, with a warning, exactly like an address nobody has registered. The project's recorded history is kept but shown as imported, attributed to you, with the original person and time in the entry. An organisation administrator can switch **Keep approval state on imported projects** off under **Organisation admin → Advanced settings → Security**: every imported record then returns to a draft and must be approved again in the new organisation. Bundles are checked before anything is read: an upload with too many entries, an oversized file or an implausibly high compression ratio is refused, and a damaged file is reported as invalid.
+
 ### Importing when uploads are disabled
 
 A bundle's files are imported whenever they can be stored. When the server administrator has [disabled file uploads](../workflows/server-administration.md#server-management) and the bundle carries files, the import stops before anything is written and says how many files (and how much data) cannot be stored. The dialog then offers exactly two actions:

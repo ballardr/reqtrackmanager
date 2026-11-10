@@ -303,6 +303,15 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     # deliberate, in-the-moment human decision. See docs/decisions.md's "AI
     # approval via MCP" entry.
     allow_ai_approvals: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Whether this organisation's identity provider may create a new account for an address nobody has registered. Off
+    # keeps sign-in to accounts that already exist (an invitation, SCIM or an administrator creates them first), so a
+    # tenant's provider cannot take an address another person would have registered. On by default: no change on upgrade.
+    oidc_allow_account_creation: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Whether a project bundle imported into this organisation may keep the approval state it carries (approved,
+    # decided or voted records). On by default so a restore or a move reproduces the project; off returns every
+    # imported record to a fresh draft (`services.bundle_approval_state`). Either way, imported approvers must be
+    # members of this organisation and the import is audited with the number of records that arrived approved.
+    allow_imported_approval_state: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     # Whether the organisation's own policies may contain links (`services.org_policies`). Off by default: the page is
     # members-only, so the phishing concern of an organisation message does not apply, but a link on a page every
     # member trusts is still a choice the organisation makes.

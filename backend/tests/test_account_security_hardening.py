@@ -2,16 +2,16 @@
 active second factor cannot be replaced without disabling it, and the enrol/disable step is throttled.
 """
 
-import pyotp
 
 from tests.conftest import auth_headers
+from tests.totp_helpers import next_code
 
 
 def _enable_2fa(client, token: str) -> str:
     """Enrols and confirms a TOTP second factor for the caller; returns its secret."""
     headers = auth_headers(token)
     secret = client.post("/api/v1/auth/2fa/enroll", headers=headers).json()["secret"]
-    confirmed = client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": pyotp.TOTP(secret).now()}, headers=headers)
+    confirmed = client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": next_code(secret)}, headers=headers)
     assert confirmed.status_code == 204, confirmed.text
     return secret
 
@@ -47,7 +47,7 @@ def test_an_active_second_factor_cannot_be_replaced_then_disabled(client, admin_
     # The original secret is still the only one that works, and disabling needs it.
     wrong = client.post("/api/v1/auth/2fa/status", json={"action": "disable", "code": "000000"}, headers=headers)
     assert wrong.status_code == 400
-    ok = client.post("/api/v1/auth/2fa/status", json={"action": "disable", "code": pyotp.TOTP(original).now()}, headers=headers)
+    ok = client.post("/api/v1/auth/2fa/status", json={"action": "disable", "code": next_code(original)}, headers=headers)
     assert ok.status_code == 204
 
 
@@ -61,5 +61,5 @@ def test_disable_step_locks_out_after_repeated_wrong_codes(client, admin_token):
         for _ in range(5)
     ]
     assert statuses == [400, 400, 400, 400, 400]
-    locked = client.post("/api/v1/auth/2fa/status", json={"action": "disable", "code": pyotp.TOTP(secret).now()}, headers=headers)
+    locked = client.post("/api/v1/auth/2fa/status", json={"action": "disable", "code": next_code(secret)}, headers=headers)
     assert locked.status_code == 429

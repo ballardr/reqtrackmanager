@@ -437,6 +437,8 @@ export interface User {
   avatar_file_id: string | null;
   display_name_locked: boolean;
   is_2fa_enabled: boolean;
+  /** True after an administrator typed this account's password: the app asks for a new one before anything else. */
+  must_change_password?: boolean;
   email_digest_mode: DigestMode;
   /** General-purpose key/value bag for lightweight UI display preferences
    * that don't warrant their own dedicated field — e.g. per-list tile/list
@@ -2076,6 +2078,8 @@ export interface OrgAdvancedSettings {
   // AI approval via MCP (docs/decisions.md) — see `Organization`'s own
   // field of the same name for the full resolution.
   allow_ai_approvals: boolean;
+  /** Whether a project import may keep the approval state its bundle carries (approved, decided and voted records). */
+  allow_imported_approval_state: boolean;
 }
 
 /** One module's state as seen by an org admin
@@ -2440,6 +2444,7 @@ export interface OrgSsoConfig {
   oidc_issuer_url: string | null;
   oidc_client_id: string | null;
   oidc_required_group: string | null;
+  oidc_allow_account_creation: boolean;
 }
 
 export interface ScimTokenStatus {

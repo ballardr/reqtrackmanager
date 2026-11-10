@@ -90,3 +90,28 @@ export const SignupError: Story = {
 
 export const LightTheme: Story = { ...AlwaysOn, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...AlwaysOn, globals: { theme: "dark" } };
+
+/** The deployment asks for the email address to be confirmed: no session is issued, the page says to check the
+ * email, and the email can be sent again. */
+export const AwaitsEmailConfirmation: Story = {
+  decorators: [withRouter("/signup")],
+  beforeEach: () => {
+    spyOn(api, "get").mockResolvedValue({ signup_mode: "always_on", self_signup_organizations: [] });
+    spyOn(api, "post").mockResolvedValue({ detail: "sent" });
+    signupMock.mockResolvedValue(null);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByLabelText(/^Display name/)).toBeInTheDocument());
+    await userEvent.type(canvas.getByLabelText(/^Display name/), "Newcomer");
+    await userEvent.type(canvas.getByLabelText(/^Email/), "newcomer@example.com");
+    await userEvent.type(canvas.getByLabelText(/^Password/), "Own-Choice-Password-3!");
+    await userEvent.click(canvas.getByRole("button", { name: "Create account" }));
+    await expect(await canvas.findByRole("heading", { name: "Check your email" })).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Send the email again" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/auth/resend-confirmation", { email: "newcomer@example.com" }),
+    );
+    await expect(await canvas.findByRole("status")).toHaveTextContent("on its way");
+  },
+};

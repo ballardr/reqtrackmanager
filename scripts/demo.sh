@@ -48,6 +48,25 @@ esac
 
 cd "$here/../tests/container"
 
+# The demonstration generates its own secrets once and keeps them in an untracked file (mode 600): the stack's
+# compose literals are for the local test stack only, and a demonstration can be served on a public name.
+secrets_file="$PWD/.demo-secrets.env"
+if [ ! -f "$secrets_file" ]; then
+  ( umask 077
+    python3 - "$secrets_file" <<'PY'
+import secrets, sys
+password = secrets.token_urlsafe(18) + "aA1!"
+with open(sys.argv[1], "w") as handle:
+    handle.write(f"JWT_SECRET={secrets.token_hex(32)}\nAPP_SECRET_ENCRYPTION_KEY={secrets.token_hex(32)}\nSERVER_ADMIN_PASSWORD={password}\n")
+PY
+  )
+fi
+set -a
+# shellcheck disable=SC1090
+. "$secrets_file"
+set +a
+export DEMO_ADMIN_PASSWORD="$SERVER_ADMIN_PASSWORD"
+
 # The demonstration overlay adds the proxy and unpublishes the application ports; the developer stack never loads it.
 export COMPOSE_FILE="docker-compose.yml:docker-compose.demo.yml"
 host="${DEMO_PUBLIC_HOST:-localhost}"
@@ -116,7 +135,7 @@ profiles=()
 if [ "$metrics" = true ]; then profiles+=(--profile demo-metrics); fi
 
 # Environment the reset needs inside the container (the compose service does not receive the host's).
-exec_env=()
+exec_env=(-e "DEMO_ADMIN_PASSWORD=$DEMO_ADMIN_PASSWORD")
 if [ -n "${DEMO_RESET_AT:-}" ]; then exec_env+=(-e "DEMO_RESET_AT=$DEMO_RESET_AT" -e "DEMO_RESET_TZ=${DEMO_RESET_TZ:-UTC}"); fi
 
 image_args=()

@@ -385,6 +385,69 @@ def test_every_server_gated_route_is_classified():
     assert observed == EXPECTED_GATES
 
 
+_ANNOUNCEMENT_AND_POLICY_GATES = {
+    ("GET", "/api/v1/system/announcements"), ("POST", "/api/v1/system/announcements"),
+    ("PUT", "/api/v1/system/announcements/{announcement_id}"), ("DELETE", "/api/v1/system/announcements/{announcement_id}"),
+    ("POST", "/api/v1/system/announcements/{announcement_id}/notify"),
+    ("GET", "/api/v1/system/policies"), ("POST", "/api/v1/system/policies"),
+    ("GET", "/api/v1/system/policies/{policy_id}"), ("PUT", "/api/v1/system/policies/{policy_id}"),
+    ("POST", "/api/v1/system/policies/{policy_id}/publish"), ("POST", "/api/v1/system/policies/{policy_id}/unpublish"),
+    ("DELETE", "/api/v1/system/policies/{policy_id}"),
+    ("GET", "/api/v1/system/policies/{policy_id}/acknowledgements"),
+    ("GET", "/api/v1/system/policies/{policy_id}/acknowledgements/export"),
+    ("POST", "/api/v1/system/policies/{policy_id}/acknowledgements/remind"),
+    ("GET", "/api/v1/system/policies/{policy_id}/versions/{version}"),
+}
+
+
+def test_a_server_gate_anywhere_else_in_the_route_table_is_known():
+    """The snapshot above covers two router packages; this walks every route, so a platform power added in a module or
+    a router outside them (announcements and policies already are) is classified too, and a `/system/` route with no
+    gate at all is one of the snapshot's own caller-checked routes."""
+    snapshot_modules = ("app.routers.orgs.core", "app.routers.orgs.storage", "app.routers.system")
+    elsewhere = set()
+    for route in app.routes:
+        endpoint = getattr(route, "endpoint", None)
+        methods = getattr(route, "methods", None)
+        if endpoint is None or not methods or not hasattr(route, "dependant"):
+            continue  # a mounted app or a plain Starlette route has no dependency tree
+        for method in methods - {"HEAD", "OPTIONS"}:
+            key = (method, route.path)
+            if endpoint.__module__.startswith(snapshot_modules):
+                continue
+            if _gates(route.dependant):
+                elsewhere.add(key)
+            else:
+                assert "/system/" not in route.path or key in EXPECTED_GATES, f"/system/ route with no server gate: {key}"
+    assert elsewhere == _ANNOUNCEMENT_AND_POLICY_GATES
+
+
+#: Files that test `is_server_admin` inline instead of through a gate dependency, each a reviewed use. A new file that
+#: does so fails until it is added here, so an inline platform-administrator check is a visible decision.
+_INLINE_SERVER_ADMIN_CHECKS = {
+    "app/models/enums.py", "app/models/server_role.py", "app/models/user.py", "app/modules/compliance/global_router.py",
+    "app/modules/compliance/module.py", "app/modules/compliance/router/_shared.py",
+    "app/modules/compliance/router/version_requirements.py", "app/modules/context_strategy/_shared.py",
+    "app/modules/decisions/project_router/workflow.py", "app/modules/registry.py", "app/routers/orgs/core.py",
+    "app/routers/orgs/membership.py", "app/routers/orgs/settings.py", "app/routers/orgs/storage.py", "app/routers/scim.py",
+    "app/routers/system/access.py", "app/routers/system/users.py", "app/schemas/auth.py", "app/services/bootstrap.py",
+    "app/services/credential_reset.py", "app/services/dr_stats.py", "app/services/dr_verify.py", "app/services/notifications.py",
+    "app/services/oidc_provisioning.py", "app/services/org_overview_stats.py", "app/services/rbac.py",
+}
+
+
+def test_inline_server_administrator_checks_are_a_known_set():
+    from pathlib import Path
+
+    backend = Path(__file__).resolve().parents[1]
+    found = {
+        str(path.relative_to(backend))
+        for path in (backend / "app").rglob("*.py")
+        if "tests" not in path.parts and "is_server_admin" in path.read_text(encoding="utf-8")
+    }
+    assert found == _INLINE_SERVER_ADMIN_CHECKS
+
+
 def test_role_members_exist():
     assert ServerRole.SUBSCRIPTION_MANAGER.value == MANAGER
     assert ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY.value == REMOVER

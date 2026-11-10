@@ -77,7 +77,7 @@ from app.routers import (
     tags,
     ws,
 )
-from app.services import pubsub, report_font_catalogue
+from app.services import pubsub, report_font_catalogue, secret_keys
 from app.services.bootstrap import run_bootstrap
 from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
@@ -140,6 +140,8 @@ async def lifespan(_: FastAPI):
             # from the registry, so a module installed after orgs exist still
             # gets its levels (see `sync_scoring_levels`).
             sync_scoring_levels(db)
+            # A wrong or lost encryption key is a logged error now, not locked-out users later.
+            secret_keys.warn_if_unreadable(db)
         finally:
             db.close()
     pubsub.set_event_loop(asyncio.get_event_loop())
@@ -290,6 +292,10 @@ async def security_headers_middleware(request: Request, call_next):
     frame_src_origins = get_settings().module_frame_allowed_origin_list
     frame_src = " ".join(frame_src_origins) if frame_src_origins else "'none'"
     response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
+    # An answer for a signed-in person is not kept by a shared cache or the browser's disk cache. Only JSON, and only
+    # when the route set no policy of its own: file downloads and health probes choose theirs.
+    if "cache-control" not in response.headers and response.headers.get("content-type", "").startswith("application/json"):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 

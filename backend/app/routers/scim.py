@@ -40,7 +40,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -51,7 +51,7 @@ from app.models.user import User
 from app.security import hash_pat
 from app.services.audit import log_event
 from app.services.lookups import present
-from app.services.org_membership import assert_may_add_account, belongs_elsewhere, remove_member_from_organization
+from app.services.org_membership import assert_account_active, assert_may_add_account, belongs_elsewhere, remove_member_from_organization
 from app.services.rbac import get_effective_org_roles
 
 router = APIRouter(prefix="/scim/v2", tags=["scim"])
@@ -62,6 +62,67 @@ SCIM_LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 SCIM_ERROR_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:Error"
 
 _ATTR_CHARSET = re.compile(r'^[\w.\[\] "=]+$')
+
+_MAX_DISPLAY_NAME = 255
+
+
+def _bad_request(message: str) -> HTTPException:
+    """A SCIM-shaped 400 (`invalidValue`) for a request body the provisioning client got wrong."""
+    return HTTPException(status.HTTP_400_BAD_REQUEST, message)
+
+
+def _parse_active(value: Any) -> bool:
+    """Reads a SCIM `active` value strictly: a boolean, or the strings `true` or `false` in any case.
+
+    Some identity providers send the string form. Anything else is rejected rather than coerced, since
+    `bool("False")` is true and would leave a person active while reporting success.
+
+    Raises:
+        HTTPException: 400 for any other value.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"
+    raise _bad_request("active must be true or false.")
+
+
+def _display_name(value: Any, *, required: bool = False) -> str | None:
+    """Validates a `displayName`: a string of at most 255 characters (the column's width).
+
+    Raises:
+        HTTPException: 400 when not a string, empty while required, or too long.
+    """
+    if value is None or value == "":
+        if required:
+            raise _bad_request("displayName is required.")
+        return None
+    if not isinstance(value, str) or len(value) > _MAX_DISPLAY_NAME:
+        raise _bad_request(f"displayName must be text of at most {_MAX_DISPLAY_NAME} characters.")
+    return value
+
+
+def _required_display_name(value: Any) -> str:
+    """`_display_name` for a place that cannot leave the name empty.
+
+    Raises:
+        HTTPException: 400 as `_display_name`, including when the value is missing or empty.
+    """
+    name = _display_name(value, required=True)
+    assert name is not None  # `required=True` raises instead of returning None
+    return name
+
+
+def _operations(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """The PATCH `Operations` list, each entry an object.
+
+    Raises:
+        HTTPException: 400 when `Operations` is not a list of objects.
+    """
+    operations = payload.get("Operations", [])
+    if not isinstance(operations, list) or not all(isinstance(op, dict) for op in operations):
+        raise _bad_request("Operations must be a list of objects.")
+    return operations
 
 
 def require_scim_org(request: Request, db: Session = Depends(get_db)) -> Organization:
@@ -307,7 +368,7 @@ def list_users(
     org: Organization = Depends(require_scim_org),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    org_user_ids = set(db.scalars(select(UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id)).all())
+    org_user_ids = select(UserOrgRole.user_id).where(UserOrgRole.organization_id == org.id)
     query = select(User).where(User.id.in_(org_user_ids), User.is_server_admin.is_(False))
     parsed = _parse_simple_eq_filter(filter)
     if parsed:
@@ -316,9 +377,9 @@ def list_users(
             query = query.where(User.email == value.strip().lower())
         else:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unsupported filter attribute: {attr}")
-    all_users = db.scalars(query.order_by(User.email)).all()
-    page = all_users[startIndex - 1 : startIndex - 1 + count]
-    return _list_response([_user_to_scim(u) for u in page], start_index=startIndex, total=len(all_users))
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    page = db.scalars(query.order_by(User.email).offset(startIndex - 1).limit(count)).all()
+    return _list_response([_user_to_scim(u) for u in page], start_index=startIndex, total=total)
 
 
 @router.post("/Users", status_code=status.HTTP_201_CREATED)
@@ -340,13 +401,16 @@ def create_user(
     elevation beyond that happens via `sync_org_group_mappings`-managed
     OIDC claims or group sync, not here.
     """
+    emails = payload.get("emails", [])
     email = payload.get("userName") or next(
-        (e.get("value") for e in payload.get("emails", []) if isinstance(e, dict) and e.get("value")), None
+        (e.get("value") for e in emails if isinstance(e, dict) and e.get("value")) if isinstance(emails, list) else iter(()), None
     )
-    if not email:
+    if not email or not isinstance(email, str):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "userName or an email is required.")
-    email = str(email).strip().lower()
-    display_name = payload.get("displayName") or (payload.get("name") or {}).get("formatted") or email.split("@")[0]
+    email = email.strip().lower()
+    name = payload.get("name")
+    formatted = name.get("formatted") if isinstance(name, dict) else None
+    display_name = _display_name(payload.get("displayName")) or _display_name(formatted) or email.split("@")[0][:_MAX_DISPLAY_NAME]
 
     user = db.scalar(select(User).where(User.email == email))
     if user is not None:
@@ -354,6 +418,9 @@ def create_user(
         # (`services.org_membership`): not banned, not a platform administrator, and not held by another
         # organisation unless this one allows external users.
         assert_may_add_account(db, org, user)
+        if user.is_server_admin:
+            raise HTTPException(status.HTTP_409_CONFLICT, "A platform administrator account cannot be provisioned by an organisation.")
+        assert_account_active(db, user.id)
     if user is None:
         user = User(email=email, display_name=display_name, auth_backend="scim", password_hash=None)
         db.add(user)
@@ -380,10 +447,10 @@ def replace_user(
 ) -> dict[str, Any]:
     user = _get_org_user(db, org, user_id)
     removed = False
-    if payload.get("displayName"):
-        user.display_name = payload["displayName"]
+    if name := _display_name(payload.get("displayName")):
+        user.display_name = name
     if "active" in payload:
-        removed = _set_active(db, org, user, bool(payload["active"]))
+        removed = _set_active(db, org, user, _parse_active(payload["active"]))
     log_event(db, entity_type="user", entity_id=user.id, action="scim_replaced", actor_id=None, organization_id=org.id)
     db.commit()
     return _scim_user_out(user, removed)
@@ -399,15 +466,16 @@ def patch_user(
     `displayName`. See module docstring for the scope limitation."""
     user = _get_org_user(db, org, user_id)
     removed = False
-    for op in payload.get("Operations", []):
+    for op in _operations(payload):
         value = op.get("value")
-        path = (op.get("path") or "").strip()
+        raw_path = op.get("path")
+        path = raw_path.strip() if isinstance(raw_path, str) else ""
         if path == "active" or (not path and isinstance(value, dict) and "active" in value):
-            removed = _set_active(db, org, user, bool(value if not isinstance(value, dict) else value.get("active"))) or removed
+            removed = _set_active(db, org, user, _parse_active(value if not isinstance(value, dict) else value.get("active"))) or removed
         elif path == "displayName" and isinstance(value, str):
-            user.display_name = value
+            user.display_name = _required_display_name(value)
         elif not path and isinstance(value, dict) and "displayName" in value:
-            user.display_name = value["displayName"]
+            user.display_name = _required_display_name(value["displayName"])
     log_event(db, entity_type="user", entity_id=user.id, action="scim_patched", actor_id=None, organization_id=org.id)
     db.commit()
     return _scim_user_out(user, removed)
@@ -442,22 +510,23 @@ def list_groups(
             query = query.where(OrgGroup.name == value)
         else:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unsupported filter attribute: {attr}")
-    all_groups = db.scalars(query.order_by(OrgGroup.name)).all()
-    page = all_groups[startIndex - 1 : startIndex - 1 + count]
-    return _list_response([_group_to_scim(db, g) for g in page], start_index=startIndex, total=len(all_groups))
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    page = db.scalars(query.order_by(OrgGroup.name).offset(startIndex - 1).limit(count)).all()
+    return _list_response([_group_to_scim(db, g) for g in page], start_index=startIndex, total=total)
 
 
 @router.post("/Groups", status_code=status.HTTP_201_CREATED)
 def create_group(
     payload: dict[str, Any] = Body(...), org: Organization = Depends(require_scim_org), db: Session = Depends(get_db)
 ) -> dict[str, Any]:
-    display_name = payload.get("displayName")
-    if not display_name:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "displayName is required.")
+    display_name = _display_name(payload.get("displayName"), required=True)
     group = OrgGroup(organization_id=org.id, name=display_name)
     db.add(group)
     db.flush()
-    for member in payload.get("members", []) or []:
+    members = payload.get("members", []) or []
+    if not isinstance(members, list):
+        raise _bad_request("members must be a list.")
+    for member in members:
         member_id = _parse_uuid(member.get("value")) if isinstance(member, dict) else None
         if member_id and get_effective_org_roles(db, member_id, org.id):
             db.add(OrgGroupMember(org_group_id=group.id, user_id=member_id))
@@ -501,9 +570,11 @@ def replace_group(
     membership to exactly the given `members` list — added/removed as
     needed, same as a PATCH `members` replace would net out to."""
     group = _get_org_group(db, org, group_id)
-    if payload.get("displayName"):
-        group.name = payload["displayName"]
+    if name := _display_name(payload.get("displayName")):
+        group.name = name
     if "members" in payload:
+        if payload["members"] is not None and not isinstance(payload["members"], list):
+            raise _bad_request("members must be a list.")
         desired = {
             parsed
             for m in (payload.get("members") or [])
@@ -542,11 +613,11 @@ def patch_group(
     for the scope limitation. Only ever touches `user_id`-keyed rows;
     nested-group edges (`member_org_group_id`) are never affected."""
     group = _get_org_group(db, org, group_id)
-    for op in payload.get("Operations", []):
-        op_name = (op.get("op") or "").lower()
-        path = (op.get("path") or "").strip()
+    for op in _operations(payload):
+        op_name = op["op"].lower() if isinstance(op.get("op"), str) else ""
+        path = op["path"].strip() if isinstance(op.get("path"), str) else ""
         if path == "displayName" and isinstance(op.get("value"), str):
-            group.name = op["value"]
+            group.name = _required_display_name(op["value"])
             continue
         if not path.startswith("members"):
             continue
@@ -554,9 +625,10 @@ def patch_group(
         if single_match:
             target_ids = [parsed] if (parsed := _parse_uuid(single_match.group(1))) is not None else []
         else:
+            raw_members = op.get("value")
             target_ids = [
                 parsed
-                for m in (op.get("value") or [])
+                for m in (raw_members if isinstance(raw_members, list) else [])
                 if isinstance(m, dict) and (parsed := _parse_uuid(m.get("value"))) is not None
             ]
         for user_id in target_ids:

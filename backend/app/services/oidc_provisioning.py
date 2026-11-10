@@ -94,7 +94,8 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
            then, only an account `org` already has a claim on may be linked
            (`_assert_may_link`), and an account bound to another identity is refused.
         3. Otherwise, auto-provisions a new native-less account
-           (`auth_backend="oidc"`, `password_hash=None`).
+           (`auth_backend="oidc"`, `password_hash=None`), unless the organisation has switched that off
+           (`Organization.oidc_allow_account_creation`).
 
     Args:
         db: Active database session.
@@ -111,8 +112,9 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
         The resolved or newly created User (added to the session, not yet committed).
 
     Raises:
-        ValueError: If the claims carry no email, the email is unverified for an existing account, or the
-            existing account is not one `org` may link (see `_assert_may_link`).
+        ValueError: If the claims carry no email, the email is unverified for an existing account, the
+            existing account is not one `org` may link (see `_assert_may_link`), or a new account would be needed
+            and the organisation does not allow its identity provider to create one.
     """
     subject = claims["sub"]
     email = claims.get("email")
@@ -149,6 +151,11 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
         existing_by_email.oidc_issuer = issuer
         return existing_by_email
 
+    if org.oidc_allow_account_creation is False:  # None is an organisation not yet saved: the column defaults to allowed
+        # Same message for every address, so the refusal says nothing about whether the address is registered elsewhere.
+        raise ValueError(
+            "This organisation does not let its identity provider create accounts. Ask an administrator to add you first."
+        )
     user = User(
         id=uuid.uuid4(), email=email, display_name=claims.get("name") or email.split("@")[0],
         auth_backend="oidc", external_subject=subject, oidc_issuer=issuer, password_hash=None,

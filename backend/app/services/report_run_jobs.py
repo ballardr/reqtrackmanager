@@ -74,6 +74,7 @@ from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_pack import ReportPack, ReportPackVersion
 from app.models.user import User
 from app.services import custom_report_run, report_layout_scope, report_layouts, report_pack_run, report_pack_scope, report_packs
+from app.services.audit import log_event
 from app.services.client_date import effective_today, reset_client_date, set_client_date
 from app.services.files import get_storage_backend
 from app.services.notifications import notify
@@ -740,6 +741,10 @@ def delete_output(db: Session, user: User, run_id: uuid.UUID) -> GeneratedReport
             get_storage_backend().delete(row.output_key)
         _clear_output(row, STATUS_EXPIRED)
         row.expires_at = _now()
+    log_event(
+        db, entity_type="report_run", entity_id=row.id, action="report_run_output_deleted", actor_id=user.id,
+        organization_id=row.organization_id, project_id=row.project_id,
+    )
     db.commit()
     return row
 

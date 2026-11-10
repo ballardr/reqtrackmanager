@@ -39,7 +39,7 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.user import User
-from app.services.rbac import get_effective_project_roles, get_user_org_group_ids
+from app.services.rbac import get_effective_project_roles, get_user_org_group_ids, restrict_to_session_scope
 
 _ACCESSIBLE_EXPANSION_ITERATION_CAP = 50
 
@@ -196,7 +196,7 @@ def accessible_project_ids(db: Session, user_id: UUID) -> set[UUID]:
                 new_frontier.add(candidate_id)
         frontier = new_frontier
 
-    return accessible_ids
+    return restrict_to_session_scope(db, accessible_ids)
 
 
 def administered_org_ids(db: Session, user: User, pat_allowed_org_ids: set[UUID] | None = None) -> set[UUID]:

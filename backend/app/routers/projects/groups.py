@@ -16,7 +16,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, refuse_personal_access_token
 from app.models.enums import PrincipalType, ProjectRole
 from app.models.notification import NotificationType
 from app.models.organization import OrgGroup, OrgGroupMember
@@ -149,7 +149,7 @@ def _member_label(
     return f"the members of {source.name}" if source is not None else "a project roster"
 
 
-@router.post("/{project_id}/groups/{group_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{project_id}/groups/{group_id}/roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_project_group_role(
     project_id: UUID, group_id: UUID, payload: ProjectGroupRoleAssign,
     project: Project = Depends(require_project_manage),
@@ -194,7 +194,10 @@ def assign_project_group_role(
         db.commit()
 
 
-@router.delete("/{project_id}/groups/{group_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/groups/{group_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_project_group_role(
     project_id: UUID, group_id: UUID, role: ProjectRole,
     project: Project = Depends(require_project_manage),
@@ -342,7 +345,7 @@ def delete_project_group(
     db.commit()
 
 
-@router.post("/{project_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{project_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def add_project_group_member(
     project_id: UUID, group_id: UUID, payload: ProjectGroupMemberAdd,
     project: Project = Depends(require_project_manage),
@@ -409,7 +412,10 @@ def add_project_group_member(
     db.commit()
 
 
-@router.delete("/{project_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def remove_project_group_member(
     project_id: UUID, group_id: UUID, member_id: UUID,
     project: Project = Depends(require_project_manage),

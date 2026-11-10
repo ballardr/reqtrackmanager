@@ -17,7 +17,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, refuse_personal_access_token
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
 from app.models.notification import NotificationType
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, UserOrgRole
@@ -55,7 +55,7 @@ from app.services.rbac import (
 router = APIRouter(tags=["projects-roles"])
 
 
-@router.post("/{project_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{project_id}/roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_project_role(
     project_id: UUID, payload: UserProjectRoleAssign,
     project: Project = Depends(require_project_manage_or_grant_roles),
@@ -130,7 +130,7 @@ def list_group_project_roles(
     return list(grouped.values())
 
 
-@router.post("/{project_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{project_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_group_project_role(
     project_id: UUID, payload: OrgGroupProjectRoleAssign,
     project: Project = Depends(require_project_manage_or_grant_roles),
@@ -186,7 +186,7 @@ def assign_group_project_role(
         db.commit()
 
 
-@router.post("/{project_id}/roles/by-email", response_model=AssignByEmailOut)
+@router.post("/{project_id}/roles/by-email", response_model=AssignByEmailOut, dependencies=[Depends(refuse_personal_access_token)])
 def assign_project_role_by_email(
     project_id: UUID, payload: UserProjectRoleAssignByEmail,
     project: Project = Depends(require_project_manage),
@@ -383,7 +383,7 @@ def resend_pending_project_invite(
     return _pending_invite_out(invite)
 
 
-@router.delete("/{project_id}/roles/{user_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{project_id}/roles/{user_id}/{role}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_project_role(
     project_id: UUID, user_id: UUID, role: ProjectRole,
     project: Project = Depends(require_project_manage_or_grant_roles),
@@ -432,7 +432,10 @@ def revoke_project_role(
     db.commit()
 
 
-@router.delete("/{project_id}/group-roles/{org_group_id}/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/group-roles/{org_group_id}/{role}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_group_project_role(
     project_id: UUID, org_group_id: UUID, role: ProjectRole,
     project: Project = Depends(require_project_manage_or_grant_roles),

@@ -567,7 +567,7 @@ _LINK_BLUE = RGBColor(0x05, 0x63, 0xC1)
 
 def _bookmark_name(anchor: str) -> str:
     """The Word bookmark name of a heading anchor: letters, digits and underscores only, starting with a letter."""
-    return "sec_" + hashlib.sha1(anchor.encode("utf-8")).hexdigest()[:16]  # noqa: S324 - a name, not a secret
+    return "sec_" + hashlib.sha1(anchor.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
 
 def _bookmark(paragraph, anchor: str, number: int) -> None:

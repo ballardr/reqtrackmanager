@@ -8,6 +8,7 @@ work identically for both entity types).
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Collection
 from uuid import UUID
 
@@ -77,6 +78,37 @@ def comments_to_out(db: Session, comments: list[ReviewComment], current_user_id:
 def comment_to_out(db: Session, comment: ReviewComment, current_user_id: UUID) -> CommentOut:
     """`comments_to_out` for one comment."""
     return comments_to_out(db, [comment], current_user_id)[0]
+
+
+_COMMENT_ENTITY_TYPE = {
+    ReviewTargetType.REQUIREMENT: "requirement",
+    ReviewTargetType.CHANGE_REQUEST: "change_request",
+    ReviewTargetType.ACTION: "requirement_action",
+}
+
+
+def audit_comment(db: Session, comment: ReviewComment, *, action: str, actor_id: UUID, project_id: UUID) -> None:
+    """Records a comment being added, edited, reacted to or having an attachment removed, against the record it is on.
+
+    The event carries the comment id and, for an add or edit, a short digest of the body so a change is provable
+    without storing the text again; the body itself is never written to the audit trail. Added to the session, not
+    committed.
+
+    Args:
+        db: Active session.
+        comment: The comment the action concerns.
+        action: `comment_added`, `comment_edited`, `comment_reacted`, `comment_reaction_removed` or
+            `comment_attachment_removed`.
+        actor_id: The person acting.
+        project_id: The project the record belongs to.
+    """
+    detail: dict[str, str] = {"comment_id": str(comment.id)}
+    if action in ("comment_added", "comment_edited"):
+        detail["body_sha256"] = hashlib.sha256(comment.body.encode("utf-8")).hexdigest()[:16]
+    log_event(
+        db, entity_type=_COMMENT_ENTITY_TYPE[comment.target_type], entity_id=comment.target_id, action=action,
+        actor_id=actor_id, project_id=project_id, detail=detail,
+    )
 
 
 def add_reaction(db: Session, comment_id: UUID, user_id: UUID) -> None:

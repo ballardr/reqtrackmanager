@@ -58,6 +58,7 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.project_status import ProjectStatusDefinition
+from app.models.rate_limit import RateLimitBucket
 from app.models.record_policy import OrganizationRecordSensitivityOverride, ServerRecordSensitivityDefault
 from app.models.relationship import ArtefactLink
 from app.models.report_folder import ReportFolder
@@ -108,6 +109,7 @@ __all__ = [
     "PolicyDocument",
     "PolicyDocumentVersion",
     "AuditEvent",
+    "RateLimitBucket",
     "LoginEvent",
     "ChangeRequest",
     "ChangeRequestTask",

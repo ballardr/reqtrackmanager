@@ -155,7 +155,7 @@ def copy_module_content(
         HTTPException: 403 (`uploads_disabled`) when the template has files, they cannot be stored and `skip_files`
             is not set.
     """
-    users = UserResolver(db, creator, warnings)
+    users = UserResolver(db, creator, warnings, organization_id=new_project.organization_id)
     prepared = []
     refs: set[str] = set()
     assets: dict = {}

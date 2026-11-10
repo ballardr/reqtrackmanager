@@ -19,6 +19,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.module_role import GroupModuleRole, UserModuleRole
 from app.models.notification import NotificationType
 from app.models.organization import OrgGroup
@@ -105,7 +106,10 @@ def list_standard_members(
     )
 
 
-@router.post("/standards/{standard_id}/members/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/standards/{standard_id}/members/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def assign_standard_member_role(
     organization_id: UUID, standard_id: UUID, user_id: UUID, payload: ComplianceStandardMemberRoleAssign,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
@@ -153,7 +157,10 @@ def assign_standard_member_role(
         db.commit()
 
 
-@router.delete("/standards/{standard_id}/members/{user_id}/roles/{role_key}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/standards/{standard_id}/members/{user_id}/roles/{role_key}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_standard_member_role(
     organization_id: UUID, standard_id: UUID, user_id: UUID, role_key: str,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
@@ -210,7 +217,7 @@ def revoke_standard_member_role(
     db.commit()
 
 
-@router.post("/standards/{standard_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/standards/{standard_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_standard_group_role(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardGroupRoleAssign,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
@@ -247,7 +254,10 @@ def assign_standard_group_role(
         db.commit()
 
 
-@router.delete("/standards/{standard_id}/group-roles/{org_group_id}/{role_key}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/standards/{standard_id}/group-roles/{org_group_id}/{role_key}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_standard_group_role(
     organization_id: UUID, standard_id: UUID, org_group_id: UUID, role_key: str,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),

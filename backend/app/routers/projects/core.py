@@ -522,6 +522,10 @@ def list_projects(
             Project.id.not_in(accessible_ids) if accessible_ids else true(),
             Project.is_archived == archived,
         ]
+        # A token that names projects reaches only those, including in the administrator's view of other projects.
+        token_projects = db.info.get("pat_allowed_project_ids")
+        if token_projects is not None:
+            unjoined_scope.append(Project.id.in_(token_projects))
         unjoined_projects: list[Project] = []
         projects: list[Project]
         if not accessible_ids:

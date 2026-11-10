@@ -1,0 +1,21 @@
+# Secret scanning (CI job `secret-scan`; docs/development.md). The default rules apply to the working tree and the whole
+# history. The entries below are the only exceptions: test fixtures in commits that predate the fixtures being written
+# so that no source line holds a whole secret-shaped literal. They are fake values the tests feed to a scrubber or a
+# redaction check, not credentials. Each is named by commit, never by path, so a new finding anywhere, including in
+# the same files, still fails.
+title = "ReqTrackManager"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake credentials in tests of the performance scrub check, the user-create redaction and the OIDC client, in earlier commits"
+commits = [
+  "1c12244dc98bc30334cbb69a3b6a455f5e2f433d",
+  "4fcde1a23e92ab188a763840bf018ea0cf9bd6c5",
+  "b2a63fe06b10c83fe7cc72b2ac5c4a971363c67b",
+  "267a2f3926769d111ef2fd8f62ad6747bc184e52",
+  "be3d4f36b77f7b333b17dd331d296ae061355aa8",
+  "c7c01664235a46157b99ab0f753cbc4bb9c83d8d",
+  "1fd09b8fa0a0c8ebea45e8e1b01f333330e00eab",
+]

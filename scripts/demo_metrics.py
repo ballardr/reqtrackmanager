@@ -444,7 +444,8 @@ def view(bundle: Path) -> int:
         if not snapshots:
             print("demo-metrics: the bundle has no snapshot; read series.jsonl instead.", file=sys.stderr)
             return 2
-        os.chmod(snapshots[0], 0o777)
+        # The container runs as this user (`--user` below), so owner-only access is enough.
+        os.chmod(snapshots[0], 0o700)
         print(f"Prometheus on the bundle: http://127.0.0.1:{VIEW_PORT} (Ctrl-C to stop and remove it)")
         command = [
             "docker", "run", "--rm", "-p", f"127.0.0.1:{VIEW_PORT}:9090", "--user", f"{os.getuid()}", "-v", f"{snapshots[0]}:/prometheus",
