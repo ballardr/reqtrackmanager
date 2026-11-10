@@ -22,6 +22,7 @@ Covers encryption of data in transit, encryption of data at rest, and the handli
 
 1. All external traffic to ReqTrackManager (browser-to-frontend, browser/API-client-to-backend) must be encrypted with TLS in production. The application containers serve plain HTTP internally by design — TLS termination is the deployer's responsibility, performed by a reverse proxy in front of both containers.
 2. Backend-to-identity-provider traffic (OIDC discovery, token exchange, JWKS fetch) uses whatever scheme the provider's discovery document specifies — `https` in any real deployment.
+   *Evidence (demonstration stack):* `scripts/demo.sh` runs a Caddy proxy as the only published listener (`tests/container/docker-compose.demo.yml`, `docs/demo.md` §HTTPS): TLS 1.2+ with a certificate from a public authority for a DNS name or Caddy's local authority for `localhost`, HTTP redirected to HTTPS, HSTS for a named host only, and no application port published. The demonstration meets this item; production keeps the operator's own proxy.
 3. Backend-to-database and backend-to-object-storage traffic **[Company must state whether this is encrypted — depends on whether these run on the same private network segment as the backend, or over a network requiring its own TLS/VPN]**.
 
 ### Encryption at rest

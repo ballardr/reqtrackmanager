@@ -1,0 +1,74 @@
+# Reverse proxy for the demonstration (docs/demo.md, "HTTPS"): the only listener the demonstration publishes. It
+# terminates TLS, redirects HTTP to HTTPS, serves the application on one origin and sets the forwarded headers the
+# backend trusts. Loaded with tests/container/docker-compose.demo.yml by scripts/demo.sh; the developer and test
+# stack does not run it. Production keeps the operator's own proxy (docs/deployment.md).
+#
+#   DEMO_PUBLIC_HOST   the name (or IP address) the demonstration answers on; default localhost
+#   DEMO_TLS_MODE      public (certificate from a public authority, HSTS) or internal (Caddy's local authority, no HSTS)
+#   DEMO_MCP_MODE      on (the MCP server on its own host name) or off
+#   DEMO_MCP_HOST      host name of the MCP server; the MCP server cannot be served under a path prefix
+#   DEMO_ACME_MODE     email (register DEMO_ACME_EMAIL with the public authority) or none
+# scripts/demo.sh sets all of these from DEMO_PUBLIC_HOST.
+{
+	# Request counts and latency per server, handler and status code; no path, host or query is a metric label.
+	metrics
+	servers {
+		protocols h1 h2
+	}
+	import acme/{$DEMO_ACME_MODE:none}.caddy
+	# No admin endpoint is reachable from the network (the API would let a peer rewrite this configuration).
+	admin off
+}
+
+# Health and metrics, on the private network only (never published). Plain HTTP.
+http://:9180 {
+	handle /health {
+		respond "ok" 200
+	}
+	metrics /metrics
+}
+
+{$DEMO_PUBLIC_HOST:localhost} {
+	import modes/{$DEMO_TLS_MODE:internal}.caddy
+
+	encode zstd gzip
+
+	# Path only: the query string, request headers and cookies never reach the log (the search page keeps its text in
+	# the URL, and these logs may be shipped to Loki). Same rule as the frontend's nginx `path_only` format.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>uri regexp \?.* ""
+			request>headers delete
+			resp_headers>Set-Cookie delete
+		}
+	}
+
+	header -Server
+
+	# This proxy is the trust boundary: the connecting address replaces anything a client sent. The backend trusts
+	# these headers from this container's address only (FORWARDED_ALLOW_IPS).
+	handle /api/* {
+		reverse_proxy backend-edge:8000 {
+			header_up X-Forwarded-For {http.request.remote.host}
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {http.request.host}
+		}
+	}
+
+	# The documentation site is built for this path.
+	handle /reqtrackmanager/* {
+		reverse_proxy docs:3001
+	}
+
+	handle {
+		reverse_proxy frontend:3000 {
+			header_up X-Forwarded-For {http.request.remote.host}
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host {http.request.host}
+		}
+	}
+}
+
+import mcp/{$DEMO_MCP_MODE:off}.caddy

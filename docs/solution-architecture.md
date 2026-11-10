@@ -54,6 +54,17 @@ The backend is structured around business domains such as organizations, project
 ### 3. Container-first deployment
 The application is designed to run in containers from the start. Docker Compose provides a development and test environment, and the same model can be used for lightweight production deployments.
 
+The demonstration stack adds a Caddy reverse proxy in front of the same application images. It terminates TLS, redirects HTTP to HTTPS, serves the application on one origin and is the only published listener ([demo.md](demo.md#https)). Production keeps the operator's own proxy.
+
+```mermaid
+flowchart LR
+    B["Browser"] -->|HTTPS| C["Caddy (demonstration only)"]
+    C -->|"/api/*"| BE["Backend"]
+    C -->|"/"| F["Frontend"]
+    C -->|"mcp host"| M["MCP server"]
+    BE --> DB[("PostgreSQL")]
+```
+
 ### 4. Secure-by-default design
 Authentication, authorization, audit logging, and data sanitization are treated as first-class platform concerns rather than afterthoughts.
 

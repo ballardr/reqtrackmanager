@@ -9,3 +9,14 @@ scrape_configs:
     static_configs:
       - targets: ["backend:8000"]
     metrics_path: /metrics
+
+  # The demonstration proxy (tests/container/docker-compose.demo.yml): request counts and latency by status code only.
+  # Only the caddy_http_* series are kept, so the Go runtime metrics (version labels) never reach a bundle.
+  - job_name: reqtrackmanager-proxy
+    static_configs:
+      - targets: ["caddy:9180"]
+    metrics_path: /metrics
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: caddy_http_(requests_total|request_duration_seconds_.*|response_duration_seconds_.*|requests_in_flight|request_errors_total)
+        action: keep

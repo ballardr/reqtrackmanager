@@ -344,9 +344,9 @@ def test_prometheus_is_a_demonstration_only_service_on_loopback_with_a_persisten
     assert users == ["prometheus"]
 
 
-def test_the_demonstration_prometheus_scrapes_the_backend_only_with_no_alert_rules():
+def test_the_demonstration_prometheus_scrapes_the_backend_and_proxy_only_with_no_alert_rules():
     config = yaml.safe_load(PROM_CONFIG.read_text())
-    assert [job["job_name"] for job in config["scrape_configs"]] == ["reqtrackmanager-backend"]
+    assert [job["job_name"] for job in config["scrape_configs"]] == ["reqtrackmanager-backend", "reqtrackmanager-proxy"]
     assert config["scrape_configs"][0]["static_configs"] == [{"targets": ["backend:8000"]}]
     assert "rule_files" not in config
 

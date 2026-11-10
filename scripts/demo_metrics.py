@@ -68,6 +68,9 @@ LABEL_RULES: dict[str, re.Pattern[str]] = {
     "method": re.compile(r"^[A-Z]{3,10}$"),
     "path": re.compile(r"^(unmatched|/[A-Za-z0-9_./{}-]{0,255})$"),
     "status_code": re.compile(r"^\d{3}$"),
+    "code": re.compile(r"^\d{3}$"),
+    "server": re.compile(r"^[a-z0-9_]{1,40}$"),
+    "handler": re.compile(r"^[a-z_]{1,32}$"),
     "le": re.compile(r"^(\+Inf|\d+(\.\d+)?)$"),
     "operation": re.compile(r"^(select|insert|update|delete|other)$"),
     "result": re.compile(r"^[a-z_]{1,32}$"),
@@ -85,6 +88,7 @@ Runner = Callable[..., str]
 GLOSSARY = """\
 http_requests_total{method,path,status_code}      requests; path is the route template, never a record value
 http_request_duration_seconds_{bucket,sum,count}  request latency per route template and method
+caddy_http_requests_total{server,handler,code,method}   the HTTPS proxy's requests by status code (no host or path)
 requests_shed_total                               requests refused with 503 because no slot freed in time
 requirements_*_total, change_requests_*_total     lifecycle transitions (created, updated, approved, completed, archived)
 login_attempts_total{result}                      sign-in outcomes

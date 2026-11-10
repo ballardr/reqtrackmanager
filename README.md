@@ -79,7 +79,7 @@ Captured from the seeded demo dataset (see [docs/development.md](docs/developmen
 ![Login page](docs/screenshots/login-page.png)
 </details>
 
-Want to click through it yourself instead? [docs/development.md](docs/development.md#quick-start--local-development--evaluation) has a one-command local stack with this exact demo dataset, and [docs/demo.md](docs/demo.md) covers `scripts/demo.sh` (demonstration setup, reset, daily schedule and a downloadable usage-metrics bundle).
+Want to click through it yourself instead? [docs/development.md](docs/development.md#quick-start--local-development--evaluation) has a one-command local stack with this exact demo dataset, and [docs/demo.md](docs/demo.md) covers `scripts/demo.sh` (demonstration setup over HTTPS, reset, daily schedule and a downloadable usage-metrics bundle).
 
 ## Production deployment
 

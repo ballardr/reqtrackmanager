@@ -8,7 +8,7 @@ Sets the local stack (`tests/container`) up as a demonstration with sample data,
 scripts/demo.sh                      # start the stack, seed every demonstration project, post the sign-in details
 ```
 
-Open http://localhost:3000. The sign-in details (accounts, role, password, next reset) are shown on the login page.
+Open https://localhost (the browser warns about the certificate until the local authority is trusted: see [HTTPS](#https)). The sign-in details (accounts, role, password, next reset) are shown on the login page.
 
 ## Commands
 
@@ -24,6 +24,8 @@ Open http://localhost:3000. The sign-in details (accounts, role, password, next 
 | `scripts/demo.sh --export-metrics [path] [--since 7d] [--no-snapshot]` | Writes a metrics bundle and starts nothing (see [Usage metrics](#usage-metrics)). |
 | `scripts/demo.sh --view-metrics <bundle>` | Opens a bundle in a throwaway Prometheus on `127.0.0.1:9091`. |
 | `scripts/demo.sh --purge-metrics` | Stops Prometheus and removes the collected metrics. |
+| `scripts/demo.sh --trust-local-ca` | Prints the commands that trust the local certificate authority; changes nothing on the host. |
+| `scripts/demo.sh --purge-certificates` | Stops the proxy and removes its certificates and local authority (a reset keeps them). |
 | `scripts/demo.sh <other options>` | Any other option goes to `demo_setup.py` (table below), for example `--confirm-database reqtrack_test`. |
 
 The script behind it can be run directly in a running stack:
@@ -98,6 +100,37 @@ Everything is created through the real HTTP API (`seed_demo_data.py`, which also
 - The default password is fixed (`DemoDemo123!`), a documented exception in the access control policy. With `--rotate-passwords` every account gets a new random password on each run. The current one is kept in `DEMO_STATE_DIR` (mode 0600), because accounts outlive an organisation's removal and the next run must sign in to change it. If that file is lost the run stops and says so.
 - The message is server-wide, shown on every login page and as a banner, and cannot be dismissed. It lists each account, its role, the password and the next reset time. It is found by its reserved title and replaced on every run. It publishes credentials to anyone who can reach the login page, so use it only on a deployment that holds nothing else.
 - The password is never written to a log line or sent as a notification.
+
+## HTTPS
+
+A Caddy reverse proxy (`caddy` in `tests/container/docker-compose.demo.yml`, configured by `tests/container/caddy/`) terminates TLS and is the only service published to every network interface. `scripts/demo.sh` loads the overlay; a developer or test run of the same stack does not, and keeps its direct ports.
+
+```mermaid
+flowchart LR
+    B["Browser"] -->|"HTTP 80: redirect"| C["Caddy"]
+    B -->|"HTTPS 443"| C
+    C -->|"/api/*"| BE["backend:8000"]
+    C -->|"/reqtrackmanager/*"| D["docs:3001"]
+    C -->|"everything else"| F["frontend:3000"]
+    C -->|"mcp.&lt;host&gt;"| M["mcp-server:8100"]
+    P["Prometheus"] -.->|"caddy:9180 /metrics"| C
+```
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `DEMO_PUBLIC_HOST` | `localhost` | The host name or IP address the demonstration answers on. A DNS name gets a certificate from a public authority (ports 80 and 443 must be reachable from the internet, and the name must resolve to this host) and an HSTS header; `localhost` or an IP address uses Caddy's local authority and sends no HSTS (a browser would otherwise keep it for every local project on that name). |
+| `DEMO_MCP_HOST` | `mcp.<host>` | The MCP server serves `/mcp` and `/login` at the root of its origin, so it has its own name (`mcp.localhost` resolves to the local machine in current browsers). `off` leaves it on the internal network; an IP address has no name for it, so it is off. |
+| `DEMO_ACME_EMAIL` | empty | A contact address registered with the public authority. |
+
+- **One origin.** The frontend is built with an empty API base, so API calls are relative paths and CORS is not involved. `FRONTEND_BASE_URL`, `PUBLIC_BACKEND_URL`, `CORS_ORIGINS`, `MCP_SERVER_PUBLIC_URL` and `HELP_URL` all derive from `DEMO_PUBLIC_URL`, which the script sets from the host.
+- **Redirect and HSTS.** HTTP on port 80 answers with a permanent redirect to the same path on HTTPS and nothing else (plus the certificate challenge). The redirect response itself still carries `Server: Caddy`; every proxied response has the header removed.
+- **Forwarded headers.** The proxy replaces `X-Forwarded-For` with the connecting address and sets `X-Forwarded-Proto` and `-Host`. The backend honours them from the proxy's address only (`FORWARDED_ALLOW_IPS`; the proxy and the backend share a small `edge` network, and the backend reaches it as `backend-edge`), so a request sent straight to the backend by another container cannot set them. This narrows the recorded `X-Forwarded-For` gap for the demonstration only: the application still reads the first hop of the header wherever it is deployed.
+- **Log.** The access log is JSON on stdout with the path only: no query string (search text may be in it), no request headers and no cookies.
+- **Certificates** live in the named volumes `reqtrack_demo_caddy_data` and `reqtrack_demo_caddy_config`. A reset or teardown leaves them, because issuing a certificate again every day meets the issuer's rate limits.
+- **Local authority.** `tls internal` is for localhost and testing, not a production pattern: production keeps the operator's own proxy or a real certificate ([deployment.md](deployment.md)). `scripts/demo.sh --trust-local-ca` prints the commands that trust its root certificate.
+- **Support services** (database, storage, mail catcher, identity provider, documentation) are published on `127.0.0.1` only.
+- **Metrics.** Caddy's request counts and latency per status code are scraped by the demonstration Prometheus (`caddy_http_*` series only; no host, path or query label) and travel in the metrics bundle.
+- Published demonstration passwords are a deliberate exception: HTTPS protects them in transit and does not make them secret.
 
 ## Daily reset
 

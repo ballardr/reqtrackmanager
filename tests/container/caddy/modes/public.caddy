@@ -1,0 +1,3 @@
+# A named host: Caddy obtains and renews the certificate itself (HTTP-01 on port 80), and browsers are told to use
+# HTTPS only.
+header Strict-Transport-Security "max-age=31536000; includeSubDomains"

@@ -69,7 +69,7 @@ Two counters answer "how busy is the API and database". Ask for the window you w
 
 ### Demonstration usage metrics
 
-A demonstration stack (`scripts/demo.sh`) starts its own Prometheus that scrapes only the backend and keeps 30 days of samples across the daily reset. `scripts/demo.sh --export-metrics` writes them to a `.tar.gz` for a developer to review: a Prometheus snapshot, one series per line in `series.jsonl`, and a manifest with the reset times. `scripts/demo.sh --view-metrics <bundle>` opens it again.
+A demonstration stack (`scripts/demo.sh`) starts its own Prometheus that scrapes only the backend and the HTTPS proxy (request counts by status code) and keeps 30 days of samples across the daily reset. `scripts/demo.sh --export-metrics` writes them to a `.tar.gz` for a developer to review: a Prometheus snapshot, one series per line in `series.jsonl`, and a manifest with the reset times. `scripts/demo.sh --view-metrics <bundle>` opens it again.
 
 | Metric | What it shows |
 |--------|---------------|
