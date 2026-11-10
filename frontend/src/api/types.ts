@@ -369,6 +369,7 @@ export type CoreNotificationType =
   | "system_announcement"
   | "policy_published"
   | "policy_acknowledgement_required"
+  | "storage_limit_near"
   | "report_run_finished"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
@@ -488,6 +489,8 @@ export interface Organization {
   slug: string | null;
   is_active: boolean;
   disabled_at: string | null;
+  /** Whether this organisation may store new files (the operator's switch for this tenant). */
+  file_uploads_enabled?: boolean;
   accent_color_hex: string | null;
   /** The accent colour of reports; `null` follows `accent_color_hex`. */
   report_accent_color_hex: string | null;
@@ -563,6 +566,28 @@ export interface ServerSettings {
 
 /** The `code` of the 403 a refused upload or file-carrying import returns. */
 export const UPLOADS_DISABLED_CODE = "uploads_disabled";
+/** The `code` of the 403 returned when only this organisation's own upload switch stops new files. */
+export const ORGANIZATION_UPLOADS_DISABLED_CODE = "organization_uploads_disabled";
+/** The `code` of the 403 returned when a file (or a bundle's files) would exceed the organisation's storage limit. */
+export const STORAGE_QUOTA_EXCEEDED_CODE = "storage_quota_exceeded";
+
+/** What stops new files: the server administrator's deployment-wide switch, or this organisation's switch. */
+export type UploadsDisabledBy = "deployment" | "organization" | null;
+
+/** An organisation's storage rules and usage (`GET /orgs/{id}/storage`). */
+export interface OrgStorage {
+  file_uploads_enabled: boolean;
+  deployment_uploads_enabled: boolean;
+  /** The organisation's own limit in bytes; null follows the server default. */
+  storage_quota_bytes: number | null;
+  default_storage_quota_bytes: number | null;
+  effective_quota_bytes: number | null;
+  quota_source: "organization" | "server" | null;
+  used_bytes: number;
+  file_count: number;
+  warning: boolean;
+  can_edit: boolean;
+}
 
 export type SignupMode = "disabled" | "always_on" | "org_specified";
 
@@ -1496,6 +1521,12 @@ export interface OrgOverviewStats {
   member_count: number;
   total_file_size_bytes: number;
   is_full_org_total: boolean;
+  /** The effective storage limit in bytes; null means none. */
+  storage_quota_bytes: number | null;
+  /** False when the deployment-wide or the organisation's switch stops new files. */
+  uploads_enabled: boolean;
+  /** True when storage is at or above the warning level of the limit. */
+  storage_warning: boolean;
 }
 
 export interface ProjectGroup {

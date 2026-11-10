@@ -37,6 +37,16 @@ class FileUploadsConfig(BaseModel):
     file_uploads_enabled: bool
 
 
+class DefaultStorageQuota(BaseModel):
+    """The storage limit of an organisation that has none of its own (`/system/default-storage-quota`).
+
+    Attributes:
+        default_storage_quota_bytes: The limit in bytes, or None for no limit.
+    """
+
+    default_storage_quota_bytes: int | None = Field(default=None, ge=0)
+
+
 class ServerSettingsUpdate(BaseModel):
     accent_color_hex: str = Field(pattern=_HEX_COLOR_PATTERN)
     default_header_title: str | None = Field(default=None, max_length=100)

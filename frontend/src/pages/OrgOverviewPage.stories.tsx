@@ -23,10 +23,12 @@ const org: Organization = {
 
 const fullTotalStats: OrgOverviewStats = {
   project_count: 6, archived_project_count: 2, requirement_count: 148, member_count: 12, total_file_size_bytes: 4_500_000, is_full_org_total: true,
+  storage_quota_bytes: null, uploads_enabled: true, storage_warning: false,
 };
 
 const scopedStats: OrgOverviewStats = {
   project_count: 1, archived_project_count: 0, requirement_count: 8, member_count: 12, total_file_size_bytes: 12_000, is_full_org_total: false,
+  storage_quota_bytes: null, uploads_enabled: true, storage_warning: false,
 };
 
 function page(overrides: Partial<OrgDashboard> = {}): OrgDashboard {

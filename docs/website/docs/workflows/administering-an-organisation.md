@@ -13,7 +13,7 @@ Reach an organisation's admin page via **Organisation settings** in the nav, or 
 
 ## Usage
 
-The **Overview** group of the settings opens with a table of **Usage**: the number of users, the number of active and archived projects, and the file storage the organisation uses. It shows the organisation's real totals and is shown to organisation administrators only; the same figures are available as widgets on the [organisation overview](./organisations-and-projects.md#organisation-overview).
+The **Overview** group of the settings opens with a table of **Usage**: the number of users, the number of active and archived projects, and the file storage the organisation uses, with its **Storage limit** and whether **File uploads** are enabled. The limit and the switch are set by the platform operator (see [Organisation storage](./server-administration.md#organisation-storage)) and are read-only here; at 90% of the limit a warning appears and you are notified once. It shows the organisation's real totals and is shown to organisation administrators only; the same figures are available as widgets on the [organisation overview](./organisations-and-projects.md#organisation-overview).
 
 ## Managing users
 

@@ -39,6 +39,8 @@ import { LabeledSelect } from "../components/LabeledSelect";
 import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
 import { PictureImage } from "../components/PictureImage";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { joinStorageLimit, splitStorageLimit, type StorageUnit } from "../utils/storageLimit";
+import { StorageLimitField } from "../components/StorageLimitField";
 import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
@@ -897,25 +899,40 @@ function SignupModeTab() {
 }
 
 /**
- * The deployment-wide file upload switch. Off stops new files only; existing files stay readable and deletable
+ * The deployment-wide file upload switch and the default storage limit of organisations that have none of their own.
+ * Off stops new files only; existing files stay readable and deletable
  * (`services.files.assert_uploads_allowed`). The value is read from the public branding read every page already
  * makes, and the provider is told to read it again after a save.
  */
 function FileUploadsTab() {
   const { showToast } = useToast();
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [limitAmount, setLimitAmount] = useState("");
+  const [limitUnit, setLimitUnit] = useState<StorageUnit>("GB");
   const [saved, setSaved] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useLoadOnChange(async () => {
-    const settings = await api.get<ServerSettings>("/api/v1/system/branding");
+    const [settings, defaults] = await Promise.all([
+      api.get<ServerSettings>("/api/v1/system/branding"),
+      api.get<{ default_storage_quota_bytes: number | null }>("/api/v1/system/default-storage-quota"),
+    ]);
+    const parts = splitStorageLimit(defaults.default_storage_quota_bytes);
     setEnabled(settings.file_uploads_enabled);
+    setLimitAmount(parts.amount);
+    setLimitUnit(parts.unit);
   }, []);
 
   async function save() {
+    const limit = joinStorageLimit(limitAmount, limitUnit);
+    if (limit === undefined) {
+      setError(strings.orgStorage.invalidLimit);
+      return;
+    }
     setError(null);
     try {
       await api.put("/api/v1/system/file-uploads", { file_uploads_enabled: enabled });
+      await api.put("/api/v1/system/default-storage-quota", { default_storage_quota_bytes: limit });
       setSaved(true);
       window.dispatchEvent(new Event(BRANDING_CHANGED_EVENT));
       showToast(strings.fileUploads.saved);
@@ -933,6 +950,12 @@ function FileUploadsTab() {
         checked={enabled}
         onChange={(next) => { setEnabled(next); setSaved(false); }}
         help={strings.help.fileUploadsEnabled}
+      />
+      <StorageLimitField
+        label={strings.fileUploads.defaultLimit} amount={limitAmount} unit={limitUnit} placeholder={strings.fileUploads.defaultLimitNone}
+        onAmountChange={(next) => { setLimitAmount(next); setSaved(false); }}
+        onUnitChange={(next) => { setLimitUnit(next); setSaved(false); }}
+        help={strings.help.defaultStorageLimit}
       />
       <InlineMessage>{error}</InlineMessage>
       <button className="btn btn-primary" onClick={save} disabled={saved} style={{ alignSelf: "flex-start" }}>

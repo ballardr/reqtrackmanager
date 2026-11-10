@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,6 +75,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             (`settings.pat_default_max_lifetime_days`). Enforced dynamically
             at PAT auth time, not just at creation — see
             `models.pat.PersonalAccessToken`'s docstring.
+        file_uploads_enabled / storage_quota_bytes / storage_warned: The operator's storage rules for this tenant
+            (see the column comment below).
         is_active: Whether this organisation's content is currently
             reachable at all (e.g. suspended for non-payment). Reversible,
             unlike deletion: no data is touched, just gated. Deliberately
@@ -305,6 +307,14 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     # members-only, so the phishing concern of an organisation message does not apply, but a link on a page every
     # member trusts is still a choice the organisation makes.
     allow_policy_links: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Storage rules the platform operator sets for this tenant (`services.storage_usage`, `services.files`). They are the
+    # operator's policy, not the organisation's content, so they are not in the organisation bundle.
+    # `file_uploads_enabled` off stops new files for this organisation only; `storage_quota_bytes` null means "use the
+    # server default limit" (itself null for no limit); `storage_warned` records that the 90% notice was sent for the
+    # current crossing, so it is sent once and again only after usage has fallen below the threshold.
+    file_uploads_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    storage_warned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
@@ -383,6 +393,8 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         file_uploads_enabled: Whether the deployment accepts new user files
             at all (`services/files.py::assert_uploads_allowed`). Off stops
             new files only; existing files stay readable and deletable.
+        default_storage_quota_bytes: The storage limit, in bytes, of an organisation that has none of its own
+            (`Organization.storage_quota_bytes`); null means no limit.
     """
 
     __tablename__ = "server_settings"
@@ -418,6 +430,7 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
         str_enum(ModuleEntitlementPolicy), default=ModuleEntitlementPolicy.OPEN
     )
     file_uploads_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    default_storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class PendingInvite(UUIDPKMixin, TimestampMixin, Base):

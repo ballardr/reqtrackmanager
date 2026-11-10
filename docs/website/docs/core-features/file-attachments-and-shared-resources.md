@@ -53,6 +53,8 @@ Beyond per-item attachments, an organisation admin can upload **shared resources
 
 A server administrator can disable file uploads for the whole deployment (see [Server administration](../workflows/server-administration.md#server-management)). Every upload control then stays visible but unavailable, with a tooltip saying that uploads are disabled on this deployment. Files already attached stay readable and can still be deleted.
 
+The platform operator can also disable uploads for one organisation, or give it a storage limit (see [Organisation storage](../workflows/server-administration.md#organisation-storage)). With the organisation's switch off, the controls are unavailable with a tooltip naming the organisation; at the limit, an upload is refused with a message that names the limit and who to ask. Deleting files frees space.
+
 ## Where this fits
 
 See [Workflows → Files, comments, and history](../workflows/files-comments-and-history.md) for the end-to-end task walkthrough.

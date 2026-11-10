@@ -508,11 +508,10 @@ def _store_pictures(
 
     Each is re-sniffed from its bytes (the declared type is ignored) and an SVG is re-sanitised. One that fails is reported
     and left unmapped. An organisation picture the importing organisation already has maps to itself. While file
-    uploads are disabled a picture cannot be stored: it is reported in the preview and left unmapped, so the person
-    sees the loss before applying.
+    uploads are disabled, or the organisation's storage limit would be exceeded, a picture cannot be stored: it is
+    reported in the preview and left unmapped, so the person sees the loss before applying.
     """
     mapping: dict[str, str] = {}
-    can_store = uploads_allowed(db, organization_id)
     for entry in parsed.images:
         old = str(entry.get("id", ""))
         if old not in wanted:
@@ -529,8 +528,8 @@ def _store_pictures(
         if data is None:
             warnings.add(f'Picture "{filename}" has no file in the report file.')
             continue
-        if not can_store:
-            warnings.add(f'Picture "{filename}" was not imported because file uploads are disabled.')
+        if not uploads_allowed(db, organization_id, len(data)):
+            warnings.add(f'Picture "{filename}" was not imported because file uploads are disabled or the storage limit is reached.')
             continue
         try:
             content_type = sniff_image(data)

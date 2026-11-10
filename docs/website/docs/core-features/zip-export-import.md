@@ -72,6 +72,8 @@ flowchart TD
     F -- Import without files --> H[Records created, files left out]
 ```
 
+The same two choices appear when the bundle's files are larger than the space left under the organisation's [storage limit](../workflows/server-administration.md#organisation-storage), or when uploads are disabled for that organisation; the message gives the size of the files and the space left.
+
 A report file imported with its pictures lists, in its preview, each picture that cannot be stored.
 
 ## Where this fits

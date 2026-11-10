@@ -1,4 +1,4 @@
-import { Pencil, Power, Trash2 } from "lucide-react";
+import { HardDrive, Pencil, Power, Trash2 } from "lucide-react";
 import { ImportWarnings } from "../components/ImportWarnings";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -14,6 +14,7 @@ import { FilterPanel } from "../components/FilterPanel";
 import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { Modal } from "../components/Modal";
+import { OrgStorageDialog } from "../components/OrgStorageDialog";
 import { Spinner } from "../components/Spinner";
 import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
@@ -35,6 +36,8 @@ import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
  * - **Disable/enable**: reversible, no data touched — blocks every org/
  *   project-scoped request for everyone, including the org's own admins,
  *   until re-enabled (e.g. a hosting customer stopped paying).
+ * - **Storage**: the organisation's own file upload switch and storage limit, for a Platform subscription manager or
+ *   server administrator (`OrgStorageDialog`).
  * - **Delete**: irreversible, gated behind typing the organisation's exact
  *   name to confirm — permanently removes everything it owns (projects,
  *   requirements, files, ...). See docs/decisions.md's "Organisation
@@ -81,6 +84,7 @@ export function ServerOrganisationsPage() {
   // `window.confirm` per the sixth-pass audit's "Confirmation and feedback
   // rollout, precisely" list. Delete already uses ConfirmDialog (Tier 2).
   const [disablingOrgId, setDisablingOrgId] = useState<string | null>(null);
+  const [storageOrgId, setStorageOrgId] = useState<string | null>(null);
   const { showToast } = useToast();
 
   async function reload() {
@@ -207,6 +211,9 @@ export function ServerOrganisationsPage() {
               ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
               : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
           ]
+        : []),
+      ...(canCreate
+        ? [{ label: strings.orgStorage.action, icon: <HardDrive size={14} />, onSelect: () => setStorageOrgId(o.id) }]
         : []),
       ...(canDelete ? [{ label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) }] : []),
     ];
@@ -385,6 +392,13 @@ export function ServerOrganisationsPage() {
               onCancel={cancelDelete}
             />
           );
+        })()}
+
+      {storageOrgId &&
+        (() => {
+          const org = orgs.find((o) => o.id === storageOrgId);
+          if (!org) return null;
+          return <OrgStorageDialog orgId={org.id} orgName={org.name} onClose={() => setStorageOrgId(null)} />;
         })()}
 
       {disablingOrgId &&

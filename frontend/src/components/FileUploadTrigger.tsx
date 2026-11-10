@@ -19,14 +19,14 @@
  * field to fill in, not a one-click trigger that acts immediately) than
  * every other call site converted here. See docs/decisions.md.
  *
- * While the server administrator has disabled file uploads (`useFileUploadsEnabled`) every trigger renders as
- * an unavailable button that explains why in a tooltip, and the input is disabled: one place covers every
+ * While file uploads are disabled for the deployment or for the organisation in view (`Branding.fileUploadsDisabledBy`) every
+ * trigger renders as an unavailable button that explains which in a tooltip, and the input is disabled: one place covers every
  * call site, and the control stays visible so it does not read as a defect.
  */
 import type { ChangeEvent, ReactNode } from "react";
 import { forwardRef } from "react";
 
-import { useFileUploadsEnabled } from "../context/BrandingContext";
+import { useBranding } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
 import { Tooltip } from "./Tooltip";
 
@@ -50,9 +50,9 @@ export const FileUploadTrigger = forwardRef<
   { onSelect, children, id, accept, disabled, title, "aria-label": ariaLabel, className, showTrigger = true },
   ref
 ) {
-  const uploadsEnabled = useFileUploadsEnabled();
+  const { fileUploadsDisabledBy: disabledBy } = useBranding();
   const strings = useStrings();
-  const unavailable = !uploadsEnabled;
+  const unavailable = disabledBy !== null;
 
   function handleChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -76,7 +76,7 @@ export const FileUploadTrigger = forwardRef<
 
   if (unavailable) {
     return (
-      <Tooltip label={strings.fileUploads.unavailable} pinnable wrap>
+      <Tooltip label={disabledBy === "organization" ? strings.fileUploads.unavailableOrganization : strings.fileUploads.unavailable} pinnable wrap>
         <span
           className={`btn${className ? ` ${className}` : ""}`} role="button" tabIndex={0} aria-disabled="true"
           aria-label={ariaLabel}

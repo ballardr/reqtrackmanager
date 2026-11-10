@@ -9,7 +9,8 @@ Responsibilities:
 - Serve both the stats endpoint and the organisation dashboards' core metrics, so the two cannot disagree.
 
 Design decisions: a server administrator with no role in the organisation gets no figures (the caller's route gates
-that first); member count is never scoped, because anyone who reaches the figures may already list the members.
+that first); member count is never scoped, because anyone who reaches the figures may already list the members; the
+administrator's storage figure is `storage_usage.used_bytes`, the measure a storage limit applies to.
 """
 
 from __future__ import annotations
@@ -21,12 +22,13 @@ from sqlalchemy.orm import Session
 
 from app.models.enums import OrgRole
 from app.models.file import FileAsset, RequirementActionFile, RequirementFile
-from app.models.organization import UserOrgRole
+from app.models.organization import Organization, ServerSettings, UserOrgRole
 from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.schemas.org import OrgOverviewStatsOut
+from app.services import storage_usage
 from app.services.project_access import accessible_project_ids
 from app.services.rbac import get_effective_org_roles
 
@@ -77,11 +79,7 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
                 Project.organization_id == organization_id, Project.is_archived.is_(True)
             )
         ) or 0
-        total_file_size_bytes = db.scalar(
-            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
-                FileAsset.organization_id == organization_id
-            )
-        ) or 0
+        total_file_size_bytes = storage_usage.used_bytes(db, organization_id)
     else:
         accessible_ids = accessible_project_ids(db, current_user.id)
         org_project_ids = set(
@@ -146,7 +144,15 @@ def org_overview_stats(db: Session, current_user: User, organization_id: UUID) -
             )
         ) or 0
 
+    organization = db.get(Organization, organization_id)
+    quota = storage_usage.effective_quota(db, organization) if organization is not None else storage_usage.Quota(None, None)
+    deployment_enabled = db.scalar(select(ServerSettings.file_uploads_enabled)) is not False
     return OrgOverviewStatsOut(
+        storage_quota_bytes=quota.bytes,
+        uploads_enabled=deployment_enabled and (organization is None or organization.file_uploads_enabled),
+        storage_warning=bool(
+            sees_full_totals and quota.bytes and total_file_size_bytes >= quota.bytes * storage_usage.WARNING_PERCENT // 100
+        ),
         project_count=project_count,
         archived_project_count=archived_project_count,
         requirement_count=requirement_count,

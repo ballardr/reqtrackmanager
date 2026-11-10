@@ -8,6 +8,7 @@ import { OrgUsageTable } from "./OrgUsageTable";
 const FULL: OrgOverviewStats = {
   project_count: 6, archived_project_count: 2, requirement_count: 148, member_count: 12,
   total_file_size_bytes: 4_500_000, is_full_org_total: true,
+  storage_quota_bytes: null, uploads_enabled: true, storage_warning: false,
 };
 
 function mockStats(stats: OrgOverviewStats) {
@@ -31,6 +32,23 @@ export const FullTotals: Story = {
     await expect(within(table).getByRole("row", { name: /Active .*\s+6/ })).toBeVisible();
     await expect(within(table).getByRole("row", { name: /Archived .*\s+2/ })).toBeVisible();
     await expect(within(table).getByRole("row", { name: /File storage\s+4\.3 MB/ })).toBeVisible();
+    await expect(within(table).getByRole("row", { name: /Storage limit\s+No limit/ })).toBeVisible();
+    await expect(within(table).getByRole("row", { name: /File uploads\s+Enabled/ })).toBeVisible();
+    await expect(within(canvasElement).queryByRole("status")).toBeNull();
+  },
+};
+
+/** A limit, uploads switched off for the organisation, and storage at the warning level: the limit and state are
+ * shown read-only and the warning tells the administrator what to do. */
+export const NearlyFullWithUploadsDisabled: Story = {
+  beforeEach: () => mockStats({
+    ...FULL, total_file_size_bytes: 950, storage_quota_bytes: 1000, uploads_enabled: false, storage_warning: true,
+  }),
+  play: async ({ canvasElement }) => {
+    const table = await within(canvasElement).findByRole("table", { name: "Usage" });
+    await expect(within(table).getByRole("row", { name: /Storage limit\s+1000 B/ })).toBeVisible();
+    await expect(within(table).getByRole("row", { name: /File uploads\s+Disabled/ })).toBeVisible();
+    await expect(within(canvasElement).getByRole("status")).toHaveTextContent(/Storage is nearly full/);
   },
 };
 

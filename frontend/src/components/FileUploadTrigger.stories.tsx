@@ -92,3 +92,31 @@ export const UnavailableWhileUploadsAreDisabled: Story = {
     await expect(await within(canvasElement.ownerDocument.body).findByText(/File uploads are disabled on this deployment/)).toBeInTheDocument();
   },
 };
+
+const ORGANISATION_UPLOADS_DISABLED = {
+  id: "org-1", name: "Acme", logo_file_id: null, header_title: null, accent_color_hex: null, file_uploads_enabled: false,
+};
+
+/** While only the organisation's own switch is off the trigger is unavailable too, and the tooltip names the
+ * organisation as the reason. */
+export const UnavailableWhileTheOrganisationHasUploadsDisabled: Story = {
+  decorators: [
+    (Story) => <BrandingProvider projectId={null}><Story /></BrandingProvider>,
+    withThemeProvider(),
+  ],
+  args: { children: <><Paperclip size={14} /> Attach a file</> },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string): Promise<never> => {
+      if (path.includes("/system/branding")) return { ...UPLOADS_DISABLED_SETTINGS, file_uploads_enabled: true } as never;
+      if (path.endsWith("/api/v1/orgs")) return [ORGANISATION_UPLOADS_DISABLED] as never;
+      return [] as never;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = await canvas.findByRole("button", { name: /Attach a file/ });
+    await waitFor(() => expect(trigger).toHaveAttribute("aria-disabled", "true"));
+    await userEvent.hover(trigger);
+    await expect(await within(canvasElement.ownerDocument.body).findByText(/File uploads are disabled for this organisation/)).toBeInTheDocument();
+  },
+};

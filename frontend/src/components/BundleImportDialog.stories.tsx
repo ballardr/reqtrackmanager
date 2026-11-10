@@ -86,6 +86,29 @@ export const OffersImportWithoutFiles: Story = {
   },
 };
 
+/** The files do not fit under the organisation's storage limit: the dialog gives the size and the space left, with the
+ * same two choices. */
+export const OffersImportWithoutFilesWhenTheyDoNotFit: Story = {
+  args: {
+    onImport: fn(async (_file: File, skipFiles: boolean) => {
+      if (!skipFiles) {
+        throw new ApiError(403, "The storage limit of this organisation has been reached.", {
+          code: "storage_quota_exceeded", file_count: 2, file_bytes: 3 * 1024 * 1024, remaining_bytes: 1024 * 1024,
+        });
+      }
+    }),
+  },
+  play: async ({ canvasElement, args }) => {
+    const dialog = within(within(canvasElement.ownerDocument.body).getByRole("dialog", { name: "Import project" }));
+    await userEvent.upload(dialog.getByLabelText("Project bundle (.zip)") as HTMLInputElement, zip());
+    await userEvent.click(dialog.getByRole("button", { name: "Import" }));
+    await expect(await dialog.findByText("2 files (3.0 MB) do not fit in the storage space left for this organisation (1.0 MB).")).toBeInTheDocument();
+    await expect(dialog.getByRole("button", { name: "Cancel import" })).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole("button", { name: "Import without files" }));
+    await waitFor(() => expect(args.onImport).toHaveBeenLastCalledWith(expect.any(File), true));
+  },
+};
+
 /** Cancel import closes the dialog without a second request. */
 export const CancelImportClosesTheDialog: Story = {
   args: { onImport: fn(async () => { throw FILES_REFUSAL(); }) },

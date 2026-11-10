@@ -41,6 +41,7 @@ from app.routers.orgs import (
     resources,
     scoring,
     settings,
+    storage,
     taxonomies,
 )
 
@@ -60,6 +61,7 @@ router.include_router(files.router, prefix=_PREFIX)
 router.include_router(records.router, prefix=_PREFIX)
 router.include_router(branding.router, prefix=_PREFIX)
 router.include_router(settings.router, prefix=_PREFIX)
+router.include_router(storage.router, prefix=_PREFIX)
 router.include_router(org_pats.router, prefix=_PREFIX)
 router.include_router(taxonomies.router, prefix=_PREFIX)
 router.include_router(custom_roles.router, prefix=_PREFIX)

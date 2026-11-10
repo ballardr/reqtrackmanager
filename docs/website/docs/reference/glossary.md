@@ -182,6 +182,10 @@ A per-project setting under which each component follows its own [stage workflow
 
 The expected range (an expected start and end, both calendar dates) of a phase of a stage or of a component's track, with its actual start and completion and the upcoming, overdue and completed reminders sent about it. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#phase-schedule-and-reminders).
 
+#### Storage limit
+
+The most storage an organisation may use for its files and stored report outputs, set by a server administrator or Platform subscription manager (or, for an organisation with none, the deployment's default limit). Reaching it stops new files only; existing files stay readable and deletable. See [Organisation storage](../workflows/server-administration.md#organisation-storage).
+
 #### Subscription removal authority
 
 A server role, granted by a server administrator, that permanently deletes an organisation and all of its data after its name is typed to confirm. It holds no other power: it cannot create, suspend or read records. Independent of the Platform subscription manager. See [Server administration](../workflows/server-administration.md#server-roles).

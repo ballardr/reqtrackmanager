@@ -174,6 +174,49 @@ class OrganizationOut(BaseModel):
     # on, otherwise their own toggle would silently be a no-op. See
     # `Organization.allow_ai_approvals`'s model docstring.
     allow_ai_approvals: bool = False
+    #: Whether the organisation may store new files (the operator's switch for this tenant; the deployment-wide switch
+    #: is `GET /system/branding`). Readable by every member so upload controls can explain themselves.
+    file_uploads_enabled: bool = True
+
+
+class OrgStorageOut(BaseModel):
+    """An organisation's storage rules and usage (`GET /orgs/{id}/storage`).
+
+    Attributes:
+        file_uploads_enabled: The organisation's own switch.
+        deployment_uploads_enabled: The deployment-wide switch, which takes precedence.
+        storage_quota_bytes: The organisation's own limit; None means it follows the server default.
+        default_storage_quota_bytes: The server default limit; None means none.
+        effective_quota_bytes: The limit that applies (own, else default), or None.
+        quota_source: "organization", "server" or None.
+        used_bytes: Stored files plus stored report-run outputs.
+        file_count: The number of stored files.
+        warning: True when usage is at or above the warning level of the effective limit.
+        can_edit: Whether the caller may change the rules (server administrator or Platform subscription manager).
+    """
+
+    file_uploads_enabled: bool
+    deployment_uploads_enabled: bool
+    storage_quota_bytes: int | None
+    default_storage_quota_bytes: int | None
+    effective_quota_bytes: int | None
+    quota_source: str | None
+    used_bytes: int
+    file_count: int
+    warning: bool
+    can_edit: bool
+
+
+class OrgStorageUpdate(BaseModel):
+    """The storage rules a Platform subscription manager or server administrator sets for an organisation.
+
+    Attributes:
+        file_uploads_enabled: Whether the organisation may store new files.
+        storage_quota_bytes: The organisation's own limit in bytes; None follows the server default.
+    """
+
+    file_uploads_enabled: bool
+    storage_quota_bytes: int | None = Field(default=None, ge=0)
 
 
 class OrgImportResult(BaseModel):
@@ -937,7 +980,8 @@ class OrgOverviewStatsOut(BaseModel):
     Known gap (see `get_org_overview_stats`'s own docstring for the full
     reasoning): a scoped (non-admin) caller's `total_file_size_bytes`
     excludes discussion-comment attachments (`CommentFile`) — a strict
-    undercount, never an over-exposure.
+    undercount, never an over-exposure. For the full total the figure is `services.storage_usage.used_bytes` (stored
+    files plus stored report-run outputs), the one measure a storage limit applies to.
     """
 
     project_count: int
@@ -946,6 +990,12 @@ class OrgOverviewStatsOut(BaseModel):
     member_count: int
     total_file_size_bytes: int
     is_full_org_total: bool
+    #: The effective storage limit (the organisation's own, else the server default); None means none.
+    storage_quota_bytes: int | None = None
+    #: False when the deployment-wide or the organisation's switch stops new files.
+    uploads_enabled: bool = True
+    #: True when stored bytes are at or above the warning level of the limit (only meaningful for the full total).
+    storage_warning: bool = False
 
 
 class DisplayNameLockUpdate(BaseModel):

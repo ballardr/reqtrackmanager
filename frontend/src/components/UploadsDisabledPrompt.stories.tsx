@@ -6,7 +6,7 @@ import { UploadsDisabledPrompt } from "./UploadsDisabledPrompt";
 const meta: Meta<typeof UploadsDisabledPrompt> = {
   title: "Components/UploadsDisabledPrompt",
   component: UploadsDisabledPrompt,
-  args: { info: { fileCount: 12, fileBytes: 5 * 1024 * 1024 }, onCancel: fn(), onContinue: fn() },
+  args: { info: { fileCount: 12, fileBytes: 5 * 1024 * 1024, reason: "deployment" }, onCancel: fn(), onContinue: fn() },
 };
 export default meta;
 
@@ -25,7 +25,7 @@ export const CancelOrContinue: Story = {
 };
 
 export const SingleFile: Story = {
-  args: { info: { fileCount: 1, fileBytes: 100 } },
+  args: { info: { fileCount: 1, fileBytes: 100, reason: "deployment" } },
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText(/^1 file \(100 B\) cannot be stored/)).toBeInTheDocument();
   },
@@ -43,3 +43,24 @@ export const Busy: Story = {
 
 export const LightTheme: Story = { ...CancelOrContinue, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...CancelOrContinue, globals: { theme: "dark" } };
+
+/** When the organisation's own switch stops the files the sentence says so. */
+export const OrganisationSwitch: Story = {
+  args: { info: { fileCount: 2, fileBytes: 2048, reason: "organization" } },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("2 files (2.0 KB) cannot be stored because file uploads are disabled for this organisation.")).toBeInTheDocument();
+  },
+};
+
+/** When the storage limit would be exceeded the sentence gives the size and the space left, with the same two actions. */
+export const StorageLimit: Story = {
+  args: { info: { fileCount: 3, fileBytes: 5 * 1024 * 1024, reason: "quota", remainingBytes: 1024 * 1024 } },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText("3 files (5.0 MB) do not fit in the storage space left for this organisation (1.0 MB).")).toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("button", { name: "Import without files" }));
+    await expect(args.onContinue).toHaveBeenCalled();
+    await userEvent.click(canvas.getByRole("button", { name: "Cancel import" }));
+    await expect(args.onCancel).toHaveBeenCalled();
+  },
+};

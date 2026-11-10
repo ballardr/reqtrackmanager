@@ -99,6 +99,28 @@ export const RowActionsOpenInActionMenu: Story = {
   },
 };
 
+/** The Storage action opens the organisation's storage rules for a caller who may change them. */
+export const StorageActionOpensTheStorageDialog: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/system/access") return ADMIN_ACCESS;
+      if (path === "/api/v1/orgs/org-1/storage") {
+        return {
+          file_uploads_enabled: true, deployment_uploads_enabled: true, storage_quota_bytes: null, default_storage_quota_bytes: null,
+          effective_quota_bytes: null, quota_source: null, used_bytes: 0, file_count: 0, warning: false, can_edit: true,
+        };
+      }
+      return path === "/api/v1/orgs/creation-choices" ? [] : [org({ id: "org-1", name: "Acme Corp", is_active: true })];
+    });
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Acme Corp actions" }));
+    const menu = within(document.body).getByRole("menu", { name: "Acme Corp actions" });
+    await userEvent.click(within(menu).getByRole("menuitem", { name: "Storage" }));
+    await expect(await within(document.body).findByRole("dialog", { name: "Storage: Acme Corp" })).toBeVisible();
+  },
+};
+
 /** A Platform subscription manager provisions and suspends but cannot delete or open an organisation's administration. */
 export const PlatformSubscriptionManagerActions: Story = {
   beforeEach: () => {
@@ -114,6 +136,7 @@ export const PlatformSubscriptionManagerActions: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Acme Corp actions" }));
     const menu = body.getByRole("menu", { name: "Acme Corp actions" });
     await expect(within(menu).getByRole("menuitem", { name: "Disable" })).toBeInTheDocument();
+    await expect(within(menu).getByRole("menuitem", { name: "Storage" })).toBeInTheDocument();
     await expect(within(menu).queryByRole("menuitem", { name: "Delete" })).not.toBeInTheDocument();
     await expect(within(menu).queryByRole("menuitem", { name: "Edit" })).not.toBeInTheDocument();
   },
@@ -133,6 +156,7 @@ export const SubscriptionRemovalAuthorityActions: Story = {
     await userEvent.click(await canvas.findByRole("button", { name: "Acme Corp actions" }));
     const menu = body.getByRole("menu", { name: "Acme Corp actions" });
     await expect(within(menu).getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
+    await expect(within(menu).queryByRole("menuitem", { name: "Storage" })).not.toBeInTheDocument();
     await expect(within(menu).queryByRole("menuitem", { name: "Disable" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("button", { name: /^New organisation/i })).not.toBeInTheDocument();
   },

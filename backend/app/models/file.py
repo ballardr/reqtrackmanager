@@ -49,7 +49,9 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "file_assets"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), index=True
+    )
     storage_backend: Mapped[str] = mapped_column(String(20))
     storage_key: Mapped[str] = mapped_column(String(500))
     filename: Mapped[str] = mapped_column(String(255))

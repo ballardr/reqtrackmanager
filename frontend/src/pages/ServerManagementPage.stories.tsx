@@ -37,6 +37,7 @@ function mockServerManagementApis(users: SystemUser[]) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/system/branding")) return SERVER_SETTINGS;
     if (path.includes("/system/signup-config")) return SIGNUP_CONFIG;
+    if (path.includes("/system/default-storage-quota")) return { default_storage_quota_bytes: null };
     if (path === "/api/v1/system/access") return ADMIN_ACCESS;
     throw new Error(`unmocked path: ${path}`);
   });
@@ -503,6 +504,25 @@ export const FileUploadsSwitch: Story = {
     await userEvent.click(toggle);
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/system/file-uploads", { file_uploads_enabled: false }));
+  },
+};
+
+/** The default storage limit of organisations that have none: entered in GB and saved in bytes with the switch. */
+export const DefaultStorageLimit: Story = {
+  beforeEach: () => {
+    mockServerManagementApis([]);
+    spyOn(api, "put").mockResolvedValue({ file_uploads_enabled: true });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "File uploads" }));
+    const amount = await canvas.findByRole("spinbutton", { name: "Default storage limit" });
+    await expect(amount).toHaveAttribute("placeholder", "No limit");
+    await userEvent.type(amount, "2");
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith("/api/v1/system/default-storage-quota", { default_storage_quota_bytes: 2 * 1024 ** 3 }),
+    );
   },
 };
 

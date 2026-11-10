@@ -7,6 +7,8 @@
  * Responsibilities:
  * - Read `GET /orgs/{id}/overview-stats`, the same service function the organisation dashboards' core metrics use, so
  *   the table and the widgets cannot disagree.
+ * - Show the storage limit, whether new files are accepted and, at 90% of the limit, a warning (the limit itself is set
+ *   by the server administrator or a Platform subscription manager, so it is read-only here).
  * - Render only the organisation's real totals (`is_full_org_total`): a scoped figure would describe the caller's own
  *   projects, not the organisation's size, so nothing is drawn for it.
  *
@@ -23,6 +25,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { formatFileSize } from "../utils/formatFileSize";
 
 import { DirectoryTable } from "./DirectoryTable";
+import { InlineMessage } from "./InlineMessage";
 
 interface UsageRow {
   key: string;
@@ -55,9 +58,18 @@ export function OrgUsageTable({ orgId }: { orgId: string }): JSX.Element | null 
     { key: "active", measure: strings.orgAdmin.usage.activeProjects, value: stats.project_count.toLocaleString() },
     { key: "archived", measure: strings.orgAdmin.usage.archivedProjects, value: stats.archived_project_count.toLocaleString() },
     { key: "storage", measure: strings.orgAdmin.usage.storage, value: formatFileSize(stats.total_file_size_bytes) },
+    {
+      key: "limit", measure: strings.orgAdmin.usage.storageLimit,
+      value: stats.storage_quota_bytes === null ? strings.orgAdmin.usage.noLimit : formatFileSize(stats.storage_quota_bytes),
+    },
+    {
+      key: "uploads", measure: strings.orgAdmin.usage.fileUploads,
+      value: stats.uploads_enabled ? strings.orgAdmin.usage.uploadsEnabled : strings.orgAdmin.usage.uploadsDisabled,
+    },
   ];
 
   return (
+    <div className="stack">
     <DirectoryTable
       ariaLabel={strings.orgAdmin.usage.title}
       columns={[
@@ -68,5 +80,7 @@ export function OrgUsageTable({ orgId }: { orgId: string }): JSX.Element | null 
       rowKey={(row) => row.key}
       emptyState={null}
     />
+    {stats.storage_warning && <InlineMessage tone="warning">{strings.orgAdmin.usage.nearlyFull}</InlineMessage>}
+    </div>
   );
 }

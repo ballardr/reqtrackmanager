@@ -187,4 +187,4 @@ def test_every_storage_writer_is_gated():
     assert writers == set(exempt), f"unlisted storage writers: {sorted(writers - set(exempt))}"
     source = (app_dir / "services/files.py").read_text()
     body = source.split("def upload_file(", 1)[1].split("backend.save(", 1)[0]
-    assert "assert_uploads_allowed(db, organization_id)" in body
+    assert "assert_uploads_allowed(db, organization_id, len(data))" in body

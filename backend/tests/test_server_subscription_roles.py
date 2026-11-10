@@ -358,6 +358,10 @@ EXPECTED_GATES: dict[tuple[str, str], frozenset[str]] = {
     ("GET", "/api/v1/system/signup-config"): _NONE,
     ("PUT", "/api/v1/system/signup-config"): _ADMIN,
     ("PUT", "/api/v1/system/file-uploads"): _ADMIN,
+    ("GET", "/api/v1/system/default-storage-quota"): _ADMIN,
+    ("PUT", "/api/v1/system/default-storage-quota"): _ADMIN,
+    ("GET", "/api/v1/orgs/{organization_id}/storage"): _NONE,
+    ("PUT", "/api/v1/orgs/{organization_id}/storage"): frozenset({MANAGER}),
     ("GET", "/api/v1/system/record-sensitivity-policy"): _ADMIN,
     ("PUT", "/api/v1/system/record-sensitivity-policy/{tag}"): _ADMIN,
     ("GET", "/api/v1/system/report-fonts"): _ADMIN,
@@ -374,7 +378,7 @@ def test_every_server_gated_route_is_classified():
         if endpoint is None:
             continue
         module = endpoint.__module__
-        if module == "app.routers.orgs.core" or module.startswith("app.routers.system"):
+        if module in ("app.routers.orgs.core", "app.routers.orgs.storage") or module.startswith("app.routers.system"):
             for method in route.methods - {"HEAD", "OPTIONS"}:
                 observed[(method, route.path)] = frozenset(_gates(route.dependant))
     assert observed == EXPECTED_GATES

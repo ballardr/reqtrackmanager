@@ -53,13 +53,35 @@ The two subscription roles are independent: holding one does not give the other,
 - **Password help** — each person's **⋮** menu offers **Send password reset link** (emailed to them, never shown to you) and **Require new password**; **Force a credential reset…** covers everyone, one organisation or the server administrators after an incident. See [Password resets and credential recovery](./password-reset-and-credential-recovery.md), including the command-line tool for when no administrator can sign in.
 - **Platform branding** — the deployment's own logo and login-page styling, distinct from an organisation's own branding.
 - **Public sign-up** — the deployment-wide sign-up mode: disabled (accounts created by an admin or invite only), always on (anyone can create an account, joining no organisation automatically), or restricted to organisations that have opted in by email domain. See [Signing in → Signing up](./signing-in.md#signing-up) for what a user sees on the other side of this setting.
-- **File uploads** — one switch, **Allow file uploads**, that is on by default. When it is off, no new file is accepted anywhere on the deployment: record and comment attachments, evidence, profile pictures, logos and login backgrounds, shared resources and report pictures. Existing files stay readable and can still be deleted. Every upload control stays visible but unavailable, and a tooltip says that uploads are disabled on this deployment. Reports run in the background still store their output, so reporting keeps working. See [Importing when uploads are disabled](../core-features/zip-export-import.md#importing-when-uploads-are-disabled).
+- **File uploads** — one switch, **Allow file uploads**, that is on by default, and a **Default storage limit** (in MB or GB) for organisations that have no limit of their own; leave it empty for no limit. Only a server administrator changes either. When it is off, no new file is accepted anywhere on the deployment: record and comment attachments, evidence, profile pictures, logos and login backgrounds, shared resources and report pictures. Existing files stay readable and can still be deleted. Every upload control stays visible but unavailable, and a tooltip says that uploads are disabled on this deployment. Reports run in the background still store their output, so reporting keeps working. See [Importing when uploads are disabled](../core-features/zip-export-import.md#importing-when-uploads-are-disabled). An organisation's own switch and limit are set per organisation (see [Organisation storage](#organisation-storage)).
 - **Email** — deployment-wide outbound email configuration.
 - **Messages** — platform-wide announcements (see [below](#messages)).
 - **Policies** — the privacy policy, the data policy and any other policy the deployment publishes (see [below](#policies)).
 - **Personal data in exports** — the deployment default for personal data in record exports and imports (see [below](#personal-data-in-exports-and-imports)).
 - **Modules** — which [modules](../modules/overview.md) exist for whom: the default entitlement policy (open or closed), what an organisation gets for a module it has not chosen itself (available, and on for new projects), an **Apply to all organisations** action that writes those defaults into existing organisations (type the word shown to confirm), and a per-organisation list to grant or withdraw a module. A module withdrawn from an organisation disappears from its administrators' and projects' module lists. A fresh install starts with every module available; an upgraded one changes only when you choose.
 - **Report fonts** — the fonts report authors can choose. The four bundled fonts are always offered. A house typeface is added by putting its `.ttf` files in the font directory the deployment mounts (see [Extra report fonts](../installation-deployment/production-deployment.md#extra-report-fonts)) and pressing **Rescan**. For each provided family you can switch **Offered to authors** off (layouts already using it keep working), set the **Name in Word and OpenDocument** and a **Generic fallback** (sans-serif, serif or monospace) for readers who lack the font. The page lists the faces found with each font's licence permission, and every file that was skipped with the reason (for example, a font whose licence forbids embedding). You are responsible for the licence of every font you provide. PDF reports always carry the real font; Word and OpenDocument files name it.
+
+## Organisation storage
+
+A server administrator or a **Platform subscription manager** can stop new files for one organisation, or cap how much storage it uses, from **Organisations → ⋮ → Storage**. An organisation's administrators see the limit and their usage but cannot change them.
+
+| Setting | Effect |
+| --- | --- |
+| **Allow file uploads** | Off stops every new file for that organisation. Other organisations are unaffected. |
+| **Storage limit** | The most the organisation may use, in MB or GB, counting its files and the stored outputs of its background reports. Empty follows the **Default storage limit**; a limit of 0 accepts no new file. |
+
+```mermaid
+flowchart TD
+    A[New file] --> B{Deployment switch on?}
+    B -- No --> X1[Refused: disabled on this deployment]
+    B -- Yes --> C{Organisation switch on?}
+    C -- No --> X2[Refused: disabled for this organisation]
+    C -- Yes --> D{Storage used + file within the limit?}
+    D -- No --> X3[Refused: storage limit reached]
+    D -- Yes --> E[Stored]
+```
+
+Lowering a limit below current use only stops new files: nothing is deleted, files stay readable and can be deleted, and deleting frees space for the next upload. When an organisation reaches 90% of its limit, its administrators receive one notification and the usage table shows a warning; the notice is sent again only after usage has fallen below 90% and risen back. Importing a bundle whose files do not fit the space left offers **Cancel import** or **Import without files**. These settings belong to the platform operator and are not part of an organisation export.
 
 ## Messages
 

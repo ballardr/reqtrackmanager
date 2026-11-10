@@ -58,6 +58,8 @@ class NotificationType(str, enum.Enum):
     POLICY_PUBLISHED = "policy_published"
     # A policy that requires acceptance was published or a reminder was sent (services/policy_acknowledgements.py).
     POLICY_ACKNOWLEDGEMENT_REQUIRED = "policy_acknowledgement_required"
+    # An organisation's stored files reached 90% of its storage limit (services/storage_usage.py).
+    STORAGE_LIMIT_NEAR = "storage_limit_near"
     # A background custom report finished or failed (services/report_run_jobs.py).
     REPORT_RUN_FINISHED = "report_run_finished"
 
