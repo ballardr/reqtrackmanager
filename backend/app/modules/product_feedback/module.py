@@ -164,6 +164,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(key=REQUEST_SUBCOMPONENT_KEY, name="Enhancement requests", default_enabled=True),
         ModuleSubComponentDefinition(
             key=ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY, name="Organisation-level request inbox", default_enabled=True,
+            organization_only=True,
         ),
         ModuleSubComponentDefinition(key=EXTERNAL_REFERENCES_SUBCOMPONENT_KEY, name="External references", default_enabled=True),
     ),

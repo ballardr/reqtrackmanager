@@ -480,6 +480,7 @@ def list_project_module_subcomponents(
     }
     return [
         out for sub in definition.sub_components
+        if not sub.organization_only
         if (out := _project_subcomponent_out(db, project, module_key, sub, project_rows.get(sub.key))).org_hard_enabled
     ]
 
@@ -514,7 +515,7 @@ def update_project_module_subcomponent_enablement(
     if definition is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
     subcomponent = next((s for s in definition.sub_components if s.key == subcomponent_key), None)
-    if subcomponent is None:
+    if subcomponent is None or subcomponent.organization_only:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Sub-component not found.")
     org_state = resolve_org_subcomponent_state(db, project.organization_id, module_key, subcomponent_key)
     if payload.enabled and not (is_module_enabled(db, project.organization_id, module_key) and org_state and org_state[0]):

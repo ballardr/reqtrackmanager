@@ -232,7 +232,11 @@ can turn it off without touching its projects, declares a **separate**
 sub-component for that tier (Product Feedback's `organization_requests`, the
 organisation's request inbox, beside `enhancement_request` for the projects'
 lists). A shared key would not do: the organisation's `enabled` for it is also
-the default every project inherits.
+the default every project inherits. Such a sub-component sets
+`ModuleSubComponentDefinition.organization_only=True`: a project has no state for
+it, so the project list omits it, the project `PUT` answers 404, creation and
+template copies write no project row, and `is_module_subcomponent_enabled`
+returns the organisation's state, ignoring any stored row. No core file names the key.
 
 ```mermaid
 flowchart TD

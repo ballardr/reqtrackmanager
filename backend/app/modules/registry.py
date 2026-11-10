@@ -348,11 +348,18 @@ class ModuleSubComponentDefinition:
             override row for this sub-component gets it enabled by
             default — this dataclass's own analogue of `ModuleDefinition.
             default_enabled` one tier down.
+        organization_only: The sub-component belongs to the organisation
+            (an organisation-owned list), so it has no project-level state:
+            projects are not offered a switch for it, the project API
+            rejects a write for it, no project row is ever created for it,
+            and `is_module_subcomponent_enabled` returns the
+            organisation's state, ignoring any stored project row.
     """
 
     key: str
     name: str
     default_enabled: bool = True
+    organization_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -3619,6 +3626,9 @@ def is_module_subcomponent_enabled(
        subcomponent_state`'s `enabled`) is `False` -> `False`; no project
        value can cross it, so an org-level Off reaches every project at
        once.
+    2b. The sub-component is `organization_only` -> `True` here (the
+       organisation's state decided it in step 2); no project row or
+       default is consulted, so a stale row cannot disagree.
     3. This project's own `ProjectModuleSubComponentEnablement` row ->
        its `enabled`. Projects get one copied in at creation (`snapshot_
        project_module_state`) and before an org default changes
@@ -3658,6 +3668,8 @@ def is_module_subcomponent_enabled(
     if not org_enabled:
         return False
 
+    if (definition := _find_subcomponent_definition(module_key, subcomponent_key)) and definition.organization_only:
+        return True
     project_override = _project_subcomponent_override(db, project_id, module_key, subcomponent_key)
     if project_override is not None:
         return project_override.enabled
@@ -3768,6 +3780,8 @@ def snapshot_project_module_state(db: Session, project_id: uuid.UUID, organizati
                 enabled=resolve_default_project_enabled(db, organization_id, definition.key),
             ))
         for sub in definition.sub_components:
+            if sub.organization_only:
+                continue
             org_enabled, org_default_project_enabled = resolve_org_subcomponent_state(
                 db, organization_id, definition.key, sub.key,
             )
@@ -3818,6 +3832,8 @@ def freeze_projects_subcomponent_default(
 
     org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
     if org_state is None or not org_state[0] or not is_module_enabled(db, organization_id, module_key):
+        return
+    if (definition := _find_subcomponent_definition(module_key, subcomponent_key)) and definition.organization_only:
         return
     project_ids = _project_ids_without_row(
         db, organization_id, ProjectModuleSubComponentEnablement,

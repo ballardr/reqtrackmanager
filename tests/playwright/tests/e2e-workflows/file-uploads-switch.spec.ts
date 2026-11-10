@@ -10,6 +10,7 @@ import {
   installCleanupHook,
   loginAs,
   onCleanup,
+  PASSWORD,
   selectServerManagementGroup,
   SERVER_ADMIN_LOGIN,
 } from "./helpers";
@@ -76,35 +77,41 @@ test("importing a bundle with a file while uploads are disabled offers Import wi
     await page.request.post(`${apiBaseUrl}/api/v1/orgs`, { headers: serverHeaders, data: { name: `E2E Uploads Org ${suffix}` } })
   ).json();
   deleteOrgOnCleanup({ id: org.id });
+  // A server administrator is not a member of a new organisation, so its content is created by an organisation admin.
+  const orgAdminEmail = `e2e-uploads-admin-${suffix}@example.com`;
+  await page.request.post(`${apiBaseUrl}/api/v1/orgs/${org.id}/users`, {
+    headers: serverHeaders, data: { email: orgAdminEmail, display_name: "E2E Uploads Admin", password: PASSWORD, role: "org_admin" },
+  });
+  const orgAdminHeaders = await apiHeaders(page.request, orgAdminEmail, PASSWORD);
   const project = await (
     await page.request.post(`${apiBaseUrl}/api/v1/projects`, {
-      headers: serverHeaders, data: { organization_id: org.id, name: `E2E Uploads Source ${suffix}`, summary: "" },
+      headers: orgAdminHeaders, data: { organization_id: org.id, name: `E2E Uploads Source ${suffix}`, summary: "" },
     })
   ).json();
   const component = await (
     await page.request.post(`${apiBaseUrl}/api/v1/projects/${project.id}/components`, {
-      headers: serverHeaders, data: { name: "Software", prefix: "SW" },
+      headers: orgAdminHeaders, data: { name: "Software", prefix: "SW" },
     })
   ).json();
   const category = await (
     await page.request.post(`${apiBaseUrl}/api/v1/projects/${project.id}/categories`, {
-      headers: serverHeaders, data: { name: "Performance", prefix: "PERF", component_id: component.id },
+      headers: orgAdminHeaders, data: { name: "Performance", prefix: "PERF", component_id: component.id },
     })
   ).json();
   const requirement = await (
     await page.request.post(`${apiBaseUrl}/api/v1/projects/${project.id}/requirements`, {
-      headers: serverHeaders, data: { name: "Requirement with a file", component_id: component.id, category_id: category.id },
+      headers: orgAdminHeaders, data: { name: "Requirement with a file", component_id: component.id, category_id: category.id },
     })
   ).json();
   const attached = await page.request.post(`${apiBaseUrl}/api/v1/projects/${project.id}/requirements/${requirement.id}/files`, {
-    headers: serverHeaders, multipart: { file: { name: "spec.txt", mimeType: "text/plain", buffer: Buffer.from("hello") } },
+    headers: orgAdminHeaders, multipart: { file: { name: "spec.txt", mimeType: "text/plain", buffer: Buffer.from("hello") } },
   });
   expect(attached.status()).toBe(201);
-  const bundle = await page.request.get(`${apiBaseUrl}/api/v1/projects/${project.id}/export`, { headers: serverHeaders });
+  const bundle = await page.request.get(`${apiBaseUrl}/api/v1/projects/${project.id}/export`, { headers: orgAdminHeaders });
   const bundlePath = path.join(os.tmpdir(), `e2e-uploads-${suffix}.zip`);
   fs.writeFileSync(bundlePath, await bundle.body());
 
-  await loginAs(page, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
+  await loginAs(page, orgAdminEmail, PASSWORD);
   await page.request.put(`${apiBaseUrl}/api/v1/system/file-uploads`, { headers: serverHeaders, data: { file_uploads_enabled: false } });
 
   const importedName = `E2E Uploads Imported ${suffix}`;
@@ -113,9 +120,7 @@ test("importing a bundle with a file while uploads are disabled offers Import wi
   await page.getByRole("button", { name: "Import project" }).click();
   const form = page.getByRole("dialog", { name: "Import project" });
   await form.getByLabel("Name", { exact: true }).fill(importedName);
-  const orgSelect = form.locator("select").first();
-  await expect(orgSelect).toContainText(`E2E Uploads Org ${suffix}`);
-  await orgSelect.selectOption({ label: `E2E Uploads Org ${suffix}` });
+  // The organisation admin belongs to one organisation, so the dialog has no organisation picker.
   await form.locator('input[type="file"][accept*="zip"]').setInputFiles(bundlePath);
   await form.getByRole("button", { name: "Import", exact: true }).click();
 
@@ -127,11 +132,11 @@ test("importing a bundle with a file while uploads are disabled offers Import wi
   // The records came across and the file did not.
   const importedId = page.url().match(/projects\/([0-9a-f-]+)$/)![1];
   const imported: { id: string; name: string }[] = await (
-    await page.request.get(`${apiBaseUrl}/api/v1/projects/${importedId}/requirements`, { headers: serverHeaders })
+    await page.request.get(`${apiBaseUrl}/api/v1/projects/${importedId}/requirements`, { headers: orgAdminHeaders })
   ).json();
   expect(imported.map((r) => r.name)).toContain("Requirement with a file");
   const files = await (
-    await page.request.get(`${apiBaseUrl}/api/v1/projects/${importedId}/requirements/${imported[0].id}/files`, { headers: serverHeaders })
+    await page.request.get(`${apiBaseUrl}/api/v1/projects/${importedId}/requirements/${imported[0].id}/files`, { headers: orgAdminHeaders })
   ).json();
   expect(files).toHaveLength(0);
   fs.rmSync(bundlePath, { force: true });

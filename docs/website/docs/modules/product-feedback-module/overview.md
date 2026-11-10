@@ -42,12 +42,12 @@ Product Feedback is **not** enabled by default. An organisation administrator op
 
 The module works on its own. It links to Stakeholders, Personas, Engagements, Pain Points and Requirements when those are available, and the offer to link to a disabled module's records simply does not appear.
 
-Three [sub-components](../overview.md#sub-component-enablement-finer-grained-than-a-whole-module) can be switched on or off per organisation and per project:
+Three [sub-components](../overview.md#sub-component-enablement-finer-grained-than-a-whole-module) can be switched on or off per organisation; the request inbox is an organisation setting only and is not offered in project administration:
 
 | Sub-component | Switching it off |
 | --- | --- |
 | **Enhancement requests** | Hides the project list, and the module's reports. |
-| **Organisation-level request inbox** | Hides the organisation's inbox without touching any project's requests. |
+| **Organisation-level request inbox** | Hides the organisation's inbox without touching any project's requests. Organisation administration only. |
 | **External references** | Hides the references card, the form section and the **External Systems** settings; stored references are kept and return when it is switched back on. |
 
 ## Roles

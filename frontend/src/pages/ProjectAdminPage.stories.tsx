@@ -1838,6 +1838,33 @@ export const ModulesTabToggleSubComponent: Story = {
   },
 };
 
+/** A module's organisation-only sub-component (Product Feedback's request inbox) is not in the project's list, so
+ * the module shows only its project-level switches. */
+export const ModulesTabOmitsOrganisationOnlySubComponent: Story = {
+  beforeEach: () => {
+    const projectLevel = (key: string, name: string): ProjectModuleSubComponent => ({
+      module_key: "product_feedback", subcomponent_key: key, name,
+      effective_enabled: true, org_default_enabled: true, org_hard_enabled: true, has_project_override: false, project_override_enabled: null,
+    });
+    mockProjectAdminApis({
+      projectModules: [{
+        module_key: "product_feedback", name: "Product Feedback", effective_enabled: true,
+        org_default_enabled: true, org_hard_enabled: true, has_project_override: false, project_override_enabled: null,
+      }],
+      projectModuleSubComponents: {
+        product_feedback: [projectLevel("enhancement_request", "Enhancement requests"), projectLevel("external_references", "External references")],
+      },
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("link", { name: "Modules" }));
+    await userEvent.click(await canvas.findByRole("button", { name: "2 components · all on" }));
+    await expect(canvas.getByRole("switch", { name: "Enable Enhancement requests (Product Feedback) for this project" })).toBeChecked();
+    await expect(canvas.queryByText("Organisation-level request inbox")).not.toBeInTheDocument();
+  },
+};
+
 export const LightTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...OverviewTabSaveSettings, globals: { theme: "dark" } };
 

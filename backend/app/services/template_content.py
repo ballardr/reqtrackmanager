@@ -86,6 +86,9 @@ def copy_module_enablement(db: Session, source: Project, new_project: Project) -
         select(ProjectModuleSubComponentEnablement).where(ProjectModuleSubComponentEnablement.project_id == source.id)
     ).all():
         state = resolve_org_subcomponent_state(db, new_project.organization_id, sub.module_key, sub.subcomponent_key)
+        definition = registry[sub.module_key].sub_components if sub.module_key in registry else ()
+        if any(s.key == sub.subcomponent_key and s.organization_only for s in definition):
+            continue
         if state is not None and state[0] and is_module_enabled(db, new_project.organization_id, sub.module_key):
             db.add(ProjectModuleSubComponentEnablement(
                 project_id=new_project.id, module_key=sub.module_key, subcomponent_key=sub.subcomponent_key, enabled=sub.enabled,
