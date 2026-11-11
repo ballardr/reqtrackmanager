@@ -8,8 +8,8 @@ Reach an organisation's admin page via **Organisation settings** in the nav, or 
 
 | Organisation admin |
 | --- |
-| Users, groups, and organisation-wide settings |
-| ![Organisation admin page showing users and settings](../../static/img/screenshots/org-admin.png) |
+| The overview's usage table, with the groups of settings beside it |
+| ![Organisation admin overview showing the usage table: users, active and archived projects, file storage, storage limit and file uploads](../../static/img/screenshots/org-admin.png) |
 
 ## Usage
 
@@ -38,6 +38,11 @@ Deleting a group never leaves a project without a Project Manager. Every project
 ## Organisation details
 
 The **Organisation details** group (beside **Overview**) holds the organisation's identity: its **logo**, its **name** and the **company details** printed in the footer of its outgoing email (company name, website and postal address). The logo acts at once (upload, or **Remove** to return to the platform logo); the name and the company details are saved together with **Save**, which sends only what changed. An empty company field uses the platform's value, shown as the field's placeholder, so emptying a field and saving returns to it. These fields are separate from the appearance settings below, and saving one page never changes the other.
+
+| Organisation details |
+| --- |
+| The logo, name and the company details of the outgoing email footer |
+| ![Organisation details page with the logo, name, company name, website and postal address](../../static/img/screenshots/org-details.png) |
 
 ## Branding and the report look
 

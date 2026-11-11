@@ -39,6 +39,11 @@ The **Files** entry in the navigation rail, directly below **Projects**, opens t
 - **Project** limits the list to one project.
 - **Include archived projects** adds the files of archived projects, which are left out by default.
 
+| Organisation files |
+| --- |
+| Files of every project you can open, with the project and origin of each |
+| ![Organisation files page with a Project files tab, a Shared resources tab and a filter panel](../../static/img/screenshots/org-files.png) |
+
 Organisation shared resources have their own list and are not repeated here. If you can open more than 250 projects the page covers the first 250 by name and says so; choose a project to see the rest.
 
 ## Picture details

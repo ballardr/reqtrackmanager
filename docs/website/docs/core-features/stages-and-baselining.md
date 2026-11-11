@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Stages and baselining
 
-**Project Admin → Structure** shows a project's stage sequence (e.g. Scoping → Development → Hardening). Each stage follows a **workflow**: an ordered list of named **phases**. Entering a phase of kind **Locked** (the standard workflow's "Approved"):
+**Project Admin → Workflows and phases** shows a project's stage sequence (e.g. Scoping → Development → Hardening). Each stage follows a **workflow**: an ordered list of named **phases**. Entering a phase of kind **Locked** (the standard workflow's "Approved"):
 
 - **Baselines** every non-archived requirement still in draft or reviewed status, snapshotting its current version.
 - **Locks** those requirements — from this point, they can only change via a [change request](./change-requests.md).
@@ -36,7 +36,7 @@ flowchart LR
 
 Every organisation starts with the **Standard** workflow above. A stage can move to any phase of its workflow, in either direction; entering or leaving a Locked phase needs the project manager role, because leaving one unlocks the requirements outside the change-request process.
 
-Organisation administrators define more workflows under **Organisation Admin → Workflow → Stage workflows** (for example Scoping, Technical scoping, Review board, Tendering, Awarded, In progress, Completion for outsourced work). Project managers add workflows of their own under **Project Admin → Workflows and phases → Workflows**, and can hide an organisation workflow in the project and add it back later. A stage changes workflow only while it is in an Open phase with no baseline. A workflow a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind.
+Organisation administrators define more workflows under **Organisation Admin → Workflow → Stage workflows** (for example Scoping, Technical scoping, Review board, Tendering, Awarded, In progress, Completion for outsourced work). Project managers add workflows of their own under **Project Admin → Workflows and phases → Stage workflows**, and can hide an organisation workflow in the project and add it back later. A stage changes workflow only while it is in an Open phase with no baseline. A workflow a stage follows cannot be deleted, and a phase a stage is in can be renamed but not removed or given another kind.
 
 ## Component phases
 
@@ -63,7 +63,7 @@ Turning the setting Off leaves stored tracks in place but ignores them, so the s
 
 ## Phase schedule and reminders
 
-A phase can carry an **expected range** (an expected start and an expected end, both calendar dates) under **Project Admin → Workflows and phases → Schedule**. Each stage lists the phases of its workflow; with component phases on, a chosen component's own track can be scheduled the same way. The table also shows the actual start and completion of each phase and, for a completed phase, whether it finished on time, early or late. Moving a stage (or a track) forward out of a phase, or into a Closed phase, records that phase as completed; moving back to a phase reopens it.
+A phase can carry an **expected range** (an expected start and an expected end, both calendar dates) under **Project Admin → Workflows and phases → Stage schedule**. Each stage lists the phases of its workflow; with component phases on, a chosen component's own track can be scheduled the same way. The table also shows the actual start and completion of each phase and, for a completed phase, whether it finished on time, early or late. Moving a stage (or a track) forward out of a phase, or into a Closed phase, records that phase as completed; moving back to a phase reopens it.
 
 Reminders are sent once per date, by a daily check:
 
@@ -93,6 +93,11 @@ The **Delivery status** page in the project's navigation (shown only once the pr
 - its **Progress**: the step it has reached in its workflow ("Step 2 of 5", with a small bar; "Completed" once it is in a Closed phase);
 - the **Expected** range, from the earliest expected start to the latest expected end set in its phase schedule, or **No dates set** (nothing is inferred for a row without dates);
 - an **Overdue** badge when the current phase is not closed and its expected end is before your own day.
+
+| Delivery status |
+| --- |
+| Stages and component tracks with their current phase, progress and expected dates |
+| ![Delivery status page listing project stages and component tracks with progress, expected dates and an Overdue badge](../../static/img/screenshots/delivery-status.png) |
 
 Two views of the same rows are offered and the choice is remembered for you: a **table** and a **timeline** (one bar per row on a shared date axis with today marked, the filled part showing progress and a thin line beneath the recorded start to completion). The table is the accessible alternative and carries the same information in words.
 
@@ -125,4 +130,4 @@ Once a stage's work is delivered, a project manager moves it to a Closed phase, 
 
 ## Where this fits
 
-See [Change requests and baselines](../concepts/change-requests-and-baselines.md) for what a baseline is and why it exists, and [Workflows → Stages, baselining, and reviews](../workflows/stages-baselining-and-reviews.md) for the end-to-end task walkthrough.
+See [Change requests and baselines](../concepts/change-requests-and-baselines.md) for what a baseline is and why it exists, [Workflows → Setting up stages and phases](../workflows/setting-up-stages-and-phases.md) for the order in which to configure them, and [Workflows → Stages, baselining, and reviews](../workflows/stages-baselining-and-reviews.md) for the end-to-end task walkthrough.

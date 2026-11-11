@@ -29,4 +29,4 @@ Larger organisations run several projects — sometimes with parent/child relati
 | Organisation admin |
 | --- |
 | Members, roles, 2FA status, and access-review filters — access control enforced independently of project content |
-| ![Organisation admin page showing member roles, 2FA status, and access-review filters](../../static/img/screenshots/org-admin.png) |
+| ![Organisation users page showing member roles, 2FA status, and access-review filters](../../static/img/screenshots/org-admin-users.png) |

@@ -99,6 +99,7 @@ const sidebars: SidebarsConfig = {
         'workflows/creating-records',
         'workflows/change-requests',
         'workflows/stages-baselining-and-reviews',
+        'workflows/setting-up-stages-and-phases',
         'workflows/requirement-actions',
         'workflows/files-comments-and-history',
         'workflows/reporting-and-csv-import-export',

@@ -53,7 +53,7 @@ The filter panel on the right narrows the table; every filter is kept in the add
 
 | Project history |
 | --- |
-| A unified activity timeline, filterable by date range and entity type |
+| A table of events with Time, Type, Event and Record, filterable by period, type, change and person or group |
 | ![Project history page showing a filterable activity table](../../static/img/screenshots/project-history.png) |
 
 Discussion comments are excluded from the timeline by default, since they're informal discussion rather than the formal change log — tick **Include discussion comments** to bring them into view alongside everything else.
