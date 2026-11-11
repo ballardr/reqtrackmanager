@@ -115,8 +115,11 @@ test.describe("footer position", () => {
     const select = page.getByLabel("Footer position");
     await expect(select).toHaveValue("");
     await select.selectOption("bottom_of_page");
+    // The save reloads the page's data (entity-scopes is the last request of that reload) and resets the form from
+    // it; changing the select before that lands would be overwritten with the saved value.
     await Promise.all([
       page.waitForResponse((r) => r.url().includes("/branding") && r.request().method() === "PUT"),
+      page.waitForResponse((r) => r.url().includes(`/orgs/${alphaOrgId}/entity-scopes`) && r.request().method() === "GET"),
       page.getByRole("button", { name: "Save branding" }).click(),
     ]);
     const saved = await (await request.get(`${apiBaseUrl}/api/v1/orgs/${alphaOrgId}`, { headers: orgHeaders })).json();

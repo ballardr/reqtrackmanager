@@ -552,7 +552,7 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
       // distinct from Overview's own "Save settings" button now that both
       // sit on the same screen.
       await selectProjectAdminGroup(page, "Project settings");
-      await page.getByPlaceholder("requirement").fill("Spec");
+      await page.getByRole("textbox", { name: "Requirement", exact: true }).fill("Spec");
       // Wait for the save itself before reloading — reloading straight
       // after the click can cancel the in-flight PUT.
       await Promise.all([
@@ -560,13 +560,13 @@ test.describe("project admin: custom fields, groups, and terminology", () => {
         page.getByRole("button", { name: "Save terminology" }).click(),
       ]);
       await page.reload();
-      await expect(page.getByPlaceholder("requirement")).toHaveValue("Spec");
+      await expect(page.getByRole("textbox", { name: "Requirement", exact: true })).toHaveValue("Spec");
 
       await page.getByRole("link", { name: "Specs", exact: true }).click();
       await expect(page.url()).toContain("/requirements");
 
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
-      await page.getByPlaceholder("requirement").fill("");
+      await page.getByRole("textbox", { name: "Requirement", exact: true }).fill("");
       await page.getByRole("button", { name: "Save terminology" }).click();
     });
   });

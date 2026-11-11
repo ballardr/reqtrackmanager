@@ -4,7 +4,8 @@
 FROM python:3.12-slim
 
 # fonts-urw-base35: the standard PostScript fonts (Helvetica, Times) an EPS often names without embedding them.
-RUN apt-get update && apt-get install -y --no-install-recommends ghostscript poppler-utils fonts-urw-base35 \
+# zlib1g is named so the patched release replaces the one the base image ships (CVE-2026-76844, CVE-2026-85091).
+RUN apt-get update && apt-get install -y --no-install-recommends ghostscript poppler-utils fonts-urw-base35 zlib1g \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home --uid 10001 converter
 

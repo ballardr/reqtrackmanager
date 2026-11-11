@@ -60,8 +60,8 @@ def apply_audit_protection() -> str:
                 return "owner"
             quoted = conn.dialect.identifier_preparer.quote(role)
             for table in AUDIT_TABLES:
-                # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                 # DDL cannot take bind parameters; the role matched a strict name pattern and is quoted by the dialect.
+                # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                 conn.execute(text(f"REVOKE ALL ON TABLE {table} FROM {quoted}"))
                 # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
                 conn.execute(text(f"GRANT SELECT, INSERT ON TABLE {table} TO {quoted}"))

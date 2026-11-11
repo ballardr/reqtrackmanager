@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 import yaml
@@ -160,6 +162,31 @@ def _adapt(host: str, mode: str, mcp: str = "off") -> str | None:
     return done.stdout if done.returncode == 0 else None
 
 
+def _hosts(adapted: str) -> set[str]:
+    """Every host name the adapted Caddy configuration (JSON) matches on, read as values, not as substrings."""
+    found: set[str] = set()
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "host" and isinstance(value, list):
+                    found.update(item for item in value if isinstance(item, str))
+                else:
+                    walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(json.loads(adapted))
+    return found
+
+
+def _origins(output: str) -> set[str]:
+    """The `scheme://host[:port]` origin of every http(s) URL printed in a script's output."""
+    parsed = (urlparse(url) for url in re.findall(r"https?://[^\s\"')>,]+", output))
+    return {f"{u.scheme}://{u.netloc}" for u in parsed}
+
+
 def test_hsts_is_sent_for_a_named_host_and_never_for_localhost():
     named = _adapt("demo.example.org", "public", "on")
     local = _adapt("localhost", "internal", "on")
@@ -168,7 +195,7 @@ def test_hsts_is_sent_for_a_named_host_and_never_for_localhost():
     assert "Strict-Transport-Security" in named and "max-age=31536000" in named
     assert "Strict-Transport-Security" not in local
     assert '"internal"' in local and '"internal"' not in named, "the local authority is used for localhost only"
-    assert "mcp.demo.example.org" in named
+    assert "mcp.demo.example.org" in _hosts(named)
 
 
 def test_the_proxy_overwrites_forwarded_headers_and_logs_no_query():
@@ -222,10 +249,10 @@ def test_a_host_that_is_not_a_name_is_refused_before_anything_starts(fake_docker
 def test_the_ready_message_gives_the_https_address_and_the_trust_hint_for_the_local_authority(fake_docker):
     _, env = fake_docker
     done = _demo(env)
-    assert "https://localhost" in done.stdout and "--trust-local-ca" in done.stdout
-    assert "http://localhost:3000" not in done.stdout
+    assert "https://localhost" in _origins(done.stdout) and "--trust-local-ca" in done.stdout
+    assert "http://localhost:3000" not in _origins(done.stdout)
     named = _demo(env, DEMO_PUBLIC_HOST="demo.example.org")
-    assert "https://demo.example.org" in named.stdout and "--trust-local-ca" not in named.stdout
+    assert "https://demo.example.org" in _origins(named.stdout) and "--trust-local-ca" not in named.stdout
 
 
 def test_trusting_the_local_authority_only_prints_commands(fake_docker):

@@ -2,8 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# zlib1g is named so the patched release replaces the one the base image ships (CVE-2026-76844, CVE-2026-85091).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    curl zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

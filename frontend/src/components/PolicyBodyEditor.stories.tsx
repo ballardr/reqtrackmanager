@@ -42,9 +42,10 @@ export const ReportsTheDocumentAfterEdits: Story = {
     await userEvent.keyboard("{Control>}a{/Control}");
     await userEvent.click(canvas.getByRole("button", { name: "Bold" }));
     await userEvent.keyboard("Bold words");
-    await waitFor(() => expect(args.onChange).toHaveBeenCalled());
-    await expect(lastReported(args.onChange)).toContain('"type":"bold"');
-    await expect(lastReported(args.onChange)).toContain("Bold words");
+    await waitFor(() => {
+      expect(lastReported(args.onChange)).toContain('"type":"bold"');
+      expect(lastReported(args.onChange)).toContain("Bold words");
+    });
   },
 };
 

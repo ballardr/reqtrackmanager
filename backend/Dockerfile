@@ -18,8 +18,9 @@ ENV APP_VERSION=${APP_VERSION} \
 WORKDIR /app
 
 # EPS and PDF logos are converted by the separate converter service (../converter), not by tools in this image.
+# zlib1g is named so the patched release replaces the one the base image ships (CVE-2026-76844, CVE-2026-85091).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc curl \
+    libpq-dev gcc curl zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
