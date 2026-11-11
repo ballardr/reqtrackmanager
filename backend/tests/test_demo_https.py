@@ -195,7 +195,7 @@ def test_hsts_is_sent_for_a_named_host_and_never_for_localhost():
     assert "Strict-Transport-Security" in named and "max-age=31536000" in named
     assert "Strict-Transport-Security" not in local
     assert '"internal"' in local and '"internal"' not in named, "the local authority is used for localhost only"
-    assert "mcp.demo.example.org" in _hosts(named)
+    assert _hosts(named).issuperset({"mcp.demo.example.org"})
 
 
 def test_the_proxy_overwrites_forwarded_headers_and_logs_no_query():
@@ -252,7 +252,7 @@ def test_the_ready_message_gives_the_https_address_and_the_trust_hint_for_the_lo
     assert "https://localhost" in _origins(done.stdout) and "--trust-local-ca" in done.stdout
     assert "http://localhost:3000" not in _origins(done.stdout)
     named = _demo(env, DEMO_PUBLIC_HOST="demo.example.org")
-    assert "https://demo.example.org" in _origins(named.stdout) and "--trust-local-ca" not in named.stdout
+    assert _origins(named.stdout).issuperset({"https://demo.example.org"}) and "--trust-local-ca" not in named.stdout
 
 
 def test_trusting_the_local_authority_only_prints_commands(fake_docker):
