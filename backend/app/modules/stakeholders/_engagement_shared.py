@@ -26,12 +26,14 @@ from collections.abc import Sequence
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.enums import PermissionLevel
 from app.models.file import FileAsset
 from app.models.project import Project
 from app.models.user import User
+from app.modules.registry import is_module_subcomponent_enabled
 from app.modules.stakeholders import engagements as eng
 from app.modules.stakeholders import groups as grp
 from app.modules.stakeholders import relationships as rel
@@ -42,10 +44,11 @@ from app.modules.stakeholders._shared import (
     get_visible_stakeholder,
     holder_name,
 )
-from app.modules.stakeholders.engagements import ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE
+from app.modules.stakeholders.engagements import ENGAGEMENT_ARTEFACT_TYPE, FINDING_ARTEFACT_TYPE, RESEARCH_SUBCOMPONENT
 from app.modules.stakeholders.enums import StakeholderScope
 from app.modules.stakeholders.models import (
     Engagement,
+    EngagementAnonymousParticipant,
     EngagementComment,
     EngagementCommentFile,
     EngagementFile,
@@ -60,9 +63,11 @@ from app.modules.stakeholders.schemas import (
     EngagementOut,
     EngagementParticipantOut,
     EngagementPersonaOut,
+    EngagementPersonaReachedOut,
     EngagementUpdate,
     OutcomeCreate,
     OutcomeOut,
+    OutcomeTargetTypeOut,
     RelationshipTargetOut,
     StakeholderEngagementOut,
 )
@@ -71,13 +76,16 @@ from app.modules.stakeholders.service import (
     STAKEHOLDER_ARTEFACT_TYPE,
     STAKEHOLDERS_MODULE_KEY,
     hidden_stakeholder_ids,
+    list_represented_personas,
 )
 from app.schemas.principal import PrincipalOut, PrincipalRef
 from app.services import module_attachments as att
 from app.services.audit import log_event
+from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
 from app.services.principals import principal_labels, validate_principal
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
+from app.services.record_tables import creatable_record_types
 from app.services.relationships import delete_link
 
 ENGAGEMENT_MANAGE_PERMISSION = encode_permission(ENGAGEMENT_ARTEFACT_TYPE, PermissionLevel.MANAGE.value)
@@ -253,15 +261,27 @@ def _validate_facilitators(db: Session, project: Project, facilitators: Sequence
 
 def stage_engagement(db: Session, payload: EngagementCreate, creator: User, project: Project) -> Engagement:
     """Validates every reference in a create payload (404 before anything is written), creates the engagement
-    with its participants, covered personas and audience groups (groups expanded to their members) and
-    audit-logs, without committing (the caller owns the transaction)."""
+    with its participants, anonymous participants, covered personas and audience groups (groups expanded to
+    their members) and audit-logs, without committing (the caller owns the transaction)."""
     _validate_facilitators(db, project, payload.facilitators)
     stakeholders = [get_visible_stakeholder(db, project, sid) for sid in dict.fromkeys(payload.stakeholder_ids)]
     personas = [get_visible_persona(db, project, pid) for pid in dict.fromkeys(payload.persona_ids)]
     universe = grp.load_groups(db, project.organization_id, project.id)
     if any(gid not in universe for gid in payload.group_ids):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Stakeholder group not found.")
-    content = payload.model_dump(exclude={"facilitators", "stakeholder_ids", "persona_ids", "group_ids"})
+    if payload.anonymous_participants:
+        if not is_module_subcomponent_enabled(db, project.id, STAKEHOLDERS_MODULE_KEY, RESEARCH_SUBCOMPONENT):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Anonymous participants need the Research extras to be enabled for this project."
+            )
+        for participant in payload.anonymous_participants:
+            if participant.label.strip() == "":
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "A participant label cannot be empty.")
+            if participant.persona_id is not None:
+                get_visible_persona(db, project, participant.persona_id)
+    content = payload.model_dump(
+        exclude={"facilitators", "stakeholder_ids", "persona_ids", "group_ids", "anonymous_participants"}
+    )
     engagement = eng.create_engagement(db, project=project, creator=creator, **content)
     eng.set_facilitators(db, engagement, payload.facilitators)
     for stakeholder in stakeholders:
@@ -274,6 +294,13 @@ def stage_engagement(db: Session, payload: EngagementCreate, creator: User, proj
         )
     for group_id in dict.fromkeys(payload.group_ids):
         _audience_with_members(db, engagement, group_id, creator, project)
+    for participant in payload.anonymous_participants:
+        row = EngagementAnonymousParticipant(
+            engagement_id=engagement.id, label=participant.label.strip(), persona_id=participant.persona_id
+        )
+        db.add(row)
+        db.flush()
+        log(db, engagement.id, creator, project.id, "anonymous_participant_added", participant_id=row.id)
     log(db, engagement.id, creator, project.id, "created")
     return engagement
 
@@ -405,6 +432,58 @@ def list_personas(db: Session, engagement: Engagement, project: Project) -> list
     return sorted(out, key=lambda p: p.name.lower())
 
 
+def list_personas_reached(db: Session, engagement: Engagement, project: Project) -> list[EngagementPersonaReachedOut]:
+    """Every Persona the engagement reached, by name: those recorded as covered, those a Stakeholder participant
+    represents and, while the Research extras are on, those an anonymous participant represents. Personas hidden
+    from the project are left out. Nothing is written; only `covered` ones carry a `link_id` to remove."""
+    reached: dict[uuid.UUID, EngagementPersonaReachedOut] = {}
+    visible: dict[uuid.UUID, Persona | None] = {}
+
+    def persona_for(persona_id: uuid.UUID) -> Persona | None:
+        if persona_id not in visible:
+            try:
+                visible[persona_id] = get_visible_persona(db, project, persona_id)
+            except HTTPException:
+                visible[persona_id] = None
+        return visible[persona_id]
+
+    def entry(persona: Persona) -> EngagementPersonaReachedOut:
+        if persona.id not in reached:
+            reached[persona.id] = EngagementPersonaReachedOut(
+                persona_id=persona.id, name=holder_name(db, PERSONA_ARTEFACT_TYPE, persona), scope=persona.scope.value,
+                unique_code=persona.unique_code, organization_id=persona.organization_id,
+                covered=False, via_participants=False, via_anonymous=False,
+            )
+        return reached[persona.id]
+
+    for covered in list_personas(db, engagement, project):
+        persona = persona_for(covered.persona_id)
+        if persona is not None:
+            row = entry(persona)
+            row.covered, row.link_id = True, covered.link_id
+    hidden = hidden_stakeholder_ids(db, project.id)
+    for link in eng.list_participant_links(db, engagement, project.organization_id):
+        stakeholder = db.get(Stakeholder, link.target_id)
+        if stakeholder is None or not _visible(project, hidden, stakeholder):
+            continue
+        for _link, represented in list_represented_personas(db, stakeholder, project.organization_id):
+            persona = persona_for(represented.id)
+            if persona is not None:
+                entry(persona).via_participants = True
+    if is_module_subcomponent_enabled(db, project.id, STAKEHOLDERS_MODULE_KEY, RESEARCH_SUBCOMPONENT):
+        persona_ids = db.scalars(
+            select(EngagementAnonymousParticipant.persona_id).where(
+                EngagementAnonymousParticipant.engagement_id == engagement.id,
+                EngagementAnonymousParticipant.persona_id.is_not(None),
+            )
+        )
+        for persona_id in set(persona_ids):
+            persona = persona_for(persona_id) if persona_id is not None else None
+            if persona is not None:
+                entry(persona).via_anonymous = True
+    return sorted(reached.values(), key=lambda p: p.name.lower())
+
+
 def add_persona(
     db: Session, engagement: Engagement, persona_id: uuid.UUID, actor: User, project: Project
 ) -> EngagementPersonaOut:
@@ -464,7 +543,7 @@ def _audience_with_members(
     for member in members:
         if member.stakeholder_id in existing:
             continue
-        stakeholder = db.get(Stakeholder, member.stakeholder_id)
+        stakeholder = get_or_404(db, Stakeholder, member.stakeholder_id, "Stakeholder")
         added.append(participant_to_out(
             db, eng.add_participant(db, engagement, stakeholder.id, actor, organization_id=project.organization_id),
             stakeholder,
@@ -509,10 +588,37 @@ def list_outcomes(
     for link, kind in eng.list_outcome_links(db, holder_type, holder_id, project.organization_id):
         summary = rel.resolve_target(db, project, link.target_type, link.target_id)
         if summary is not None:
-            out.append(OutcomeOut(
+            out.append(OutcomeOut.model_validate(dict(
                 link_id=link.id, kind=kind.key, target_type=link.target_type, target_id=summary.id, label=summary.label,
-            ))
+            )))
     return sorted(out, key=lambda o: (o.kind, o.label.lower()))
+
+
+def list_outcome_target_types(db: Session, user: User, project: Project) -> list[OutcomeTargetTypeOut]:
+    """The record types an engagement or finding can raise or answer in this project, with the server's answer to
+    whether the caller may create one (the type's own create check, as the Links panel's `can_create`).
+
+    A type whose module is not installed or enabled for the project, or that the caller may not view, is left out,
+    as `list_outcome_targets` refuses it. Types come back in the order the outcome kinds declare them.
+
+    Args:
+        db: Active session (read only).
+        user: The caller.
+        project: The project the outcome would belong to.
+
+    Returns:
+        One entry per available target type.
+    """
+    declared = list(dict.fromkeys(t for kind in eng.OUTCOME_KINDS for t in kind.target_types))
+    held = get_effective_permissions(db, user.id, organization_id=project.organization_id, project_id=project.id)
+    available = [
+        t for t in declared
+        if rel.target_type_available(t) and permission_satisfied(held, encode_permission(t, PermissionLevel.VIEW.value))
+    ]
+    creatable = creatable_record_types(db, user, project, available)
+    return [
+        OutcomeTargetTypeOut(type=t, can_create=t in creatable) for t in available
+    ]
 
 
 def list_outcome_targets(db: Session, user: User, project: Project, target_type: str) -> list[RelationshipTargetOut]:
@@ -554,7 +660,7 @@ def add_outcome(
     log(db, engagement.id, actor, project.id, "outcome_added", kind=kind.key, target_type=payload.target_type, target_id=summary.id,
         holder_type=holder_type, holder_id=holder_id)
     db.commit()
-    return OutcomeOut(link_id=link.id, kind=kind.key, target_type=payload.target_type, target_id=summary.id, label=summary.label)
+    return OutcomeOut.model_validate(dict(link_id=link.id, kind=kind.key, target_type=payload.target_type, target_id=summary.id, label=summary.label))
 
 
 def remove_outcome(

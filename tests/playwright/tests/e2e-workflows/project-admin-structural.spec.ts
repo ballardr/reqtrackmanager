@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
+import { clickAndAwaitSave, createDisposableProject, installCleanupHook, loginAs, moveStageToPhase, PERSONAS, selectProjectAdminGroup, closeDialogWithoutSaving } from "./helpers";
 
 /**
  * Job to be done: a project's structural admin — stages, and the
@@ -46,7 +46,8 @@ async function openStructuralProject(page: Page, label: string) {
   );
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
   await page.goto(`/projects/${projectId}/admin`);
-  await selectProjectAdminGroup(page, "Structure");
+  // Stages are under "Workflows and phases"; components and categories stay under "Structure".
+  await selectProjectAdminGroup(page, label === "Stages" ? "Workflows and phases" : "Structure");
   return { projectId, projectName, authHeaders };
 }
 
@@ -172,14 +173,8 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       });
       const stages: { id: string; name: string }[] = await stagesResp.json();
       const milestone1 = stages.find((s) => s.name === "Milestone 1")!;
-      await page.request.post(
-        `http://localhost:8000/api/v1/projects/${projectId}/stages/${milestone1.id}/transition?new_status=review`,
-        { headers: authHeaders }
-      );
-      await page.request.post(
-        `http://localhost:8000/api/v1/projects/${projectId}/stages/${milestone1.id}/transition?new_status=approved`,
-        { headers: authHeaders }
-      );
+      await moveStageToPhase(page.request, authHeaders, projectId, milestone1.id, "Review");
+      await moveStageToPhase(page.request, authHeaders, projectId, milestone1.id, "Approved");
       // ProjectAdminPage's group is now a real route segment
       // (`ResourceMenu`, converted from `Tabs`), so a full page reload no
       // longer resets it to the default (Overview) the way client-only tab
@@ -187,7 +182,7 @@ test.describe("project admin: structural rename/delete and archiving", () => {
       // (`selectProjectAdminGroup` only clicks if not already active),
       // kept for robustness against a future reversion.
       await page.reload();
-      await selectProjectAdminGroup(page, "Structure");
+      await selectProjectAdminGroup(page, "Workflows and phases");
 
       // Stage order is Milestone 1(0)/Milestone 2(1).
       await stagesSection.getByTitle("Delete this stage").nth(0).click();

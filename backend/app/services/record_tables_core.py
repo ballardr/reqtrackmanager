@@ -22,7 +22,7 @@ Design decisions:
   request), reported as that row's error.
 - A change request is export-only (`CORE_NOT_IMPORTABLE` gives the reason): its content depends on its kind
   and it moves through submit and approval, which a file cannot author.
-- A person column is one cell: an email for a user, `Name (Org group)` / `Name (Project group)` for a group.
+- A person column is one cell: an email for a user, `Name (Organisation group)` / `Name (Project group)` for a group.
 - A project's custom fields are columns named `cf_<name>`, built per project.
 
 Dependencies: `modules.registry` (provider shapes), `services.record_tables` (cell helpers, people),
@@ -181,7 +181,7 @@ def list_parser(ctx: RecordImportContext, text: str) -> list[str]:
 
 
 def person_parser(field_name: str) -> Callable[[RecordImportContext, str], PrincipalRef | None]:
-    """A parser for a person cell: an email (user) or `Name (Org group)` (group); empty means nobody."""
+    """A parser for a person cell: an email (user) or `Name (Organisation group)` (group); empty means nobody."""
 
     def parse(ctx: RecordImportContext, text: str) -> PrincipalRef | None:
         return parse_principal_cell(ctx, text, field_name=field_name)
@@ -268,6 +268,7 @@ def _list_requirements(db: Session, user: User, project_id: uuid.UUID, filters: 
             target_stage_from_id=uuid_filter(filters, "target_stage_from_id"),
             target_stage_to_id=uuid_filter(filters, "target_stage_to_id"),
             has_comments=filters.flag("has_comments"), only_watched=filters.flag("only_watched"),
+            phase=filters.one("phase"),
         ),
         prefetch=False,
     )
@@ -322,7 +323,7 @@ def _requirement_columns(db: Session, project: Project) -> list[RecordColumn]:
         ),
         RecordColumn("keywords", "Tags", lambda t, r: list_cell(t.keywords.get(r.id, [])), list_parser, kind="list"),
         RecordColumn(
-            "review_date", "Review date", lambda t, r: version(t, r).review_date.isoformat() if version(t, r).review_date else "",
+            "review_date", "Review date", lambda t, r: review_date.isoformat() if (review_date := version(t, r).review_date) else "",
             date_parser("Review date"), kind="date",
         ),
         RecordColumn(
@@ -508,7 +509,7 @@ REQUIREMENT_TABLE = RecordTableProvider(
     update=_update_requirement,
     filter_params=frozenset({
         "include_archived", "is_completed", "component_id", "category_id", "keyword", "search", "status",
-        "target_stage_id", "target_stage_from_id", "target_stage_to_id", "has_comments", "only_watched",
+        "target_stage_id", "target_stage_from_id", "target_stage_to_id", "has_comments", "only_watched", "phase",
     }),
     can_create=_may_edit,
     can_update=_may_edit,
@@ -742,6 +743,12 @@ def _change_request_columns(db: Session, project: Project) -> list[RecordColumn]
     return columns
 
 
+def _may_submit_change_request(db: Session, user: User, project_id: uuid.UUID) -> bool:
+    """The create endpoint's gate: a manager, administrator or stakeholder, or a member when the project allows it."""
+    project = db.get(Project, project_id)
+    return project is not None and change_request_service.may_submit_change_request(db, user, project)
+
+
 CHANGE_REQUEST_TABLE = RecordTableProvider(
     label="Change requests",
     columns=_change_request_columns,
@@ -751,6 +758,7 @@ CHANGE_REQUEST_TABLE = RecordTableProvider(
     prepare=lambda db, project, records: _ChangeRequestTable(db, project, records),
     filter_params=frozenset({"cr_status", "active_only", "target_stage_id", "search"}),
     count=lambda db, user, project_id: count_rows(db, ChangeRequest, project_id, live_only=False),
+    can_create=_may_submit_change_request,
     approval_gated=True,
 )
 

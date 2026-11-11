@@ -87,7 +87,7 @@ test.describe("server admin manages an organisation's lifecycle", () => {
 
     await test.step("edit opens this organisation's own admin page", async () => {
       await row.getByRole("button", { name: `${orgName} actions` }).click();
-      await rowActionsMenu.getByRole("menuitem", { name: "Edit" }).click();
+      await rowActionsMenu.getByRole("menuitem", { name: "Administration" }).click();
       await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
       await expect(page.getByText(orgName)).toBeVisible();
 

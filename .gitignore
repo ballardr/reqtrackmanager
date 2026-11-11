@@ -124,6 +124,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+tests/container/.demo-secrets.env
 .env
 .venv
 .venv*

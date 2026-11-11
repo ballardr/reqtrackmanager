@@ -81,7 +81,7 @@ An organisation administrator can switch the inbox off (the **Organisation-level
 
 ## Who may submit
 
-By default any project member can submit a request. A project administrator can restrict this to triagers in **Project admin → Product Feedback**. Editing, changing status, merging, moving and recording who was told always need the Feedback Triager role.
+By default any project member can submit a request. A project administrator can restrict this to triagers in **Project admin → Product Feedback → Submission policy**. Editing, changing status, merging, moving and recording who was told always need the Feedback Triager role.
 
 ## Where this fits
 

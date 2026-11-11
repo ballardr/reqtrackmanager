@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { FilterCheckbox, FilterField } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi, projectPersonaApi, projectResearchApi, projectStakeholderApi, type EngagementListFilters } from "./api";
@@ -31,6 +32,7 @@ import { useCommitTags } from "../../hooks/useCommitTags";
 import { rowProjectId } from "../../api/projectScope";
 import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
+import { useStrings } from "../../context/TerminologyContext";
 
 type Option = { value: string; label: string };
 
@@ -38,6 +40,7 @@ type Option = { value: string; label: string };
 type EngagementRow = Engagement & { name: string };
 
 export function ProjectEngagementsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const findingId = searchParams.get("finding");
@@ -70,19 +73,19 @@ export function ProjectEngagementsPage() {
     if (!projectId || findingId) return;
     let active = true;
     projectEngagementApi
-      .list(projectId, { ...filters, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
+      .list(projectId, { ...filters, ...tagFilter.listFilters, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setEngagements(list.map((e) => ({ ...e, name: e.title })));
         setLoadError(null);
       })
       .catch((err) => {
-        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module isn't enabled for this project, or you don't have access to its engagements."));
+        if (active) setLoadError(toErrorMessage(err, "The Stakeholders & Personas module is not enabled for this project, or you do not have access to its engagements."));
       });
     return () => {
       active = false;
     };
-  }, [projectId, findingId, filters, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
+  }, [projectId, findingId, filters, refreshKey, tagFilter.listFilters, projectScope.scope]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -95,14 +98,13 @@ export function ProjectEngagementsPage() {
   if (engagements === null) return <Spinner />;
 
   const filterSelect = (label: string, value: string | undefined, options: Option[], onChange: (next: string | undefined) => void, allLabel: string) => (
-    <FilterField label={label}>
-      <select className="input" value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
-        <option value="">{allLabel}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </FilterField>
+    <FilterSelect
+      label={label}
+      value={value ?? ""}
+      onChange={(v) => onChange(v || undefined)}
+      allLabel={allLabel}
+      options={options.map((o) => ({ value: o.value, label: o.label }))}
+    />
   );
 
   return (
@@ -144,10 +146,10 @@ export function ProjectEngagementsPage() {
           <>
             {filterSelect("Participant", filters.stakeholder_id, stakeholderOptions, (next) => setFilter({ stakeholder_id: next }), "Anyone")}
             {filterSelect("Persona covered", filters.persona_id, personaOptions, (next) => setFilter({ persona_id: next }), "Any persona")}
-            <FilterField label="From">
+            <FilterField label={strings.filters.from}>
               <input className="input" type="date" aria-label="From date" value={filters.date_from ?? ""} onChange={(e) => setFilter({ date_from: e.target.value || undefined })} />
             </FilterField>
-            <FilterField label="To">
+            <FilterField label={strings.filters.to}>
               <input className="input" type="date" aria-label="To date" value={filters.date_to ?? ""} onChange={(e) => setFilter({ date_to: e.target.value || undefined })} />
             </FilterField>
             <FilterCheckbox label="Retention review due" checked={filters.retention_due === true} onChange={(next) => setFilter({ retention_due: next ? true : undefined })} />
@@ -155,6 +157,7 @@ export function ProjectEngagementsPage() {
         }
         onOpen={(e) => navigate(`/projects/${rowProjectId(e, projectId)}/modules/stakeholders/engagements/${e.id}`)}
         tagFilter={{ projectId, filter: tagFilter }}
+        placementType="engagement"
         projectScope={projectScope}
         onCreate={async (values, quickLinks, tags) => {
           const created = await projectEngagementApi.create(projectId, values);

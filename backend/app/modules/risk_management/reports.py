@@ -383,7 +383,7 @@ def collect_risk_exposure(db: Session, req: ReportContext) -> ReportResult:
     unrated = [r for r in exposed if r.inherent is None]
     ranked = sorted(
         (r for r in exposed if r.residual is not None),
-        key=lambda r: (-r.residual.normalised, -(r.inherent.normalised if r.inherent else 0.0), r.risk.unique_code),
+        key=lambda r: (-(r.residual.normalised if r.residual else 0.0), -(r.inherent.normalised if r.inherent else 0.0), r.risk.unique_code),
     )[:TOP_RESIDUAL_ROWS]
     columns = ["Code", "Title", "Project", "Status", "Owner", "Inherent", "Residual", "Tags"]
 

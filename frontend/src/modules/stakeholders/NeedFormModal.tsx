@@ -17,6 +17,7 @@ import { Modal } from "../../components/Modal";
 import { QuickLinkField } from "../../components/QuickLinkField";
 import { TagField } from "../../components/TagField";
 import { TextAreaField, TextField } from "../../components/FormFields";
+import { STAKEHOLDERS_HELP } from "./help";
 import type { Need, NeedFieldValues } from "./types";
 import { FormActions } from "../../components/FormActions";
 
@@ -49,13 +50,12 @@ export function NeedFormModal({
             <TextField helpNotNeeded required label="Name" ariaLabel="Need name" value={name} onChange={setName} hint="A short title, e.g. “Diagnose faults quickly”." />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded
+            <TextAreaField help={STAKEHOLDERS_HELP.needDescription}
               label="Need" rows={3} value={description} onChange={setDescription}
-              hint="The need in the stakeholder's own words, before it becomes a requirement."
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded label="Rationale" rows={3} value={rationale} onChange={setRationale} hint="Why it matters, and where it came from." />
+            <TextAreaField help={STAKEHOLDERS_HELP.needRationale} label="Rationale" rows={3} value={rationale} onChange={setRationale} />
           </FormGridFull>
           {initial && <FormGridFull><TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}
           {!initial && projectId && (

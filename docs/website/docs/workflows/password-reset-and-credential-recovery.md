@@ -10,7 +10,7 @@ Passwords are reset with a **single-use link emailed to the account's own addres
 | --- | --- | --- |
 | Anyone with a password account | Ask for a link themselves | Sign-in page → **Forgot your password?** |
 | Organisation admin | Email a link to a member of their organisation | **Org Admin → Users →** the person's **⋮** menu → **Send password reset link** |
-| Server admin | Email a link to anyone; require one person to choose a new password; force a reset for everyone, one organisation or the server administrators | **Server Management → Access review** |
+| Server admin | Email a link to anyone; require one person to choose a new password; force a reset for everyone, one organisation or the server administrators | **Server Management → Users** |
 | Operator with shell access | Do all of the above with no application sign-in and no email | [Command line](#command-line-when-nobody-can-sign-in) |
 
 Accounts that sign in through single sign-on have no password here, so there is nothing to reset: the person's identity provider owns it. Asking for a link for such an account sends nothing, and an administrator trying to send one is told why.
@@ -41,7 +41,7 @@ sequenceDiagram
 
 Use this when a person is locked out and cannot ask for themselves, or you want to nudge them to a new password.
 
-1. Open the person's **⋮** menu in **Org Admin → Users** (or **Server Management → Access review**) and choose **Send password reset link**.
+1. Open the person's **⋮** menu in **Org Admin → Users** (or **Server Management → Users**) and choose **Send password reset link**.
 2. Confirm. The link goes to the person's own address; you see only a confirmation, so you cannot use it to take over the account.
 3. Nothing about their account changes until they use the link. Their current password keeps working until then.
 
@@ -51,7 +51,7 @@ An organisation admin can only do this for members of their own organisation. If
 
 Use this after an incident: a stolen or exposed database or backup, a compromised host, or a restore of an old set. It is a server admin action and takes effect immediately.
 
-**Server Management → Access review → Force a credential reset…** (or **Require new password** on one person's **⋮** menu):
+**Server Management → Users → Force a credential reset…** (or **Require new password** on one person's **⋮** menu):
 
 | Choice | Effect |
 | --- | --- |

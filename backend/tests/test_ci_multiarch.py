@@ -94,7 +94,7 @@ def test_digests_are_pushed_untagged_and_only_off_pull_requests(jobs):
     assert push["if"] == "env.PUSH == 'true'"
     assert "push-by-digest=true" in push["with"]["outputs"]
     assert "tags" not in push["with"]
-    assert jobs["docker-build"]["env"]["PUSH"] == "${{ github.event_name != 'pull_request' }}"
+    assert jobs["docker-build"]["env"]["PUSH"] == "${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}"
 
 
 def test_manifest_job_publishes_every_image_only_after_all_legs_pass(jobs):

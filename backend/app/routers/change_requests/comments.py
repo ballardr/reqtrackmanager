@@ -34,12 +34,12 @@ from app.models.notification import NotificationType
 from app.models.project import Project
 from app.models.user import User
 from app.routers.change_requests._shared import _get_cr_in_project
-from app.routers.change_requests.core import CAN_SUBMIT_ROLES
 from app.schemas.file import FileAssetOut
 from app.schemas.requirement import CommentCreate, CommentOut, CommentUpdate
 from app.services import engagement, notifications
 from app.services.audit import log_event
-from app.services.files import upload_file
+from app.services.change_request_list import CAN_SUBMIT_ROLES
+from app.services.files import delete_file, upload_file
 from app.services.rbac import get_effective_project_roles, require_project_view
 
 router = APIRouter(tags=["change-requests-comments"])
@@ -68,6 +68,7 @@ def add_comment(
     )
     db.add(comment)
     db.flush()
+    engagement.audit_comment(db, comment, action="comment_added", actor_id=current_user.id, project_id=project_id)
 
     for subscriber_id in engagement.get_subscriber_ids(db, "change_request", cr_id, exclude_user_id=current_user.id):
         subscriber = db.get(User, subscriber_id)
@@ -150,7 +151,8 @@ def remove_comment_attachment(
     asset = db.get(FileAsset, file_id)
     db.delete(link)
     if asset is not None:
-        db.delete(asset)
+        delete_file(db, asset)  # the stored object goes too, not only the row
+    engagement.audit_comment(db, comment, action="comment_attachment_removed", actor_id=current_user.id, project_id=project_id)
     db.commit()
 
 
@@ -169,6 +171,7 @@ def edit_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    engagement.audit_comment(db, comment, action="comment_edited", actor_id=current_user.id, project_id=project_id)
     db.commit()
     db.refresh(comment)
     return engagement.comment_to_out(db, comment, current_user.id)
@@ -183,6 +186,7 @@ def react_to_comment(
     comment = db.get(ReviewComment, comment_id)
     if comment is None or comment.target_id != cr_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    engagement.audit_comment(db, comment, action="comment_reacted", actor_id=current_user.id, project_id=project_id)
     engagement.add_reaction(db, comment_id, current_user.id)
 
 
@@ -195,4 +199,5 @@ def unreact_to_comment(
     comment = db.get(ReviewComment, comment_id)
     if comment is None or comment.target_id != cr_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    engagement.audit_comment(db, comment, action="comment_reaction_removed", actor_id=current_user.id, project_id=project_id)
     engagement.remove_reaction(db, comment_id, current_user.id)

@@ -13,6 +13,9 @@ than those core files importing this module.
   Pain Points with their scores; Open Questions; and the links between those
   records and to Requirements.
 
+- The Pain Point submission policy travels as its own setting (project: the project's own; organisation: the
+  default) and is carried only when set. An organisation merge keeps a default the organisation already has.
+
 Design decisions (all Decided by: Agent):
 - A record travels as its *current* content and status only (Strategy, Future
   State and Guiding Principle as their current version). Version history,
@@ -50,6 +53,7 @@ from __future__ import annotations
 
 import enum
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
@@ -71,6 +75,7 @@ from app.modules.context_strategy.enums import (
     OpenQuestionStatus,
     PainPointPriority,
     PainPointStatus,
+    PainPointSubmissionPolicy,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -94,8 +99,8 @@ from app.modules.context_strategy.models import (
     StrategyFile,
     StrategyVersion,
 )
-from app.modules.context_strategy.pain_point_scores import PERSONA_TARGET_TYPE
-from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME_KEY
+from app.modules.context_strategy.pain_point_scores import PERSONA_TARGET_TYPE, assign_score_level_ids, score_level_ids
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME, PAIN_POINT_SCORING_SCHEME_KEY
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
     FUTURE_STATE_CODE_PREFIX,
@@ -112,19 +117,30 @@ from app.modules.context_strategy.service import (
     get_or_create_project_pain_point_type,
     list_hidden_pain_point_types,
 )
+from app.modules.context_strategy.submission_policy import (
+    get_org_submission_policy,
+    get_project_submission_policy,
+    set_org_submission_policy,
+    set_project_submission_policy,
+)
 from app.modules.registry import get_scoring_targets
 from app.services import definition_suppression
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_file_links, prime_file_links
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.current_versions import prime_current_versions, primed_current_version
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.scoring import list_levels, seed_missing_scoring_levels
+from app.services.scoring_custom import export_definitions, import_definitions
 from app.services.sequences import generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
-_SCORE_AXES = {"severity": "severity_level_id", "frequency": "frequency_level_id", "confidence": "confidence_level_id"}
 _LINKS_KEY = "context_strategy_links"
 _PENDING_SCORES = "context_strategy_pending_scores"
+_AXIS_MAP = "context_strategy_scoring_axis_map"
+#: A bundle written before scores were stored per axis names these three levels beside the target.
+_LEGACY_SCORE_AXES = ("severity", "frequency", "confidence")
 
 
 def _j(value: datetime | date | None) -> str | None:
@@ -142,10 +158,21 @@ def _date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
-def _emails(db: Session, user_ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]:
+def _emails(db: Session, user_ids: Iterable[uuid.UUID | None]) -> dict[uuid.UUID, str]:
     """`{user id: email}` for the given ids (None ignored)."""
     ids = {u for u in user_ids if u is not None}
     return {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(ids)))} if ids else {}
+
+
+def _policy_from_bundle(value: Any, warnings: BundleImportWarnings, context: str) -> PainPointSubmissionPolicy | None:
+    """The submission policy named in a bundle, or `None` (with a warning for an unknown value)."""
+    if value is None:
+        return None
+    try:
+        return PainPointSubmissionPolicy(value)
+    except ValueError:
+        warnings.add(f"{context} submission policy {value!r} skipped — unknown value.")
+        return None
 
 
 @dataclass(frozen=True)
@@ -169,12 +196,12 @@ class _VersionedSpec:
     key: str
     artefact_type: str
     prefix: str
-    identity: type
-    version: type
-    file_model: type
+    identity: type[Any]  # mapped classes whose columns are read by name (`fk`, `title_field`, ...)
+    version: type[Any]
+    file_model: type[Any]
     fk: str
     file_fk: str
-    scope_enum: type[enum.Enum]
+    scope_enum: type[Any]  # an enum with `PROJECT` and `ORGANIZATION` members
     title_field: str
     text_fields: tuple[str, ...]
     enum_fields: dict[str, type[enum.Enum]]
@@ -236,6 +263,7 @@ def _versioned_json(
         "is_archived": record.is_archived, "archived_at": _j(record.archived_at),
         "archived_by_email": emails.get(record.archived_by),
         "tags": record_tag_names(db, spec.artefact_type, record.id),
+        "placements": record_placements(db, spec.artefact_type, record.id),
     }
     if spec.owner:
         entry["owner"] = principal_to_bundle(db, version.owner_type, version.owner_id)
@@ -278,6 +306,10 @@ def _create_versioned(
         db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
         artefact_type=spec.artefact_type, artefact_id=record.id, names=entry.get("tags"),
     )
+    restore_record_placements(
+        db, project_id=project_id, actor_id=creator_id,
+        artefact_type=spec.artefact_type, artefact_id=record.id, entries=entry.get("placements"),
+    )
     return record
 
 
@@ -296,7 +328,11 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         "pain_point_types": [
             {"name": t.name, "sort_order": t.sort_order, "is_active": t.is_active, "definition": t.definition} for t in types
         ],
+        "pain_point_scoring_definitions": export_definitions(db, org.id, PAIN_POINT_SCORING_SCHEME, None),
     }
+    default_policy = get_org_submission_policy(db, org.id)
+    if default_policy is not None:
+        out["pain_point_submission_policy"] = default_policy.value
     for spec in _SPECS:
         records = list(db.scalars(
             select(spec.identity).where(spec.identity.organization_id == org.id, spec.identity.scope == spec.scope_enum.ORGANIZATION)
@@ -304,6 +340,7 @@ def export_org_data(db: Session, org: Organization) -> dict[str, Any]:
         ).all())
         emails = _emails(db, {r.creator_id for r in records} | {r.archived_by for r in records})
         prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
+        prime_record_placements(db, spec.artefact_type, [r.id for r in records])
         prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, None) for r in records
@@ -318,6 +355,7 @@ def import_org_data(
     """`ModuleOrgBundleHooks.import_`: recreates Pain Point types and the
     organisation-scoped Strategies, Future States and Guiding Principles, skipping a
     type or record whose name the organisation already has."""
+    _import_scoring_definitions(db, org.id, None, data, warnings)
     existing = {t.name for t in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.organization_id == org.id))}
     for t in data.get("pain_point_types", []):
         if t["name"] in existing:
@@ -328,6 +366,11 @@ def import_org_data(
         ))
         existing.add(t["name"])
     db.flush()
+
+    # A default the organisation already chose is kept: a merge never overrides its own settings.
+    imported_policy = _policy_from_bundle(data.get("pain_point_submission_policy"), warnings, "Organisation")
+    if imported_policy is not None and get_org_submission_policy(db, org.id) is None:
+        set_org_submission_policy(db, org.id, imported_policy)
 
     for spec in _SPECS:
         entries = data.get(spec.key, [])
@@ -355,6 +398,25 @@ def import_org_data(
 
 
 # --- Project level: export ---------------------------------------------------
+
+
+def _import_scoring_definitions(
+    db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None, data: dict[str, Any],
+    warnings: BundleImportWarnings, current_user: User | None = None,
+) -> dict[str, str]:
+    """Recreates the bundle's custom scoring axes, models and hidden criteria for the tier before any score, so
+    their levels exist when the scores are matched. Returns the exported-to-local axis key map."""
+    definitions = data.get("pain_point_scoring_definitions")
+    if not definitions:
+        return {}
+    messages: list[str] = []
+    mapping = import_definitions(
+        db, organization_id, PAIN_POINT_SCORING_SCHEME, project_id, definitions,
+        current_user.id if current_user is not None else None, messages,  # an organisation import has no actor
+    )
+    for message in messages:
+        warnings.add(message)
+    return mapping
 
 
 def _level_refs(db: Session, project: Project) -> dict[uuid.UUID, str]:
@@ -398,8 +460,8 @@ def _pain_point_json(
             target = {"type": score.target_type, "label": label}
         scores.append({
             "target": target,
-            **{axis: levels.get(getattr(score, column)) for axis, column in _SCORE_AXES.items()},
-            "scored_by_email": emails.get(score.scored_by),
+            "levels": {axis: levels[level_id] for axis, level_id in score_level_ids(score).items() if level_id in levels},
+            "scored_by_email": (emails.get(score.scored_by) if score.scored_by else None),
         })
     return {
         "ref": pp.unique_code, "title": pp.title, "description": pp.description, "source": pp.source, "impact": pp.impact,
@@ -407,8 +469,10 @@ def _pain_point_json(
         "type_name": type_name, "type_org_name": org_type_name, "type_is_project_local": type_is_local,
         "owner": principal_to_bundle(db, pp.owner_type, pp.owner_id), "date_identified": _j(pp.date_identified),
         "is_intentional": pp.is_intentional, "created_by_email": emails.get(pp.creator_id), "created_at": _j(pp.created_at),
-        "is_archived": pp.is_archived, "archived_at": _j(pp.archived_at), "archived_by_email": emails.get(pp.archived_by),
+        "is_archived": pp.is_archived, "archived_at": _j(pp.archived_at),
+        "archived_by_email": (emails.get(pp.archived_by) if pp.archived_by else None),
         "tags": record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
+        "placements": record_placements(db, PAIN_POINT_ARTEFACT_TYPE, pp.id),
         "attachments": export_file_links(db, PainPointFile, "pain_point_id", pp.id, assets),
         "scores": scores,
     }
@@ -437,6 +501,9 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "definition_override": row.definition_override,
         })
     out["pain_point_project_types"] = type_rows
+    own_policy = get_project_submission_policy(db, project.id)
+    if own_policy is not None:
+        out["pain_point_submission_policy"] = own_policy.value
     out["pain_point_hidden_org_types"] = [
         t.name for t in list_hidden_pain_point_types(db, project.id, project.organization_id)
     ]
@@ -449,6 +516,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         emails = _emails(db, {r.creator_id for r in records} | {r.archived_by for r in records})
         prime_current_versions(db, spec.version, spec.fk, [r.id for r in records])
         prime_record_tag_names(db, spec.artefact_type, [r.id for r in records])
+        prime_record_placements(db, spec.artefact_type, [r.id for r in records])
         prime_file_links(db, spec.file_model, spec.file_fk, [r.id for r in records])
         out[spec.key] = [
             _versioned_json(db, spec, r, _current_version(db, spec, r.id), emails, assets) for r in records
@@ -464,6 +532,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     } if pain_points else set()
     emails.update(_emails(db, scorer_ids))
     prime_record_tag_names(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
+    prime_record_placements(db, PAIN_POINT_ARTEFACT_TYPE, [p.id for p in pain_points])
     prime_file_links(db, PainPointFile, "pain_point_id", [p.id for p in pain_points])
     pain_point_type_rows = {
         r.id: r for r in db.scalars(select(ProjectPainPointType).where(ProjectPainPointType.id.in_({p.pain_point_type_id for p in pain_points})))
@@ -487,20 +556,24 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     questions = list(db.scalars(select(OpenQuestion).where(OpenQuestion.project_id == project.id).order_by(OpenQuestion.unique_code)))
     emails = _emails(db, {q.creator_id for q in questions} | {q.archived_by for q in questions})
     prime_record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
+    prime_record_placements(db, OPEN_QUESTION_ARTEFACT_TYPE, [q.id for q in questions])
     prime_file_links(db, OpenQuestionFile, "open_question_id", [q.id for q in questions])
     out["open_questions"] = [
         {
             "ref": q.unique_code, "question": q.question, "context": q.context, "evidence": q.evidence,
             "priority": q.priority.value, "status": q.status.value, "owner": principal_to_bundle(db, q.owner_type, q.owner_id),
             "due_date": _j(q.due_date), "created_by_email": emails.get(q.creator_id), "created_at": _j(q.created_at),
-            "is_archived": q.is_archived, "archived_at": _j(q.archived_at), "archived_by_email": emails.get(q.archived_by),
+            "is_archived": q.is_archived, "archived_at": _j(q.archived_at),
+            "archived_by_email": (emails.get(q.archived_by) if q.archived_by else None),
             "tags": record_tag_names(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
+            "placements": record_placements(db, OPEN_QUESTION_ARTEFACT_TYPE, q.id),
             "attachments": export_file_links(db, OpenQuestionFile, "open_question_id", q.id, assets),
         }
         for q in questions
     ]
     refs[OPEN_QUESTION_ARTEFACT_TYPE] = {q.id: q.unique_code for q in questions}
 
+    out["pain_point_scoring_definitions"] = export_definitions(db, project.organization_id, PAIN_POINT_SCORING_SCHEME, project.id)
     out[_LINKS_KEY] = export_artefact_links(db, project, refs)
     return out, assets
 
@@ -549,15 +622,25 @@ def _type_row_for(
     name = entry.get("type_name")
     if name in rows:
         return rows[name]
-    org_type = org_types.get(entry.get("type_org_name") or name)
+    org_type = org_types.get(entry.get("type_org_name") or name or "")
     if org_type is not None and org_type.is_active:
         return get_or_create_project_pain_point_type(db, project.id, project.organization_id, org_type.id)
     warnings.add(f"{context}: type {name!r} not found — created as a project-local type.")
-    row = ProjectPainPointType(project_id=project.id, org_type_id=None, name_override=name or "Imported", is_enabled=True)
+    local_name = name or "Imported"
+    row = ProjectPainPointType(project_id=project.id, org_type_id=None, name_override=local_name, is_enabled=True)
     db.add(row)
     db.flush()
-    rows[row.name_override] = row
+    rows[local_name] = row
     return row
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Strategies, Future States and Guiding Principles become
+    drafts, Pain Points submitted (unscored) and Open Questions open with no due date."""
+    for spec in _SPECS:
+        fresh_drafts(data.get(spec.key, []), status="draft")
+    fresh_drafts(data.get("pain_points", []), status=PainPointStatus.SUBMITTED.value, empty=("scores",))
+    fresh_drafts(data.get("open_questions", []), status=OpenQuestionStatus.OPEN.value, clear=("due_date",))
 
 
 def import_project_data(
@@ -570,10 +653,11 @@ def import_project_data(
     Scores are imported later, by `import_late`."""
     if not any(data.get(k) for k in (
         "pain_point_project_types", "pain_point_hidden_org_types", "pain_points", "open_questions",
-        *(spec.key for spec in _SPECS),
+        "pain_point_submission_policy", "pain_point_scoring_definitions", *(spec.key for spec in _SPECS),
     )):
         return
     organization_id = project.organization_id
+    db.info[(_AXIS_MAP, project.id)] = _import_scoring_definitions(db, organization_id, project.id, data, warnings, current_user)
     refs: dict[str, dict[str, uuid.UUID]] = {}
 
     for spec in _SPECS:
@@ -591,6 +675,10 @@ def import_project_data(
                 users=users, context=f"{spec.artefact_type} {entry['ref']}",
             )
         refs[spec.artefact_type] = by_ref
+
+    imported_policy = _policy_from_bundle(data.get("pain_point_submission_policy"), warnings, "Project")
+    if imported_policy is not None:
+        set_project_submission_policy(db, project, imported_policy)
 
     rows = _import_types(db, project, data, warnings)
     org_types = {t.name: t for t in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.organization_id == organization_id))}
@@ -620,6 +708,10 @@ def import_project_data(
         restore_record_tags(
             db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
             artefact_type=PAIN_POINT_ARTEFACT_TYPE, artefact_id=pp.id, names=entry.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator_id,
+            artefact_type=PAIN_POINT_ARTEFACT_TYPE, artefact_id=pp.id, entries=entry.get("placements"),
         )
         import_file_links(
             db, organization_id=organization_id, file_model=PainPointFile, fk="pain_point_id", record_id=pp.id,
@@ -654,6 +746,10 @@ def import_project_data(
             db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
             artefact_type=OPEN_QUESTION_ARTEFACT_TYPE, artefact_id=oq.id, names=entry.get("tags"),
         )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator_id,
+            artefact_type=OPEN_QUESTION_ARTEFACT_TYPE, artefact_id=oq.id, entries=entry.get("placements"),
+        )
         import_file_links(
             db, organization_id=organization_id, file_model=OpenQuestionFile, fk="open_question_id", record_id=oq.id,
             entries=entry.get("attachments", []), file_bytes_by_ref=file_bytes_by_ref, current_user=current_user,
@@ -683,6 +779,7 @@ def import_late_project_data(
     """`ModuleProjectBundleHooks.import_late`: recreates the Pain Point scores, once the Personas they
     target exist. A persona the project cannot list, or a level the organisation lacks, is skipped with a warning."""
     pain_points: dict[str, uuid.UUID] | None = db.info.pop((_PENDING_SCORES, project.id), None)
+    axis_map: dict[str, str] = db.info.pop((_AXIS_MAP, project.id), None) or {}
     if not pain_points:
         return
     seed_missing_scoring_levels(db, project.organization_id)
@@ -706,15 +803,20 @@ def import_late_project_data(
                     warnings.add(f"{context}: persona {score['target']['label']!r} not found or ambiguous — skipped.")
                     continue
                 target_type, target_id = score["target"]["type"], matches[0]
+            named = score.get("levels")
+            if named is None:  # a bundle from before scores were stored per axis
+                named = {axis: score[axis] for axis in _LEGACY_SCORE_AXES if score.get(axis)}
             levels: dict[str, uuid.UUID | None] = {}
-            for axis, column in _SCORE_AXES.items():
-                name = score.get(axis)
+            for exported_axis, name in named.items():
+                axis = axis_map.get(exported_axis, exported_axis)
                 level_id = level_ids.get((axis, name)) if name else None
                 if name and level_id is None:
                     warnings.add(f"{context}: {axis} level {name!r} not found — left unscored.")
-                levels[column] = level_id
-            db.add(PainPointScore(
-                pain_point_id=pain_point_id, target_type=target_type, target_id=target_id, **levels,
+                levels[axis] = level_id
+            row = PainPointScore(
+                pain_point_id=pain_point_id, target_type=target_type, target_id=target_id,
                 scored_by=users.resolve(score.get("scored_by_email"), required=False, context=f"{context} scorer"),
-            ))
+            )
+            assign_score_level_ids(row, levels)
+            db.add(row)
     db.flush()

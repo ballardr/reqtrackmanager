@@ -57,7 +57,9 @@ async def check_disk_usage_once(backend, already_warned: bool, db: Session) -> b
     usage_percent = backend.disk_usage_percent()
     if usage_percent >= settings.disk_usage_warning_threshold_percent:
         if not already_warned:
-            notify_server_admins(
+            # In a worker thread: each admin's email is sent through `asyncio.run`, which cannot start inside this running loop.
+            await asyncio.to_thread(
+                notify_server_admins,
                 db, notification_type=NotificationType.SYSTEM_STORAGE_ALERT,
                 title="Storage disk usage warning",
                 body=f"File storage disk usage is {usage_percent:.0f}% (threshold {settings.disk_usage_warning_threshold_percent}%).",

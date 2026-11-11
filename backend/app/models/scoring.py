@@ -44,7 +44,7 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -272,6 +272,8 @@ class ScoringCustomAxis(UUIDPKMixin, TimestampMixin, Base):
         key: Generated machine key (`c_` + a slug of the label), unique per (organisation, scheme).
         label: Display name.
         description: Optional guidance for scorers.
+        per_target: On a scheme with targets, whether the axis is scored per target (a persona) rather than once
+            for the whole record; fixed when the axis is created, because scores already stored depend on it.
     """
 
     __tablename__ = "scoring_custom_axes"
@@ -287,6 +289,7 @@ class ScoringCustomAxis(UUIDPKMixin, TimestampMixin, Base):
     key: Mapped[str] = mapped_column(String(64))
     label: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    per_target: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class ScoringCustomModel(UUIDPKMixin, TimestampMixin, Base):

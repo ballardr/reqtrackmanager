@@ -35,12 +35,26 @@ A project's **Files** page lists every file the project holds — attached to re
 
 ## Reviewing project history
 
-A project's **Project history** page is a unified timeline of everything that's happened — requirement and change-request version history, plus other audit events (stage transitions, group membership changes, and more) — filterable by date range and entity type.
+A project's **Project history** page is a unified timeline of everything that's happened — requirement and change-request version history, plus other audit events (stage transitions, group membership changes, and more). It is a table with one line per event: **Time** (the day is written once, on the first event of each day), **Type**, **Event**, **Record(s)** and **Person**. A requirement, a change request, an action or any other record you may open is named by its code and title, and links to its page. Click **Time** to put the oldest events first.
+
+A link event reads **Created a link (Depends on)** or **Removed a link (Depends on)** in the **Event** column: the verb and the relationship. The **Record(s)** column names the two records it joins, the source above the target, each opening its own page. A record from another project is followed by that project's name. A record you may not open is shown by its type only, for example *Decision (unavailable)*, so the event is still listed without revealing the record.
+
+The filter panel on the right narrows the table; every filter is kept in the address, so a reload, the browser's Back button and a copied link restore the same view.
+
+| Filter | What it does |
+| --- | --- |
+| **Period** | Any time, Today, Last 7 days, Last 30 days, or a Custom range. A custom range uses your own time zone, and the **To** time includes the whole minute you pick. |
+| **Type** | A two-level list; several types or groups may be chosen, and choosing a heading chooses all its types. **Records** has one heading per module, with Core first. **Metadata** holds what surrounds the records: Links and files, Tags and places, Access, Structure and settings, and Other. Only types the project has events for are listed. |
+| **Change** | One or more of Created, Edited, Status changes (submitted, approved, rejected, completed, archived and similar) and Deleted. A link, tag, role or group event is a metadata event, so it is never counted as Created or Deleted; find it under **Type**, Metadata. |
+| **Person or group** | Only what these people did. A group stands for its current members, including members of groups nested in it. |
+| **Include discussion comments** | Discussion comments are left out unless ticked. |
+
+**List actions** (the menu beside the title) downloads the filtered history as CSV, PDF, Word, ODT or ODS. The **Person** column is included only where your organisation's policy and your permission to export personal data allow it, as for every record list, and each download is recorded in the audit trail with its counts and filter names, never the entries.
 
 | Project history |
 | --- |
-| A unified activity timeline, filterable by date range and entity type |
-| ![Project history page showing a filterable activity timeline](../../static/img/screenshots/project-history.png) |
+| A table of events with Time, Type, Event and Record, filterable by period, type, change and person or group |
+| ![Project history page showing a filterable activity table](../../static/img/screenshots/project-history.png) |
 
 Discussion comments are excluded from the timeline by default, since they're informal discussion rather than the formal change log — tick **Include discussion comments** to bring them into view alongside everything else.
 

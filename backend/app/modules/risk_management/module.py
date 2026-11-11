@@ -192,6 +192,7 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
 
 MODULE_DEFINITION = ModuleDefinition(
     key=RISK_MODULE_KEY,
+    activity_metadata_types={"project_risk_type": "structure"},
     name="Risk Management",
     description=(
         "Record project Risks — statement, cause, risk event, consequence, owner, treatment strategy and "
@@ -234,6 +235,9 @@ MODULE_DEFINITION = ModuleDefinition(
     org_bundle_hooks=ModuleOrgBundleHooks(export=risk_export.export_org_data, import_=risk_export.import_org_data),
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=risk_export.export_project_data, import_=risk_export.import_project_data,
+        template_configuration_keys=frozenset({"risk_project_types", "risk_hidden_org_types"}),
+        template_record_keys=frozenset({"risks"}),
+        template_reset=risk_export.reset_for_template,
     ),
     notification_types=NOTIFICATION_TYPES,
     on_artefact_changed=_on_artefact_changed,

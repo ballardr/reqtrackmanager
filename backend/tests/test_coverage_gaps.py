@@ -5,6 +5,7 @@ safeguard (C-U-09). Each test below corresponds to a specific
 previously-uncovered code path, not general-purpose coverage padding."""
 
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.stage_helpers import move_stage
 
 
 def test_health_endpoint_reports_ok(client):
@@ -90,9 +91,7 @@ def test_reorder_rejected_outside_scoping_stage(client, admin_token, org_id):
 
     stages = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()
     stage_id = stages[0]["id"]
-    client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=review",
-        headers=auth_headers(admin_token),
+    move_stage(client, project['id'], stage_id, "review", headers=auth_headers(admin_token),
     )
 
     resp = client.post(

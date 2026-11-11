@@ -81,6 +81,7 @@ from app.schemas.type_vocabulary import (
 from app.services import scoring
 from app.services.audit import log_event
 from app.services.current_versions import current_versions
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import lock_row_for_update, require_ai_approvals_enabled, require_project_subcomponent_enabled
 from app.services.tags import TagFilter
@@ -254,7 +255,7 @@ def list_risks(
         return out
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, RISK_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, RISK_ARTEFACT_TYPE, rows_for,
         gate=(RISK_MODULE_KEY, RISK_SUBCOMPONENT_KEY),
     )
 

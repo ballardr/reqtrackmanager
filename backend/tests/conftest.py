@@ -63,6 +63,9 @@ os.environ.setdefault("SERVER_ADMIN_CREATE_ORG", "true")
 # A fresh install seeds every module available; the suite's tables are truncated after every test, so
 # that seed would reach only the first test. Tests that need it enable the setting themselves.
 os.environ.setdefault("MODULES_DEFAULT_AVAILABLE", "false")
+# A `Settings` built after a test clears the cache must start with these two rules off as well; the tests of each switch it on.
+os.environ["FORCE_PASSWORD_CHANGE_ON_ADMIN_SET"] = "false"
+os.environ["REQUIRE_EMAIL_CONFIRMATION"] = "false"
 # Uploads the suite stores go to a throwaway directory, never the repo's `./data/files` (a run started from the repo
 # root, not `backend/`, used to leave files in an untracked `data/` there). An explicit STORAGE_LOCAL_DIR wins.
 if "STORAGE_LOCAL_DIR" not in os.environ:
@@ -189,6 +192,11 @@ def _default_security_posture(monkeypatch):
     for settings in instances.values():
         for name in ("org_smtp_allow_private_network_targets", "oidc_allow_private_network_targets"):
             monkeypatch.setattr(settings, name, False)
+        # Almost every test creates a user with a typed password and then acts as that user; the forced change is
+        # exercised by the tests that switch it on.
+        monkeypatch.setattr(settings, "force_password_change_on_admin_set", False)
+        # Sign-up tests expect a session straight away; the confirmation is exercised by the tests that switch it on.
+        monkeypatch.setattr(settings, "require_email_confirmation", False)
 
 
 _NON_EMPTY_PROBE: str | None = None
@@ -219,6 +227,30 @@ def _can_skip_fk_triggers(conn) -> bool:
     if _CAN_SKIP_FK_TRIGGERS is None:
         _CAN_SKIP_FK_TRIGGERS = bool(conn.scalar(text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")))
     return _CAN_SKIP_FK_TRIGGERS
+
+
+@pytest.fixture(autouse=True)
+def _totp_clock(monkeypatch):
+    import time
+
+    from app.services import totp as totp_service
+    from tests.totp_helpers import TotpClock
+
+    TotpClock.now = time.time()
+    monkeypatch.setattr(totp_service, "_now", lambda: TotpClock.now)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_public_rate_limiters():
+    """Empties the in-process buckets of the unauthenticated reset and sign-up routes, so one test's calls from the
+    test client's single address never spend another test's allowance."""
+    from app.services import credential_reset, oidc_client
+
+    credential_reset._limiters.clear()
+    oidc_client._discovery_cache.clear()
+    yield
+    credential_reset._limiters.clear()
+    oidc_client._discovery_cache.clear()
 
 
 @pytest.fixture(autouse=True)

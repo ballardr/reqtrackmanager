@@ -46,6 +46,8 @@ from app.models.report_layout import ReportLayout, ReportLayoutVersion
 from app.models.report_snippet import SavedReportSnippet
 from app.services import report_converter
 from app.services.files import delete_file, read_file, upload_file
+from app.services.logo_plate import plate_resolved
+from app.services.rate_limit import RateLimiter
 from app.services.report_layout_tree import TreeError
 from app.services.report_org_values import ORG_LOGO_FILE
 from app.services.report_raster import (
@@ -189,13 +191,17 @@ def load_image(
     return _resolve_asset(asset)
 
 
-def load_org_logo(db: Session, logo_file_id: uuid.UUID | None, organization_id: uuid.UUID) -> tuple[ResolvedImage | None, str]:
+def load_org_logo(
+    db: Session, logo_file_id: uuid.UUID | None, organization_id: uuid.UUID, band_hex: str | None = None,
+) -> tuple[ResolvedImage | None, str]:
     """Reads the organisation's logo for a run (it is the organisation's own file, not a library picture).
 
     Args:
         db: Active session (read only).
         logo_file_id: `Organization.logo_file_id`.
         organization_id: The organisation; a logo file of any other is refused.
+        band_hex: The chosen logo band colour; the logo is returned on a plate of it (`services.logo_plate`). `None`
+            returns the logo as stored.
 
     Returns:
         `(image, "")`, or `(None, reason)` with a short reason for the run's warning. Never raises for a bad image.
@@ -203,7 +209,10 @@ def load_org_logo(db: Session, logo_file_id: uuid.UUID | None, organization_id: 
     asset = db.get(FileAsset, logo_file_id) if logo_file_id else None
     if asset is None or asset.organization_id != organization_id:
         return None, "has no organisation logo to use"
-    return _resolve_asset(asset)
+    image, reason = _resolve_asset(asset)
+    if image is not None and band_hex:
+        image = plate_resolved(image, band_hex)
+    return image, reason
 
 
 def _resolve_asset(asset: FileAsset) -> tuple[ResolvedImage | None, str]:
@@ -227,11 +236,15 @@ def _resolve_asset(asset: FileAsset) -> tuple[ResolvedImage | None, str]:
 # --- the library ---------------------------------------------------------------------------------------
 
 
+#: Per person, in this process: converting a picture occupies one of the converter's two slots for seconds.
+_conversion_limiter = RateLimiter(capacity=5, refill_per_second=1 / 12, shared="picture-conversion")
+
+
 def _is_image(asset: FileAsset) -> bool:
     return asset.content_type == SVG_TYPE or asset.content_type in RASTER_TYPES.values()
 
 
-def prepare_upload(filename: str, data: bytes) -> tuple[str, bytes]:
+def prepare_upload(filename: str, data: bytes, uploaded_by: uuid.UUID | None = None) -> tuple[str, bytes]:
     """Turns an EPS or PDF upload into the SVG the library stores; anything else is returned unchanged.
 
     Calls the converter service, so it can take seconds: call it off the event loop (`run_in_threadpool`).
@@ -239,12 +252,15 @@ def prepare_upload(filename: str, data: bytes) -> tuple[str, bytes]:
     Args:
         filename: The uploaded name (`.svg` is appended to a converted file's name: `logo.eps` is stored as `logo.eps.svg`).
         data: The uploaded bytes.
+        uploaded_by: The uploader; a person may start five conversions in a burst and then one every twelve seconds, so
+            one person cannot hold the shared converter's slots.
 
     Returns:
         `(filename, data)` to store.
 
     Raises:
-        ImageRejectedError: An EPS or PDF that is too large, damaged, empty of drawing or cannot be converted here.
+        ImageRejectedError: An EPS or PDF that is too large, damaged, empty of drawing or cannot be converted here, or
+            too many conversions started by this person.
     """
     if report_converter.is_eps(data):
         convert = report_converter.eps_to_svg
@@ -254,6 +270,10 @@ def prepare_upload(filename: str, data: bytes) -> tuple[str, bytes]:
         return filename, data
     if len(data) > max_image_bytes():
         raise ImageRejectedError(f"The image is too large (limit {_megabytes(max_image_bytes())}).")
+    if uploaded_by is not None:
+        wait = _conversion_limiter.acquire(str(uploaded_by))
+        if wait is not None:
+            raise ImageRejectedError(f"Too many conversions in a short time. Wait {max(1, int(wait) + 1)} seconds and try again.")
     try:
         svg = convert(data)
     except report_converter.ConversionError as exc:
@@ -283,7 +303,7 @@ def upload_library_image(
         ImageRejectedError: Not an acceptable image.
         HTTPException: 413 from the upload cap (`services.files.upload_file`).
     """
-    filename, data = prepare_upload(filename, data)
+    filename, data = prepare_upload(filename, data, uploaded_by)
     content_type = sniff_image(data)
     if content_type == SVG_TYPE:
         # Store the allow-listed copy, not the upload: a script, `foreignObject` or external reference never rests in

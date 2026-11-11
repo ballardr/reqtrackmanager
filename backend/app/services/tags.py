@@ -12,7 +12,8 @@ Responsibilities:
 - Attach, detach and replace the tags of a record (`set_record_tags`, `add_record_tag`,
   `remove_record_tag`), writing the audit events the record's Activity tab reads.
 - Answer "which records carry these tags" for list endpoints (`tagged_ids`) and the usage tables
-  (`usage_by_type`).
+  (`usage_by_type`). `TagFilter` is also the list filter for component/category placements
+  (`services.placements`), so every list takes one filter dependency.
 - Vocabulary maintenance for a project or the organisation (`create_tag`, `update_tag`,
   `merge_tags`, `delete_tag`, `reclassify`).
 - Keep requirement keywords (`get_keywords`, `set_keywords`): a keyword is a tag.
@@ -40,7 +41,7 @@ import contextvars
 import re
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -56,6 +57,8 @@ from app.models.tag import MAX_TAG_NAME_LENGTH, ArtefactTag, Tag
 from app.modules.registry import get_all_registered_artefact_types, get_artefact_type_label
 from app.services.audit import log_event
 from app.services.link_graph import ArtefactResolver
+from app.services.lookups import project_or_404
+from app.services.placements import PlacementFilter
 from app.services.project_hierarchy import get_project_chain_ids
 
 TAG_MODE_FREE = "free"
@@ -424,40 +427,65 @@ _Row = TypeVar("_Row")
 
 
 class TagFilter:
-    """The `?tag=a&tag=b&tag_mode=any|all` list filter, as a FastAPI dependency
-    (`tag_filter: TagFilter = Depends()`), so every list endpoint offers the same parameters.
+    """The shared list filter, as a FastAPI dependency (`tag_filter: TagFilter = Depends()`), so every list
+    endpoint offers the same parameters: `?tag=a&tag=b&tag_mode=any|all` and
+    `?component_id=…&category_id=…` (`services.placements.PlacementFilter`). Both narrow the same rows, so one
+    dependency and one `keep` call serve a list, its export and its record-list report; a record must satisfy
+    every filter that is active.
 
     Attributes:
         names: The requested tag names (blank entries dropped).
         match_all: True for `tag_mode=all`.
+        placements: The component/category part of the filter.
     """
 
     def __init__(
         self,
         tag: list[str] = Query([], description="Only records carrying these tags (case-insensitive)."),
         tag_mode: Literal["any", "all"] = Query("any", description="Whether a record needs any or all of the `tag`s."),
+        component_id: list[uuid.UUID] = Query([], description="Only records placed in these components."),
+        category_id: list[uuid.UUID] = Query([], description="Only records placed in these categories."),
     ) -> None:
-        """Reads the `tag` and `tag_mode` query parameters (blank names are ignored)."""
+        """Reads the `tag`, `tag_mode`, `component_id` and `category_id` query parameters (blank names are ignored)."""
         self.names = [t for t in tag if t and t.strip()]
         self.match_all = tag_mode == "all"
+        self.placements = PlacementFilter(list(component_id), list(category_id))
 
     @property
     def active(self) -> bool:
         """Whether the caller asked to filter."""
-        return bool(self.names)
+        return bool(self.names) or self.placements.active
+
+    @property
+    def applied_keys(self) -> list[str]:
+        """The query parameters in force (`tag`, `component`, `category`), for the export's audit event."""
+        keys = ["tag"] if self.names else []
+        if self.placements.component_ids:
+            keys.append("component")
+        if self.placements.category_ids:
+            keys.append("category")
+        return keys
 
     def ids(self, db: Session, project_id: uuid.UUID, artefact_type: str) -> set[uuid.UUID]:
-        """Ids of the project's records of `artefact_type` that satisfy the filter."""
-        project = db.get(Project, project_id)
-        if project is None:
-            return set()
-        return tagged_ids(db, project=project, artefact_type=artefact_type, names=self.names, match_all=self.match_all)
+        """Ids of the project's records of `artefact_type` that satisfy every active filter."""
+        wanted: set[uuid.UUID] | None = None
+        if self.names:
+            project = db.get(Project, project_id)
+            wanted = (
+                tagged_ids(db, project=project, artefact_type=artefact_type, names=self.names, match_all=self.match_all)
+                if project is not None
+                else set()
+            )
+        if self.placements.active:
+            placed = self.placements.ids(db, project_id, artefact_type)
+            wanted = placed if wanted is None else wanted & placed
+        return wanted or set()
 
     def keep(
-        self, db: Session, project_id: uuid.UUID, artefact_type: str, rows: list[_Row],
+        self, db: Session, project_id: uuid.UUID, artefact_type: str, rows: Sequence[_Row],
         id_of=lambda row: row.id,
     ) -> list[_Row]:
-        """`rows` narrowed to the matching records (unchanged when the filter is not active).
+        """`rows` narrowed to the matching records (unchanged when no filter is active).
 
         Args:
             db: Active session (read only).
@@ -467,7 +495,7 @@ class TagFilter:
             id_of: Reads a row's record id (default `row.id`).
         """
         if not self.active:
-            return rows
+            return list(rows)
         wanted = self.ids(db, project_id, artefact_type)
         return [row for row in rows if id_of(row) in wanted]
 
@@ -540,7 +568,8 @@ def _resolve_names(
                 db, entity_type="tag", entity_id=tag.id, action="created", actor_id=actor_id,
                 organization_id=scope.organization_id, project_id=scope.project_id, detail={"name": name},
             )
-            offered[key] = tag
+            if offered is not None:
+                offered[key] = tag
         resolved[key] = tag
     return list(resolved.values())
 
@@ -559,7 +588,7 @@ def _audit_record(
 
 def set_record_tags(
     db: Session, *, scope: TagScope, actor_id: uuid.UUID | None, artefact_type: str, artefact_id: uuid.UUID,
-    names: list[str], enforce_mode: bool = True,
+    names: list[str], enforce_mode: bool = True, new_record: bool = False,
 ) -> TagChange:
     """Makes the record carry exactly `names`.
 
@@ -571,6 +600,8 @@ def set_record_tags(
         names: The wanted tag names.
         enforce_mode: False for a bundle import, which keeps the tags it was exported with even
             in a restricted project (an administrator is restoring them, not coining them).
+        new_record: True when the record was created in this request and so carries no tags yet, which
+            saves reading them (a bundle import or template copy creates many records).
 
     Returns:
         The tags added and removed.
@@ -579,7 +610,7 @@ def set_record_tags(
         HTTPException: 422 for an invalid name, a name not on the list in restricted mode, or
             more than `MAX_TAGS_PER_RECORD` tags.
     """
-    current = get_record_tags(db, artefact_type, artefact_id)
+    current = [] if new_record else get_record_tags(db, artefact_type, artefact_id)
     attached = {t.name_key: t for t in current}
     wanted = _resolve_names(
         db, scope=scope, actor_id=actor_id, names=names, attached=attached, enforce_mode=enforce_mode,
@@ -993,6 +1024,7 @@ def get_keywords(db: Session, requirement_id: uuid.UUID) -> list[str]:
 
 def set_keywords(
     db: Session, requirement, keywords: list[str], actor_id: uuid.UUID | None = None, enforce_mode: bool = True,
+    new_record: bool = False,
 ) -> TagChange:
     """Makes a requirement carry exactly `keywords` as tags in its project.
 
@@ -1006,14 +1038,16 @@ def set_keywords(
         keywords: The wanted names.
         actor_id: The acting user, for the audit trail.
         enforce_mode: False for a bundle import (see `set_record_tags`).
+        new_record: True for a requirement created in this request (see `set_record_tags`).
 
     Raises:
         HTTPException: 422 as `set_record_tags`.
     """
-    project = db.get(Project, requirement.project_id)
+    project = project_or_404(db, requirement.project_id)
     return set_record_tags(
         db, scope=TagScope(project.organization_id, project.id), actor_id=actor_id, artefact_type="requirement",
         artefact_id=requirement.id, names=[k for k in keywords if k and k.strip()], enforce_mode=enforce_mode,
+        new_record=new_record,
     )
 
 

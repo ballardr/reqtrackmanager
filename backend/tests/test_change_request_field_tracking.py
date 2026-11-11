@@ -15,6 +15,7 @@ from tests.conftest import (
     create_project,
     login,
 )
+from tests.stage_helpers import move_stage
 
 
 def _assign_project_role(client, admin_token, project_id, user_id, role):
@@ -71,14 +72,10 @@ def _approve_requirement(client, admin_token, project_id, requirement_id):
 def _approve_current_stage(client, admin_token, project_id):
     stages = client.get(f"/api/v1/projects/{project_id}/stages", headers=auth_headers(admin_token)).json()
     stage_id = stages[0]["id"]
-    review = client.post(
-        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=review",
-        headers=auth_headers(admin_token),
+    review = move_stage(client, project_id, stage_id, "review", headers=auth_headers(admin_token),
     )
     assert review.status_code == 200
-    resp = client.post(
-        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=approved",
-        headers=auth_headers(admin_token),
+    resp = move_stage(client, project_id, stage_id, "approved", headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
 

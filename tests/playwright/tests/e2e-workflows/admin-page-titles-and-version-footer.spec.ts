@@ -27,7 +27,7 @@ test("Org Admin shows the organisation's own name as the page title, persisting 
   page,
 }) => {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-  await page.getByRole("link", { name: "My organisations" }).click();
+  await page.getByRole("link", { name: "Organisation settings" }).click();
   await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
   await expect(page).toHaveURL(/\/orgs\/[0-9a-f-]+\/admin/);
   await expect(page.getByRole("heading", { level: 1, name: ORG_NAMES.alpha })).toBeVisible();
@@ -46,13 +46,12 @@ test("Project Admin shows the project's own name as the page title", async ({ pa
   await expect(page.getByRole("heading", { level: 1, name: PROJECT_NAMES.alpha1 })).toBeVisible();
 });
 
-test("the nav rail shows the frontend and backend's own build versions", async ({ page }) => {
+test("the page footer shows the frontend and backend's own build versions", async ({ page }) => {
   await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-  await expect(page.getByText(/^App v\S+$/)).toBeVisible();
   // The backend build identity is fetched async (GET /api/v1/system/version)
   // and defaults to "unknown"/"dev" placeholders in this dev/test stack
   // (no build ARGs supplied), rather than a real semantic version — the
   // point of this assertion is that it resolves and renders at all, not a
   // specific value.
-  await expect(page.getByText(/^API v\S+$/)).toBeVisible();
+  await expect(page.getByText(/^Version: v\S+\/v\S+$/)).toBeVisible();
 });

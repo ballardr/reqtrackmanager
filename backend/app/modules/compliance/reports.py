@@ -129,6 +129,7 @@ from __future__ import annotations
 import csv
 import io
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -184,6 +185,7 @@ from app.services import relationships
 from app.services.branding import DEFAULT_ACCENT_COLOR_HEX
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
+from app.services.lookups import get_or_404
 from app.services.report_document import STYLES, build_pdf, safe, styled_table, title_flowables, toned_paragraph
 from app.services.tags import tag_names_for_records
 
@@ -374,7 +376,7 @@ def _evidence_codes(db: Session, project: Project, evidence: list[ComplianceEvid
     Returns:
         `(codes, tags)`, each keyed by evidence id.
     """
-    organization = db.get(Organization, project.organization_id)
+    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
     codes = {
         e.id: display_code(
             e.unique_code, project.code, own_project_code=project.code if own_project else None,
@@ -489,8 +491,8 @@ def collect_project_compliance_report(
     organization_id = project.organization_id
 
     for pc in assignments:
-        version = db.get(ComplianceStandardVersion, pc.standard_version_id)
-        standard = db.get(ComplianceStandard, version.standard_id)
+        version = get_or_404(db, ComplianceStandardVersion, pc.standard_version_id, "Compliance standard version")
+        standard = get_or_404(db, ComplianceStandard, version.standard_id, "Compliance standard")
         if standard_id is not None and standard.id != standard_id:
             continue
         if standard_version_id is not None and version.id != standard_version_id:
@@ -593,7 +595,7 @@ def collect_project_compliance_report(
                     if effective == ComplianceApplicability.APPLICABLE else ""
                 ),
                 approval_decided_at=_fmt_datetime(pcr.approval_decided_at),
-                approval_decided_by_email=approver_emails.get(pcr.approval_decided_by, ""),
+                approval_decided_by_email=(approver_emails.get(pcr.approval_decided_by, "") if pcr.approval_decided_by else ""),
                 decision_note=pcr.decision_note, required_actions_summary=actions_summary, evidence_titles=evidence_titles,
                 ancestor_path=_requirement_ancestor_breadcrumb(requirement, by_id),
                 requirement_reasoning=requirement.reasoning, requirement_description=requirement.description,
@@ -624,7 +626,7 @@ def collect_project_compliance_report(
                 schedule_state=compliance_review_schedule_state_label(compute_review_schedule_state(review)),
                 outcome=compliance_review_outcome_label(review.outcome.value if review.outcome else None),
                 completed_at=_fmt_datetime(review.completed_at),
-                completed_by_email=review_emails.get(review.completed_by, ""),
+                completed_by_email=(review_emails.get(review.completed_by, "") if review.completed_by else ""),
             ))
 
     # Evidence register: every piece of evidence for the project (not just
@@ -699,7 +701,7 @@ def collect_project_compliance_report(
     return data
 
 
-def _emails_by_id(db: Session, user_ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]:
+def _emails_by_id(db: Session, user_ids: Collection[uuid.UUID | None]) -> dict[uuid.UUID, str]:
     """One batched user lookup for a set of possibly-`None` ids, mirroring
     `services.project_export`'s own established "single deployment-wide
     lookup, not N+1" pattern."""
@@ -829,7 +831,7 @@ def generate_project_compliance_pdf(project_name: str, data: ProjectComplianceRe
         # they belong to, and the Requirement column's width absorbs what
         # that column used to occupy (both tables' total width unchanged).
         header = ["Standard", "Requirement", "Applicability", "Status", "Approval", "Actions", "Evidence"]
-        rows = [header]
+        rows: list[list[str | Paragraph]] = [list(header)]
         for r in data.requirement_rows:
             rows.append([
                 _p(f"{r.standard_reference} v{r.version_label}"),
@@ -1070,14 +1072,14 @@ def collect_org_compliance_report(
             if not _matches_requirement_filter(row.requirement_id, requirement_id, requirement_top_level_by_id):
                 continue
             data.non_compliant_rows.append((project.name, _requirement_report_row_from_out(row)))
-        for row in list_pending_approvals_for_project(db, project_id=project.id):
-            if standard_id is not None and row.standard_id != standard_id:
+        for pending in list_pending_approvals_for_project(db, project_id=project.id):
+            if standard_id is not None and pending.standard_id != standard_id:
                 continue
-            if standard_version_id is not None and row.standard_version_id != standard_version_id:
+            if standard_version_id is not None and pending.standard_version_id != standard_version_id:
                 continue
-            if not _matches_requirement_filter(row.requirement_id, requirement_id, requirement_top_level_by_id):
+            if not _matches_requirement_filter(pending.requirement_id, requirement_id, requirement_top_level_by_id):
                 continue
-            data.pending_approval_rows.append((project.name, _requirement_report_row_from_out(row, is_pending=True)))
+            data.pending_approval_rows.append((project.name, _requirement_report_row_from_out(pending, is_pending=True)))
         expiring = list(list_expiring_or_expired_evidence(db, project_id=project.id))
         expiring_codes, expiring_tags = _evidence_codes(db, project, expiring, own_project=False)
         expiring_outs = dict(zip((e.id for e in expiring), build_evidence_outs(db, expiring), strict=True))
@@ -1135,7 +1137,9 @@ def generate_org_compliance_pdf(org_name: str, data: OrgComplianceReportData) ->
     if not data.assignment_rows:
         story.append(Paragraph(_org_report_empty_message(data), _styles["BodyText"]))
     else:
-        rows = [["Project", "Standard", "Compliance %", "Overall status", "Approval status", "Non-compliant", "Target date"]]
+        rows: list[list[str | Paragraph]] = [
+            ["Project", "Standard", "Compliance %", "Overall status", "Approval status", "Non-compliant", "Target date"]
+        ]
         for a in data.assignment_rows:
             rows.append([
                 _p(a.project_name), _p(f"{a.standard_reference} v{a.version_label}"), _p(f"{a.compliance_percentage:.1f}%"),

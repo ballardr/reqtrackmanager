@@ -9,9 +9,9 @@ import { ProjectCodePolicyPanel } from "./ProjectCodePolicyPanel";
 const ORG: Organization = {
   id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-  disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
+  disabled_at: null, accent_color_hex: null, logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
-  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" },
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false },
   enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
@@ -35,7 +35,7 @@ export const SavesPolicy: Story = {
     await userEvent.click(canvas.getByRole("checkbox", { name: "Always show the project code" }));
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await expect(put).toHaveBeenCalledWith("/api/v1/orgs/org-1/code-policy", {
-      kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual", enforce_code_everywhere: true,
+      kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual", locked: false, enforce_code_everywhere: true,
     });
     await expect(args.onSaved).toHaveBeenCalled();
   },
@@ -49,5 +49,16 @@ export const InvalidLengthsDisableSave: Story = {
     await userEvent.clear(longest);
     await userEvent.type(longest, "1");
     await expect(canvas.getByRole("button", { name: "Save" })).toBeDisabled();
+  },
+};
+
+/** Locking codes after creation is saved with the rest of the policy. */
+export const LocksCodesAfterCreation: Story = {
+  play: async ({ canvasElement }) => {
+    const put = spyOn(api, "put").mockResolvedValue({ ...ORG, project_code_policy: { ...ORG.project_code_policy, locked: true } });
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Lock codes after creation" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Save" }));
+    await expect(put).toHaveBeenCalledWith("/api/v1/orgs/org-1/code-policy", expect.objectContaining({ locked: true }));
   },
 };

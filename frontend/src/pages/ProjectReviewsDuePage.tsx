@@ -7,7 +7,8 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Component, RequirementDueForReview } from "../api/types";
 import { principalText } from "../api/types";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
 import { Spinner } from "../components/Spinner";
@@ -61,22 +62,20 @@ export function ProjectReviewsDuePage() {
         title={strings.reviews.projectTitle}
         filter={
           <FilterPanel sectionKey="projectReviewsDueFilters">
-            <FilterField label={strings.requirements.component}>
-              <select className="input" value={componentId} onChange={(e) => setComponentId(e.target.value)}>
-                <option value="">{strings.reviews.allComponents}</option>
-                {components.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Reviewer">
-              <select className="input" value={reviewerKey} onChange={(e) => setReviewerKey(e.target.value)}>
-                <option value="">{strings.reviews.allReviewers}</option>
-                {reviewers.map(([key, name]) => (
-                  <option key={key} value={key}>{name}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.requirements.component}
+              value={componentId}
+              onChange={setComponentId}
+              allLabel={strings.reviews.allComponents}
+              options={components.map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <FilterSelect
+              label={strings.filters.reviewer}
+              value={reviewerKey}
+              onChange={setReviewerKey}
+              allLabel={strings.reviews.allReviewers}
+              options={reviewers.map(([key, name]) => ({ value: key, label: name }))}
+            />
             <FilterCheckbox label={strings.reviews.assignedToMe} checked={mineOnly} onChange={setMineOnly} />
           </FilterPanel>
         }

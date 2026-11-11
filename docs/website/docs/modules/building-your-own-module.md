@@ -133,9 +133,9 @@ Because this is compiled directly into the same frontend bundle, the module's ow
 | `projectAdminSections` | A `ResourceMenu` group on the Project Admin page | This project's currently-enabled-modules list |
 | `globalNavItems` | A top-level link in the nav rail's "Global" section | The module's own `render` decides — the host has no org/project in context to filter on |
 | `standaloneWorkspaces` | A left-nav section for a project-like entity that isn't a `Project` (matched against the current URL) | The module's own `render` decides |
-| `projectOverviewTiles` | An extra metric tile on a project's Overview page | This project's currently-enabled-modules list |
+| `overviewWidgets` | A widget on a project's Overview page, placed and sized like any other (declared on the backend as `overview_widgets`) | This project's currently-enabled-modules list |
 | `orgOverviewSections` | A `ResourceMenu` group on the Organisation Overview page | This org's currently-enabled-modules list |
-| `orgOverviewTiles` | A headline stat tile in the Organisation Overview page's own stats header | This org's currently-enabled-modules list |
+| `orgOverviewWidgets` | A widget on an organisation's overview dashboards, placed and sized like any other (declared on the backend as `org_overview_widgets`) | This org's currently-enabled-modules list |
 | `requirementDetailSections` | An extra section in the aside of a requirement's page, under the shared Links panel (for links the panel cannot hold, because they are not between two project records) | This project's currently-enabled-modules list |
 | `artefactPaths` | Where each of the module's record types has its page, so the shared Links panel can link to it | Nothing — resolved by artefact type |
 | `artefactStatusLabels` | Display labels for each record type's status, so the Links panel shows a linked record's status without a raw value | Nothing — resolved by artefact type |

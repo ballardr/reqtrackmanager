@@ -90,7 +90,7 @@ export function RiskDetailPage() {
       .then((types) => setRiskTypes(types.filter((t) => t.is_enabled).map((t) => ({ id: t.id, name: t.name }))))
       .catch(() => setRiskTypes([]));
     riskApi.get(projectId, riskId).then(setRisk).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Risk could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Risk could not be found, or you do not have access to it."));
     });
   }, [projectId, riskId]);
 
@@ -175,7 +175,7 @@ export function RiskDetailPage() {
         title={risk.title}
         code={risk.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="risk" artefactId={risk.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "← Risks" }}
+        back={{ to: `/projects/${projectId}/modules/risk_management/risks`, label: "Risks" }}
         badges={
           <>
             {risk.is_review_overdue && <Badge tone="danger">Review overdue</Badge>}

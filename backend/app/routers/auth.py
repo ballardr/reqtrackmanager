@@ -13,10 +13,12 @@ unauthenticated "forgot password" / "reset password" pair, whose logic lives in
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,6 +34,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.schemas.auth import (
     ChangePasswordRequest,
+    ConfirmEmailRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MediaTokenResponse,
@@ -39,7 +42,9 @@ from app.schemas.auth import (
     MyOrgGroupOut,
     MyOrgMembershipOut,
     MyProjectMembershipOut,
+    ResendConfirmationRequest,
     ResetPasswordRequest,
+    SignupPendingResponse,
     SignupRequest,
     TokenResponse,
     TwoFactorChallengeResponse,
@@ -58,16 +63,23 @@ from app.security import (
     hash_password,
     verify_password,
 )
-from app.services import credential_reset, notifications, totp
+from app.services import credential_reset, email_confirmation, login_throttle, notifications, totp
 from app.services.audit import log_event, log_login
 from app.services.branding import get_server_settings
 from app.services.files import upload_file
 from app.services.geoip import resolve_and_store_login_location
 from app.services.invites import consume_pending_invites
-from app.services.rbac import get_effective_org_roles, get_effective_project_roles, get_user_org_group_ids
+from app.services.pats import revoke_all_for_user
+from app.services.rbac import (
+    get_effective_org_roles,
+    get_effective_project_roles,
+    get_user_org_group_ids,
+    session_may_reach_project,
+)
 from app.services.search import SEARCH_DEFAULT_FIELDS_KEY, SEARCH_INCLUDE_ORG_RECORDS_KEY, validate_default_fields
 from app.services.ui_preferences import merge_ui_preferences
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 _native_backend = NativeAuthBackend()
 _settings = get_settings()
@@ -90,22 +102,36 @@ def login(
     scheduled *after* this function returns — it never adds latency to the
     login response itself.
 
+    After repeated failures for the same address or from the same source, further attempts wait a growing
+    time (`services.login_throttle`); a refused attempt does not check the password and is recorded as throttled.
+
     Raises:
         HTTPException: 401 if credentials are invalid or the account is
-            deactivated.
+            deactivated; 429 with `Retry-After` while a progressive delay applies.
     """
+    email_attempted = login_throttle.normalise_email(payload.email)
+    wait = login_throttle.seconds_to_wait(db, email_attempted, request_ip)
+    if wait:
+        log_login(db, user_id=None, email_attempted=email_attempted, ip_address=request_ip, success=False, kind="throttled")
+        login_attempts_total.labels(result="throttled").inc()
+        db.commit()
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Too many sign-in attempts. Wait {wait} second{'s' if wait != 1 else ''} and try again.",
+            headers={"Retry-After": str(wait)},
+        )
     result = _native_backend.authenticate(db, payload.email, payload.password)
     login_event = log_login(
         db,
         user_id=result.user.id if result.user else None,
-        email_attempted=payload.email,
+        email_attempted=email_attempted,
         ip_address=request_ip,
         success=result.success,
     )
     login_attempts_total.labels(result="success" if result.success else "failure").inc()
     db.commit()
     background_tasks.add_task(resolve_and_store_login_location, login_event.id, request_ip)
-    if result.reset_required:
+    if result.reset_required or result.confirmation_required:
         raise HTTPException(status.HTTP_403_FORBIDDEN, result.error or "Your password must be reset.")
     if not result.success or result.user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, result.error or "Invalid credentials.")
@@ -191,7 +217,30 @@ def reset_password(
     db.commit()
 
 
-@router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/confirm-email", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_email(payload: ConfirmEmailRequest, request_ip: str = Depends(get_client_ip), db: Session = Depends(get_db)):
+    """Spends the link emailed at sign-up, which lets the account sign in.
+
+    Raises:
+        HTTPException: 400 for an unknown, expired or used link (one message for all three); 429 when this
+            client address is trying too often.
+    """
+    credential_reset.enforce_public_rate_limit(request_ip)
+    if email_confirmation.confirm(db, payload.token) is None:
+        db.rollback()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This confirmation link is invalid or has expired.")
+    db.commit()
+
+
+@router.post("/resend-confirmation", status_code=status.HTTP_202_ACCEPTED)
+def resend_confirmation(payload: ResendConfirmationRequest, request_ip: str = Depends(get_client_ip), db: Session = Depends(get_db)):
+    """Sends the confirmation email again. The answer is the same for every address."""
+    credential_reset.enforce_public_rate_limit(request_ip)
+    email_confirmation.resend(db, payload.email)
+    return {"detail": "If that address is waiting to be confirmed, the email is on its way."}
+
+
+@router.post("/signup", response_model=TokenResponse | SignupPendingResponse, status_code=status.HTTP_201_CREATED)
 def signup(
     payload: SignupRequest,
     background_tasks: BackgroundTasks,
@@ -223,6 +272,7 @@ def signup(
             match exactly one self-signup-enabled organisation; 403 if
             public signup is disabled and no invite was supplied.
     """
+    credential_reset.enforce_signup_rate_limit(request_ip)
     email = payload.email.lower()
     if db.scalar(select(User).where(User.email == email)) is not None:
         # Same "already exists" 409 shape as create_org_user — not a new
@@ -256,7 +306,7 @@ def signup(
                     Organization.auto_accept_email_domain.isnot(None),
                 )
             ).all()
-            matches = [o for o in candidates if o.auto_accept_email_domain.lower() == domain]
+            matches = [o for o in candidates if (o.auto_accept_email_domain or "").lower() == domain]
             if len(matches) != 1:
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST, "Self-signup is not available for this email address."
@@ -279,6 +329,20 @@ def signup(
         )
     if invite is not None:
         consume_pending_invites(db, user)
+    elif email_confirmation.required():
+        # Public sign-up: the address is only typed so far. No session until the emailed link is opened.
+        user.email_confirmation_pending = True
+        db.flush()
+        try:
+            email_confirmation.send_confirmation(db, user)
+        except Exception:  # noqa: BLE001 - the account exists; the person can ask for the email again
+            logger.warning("The confirmation email for a new account could not be sent.")
+        log_event(db, entity_type="user", entity_id=user.id, action="signed_up_pending_confirmation", actor_id=user.id)
+        db.commit()
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content=SignupPendingResponse().model_dump(),
+        )
     login_event = log_login(db, user_id=user.id, email_attempted=email, ip_address=request_ip, success=True)
     user.last_login_at = datetime.now(UTC)
     db.commit()
@@ -303,7 +367,7 @@ def verify_2fa(
     """
     claims = decode_access_token(payload.challenge_token)
     if not claims or claims.get("purpose") != "2fa_challenge" or "sub" not in claims:
-        log_login(db, user_id=None, email_attempted="(invalid 2fa challenge)", ip_address=request_ip, success=False)
+        log_login(db, user_id=None, email_attempted="(invalid 2fa challenge)", ip_address=request_ip, success=False, kind="second_factor")
         login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
@@ -316,11 +380,13 @@ def verify_2fa(
         log_login(
             db, user_id=user.id if user else None,
             email_attempted=user.email if user else "(invalid 2fa challenge)",
-            ip_address=request_ip, success=False,
+            ip_address=request_ip, success=False, kind="second_factor"
         )
         login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired challenge.")
+    # Lock the row: parallel guesses would otherwise each read the same counter and advance it once between them.
+    db.refresh(user, with_for_update=True)
     # Hardening-review finding: a stolen password plus an unthrottled,
     # reusable 2FA challenge against a bounded 6-digit TOTP keyspace lets an
     # attacker converge toward a near-certain bypass given enough repeated
@@ -328,20 +394,20 @@ def verify_2fa(
     # keyed to the *account*, not the challenge token, so starting a fresh
     # login doesn't reset it.
     if user.failed_2fa_locked_until is not None and user.failed_2fa_locked_until > datetime.now(UTC):
-        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False)
+        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False, kind="second_factor")
         login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Too many failed attempts. Try again later.")
-    if not totp.verify_code(user.totp_secret, payload.code):
+    if not totp.consume_code(user, payload.code):
         user.failed_2fa_attempts += 1
         if user.failed_2fa_attempts >= _settings.two_factor_max_failed_attempts:
             user.failed_2fa_locked_until = datetime.now(UTC) + timedelta(minutes=_settings.two_factor_lockout_minutes)
             user.failed_2fa_attempts = 0
-        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False)
+        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False, kind="second_factor")
         login_attempts_total.labels(result="failure").inc()
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid code.")
-    login_event = log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True)
+    login_event = log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True, kind="second_factor")
     login_attempts_total.labels(result="success").inc()
     user.last_login_at = datetime.now(UTC)
     user.failed_2fa_attempts = 0
@@ -396,6 +462,9 @@ def read_my_memberships(current_user: User = Depends(get_current_user), db: Sess
     org_ids = set(
         db.scalars(select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)).all()
     )
+    allowed_orgs = db.info.get("pat_allowed_org_ids")  # a Personal Access Token sees only its own organisations
+    if allowed_orgs is not None:
+        org_ids &= allowed_orgs
     orgs = db.scalars(select(Organization).where(Organization.id.in_(org_ids))).all() if org_ids else []
 
     out = []
@@ -412,7 +481,7 @@ def read_my_memberships(current_user: User = Depends(get_current_user), db: Sess
 
         projects = []
         for project in db.scalars(select(Project).where(Project.organization_id == org.id, Project.is_archived.is_(False))):
-            roles = get_effective_project_roles(db, current_user.id, project.id)
+            roles = get_effective_project_roles(db, current_user.id, project.id) if session_may_reach_project(db, project.id) else set()
             if roles:
                 projects.append(
                     MyProjectMembershipOut(id=project.id, name=project.name, roles=sorted(roles, key=lambda r: r.value))
@@ -475,6 +544,10 @@ def update_preferences(
     if payload.display_name is not None:
         if current_user.display_name_locked:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Your display name has been locked by an organisation admin.")
+        if payload.display_name != current_user.display_name:
+            log_event(
+                db, entity_type="user", entity_id=current_user.id, action="display_name_changed", actor_id=current_user.id,
+            )  # the fact only: a name is personal data and the old and new values are not needed to answer who changed it
         current_user.display_name = payload.display_name
     db.commit()
     db.refresh(current_user)
@@ -493,6 +566,7 @@ def change_password(
     if not verify_password(payload.current_password, current_user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect.")
     current_user.password_hash = hash_password(payload.new_password)
+    current_user.must_change_password = False
     # Invalidates every access token issued before this moment, including
     # the caller's own current one — otherwise a token stolen before the
     # change keeps working for its full remaining lifetime regardless.
@@ -525,9 +599,10 @@ def _require_valid_totp_code(db: Session, user: User, code: str) -> None:
     Raises:
         HTTPException: 429 while the account is locked out; 400 for a wrong code.
     """
+    db.refresh(user, with_for_update=True)  # serialises parallel guesses so each one is counted
     if user.failed_2fa_locked_until is not None and user.failed_2fa_locked_until > datetime.now(UTC):
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed attempts. Try again later.")
-    if totp.verify_code(user.totp_secret, code):
+    if totp.consume_code(user, code):
         user.failed_2fa_attempts = 0
         return
     user.failed_2fa_attempts += 1
@@ -558,6 +633,7 @@ def enroll_2fa(current_user: User = Depends(get_current_session_user), db: Sessi
         )
     secret = totp.generate_secret()
     current_user.totp_secret = secret
+    log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_enrollment_started", actor_id=current_user.id)
     db.commit()
     return TwoFactorEnrollResponse(
         secret=secret,
@@ -610,6 +686,8 @@ def confirm_or_disable_2fa(
         current_user.is_2fa_enabled = False
         current_user.totp_secret = None
         current_user.token_version += 1
+        # A Personal Access Token carries no second factor, so tokens made while one was required end with it.
+        revoke_all_for_user(db, current_user.id)
         log_event(db, entity_type="user", entity_id=current_user.id, action="2fa_disabled", actor_id=current_user.id)
     db.commit()
 
@@ -638,6 +716,7 @@ async def upload_avatar(
 def clear_avatar(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Removes the current user's avatar."""
     current_user.avatar_file_id = None
+    log_event(db, entity_type="user", entity_id=current_user.id, action="avatar_removed", actor_id=current_user.id)
     db.commit()
     db.refresh(current_user)
     return UserOut.model_validate(current_user)

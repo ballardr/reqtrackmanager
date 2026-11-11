@@ -84,7 +84,7 @@ export const CancelWidening: Story = {
   },
 };
 
-/** Organisation tier: the server default is shown beside the organisation's own decision, with a way back. */
+/** Organisation tier: the server default is stated in the row's hint; setting the value equal to it follows the server. */
 export const OrganisationOverride: Story = {
   args: { scope: { kind: "organization", organizationId: "org-1" } },
   beforeEach: () => {
@@ -100,13 +100,14 @@ export const OrganisationOverride: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Contact details")).toBeInTheDocument());
     await expect(canvas.getByText("Server default: allowed. Here: excluded.")).toBeInTheDocument();
-    await expect(canvas.getAllByText("Follows the server")).toHaveLength(2);
+    // The server default is not an organisation concern: no pill and no reset control.
+    await expect(canvas.queryByText("Follows the server")).toBeNull();
+    await expect(canvas.queryByRole("button", { name: "Follow the server again" })).toBeNull();
 
-    // Following the server again would allow the tag here, so it asks first.
-    await userEvent.click(canvas.getByRole("button", { name: "Follow the server again" }));
+    // Allowing the tag here (matching the server) would widen the policy, so it asks first, and then follows the server.
+    await userEvent.click(canvas.getByRole("switch", { name: "Allow contact details in exports and imports" }));
     await userEvent.click(within(within(document.body).getByRole("dialog")).getByRole("button", { name: "Allow" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(ORG_URL + "/contact", { allowed: null }));
-    await waitFor(() => expect(canvas.getAllByText("Follows the server")).toHaveLength(3));
   },
 };
 
@@ -126,6 +127,6 @@ export const OrganisationDiffersFromServer: Story = {
     await waitFor(() => expect(canvas.getByText("Names and identifiers")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("switch", { name: "Allow names and identifiers in exports and imports" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(ORG_URL + "/personal", { allowed: false }));
-    await waitFor(() => expect(canvas.getByText("Custom")).toBeInTheDocument());
+    await expect(canvas.queryByText("Custom")).toBeNull();
   },
 };

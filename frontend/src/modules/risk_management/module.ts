@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { ProjectScoringSettings } from "../../components/ProjectScoringSettings";
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
+import { CreateRiskDialog } from "./CreateRiskDialog";
 import { OrgRiskTypesPanel } from "./OrgRiskTypesPanel";
 import { ProjectRiskTypesPanel } from "./ProjectRiskTypesPanel";
 import { ProjectRisksPage } from "./ProjectRisksPage";
@@ -31,8 +32,15 @@ import { RISK_SCORING_SCHEME, RISK_STATUS_LABEL } from "./types";
  * `entityAccentColor` is intentionally not set: no mixed cross-module list shows
  * a risk row yet (a risk's links are shown by the shared Links panel).
  */
+
+/** The Risk settings share one expandable entry in the project and organisation admin menus. */
+const RISK_ADMIN_GROUP = { key: "risk-management", label: "Risk Management" };
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "risk_management",
+  linkedRecordCreators: {
+    risk: { label: "Risk", render: (props) => createElement(CreateRiskDialog, props) },
+  },
   artefactPaths: {
     risk: (projectId, id) => `/projects/${projectId}/modules/risk_management/risks/${id}`,
   },
@@ -49,11 +57,13 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "risk-management-types",
       label: "Risk Types",
+      group: RISK_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgRiskTypesPanel, { orgId }),
     },
     {
       key: "risk-management-scoring",
       label: "Risk Scoring",
+      group: RISK_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: RISK_SCORING_SCHEME }),
     },
   ],
@@ -61,11 +71,13 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "risk-management-types",
       label: "Risk Types",
+      group: RISK_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectRiskTypesPanel, { projectId }),
     },
     {
       key: "risk-management-scoring",
       label: "Risk Scoring",
+      group: RISK_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectScoringSettings, { projectId, schemeKey: RISK_SCORING_SCHEME }),
     },
   ],

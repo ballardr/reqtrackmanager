@@ -69,7 +69,7 @@ async function createWorld(request: APIRequestContext, label: string): Promise<W
 async function openLinkTypes(page: Page, world: World) {
   await loginAs(page, world.adminEmail, PASSWORD);
   await page.goto(`/orgs/${world.orgId}/admin`);
-  await selectOrgAdminGroup(page, "Projects & workflow");
+  await selectOrgAdminGroup(page, "Workflow");
   await ensureExpanded(page, "Link types");
   await expect(inputWithValue(page, "Depends on")).toBeVisible();
 }
@@ -102,7 +102,7 @@ test.describe("org admin: link type restrictions, artefact rules and deleting a 
       await expect(page.getByText("Link type restriction updated.")).toBeVisible();
       await page.keyboard.press("Escape");
       await page.reload();
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Link types");
       await expect(page.getByRole("button", { name: `Can link from: ${name}` })).toHaveText(/Requirement/);
     });
@@ -177,7 +177,7 @@ test.describe("org admin: link type restrictions, artefact rules and deleting a 
         headers: world.headers, data: { link_type_ids: [types["Implements"].id] },
       });
       await page.reload();
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Link types");
       await page.getByRole("tab", { name: "By artefact type" }).click();
       await page.getByRole("button", { name: "Link types allowed for Decision" }).click();

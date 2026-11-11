@@ -252,7 +252,8 @@ def test_only_the_server_administrator_manages_fonts(client, admin_token, org_id
     assert client.get("/api/v1/system/report-fonts", headers=h).status_code == 403
     assert client.post("/api/v1/system/report-fonts/rescan", headers=h).status_code == 403
     assert client.put("/api/v1/system/report-fonts/x-a", json={"generic": "serif", "enabled": True}, headers=h).status_code == 403
-    assert client.get("/api/v1/system/report-fonts/choices", headers=h).status_code == 200  # authors read the picker list
+    choices = client.get("/api/v1/system/report-fonts/choices", headers=h)
+    assert choices.status_code == 200, choices.text  # authors read the picker list
     assert client.get("/api/v1/system/report-fonts/choices").status_code in (401, 403)
 
 

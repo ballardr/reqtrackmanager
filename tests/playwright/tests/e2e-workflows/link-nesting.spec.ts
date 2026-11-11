@@ -109,7 +109,7 @@ async function linkAcross(
 
 async function openOrgLinkTypes(page: Page, orgId: string): Promise<void> {
   await page.goto(`/orgs/${orgId}/admin`);
-  await selectOrgAdminGroup(page, "Projects & workflow");
+  await selectOrgAdminGroup(page, "Workflow");
   await ensureExpanded(page, "Link types");
 }
 

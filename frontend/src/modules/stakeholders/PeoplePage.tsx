@@ -58,7 +58,7 @@ import { showRecordInProject } from "./visibility";
 
 const MODULE_KEY = "stakeholders";
 const NOT_AVAILABLE =
-  "The Stakeholders & Personas module isn't enabled for this project's organisation, or you don't have access to it.";
+  "The Stakeholders & Personas module is not enabled for this project's organisation, or you do not have access to it.";
 
 /** Which create form is open: a kind, or the stakeholder-from-user variant. */
 type Creating = PeopleKind | "stakeholder_from_user" | null;
@@ -70,6 +70,8 @@ export function PeoplePage() {
   const { showToast } = useToast();
   const commitPersonaLinks = useCommitQuickLinks(projectId ?? "", "persona");
   const commitStakeholderLinks = useCommitQuickLinks(projectId ?? "", "stakeholder");
+  const commitGroupLinks = useCommitQuickLinks(projectId ?? "", "stakeholder_group");
+  const commitGroupTags = useCommitTags(projectId ?? "", "stakeholder_group");
   const commitPersonaTags = useCommitTags(projectId ?? "", "persona");
   const commitStakeholderTags = useCommitTags(projectId ?? "", "stakeholder");
   const { modules, loaded } = useProjectEnabledModules(projectId ?? null);
@@ -109,11 +111,11 @@ export function PeoplePage() {
       const mine = ++loadSeq.current;
       const on = (k: PeopleKind) => enabled.includes(k);
       Promise.all([
-        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
+        on("persona") ? projectPersonaApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, ...tagFilter.listFilters, project_scope: projectScope.scope }) : [],
         on("persona") ? projectPersonaApi.listTypes(projectId) : [],
-        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }) : [],
+        on("stakeholder") ? projectStakeholderApi.list(projectId, { include_archived: includeArchived, include_hidden: includeHidden, ...tagFilter.listFilters, project_scope: projectScope.scope }) : [],
         on("stakeholder") ? projectStakeholderApi.listTypes(projectId) : [],
-        on("group") ? projectStakeholderGroupApi.list(projectId, { tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }).catch(() => [] as StakeholderGroup[]) : [],
+        on("group") ? projectStakeholderGroupApi.list(projectId, { ...tagFilter.listFilters, project_scope: projectScope.scope }).catch(() => [] as StakeholderGroup[]) : [],
       ])
         .then(([p, pt, s, st, g]) => {
           if (mine !== loadSeq.current) return;
@@ -392,9 +394,13 @@ export function PeoplePage() {
       )}
       {creating === "group" && (
         <StakeholderGroupFormModal
-          groups={ownGroups} error={createError} onCancel={cancelCreate}
-          onSave={(values: StakeholderGroupFieldValues) =>
-            create(async () => { await projectStakeholderGroupApi.create(projectId, values); }, "Stakeholder group created.")}
+          groups={ownGroups} projectId={projectId} error={createError} onCancel={cancelCreate}
+          onSave={(values: StakeholderGroupFieldValues, quickLinks, tags) =>
+            create(async () => {
+              const created = await projectStakeholderGroupApi.create(projectId, values);
+              await commitGroupLinks(created.id, quickLinks);
+              await commitGroupTags(created.id, tags);
+            }, "Stakeholder group created.")}
         />
       )}
     </div>

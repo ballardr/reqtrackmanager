@@ -33,7 +33,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import ExternalUserPolicy, ProjectRole
@@ -180,25 +180,25 @@ def remove_member_from_organization(
     project_ids = [p.id for p in projects]
     if project_ids:
         db.execute(
-            UserProjectRole.__table__.delete().where(
+            delete(UserProjectRole).where(
                 UserProjectRole.user_id == user_id, UserProjectRole.project_id.in_(project_ids)
             )
         )
         db.execute(
-            ProjectGroupMember.__table__.delete().where(
+            delete(ProjectGroupMember).where(
                 ProjectGroupMember.user_id == user_id,
                 ProjectGroupMember.project_group_id.in_(select(ProjectGroup.id).where(ProjectGroup.project_id.in_(project_ids))),
             )
         )
     db.execute(
-        OrgGroupMember.__table__.delete().where(
+        delete(OrgGroupMember).where(
             OrgGroupMember.user_id == user_id,
             OrgGroupMember.org_group_id.in_(select(OrgGroup.id).where(OrgGroup.organization_id == organization_id)),
         )
     )
     engagement.remove_subscriptions_and_favorites_for_projects(db, user_id, project_ids)
     db.execute(
-        UserOrgRole.__table__.delete().where(UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id)
+        delete(UserOrgRole).where(UserOrgRole.user_id == user_id, UserOrgRole.organization_id == organization_id)
     )
     log_event(
         db, entity_type="user_org_role", entity_id=user_id, action=action, actor_id=actor_id, organization_id=organization_id,

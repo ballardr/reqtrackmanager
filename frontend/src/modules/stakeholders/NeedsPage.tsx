@@ -29,7 +29,7 @@ import type { Need, NeedFieldValues } from "./types";
 
 const MODULE_KEY = "stakeholders";
 const NOT_AVAILABLE =
-  "Stakeholder Needs aren't enabled for this project, or you don't have access to them.";
+  "Stakeholder Needs are not enabled for this project, or you do not have access to them.";
 
 export function NeedsPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -59,7 +59,7 @@ export function NeedsPage() {
       if (!projectId || !loaded || !hasNeeds) return;
       const mine = ++loadSeq.current;
       projectNeedApi
-        .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
+        .list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope })
         .then((list) => {
           if (mine !== loadSeq.current) return;
           setNeeds(list);

@@ -22,7 +22,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
@@ -44,8 +45,11 @@ import { localToday } from "../../utils/localDate";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function ProjectFutureStatesPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -71,10 +75,10 @@ export function ProjectFutureStatesPage() {
   async function reloadFutureStates() {
     if (!projectId) return;
     try {
-      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setFutureStates(await projectFutureStateApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 
@@ -138,14 +142,13 @@ export function ProjectFutureStatesPage() {
             sectionKey="context_strategy.futureStates.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Future State…" searchAriaLabel="Search Future State"
           >
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FutureStateStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(FUTURE_STATE_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(FUTURE_STATE_STATUS_LABEL)}
+            />
             <FilterCheckbox label="On the roadmap only" checked={roadmapOnly} onChange={setRoadmapOnly} />
             <FilterCheckbox label="Target date passed" checked={targetPassedOnly} onChange={setTargetPassedOnly} />
             <FilterCheckbox label="Without success measures" checked={noMeasuresOnly} onChange={setNoMeasuresOnly} />
@@ -160,6 +163,7 @@ export function ProjectFutureStatesPage() {
           columns={columns}
           rows={filtered}
           rowKey={(fs) => fs.id}
+          placements={{ projectId, artefactType: "future_state", rowId: (fs) => fs.id }}
           onRowClick={(fs) => navigate(`/projects/${rowProjectId(fs, projectId)}/modules/context_strategy/future-states/${fs.id}`)}
           emptyState={<p className="text-muted">No Future State recorded for this project yet.</p>}
         />

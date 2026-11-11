@@ -18,25 +18,30 @@ import tempfile
 import zipfile
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import IO, Any
+from typing import IO, Any, Literal, overload
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
+from app.models.organization import UserOrgRole
 from app.models.user import User
+from app.services import imported_people
 from app.services.files import upload_file
 
-# Bounds a bundle/CSV import's memory footprint. No deployment-wide request
-# body size limit exists yet (see docs/soc2/policies/information-security-
-# policy.md's Known Gaps), and DEFLATE's ~1032:1 worst-case ratio means an
-# unchecked zip well under any sane upload cap could still decompress to
-# many gigabytes — these two limits are checked before any entry is read,
-# not just before the whole request is accepted.
+# Bounds a bundle/CSV import's memory footprint. DEFLATE's ~1032:1 worst-case ratio means an unchecked zip well
+# under the upload cap could still decompress to many gigabytes, so the declared sizes, the entry count and the
+# compression ratio are checked from the central directory before any entry is read, and every read is capped at
+# the entry's own limit (a stored size can lie).
 MAX_IMPORT_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_BUNDLE_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024
+MAX_BUNDLE_ENTRIES = 50_000
+MAX_BUNDLE_ENTRY_BYTES = 200 * 1024 * 1024
+MAX_BUNDLE_JSON_BYTES = 256 * 1024 * 1024
+#: Entries over 1 MiB that compress better than this are refused (a legitimate JSON document compresses about 20:1).
+MAX_BUNDLE_RATIO = 250
 
 #: Keys older bundles carried report introductions, chapters, appendices and a default branding template under.
 #: They are no longer imported; a bundle that holds any gets one warning.
@@ -109,6 +114,67 @@ def enforce_zip_uncompressed_size_limit(zf: zipfile.ZipFile) -> None:
         )
 
 
+def open_bundle_zip(zip_bytes: bytes, *, what: str = "Bundle upload") -> zipfile.ZipFile:
+    """Opens an uploaded bundle after the size, entry-count, duplicate-name and compression-ratio checks.
+
+    Raises:
+        HTTPException: 413 when the upload, its declared contents or its entry count are too large, or an entry
+            compresses suspiciously well; 400 when it is not a zip or repeats an entry name.
+    """
+    enforce_upload_size_limit(zip_bytes, what=what)
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    infos = zf.infolist()
+    if len(infos) > MAX_BUNDLE_ENTRIES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, f"Bundle holds too many entries (max {MAX_BUNDLE_ENTRIES}).")
+    names = [i.filename for i in infos]
+    if len(set(names)) != len(names):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.")
+    for info in infos:
+        if info.file_size > MAX_BUNDLE_ENTRY_BYTES:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "A file in the bundle is larger than the maximum allowed.")
+        if info.compress_size and info.file_size > 1024 * 1024 and info.file_size / info.compress_size > MAX_BUNDLE_RATIO:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "The bundle compresses suspiciously well and was refused.")
+    enforce_zip_uncompressed_size_limit(zf)
+    return zf
+
+
+def read_bundle_entry(zf: zipfile.ZipFile, name: str, *, limit: int = MAX_BUNDLE_ENTRY_BYTES) -> bytes:
+    """Reads one entry, never more than `limit` bytes whatever its header claims.
+
+    Raises:
+        KeyError: The entry does not exist.
+        HTTPException: 413 when the entry is larger than `limit`; 400 when it cannot be decompressed (a CRC error).
+    """
+    try:
+        with zf.open(name) as handle:
+            data = handle.read(limit + 1)
+    except zipfile.BadZipFile:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    if len(data) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "A file in the bundle is larger than the maximum allowed.")
+    return data
+
+
+def read_bundle_json(zf: zipfile.ZipFile, name: str) -> Any:
+    """Reads and parses one JSON entry (capped at `MAX_BUNDLE_JSON_BYTES`).
+
+    Raises:
+        HTTPException: 400 when it is missing, not valid JSON or cannot be decompressed; 413 when too large.
+    """
+    try:
+        return json.loads(read_bundle_entry(zf, name, limit=MAX_BUNDLE_JSON_BYTES))
+    except (KeyError, json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+
+
+def read_bundle_files(zf: zipfile.ZipFile) -> dict[str, bytes]:
+    """Every `files/<ref>` entry, keyed by `ref`, each read with the per-entry cap."""
+    return {n.removeprefix("files/"): read_bundle_entry(zf, n) for n in zf.namelist() if n.startswith("files/") and not n.endswith("/")}
+
+
 class BundleImportWarnings:
     """Accumulates human-readable warnings during a bundle import — e.g. a
     user reference that didn't match anyone in the target deployment and
@@ -124,62 +190,125 @@ class BundleImportWarnings:
 
 
 class UserResolver:
-    """Resolves the `*_email` references inside a bundle back to real
-    `User` ids in the target deployment, caching lookups within one import.
+    """Resolves the `*_email` references inside a bundle back to `User` ids in the target deployment, caching lookups
+    within one import.
 
-    A `User` is global (one row can hold roles in many organisations, see
-    `models.user.User.email`'s uniqueness), so "does this email exist here"
-    is a single deployment-wide lookup, independent of which org/project is
-    being imported into.
+    A `User` is global (one row can hold roles in many organisations, see `models.user.User.email`'s uniqueness), but a
+    bundle may only name people who belong to the organisation being imported into: an email that matches an account
+    with no role there is not matched. Otherwise a bundle could attribute records to another tenant's users and the
+    result would reveal which addresses are registered on the server.
+
+    A person who is not matched becomes an imported person (`services.imported_people`): an inert stand-in that
+    belongs to the organisation, so authorship and ownership keep a name. The importer may instead map a person to
+    themself or to any member, and may force a stand-in where a member matches (`PeopleChoices`).
     """
 
-    def __init__(self, db: Session, importing_user: User, warnings: BundleImportWarnings) -> None:
+    def __init__(
+        self, db: Session, importing_user: User, warnings: BundleImportWarnings, *, organization_id: UUID,
+        data: dict[str, Any] | None = None, choices: imported_people.PeopleChoices | None = None,
+    ) -> None:
         self._db = db
+        self._organization_id = organization_id
         self._importing_user = importing_user
         self._warnings = warnings
         self._cache: dict[str, UUID | None] = {}
+        self._names = imported_people.people_names(data) if data else {}
+        self.choices = choices or imported_people.PeopleChoices()
+        self._warned: set[str] = set()
+        #: Replay actor per address: the stand-in's id, or the importer for a member, the importer or a reassigned person.
+        self._actor_cache: dict[str, UUID] = {}
+        #: Organisation members found for a bundled principal's email, shared by `principal_from_bundle`.
+        self.principal_user_cache: dict[tuple[UUID, str], UUID | None] = {}
 
     @property
     def importing_user_id(self) -> UUID:
-        """The user performing the import, the fallback for an unmatched required reference."""
+        """The user performing the import, the fallback for a reference the importer maps to themself."""
         return self._importing_user.id
 
     def _lookup(self, email: str) -> UUID | None:
-        normalized = email.strip().lower()
+        normalized = imported_people.normalise_email(email)
         if not normalized:
             return None
         if normalized not in self._cache:
-            user = self._db.scalar(select(User).where(User.email == normalized))
-            self._cache[normalized] = user.id if user else None
+            self._cache[normalized] = self._decide(normalized)
         return self._cache[normalized]
+
+    def _decide(self, normalized: str) -> UUID | None:
+        """The user id for an address by the importer's choice, then membership; `None` when it needs a stand-in."""
+        choice = self.choices.mapping.get(normalized)
+        if choice == imported_people.CHOICE_ME:
+            return self._importing_user.id
+        if choice == imported_people.CHOICE_STAND_IN:
+            return None
+        if choice is not None:
+            target = imported_people.reassignable_member(self._db, self._organization_id, choice)
+            if target is not None:
+                return target.id
+        user = self._db.scalar(
+            select(User).join(UserOrgRole, UserOrgRole.user_id == User.id)
+            .where(func.lower(User.email) == normalized, UserOrgRole.organization_id == self._organization_id,
+                   User.imported_organization_id.is_(None))
+            .limit(1)
+        )
+        return user.id if user else None
+
+    def stand_in_id(self, email: str, context: str) -> UUID:
+        """The organisation's imported person for an address (created on first use), warning once per address."""
+        normalized = imported_people.normalise_email(email)
+        user = imported_people.stand_in_for(self._db, self._organization_id, normalized, self._names.get(normalized))
+        if normalized not in self._warned:
+            self._warned.add(normalized)
+            self._warnings.add(f"{context}: '{user.display_name}' is not a member of this organisation — recorded as an imported person.")
+        return user.id
+
+    def person_id(self, email: str, context: str) -> UUID:
+        """The user id for a non-blank address: a member, the importer or reassigned person by choice, else a stand-in."""
+        found = self._lookup(email)
+        return found if found is not None else self.stand_in_id(email, context)
+
+    def actor_id(self, email: str | None, context: str) -> UUID:
+        """Who a replayed history entry is recorded as acted by.
+
+        A stand-in where the person is not a member. A member (matched or reassigned) is never named as the actor of an
+        entry a bundle claims, so a bundle cannot attribute an action to a real colleague; the importer is recorded and
+        the entry's detail names the original person.
+        """
+        if not email or not email.strip():
+            return self._importing_user.id
+        normalized = imported_people.normalise_email(email)
+        if normalized not in self._actor_cache:
+            found = self._lookup(normalized)
+            self._actor_cache[normalized] = self.stand_in_id(normalized, context) if found is None else self._importing_user.id
+        return self._actor_cache[normalized]
+
+    def display_name_for(self, email: str | None) -> str | None:
+        """The bundle's recorded name for an address, for a history entry's detail."""
+        if not email:
+            return None
+        return self._names.get(imported_people.normalise_email(email)) or imported_people.clean_name(None, imported_people.normalise_email(email))
+
+    @overload
+    def resolve(self, email: str | None, *, required: Literal[True], context: str) -> UUID: ...
+
+    @overload
+    def resolve(self, email: str | None, *, required: bool, context: str) -> UUID | None: ...
 
     def resolve(self, email: str | None, *, required: bool, context: str) -> UUID | None:
         """Resolves an email to a user id.
 
         Args:
-            email: The bundle's recorded email, or None/blank if the
-                original field was itself null.
-            required: Whether the target column is NOT NULL. A required
-                reference that can't be matched falls back to the user
-                performing the import (recorded as a warning); an optional
-                one is simply left null.
-            context: Short human-readable description of what this
-                reference is for, used only in the warning message.
+            email: The bundle's recorded email, or None/blank if the original field was itself null.
+            required: Whether the target column is NOT NULL. A blank required reference is the user performing the
+                import; a blank optional one is left null.
+            context: Short human-readable description of what this reference is for, used only in the warning message.
 
         Returns:
-            A matched (or fallback) user id, or None for an unmatched
-            optional reference.
+            A member, the importer or reassigned person by the importer's choice, or an imported person; `None` for a
+            blank optional reference.
         """
-        if not email:
+        if not email or not email.strip():
             return self._importing_user.id if required else None
-        user_id = self._lookup(email)
-        if user_id is not None:
-            return user_id
-        if required:
-            self._warnings.add(f"{context}: no user found for '{email}' — attributed to the importing user instead.")
-            return self._importing_user.id
-        self._warnings.add(f"{context}: no user found for '{email}' — left unset.")
-        return None
+        return self.person_id(email, context)
 
 
 def import_bundled_file(
@@ -233,7 +362,7 @@ def export_file_links(
     return out
 
 
-def _file_link_rows(db: Session, file_model: type, fk: str, record_ids: list[UUID]) -> dict[UUID, list[tuple[FileAsset, str]]]:
+def _file_link_rows(db: Session, file_model: type[Any], fk: str, record_ids: list[UUID]) -> dict[UUID, list[tuple[FileAsset, str]]]:
     """`{record id: [(asset, linker's email)]}` for the records, in one statement."""
     found: dict[UUID, list[tuple[FileAsset, str]]] = {}
     if not record_ids:

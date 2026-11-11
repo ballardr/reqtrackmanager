@@ -29,6 +29,20 @@ from app.config import get_settings
 
 settings = get_settings()
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class _ComposeLoader(yaml.SafeLoader):
+    """Reads a compose file, passing over the merge tags (`!reset`, `!override`) that only Docker Compose understands."""
+
+
+def _construct_merge_tag(loader: yaml.SafeLoader, node: yaml.Node):
+    """The value a `!reset` or `!override` tag wraps, read as the plain list or mapping it is."""
+    return loader.construct_sequence(node) if isinstance(node, yaml.SequenceNode) else loader.construct_mapping(node)
+
+
+for _tag in ("!reset", "!override"):
+    _ComposeLoader.add_constructor(_tag, _construct_merge_tag)
+
 COMPOSES = [ROOT / "docker-compose.yml", ROOT / "tests" / "container" / "docker-compose.yml"]
 
 
@@ -119,7 +133,7 @@ needs_checkout = pytest.mark.skipif(not COMPOSES[0].is_file(), reason="repositor
 
 def _storage(compose_file: Path) -> tuple[dict, str]:
     """Returns the `storage` service and the text of its identity config for a compose file."""
-    compose = yaml.safe_load(compose_file.read_text())
+    compose = yaml.load(compose_file.read_text(), Loader=_ComposeLoader)
     return compose["services"]["storage"], compose["configs"]["storage_identity"]["content"]
 
 

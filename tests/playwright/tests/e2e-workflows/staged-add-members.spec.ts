@@ -5,7 +5,7 @@ import { loginAs, ORG_NAMES, PERSONAS, selectProjectAdminGroup, closeDialogWitho
 /**
  * Job to be done: `AddMembersModal` (frontend/src/components/AddMembersModal.tsx)
  * replaced two near-identical bespoke "pick one person, submit immediately,
- * close the modal" flows (`OrgAdminPage.tsx`'s "Manage users" add-member
+ * close the modal" flows (`ManageProjectUsersModal`'s add-member
  * step, `ProjectAdminPage.tsx`'s own Members-section add-member modal) with
  * a staged multi-add: pick several people/groups, set each one's own role,
  * then commit them all with a single button press instead of one full
@@ -62,7 +62,7 @@ test.describe("staged multi-add member flow", () => {
     await test.step("stage an org group with a different role, before committing either", async () => {
       await picker.fill(groupName);
       const groupOption = modal.getByRole("option", { name: new RegExp(`^${groupName}`) });
-      await expect(groupOption).toContainText("Org group");
+      await expect(groupOption).toContainText("Organisation group");
       await groupOption.click();
       await modal.getByRole("combobox", { name: `Role for ${groupName}` }).selectOption("project_administrator");
 

@@ -112,8 +112,12 @@ from app.modules.compliance.service import materialize_assessment_rows
 from app.services import relationships
 from app.services.bundle_common import BundleImportWarnings, UserResolver, import_bundled_file
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.sequences import generate_unique_code
+from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import is_retired
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
@@ -571,11 +575,11 @@ def _import_compliance_standards(
     for requirement_id, parent_ref in pending_parent_links:
         parent_id = requirement_id_by_ref.get(parent_ref)
         if parent_id is not None:
-            db.get(ComplianceRequirement, requirement_id).parent_requirement_id = parent_id
+            get_or_404(db, ComplianceRequirement, requirement_id, "Compliance requirement").parent_requirement_id = parent_id
     for requirement_id, cloned_from_ref in pending_clone_links:
         cloned_from_id = requirement_id_by_ref.get(cloned_from_ref)
         if cloned_from_id is not None:
-            db.get(ComplianceRequirement, requirement_id).cloned_from_requirement_id = cloned_from_id
+            get_or_404(db, ComplianceRequirement, requirement_id, "Compliance requirement").cloned_from_requirement_id = cloned_from_id
 
     return requirement_id_by_ref
 
@@ -684,9 +688,9 @@ def _mapping_side_json(
     ref = requirement_ref_by_id.get(requirement_id)
     if ref is not None:
         return {"ref": ref, "external": None}
-    requirement = db.get(ComplianceRequirement, requirement_id)
-    version = db.get(ComplianceStandardVersion, requirement.standard_version_id)
-    other_standard = db.get(ComplianceStandard, version.standard_id)
+    requirement = get_or_404(db, ComplianceRequirement, requirement_id, "Compliance requirement")
+    version = get_or_404(db, ComplianceStandardVersion, requirement.standard_version_id, "Compliance standard version")
+    other_standard = get_or_404(db, ComplianceStandard, version.standard_id, "Compliance standard")
     return {
         "ref": None,
         "external": {
@@ -1053,11 +1057,11 @@ def import_standard_data(
     for requirement_id, parent_ref in pending_parent_links:
         parent_id = requirement_id_by_ref.get(parent_ref)
         if parent_id is not None:
-            db.get(ComplianceRequirement, requirement_id).parent_requirement_id = parent_id
+            get_or_404(db, ComplianceRequirement, requirement_id, "Compliance requirement").parent_requirement_id = parent_id
     for requirement_id, cloned_from_ref in pending_clone_links:
         cloned_from_id = requirement_id_by_ref.get(cloned_from_ref)
         if cloned_from_id is not None:
-            db.get(ComplianceRequirement, requirement_id).cloned_from_requirement_id = cloned_from_id
+            get_or_404(db, ComplianceRequirement, requirement_id, "Compliance requirement").cloned_from_requirement_id = cloned_from_id
 
     for m in data.get("requirement_mappings", []):
         from_id = _resolve_mapping_side(db, org, m["from"], requirement_id_by_ref)
@@ -1114,8 +1118,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
 
     project_compliances_json = []
     for pc in assignments:
-        version = db.get(ComplianceStandardVersion, pc.standard_version_id)
-        standard = db.get(ComplianceStandard, version.standard_id)
+        version = get_or_404(db, ComplianceStandardVersion, pc.standard_version_id, "Compliance standard version")
+        standard = get_or_404(db, ComplianceStandard, version.standard_id, "Compliance standard")
         requirements = list(
             db.scalars(select(ComplianceRequirement).where(ComplianceRequirement.standard_version_id == version.id)).all()
         )
@@ -1139,8 +1143,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             ).all()
         ) if pcr_ids else []
         assessments_by_pcr_id: dict[UUID, list[ComplianceRequiredActionAssessment]] = {}
-        for a in assessments:
-            assessments_by_pcr_id.setdefault(a.project_compliance_requirement_id, []).append(a)
+        for assessment in assessments:
+            assessments_by_pcr_id.setdefault(assessment.project_compliance_requirement_id, []).append(assessment)
         action_by_id = {a.id: a for actions in actions_by_requirement_id.values() for a in actions}
 
         # Evidence links now live in the generic `ArtefactLink` table
@@ -1222,6 +1226,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
 
     evidence_json = []
     evidence_ids = [e.id for e in evidence_rows]
+    prime_record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
+    prime_record_placements(db, ARTEFACT_TYPE_EVIDENCE, evidence_ids)
     revalidations_by_evidence: dict[UUID, list[ComplianceEvidenceRevalidation]] = {}
     files_by_evidence: dict[UUID, list[tuple]] = {}
     if evidence_ids:
@@ -1251,6 +1257,8 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "expiry_date": _j(e.expiry_date), "_provided_by": e.provided_by, "provided_at": _j(e.provided_at),
             "notes": e.notes, "is_archived": e.is_archived, "archived_at": _j(e.archived_at),
             "_archived_by": e.archived_by, "attachments": attachments,
+            "tags": record_tag_names(db, ARTEFACT_TYPE_EVIDENCE, e.id),
+            "placements": record_placements(db, ARTEFACT_TYPE_EVIDENCE, e.id),
             "revalidations": [
                 {
                     "_revalidated_by": r.revalidated_by, "revalidated_at": _j(r.revalidated_at),
@@ -1267,19 +1275,19 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     # resolved in a second pass over the already-built structures below
     # rather than threaded through the nested loops above, matching
     # `export_org_data`'s identical two-pass shape for the same reason.
-    user_ids: set[UUID | None] = {pc["_assigned_by"] for pc in project_compliances_json} | {
-        pc["_archived_by"] for pc in project_compliances_json
+    user_ids: set[UUID | None] = {pc_json["_assigned_by"] for pc_json in project_compliances_json} | {
+        pc_json["_archived_by"] for pc_json in project_compliances_json
     }
-    for pc in project_compliances_json:
-        for r in pc["requirements"]:
+    for pc_json in project_compliances_json:
+        for r in pc_json["requirements"]:
             user_ids |= {r["_assessed_by"], r["_applicability_set_by"], r["_approval_decided_by"]}
             for a in r["required_actions"]:
                 user_ids.add(a["_completed_by"])
-        for rv in pc["reviews"]:
+        for rv in pc_json["reviews"]:
             user_ids |= {rv["_completed_by"], rv["_created_by"]}
-    for e in evidence_json:
-        user_ids |= {e["_provided_by"], e["_archived_by"]}
-        for r in e["revalidations"]:
+    for ev_json in evidence_json:
+        user_ids |= {ev_json["_provided_by"], ev_json["_archived_by"]}
+        for r in ev_json["revalidations"]:
             user_ids.add(r["_revalidated_by"])
     user_ids.discard(None)
     email_by_id = {u.id: u.email for u in db.scalars(select(User).where(User.id.in_(user_ids)))} if user_ids else {}
@@ -1287,22 +1295,22 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     def email(user_id: UUID | None) -> str | None:
         return email_by_id.get(user_id) if user_id else None
 
-    for pc in project_compliances_json:
-        pc["assigned_by_email"] = email(pc.pop("_assigned_by"))
-        pc["archived_by_email"] = email(pc.pop("_archived_by"))
-        for r in pc["requirements"]:
+    for pc_json in project_compliances_json:
+        pc_json["assigned_by_email"] = email(pc_json.pop("_assigned_by"))
+        pc_json["archived_by_email"] = email(pc_json.pop("_archived_by"))
+        for r in pc_json["requirements"]:
             r["assessed_by_email"] = email(r.pop("_assessed_by"))
             r["applicability_set_by_email"] = email(r.pop("_applicability_set_by"))
             r["approval_decided_by_email"] = email(r.pop("_approval_decided_by"))
             for a in r["required_actions"]:
                 a["completed_by_email"] = email(a.pop("_completed_by"))
-        for rv in pc["reviews"]:
+        for rv in pc_json["reviews"]:
             rv["completed_by_email"] = email(rv.pop("_completed_by"))
             rv["created_by_email"] = email(rv.pop("_created_by"))
-    for e in evidence_json:
-        e["provided_by_email"] = email(e.pop("_provided_by"))
-        e["archived_by_email"] = email(e.pop("_archived_by"))
-        for r in e["revalidations"]:
+    for ev_json in evidence_json:
+        ev_json["provided_by_email"] = email(ev_json.pop("_provided_by"))
+        ev_json["archived_by_email"] = email(ev_json.pop("_archived_by"))
+        for r in ev_json["revalidations"]:
             r["revalidated_by_email"] = email(r.pop("_revalidated_by"))
 
     return {
@@ -1310,6 +1318,23 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "compliance_requirement_links": _export_requirement_links(db, project),
         "compliance_default_exclusions": _export_default_exclusions(db, project),
     }, file_assets_by_id
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter assignments keep their assessments and evidence, with every
+    approval returned to `assessed` (no decision, decider or note) and no revalidation history; archived assignments
+    and evidence are left out."""
+    assignments = [pc for pc in data.get("compliance_project_compliances", []) if not is_retired(pc)]
+    for assignment in assignments:
+        for requirement in assignment.get("requirements", []):
+            if requirement.get("approval_state") not in (None, ComplianceApprovalState.NOT_ASSESSED.value):
+                requirement["approval_state"] = ComplianceApprovalState.ASSESSED.value
+            requirement.update(approval_decided_at=None, approval_decided_by_email=None, decision_note="")
+    data["compliance_project_compliances"] = assignments
+    evidence = [e for e in data.get("compliance_evidence", []) if not is_retired(e)]
+    for entry in evidence:
+        entry["revalidations"] = []
+    data["compliance_evidence"] = evidence
 
 
 def _export_default_exclusions(db: Session, project: Project) -> list[dict[str, Any]]:
@@ -1496,6 +1521,14 @@ def import_project_data(
         db.add(evidence)
         db.flush()
         evidence_id_by_ref[e["ref"]] = evidence.id
+        restore_record_tags(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, names=e.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=current_user.id,
+            artefact_type=ARTEFACT_TYPE_EVIDENCE, artefact_id=evidence.id, entries=e.get("placements"),
+        )
 
         for att in e.get("attachments", []):
             att_bytes = file_bytes_by_ref.get(att["file_ref"])

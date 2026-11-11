@@ -79,8 +79,7 @@ test.describe("File details (EXIF)", () => {
     });
     expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
 
-    await page.goto(`/orgs/${org.id}/admin`);
-    await page.getByRole("button", { name: /Shared resources/ }).click();
+    await page.goto(`/orgs/${org.id}/files?tab=resources`);
     await page.getByRole("button", { name: "Details of site-photo.jpg" }).click();
     const details = page.getByRole("dialog", { name: "Details of site-photo.jpg" });
     await expect(details.getByText("Canon EOS 5D")).toBeVisible();

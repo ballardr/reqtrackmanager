@@ -3,9 +3,9 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { page } from "vitest/browser";
 
 import { api } from "../api/client";
-import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, ServerSettings, SystemVersion } from "../api/types";
+import type { ClientConfig, ModuleNavEntry, Organization, Project, ProjectListItem, PublicPolicy, ServerAccess, ServerSettings, SystemVersion } from "../api/types";
 import { ThemeProvider } from "../context/ThemeContext";
-import { buildProject, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
+import { buildProject, buildPublicPolicy, buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { Layout } from "./Layout";
 
 const DEFAULT_CLIENT_CONFIG: ClientConfig = { help_enabled: true, help_url: "https://docs.example.com/" };
@@ -14,34 +14,54 @@ const BACKEND_VERSION: SystemVersion = { version: "1.4.0", git_sha: "abc1234", b
 
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569",
+  logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: "after_content",
   default_logo_file_id: null,
   default_header_title: "ReqTrack Manager",
   default_login_background_file_id: null,
   email_footer_company_name: null,
   email_footer_website: null,
   email_footer_address: null,
+  footer_prefix: null, company_id_label: null, company_id: null,
   org_label_singular: null,
   org_label_plural: null,
+  file_uploads_enabled: true,
 };
 
 const ORG: Organization = {
   id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
   default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-  disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
+  disabled_at: null, accent_color_hex: null, logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
-  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
 };
 
 const PROJECT: Project = buildProject({ id: "project-1", organization_id: "org-1" });
 
+const NO_SERVER_ACCESS: ServerAccess = {
+  roles: [], can_view_organizations: false, can_create_organizations: false, can_delete_organizations: false,
+  can_manage_entitlements: false, can_administer_server: false,
+};
+const SERVER_ADMIN_ACCESS: ServerAccess = {
+  roles: ["server_admin"], can_view_organizations: true, can_create_organizations: true, can_delete_organizations: true,
+  can_manage_entitlements: true, can_administer_server: true,
+};
+
 /** Routes every `api.get` call Layout's provider tree can make (branding,
  * terminology, favourites probe, notifications) to fixture data by path
  * prefix — Layout composes several providers each with their own fetch, so
  * a single path-matching mock is far more maintainable than one spy per
  * story. */
-function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = []) {
+function mockLayoutApis(
+  clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enabledModules: ModuleNavEntry[] = [], stagesInUse = true, reviewsDue = 0,
+  serverAccess: ServerAccess = NO_SERVER_ACCESS, publishedPolicies: PublicPolicy[] = [],
+) {
+  // `useHasReviewsDue` reads one row of the personal reviews-due list; its total decides whether the entry shows.
+  spyOn(api, "getPage").mockImplementation(async (path: string): Promise<never> => {
+    if (path.startsWith("/api/v1/me/reviews/due")) return { items: [], total: reviewsDue } as never;
+    throw new Error(`unmocked page path in Layout story: ${path}`);
+  });
   spyOn(api, "get").mockImplementation(async (path: string): Promise<unknown> => {
     if (path === "/api/v1/system/branding") return SERVER_SETTINGS;
     if (path === "/api/v1/orgs") return [ORG];
@@ -50,7 +70,10 @@ function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enab
     if (path.startsWith("/api/v1/projects?")) return [] as ProjectListItem[];
     if (path === "/api/v1/notifications") return [];
     if (path === "/api/v1/system/version") return BACKEND_VERSION;
+    if (path === "/api/v1/public/policies") return publishedPolicies;
+    if (path === "/api/v1/policies/mine") return [];
     if (path === "/api/v1/system/client-config") return clientConfig;
+    if (path === "/api/v1/system/access") return serverAccess;
     // `useProjectEnabledModules` — Layout's nav
     // rail calls this whenever a project route is active, independently of
     // whether any module is actually registered; found as a real,
@@ -58,6 +81,8 @@ function mockLayoutApis(clientConfig: ClientConfig = DEFAULT_CLIENT_CONFIG, enab
     // Storybook suite) while verifying changes here — fixed
     // in passing rather than left, per this repo's "fix, don't defer" rule.
     if (path.endsWith("/enabled-modules")) return enabledModules;
+    // `useProjectHasStages`: the Delivery status entry is in the rail only when the project uses its stages.
+    if (path === `/api/v1/projects/${PROJECT.id}/stage-usage`) return { in_use: stagesInUse };
     // Compliance's own `globalNavItems` contribution (`ComplianceGlobalNavLink.tsx`) fetches this
     // unconditionally whenever a user is logged in, via `Layout.tsx`'s
     // generic module-nav-item mechanism — not something Layout.tsx itself
@@ -105,7 +130,60 @@ export const LoggedInNoProject: Story = {
     await expect(canvas.queryByText("Project")).not.toBeInTheDocument();
     await expect(canvas.queryByText("Administration")).not.toBeInTheDocument();
     // The only path to org administration for a non-server-admin.
-    await expect(canvas.getByRole("link", { name: "My organisations" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Organisation settings" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "My organisations" })).not.toBeInTheDocument();
+    // Organisation Files sits directly below Projects in the Global section.
+    const links = canvas.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    await expect(links.indexOf("Files")).toBe(links.indexOf("Projects") + 1);
+  },
+};
+
+/** The Global section reads Projects, Files, Organisation overview, Organisation settings; the full
+ * Notifications page has no rail entry (the header bell links to it), and with nothing due there is no
+ * reviews entry. */
+export const GlobalSectionOrderWithNothingDue: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Organisation settings" });
+    // Let the reviews-due read settle, so its absence is a result and not a read still in flight.
+    await waitFor(() => expect(api.getPage).toHaveBeenCalled());
+    const rail = within(canvas.getByRole("navigation"));
+    const names = rail.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    await expect(names.slice(names.indexOf("Projects"))).toEqual(["Projects", "Files", "Organisation overview", "Organisation settings"]);
+    await expect(rail.queryByRole("link", { name: "My reviews due" })).not.toBeInTheDocument();
+    await expect(rail.queryByRole("link", { name: "Notifications" })).not.toBeInTheDocument();
+  },
+};
+
+/** A review due shows the entry, after Files and before Organisation overview. */
+export const ReviewsDueEntryShownWhenSomethingIsDue: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 2);
+  },
+  play: async ({ canvasElement }) => {
+    const rail = within(within(canvasElement).getByRole("navigation"));
+    await rail.findByRole("link", { name: "My reviews due" });
+    const names = rail.getAllByRole("link").map((link) => link.getAttribute("aria-label"));
+    await expect(names.slice(names.indexOf("Projects"))).toEqual([
+      "Projects", "Files", "My reviews due", "Organisation overview", "Organisation settings",
+    ]);
+  },
+};
+
+/** The organisation Files entry stays active on the page it opens. */
+export const OrganisationFilesEntryIsActiveOnItsPage: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/orgs/org-1/files")],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Files" })).toHaveClass("active");
   },
 };
 
@@ -124,22 +202,53 @@ export const LoggedInWithProjectRoute: Story = {
 export const ServerAdmin: Story = {
   decorators: [withAuth(buildUser({ display_name: "Sam Admin", is_server_admin: true })), withRouter("/projects")],
   beforeEach: () => {
-    mockLayoutApis();
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, SERVER_ADMIN_ACCESS);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Administration")).toBeInTheDocument();
+    await expect(await canvas.findByText("Administration")).toBeInTheDocument();
     await expect(canvas.getByRole("link", { name: /Server management/ })).toBeInTheDocument();
   },
 };
 
-/** The nav rail's build-identity footer — the frontend's own build constants (unset in a Storybook build,
- * so `version.ts`'s documented "dev"/"unknown" fallback applies) plus the
- * backend's, fetched from `GET /api/v1/system/version` and rendered once
- * it resolves. Hidden entirely when the rail is collapsed to icons-only,
- * same as every other rail label — not asserted here since that's
- * `useUiPreference`'s own default-false state, exercised by the collapse
- * button elsewhere, not this story's concern. */
+/** A Platform subscription manager sees Organisations and Server management (Modules only). */
+export const PlatformSubscriptionManager: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Pat Manager", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, {
+      roles: ["subscription_manager"], can_view_organizations: true, can_create_organizations: true,
+      can_delete_organizations: false, can_manage_entitlements: true, can_administer_server: false,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Administration")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Organisations" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: /Server management/ })).toBeInTheDocument();
+  },
+};
+
+/** A Subscription removal authority sees only Organisations, never Server management. */
+export const SubscriptionRemovalAuthority: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Robin Remover", is_server_admin: false })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, {
+      roles: ["subscription_removal_authority"], can_view_organizations: true, can_create_organizations: false,
+      can_delete_organizations: true, can_manage_entitlements: false, can_administer_server: false,
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Administration")).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Organisations" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: /Server management/ })).not.toBeInTheDocument();
+  },
+};
+
+/** The page footer's build identity — the frontend's own build constants (unset in a Storybook build, so
+ * `version.ts`'s documented "dev"/"unknown" fallback applies) plus the backend's, fetched from
+ * `GET /api/v1/system/version` and rendered once it resolves. It is the page's footer, so it does not depend on
+ * the navigation rail's state. */
 export const ShowsVersionFooter: Story = {
   decorators: [withAuth(buildUser({ display_name: "Alex Morgan", is_server_admin: false })), withRouter("/projects")],
   beforeEach: () => {
@@ -147,8 +256,23 @@ export const ShowsVersionFooter: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("App vdev")).toBeInTheDocument();
-    await expect(canvas.getByText("API v1.4.0")).toBeInTheDocument();
+    await expect(await canvas.findByText("Version: vdev/v1.4.0")).toBeInTheDocument();
+    await expect(canvas.getByRole("contentinfo", { name: "Page footer" })).toBeInTheDocument();
+  },
+};
+
+/** The policies link is in the page footer, so a narrow viewport (the rail forced to icons) still shows it. */
+export const PoliciesLinkSurvivesACollapsedRail: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter("/projects")],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], true, 0, NO_SERVER_ACCESS, [buildPublicPolicy()]);
+  },
+  play: async ({ canvasElement }) => {
+    await page.viewport(700, 800);
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("navigation")).toHaveClass("nav-rail-icons"));
+    const footer = canvas.getByRole("contentinfo", { name: "Page footer" });
+    await expect(await within(footer).findByRole("link", { name: "Policies" })).toHaveAttribute("href", "/policies");
   },
 };
 
@@ -175,7 +299,7 @@ export const HelpLinkHiddenWhenDisabled: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await canvas.findByText("API v1.4.0");
+    await canvas.findByText("Version: vdev/v1.4.0");
     await expect(canvas.queryByRole("link", { name: /^Help/ })).not.toBeInTheDocument();
   },
 };
@@ -376,3 +500,27 @@ export const LongRailDark: Story = { ...LongRailScrollbarClearsToggle, globals: 
 
 export const LightTheme: Story = { ...LoggedInWithProjectRoute, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...LoggedInWithProjectRoute, globals: { theme: "dark" } };
+
+/** The Delivery status entry is in the project rail once the project uses its stages. */
+export const ShowsDeliveryStatusOnlyWhenTheProjectUsesStages: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis();
+  },
+  play: async ({ canvasElement }) => {
+    await expect(await within(canvasElement).findByRole("link", { name: "Delivery status" })).toBeInTheDocument();
+  },
+};
+
+/** A project still on its default stage is not offered the entry. */
+export const HidesDeliveryStatusUntilStagesAreUsed: Story = {
+  decorators: [withAuth(buildUser({ display_name: "Alex Morgan" })), withRouter(`/projects/${PROJECT.id}/requirements`)],
+  beforeEach: () => {
+    mockLayoutApis(DEFAULT_CLIENT_CONFIG, [], false);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("link", { name: "Project history" });
+    await expect(canvas.queryByRole("link", { name: "Delivery status" })).not.toBeInTheDocument();
+  },
+};

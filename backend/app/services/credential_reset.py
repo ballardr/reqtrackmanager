@@ -57,10 +57,10 @@ from app.services.audit import log_event
 from app.services.email import EmailDeliveryDisabled, send_email
 from app.services.email_branding import EmailBranding, resolve_email_branding
 from app.services.email_templates import render_email
-from app.services.pats import revoke_matching
+from app.services.pats import revoke_all_for_user, revoke_matching
 from app.services.rate_limit import RateLimiter
 
-IssuedVia = Literal["forgot", "admin", "cli"]
+IssuedVia = Literal["forgot", "admin", "cli", "confirm"]
 
 #: Longest a command-line operator may ask a link to live, in minutes.
 MAX_TTL_MINUTES = 1440
@@ -106,17 +106,18 @@ def can_reset_by_link(db: Session, user: User) -> bool:
     )
 
 
-def reset_url(raw_token: str) -> str:
+def reset_url(raw_token: str, page: str = "reset-password") -> str:
     """Builds the link a person opens. The secret is in the URL fragment, which browsers never send to a server,
     so it stays out of access logs and referrers.
 
     Args:
         raw_token: The secret from `issue_token`.
+        page: The front-end page that spends it (`reset-password`, or `confirm-email` for an email confirmation).
 
     Returns:
-        The absolute URL of the reset page.
+        The absolute URL of that page.
     """
-    return f"{get_settings().frontend_base_url.rstrip('/')}/reset-password#token={raw_token}"
+    return f"{get_settings().frontend_base_url.rstrip('/')}/{page}#token={raw_token}"
 
 
 def _ttl(ttl_minutes: int | None) -> int:
@@ -190,6 +191,7 @@ def redeem_token(db: Session, raw_token: str, new_password: str) -> User:
         update(CredentialResetToken)
         .where(
             CredentialResetToken.token_hash == hash_pat(raw_token),
+            CredentialResetToken.issued_via != "confirm",  # a confirmation link never sets a password
             CredentialResetToken.used_at.is_(None),
             CredentialResetToken.expires_at > now,
         )
@@ -204,6 +206,10 @@ def redeem_token(db: Session, raw_token: str, new_password: str) -> User:
     user.password_hash = hash_password(new_password)
     user.token_version += 1
     user.must_reset_credentials = False
+    user.must_change_password = False
+    user.email_confirmation_pending = False  # the link reached the mailbox, which is what a confirmation proves
+    # A reset link is recovery after a suspected loss of the password: tokens made before it are not trusted.
+    revoke_all_for_user(db, user.id)
     db.execute(
         update(CredentialResetToken)
         .where(CredentialResetToken.user_id == user.id, CredentialResetToken.used_at.is_(None))
@@ -276,7 +282,7 @@ def send_reset_email(
 
 def delete_unsent_token(db: Session, raw_token: str) -> None:
     """Removes a token whose email could not be sent, so no live link exists that nobody received."""
-    db.execute(CredentialResetToken.__table__.delete().where(CredentialResetToken.token_hash == hash_pat(raw_token)))
+    db.execute(delete(CredentialResetToken).where(CredentialResetToken.token_hash == hash_pat(raw_token)))
 
 
 def send_link_for_administrator(db: Session, target: User, *, admin: User, organization_id: uuid.UUID | None) -> None:
@@ -358,7 +364,7 @@ def _enforce(kind: str, key: object, burst: int, per_minute: int, message: str) 
     Raises:
         HTTPException: 429 with `Retry-After` when the bucket is empty.
     """
-    limiter = _limiters.setdefault((kind, burst, per_minute), RateLimiter(burst, per_minute / 60))
+    limiter = _limiters.setdefault((kind, burst, per_minute), RateLimiter(burst, per_minute / 60, shared=kind))
     wait = limiter.acquire(key)
     if wait is not None:
         seconds = max(1, math.ceil(wait))
@@ -371,11 +377,23 @@ def _enforce(kind: str, key: object, burst: int, per_minute: int, message: str) 
 def enforce_public_rate_limit(client_ip: str) -> None:
     """Throttles the unauthenticated forgot-password and reset-password calls per client address.
 
-    The address is the first `X-Forwarded-For` hop, which a client can spoof when the backend is reached
-    directly; the per-account cooldown (`recently_issued`) is the control that holds regardless.
+    The address is the connecting client as the server determined it (`deps.get_client_ip`); the per-account
+    cooldown (`recently_issued`) is the control that holds regardless.
     """
     cfg = get_settings()
     _enforce("public", client_ip, cfg.public_auth_rate_limit_burst, cfg.public_auth_rate_limit_per_minute, "Too many attempts.")
+
+
+def enforce_oidc_start_rate_limit(client_ip: str) -> None:
+    """Throttles starting a single sign-on login per client address (each start may fetch a tenant's discovery document)."""
+    cfg = get_settings()
+    _enforce("oidc", client_ip, cfg.public_auth_rate_limit_burst * 3, cfg.public_auth_rate_limit_per_minute * 3, "Too many attempts.")
+
+
+def enforce_signup_rate_limit(client_ip: str) -> None:
+    """Throttles unauthenticated sign-up per client address, in a bucket of its own so it shares nothing with reset."""
+    cfg = get_settings()
+    _enforce("signup", client_ip, cfg.public_auth_rate_limit_burst, cfg.public_auth_rate_limit_per_minute, "Too many attempts.")
 
 
 def enforce_send_rate_limit(admin_id: uuid.UUID) -> None:

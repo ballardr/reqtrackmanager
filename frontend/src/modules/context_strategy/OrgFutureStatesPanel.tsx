@@ -19,7 +19,8 @@ import { useNavigate } from "react-router-dom";
 
 import { ListActions } from "../../components/ListActions";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -30,8 +31,11 @@ import type { FutureState, FutureStateFieldValues, FutureStateStatus } from "./t
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { filterString } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
+  const strings = useStrings();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [futureStates, setFutureStates] = useState<FutureState[] | null>(null);
@@ -49,7 +53,7 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
       setFutureStates(await orgFutureStateApi.list(orgId, { include_archived: includeArchived }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this organisation, or you do not have access to it."));
     }
   }
 
@@ -98,14 +102,13 @@ export function OrgFutureStatesPanel({ orgId }: { orgId: string }) {
           sectionKey="context_strategy.orgFutureStates.list" total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search Future State…" searchAriaLabel="Search organisation Future State"
         >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as FutureStateStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(FUTURE_STATE_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={strings.filters.status}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            allLabel="All statuses"
+            options={labelOptions(FUTURE_STATE_STATUS_LABEL)}
+          />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

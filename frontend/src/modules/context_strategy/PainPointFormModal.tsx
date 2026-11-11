@@ -10,8 +10,8 @@
  * concept to add in edit mode — `PainPointFieldValues` is identical for both
  * calls.
  *
- * **Scoring at creation (Decided by: Agent).** A create form also offers Severity, Frequency and
- * Confidence through `PainPointScoreFields`, the grid the detail page's scoring panel uses, so a
+ * **Scoring at creation (Decided by: Agent).** A create form also offers the scoring criteria
+ * (General, then personas that differ) through `PainPointScoreFields`, the grid the detail page's scoring panel uses, so a
  * Pain Point need not be reopened to be scored. It appears only when the caller may score (the
  * `scoring` prop); an existing record is scored in its panel, not in this form.
  *
@@ -34,8 +34,9 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { ToggleSwitch } from "../../components/ToggleSwitch";
 import type { ScoringScheme } from "../../api/scoring";
 import { PainPointScoreFields } from "./PainPointScoreFields";
-import { scoreInputsFromDraft, visibleScoreRows, type ScoreDraft, type ScoreMode, type ScoreRow } from "./painPointScoreDraft";
+import { scoreInputsFromDraft, type ScoreDraft, type ScoreRow } from "./painPointScoreDraft";
 import { PAIN_POINT_PRIORITY_LABEL } from "./types";
+import { CONTEXT_STRATEGY_HELP } from "./help";
 import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointScoringTarget,
 } from "./types";
@@ -80,7 +81,6 @@ export function PainPointFormModal({
   const [isIntentional, setIsIntentional] = useState(initial?.is_intentional ?? false);
   const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
   const [tags, setTags] = useState<string[]>([]);
-  const [scoreMode, setScoreMode] = useState<ScoreMode>("all");
   const [scoreDraft, setScoreDraft] = useState<ScoreDraft>({});
   const [fields, setFields] = useState<Record<string, string>>(() =>
     Object.fromEntries(TEXT_FIELDS.map((f) => [f.key, (initial?.[f.key as keyof PainPoint] as string | undefined) ?? ""]))
@@ -90,14 +90,19 @@ export function PainPointFormModal({
     .filter((t) => t.is_enabled || t.id === initial?.pain_point_type_id)
     .map((t) => ({ value: t.id, label: t.is_enabled ? t.name : `${t.name} (disabled)` }));
 
-  const scoreAxes = Object.fromEntries((scoring?.scheme.axes ?? []).map((a) => [a.key, a]));
+  // One line per offered Type: its name and definition, so the options can be compared before choosing.
+  const typeHelp = types
+    .filter((t) => t.is_enabled || t.id === initial?.pain_point_type_id)
+    .map((t) => (t.definition ? `${t.name}: ${t.definition}` : t.name))
+    .join("\n") || CONTEXT_STRATEGY_HELP.painPointType;
+
   const personaRows: ScoreRow[] = (scoring?.targets ?? [])
     .filter((t) => t.is_active)
     .map((t) => ({ key: t.id, label: t.label, note: t.weight !== null ? `weight ${t.weight}` : "", retired: false, unavailable: false }));
 
   function save() {
     const scores = !initial && scoring
-      ? scoreInputsFromDraft(scoreDraft, visibleScoreRows(scoreMode, personaRows))
+      ? scoreInputsFromDraft(scoreDraft)
       : undefined;
     onSave({
       pain_point_type_id: painPointTypeId,
@@ -116,9 +121,8 @@ export function PainPointFormModal({
     <Modal title={initial ? `Edit ${initial.title}` : "New Pain Point"} onClose={onCancel} size="lg">
       <div className="stack">
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded required label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions}
-            hint={types.find((t) => t.id === painPointTypeId)?.definition || undefined} />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={typeHelp} required label="Type" value={painPointTypeId} onChange={setPainPointTypeId} options={typeOptions} />
+          <LabeledSelect help={CONTEXT_STRATEGY_HELP.priority}
             label="Priority"
             value={priority}
             onChange={(v) => setPriority(v as PainPointPriority)}
@@ -135,8 +139,8 @@ export function PainPointFormModal({
               />
             </FormGridFull>
           ))}
-          <DateField helpNotNeeded
-            label={`Date identified${!initial ? " (defaults to today if left blank)" : ""}`} ariaLabel="Date identified"
+          <DateField help={CONTEXT_STRATEGY_HELP.painPointDateIdentified}
+            label="Date identified"
             value={dateIdentified} onChange={setDateIdentified}
           />
           <FormGridFull>
@@ -153,7 +157,7 @@ export function PainPointFormModal({
               <section className="stack" aria-label="Scoring">
                 <strong>Scoring</strong>
                 <PainPointScoreFields
-                  axes={scoreAxes} personaRows={personaRows} mode={scoreMode} onModeChange={setScoreMode}
+                  axes={scoring.scheme.axes} personaRows={personaRows}
                   draft={scoreDraft} onDraftChange={setScoreDraft}
                 />
               </section>

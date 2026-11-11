@@ -15,7 +15,7 @@ const PROJECT_ID = "project-1";
 const components: Component[] = [{ id: "c1", project_id: PROJECT_ID, name: "Authentication", prefix: "AUTH", sort_order: 0 }];
 const categories: Category[] = [{ id: "cat1", project_id: PROJECT_ID, component_id: "c1", name: "Login", prefix: "LOG", sort_order: 0 }];
 const stages: ProjectStage[] = [
-  { id: "s1", project_id: PROJECT_ID, name: "Build", status: "scoping", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+  { id: "s1", project_id: PROJECT_ID, name: "Build", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, owner: null, review_deadline: null },
 ];
 // "approved" (locked): a modify change request can only target an
 // already-locked requirement — a
@@ -37,7 +37,7 @@ function mockChangeRequestsListApis({ links = false }: { links?: boolean } = {})
       });
     }
     if (links && path.includes("/link-graph")) return buildGraph([], { can_link: true });
-    if (links && path.includes("/link-types")) return [buildOption({ other_types: [{ type: "decision", label: "Decision" }] })];
+    if (links && path.includes("/link-types")) return [buildOption({ other_types: [{ type: "decision", label: "Decision", can_create: false }] })];
     if (links && path.includes("/link-candidates")) return { items: [buildCandidate()], truncated: false };
     if (links && path.includes("/link-browse")) return null;
     if (links && path.includes("/link-candidate-projects")) return { items: [], truncated: false };
@@ -207,7 +207,7 @@ export const SearchRefetchesWithSearchParam: Story = {
 export const SubmitCreatesChangeRequest: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "post").mockResolvedValue({ id: "cr-new" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -236,7 +236,7 @@ export const SubmitCreatesChangeRequest: Story = {
 export const ModifyRequestSendsItsProposedLinks: Story = {
   beforeEach: () => {
     mockChangeRequestsListApis({ links: true });
-    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "post").mockResolvedValue({ id: "cr-new" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

@@ -23,7 +23,8 @@ Design decisions (all Decided by: Agent):
   name* and matched to the target organisation's `risk` scoring levels; one the
   target lacks (renamed or deleted) is left unset with a warning, so the
   imported Risk is "not rated" on that axis rather than silently re-rated.
-  Scoring configuration (levels, bands, cell ratings) is not part of a bundle.
+  A project's own scoring configuration (default model, bands, cell ratings) travels in the core project bundle
+  (`services.scoring_config`); the organisation's levels do not.
 - Only treatment-family and impact links *to Requirements in the same project*
   travel (matched by requirement code, as the core requirement links are).
   Links to Actions, Decisions, other Risks or another project cannot, because
@@ -78,10 +79,12 @@ from app.modules.risk_management.scoring import LEVEL_COLUMN_AXES, RISK_SCORING_
 from app.modules.risk_management.service import RISK_ARTEFACT_TYPE, RISK_TYPES
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.relationships import create_link, get_links_from_many, get_links_to_many
 from app.services.scoring import list_levels, seed_missing_scoring_levels
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _TEXT_FIELDS = ("title", "statement", "cause", "risk_event", "consequence", "acceptance_criteria")
 _REQUIREMENT = "requirement"
@@ -213,6 +216,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     }
     RISK_TYPES.prime_display_names(db, [(None, v.project_type_id) for _r, v in pairs])
     prime_record_tag_names(db, RISK_ARTEFACT_TYPE, risk_ids)
+    prime_record_placements(db, RISK_ARTEFACT_TYPE, risk_ids)
     prime_file_links(db, RiskFile, "risk_id", risk_ids)
     user_ids: set[UUID | None] = set()
     for risk, version in pairs:
@@ -240,6 +244,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "is_archived": risk.is_archived, "archived_at": _j(risk.archived_at), "archived_by_email": emails.get(risk.archived_by),
             "review_notified_for": {"due": _j(risk.review_due_notified_for), "overdue": _j(risk.review_overdue_notified_for)},
             "tags": record_tag_names(db, RISK_ARTEFACT_TYPE, risk.id),
+            "placements": record_placements(db, RISK_ARTEFACT_TYPE, risk.id),
         }
         entry["attachments"] = export_file_links(db, RiskFile, "risk_id", risk.id, assets)
         entry["reviews"] = [
@@ -261,6 +266,15 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "risk_hidden_org_types": RISK_TYPES.hidden_names(db, project.id, project.organization_id),
         "risks": risks_json,
     }, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Risks become newly identified, with no review history or
+    review date. Treatments (links to requirements, which keep their codes in a clone) are kept."""
+    fresh_drafts(
+        data.get("risks", []), status=RiskStatus.IDENTIFIED.value, clear=("review_date", "review_notified_for"),
+        empty=("reviews",),
+    )
 
 
 # --- Project level: import ---------------------------------------------------
@@ -373,6 +387,10 @@ def import_project_data(
             db, organization_id=organization_id, record_project_id=project.id, actor_id=creator_id,
             artefact_type=RISK_ARTEFACT_TYPE, artefact_id=risk.id, names=entry.get("tags"),
         )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=creator_id,
+            artefact_type=RISK_ARTEFACT_TYPE, artefact_id=risk.id, entries=entry.get("placements"),
+        )
 
         for att in entry.get("attachments", []):
             att_bytes = file_bytes_by_ref.get(att["file_ref"])
@@ -407,13 +425,13 @@ def import_project_data(
                     f"({t.get('link_type_forward_name')!r}) skipped — the requirement or link type is not available here."
                 )
                 continue
-            ends = (
-                {"source_type": RISK_ARTEFACT_TYPE, "source_id": risk.id, "target_type": _REQUIREMENT, "target_id": requirement_id}
-                if t["risk_is_source"] else
-                {"source_type": _REQUIREMENT, "source_id": requirement_id, "target_type": RISK_ARTEFACT_TYPE, "target_id": risk.id}
+            source_type, source_id, target_type, target_id = (
+                (RISK_ARTEFACT_TYPE, risk.id, _REQUIREMENT, requirement_id) if t["risk_is_source"]
+                else (_REQUIREMENT, requirement_id, RISK_ARTEFACT_TYPE, risk.id)
             )
             link: ArtefactLink = create_link(
-                db, **ends, link_type_id=link_type_id, project_id=project.id, enforce_rules=False,  # replaying existing data
+                db, source_type=source_type, source_id=source_id, target_type=target_type, target_id=target_id,
+                link_type_id=link_type_id, project_id=project.id, enforce_rules=False,  # replaying existing data
                 created_by=users.resolve(t.get("created_by_email"), required=False, context=f"Risk {code} link creator") or current_user.id,
             )
             verdict = t.get("verdict")

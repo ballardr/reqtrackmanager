@@ -42,6 +42,7 @@ from app.schemas.scoring import (
     ScoringThresholdsIn,
 )
 from app.services import scoring, scoring_custom
+from app.services.lookups import project_or_404
 from app.services.rbac import require_project_manage, require_project_view_or_manage
 
 router = APIRouter(tags=["projects-scoring"])
@@ -73,8 +74,7 @@ def get_project_scoring_scheme(
 ):
     """Returns the scheme's effective configuration for this project."""
     registered = _load_scheme(db, project_id, scheme_key)
-    project = db.get(Project, project_id)
-    assert project is not None  # require_project_view_or_manage already 404s a missing project
+    project = project_or_404(db, project_id)
     return scoring.build_scheme_config(db, project.organization_id, registered, project)
 
 
@@ -198,7 +198,7 @@ def create_project_scoring_axis(
     registered = _load_scheme(db, project_id, scheme_key)
     scoring_custom.create_axis(
         db, project.organization_id, registered.scheme, project_id=project.id, label=payload.label,
-        description=payload.description,
+        description=payload.description, per_target=payload.per_target,
         levels=[scoring_custom.LevelSpec(lvl.name, lvl.weight, lvl.description) for lvl in payload.levels],
         actor_id=current_user.id,
     )

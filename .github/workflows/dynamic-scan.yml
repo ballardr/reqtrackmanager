@@ -1,0 +1,64 @@
+# Scheduled dynamic scan of the Compose test stack (docs/development.md, "Security scanning").
+#
+# Brings the local test stack up on the runner and runs the OWASP ZAP baseline against the front end and the API's
+# OpenAPI description: passive checks only (no attack payloads), against a stack that holds no real data and is
+# discarded afterwards. The run fails on any alert of High risk. It never targets a shared or public environment.
+name: Dynamic scan
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    name: OWASP ZAP baseline against the test stack
+    runs-on: ubuntu-latest
+    # A manual run from any branch scans that branch's own stack, which is what a branch change needs.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Start the stack
+        working-directory: tests/container
+        run: docker compose up -d --build --wait frontend backend
+
+      - name: Scan the front end and the API description
+        run: |
+          mkdir -p zap-out && chmod 777 zap-out
+          docker run --rm --network host -v "$PWD/zap-out:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:2.16.1 \
+            zap-baseline.py -t http://localhost:3000 -J frontend.json -I
+          docker run --rm --network host -v "$PWD/zap-out:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy:2.16.1 \
+            zap-api-scan.py -t http://localhost:8000/openapi.json -f openapi -J api.json -I
+
+      - name: Fail on a high-risk alert
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys
+          high = []
+          for name in ("frontend.json", "api.json"):
+              path = pathlib.Path("zap-out") / name
+              if not path.exists():
+                  sys.exit(f"{name} was not produced; the scan did not complete.")
+              for site in json.loads(path.read_text()).get("site", []):
+                  high += [f"{name}: {a['name']} ({a['riskdesc']})" for a in site.get("alerts", []) if a.get("riskcode") == "3"]
+          if high:
+              sys.exit("High-risk alerts:\n" + "\n".join(sorted(set(high))))
+          print("No high-risk alert.")
+          PY
+
+      - name: Keep the reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zap-reports
+          path: zap-out
+          retention-days: 14
+
+      - name: Stop the stack
+        if: always()
+        working-directory: tests/container
+        run: docker compose down -v

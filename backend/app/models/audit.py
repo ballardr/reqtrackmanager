@@ -88,13 +88,22 @@ class LoginEvent(UUIDPKMixin, Base):
         ip_address: Client IP address as seen by the backend.
         location: Reserved for future IP geolocation enrichment; left null
             in v1 (see docs/decisions.md).
+        kind: Which door the attempt used: `password` (sign-in with a password), `second_factor`, `sso` or
+            `throttled` (refused by the progressive delay without checking the password). Only failed `password`
+            attempts count towards the delay: the second factor has its own lockout and a refused attempt must
+            not extend the wait.
     """
 
     __tablename__ = "login_events"
+    __table_args__ = (
+        Index("ix_login_events_email_created", "email_attempted", "created_at"),
+        Index("ix_login_events_ip_created", "ip_address", "created_at"),
+    )
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     email_attempted: Mapped[str] = mapped_column(String(255))
     ip_address: Mapped[str] = mapped_column(String(64))
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     success: Mapped[bool] = mapped_column(Boolean)
+    kind: Mapped[str] = mapped_column(String(20), default="password", server_default="password")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

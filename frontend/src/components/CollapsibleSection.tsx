@@ -3,6 +3,7 @@ import { useId, type ReactNode } from "react";
 
 import { useUiPreference } from "../hooks/useUiPreference";
 import { Badge } from "./Badge";
+import { FieldHelp } from "./FieldHelp";
 
 /**
  * A section that can be collapsed to just its title, remembering the
@@ -20,6 +21,11 @@ import { Badge } from "./Badge";
  * border so a bar holding non-default content is not read as empty (text plus border, never colour alone), and
  * `forceOpen` keeps the section open (and its toggle inert) while it holds something the person must see, with the
  * pill turning to the danger tone.
+ *
+ * `collapsible={false}` draws the section as a headed card with no toggle, for the only (or every) section of a
+ * page, where the accordion would repeat the menu entry and cost a click (style guide Principle 1). `help` puts a
+ * `(?)` beside the heading, for text that describes the whole section (style guide "Pattern: explain in help, not
+ * in the layout"); it applies to the open and collapsed forms alike.
  */
 export function CollapsibleSection({
   sectionKey,
@@ -29,6 +35,8 @@ export function CollapsibleSection({
   summary,
   marked = false,
   forceOpen = false,
+  collapsible = true,
+  help,
   children,
 }: {
   sectionKey: string;
@@ -41,6 +49,10 @@ export function CollapsibleSection({
   marked?: boolean;
   /** Keep the section open and its toggle inert (a problem inside it); the pill takes the danger tone. */
   forceOpen?: boolean;
+  /** False: a headed card with no toggle (default true). */
+  collapsible?: boolean;
+  /** Help text for a `(?)` beside the heading; `title` must then be a string. */
+  help?: string;
   children: ReactNode;
 }) {
   const [stored, setCollapsed] = useUiPreference<boolean>(`section_collapsed:${sectionKey}`, defaultCollapsed);
@@ -60,12 +72,28 @@ export function CollapsibleSection({
     ) : (
       <strong>{title}</strong>
     );
-  const header = summary ? (
+  // The help button sits in the toggle bar, so its clicks and keys must not also toggle the section.
+  const helpButton = help && typeof title === "string" ? (
+    <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <FieldHelp label={title} help={help} />
+    </span>
+  ) : null;
+  const header = summary || helpButton ? (
     <span className="row" style={{ gap: "var(--space-2)" }}>
       {heading}
-      <Badge id={pillId} tone={forceOpen ? "danger" : marked ? "accent" : "muted"}>{summary}</Badge>
+      {helpButton}
+      {summary && <Badge id={pillId} tone={forceOpen ? "danger" : marked ? "accent" : "muted"}>{summary}</Badge>}
     </span>
   ) : heading;
+
+  if (!collapsible) {
+    return (
+      <div className={variant === "card" ? "card stack" : "stack"}>
+        {header}
+        <div className="stack">{children}</div>
+      </div>
+    );
+  }
   const barClass = marked && !forceOpen ? " collapsible-bar--marked" : "";
 
   if (collapsed) {

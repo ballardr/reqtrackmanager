@@ -21,6 +21,7 @@
  * why this is a flagged scope trim, not an oversight.
  */
 import { useEffect, useState } from "react";
+import { Spinner } from "../../components/Spinner";
 
 import type { OrgUser } from "../../api/types";
 import { ListActions, ListActionsMenu } from "../../components/ListActions";
@@ -129,7 +130,7 @@ export function ProjectComplianceDetail({
       <RecordHeader
         recordLabel="Compliance assignment"
         headingLevel="h2"
-        back={{ onClick: onBack, label: "← Back" }}
+        back={{ onClick: onBack, label: "Compliance assignments" }}
         title={liveStatus ? `${liveStatus.standard_reference} — ${liveStatus.standard_name}` : "Compliance assignment"}
         subtitle={liveStatus?.version_label}
         actions={[archiveAction.item]}
@@ -196,7 +197,7 @@ export function ProjectComplianceDetail({
             </ListActionsMenu>
           </div>
           {resolvedStandardId === null ? (
-            <p className="text-muted">Loading…</p>
+            <Spinner />
           ) : (
             <ApplicabilityTree
               orgId={orgId}

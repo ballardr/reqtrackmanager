@@ -168,10 +168,10 @@ test("SSO login via mcp-server's own /login page: real Keycloak flow lands on th
   await expect(page.getByText("Signed in")).toBeVisible();
 
   const tokenText = await page.locator(".token-box").first().textContent();
-  expect(tokenText?.split(".").length).toBe(3); // looks like a JWT (header.payload.signature)
+  expect(tokenText).toMatch(/^rtm_pat_/); // a personal access token, not a session JWT
 
   // The token this real SSO round trip produced is a genuine, usable
-  // ReqTrackManager access token for the Keycloak-provisioned account.
+  // ReqTrackManager personal access token for the Keycloak-provisioned account.
   const me = await (await page.request.get(`${apiBaseUrl}/api/v1/auth/me`, { headers: { Authorization: `Bearer ${tokenText}` } })).json();
   expect(me.email).toBe(KEYCLOAK_ADMIN_USER);
 });

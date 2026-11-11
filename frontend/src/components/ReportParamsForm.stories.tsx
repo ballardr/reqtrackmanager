@@ -37,6 +37,17 @@ export const ControlPerParameterType: Story = {
   },
 };
 
+/** A parameter's description is its field help (a `(?)` tooltip), never a native `title`; a parameter without one has no help button. */
+export const ParameterDescriptionIsFieldHelp: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.hover(canvas.getByRole("button", { name: "Help: Since" }));
+    await expect(within(document.body).getByText("Earliest date.")).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Help: Include detail" })).not.toBeInTheDocument();
+    await expect(canvas.getByLabelText("Since")).not.toHaveAttribute("title");
+  },
+};
+
 export const ChangesReportValues: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);

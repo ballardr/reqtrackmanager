@@ -46,6 +46,9 @@ Design decisions:
   grid) goes through it, so the rule cannot be bypassed on one of them. A tagged column needs the organisation's
   policy (`services.record_policy`) to allow its tag and the person to hold `export_personal_data`; otherwise it
   is left out and the response says so.
+- Placement: every type except the requirement (which has its own component and category columns) gets one
+  shared `placements` column (`services.placements.placement_column`), added here, never by a provider. An import
+  writes it after the type's own create or update path, through `set_record_placements`.
 
 Dependencies: `modules.registry` (the provider shapes), `services.rbac` and `services.permissions` (access),
 `services.project_scope` and `services.tags` (the shared list filters), `services.codes`, `services.audit`.
@@ -58,7 +61,7 @@ import io
 import logging
 import uuid
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -89,10 +92,13 @@ from app.services import pubsub
 from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.csv_safety import csv_safe
+from app.services.link_graph import ArtefactResolver
+from app.services.lookups import get_or_404
 from app.services.permissions import encode_permission
+from app.services.placements import PLACEMENT_COLUMN_KEY, apply_imported_placements, can_place, placement_column
 from app.services.principals import group_ref_from_text, principal_labels, principal_text, validate_principal
 from app.services.project_scope import ProjectScope, gate_open
-from app.services.rbac import get_effective_org_roles, get_effective_permissions, permission_satisfied
+from app.services.rbac import can_manage_project_settings, get_effective_org_roles, get_effective_permissions, permission_satisfied
 from app.services.record_policy import REASON_PERMISSION, tag_decisions
 from app.services.tags import TagFilter
 
@@ -103,7 +109,7 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024
 CODE_COLUMN = "code"
 PROJECT_COLUMN = "project"
 #: Query parameters every table request takes; a provider declares the rest in `filter_params`.
-GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode"})
+GENERIC_PARAMS = frozenset({"format", "project_scope", "tag", "tag_mode", "component_id", "category_id"})
 #: Further query parameters the record-list report takes (its own, never a provider's filter).
 REPORT_PARAMS = frozenset({"record_type"})
 _FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
@@ -150,6 +156,42 @@ def _may(provider_check: Any, db: Session, user: User, project: Project, artefac
         return bool(provider_check(db, user, project.id))
     held = get_effective_permissions(db, user.id, project_id=project.id)
     return permission_satisfied(held, encode_permission(artefact_type, level))
+
+
+def creatable_record_types(db: Session, user: User, project: Project, artefact_types: Iterable[str]) -> set[str]:
+    """The subset of `artefact_types` that `user` may create in `project`: the Links panel's "Create new" answer.
+
+    Each type is checked exactly as an import of it is (`_may`): the type's own create check, else the fine-grained
+    `propose_create` permission. A type with no table is left out, since nothing can say the caller may create it.
+    The caller's permissions are read once for the whole call, not once per type.
+
+    Args:
+        db: Active session (read only).
+        user: The person asking.
+        project: The project the record would be created in.
+        artefact_types: The candidate record types (duplicates are checked once).
+
+    Returns:
+        The types the person may create.
+    """
+    if project.is_template and not can_manage_project_settings(db, user, project):
+        return set()  # a template is read-only below project administrator (`services.template_guard`)
+    providers = get_record_table_providers()
+    held: set[str] | None = None
+    allowed: set[str] = set()
+    for artefact_type in set(artefact_types):
+        provider = providers.get(artefact_type)
+        if provider is None:
+            continue
+        if provider.can_create is not None:
+            if provider.can_create(db, user, project.id):
+                allowed.add(artefact_type)
+            continue
+        if held is None:
+            held = get_effective_permissions(db, user.id, project_id=project.id)
+        if permission_satisfied(held, encode_permission(artefact_type, "propose_create")):
+            allowed.add(artefact_type)
+    return allowed
 
 
 def import_capability(provider: RecordTableProvider, artefact_type: str, *, organization: bool = False) -> str | None:
@@ -250,7 +292,7 @@ def require_org_member(db: Session, user: User, organization: Organization) -> N
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
 
 
-def _org_tier(provider: RecordTableProvider) -> OrganizationRecordTable:
+def org_tier(provider: RecordTableProvider) -> OrganizationRecordTable:
     """The provider's organisation tier (callers have already resolved it through `org_provider_for`)."""
     if provider.organization is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Record type not found.")
@@ -317,7 +359,7 @@ def _same(before: str, after: str) -> bool:
 
 @dataclass
 class PrincipalCells:
-    """Batch lookup for a person column: an email for a user, `Name (Org group)` for a group.
+    """Batch lookup for a person column: an email for a user, `Name (Organisation group)` for a group.
 
     Load once per export (`load`), then ask per row (`text`), so a long list costs a fixed number of queries.
     """
@@ -344,7 +386,7 @@ class PrincipalCells:
 
 
 def parse_principal_cell(ctx: RecordImportContext, text: str, *, field_name: str) -> PrincipalRef | None:
-    """The person a cell names: an email (a user of the organisation) or a group (`Name (Org group)`).
+    """The person a cell names: an email (a user of the organisation) or a group (`Name (Organisation group)`).
 
     Args:
         ctx: The import context (organisation, project, per-import cache).
@@ -481,8 +523,10 @@ def build_table(
     Returns:
         The `RecordTable`; rows from a related project are labelled in a trailing `project` column.
     """
+    shared = placement_column(db, project, artefact_type, may_place=False, id_of=provider.id_of)
     columns, omitted = resolve_export_columns(
-        db, user, provider.columns(db, project), organization_id=project.organization_id, project_id=project.id, purpose="export",
+        db, user, [*provider.columns(db, project), *([shared[0]] if shared else [])],
+        organization_id=project.organization_id, project_id=project.id, purpose="export",
     )
 
     def rows_for(project_id: uuid.UUID) -> list[Any]:
@@ -491,7 +535,9 @@ def build_table(
 
     records = project_scope.collect(db, project, user.id, artefact_type, rows_for, gate=provider.gate, id_of=provider.id_of)
     prepared = provider.prepare(db, project, records) if provider.prepare is not None else None
-    organization = db.get(Organization, project.organization_id)
+    if shared:
+        shared[1].expect(provider.id_of(record) for record in records)
+    organization = get_or_404(db, Organization, project.organization_id, "Organisation")
     owners: dict[uuid.UUID, Project] = {project.id: project}
     header = [(CODE_COLUMN, "Code"), *((c.key, c.label) for c in columns)]
     if project_scope.widened:
@@ -501,7 +547,7 @@ def build_table(
     project_ids: list[str | None] = []
     read_only: list[str | None] = []
     cell_locks: list[dict[str, str]] = []
-    lockable = [c for c in columns if c.cell_lock is not None]
+    lockable = [(c.key, c.cell_lock) for c in columns if c.cell_lock is not None]
     for record in records:
         owner_id = getattr(record, "from_project_id", None) or project.id
         if owner_id not in owners:
@@ -516,10 +562,9 @@ def build_table(
         ids.append(str(provider.id_of(record)))
         project_ids.append(None if owned_by_organization else str(owner.id))
         read_only.append(_read_only_reason(provider, prepared, record, owner, project, owned_by_organization))
-        cell_locks.append({c.key: reason for c in lockable if (reason := c.cell_lock(prepared, record))})
+        cell_locks.append({key: reason for key, lock in lockable if (reason := lock(prepared, record))})
     keys = _applied_filter_keys(filters)
-    if tag_filter.active:
-        keys.append("tag")
+    keys.extend(tag_filter.applied_keys)
     if project_scope.widened:
         keys.append("project_scope")
     return RecordTable(
@@ -547,7 +592,7 @@ def split_org_params(provider: RecordTableProvider, query: Sequence[tuple[str, s
     Raises:
         HTTPException: 422 for a parameter the organisation list cannot honour.
     """
-    tier = _org_tier(provider)
+    tier = org_tier(provider)
     allowed = {"format"} | tier.filter_params
     unknown = sorted({k for k, _ in query if k not in allowed})
     if unknown:
@@ -577,7 +622,7 @@ def build_org_table(
         The `RecordTable`; every code is qualified by the organisation's code, as the organisation's records are
         always cited.
     """
-    tier = _org_tier(provider)
+    tier = org_tier(provider)
     columns, omitted = resolve_export_columns(
         db, user, tier.columns(db, organization), organization_id=organization.id, purpose="export",
     )
@@ -791,8 +836,11 @@ def update_row(
                 continue
             if column.required and not text:
                 raise RecordCellError(f"{column.label} is required.")
+            if column.parse is None:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "That column cannot be edited here.")
             values[key] = column.parse(ctx, text)
         if values:
+            assert provider.update is not None  # `import_capability` and `may_update` above ruled out a type with no update
             with db.begin_nested():
                 provider.update(ctx, record, values)
                 db.flush()
@@ -1058,12 +1106,25 @@ def run_import(
     may_create, may_update = import_rights(db, user, project, artefact_type, provider)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
-    provider_find_many = provider.find_many  # bound here so the lambda below keeps the not-None narrowing
+    provider_find_many = provider.find_many  # bound here so the lambdas below keep the not-None narrowing
+    provider_prepare = provider.prepare
+    shared = placement_column(
+        db, project, artefact_type, id_of=provider.id_of,
+        may_place=can_place(ArtefactResolver(db, project, user.id), artefact_type),
+    )
+
+    def prepare(records: list[Any]) -> Any:
+        """The provider's lookups, with the shared placement cells of the same records loaded together."""
+        if shared:
+            shared[1].expect(provider.id_of(record) for record in records)
+        return provider_prepare(db, project, records) if provider_prepare is not None else None
+
     target = _ImportTarget(
-        organization=db.get(Organization, project.organization_id), project=project, columns=list(provider.columns(db, project)),
+        organization=get_or_404(db, Organization, project.organization_id, "Organisation"), project=project,
+        columns=[*provider.columns(db, project), *([shared[0]] if shared else [])],
         find=lambda code: _find_record(db, project, provider, code),
         find_many=(lambda codes: _find_many_exported(provider_find_many, db, project, codes)) if provider_find_many is not None else None,
-        prepare=(lambda records: provider.prepare(db, project, records)) if provider.prepare is not None else None,
+        prepare=prepare if shared or provider_prepare is not None else None,
         create=provider.create if may_create else None, update=provider.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="project",
     )
@@ -1082,19 +1143,20 @@ def run_org_import(
     Raises:
         HTTPException: As `run_import`.
     """
-    tier = _org_tier(provider)
+    tier = org_tier(provider)
     reason = import_capability(provider, artefact_type, organization=True)
     if reason is not None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, reason)
     may_create, may_update = org_import_rights(db, user, organization, artefact_type, tier)
     if not may_create and not may_update:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to import these records.")
-    tier_find_many = tier.find_many  # bound here so the lambda below keeps the not-None narrowing
+    tier_find_many = tier.find_many  # bound here so the lambdas below keep the not-None narrowing
+    tier_prepare = tier.prepare
     target = _ImportTarget(
         organization=organization, project=None, columns=list(tier.columns(db, organization)),
         find=lambda code: _find_org_record(db, organization, tier, code),
         find_many=(lambda codes: _find_many_exported(tier_find_many, db, organization, codes)) if tier_find_many is not None else None,
-        prepare=(lambda records: tier.prepare(db, organization, records)) if tier.prepare is not None else None,
+        prepare=(lambda records: tier_prepare(db, organization, records)) if tier_prepare is not None else None,
         create=tier.create if may_create else None, update=tier.update if may_update else None,
         code_of=provider.code_of, id_of=provider.id_of, place="organisation",
     )
@@ -1193,10 +1255,14 @@ def _import_rows(
             continue
         try:
             if record is None:
+                assert create_fn is not None  # a missing create right was rejected above
                 values = {key: parse(ctx, cells[key]) for key, parse in parsers.items()}
+                placed = values.pop(PLACEMENT_COLUMN_KEY, None)
                 with db.begin_nested():
-                    create_fn(ctx, values)
+                    created = create_fn(ctx, values)
                     db.flush()
+                    if placed:
+                        apply_imported_placements(ctx, artefact_type, created, placed)
                 result.action = "create"
                 result.code = ""
             else:
@@ -1210,9 +1276,14 @@ def _import_rows(
                 if not changes:
                     result.action = "unchanged"
                 else:
+                    assert update_fn is not None  # a missing update right was rejected above
                     values = {c.column: parsers[c.column](ctx, c.after) for c in changes}
+                    placed = values.pop(PLACEMENT_COLUMN_KEY, None)
                     with db.begin_nested():
-                        update_fn(ctx, record, values)
+                        if values:
+                            update_fn(ctx, record, values)
+                        if placed is not None:
+                            apply_imported_placements(ctx, artefact_type, record, placed)
                         db.flush()
                     result.action = "update"
                     result.changes = changes

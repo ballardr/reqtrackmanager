@@ -148,7 +148,7 @@ test("a person resets a forgotten password, an org admin sends a link, and a ser
   await test.step("a server admin forces a reset for the organisation: the password is refused until a new one is chosen", async () => {
     await loginAs(page, SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);
     await page.goto("/server/management");
-    await selectServerManagementGroup(page, "Access review");
+    await selectServerManagementGroup(page, "Users");
     await page.getByRole("button", { name: "Force a credential reset…" }).click();
     const modal = page.getByRole("dialog", { name: "Force a credential reset" });
     await modal.getByLabel("Who").selectOption({ label: "One organisation" });

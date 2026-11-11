@@ -7,7 +7,7 @@ Org-scoped Stakeholder Group API, mounted at
 set, and the "create groups from organisation / group text" action. The bodies
 live in `_group_shared.py`; this file declares the routes and the gates.
 
-Org groups hold org-scoped stakeholders only.
+Organisation groups hold org-scoped stakeholders only.
 
 Viewing needs the `stakeholder` sub-component to be enabled; every write needs
 `_group_shared.require_group_manage` (a group is

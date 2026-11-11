@@ -1,0 +1,145 @@
+# Demonstration overlay (docs/demo.md, "HTTPS"): loaded with docker-compose.yml by scripts/demo.sh and never by a
+# developer or test run, which keeps the direct ports Playwright and pytest use.
+#
+# It adds the `caddy` reverse proxy and makes it the only listener published on the host: no application port is
+# reachable in clear text. The browser then sees one origin (/api to the backend, everything else to the frontend), so
+# CORS is out of the demonstration path. The support services (database, storage, mail catcher, identity provider,
+# documentation) stay published on the loopback address only, because the stack can be reached from the internet.
+#
+# DEMO_PUBLIC_URL is set by scripts/demo.sh from DEMO_PUBLIC_HOST; every address below derives from it so they
+# cannot disagree.
+# Container logs are bounded: Docker's default driver keeps them without limit, which fills the disk of an unattended
+# host. Three 10 MB files a service keep recent history for diagnosis (the Loki setup in docs/deployment.md is the
+# long-term store).
+x-logging: &bounded_logs
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  caddy:
+    logging: *bounded_logs
+    image: caddy:2.10-alpine
+    environment:
+      DEMO_PUBLIC_HOST: ${DEMO_PUBLIC_HOST:-localhost}
+      DEMO_TLS_MODE: ${DEMO_TLS_MODE:-internal}
+      DEMO_MCP_MODE: ${DEMO_MCP_MODE:-off}
+      DEMO_MCP_HOST: ${DEMO_MCP_HOST:-mcp.localhost}
+      DEMO_ACME_MODE: ${DEMO_ACME_MODE:-none}
+      DEMO_ACME_EMAIL: ${DEMO_ACME_EMAIL:-}
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      # Certificates and the local authority: a reset or teardown leaves them (a certificate is not issued again each
+      # day: that would meet the issuer's rate limits); `scripts/demo.sh --purge-certificates` removes them.
+      - reqtrack_demo_caddy_data:/data
+      - reqtrack_demo_caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      default: {}
+      edge:
+        ipv4_address: ${DEMO_EDGE_PROXY_IP:-172.29.46.2}
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid
+    pids_limit: 128
+    mem_limit: 256m
+    restart: unless-stopped
+    healthcheck:
+      # The health site listens on the private network only; 127.0.0.1 works on every host.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9180/health"]
+      interval: 10s
+      start_period: 20s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
+
+  backend:
+    logging: *bounded_logs
+    environment:
+      # The demonstration may be served on a public name: it refuses to start on a placeholder secret.
+      REQUIRE_STRONG_SECRETS: "true"
+      CORS_ORIGINS: ${DEMO_PUBLIC_URL:?scripts/demo.sh sets DEMO_PUBLIC_URL}
+      PUBLIC_BACKEND_URL: ${DEMO_PUBLIC_URL}
+      FRONTEND_BASE_URL: ${DEMO_PUBLIC_URL}
+      MCP_SERVER_PUBLIC_URL: ${DEMO_MCP_URL:-${DEMO_PUBLIC_URL}}
+      HELP_URL: ${DEMO_PUBLIC_URL}/reqtrackmanager/
+      # Forwarded headers (scheme, host, client address) are honoured from the proxy's address alone, so nothing else
+      # on the network can set them. The backend listens dual-stack, so an IPv4 peer is reported as ::ffff:<address>.
+      FORWARDED_ALLOW_IPS: ${DEMO_EDGE_PROXY_IP:-172.29.46.2},::ffff:${DEMO_EDGE_PROXY_IP:-172.29.46.2}
+    ports: !reset []
+    networks:
+      default: {}
+      converter: {}
+      edge:
+        aliases:
+          - backend-edge
+
+  frontend:
+    logging: *bounded_logs
+    environment:
+      # Empty on purpose: API calls are relative paths on the page's own origin.
+      VITE_API_BASE_URL: ""
+    ports: !reset []
+
+  mcp-server:
+    logging: *bounded_logs
+    environment:
+      REQTRACK_PUBLIC_API_URL: ${DEMO_PUBLIC_URL}
+    ports: !reset []
+
+  converter:
+    logging: *bounded_logs
+  demo-scheduler:
+    logging: *bounded_logs
+  prometheus:
+    logging: *bounded_logs
+  db:
+    logging: *bounded_logs
+    ports: !override
+      - "127.0.0.1:5432:5432"
+  storage:
+    logging: *bounded_logs
+    ports: !override
+      - "127.0.0.1:9000:9000"
+  mailhog:
+    logging: *bounded_logs
+    ports: !override
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+  keycloak:
+    logging: *bounded_logs
+    ports: !override
+      - "127.0.0.1:8080:8080"
+  docs:
+    logging: *bounded_logs
+    ports: !override
+      - "127.0.0.1:3001:3001"
+
+networks:
+  # Only the proxy and the backend join it, so the address the backend trusts is the proxy's alone.
+  edge:
+    ipam:
+      config:
+        - subnet: ${DEMO_EDGE_SUBNET:-172.29.46.0/28}
+          # Addresses assigned automatically (the backend's) come from the upper half, so the proxy's fixed address
+          # in the lower half cannot be taken first.
+          ip_range: ${DEMO_EDGE_RANGE:-172.29.46.8/29}
+
+volumes:
+  reqtrack_demo_caddy_data:
+  reqtrack_demo_caddy_config:

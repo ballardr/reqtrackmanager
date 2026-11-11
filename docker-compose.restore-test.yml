@@ -11,6 +11,8 @@
 #     application, the database and the restore sharing it), so the backend gets minutes, not seconds, to answer;
 #   - the bootstrap server administrator is off by default: it would add a user the backup does not hold, so
 #     the restored statistics could never match. The self-check turns it on for the source stack it seeds.
+#   - an administrator-typed password forces a change at first sign-in by default; the self-check turns that off
+#     for the source stack so the seed can sign in as the accounts it creates.
 #   - object storage without disk preallocation: SeaweedFS reserves about 1 GB for each of the first seven volumes
 #     at the first upload, so a throwaway stack holding three small files took 5 to 15 GB and two such stacks plus
 #     a development stack filled a 58 GB Docker VM disk. The flag below only stops the reservation; it changes
@@ -29,6 +31,7 @@ services:
     environment:
       EMAIL_DELIVERY: ${RESTORE_TEST_EMAIL_DELIVERY:-disabled}
       SERVER_ADMIN_ENABLED: ${RESTORE_TEST_SERVER_ADMIN_ENABLED:-false}
+      FORCE_PASSWORD_CHANGE_ON_ADMIN_SET: ${RESTORE_TEST_FORCE_PASSWORD_CHANGE_ON_ADMIN_SET:-true}
     healthcheck:
       start_period: 300s
       retries: 30

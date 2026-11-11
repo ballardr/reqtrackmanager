@@ -43,7 +43,7 @@ export interface StatBarItem {
 /**
  * @param items Flat entries (this page's own known stats).
  * @param children Pre-built `StatBarEntry`s to splice into the same row
- *   (e.g. a module's contributed `orgOverviewTiles`).
+ *   (e.g. a stat a module contributes).
  */
 export function StatBar({ items, children }: { items?: StatBarItem[]; children?: ReactNode }) {
   return (
@@ -58,7 +58,7 @@ export function StatBar({ items, children }: { items?: StatBarItem[]; children?:
 
 /** One label/value pair within a `StatBar` — exported so a module
  * contributing its own headline tile (e.g.
- * `modules/compliance/ComplianceOrgOverviewTiles.tsx`) can render entries
+ * a module's own tiles) can render entries
  * that match the row's own styling exactly, rather than a module inventing
  * a second implementation of the same pair. */
 export function StatBarEntry({

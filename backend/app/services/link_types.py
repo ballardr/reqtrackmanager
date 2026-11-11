@@ -249,21 +249,24 @@ def validate_link_allowed(
     """
     from app.services.link_nesting import ancestor_side_project_id, check_nesting
 
-    cross = (
-        source_project_id is not None and target_project_id is not None and source_project_id != target_project_id
+    cross_ends = (
+        (source_project_id, target_project_id)
+        if source_project_id is not None and target_project_id is not None and source_project_id != target_project_id
+        else None
     )
-    if cross:
-        check_nesting(db, link_type, source_project_id, target_project_id)
+    cross = cross_ends is not None
+    if cross_ends is not None:
+        check_nesting(db, link_type, cross_ends[0], cross_ends[1])
     if project_id is not None:
         project = db.get(Project, project_id)
         if project is None:
             raise LinkRuleError("Project not found.")
         assert_link_type_usable(db, project, link_type, enforce_offered=enforce_offered)
-        if cross:
+        if cross_ends is not None:
             # The type must also be in scope for the ancestor side (types are inherited
             # downwards), so a descendant's local type can never join a link whose other
             # end is above it.
-            higher_id = ancestor_side_project_id(db, source_project_id, target_project_id)
+            higher_id = ancestor_side_project_id(db, cross_ends[0], cross_ends[1])
             higher = db.get(Project, higher_id) if higher_id is not None else None
             if higher is None:
                 raise LinkRuleError("Project not found.")

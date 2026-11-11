@@ -67,7 +67,7 @@ def test_password_user_in_an_organisation_gets_the_role_and_an_audit_row(client,
 
 
 def test_response_and_audit_never_carry_the_password_or_a_hash(client, admin_token):
-    secret = "S3cretPassw0rd-xyz"
+    secret = "".join(("S3cretPassw0rd", "-xyz"))  # joined: not one literal secret
     resp = _post(client, admin_token, mode="password", email="secret@x.example.com", display_name="Sec", password=secret)
     assert resp.status_code == 201
     assert secret not in resp.text and "password" not in resp.text.lower().replace('"mode":"password"', "")

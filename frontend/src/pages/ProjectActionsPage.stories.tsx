@@ -63,7 +63,7 @@ export const ListWithFilters: Story = {
     await expect(table.getByText("Completed")).toBeInTheDocument();
     // A group assignee shows its name, kind and member count rather than a person's name.
     await expect(table.getByText("QA Team")).toBeInTheDocument();
-    await expect(table.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(table.getByText("Organisation group · 3 members")).toBeInTheDocument();
   },
 };
 
@@ -140,16 +140,18 @@ export const StaleResponseIsIgnored: Story = {
 export const CreateAssignedToAGroup: Story = {
   beforeEach: () => {
     mockProjectActionsApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "post").mockResolvedValue({ id: "action-new" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New action/ }));
-    await userEvent.type(canvas.getByLabelText("Title"), "Verify audit log retention");
-    await userEvent.type(canvas.getByRole("combobox", { name: "Assignee" }), "test");
-    await userEvent.click(await canvas.findByText("Test Group"));
-    await userEvent.click(canvas.getByRole("button", { name: "Create" }));
+    // The create form is a dialog, portalled to the document body.
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText("Title"), "Verify audit log retention");
+    await userEvent.type(dialog.getByRole("combobox", { name: "Assignee" }), "test");
+    await userEvent.click(await dialog.findByText("Test Group"));
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/actions`,
@@ -162,14 +164,15 @@ export const CreateAssignedToAGroup: Story = {
 export const CreateNewAction: Story = {
   beforeEach: () => {
     mockProjectActionsApis();
-    spyOn(api, "post").mockResolvedValue(undefined);
+    spyOn(api, "post").mockResolvedValue({ id: "action-new" } as never);
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Review password reset flow")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New action/ }));
-    await userEvent.type(canvas.getByLabelText("Title"), "Verify audit log retention");
-    await userEvent.click(canvas.getByRole("button", { name: "Create" }));
+    const dialog = within(await within(document.body).findByRole("dialog"));
+    await userEvent.type(dialog.getByLabelText("Title"), "Verify audit log retention");
+    await userEvent.click(dialog.getByRole("button", { name: "Create" }));
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
         `/api/v1/projects/${PROJECT_ID}/actions`,

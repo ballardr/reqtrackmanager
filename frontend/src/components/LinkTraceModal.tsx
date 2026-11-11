@@ -15,6 +15,7 @@ import { useState } from "react";
 
 import { artefactLinksApi, type ArtefactLinksApi } from "../api/artefactLinks";
 import { useStrings } from "../context/TerminologyContext";
+import { FieldHelp } from "./FieldHelp";
 import { LinkTraceMap } from "./LinkTraceMap";
 import { LinkTraceTree } from "./LinkTraceTree";
 import { Modal } from "./Modal";
@@ -59,10 +60,13 @@ export function LinkTraceModal({
           active={view}
           onChange={setView}
         />
-        <label className="row link-trace__filter" title={strings.artefactLinks.traceHideInactiveHelp}>
-          <input type="checkbox" checked={hideInactive} onChange={(e) => setHideInactive(e.target.checked)} />
-          {strings.artefactLinks.traceHideInactive}
-        </label>
+        <span className="row link-trace__filter">
+          <label className="row" style={{ gap: "inherit" }}>
+            <input type="checkbox" checked={hideInactive} onChange={(e) => setHideInactive(e.target.checked)} />
+            {strings.artefactLinks.traceHideInactive}
+          </label>
+          <FieldHelp label={strings.artefactLinks.traceHideInactive} help={strings.artefactLinks.traceHideInactiveHelp} />
+        </span>
         <div {...tabPanelProps("link-trace", view)}>
           {view === "tree" ? (
             <LinkTraceTree projectId={projectId} artefactType={artefactType} artefactId={artefactId} hideInactive={hideInactive} api={api} />

@@ -164,6 +164,7 @@ MODULE_DEFINITION = ModuleDefinition(
         ModuleSubComponentDefinition(key=REQUEST_SUBCOMPONENT_KEY, name="Enhancement requests", default_enabled=True),
         ModuleSubComponentDefinition(
             key=ORGANIZATION_REQUESTS_SUBCOMPONENT_KEY, name="Organisation-level request inbox", default_enabled=True,
+            organization_only=True,
         ),
         ModuleSubComponentDefinition(key=EXTERNAL_REFERENCES_SUBCOMPONENT_KEY, name="External references", default_enabled=True),
     ),
@@ -171,6 +172,9 @@ MODULE_DEFINITION = ModuleDefinition(
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
         import_late=bundle_export.import_late_project_data,
+        template_configuration_keys=frozenset({"feedback_settings", "scoring_definitions", "external_systems", "request_channels"}),
+        template_record_keys=frozenset({"enhancement_requests", "enhancement_request_links"}),
+        template_reset=bundle_export.reset_for_template,
     ),
     principal_references=_principal_references(),
     frontend_manifest=ModuleFrontendManifest(

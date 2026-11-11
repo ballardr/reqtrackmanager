@@ -150,7 +150,7 @@ export function PainPointDetailPage() {
   useEffect(() => {
     if (!projectId || !painPointId) return;
     projectPainPointApi.get(projectId, painPointId).then(setPainPoint).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Pain Point could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Pain Point could not be found, or you do not have access to it."));
     });
   }, [projectId, painPointId]);
 
@@ -242,7 +242,7 @@ export function PainPointDetailPage() {
         title={painPoint.title}
         code={painPoint.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="pain_point" artefactId={painPoint.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "← Pain Point" }}
+        back={{ to: `/projects/${projectId}/modules/context_strategy/pain-points`, label: "Pain Points" }}
         badges={
           <>
             {painPoint.is_intentional && <Badge tone="info">Intentional</Badge>}

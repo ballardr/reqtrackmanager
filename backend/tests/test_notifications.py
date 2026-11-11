@@ -6,6 +6,7 @@ Notification row is created and messages don't crash when SMTP is
 unreachable (notify() swallows email delivery failures)."""
 
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.stage_helpers import move_stage
 
 
 def _notifications_for(client, token):
@@ -50,13 +51,9 @@ def test_stage_approval_notifies_other_project_members_but_not_the_approver(clie
     other_pm_token = login(client, "stage-approval-pm2@example.com", "Password123!")
 
     stage_id = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(admin_token)).json()[0]["id"]
-    client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=review",
-        headers=auth_headers(admin_token),
+    move_stage(client, project['id'], stage_id, "review", headers=auth_headers(admin_token),
     )
-    client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=approved",
-        headers=auth_headers(admin_token),
+    move_stage(client, project['id'], stage_id, "approved", headers=auth_headers(admin_token),
     )
     assert any(n["type"] == "stage_approved" for n in _notifications_for(client, other_pm_token))
     assert not any(n["type"] == "stage_approved" for n in _notifications_for(client, admin_token))

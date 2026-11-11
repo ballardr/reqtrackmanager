@@ -149,7 +149,7 @@ export function StakeholderFormModal({
           <TextField helpNotNeeded required label="Name" ariaLabel="Stakeholder name" value={name} onChange={setName} />
           <LabeledSelect helpNotNeeded label="Type" value={typeId} onChange={setTypeId} options={options} placeholder="No type" />
           <TextField helpNotNeeded label="Role" value={role} onChange={setRole} />
-          <TextField helpNotNeeded label="Organisation / group" value={group} onChange={setGroup} />
+          <TextField help={STAKEHOLDERS_HELP.stakeholderOrganisationGroup} label="Organisation / group" value={group} onChange={setGroup} />
           {influenceAxis && interestAxis && (
             <>
               <ScoringLevelPicker axis={influenceAxis} value={influence} onChange={setInfluence} />
@@ -164,7 +164,7 @@ export function StakeholderFormModal({
             {hint?.suggested_cadence && hint.quadrant && (
               <span className="text-muted" style={{ fontSize: "0.8rem" }} data-testid="cadence-hint">
                 Suggested: {TARGET_CADENCE_LABEL[hint.suggested_cadence]} ({GRID_QUADRANT_LABEL[hint.quadrant]}). A suggestion
-                only — your choice above is what's saved.
+                only — your choice above is what is saved.
               </span>
             )}
           </div>
@@ -193,9 +193,8 @@ export function StakeholderFormModal({
             />
           </FormGridFull>
           <FormGridFull>
-            <TextAreaField helpNotNeeded
+            <TextAreaField help={STAKEHOLDERS_HELP.stakeholderAvailability}
               label="Availability constraints" value={availability} onChange={setAvailability}
-              hint="What limits how often they will engage (their side, not ours)."
             />
           </FormGridFull>
           {initial && <FormGridFull><TextField helpNotNeeded label="Change note" ariaLabel="Change note" value={changeNote} onChange={setChangeNote} /></FormGridFull>}

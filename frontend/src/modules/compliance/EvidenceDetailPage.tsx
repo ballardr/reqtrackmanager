@@ -68,7 +68,7 @@ export function EvidenceDetailPage() {
       setFiles(fls);
       setRevalidations(revals);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "This evidence could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This evidence could not be found, or you do not have access to it."));
     }
   }, [projectId, evidenceId]);
 
@@ -104,7 +104,7 @@ export function EvidenceDetailPage() {
         title={evidence.title}
         code={evidence.unique_code}
         tags={<RecordTags projectId={projectId} artefactType="compliance_evidence" artefactId={evidence.id} />}
-        back={{ to: projectCompliancePath(projectId, "evidence"), label: "← Evidence" }}
+        back={{ to: projectCompliancePath(projectId, "evidence"), label: "Evidence" }}
         badges={
           <>
             {evidence.is_archived && <Badge tone="muted">Archived</Badge>}

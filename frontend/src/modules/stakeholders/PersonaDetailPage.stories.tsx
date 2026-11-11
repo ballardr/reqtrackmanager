@@ -273,7 +273,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
     await userEvent.type(picker.getByLabelText("Persona owner"), "platform");
     await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { owner: { type: "org_group", id: "group-1" } }));
-    await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
   },
 };
 
@@ -303,7 +303,7 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Unassign: Persona owner" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${PROJECT_BASE}/personas/${PERSONA_ID}`, { owner: null }));
   },
@@ -321,7 +321,7 @@ export const VersionHistoryUsesLabels: Story = {
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
     await expect(canvas.getAllByText("Draft").length).toBeGreaterThan(0);
     // History shows who owned each version, naming a group with its kind.
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
   },
 };
 

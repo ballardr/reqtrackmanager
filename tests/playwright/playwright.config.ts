@@ -33,6 +33,12 @@ const GLOBAL_STATE_SPECS = [
   "e2e-workflows/self-signup.spec.ts",
   "e2e-workflows/project-admin-groups-and-fields.spec.ts",
   "e2e-workflows/org-branding-override-reset.spec.ts",
+  // Sets the platform logo band colour (read by every sign-in page) and Alpha's own.
+  "e2e-workflows/logo-band.spec.ts",
+  // Sets the platform footer position and footer details (read by every signed-out page) and Alpha's own position.
+  "e2e-workflows/footer-position.spec.ts",
+  // Marks the seeded Gamma-2 project as a template, which hides it from the Projects list that other specs search.
+  "e2e-workflows/project-admin-templates-and-reports.spec.ts",
   // Added after a CI failure: this file's "an org admin
   // can disable the relaxed child-creation path" test flips Gamma's own
   // org-wide "Allow ... managers to create sub-projects" security toggle
@@ -58,6 +64,9 @@ const GLOBAL_STATE_SPECS = [
   // account with zero orgs. Same shared-org-setting class as the other
   // entries in this list. See docs/decisions.md.
   "e2e-workflows/sso.spec.ts",
+  // Switches the deployment-wide file upload switch off while it runs: any spec uploading a file in parallel
+  // would be refused. Each test restores the switch in its cleanup hook.
+  "e2e-workflows/file-uploads-switch.spec.ts",
 ];
 
 export default defineConfig({

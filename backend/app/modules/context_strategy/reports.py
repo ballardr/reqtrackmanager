@@ -107,7 +107,7 @@ from app.modules.context_strategy.pain_point_scores import (
     load_scoring_context,
     resolve_model,
 )
-from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME_KEY
 from app.modules.registry import ReportDefinition, ReportParamDefinition, ReportPartDefinition, get_artefact_summary
 from app.services import relationships
 from app.services.labels import REQUIREMENT_STATUS_LABEL, REQUIREMENT_STATUS_TONE
@@ -122,7 +122,8 @@ from app.services.report_framework import (
     normalise_metrics,
     tones_by_label,
 )
-from app.services.scoring import resolve_effective_bands, resolve_effective_cell_ratings
+from app.services.scoring import get_registered_scheme, resolve_effective_bands, resolve_effective_cell_ratings
+from app.services.scoring_custom import effective_scheme
 
 STRATEGY_TYPE = "strategy"
 FUTURE_STATE_TYPE = "future_state"
@@ -200,7 +201,7 @@ def _user_names(db: Session, ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]
 def _owner_text(db: Session, rows: list[Any]) -> Callable[[Any], str | None]:
     """Resolves the owners of `rows` (anything with `owner_type` / `owner_id`) once; returns a lookup
     `row -> text or None when unowned` (`services.principals.principal_text`: a group reads
-    `Name (Org group)`, so a group is never mistaken for a person)."""
+    `Name (Organisation group)`, so a group is never mistaken for a person)."""
     labels = owner_labels(db, rows)
 
     def text(row: Any) -> str | None:
@@ -414,13 +415,16 @@ def _persona_rows(ctx: ScoringContext, summary: PainPointScoringSummary) -> list
     """Per-persona breakdown of one Pain Point's score rows."""
     rows: list[PersonaScoreRow] = []
     for e in summary.entries:
-        levels = {a: ctx.levels_by_id.get(getattr(e.row, f"{a}_level_id")) for a in ("severity", "frequency", "confidence")}
+        levels = {
+            a: ctx.levels_by_id.get(e.effective_levels[a]) if a in e.effective_levels else None
+            for a in ("severity", "frequency", "confidence")
+        }
         severity = levels["severity"]
         ratio = (
             float(severity.weight / ctx.top_severity_weight)
             if severity is not None and ctx.top_severity_weight else None
         )
-        persona = e.label or ("All personas" if e.target_status is TargetStatus.ALL else "Persona unavailable")
+        persona = e.label or ("General" if e.target_status is TargetStatus.GENERAL else "Persona unavailable")
         rows.append(PersonaScoreRow(
             persona=persona, target_status=e.target_status.value,
             severity=severity.name if severity else None,
@@ -438,11 +442,12 @@ def _matrix_point(ctx: ScoringContext, summary: PainPointScoringSummary) -> Matr
     for e in summary.entries:
         if e.target_status is TargetStatus.INACTIVE:
             continue
-        sev = ctx.levels_by_id.get(e.row.severity_level_id)
-        freq = ctx.levels_by_id.get(e.row.frequency_level_id)
+        chosen = e.effective_levels
+        sev = ctx.levels_by_id.get(chosen["severity"]) if "severity" in chosen else None
+        freq = ctx.levels_by_id.get(chosen["frequency"]) if "frequency" in chosen else None
         if sev is None or freq is None:
             continue
-        conf = ctx.levels_by_id.get(e.row.confidence_level_id)
+        conf = ctx.levels_by_id.get(chosen["confidence"]) if "confidence" in chosen else None
         point = MatrixPoint(
             sev.name, float(sev.weight), freq.name, float(freq.weight),
             conf.name if conf else None, float(conf.weight) if conf else None,
@@ -569,7 +574,8 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
     ])
     ranking, unscored, blockers, intentional, breakdown, matrix = [], [], [], [], [], []
     ranking_items, unscored_items, blocker_items, intentional_items = [], [], [], []
-    breakdown_tones, matrix_tones = [], []
+    breakdown_tones: list[list[str | None]] = []
+    matrix_tones: list[list[str | None]] = []
     open_count = scored = 0
     for group in groups:
         fixable = [i for i in group.items if not i.is_intentional]
@@ -587,7 +593,7 @@ def collect_pain_point_prioritisation(db: Session, req: ReportContext) -> Report
                  "Yes" if p.is_blocker else ""]
                 for p in i.personas
             ]
-            breakdown_tones += [[None] * 9 + [p.band_tone, None] for p in i.personas]
+            breakdown_tones += [[*([None] * 9), p.band_tone, None] for p in i.personas]
         open_count += len(fixable)
         scored += len(ranked)
         group_rows, group_tones = _matrix_rows(group, [i for i in fixable if i.matrix is not None])
@@ -1113,7 +1119,7 @@ def collect_future_state_roadmap(db: Session, req: ReportContext) -> ReportResul
             continue
         overdue = v.target_date is not None and v.target_date < req.today and v.status is not FutureStateStatus.ACTIVE
         items.append({
-            "id": s.id, "project_id": s.project_id, "project_name": names[s.project_id], "title": v.title,
+            "id": s.id, "project_id": s.project_id, "project_name": names.get(s.project_id, "") if s.project_id else "Organisation", "title": v.title,
             "code": _code(req, s), "tags": state_tags.get(s.id, ""),
             "status": v.status.value, "target_date": v.target_date, "is_overdue": overdue,
             "has_success_measures": bool(v.success_measures.strip()),
@@ -1264,7 +1270,7 @@ def collect_change_history(db: Session, req: ReportContext) -> ReportResult:
         f"Active items not revised in {req.params["stale_months"]} months are listed as stale."
         + (f" History from {req.params["since"].isoformat()}." if req.params["since"] else ""),
     ])
-    kinds = [
+    kinds: list[tuple[str, str, Any, Any, str, str, Any, Any]] = [  # (type, label, root model, version model, ..., org scope, active status)
         ("strategy", "Strategy", Strategy, StrategyVersion, "strategy_id", "title", StrategyScope.ORGANIZATION, StrategyStatus.ACTIVE),
         ("future_state", "Future State", FutureState, FutureStateVersion, "future_state_id", "title",
          FutureStateScope.ORGANIZATION, FutureStateStatus.ACTIVE),
@@ -1377,11 +1383,19 @@ def collect_summary_pack(db: Session, req: ReportContext) -> ReportResult:
 # --- Declarations ---------------------------------------------------------------------------------------------
 
 _ORG_ROLE = "org_reports_viewer"
+# No fixed choices: an organisation or project may define models of its own, so the key is checked against the
+# scheme as it applies to each project reported on.
+def _model_choices(db: Session, organization_id: uuid.UUID, project_id: uuid.UUID | None) -> list[tuple[str, str]]:
+    """The scoring models the project (or, with no project, the organisation) offers, as `(key, name)`: the built-in
+    ones and any the organisation or project defined, so the report's model is chosen from a list."""
+    scheme = effective_scheme(db, organization_id, get_registered_scheme(PAIN_POINT_SCORING_SCHEME_KEY).scheme, project_id)
+    return [(model.key, model.label) for model in scheme.models]
+
+
 _MODEL_KEY = ReportParamDefinition(
-    "model_key", "string", choices=tuple(m.key for m in PAIN_POINT_SCORING_SCHEME.models),
-    choice_labels={m.key: m.label for m in PAIN_POINT_SCORING_SCHEME.models}, label="Scoring model",
-    description="Scoring model: sxf (Severity x Frequency), sxc (Severity x Confidence) or sxfxc; "
-                "defaults to the project's configured default.",
+    "model_key", "string", label="Scoring model", choices_for=_model_choices,
+    description="The scoring model to rank by, chosen from the models this project (or organisation) offers; "
+                "defaults to the configured default model. Its key (for example sxf, wsjf) is also accepted by the API.",
 )
 _ROLLUP = ReportParamDefinition(
     "rollup", "string", default=RollupMethod.WEIGHTED_AVERAGE.value, choices=tuple(m.value for m in RollupMethod),

@@ -37,6 +37,7 @@ import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { OPEN_QUESTION_PRIORITY_LABEL } from "./types";
 import type { OpenQuestion, OpenQuestionFieldValues, OpenQuestionPriority } from "./types";
+import { CONTEXT_STRATEGY_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof OpenQuestionFieldValues; label: string; rows: number }[] = [
   { key: "question", label: "Question", rows: 2 },
@@ -94,13 +95,13 @@ export function OpenQuestionFormModal({
               />
             </FormGridFull>
           ))}
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={CONTEXT_STRATEGY_HELP.priority}
             label="Priority"
             value={priority}
             onChange={(v) => setPriority(v as OpenQuestionPriority)}
             options={Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
-          <DateField helpNotNeeded label="Due / review date" ariaLabel="Due date" value={dueDate} onChange={setDueDate} />
+          <DateField help={CONTEXT_STRATEGY_HELP.openQuestionDueDate} label="Due / review date" ariaLabel="Due date" value={dueDate} onChange={setDueDate} />
           {!initial && projectId && (
             <FormGridFull>
               <div className="stack">

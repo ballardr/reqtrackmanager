@@ -7,6 +7,7 @@ import {
   FUTURE_STATE_STATUS_LABEL, GUIDING_PRINCIPLE_STATUS_LABEL, OPEN_QUESTION_STATUS_LABEL, PAIN_POINT_STATUS_LABEL,
   STRATEGY_STATUS_LABEL,
 } from "./types";
+import { CreateFutureStateDialog, CreateGuidingPrincipleDialog, CreateOpenQuestionDialog, CreateStrategyDialog } from "./CreateLinkedRecordDialogs";
 import { CreatePainPointDialog } from "./CreatePainPointDialog";
 import { FutureStateDetailPage } from "./FutureStateDetailPage";
 import { GuidingPrincipleDetailPage } from "./GuidingPrincipleDetailPage";
@@ -15,6 +16,7 @@ import { OpenQuestionRegisterReportView } from "./OpenQuestionRegisterReportView
 import { OrgFutureStatesPanel } from "./OrgFutureStatesPanel";
 import { OrgGuidingPrinciplesPanel } from "./OrgGuidingPrinciplesPanel";
 import { OrgPainPointTypesPanel } from "./OrgPainPointTypesPanel";
+import { OrgPainPointSubmissionPanel, ProjectPainPointSubmissionPanel } from "./PainPointSubmissionPanel";
 import { OrgStrategiesPanel } from "./OrgStrategiesPanel";
 import { PainPointDetailPage } from "./PainPointDetailPage";
 import { PainPointPrioritisationReportView } from "./PainPointPrioritisationReportView";
@@ -80,7 +82,7 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
  * and Open Question have no configurable type vocabulary, so they need none
  * of that admin-section wiring.
  *
- * No `globalNavItems`/`standaloneWorkspaces`/`projectOverviewTiles`/
+ * No `globalNavItems`/`standaloneWorkspaces`/`overviewWidgets`/
  * `requirementDetailSections`/`entityAccentColor`: none of the artefacts has
  * a cross-org standalone entity, a project-overview summary tile, or a
  * place in a mixed list of entity kinds yet.
@@ -94,6 +96,9 @@ import { StrategyDetailPage } from "./StrategyDetailPage";
 /** Backend scoring-scheme key registered by `modules/context_strategy/scoring.py`. */
 const PAIN_POINT_SCORING_SCHEME = "pain_point";
 
+/** The Pain Point settings share one expandable entry in the project and organisation admin menus. */
+const PAIN_POINT_ADMIN_GROUP = { key: "pain-points", label: "Pain Points" };
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "context_strategy",
   artefactPaths: {
@@ -106,6 +111,10 @@ export const moduleDefinition: TierAModuleDefinition = {
   // A request (or any record a link type reaches Pain Points from) can create and link one from its Links panel.
   linkedRecordCreators: {
     pain_point: { label: "Pain Point", render: (props) => createElement(CreatePainPointDialog, props) },
+    strategy: { label: "Strategy", render: (props) => createElement(CreateStrategyDialog, props) },
+    future_state: { label: "Future State", render: (props) => createElement(CreateFutureStateDialog, props) },
+    guiding_principle: { label: "Guiding Principle", render: (props) => createElement(CreateGuidingPrincipleDialog, props) },
+    open_question: { label: "Open Question", render: (props) => createElement(CreateOpenQuestionDialog, props) },
   },
   artefactListPaths: {
     strategy: (projectId) => `/projects/${projectId}/modules/context_strategy/strategies`,
@@ -205,11 +214,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "context-strategy-pain-point-types",
       label: "Pain Point Types",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgPainPointTypesPanel, { orgId }),
+    },
+    {
+      key: "context-strategy-pain-point-submission",
+      label: "Pain Point Submission",
+      group: PAIN_POINT_ADMIN_GROUP,
+      render: ({ orgId }) => createElement(OrgPainPointSubmissionPanel, { orgId }),
     },
     {
       key: "context-strategy-pain-point-scoring",
       label: "Pain Point Scoring",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: PAIN_POINT_SCORING_SCHEME }),
     },
   ],
@@ -217,11 +234,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "context-strategy-pain-point-types",
       label: "Pain Point Types",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectPainPointTypesPanel, { projectId }),
+    },
+    {
+      key: "context-strategy-pain-point-submission",
+      label: "Pain Point Submission",
+      group: PAIN_POINT_ADMIN_GROUP,
+      render: ({ projectId }) => createElement(ProjectPainPointSubmissionPanel, { projectId }),
     },
     {
       key: "context-strategy-pain-point-scoring",
       label: "Pain Point Scoring",
+      group: PAIN_POINT_ADMIN_GROUP,
       render: ({ projectId }) =>
         createElement(ProjectScoringSettings, { projectId, schemeKey: PAIN_POINT_SCORING_SCHEME }),
     },

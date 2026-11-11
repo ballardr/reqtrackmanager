@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, refuse_personal_access_token
 from app.models.module import (
     ProjectModuleEnablement,
     ProjectModuleSubComponentEnablement,
@@ -480,6 +480,7 @@ def list_project_module_subcomponents(
     }
     return [
         out for sub in definition.sub_components
+        if not sub.organization_only
         if (out := _project_subcomponent_out(db, project, module_key, sub, project_rows.get(sub.key))).org_hard_enabled
     ]
 
@@ -514,7 +515,7 @@ def update_project_module_subcomponent_enablement(
     if definition is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Module not found.")
     subcomponent = next((s for s in definition.sub_components if s.key == subcomponent_key), None)
-    if subcomponent is None:
+    if subcomponent is None or subcomponent.organization_only:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Sub-component not found.")
     org_state = resolve_org_subcomponent_state(db, project.organization_id, module_key, subcomponent_key)
     if payload.enabled and not (is_module_enabled(db, project.organization_id, module_key) and org_state and org_state[0]):
@@ -555,7 +556,10 @@ def update_project_module_subcomponent_enablement(
     return _project_subcomponent_out(db, project, module_key, subcomponent, row)
 
 
-@router.post("/{project_id}/members/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{project_id}/members/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def assign_project_module_role(
     project_id: UUID,
     user_id: UUID,
@@ -618,7 +622,7 @@ def assign_project_module_role(
 
 @router.delete(
     "/{project_id}/members/{user_id}/module-roles/{module_key}/{role_key}", status_code=status.HTTP_204_NO_CONTENT
-)
+, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_project_module_role(
     project_id: UUID,
     user_id: UUID,

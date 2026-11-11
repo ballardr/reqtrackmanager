@@ -5,6 +5,7 @@ edit lock (C-G-12), and version history (C-A-02, C-A-09).
 """
 
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.stage_helpers import move_stage
 
 
 def test_requirement_id_uses_component_and_category_prefix(client, admin_token, org_id):
@@ -49,14 +50,10 @@ def _create_requirement(client, admin_token, project_id, component_id, category_
 def _approve_current_stage(client, admin_token, project_id):
     stages = client.get(f"/api/v1/projects/{project_id}/stages", headers=auth_headers(admin_token)).json()
     stage_id = stages[0]["id"]
-    review = client.post(
-        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=review",
-        headers=auth_headers(admin_token),
+    review = move_stage(client, project_id, stage_id, "review", headers=auth_headers(admin_token),
     )
     assert review.status_code == 200
-    resp = client.post(
-        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=approved",
-        headers=auth_headers(admin_token),
+    resp = move_stage(client, project_id, stage_id, "approved", headers=auth_headers(admin_token),
     )
     assert resp.status_code == 200
     return resp.json()

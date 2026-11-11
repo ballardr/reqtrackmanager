@@ -4,7 +4,7 @@ sidebar_position: 40
 
 # Overview
 
-The Product Feedback module is a place for **enhancement requests**: things people ask the product to do, from stakeholders, staff and support. It keeps each ask as a versioned record with a triage lifecycle, adds up who stands behind it, scores it, ties it to the problem it solves and the Requirement that delivers it, and tells you who still has to be told the outcome. Delivery itself stays in your tracker (Jira, ServiceNow and so on); a request carries references to it.
+The Product Feedback module is a place for **enhancement requests**: things people ask the product to do, from stakeholders, staff and support. It keeps each ask as a versioned record with a triage lifecycle, adds up who stands behind it, scores it, ties it to the problem it solves and the Requirement that delivers it, and tells you who still has to be informed of the outcome. Delivery itself stays in your tracker (Jira, ServiceNow and so on); a request carries references to it.
 
 A request is a **solution**, not a problem. A Pain Point (from [Context & Strategy](../context-strategy-module/pain-point.md)) is the problem; a request is one proposal to fix it. Ranking proposals only by how many people asked rewards the loudest voice, so a request with no linked Pain Point shows a **No Pain Point** warning and appears in the [Unlinked requests](./reports.md#unlinked-requests-f2) report. It is a warning, never a block.
 
@@ -42,12 +42,12 @@ Product Feedback is **not** enabled by default. An organisation administrator op
 
 The module works on its own. It links to Stakeholders, Personas, Engagements, Pain Points and Requirements when those are available, and the offer to link to a disabled module's records simply does not appear.
 
-Three [sub-components](../overview.md#sub-component-enablement-finer-grained-than-a-whole-module) can be switched on or off per organisation and per project:
+Three [sub-components](../overview.md#sub-component-enablement-finer-grained-than-a-whole-module) can be switched on or off per organisation; the request inbox is an organisation setting only and is not offered in project administration:
 
 | Sub-component | Switching it off |
 | --- | --- |
 | **Enhancement requests** | Hides the project list, and the module's reports. |
-| **Organisation-level request inbox** | Hides the organisation's inbox without touching any project's requests. |
+| **Organisation-level request inbox** | Hides the organisation's inbox without touching any project's requests. Organisation administration only. |
 | **External references** | Hides the references card, the form section and the **External Systems** settings; stored references are kept and return when it is switched back on. |
 
 ## Roles

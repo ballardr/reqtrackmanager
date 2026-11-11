@@ -35,6 +35,8 @@ export function SignupPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [resent, setResent] = useState(false);
 
   useEffect(() => {
     api.get<SignupConfig>("/api/v1/system/signup-config").then(setConfig);
@@ -46,12 +48,41 @@ export function SignupPage() {
     setSubmitting(true);
     try {
       const user = await signup(email, password, displayName, inviteToken);
+      if (user === null) {
+        setAwaitingConfirmation(true);
+        return;
+      }
       navigate(await resolveLandingPath(user));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : strings.signup.error);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function resend() {
+    setResent(false);
+    try {
+      await api.post("/api/v1/auth/resend-confirmation", { email });
+    } finally {
+      setResent(true);
+    }
+  }
+
+  if (awaitingConfirmation) {
+    return (
+      <AuthCard>
+        <h1 style={{ margin: 0, fontSize: "1.4rem" }}>{strings.signup.confirmTitle}</h1>
+        <p>{strings.signup.confirmBody}</p>
+        <button className="btn" type="button" onClick={() => void resend()}>
+          {strings.signup.resend}
+        </button>
+        {resent && <p role="status" className="text-muted">{strings.signup.resent}</p>}
+        <a className="text-muted" href="/login">
+          {strings.signup.backToLogin}
+        </a>
+      </AuthCard>
+    );
   }
 
   if (config === null) {

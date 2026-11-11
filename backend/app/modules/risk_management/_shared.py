@@ -71,6 +71,7 @@ from app.services.client_date import effective_today
 from app.services.permissions import encode_permission
 from app.services.principals import (
     is_principal_member,
+    label_of,
     principal_columns,
     principal_labels,
     principal_ref,
@@ -104,7 +105,7 @@ def owner_labels(db: Session, versions: Sequence[RiskVersion]) -> OwnerLabels:
 
 def _owner_of(labels: OwnerLabels, version: RiskVersion) -> PrincipalOut | None:
     """The resolved owner of `version`, or None when it has no owner."""
-    return None if version.owner_id is None else labels[(version.owner_type, version.owner_id)]
+    return label_of(labels, version.owner_type, version.owner_id)
 
 
 def is_risk_owner(db: Session, version: RiskVersion, user_id: uuid.UUID) -> bool:

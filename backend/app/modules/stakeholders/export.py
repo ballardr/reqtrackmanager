@@ -57,8 +57,11 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _TEXT_FIELDS = (
     "name", "description", "role_title", "goals", "needs", "behaviours", "context_environment",
@@ -92,6 +95,7 @@ def _persona_json(db: Session, persona: Persona, ref: str, emails: dict[UUID, st
         **principals_to_bundle(db, v, PERSONA_PRINCIPAL_FIELDS), "created_by_email": emails.get(persona.creator_id),
         "is_archived": persona.is_archived, "archived_at": _j(persona.archived_at), "created_at": _j(persona.created_at),
         "tags": record_tag_names(db, PERSONA_ARTEFACT_TYPE, persona.id),
+        "placements": record_placements(db, PERSONA_ARTEFACT_TYPE, persona.id),
     })
     return data
 
@@ -126,7 +130,7 @@ def _create_persona_from_json(
     org_type_id: UUID | None, project_type_id: UUID | None, users: UserResolver, warnings: BundleImportWarnings,
 ) -> Persona:
     creator_id = users.resolve(data.get("created_by_email"), required=True, context=f"Persona {data['name']!r} creator")
-    creator = db.get(User, creator_id)
+    creator = get_or_404(db, User, creator_id, "User")
     persona = create_persona(
         db, scope=scope, organization_id=organization_id, project_id=project_id, creator=creator,
         org_type_id=org_type_id, project_type_id=project_type_id,
@@ -146,6 +150,10 @@ def _create_persona_from_json(
     restore_record_tags(
         db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
         artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, names=data.get("tags"),
+    )
+    restore_record_placements(
+        db, project_id=project_id, actor_id=creator_id,
+        artefact_type=PERSONA_ARTEFACT_TYPE, artefact_id=persona.id, entries=data.get("placements"),
     )
     return persona
 
@@ -203,6 +211,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     PERSONA_TYPES.prime_display_names(db, [(v.org_type_id, v.project_type_id) for v in versions.values()])
     prime_links(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, PERSONA_ARTEFACT_TYPE, ids)
+    prime_record_placements(db, PERSONA_ARTEFACT_TYPE, ids)
     prime_file_links(db, PersonaFile, "persona_id", ids)
     personas_json = []
     for i, persona in enumerate(personas):
@@ -242,6 +251,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "project_personas": personas_json,
         "project_persona_weights": weights_json, "project_persona_visibility": visibility_json,
     }, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter Personas become drafts."""
+    fresh_drafts(data.get("project_personas", []), status=PersonaStatus.DRAFT.value)
 
 
 def import_project_data(

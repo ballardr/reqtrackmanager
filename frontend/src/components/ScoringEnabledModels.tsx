@@ -21,11 +21,13 @@ import { OverridePill } from "./OverridePill";
  * @param onReset Clears this tier's set so it inherits (same contract).
  */
 export function ScoringEnabledModels({
-  scheme, custom, resetLabel, onSave, onReset,
+  scheme, custom, resetLabel, platformFallback, onSave, onReset,
 }: {
   scheme: ScoringScheme;
   custom: boolean;
   resetLabel: string;
+  /** The fallback is the module default on an organisation page: no pill, only a reset while custom. */
+  platformFallback?: boolean;
   onSave: (models: string[]) => Promise<void>;
   onReset: () => Promise<void>;
 }) {
@@ -44,6 +46,7 @@ export function ScoringEnabledModels({
           custom={custom}
           defaultLabel={SCORING_SOURCE_LABEL[scheme.enabled_models_source ?? "system"]}
           resetLabel={resetLabel}
+          platformFallback={platformFallback}
           onReset={() => void onReset()}
         />
         <FieldHelp label="Models shown" help={strings.help.scoringEnabledModels} />

@@ -801,3 +801,24 @@ def test_callback_refuses_a_foreign_account_and_issues_no_token(client, admin_to
     assert "error=not_provisioned" in location and "token=" not in location
     # The platform administrator is untouched.
     assert login(client, "admin@example.com", "ChangeMe123!")
+
+
+def test_an_organisation_can_stop_its_identity_provider_creating_accounts(client, admin_token, org_id):
+    """Known Gap 9: with the switch off, a verified address nobody has registered is refused; a registered one still links."""
+    from app.database import SessionLocal
+    from app.models.organization import Organization
+    from app.services.oidc_provisioning import find_or_provision_user
+
+    db = SessionLocal()
+    try:
+        org = db.get(Organization, org_id)
+        org.oidc_allow_account_creation = False
+        db.flush()
+        claims = {"sub": "subject-1", "email": "nobody.registered@example.com", "email_verified": True}
+        with pytest.raises(ValueError, match="does not let its identity provider create accounts"):
+            find_or_provision_user(db, claims, issuer="https://idp.example.com", org=org)
+        org.oidc_allow_account_creation = True
+        assert find_or_provision_user(db, claims, issuer="https://idp.example.com", org=org).email == "nobody.registered@example.com"
+        db.rollback()
+    finally:
+        db.close()

@@ -34,6 +34,7 @@ from app.modules.compliance.tests.test_project_compliance_api import (
     _setup_published_standard_with_tree,
 )
 from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.db_helpers import must_get
 
 TODAY = date.today()
 
@@ -531,6 +532,6 @@ def test_org_export_import_round_trips_the_default_compliance_managers_group(cli
     db = SessionLocal()
     try:
         settings = db.scalar(select(ComplianceOrgSettings).where(ComplianceOrgSettings.organization_id == uuid.UUID(new_org)))
-        assert settings is not None and db.get(OrgGroup, settings.default_standards_manager_group_id).name == "Compliance Leads"
+        assert settings is not None and must_get(db, OrgGroup, settings.default_standards_manager_group_id).name == "Compliance Leads"
     finally:
         db.close()

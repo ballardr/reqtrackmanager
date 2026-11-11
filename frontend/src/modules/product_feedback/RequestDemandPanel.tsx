@@ -17,6 +17,7 @@
  * named. The kind of a requester is read from its artefact type, so this panel names no other module.
  */
 import { X } from "lucide-react";
+import { Spinner } from "../../components/Spinner";
 import { Link } from "react-router-dom";
 
 import { DetailCard } from "../../components/DetailCard";
@@ -102,7 +103,7 @@ export function RequestDemandPanel({
       action={onAddRequesters ? <button type="button" className="btn btn-sm" onClick={onAddRequesters}>Add requester</button> : undefined}
     >
       {demand === null ? (
-        <p className="text-muted">Loading…</p>
+        <Spinner />
       ) : demand.requesters.length === 0 ? (
         <p className="text-muted">
           No one is recorded as having asked for this yet.{onAddRequesters ? " Use Add requester to record a Stakeholder, Persona or Engagement." : ""}

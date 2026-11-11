@@ -1,6 +1,6 @@
-import { useMutation } from "../hooks/useMutation";
 import { ArrowDown, ArrowUp, GitPullRequest, MessageSquare, Plus, TriangleAlert } from "lucide-react";
 import { RecordCode } from "../components/RecordCode";
+import { Tooltip } from "../components/Tooltip";
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -8,15 +8,13 @@ import { api } from "../api/client";
 import type {
   Category,
   Component,
-  CustomFieldDefinition,
-  FileAsset,
   OrgUser,
   Project,
   ProjectStage,
+  StageWorkflow,
   Requirement,
   RequirementStatus,
 } from "../api/types";
-import type { CollectedLink } from "../api/artefactLinks";
 import {
   ENTITY_ACCENT_COLOR,
   REQUIREMENT_LEVEL_LABEL,
@@ -25,18 +23,13 @@ import {
   principalRef,
 } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { CustomFieldsForm } from "../components/CustomFieldsForm";
-import { RequirementFields } from "../components/RequirementFields";
-import { EMPTY_REQUIREMENT_FIELDS, requirementPeopleAndReviewPayload, type RequirementFieldValues } from "../components/requirementFieldValues";
-import { FileAttachmentList } from "../components/FileAttachmentList";
+import { RequirementCreateModal } from "../components/RequirementCreateModal";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
 import { Popover } from "../components/Popover";
-import { Modal } from "../components/Modal";
-import { QuickLinkField } from "../components/QuickLinkField";
-import { TagField } from "../components/TagField";
 import { BulkTagDialog } from "../components/BulkTagDialog";
 import { projectTagAdminApi } from "../api/tags";
 import { TagFilterField } from "../components/TagFilterField";
@@ -51,11 +44,6 @@ import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
-import { TextField } from "../components/FormFields";
-import { LabeledSelect } from "../components/LabeledSelect";
-import { FormGrid, FormGridFull } from "../components/FormGrid";
-import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
-import { useCommitTags } from "../hooks/useCommitTags";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { useProjectScope } from "../hooks/useProjectScope";
@@ -66,6 +54,7 @@ import { useResetOnChange } from "../hooks/useResetOnChange";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 import { addSharedListFilters } from "../utils/listFilterParams";
+import { InlineSelect } from "../components/LabeledSelect";
 
 const PAGE_SIZE = 30;
 
@@ -82,14 +71,11 @@ const SORT_KEYS = ["unique_code", "name", "status"] as const;
  * incremental "load more" pagination (U-P-06) for large requirement sets.
  */
 export function RequirementsPage() {
-  const run = useMutation();
   const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
-  const commitQuickLinks = useCommitQuickLinks(projectId ?? "", "requirement");
-  const commitTags = useCommitTags(projectId ?? "", "requirement");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
   const myRoles = useMyProjectRoles(projectId);
@@ -104,18 +90,8 @@ export function RequirementsPage() {
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  // Both start empty before the first fetch resolves, which is
-  // indistinguishable from "this project genuinely has none yet" — without
-  // this flag, opening "New requirement" before that fetch completes
-  // showed the quick-create-component/category inline form (meant only for
-  // a genuinely empty project) at the same time as the real create form,
-  // producing two ambiguous "Name" fields.
-  const [metaLoaded, setMetaLoaded] = useState(false);
   const [stages, setStages] = useState<ProjectStage[]>([]);
-  const [newInlineComponentName, setNewInlineComponentName] = useState("");
-  const [newInlineComponentPrefix, setNewInlineComponentPrefix] = useState("");
-  const [newInlineCategoryName, setNewInlineCategoryName] = useState("");
-  const [newInlineCategoryPrefix, setNewInlineCategoryPrefix] = useState("");
+  const [workflows, setWorkflows] = useState<StageWorkflow[]>([]);
   // The list's filters, search and sort live in the URL (`useUrlFilter`), so it comes back as it was left
   // after a visit to a record, and a dashboard glance links here with the same `status`, `stage` and
   // `completed` parameters. Completion is a separate overlay marker, not a status value.
@@ -129,6 +105,8 @@ export function RequirementsPage() {
   const [stageToParam, setStageToParam] = useUrlText("stage_to");
   const stageFrom = stageFromParam || legacyStage;
   const stageTo = stageToParam || legacyStage;
+  // The phase that governs a requirement: its component's own track when component phases are on, else its stage's.
+  const [phaseFilter, setPhaseFilter] = useUrlText("phase");
   const [componentFilter, setComponentFilter] = useUrlText("component");
   const [categoryFilter, setCategoryFilter] = useUrlText("category");
   const [hasCommentsOnly, setHasCommentsOnly] = useUrlFlag("comments");
@@ -140,24 +118,7 @@ export function RequirementsPage() {
   const [sort, setSort] = useUrlSort(SORT_KEYS);
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [newFields, setNewFields] = useState<RequirementFieldValues>(EMPTY_REQUIREMENT_FIELDS);
-  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
-  const [newComponentId, setNewComponentId] = useState("");
-  const [newCategoryId, setNewCategoryId] = useState("");
-  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
-  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [viewMode, setViewMode] = useViewMode("requirements");
-  const [project, setProject] = useState<Project | null>(null);
-
-  // --- Create-modal step 2: attach files to the just-created requirement
-  // (UX review — previously only possible after closing the modal and
-  // opening the detail page). Mirrors RequirementDetailPage's own files
-  // state and handlers, scoped to `createdRequirement`. Links are chosen
-  // in step 1 with the shared quick-link field and created with the record. ---
-  const [createdRequirement, setCreatedRequirement] = useState<Requirement | null>(null);
-  const [createdFiles, setCreatedFiles] = useState<FileAsset[]>([]);
-  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
-  const [newTags, setNewTags] = useState<string[]>([]);
 
   // --- Bulk operations (list view only) ---------------------------------
   // Style guide "Pattern: bulk operations on a list" — the first pilot of
@@ -184,6 +145,7 @@ export function RequirementsPage() {
     if (completedFilter) params.set("is_completed", "true");
     if (stageFrom) params.set("target_stage_from_id", stageFrom);
     if (stageTo) params.set("target_stage_to_id", stageTo);
+    if (phaseFilter) params.set("phase", phaseFilter);
     if (componentFilter) params.set("component_id", componentFilter);
     if (categoryFilter) params.set("category_id", categoryFilter);
     if (hasCommentsOnly) params.set("has_comments", "true");
@@ -247,34 +209,21 @@ export function RequirementsPage() {
     // from the result set entirely) — "load more" append, by contrast,
     // calls `loadRequirements` directly and never touches this.
     setSelectedIds(new Set());
-    const [comps, cats, stgs, defs] = await Promise.all([
+    const [comps, cats, stgs, flows] = await Promise.all([
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
-      api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields?entity_kind=requirement`),
+      api.get<StageWorkflow[]>(`/api/v1/projects/${projectId}/stage-workflows`),
       loadRequirements(0, false),
     ]);
     setComponents(comps);
     setCategories(cats);
     setStages(stgs);
-    setCustomFieldDefs(defs);
-    // Target is mandatory (it can never be left unset) — the select always
-    // has a real stage pre-filled, never a blank "—" option, same as the
-    // backend's own create-time default (routers/requirements.py).
-    if (!newFields.targetStageId && stgs[0]) setNewFields((f) => (f.targetStageId ? f : { ...f, targetStageId: stgs[0].id }));
-    const selectedComponentId = newComponentId || comps[0]?.id || "";
-    if (!newComponentId && comps[0]) setNewComponentId(comps[0].id);
-    // Must belong to the selected component (the tree) — picking any
-    // project-wide first category could silently mismatch it.
-    if (!newCategoryId) {
-      const firstOwnCategory = cats.find((c) => c.component_id === selectedComponentId);
-      if (firstOwnCategory) setNewCategoryId(firstOwnCategory.id);
-    }
-    setMetaLoaded(true);
+    setWorkflows(flows);
   }
 
   useLoadOnChange(reload, [
-    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, componentFilter, categoryFilter,
+    projectId, search, statusFilter, completedFilter, stageFrom, stageTo, phaseFilter, componentFilter, categoryFilter,
     hasCommentsOnly, onlyWatched, includeArchived, sort, tagFilter.query, projectScope.scope,
   ]);
 
@@ -299,9 +248,7 @@ export function RequirementsPage() {
     (async () => {
       try {
         const proj = await api.get<Project>(`/api/v1/projects/${projectId}`);
-        setProject(proj);
         const users = await api.get<OrgUser[]>(`/api/v1/orgs/${proj.organization_id}/users`);
-        setOrgUsers(users);
         setIsOrgAdminOfProject(users.some((u) => u.user_id === user.id && u.roles.includes("org_admin")));
       } catch {
         // No org role at all (rare) — canManageProject still resolves correctly
@@ -309,102 +256,6 @@ export function RequirementsPage() {
       }
     })();
   }, [projectId, user]);
-
-  async function createInlineComponent() {
-    if (!projectId || !newInlineComponentName || !newInlineComponentPrefix) return;
-    try {
-      await api.post(`/api/v1/projects/${projectId}/components`, {
-        name: newInlineComponentName,
-        prefix: newInlineComponentPrefix,
-      });
-      setNewInlineComponentName("");
-      setNewInlineComponentPrefix("");
-      reload();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  async function createInlineCategory() {
-    if (!projectId || !newInlineCategoryName || !newInlineCategoryPrefix || !newComponentId) return;
-    try {
-      await api.post(`/api/v1/projects/${projectId}/categories`, {
-        name: newInlineCategoryName,
-        prefix: newInlineCategoryPrefix,
-        component_id: newComponentId,
-      });
-      setNewInlineCategoryName("");
-      setNewInlineCategoryPrefix("");
-      reload();
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  /**
-   * `andAttach`: when true (the "Create & attach files" action, UX
-   * review — attaching should be possible during creation, not only
-   * afterwards from the detail page), the modal advances to a second step
-   * against the just-created requirement's real id instead of closing —
-   * the backend's file endpoints require an existing id, so this
-   * reuses them rather than building a pre-create staging flow. The plain
-   * "Create" action keeps closing the modal immediately, unchanged — most
-   * creates don't need an attachment, and every existing workflow (the
-   * golden path included) depends on that one-click-and-back-to-the-list
-   * behaviour, so the extra step is opt-in rather than forced on every create.
-   */
-  async function createRequirement(andAttach: boolean) {
-    if (!projectId || !newComponentId || !newCategoryId || !newFields.targetStageId) return;
-    try {
-      const created = await api.post<Requirement>(`/api/v1/projects/${projectId}/requirements`, {
-        name: newFields.name,
-        reasoning: newFields.reasoning,
-        clarification: newFields.clarification,
-        description: newFields.description,
-        component_id: newComponentId,
-        category_id: newCategoryId,
-        target_stage_id: newFields.targetStageId,
-        level: newFields.level,
-        ...requirementPeopleAndReviewPayload(newFields),
-        keywords: [],
-        custom_fields: customFieldValues,
-      });
-      setNewFields((f) => ({ ...EMPTY_REQUIREMENT_FIELDS, targetStageId: f.targetStageId }));
-      setCustomFieldValues({});
-      reload();
-      showToast(strings.requirements.created);
-      await commitQuickLinks(created.id, quickLinks);
-      setQuickLinks([]);
-      await commitTags(created.id, newTags);
-      setNewTags([]);
-      if (!andAttach) {
-        setShowNewForm(false);
-        return;
-      }
-      setCreatedRequirement(created);
-      setCreatedFiles([]);
-    } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
-    }
-  }
-
-  async function uploadCreatedRequirementFile(file: File) {
-    if (!projectId || !createdRequirement) return;
-    if (!(await run(() => api.postFile(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`, file), "upload", "file"))) return;
-    setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
-  }
-
-  async function removeCreatedRequirementFile(fileId: string) {
-    if (!projectId || !createdRequirement) return;
-    if (!(await run(() => api.delete(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files/${fileId}`), "remove", "file"))) return;
-    setCreatedFiles(await api.get<FileAsset[]>(`/api/v1/projects/${projectId}/requirements/${createdRequirement.id}/files`));
-  }
-
-  function finishCreateRequirement() {
-    setShowNewForm(false);
-    setCreatedRequirement(null);
-    reload();
-  }
 
   async function move(id: string, direction: "up" | "down") {
     try {
@@ -515,6 +366,15 @@ export function RequirementsPage() {
   function categoryName(id: string) {
     return categories.find((c) => c.id === id)?.name ?? "";
   }
+  /** The phase names the project's workflows use, each once, for the phase filter. */
+  const phaseNames = [...new Set(workflows.flatMap((w) => w.phases.map((p) => p.name)))];
+
+  /** A requirement's target: its stage, with the phase that governs it, e.g. "Release 1 (Review)". */
+  function targetText(r: Requirement) {
+    if (r.from_project_id) return "—";
+    return r.phase_name ? `${stageName(r.target_stage_id)} (${r.phase_name})` : stageName(r.target_stage_id);
+  }
+
   function stageName(id: string | null) {
     return stages.find((s) => s.id === id)?.name ?? "—";
   }
@@ -527,19 +387,25 @@ export function RequirementsPage() {
     return (
       <>
         {r.comment_count > 0 && (
-          <span className="row" title={`${r.comment_count} comment(s)`} style={{ gap: "0.2rem" }}>
-            <MessageSquare size={14} /> {r.comment_count}
-          </span>
+          <Tooltip label={strings.requirements.commentCountLabel(r.comment_count)}>
+            <span className="row" role="img" aria-label={strings.requirements.commentCountLabel(r.comment_count)} style={{ gap: "0.2rem" }}>
+              <MessageSquare size={14} /> {r.comment_count}
+            </span>
+          </Tooltip>
         )}
         {r.has_open_change_request && (
-          <span title="Has a pending change request">
-            <GitPullRequest size={14} />
-          </span>
+          <Tooltip label={strings.requirements.hasPendingChangeRequest}>
+            <span role="img" aria-label={strings.requirements.hasPendingChangeRequest}>
+              <GitPullRequest size={14} />
+            </span>
+          </Tooltip>
         )}
         {r.requires_approval && (
-          <span title="Requires approval">
-            <TriangleAlert size={14} />
-          </span>
+          <Tooltip label={strings.requirements.requiresApprovalBadge}>
+            <span role="img" aria-label={strings.requirements.requiresApprovalBadge}>
+              <TriangleAlert size={14} />
+            </span>
+          </Tooltip>
         )}
       </>
     );
@@ -566,61 +432,54 @@ export function RequirementsPage() {
             onSearchChange={setSearch}
             searchPlaceholder={strings.requirements.search}
           >
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RequirementStatus | "")}>
-                <option value="">All statuses</option>
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {REQUIREMENT_STATUS_LABEL[s]}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.targetVersionFrom}>
-              <select className="input" value={stageFrom} onChange={(e) => setStageRange(e.target.value, stageTo)}>
-                <option value="">{strings.requirements.firstVersion}</option>
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.targetVersionTo}>
-              <select className="input" value={stageTo} onChange={(e) => setStageRange(stageFrom, e.target.value)}>
-                <option value="">{strings.requirements.lastVersion}</option>
-                {stages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.component}>
-              <select className="input" value={componentFilter} onChange={(e) => setComponentFilter(e.target.value)}>
-                <option value="">{strings.requirements.allComponents}</option>
-                {components.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.requirements.category}>
-              <select className="input" value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                <option value="">{strings.requirements.allCategories}</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={STATUS_OPTIONS.map((s) => ({ value: s, label: REQUIREMENT_STATUS_LABEL[s] }))}
+            />
+            <FilterSelect
+              label={strings.requirements.targetVersionFrom}
+              value={stageFrom}
+              onChange={(v) => setStageRange(v, stageTo)}
+              allLabel={strings.requirements.firstVersion}
+              options={stages.map((s) => ({ value: s.id, label: s.name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.targetVersionTo}
+              value={stageTo}
+              onChange={(v) => setStageRange(stageFrom, v)}
+              allLabel={strings.requirements.lastVersion}
+              options={stages.map((s) => ({ value: s.id, label: s.name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.phaseFilter}
+              help={strings.requirements.phaseFilterHelp}
+              value={phaseFilter}
+              onChange={setPhaseFilter}
+              allLabel={strings.requirements.allPhases}
+              options={phaseNames.map((name) => ({ value: name, label: name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.component}
+              value={componentFilter}
+              onChange={setComponentFilter}
+              allLabel={strings.requirements.allComponents}
+              options={components.map((c) => ({ value: c.id, label: c.name }))}
+            />
+            <FilterSelect
+              label={strings.requirements.category}
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              allLabel={strings.requirements.allCategories}
+              options={categories.map((c) => ({ value: c.id, label: c.name }))}
+            />
             {/* C-G-11: completion is now an independent overlay marker, not a
                 status value — a separate checkbox alongside the Status
-                <select> above rather than one of its options. */}
+                select above rather than one of its options. */}
             <ProjectScopeFilter scope={projectScope} />
-            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
+            {projectId && <TagFilterField projectId={projectId} filter={tagFilter} components={false} />}
             <FilterCheckbox label={strings.requirements.completedFilter} checked={completedFilter} onChange={setCompletedFilter} />
             <FilterCheckbox label="Has comments" checked={hasCommentsOnly} onChange={setHasCommentsOnly} />
             <FilterCheckbox label="Only watched" checked={onlyWatched} onChange={setOnlyWatched} />
@@ -629,162 +488,13 @@ export function RequirementsPage() {
         }
       >
 
-        {showNewForm && metaLoaded && (
-          // Style guide "Pattern: modal dialog for entity create/rename" —
-          // a brand-new entity opens in a Modal, not a layer that still
-          // occupies the side panel's "detail about the current view" slot.
-          <Modal
-            title={createdRequirement
-              ? `${createdRequirement.unique_code} — ${strings.requirements.attachFilesAndLinks}`
-              : strings.requirements.newRequirement}
-            onClose={finishCreateRequirement}
-            size="lg"
-          >
-            {createdRequirement ? (
-              <>
-                <div className="stack">
-                  <h3 style={{ margin: 0, fontSize: "1rem" }}>{strings.requirements.attachments}</h3>
-                  <FileAttachmentList
-                    files={createdFiles}
-                    onUpload={uploadCreatedRequirementFile}
-                    onRemove={removeCreatedRequirementFile}
-                  />
-                </div>
-                <div className="row" style={{ justifyContent: "flex-end" }}>
-                  <button className="btn btn-primary" onClick={finishCreateRequirement}>
-                    {strings.requirements.finish}
-                  </button>
-                </div>
-              </>
-            ) : components.length === 0 || categories.length === 0 ? (
-              <>
-                <p style={{ margin: 0 }}>{strings.requirements.noComponentsOrCategories}</p>
-                {canManageProject ? (
-                  <div className="stack">
-                    {components.length === 0 && (
-                      <div className="row" style={{ alignItems: "flex-end" }}>
-                        <TextField helpNotNeeded label={strings.admin.name} value={newInlineComponentName} onChange={setNewInlineComponentName} />
-                        <TextField help={strings.help.requirementPrefix}
-                          label={strings.admin.prefix}
-                          value={newInlineComponentPrefix}
-                          onChange={(next) => setNewInlineComponentPrefix(next.toUpperCase())}
-                          inputProps={{ style: { maxWidth: 100 } }}
-                        />
-                        <button
-                          className="btn btn-primary"
-                          onClick={createInlineComponent}
-                          disabled={!newInlineComponentName || !newInlineComponentPrefix}
-                        >
-                          <Plus /> {strings.admin.newComponent}
-                        </button>
-                      </div>
-                    )}
-                    {categories.length === 0 && components.length > 0 && (
-                      <div className="row" style={{ alignItems: "flex-end" }}>
-                        {components.length > 1 && (
-                          <LabeledSelect helpNotNeeded
-                            label={strings.requirements.component}
-                            value={newComponentId}
-                            onChange={setNewComponentId}
-                            options={components.map((c) => ({ value: c.id, label: c.name }))}
-                            placeholder={null}
-                          />
-                        )}
-                        <TextField helpNotNeeded label={strings.admin.name} value={newInlineCategoryName} onChange={setNewInlineCategoryName} />
-                        <TextField help={strings.help.requirementPrefix}
-                          label={strings.admin.prefix}
-                          value={newInlineCategoryPrefix}
-                          onChange={(next) => setNewInlineCategoryPrefix(next.toUpperCase())}
-                          inputProps={{ style: { maxWidth: 100 } }}
-                        />
-                        <button
-                          className="btn btn-primary"
-                          onClick={createInlineCategory}
-                          disabled={!newInlineCategoryName || !newInlineCategoryPrefix}
-                        >
-                          <Plus /> {strings.admin.newCategory}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <Link to={`/projects/${projectId}/admin`} className="btn btn-primary" style={{ alignSelf: "flex-start" }}>
-                    {strings.requirements.configureComponentsFirst}
-                  </Link>
-                )}
-              </>
-            ) : (
-              <>
-                <FormGrid minColumn="18rem">
-                  <RequirementFields
-                    values={newFields}
-                    onChange={setNewFields}
-                    stages={stages}
-                    orgUsers={orgUsers}
-                    organizationId={project?.organization_id}
-                    projectId={projectId}
-                    ownerPlaceholder={strings.requirements.ownerDefaultsToYou}
-                    afterDescription={
-                      <>
-                        <LabeledSelect helpNotNeeded required
-                          label={strings.requirements.component}
-                          value={newComponentId}
-                          onChange={(componentId) => {
-                            setNewComponentId(componentId);
-                            // Category is nested under one component (the tree) — a
-                            // category belonging to the previously-selected component
-                            // is never valid once the component changes.
-                            const firstOwnCategory = categories.find((c) => c.component_id === componentId);
-                            setNewCategoryId(firstOwnCategory?.id ?? "");
-                          }}
-                          options={components.map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
-                          placeholder={null}
-                        />
-                        <LabeledSelect helpNotNeeded required
-                          label={strings.requirements.category}
-                          value={newCategoryId}
-                          onChange={setNewCategoryId}
-                          options={categories
-                            .filter((c) => c.component_id === newComponentId)
-                            .map((c) => ({ value: c.id, label: `${c.name} (${c.prefix})` }))}
-                          placeholder={categories.some((c) => c.component_id === newComponentId) ? null : strings.requirements.noCategoriesForComponent}
-                        />
-                      </>
-                    }
-                  />
-                  <FormGridFull>
-                    <CustomFieldsForm
-                      definitions={customFieldDefs}
-                      values={customFieldValues}
-                      onChange={(fieldId, value) => setCustomFieldValues((v) => ({ ...v, [fieldId]: value }))}
-                    />
-                  </FormGridFull>
-                  <FormGridFull>
-                    <QuickLinkField projectId={projectId ?? ""} artefactType="requirement" value={quickLinks} onChange={setQuickLinks} />
-                  </FormGridFull>
-                  <FormGridFull>
-                    <TagField projectId={projectId ?? ""} artefactType="requirement" value={newTags} onChange={setNewTags} />
-                  </FormGridFull>
-                </FormGrid>
-                <div className="row" style={{ justifyContent: "flex-end" }}>
-                  <button
-                    className="btn"
-                    onClick={() => createRequirement(true)}
-                    disabled={!newFields.name || !newComponentId || !newCategoryId || !newFields.targetStageId}
-                  >
-                    {strings.requirements.createAndAttach}
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => createRequirement(false)}
-                    disabled={!newFields.name || !newComponentId || !newCategoryId || !newFields.targetStageId}
-                  >
-                    {strings.common.create}
-                  </button>
-                </div>
-              </>
-            )}
-          </Modal>
+        {showNewForm && projectId && (
+          // Style guide "Pattern: modal dialog for entity create/rename" — a brand-new entity opens in a Modal, not a
+          // layer that still occupies the side panel's "detail about the current view" slot.
+          <RequirementCreateModal
+            projectId={projectId} canManageProject={canManageProject} offerAttach
+            onCreated={() => reload()} onClose={() => setShowNewForm(false)}
+          />
         )}
           <div className="stack">
             <div className="row" style={{ justifyContent: "flex-end" }}>
@@ -829,18 +539,13 @@ export function RequirementsPage() {
                   {bulkMovePopoverOpen && (
                     <Popover anchorRef={bulkMoveTriggerRef} title={strings.requirements.bulkMoveToStage} onClose={() => setBulkMovePopoverOpen(false)}>
                       <div className="stack" style={{ gap: "var(--space-3)", minWidth: 200 }}>
-                        <select
-                          className="input"
-                          aria-label={strings.requirements.targetVersion}
+                        <InlineSelect
+                          ariaLabel={strings.requirements.targetVersion}
                           value={bulkMoveStageId}
-                          onChange={(e) => setBulkMoveStageId(e.target.value)}
-                        >
-                          {stages.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder={null}
+                          onChange={setBulkMoveStageId}
+                          options={stages.map((s) => ({ value: s.id, label: s.name }))}
+                        />
                         <button
                           className="btn btn-primary"
                           disabled={!bulkMoveStageId}
@@ -950,7 +655,7 @@ export function RequirementsPage() {
                       {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}
                     </div>
                     <div className="text-muted" style={{ fontSize: "0.8rem" }}>
-                      Target: {r.from_project_id ? "—" : stageName(r.target_stage_id)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
+                      Target: {targetText(r)} · Level: {REQUIREMENT_LEVEL_LABEL[r.level]}
                     </div>
                   </div>
                 ))}
@@ -1029,7 +734,7 @@ export function RequirementsPage() {
                           </div>
                         </td>
                         <td className="text-muted">
-                          {r.from_project_id ? "—" : stageName(r.target_stage_id)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
+                          {targetText(r)} · {REQUIREMENT_LEVEL_LABEL[r.level]}
                         </td>
                         <td className="text-muted">
                           {r.from_project_id ? "—" : `${componentName(r.component_id)} · ${categoryName(r.category_id)}`}

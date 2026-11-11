@@ -37,7 +37,7 @@
  * Standard-level import/export: an "Export" action sits, with Archive, in the record header menu beside
  * Edit — downloads this standard's own portable JSON document
  * (`complianceApi.exportStandard` + `downloadBlob`, the same shape
- * `OrgComplianceDashboard.tsx`'s report downloads already use), for backup
+ * `OrgComplianceWidgets.tsx`'s report downloads already use), for backup
  * or transfer into a different organisation/deployment via
  * `StandardListPage.tsx`'s "Import standard" entry point.
  *
@@ -86,6 +86,7 @@ import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { useStrings } from "../../context/TerminologyContext";
 
 type StandardWorkspaceSection = "overview" | "versions" | "members" | "history" | "projects";
 
@@ -111,6 +112,7 @@ async function loadStandardSwitcherOptions(): Promise<EntitySwitcherOption[]> {
 }
 
 export function StandardWorkspacePage() {
+  const strings = useStrings();
   const { standardId, section: sectionParam, versionId } = useParams<{ standardId: string; section?: string; versionId?: string }>();
   const { showToast } = useToast();
 
@@ -236,7 +238,7 @@ export function StandardWorkspacePage() {
   );
 
   if (notFound) {
-    return <p className="text-muted">This compliance standard could not be found, or you don't have access to it.</p>;
+    return <p className="text-muted">This compliance standard could not be found, or you do not have access to it.</p>;
   }
   if (!standard) return <Spinner />;
 
@@ -244,6 +246,7 @@ export function StandardWorkspacePage() {
     <div className="stack">
       <RecordHeader
         recordLabel="Standard"
+        back={{ to: "/standards", label: "Compliance Standards" }}
         title={`${standard.reference} — ${standard.name}`}
         titleAddon={<EntitySwitcher label="Switch standard" currentId={standard.id} loadOptions={loadStandardSwitcherOptions} />}
         badges={standard.is_archived ? <Badge>Archived</Badge> : undefined}
@@ -264,7 +267,7 @@ export function StandardWorkspacePage() {
               value={requirementCount ?? (latestVersion ? "…" : 0)}
               to={latestVersion ? `/standards/${standard.id}/versions/${latestVersion.id}` : `/standards/${standard.id}/versions`}
             />
-            <MetricTile label="Projects" value={projectSummary?.length ?? "…"} to={`/standards/${standard.id}/projects`} />
+            <MetricTile label={strings.filters.projects} value={projectSummary?.length ?? "…"} to={`/standards/${standard.id}/projects`} />
             <MetricTile
               label="Compliant"
               value={projectSummary ? projectSummary.filter((p) => p.overall_compliance_state === "compliant").length : "…"}

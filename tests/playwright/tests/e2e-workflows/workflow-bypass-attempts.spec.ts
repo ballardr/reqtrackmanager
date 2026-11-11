@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
+import { apiHeaders, createDisposableProject, installCleanupHook, loginAs, logout, moveStageToPhase, onCleanup, openRequirementByName, ORG_NAMES, PERSONAS, PROJECT_NAMES, recordActionNames } from "./helpers";
 
 const apiBaseUrl = "http://localhost:8000";
 
@@ -80,11 +80,9 @@ test.describe("attempts to bypass requirement/change-request workflow guarantees
 
     await test.step("PM approves the project's stage, locking all its requirements", async () => {
       const stages: { id: string }[] = await (await request.get(`${api}/projects/${projectId}/stages`, { headers: pmHeaders })).json();
-      for (const status of ["review", "approved"]) {
-        const resp = await request.post(`${api}/projects/${projectId}/stages/${stages[0].id}/transition?new_status=${status}`, {
-          headers: pmHeaders,
-        });
-        expect(resp.ok(), status).toBeTruthy();
+      for (const phase of ["Review", "Approved"]) {
+        const resp = await moveStageToPhase(request, pmHeaders, projectId, stages[0].id, phase);
+        expect(resp.ok(), phase).toBeTruthy();
       }
     });
 

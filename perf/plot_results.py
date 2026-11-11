@@ -268,12 +268,16 @@ def figure_throughput(bundles: list, theme: dict):
     return fig
 
 
-def one_worker_latency(bundle: dict, request: str) -> dict:
-    """Mean latency (ms) of `request` at one simulated user per tier, weighted by request count over the repeats."""
+def one_worker_latency(bundle: dict, request: str | tuple) -> dict:
+    """Mean latency (ms) of `request` at one simulated user per tier, weighted by request count over the repeats.
+
+    `request` may list alternative names for one request, because a bundle recorded before a rename still carries the
+    old one (a bundle holds only one of them)."""
+    names = (request,) if isinstance(request, str) else request
     total: dict = defaultdict(float)
     count: dict = defaultdict(int)
     for r in rows(bundle, "latency.csv"):
-        if r["scenario"] == "browse" and r["request"] == request and r["users"] == "1" and r["mean_ms"]:
+        if r["scenario"] == "browse" and r["request"] in names and r["users"] == "1" and r["mean_ms"]:
             total[r["tier"]] += float(r["mean_ms"]) * int(r["count"])
             count[r["tier"]] += int(r["count"])
     return {t: total[t] / count[t] for t in total if count[t]}
@@ -286,7 +290,7 @@ def figure_scaling(bundles: list, theme: dict):
         raise NotComparable("the one-worker bundles are from different commits")
     requests = (("GET /projects/{id}/requirements (page of 50)", "Page of 50 requirements"),
                 ("GET /projects/{id}/requirements/{id}", "One requirement"),
-                ("GET /projects/{id}/metrics (dashboard)", "Project dashboard"))
+                (("POST /projects/{id}/overview-metrics (dashboard)", "GET /projects/{id}/metrics (dashboard)"), "Project dashboard"))
     fig, panels = plt.subplots(1, 3, figsize=(7.6, 3.4), sharey=True)
     for ax, (request, title) in zip(panels, requests, strict=False):
         for bundle, key in ((linux, "linux"), (pi, "pi")):

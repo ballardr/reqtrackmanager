@@ -24,11 +24,14 @@ import { HelpRedirectPage } from "./pages/HelpRedirectPage";
 import { ReportRunPage } from "./pages/ReportRunPage";
 import { ProjectActionsPage } from "./pages/ProjectActionsPage";
 import { ProjectAdminPage } from "./pages/ProjectAdminPage";
+import { ProjectStagePhasesPage } from "./pages/ProjectStagePhasesPage";
+import { OrgFilesPage } from "./pages/OrgFilesPage";
 import { ProjectFilesPage } from "./pages/ProjectFilesPage";
 import { ProjectHistoryPage } from "./pages/ProjectHistoryPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectOverviewPage } from "./pages/ProjectOverviewPage";
 import { ProjectReviewsDuePage } from "./pages/ProjectReviewsDuePage";
+import { PoliciesPage, PublicPoliciesPage } from "./pages/PoliciesPage";
 import { ReportLayoutDesignerPage } from "./pages/ReportLayoutDesignerPage";
 import { ReportPackPage } from "./pages/ReportPackPage";
 import { SearchPage } from "./pages/SearchPage";
@@ -36,6 +39,8 @@ import { RequirementDetailPage } from "./pages/RequirementDetailPage";
 import { RequirementsPage } from "./pages/RequirementsPage";
 import { ServerManagementPage } from "./pages/ServerManagementPage";
 import { ServerOrganisationsPage } from "./pages/ServerOrganisationsPage";
+import { ConfirmEmailPage } from "./pages/ConfirmEmailPage";
+import { ForcedPasswordChangePage } from "./pages/ForcedPasswordChangePage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SignupPage } from "./pages/SignupPage";
@@ -85,19 +90,26 @@ function ProtectedRoutes() {
       </div>
     );
   }
+  // The Policies page is public: the people a privacy policy concerns most have not signed in yet.
+  if (!user && /^\/policies(\/|$)/.test(location.pathname)) return <PublicPoliciesPage />;
   if (!user) return <Navigate to="/login" replace />;
+  // An administrator-set password is changed before anything else is shown (the server refuses every other request).
+  if (user.must_change_password) return <ForcedPasswordChangePage />;
 
   return (
     <Layout>
       <Routes>
         {buildModuleRoutes(enabledModules, projectId)}
+        <Route path="/policies/:policyId?" element={<PoliciesPage />} />
         <Route path="/projects" element={<ProjectListPage />} />
         <Route path="/favourites" element={<FavouritesPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/report-runs/:runId" element={<ReportRunPage />} />
         <Route path="/orgs" element={<OrgListPage />} />
+        <Route path="/org-files" element={<OrgListPage target="files" />} />
+        <Route path="/orgs/:orgId/files" element={<OrgFilesPage />} />
         <Route path="/orgs/:orgId/admin/templates-reports" element={<OldOrgReportsRedirect />} />
-        <Route path="/orgs/:orgId/admin/:group?" element={<OrgAdminPage />} />
+        <Route path="/orgs/:orgId/admin/:group?/:section?" element={<OrgAdminPage />} />
         <Route path="/orgs/:orgId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/orgs/:orgId/report-packs/:packId" element={<ReportPackPage />} />
         {/* "Organisation Overview" —
@@ -132,7 +144,8 @@ function ProtectedRoutes() {
         <Route path="/projects/:projectId/actions" element={<ProjectActionsPage />} />
         <Route path="/projects/:projectId/actions/:actionId" element={<ActionDetailPage />} />
         <Route path="/projects/:projectId/files" element={<ProjectFilesPage />} />
-        <Route path="/projects/:projectId/admin/:group?" element={<ProjectAdminPage />} />
+        <Route path="/projects/:projectId/admin/:group?/:section?" element={<ProjectAdminPage />} />
+        <Route path="/projects/:projectId/stage-phases" element={<ProjectStagePhasesPage />} />
         <Route path="/projects/:projectId/history" element={<ProjectHistoryPage />} />
         <Route path="/projects/:projectId/report-layouts/:layoutId" element={<ReportLayoutDesignerPage />} />
         <Route path="/projects/:projectId/report-packs/:packId" element={<ReportPackPage />} />
@@ -178,6 +191,7 @@ export function App() {
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/confirm-email" element={<ConfirmEmailPage />} />
       <Route path="/oidc-complete" element={<OidcCompletePage />} />
       <Route path="/*" element={<ProtectedRoutes />} />
     </Routes>

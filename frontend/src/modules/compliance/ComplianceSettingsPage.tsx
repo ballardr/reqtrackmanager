@@ -56,7 +56,7 @@ export function ComplianceSettingsPage() {
     if (!orgId) return;
     api.get<Organization>(`/api/v1/orgs/${orgId}`).then(setOrg);
     reloadActionTypes().catch(() =>
-      setLoadError("The Compliance module isn't enabled for this organisation, or you don't have access to it.")
+      setLoadError("The Compliance module is not enabled for this organisation, or you do not have access to it.")
     );
   }, [orgId]);
 

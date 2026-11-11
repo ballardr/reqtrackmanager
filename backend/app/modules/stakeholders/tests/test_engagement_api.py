@@ -23,7 +23,7 @@ from app.models.audit import AuditEvent
 from app.models.custom_role import CustomRoleDefinition, CustomRolePermission, UserCustomRoleGrant
 from app.models.file import FileAsset
 from app.models.relationship import ArtefactLink
-from app.modules.registry import build_mcp_tool_manifest, get_all_link_type_seeds, get_all_registered_artefact_types, get_module
+from app.modules.registry import build_mcp_tool_manifest, get_all_link_type_seeds, get_all_registered_artefact_types
 from app.modules.stakeholders.models import (
     Engagement,
     EngagementAnonymousParticipant,
@@ -56,6 +56,7 @@ from tests.conftest import (
     create_project,
     create_project_group,
 )
+from tests.db_helpers import must_get, registered_module
 
 TODAY = datetime.now(UTC).date()
 
@@ -582,6 +583,38 @@ def test_outcome_targets_list_the_projects_records_by_type(client, admin_token):
         assert client.get(f"{url}?target_type={bad}", headers=h).status_code == 404
 
 
+def test_outcome_target_types_flag_what_the_caller_may_create(client, admin_token):
+    """The outcome form offers "Create new" only for a type the caller may create: the flag is the server's answer
+    (the type's own create check), so a plain member is not offered a Pain Point when submission is restricted."""
+    org, project, token = _setup(client, admin_token, "Engagement Create Flag Co")
+    pid = project["id"]
+    _create_pain_point(client, token, org["id"], pid)  # enables Context & Strategy for the organisation
+    _viewer_id, viewer = _add_member(client, token, org["id"], pid, "flag-viewer@engagement.example.com")
+    url = _project_base(pid) + "/engagement-outcome-target-types"
+
+    admin_flags = client.get(url, headers=auth_headers(token))
+    assert admin_flags.status_code == 200, admin_flags.text
+    assert [t["type"] for t in admin_flags.json()] == ["pain_point", "stakeholder_need", "open_question"]
+    assert all(t["can_create"] for t in admin_flags.json())
+
+    # Each flag equals whether the type's own create endpoint accepts this person.
+    member_flags = {t["type"]: t["can_create"] for t in client.get(url, headers=auth_headers(viewer)).json()}
+    base = f"/api/v1/projects/{pid}/modules/context_strategy"
+    pain_type = client.get(base + "/pain-point-types", headers=auth_headers(token)).json()[0]["id"]
+    pain = client.post(
+        base + "/pain-points",
+        json={"title": "Not allowed", "description": "d", "priority": "high", "date_identified": "2026-09-01",
+              "pain_point_type_id": pain_type},
+        headers=auth_headers(viewer),
+    )
+    assert member_flags["pain_point"] == (pain.status_code != 403)
+    need = client.post(_project_base(pid) + "/needs", json={"name": "Nope"}, headers=auth_headers(viewer))
+    assert member_flags["stakeholder_need"] == (need.status_code != 403)
+    question = client.post(
+        base + "/open-questions", json={"question": "Why?"},
+        headers=auth_headers(viewer),
+    )
+    assert member_flags["open_question"] == (question.status_code != 403)
 
 
 def test_outcomes_raised_and_answered(client, admin_token):
@@ -639,11 +672,11 @@ def test_rbac_owner_role_fgac_grant_and_view_only_member(client, admin_token):
     for role in ("stakeholder_owner", "persona_owner", "stakeholder_need_owner"):
         _grant_project_role(client, token, pid, wrong_id, role)
     with SessionLocal() as db:
-        role = CustomRoleDefinition(organization_id=uuid.UUID(org["id"]), name="Engagement editors", description="T.", scope="org")
-        db.add(role)
+        custom_role = CustomRoleDefinition(organization_id=uuid.UUID(org["id"]), name="Engagement editors", description="T.", scope="org")
+        db.add(custom_role)
         db.flush()
-        db.add(CustomRolePermission(custom_role_id=role.id, permission=encode_permission("engagement", "manage")))
-        db.add(UserCustomRoleGrant(user_id=uuid.UUID(fgac_id), custom_role_id=role.id, organization_id=uuid.UUID(org["id"])))
+        db.add(CustomRolePermission(custom_role_id=custom_role.id, permission=encode_permission("engagement", "manage")))
+        db.add(UserCustomRoleGrant(user_id=uuid.UUID(fgac_id), custom_role_id=custom_role.id, organization_id=uuid.UUID(org["id"])))
         db.commit()
 
     for member in (viewer, wrong_role):  # reading and commenting need view only; changing needs the role
@@ -729,11 +762,12 @@ def test_files_resolve_to_their_project(client, admin_token):
     direct = client.post(url + "/files", files={"file": ("a.txt", b"a", "text/plain")}, headers=h).json()
     comment = client.post(url + "/comments", json={"body": "c"}, headers=h).json()
     via_comment = client.post(f"{url}/comments/{comment['id']}/files", files={"file": ("b.txt", b"b", "text/plain")}, headers=h).json()
-    definition = get_module(MODULE_KEY)
+    resolve_owner = registered_module(MODULE_KEY).resolve_file_owner_project_id
+    assert resolve_owner is not None
     with SessionLocal() as db:
         for file in (direct, via_comment):
-            assert definition.resolve_file_owner_project_id(db, uuid.UUID(file["id"])) == uuid.UUID(project["id"])
-        assert definition.resolve_file_owner_project_id(db, uuid.uuid4()) is None
+            assert resolve_owner(db, uuid.UUID(file["id"])) == uuid.UUID(project["id"])
+        assert resolve_owner(db, uuid.uuid4()) is None
 
 
 def test_erase_leaves_no_rows_files_links_or_personal_data(client, admin_token):
@@ -768,7 +802,7 @@ def test_erase_leaves_no_rows_files_links_or_personal_data(client, admin_token):
     ).json()
     direct_file = client.post(url + "/files", files={"file": ("jane-email.txt", b"d", "text/plain")}, headers=h).json()
     with SessionLocal() as db:
-        keys = [db.get(FileAsset, uuid.UUID(f["id"])).storage_key for f in (comment_file, direct_file)]
+        keys = [must_get(db, FileAsset, uuid.UUID(f["id"])).storage_key for f in (comment_file, direct_file)]
     for key in keys:
         assert get_storage_backend().read(key)
     touched = {uuid.UUID(eid), uuid.UUID(finding["id"])}
@@ -847,7 +881,7 @@ def test_audit_events_carry_ids_only(client, admin_token):
 
 
 def test_registration():
-    definition = get_module(MODULE_KEY)
+    definition = registered_module(MODULE_KEY)
     assert {"engagement", "research_finding"} <= set(definition.artefact_types)
     assert {"engagement", "research_finding"} <= get_all_registered_artefact_types()
     assert {"engagement", "research_finding"} <= set(definition.artefact_summary_providers)
@@ -860,7 +894,7 @@ def test_registration():
     for forward in ("Has participant", "Covers persona", "Is aimed at", "Raised", "Answered"):
         assert forward in seeds, forward
     assert seeds["Answered"].allowed_target_types == ("open_question",)
-    assert set(seeds["Raised"].allowed_source_types) == {"engagement", "research_finding"}
+    assert set(seeds["Raised"].allowed_source_types or ()) == {"engagement", "research_finding"}
     tools = {t.name for t in build_mcp_tool_manifest()}
     assert {"stakeholders_create_engagement", "stakeholders_list_engagements", "stakeholders_add_engagement_outcome",
             "stakeholders_add_anonymous_participant", "stakeholders_create_research_finding"} <= tools
@@ -881,18 +915,22 @@ def test_summary_providers_label_and_scope_engagements_and_findings(client, admi
     finding = client.post(
         f"{_engagements(project['id'])}/{engagement['id']}/findings", json={"title": "A finding"}, headers=h
     ).json()
-    providers = get_module(MODULE_KEY).artefact_summary_providers
+    providers = registered_module(MODULE_KEY).artefact_summary_providers
     with SessionLocal() as db:
         summary = providers["engagement"].get(db, uuid.UUID(engagement["id"]))
+        assert summary is not None
         assert summary.label == "ENG-001 Summary call" and summary.facets["channel"] == ("workshop", "Workshop")
         found = providers["research_finding"].get(db, uuid.UUID(finding["id"]))
+        assert found is not None
         assert found.label == "FND-001 A finding" and found.facets["engagement"] == (engagement["id"], "Summary call")
         for kind, record in (("engagement", engagement), ("research_finding", finding)):
             provider, record_id = providers[kind], uuid.UUID(record["id"])
-            assert [s.id for s in provider.list_for_project(db, uuid.UUID(project["id"]))] == [record_id]
-            assert provider.list_for_project(db, uuid.UUID(sibling["id"])) == []
-            assert provider.get_many_in_project(db, uuid.UUID(sibling["id"]), [record_id]) == []
-            assert [s.id for s in provider.get_many_in_project(db, uuid.UUID(project["id"]), [record_id])] == [record_id]
+            list_for_project, get_many_in_project = provider.list_for_project, provider.get_many_in_project
+            assert list_for_project is not None and get_many_in_project is not None
+            assert [s.id for s in list_for_project(db, uuid.UUID(project["id"]))] == [record_id]
+            assert list_for_project(db, uuid.UUID(sibling["id"])) == []
+            assert get_many_in_project(db, uuid.UUID(sibling["id"]), [record_id]) == []
+            assert [s.id for s in get_many_in_project(db, uuid.UUID(project["id"]), [record_id])] == [record_id]
         assert providers["engagement"].get(db, uuid.uuid4()) is None
 
 

@@ -18,6 +18,7 @@
  * the shared `BadgeTone` palette (`.scoring-cell--<tone>`, theme.css).
  */
 import { bandForCell, topWeight, type ScoringAxis, type ScoringBand, type ScoringCellRating } from "../api/scoring";
+import { InlineSelect } from "./LabeledSelect";
 
 export interface ScoringMatrixPoint {
   id: string;
@@ -79,11 +80,11 @@ export function ScoringMatrixChart({
                   <>
                     {band && <span className="scoring-matrix__band">{band.label}</span>}
                     {onCellRatingChange && (
-                      <select className="input scoring-matrix__select" aria-label={`Rating for ${yAxis.label} ${y.name}, ${xAxis.label} ${x.name}`}
-                        value={pinned} onChange={(e) => onCellRatingChange(y.id, x.id, e.target.value || null)}>
-                        <option value="">Thresholds</option>
-                        {bands.map((b) => <option key={b.label} value={b.label}>{b.label}</option>)}
-                      </select>
+                      <InlineSelect
+                        className="scoring-matrix__select" ariaLabel={`Rating for ${yAxis.label} ${y.name}, ${xAxis.label} ${x.name}`}
+                        value={pinned} placeholder="Thresholds" onChange={(rating) => onCellRatingChange(y.id, x.id, rating || null)}
+                        options={bands.map((b) => ({ value: b.label, label: b.label }))}
+                      />
                     )}
                     <span className="scoring-matrix__dots">
                       {here.map((p) => {

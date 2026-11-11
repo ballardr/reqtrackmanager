@@ -61,7 +61,7 @@ A disabled or non-entitled module's endpoints return a plain 404 — indistingui
 
 ### Sub-component enablement (finer-grained than a whole module)
 
-A module can declare independently-toggleable pieces (Context & Strategy: one per artefact type). They follow the same rules one level down — org availability (Off is a hard floor), copied into new projects, project opt-in/out. A module that's off for a project turns off all its sub-components. An **org-scoped** artefact (e.g. org-level Strategy records) has no project tier: the org's Off/on is the effective value.
+A module can declare independently-toggleable pieces (Context & Strategy: one per artefact type). They follow the same rules one level down — org availability (Off is a hard floor), copied into new projects, project opt-in/out. A module that's off for a project turns off all its sub-components. An **org-scoped** artefact (e.g. org-level Strategy records) has no project tier: the org's Off/on is the effective value. A sub-component that exists only at organisation level (Product Feedback's request inbox) is not listed in project administration at all.
 
 ### Where to set this
 

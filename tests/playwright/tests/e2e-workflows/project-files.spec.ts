@@ -22,11 +22,11 @@ test.describe("project files", () => {
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
 
     await test.step("the nav rail has a Files link, consistent with the project's other sub-pages (History, Actions, ...)", async () => {
-      await expect(page.getByRole("link", { name: "Files", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Files", exact: true }).and(page.locator('[href*="/projects/"]'))).toBeVisible();
     });
 
     await test.step("the overview's Files tile navigates to the project files page, not the unfiltered requirements list", async () => {
-      const filesTile = page.locator(".grid-metrics").getByRole("link", { name: /Files/ });
+      const filesTile = page.locator(".overview-grid").getByRole("link", { name: /Files/ });
       await filesTile.click();
       await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/files$/);
     });
@@ -56,7 +56,7 @@ test.describe("project files", () => {
     });
 
     await test.step("navigating here directly via the nav rail also works", async () => {
-      await page.getByRole("link", { name: "Files", exact: true }).click();
+      await page.getByRole("link", { name: "Files", exact: true }).and(page.locator('[href*="/projects/"]')).click();
       await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+\/files$/);
       await expect(page.getByRole("cell", { name: "e2e-direct-attachment.txt" })).toBeVisible();
     });

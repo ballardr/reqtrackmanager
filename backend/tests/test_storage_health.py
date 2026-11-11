@@ -2,7 +2,7 @@
 its server-admin endpoint.
 
 Covers: the probe (healthy, write failure, read-back mismatch), the alert rules
-(server admins notified once when storage starts failing and once on recovery,
+(server admins notified once when an outage is confirmed and once on recovery, a dropped probe ignored, the open outage surviving a restart,
 ERROR logged on every failing check, the Prometheus gauge), the local disk
 monitor also notifying admins, and `GET /api/v1/system/storage-health`.
 
@@ -14,6 +14,7 @@ in some upload test later.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, patch
 
@@ -25,6 +26,7 @@ from app.metrics import storage_write_healthy
 from app.models.notification import Notification
 from app.models.user import User
 from app.services import disk_monitor, storage_health
+from app.services.storage_health import StorageHealthState
 from tests.conftest import auth_headers, create_org_user
 
 
@@ -68,6 +70,14 @@ def test_probe_reports_a_write_failure_and_a_read_back_mismatch():
     assert not corrupt.healthy and "different bytes" in corrupt.error
 
 
+async def _check(backend, state, db, *, threshold: int = 1):
+    """One monitor check with the alert threshold and the email channel pinned."""
+    with patch.object(storage_health, "send_email_async", new=AsyncMock()), patch.object(
+        storage_health.settings, "storage_health_failures_before_alert", threshold
+    ), patch.object(storage_health.settings, "deployment_notification_email", None):
+        return await storage_health.check_storage_health_once(backend, state, db)
+
+
 @pytest.mark.asyncio
 async def test_admins_are_notified_once_per_outage_and_once_on_recovery(client, admin_token, caplog):
     org = client.get("/api/v1/orgs", headers=auth_headers(admin_token)).json()[0]
@@ -75,31 +85,97 @@ async def test_admins_are_notified_once_per_outage_and_once_on_recovery(client, 
     backend = _MemoryBackend(fail_with=OSError("No space left on device"))
     db = SessionLocal()
     try:
-        with patch.object(storage_health, "send_email_async", new=AsyncMock()), caplog.at_level(logging.ERROR):
-            unhealthy = await storage_health.check_storage_health_once(backend, False, db)
-            assert unhealthy is True
-            assert storage_write_healthy._value.get() == 0
-            first = _alerts(db)
-            assert len(first) == 1, "only the server admin is told, once"
-            assert first[0].title == "File storage is not accepting writes"
-            assert "No space left on device" in first[0].body and "docker builder prune" in first[0].body
-            admin = db.scalar(select(User).where(User.email == "admin@example.com"))
-            assert first[0].user_id == admin.id
+        with caplog.at_level(logging.ERROR):
+            state = await _check(backend, StorageHealthState(), db)
+        assert state.outage_alerted is True
+        assert storage_write_healthy._value.get() == 0
+        first = _alerts(db)
+        assert len(first) == 1, "only the server admin is told, once"
+        assert first[0].title == "File storage is not accepting writes"
+        assert "No space left on device" in first[0].body and "docker builder prune" in first[0].body
+        admin = db.scalar(select(User).where(User.email == "admin@example.com"))
+        assert first[0].user_id == admin.id
 
-            caplog.clear()
-            unhealthy = await storage_health.check_storage_health_once(backend, unhealthy, db)
-            assert unhealthy is True and len(_alerts(db)) == 1, "no repeat alert while still failing"
-            assert any("not accepting writes" in r.message for r in caplog.records), "still logged at ERROR"
+        caplog.clear()
+        with caplog.at_level(logging.ERROR):
+            state = await _check(backend, state, db)
+        assert state.outage_alerted is True and len(_alerts(db)) == 1, "no repeat alert while still failing"
+        assert any("not accepting writes" in r.message for r in caplog.records), "still logged at ERROR"
 
-            backend.fail_with = None
-            unhealthy = await storage_health.check_storage_health_once(backend, unhealthy, db)
-            assert unhealthy is False and storage_write_healthy._value.get() == 1
-            assert [a.title for a in _alerts(db)].count("File storage recovered") == 1
+        backend.fail_with = None
+        state = await _check(backend, state, db)
+        assert state.outage_alerted is False and storage_write_healthy._value.get() == 1
+        assert [a.title for a in _alerts(db)].count("File storage recovered") == 1
 
-            await storage_health.check_storage_health_once(backend, False, db)
-            assert len(_alerts(db)) == 2, "a healthy check after recovery stays quiet"
+        await _check(backend, state, db)
+        assert len(_alerts(db)) == 2, "a healthy check after recovery stays quiet"
     finally:
         db.close()
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_probe_between_healthy_checks_does_not_alert(client, admin_token):
+    backend = _MemoryBackend(fail_with=OSError("timed out"))
+    db = SessionLocal()
+    try:
+        state = await _check(backend, StorageHealthState(outage_alerted=False), db, threshold=2)
+        assert state.failures == 1 and state.outage_alerted is False
+        backend.fail_with = None
+        state = await _check(backend, state, db, threshold=2)
+        assert state == StorageHealthState(outage_alerted=False, failures=0)
+        backend.fail_with = OSError("timed out")
+        state = await _check(backend, state, db, threshold=2)
+        assert state.failures == 1, "the count restarts after a healthy check"
+        assert _alerts(db) == []
+        state = await _check(backend, state, db, threshold=2)
+        assert state.outage_alerted is True and len(_alerts(db)) == 1, "the second consecutive failure confirms it"
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_a_restart_during_an_outage_neither_repeats_the_alert_nor_misses_the_recovery(client, admin_token):
+    backend = _MemoryBackend(fail_with=OSError("full"))
+    db = SessionLocal()
+    try:
+        await _check(backend, StorageHealthState(), db)
+        assert len(_alerts(db)) == 1
+        # A new process (restart, or another worker elected leader) starts with no memory.
+        state = await _check(backend, StorageHealthState(), db)
+        assert state.outage_alerted is True and len(_alerts(db)) == 1, "the open outage is read from the alerts sent"
+        # And it recovers in the new process: the recovery is not lost.
+        backend.fail_with = None
+        restarted = await _check(backend, StorageHealthState(), db)
+        assert restarted.outage_alerted is False
+        assert [a.title for a in _alerts(db)] == [
+            "File storage is not accepting writes", "File storage recovered",
+        ]
+        # After a recovery, a new process starts clean.
+        again = await _check(backend, StorageHealthState(), db)
+        assert again.outage_alerted is False and len(_alerts(db)) == 2
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_admin_emails_are_sent_outside_the_running_event_loop(client, admin_token):
+    """`send_email` uses `asyncio.run`, which raises inside a running loop; the alert must not call it there."""
+    in_loop: list[bool] = []
+
+    def spy(*_args, **_kwargs) -> None:
+        try:
+            asyncio.get_running_loop()
+            in_loop.append(True)
+        except RuntimeError:
+            in_loop.append(False)
+
+    db = SessionLocal()
+    try:
+        with patch("app.services.notifications.send_email", new=spy):
+            await _check(_MemoryBackend(fail_with=OSError("full")), StorageHealthState(), db)
+    finally:
+        db.close()
+    assert in_loop and not any(in_loop)
 
 
 @pytest.mark.asyncio
@@ -108,8 +184,10 @@ async def test_the_deployment_address_is_emailed_when_configured(client, admin_t
     try:
         with patch.object(storage_health, "send_email_async", new=AsyncMock()) as send, patch.object(
             storage_health.settings, "deployment_notification_email", "ops@example.com"
-        ):
-            await storage_health.check_storage_health_once(_MemoryBackend(fail_with=OSError("boom")), False, db)
+        ), patch.object(storage_health.settings, "storage_health_failures_before_alert", 1):
+            await storage_health.check_storage_health_once(
+                _MemoryBackend(fail_with=OSError("boom")), StorageHealthState(), db,
+            )
         send.assert_awaited_once()
         assert send.await_args.args[0] == "ops@example.com"
     finally:
@@ -157,12 +235,21 @@ async def test_loop_probes_then_waits_for_the_configured_interval():
 
     with patch.object(storage_health.settings, "storage_health_check_enabled", True), patch.object(
         storage_health.settings, "storage_health_check_interval_seconds", 900
-    ), patch.object(storage_health, "check_storage_health_once", new=AsyncMock(return_value=False)) as check, patch.object(
+    ), patch.object(storage_health, "check_storage_health_once", new=AsyncMock(return_value=StorageHealthState())) as check, patch.object(
         storage_health.asyncio, "sleep", new=fake_sleep
     ), pytest.raises(_Stop):
         await storage_health.run_storage_health_loop()
     check.assert_awaited_once()
     assert sleeps == [900]
+
+
+def test_alert_threshold_below_one_is_rejected():
+    from pydantic import ValidationError
+
+    from app.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(storage_health_failures_before_alert=0)
 
 
 def test_interval_below_a_minute_is_rejected():

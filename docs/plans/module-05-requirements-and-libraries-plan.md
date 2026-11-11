@@ -18,12 +18,12 @@ just the overview.
 
 ## Status / Resume Here
 
-0 / 4 phases complete. Phase 0 is next.
+0 / 3 remaining phases complete (Phase 1 moved to Module 7). Phase 0 is next.
 
 | # | Phase | Status |
 |---|-------|--------|
 | 0 | Exploratory: gap analysis against the existing Requirement implementation | [ ] Not started |
-| 1 | Requirement Type ordering/hierarchy semantics | [ ] Not started |
+| 1 | Requirement Type ordering/hierarchy semantics | Moved to [Traceability & Governance](module-07-traceability-and-governance-plan.md) Phase 10 (2026-11-09, **Decided by: User**) |
 | 2 | Organisation Requirement Sets (versioned, reusable) | [ ] Not started |
 | 3 | Project adoption, version comparison, and adoption auditing | [ ] Not started |
 | 4 | Docs website coverage | [ ] Not started — depends on Phases 2–3 shipping a real UI (see note below) |
@@ -115,21 +115,15 @@ different in kind from other modules' Phase 0 (a delta, not a fresh spec).
    computed on demand initially (simpler, no staleness risk) unless
    performance data later says otherwise.
 
-## Phase 1 — Requirement Type ordering/hierarchy semantics
+## Phase 1 — Moved to Module 7
 
-**Goal:** add `RequirementTypeDefinition` (new table, confirmed net-new by
-Phase 0 — no existing enum to migrate) as a project- or org-scoped,
-ordered, enable/disable-able definition per §14/11.1, seeded with Business/
-Stakeholder/Project defaults, plus a nullable `type_id` FK on `Requirement`.
-The configured order controls both the conceptual hierarchy (Business →
-Stakeholder → Project) and default report ordering (§14/11.1's closing
-line) — so ordering isn't cosmetic, it's load-bearing for later
-Traceability-hierarchy configuration (overview §23) and Reporting.
-
-**Why:** without configurable ordering, a project stuck with a fixed
-three-tier hierarchy can't represent a two-tier or four-tier requirement
-structure some organisations actually use — directly contradicts §2.1/2.2's
-"lightweight by default, progressive governance" principle if hard-coded.
+Requirement Types (`RequirementTypeDefinition`, `type_id` on `Requirement`) are built in
+[Traceability & Governance](module-07-traceability-and-governance-plan.md) Phase 10 as its
+`requirement_types` sub-component (**Decided by: User**, 2026-11-09). The configured order
+drives display and report order only; the hierarchy between types is expressed as
+traceability rules in that module, so there is one hierarchy mechanism, not two. This plan
+keeps Requirement Sets, adoption and their docs. Phase 0's gap analysis still confirms
+nothing in Phases 2–3 depended on type ordering carrying hierarchy meaning.
 
 ## Phase 2 — Organisation Requirement Sets (versioned, reusable)
 
@@ -218,7 +212,7 @@ Management gave for its own Phase 6.
 **Note on placement, specific to this plan:** unlike Modules 4, 6, 7, and
 8, this plan does not currently have a separately-tracked "Frontend UI"
 phase — Phases 1–3 above bundle data model, backend, and (implicitly) the
-UI needed to configure Requirement Types, manage Requirement Sets/versions,
+UI needed to manage Requirement Sets/versions,
 and drive project adoption/comparison, without an explicit UI phase of
 their own. That is arguably a gap in this plan relative to the other
 module plans' structure, but correcting it is out of scope for this
@@ -233,10 +227,7 @@ that way.
 **Scope:**
 
 - A new docs-site page (or section, matching whatever grouping the site
-  uses for other project- and org-scoped features) covering: what a
-  Requirement Type is and how its configurable ordering drives both the
-  conceptual Business → Stakeholder → Project hierarchy and default report
-  ordering (§14/11.1); what an organisation Requirement Set is, its
+  uses for other project- and org-scoped features) covering: what an organisation Requirement Set is, its
   versioning model, and why a project always targets an *explicit* version
   rather than "latest" (§15/12.3); the adoption workflow, including the
   Project-Approver sign-off requirement (§16) and how version-to-version
@@ -274,8 +265,7 @@ depends on given this plan's current phase structure.
 
 ## Acceptance criteria (from overview §48, Requirements & Libraries subset)
 
-- Requirement Types are configurable per project.
-- Requirement Types can be ordered.
+- Requirement Types are configurable per project and can be ordered *(delivered by Module 7, Phase 10)*.
 - Organisation Requirement Sets can be created.
 - Requirement Sets are versioned.
 - Projects target an explicit Requirement Set version.

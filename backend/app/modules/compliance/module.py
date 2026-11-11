@@ -148,7 +148,7 @@ from app.modules.compliance.perf_dataset import (
     generate_required_action_assessments,
 )
 from app.modules.compliance.record_attachments import NO_RECORD_ATTACHMENTS, RECORD_ATTACHMENTS
-from app.modules.compliance.record_tables import NOT_IMPORTABLE, RECORD_TABLES
+from app.modules.compliance.record_tables import NOT_CREATABLE_FROM_LINKS, NOT_IMPORTABLE, NOT_PLACEABLE, RECORD_TABLES
 from app.modules.compliance.report_fields import REPORT_FIELDS
 from app.modules.compliance.report_starters import REPORT_STARTER_SECTIONS
 from app.modules.compliance.scaling_probes import SCALING_PROBES
@@ -177,6 +177,7 @@ from app.modules.registry import (
     ModuleProjectBundleHooks,
     ModuleRoleDefinition,
     ModuleScheduledJob,
+    OverviewWidgetType,
     PerfDatasetGenerator,
     PrincipalReference,
 )
@@ -413,6 +414,12 @@ def _import_project_data(
     import_project_data(db, project, data, file_bytes_by_ref, current_user, users, warnings)
 
 
+def _reset_for_template(data: dict[str, Any]) -> None:
+    from app.modules.compliance.export import reset_for_template
+
+    reset_for_template(data)
+
+
 def _run_evidence_expiry_notifications(db: Session) -> None:
     from app.modules.compliance.scheduler import send_evidence_expiry_notifications
 
@@ -479,6 +486,11 @@ _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="
 
 MODULE_DEFINITION = ModuleDefinition(
     key=COMPLIANCE_MODULE_KEY,
+    activity_metadata_types=dict.fromkeys((
+        "project_compliance", "compliance_review", "compliance_standard", "compliance_standard_version",
+        "compliance_standard_default_exclusion", "compliance_requirement_mapping", "compliance_mapping_relationship_type",
+        "compliance_required_action", "compliance_org_settings",
+    ), "structure"),
     name="Compliance",
     description=(
         "Manage compliance standards, requirements, and required actions, and assess project "
@@ -492,6 +504,31 @@ MODULE_DEFINITION = ModuleDefinition(
     get_global_router=get_global_router,
     models_import_path="app.modules.compliance.models",
     migrations_dir="app/modules/compliance/migrations",
+    # One tile per standard assigned to the project (and, where widened, its related projects); the frontend renders it.
+    overview_widgets={
+        "standards_status": OverviewWidgetType(
+            label="Compliance standards",
+            description="One tile for each compliance standard assigned to the project, with its percentage compliant.",
+            width=12, height=2, in_default_layout=True,
+        ),
+    },
+    # The organisation's compliance posture as dashboard widgets (they replace the former separate dashboard page); the
+    # frontend renders them from the module's own organisation endpoints.
+    org_overview_widgets={
+        "summary": OverviewWidgetType(
+            label="Compliance summary",
+            description=(
+                "Standards in use, overall compliance, and how many projects are non-compliant or have outstanding "
+                "actions, evidence or reviews."
+            ),
+            width=12, height=3, in_default_layout=True,
+        ),
+        "attention": OverviewWidgetType(
+            label="Compliance attention",
+            description="The standards with the most outstanding issues, upcoming reviews and recently changed assessments.",
+            width=12, height=5,
+        ),
+    },
     resolve_file_owner_project_id=resolve_file_owner_project_id,
     on_org_created=_seed_org_defaults,
     project_nav_visible=_project_nav_visible,
@@ -508,6 +545,8 @@ MODULE_DEFINITION = ModuleDefinition(
         "compliance_evidence": PerfDatasetGenerator(generate=generate_evidence, order=230),
     },
     not_importable=NOT_IMPORTABLE,
+    not_creatable_from_links=NOT_CREATABLE_FROM_LINKS,
+    not_placeable=NOT_PLACEABLE,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
@@ -535,6 +574,9 @@ MODULE_DEFINITION = ModuleDefinition(
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=_export_project_data,
         import_=_import_project_data,
+        template_configuration_keys=frozenset({"compliance_default_exclusions"}),
+        template_record_keys=frozenset({"compliance_project_compliances", "compliance_evidence", "compliance_requirement_links"}),
+        template_reset=_reset_for_template,
     ),
     frontend_manifest=ModuleFrontendManifest(
         tier="installed",
@@ -838,7 +880,7 @@ MODULE_DEFINITION = ModuleDefinition(
                 {"name": "organization_id", "type": "uuid", "required": True, "in": "path",
                  "description": "The organisation whose compliance settings to update."},
                 {"name": "default_standards_manager_group_id", "type": "uuid", "required": False, "in": "body",
-                 "description": "Org group to fall back to as Standards Manager, or null to unset."},
+                 "description": "Organisation group to fall back to as Standards Manager, or null to unset."},
             ],
         ),
         McpToolDefinition(

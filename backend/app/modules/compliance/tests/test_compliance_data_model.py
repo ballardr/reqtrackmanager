@@ -30,6 +30,7 @@ from app.modules.compliance.models import (
 )
 from app.modules.registry import get_module_registry
 from tests.conftest import build_alembic_config, create_org_user
+from tests.db_helpers import must_get
 
 
 def test_compliance_module_is_registered_with_org_and_project_roles():
@@ -200,28 +201,26 @@ def test_standard_version_requirement_hierarchy_and_required_action_roundtrip(cl
     # model-relationship tests already use.
     db = SessionLocal()
     try:
-        reloaded_standard = db.get(ComplianceStandard, standard_id)
+        reloaded_standard = must_get(db, ComplianceStandard, standard_id)
         assert reloaded_standard.is_archived is False
         assert [v.id for v in reloaded_standard.versions] == [version_id]
 
-        reloaded_version = db.get(ComplianceStandardVersion, version_id)
+        reloaded_version = must_get(db, ComplianceStandardVersion, version_id)
         assert reloaded_version.standard.id == standard_id
         assert reloaded_version.status == ComplianceStandardVersionStatus.DRAFT
 
-        reloaded_parent = db.get(ComplianceRequirement, parent_id)
+        reloaded_parent = must_get(db, ComplianceRequirement, parent_id)
         assert reloaded_parent.parent_requirement_id is None
 
-        reloaded_child = db.get(ComplianceRequirement, child_id)
+        reloaded_child = must_get(db, ComplianceRequirement, child_id)
         assert reloaded_child.parent_requirement_id == parent_id
         assert reloaded_child.standard_version_id == version_id
 
-        reloaded_action = db.get(ComplianceRequiredAction, action_id)
+        reloaded_action = must_get(db, ComplianceRequiredAction, action_id)
         assert reloaded_action.requirement_id == child_id
         assert reloaded_action.is_mandatory is True
 
-        reloaded_action_type = db.get(
-            ComplianceActionTypeDefinition, reloaded_action.action_type_id
-        )
+        reloaded_action_type = must_get(db, ComplianceActionTypeDefinition, reloaded_action.action_type_id)
         assert reloaded_action_type.organization_id == org_uuid
         assert reloaded_action_type.name == "Verification"
     finally:

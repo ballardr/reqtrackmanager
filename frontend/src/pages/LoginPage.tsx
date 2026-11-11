@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { ApiError, api, fileUrl } from "../api/client";
+import { ApiError, api } from "../api/client";
 import type { ProjectListItem, ServerSettings, SignupConfig, User } from "../api/types";
+import { LoginAnnouncements } from "../components/LoginAnnouncements";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
+import { SignedOutPage } from "../components/SignedOutPage";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { TextField } from "../components/FormFields";
@@ -51,11 +53,15 @@ export function LoginPage() {
   // default, same fields `BrandingContext`'s own serverDefault uses.
   const [brandLogoFileId, setBrandLogoFileId] = useState<string | null>(null);
   const [brandTitle, setBrandTitle] = useState(strings.appName);
+  const [brandBandColorHex, setBrandBandColorHex] = useState<string | null>(null);
+  const [brandBandTextColorHex, setBrandBandTextColorHex] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<ServerSettings>("/api/v1/system/branding").then((s) => {
       setLoginBackgroundFileId(s.default_login_background_file_id);
       setBrandLogoFileId(s.default_logo_file_id);
+      setBrandBandColorHex(s.logo_band_color_hex);
+      setBrandBandTextColorHex(s.logo_band_text_color_hex);
       setBrandTitle(s.default_header_title || strings.appName);
     });
     api.get<SignupConfig>("/api/v1/system/signup-config").then((c) => setSignupAvailable(c.signup_mode !== "disabled"));
@@ -94,21 +100,11 @@ export function LoginPage() {
     }
   }
 
-  const backgroundStyle = loginBackgroundFileId
-    ? {
-        backgroundImage: `url(${fileUrl(loginBackgroundFileId)})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        minHeight: "100vh",
-      }
-    : { minHeight: "100vh" };
-
   if (challengeToken) {
     return (
-      <div style={backgroundStyle}>
-      <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+      <SignedOutPage backgroundFileId={loginBackgroundFileId}>
         <form className="card stack" onSubmit={handleVerify2fa}>
-          <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} />
+          <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} bandColorHex={brandBandColorHex} bandTextColorHex={brandBandTextColorHex} />
           <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.twoFactorTitle}</h2>
           <p className="text-muted">{strings.login.twoFactorPrompt}</p>
           <TextField helpNotNeeded
@@ -122,16 +118,15 @@ export function LoginPage() {
             {submitting ? "…" : strings.login.submit}
           </button>
         </form>
-      </div>
-      </div>
+      </SignedOutPage>
     );
   }
 
   return (
-    <div style={backgroundStyle}>
-    <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
+    <SignedOutPage backgroundFileId={loginBackgroundFileId}>
+      <LoginAnnouncements />
       <form className="card stack" onSubmit={handleSubmit}>
-        <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} />
+        <LoginBrandHeader logoFileId={brandLogoFileId} title={brandTitle} bandColorHex={brandBandColorHex} bandTextColorHex={brandBandTextColorHex} />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.login.title}</h2>
         {reauthMessage && <div className="text-muted">{reauthMessage}</div>}
         <TextField helpNotNeeded
@@ -159,7 +154,6 @@ export function LoginPage() {
           </div>
         )}
       </form>
-    </div>
-    </div>
+    </SignedOutPage>
   );
 }

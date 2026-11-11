@@ -116,7 +116,8 @@ def rate_levels(
     """
     level_ids = {LIKELIHOOD_AXIS_KEY: likelihood, CONSEQUENCE_AXIS_KEY: consequence, DETECTABILITY_AXIS_KEY: detectability}
     weights = {
-        axis: ctx.levels_by_id[level_id].weight if level_id in ctx.levels_by_id else None for axis, level_id in level_ids.items()
+        axis: ctx.levels_by_id[level_id].weight if level_id is not None and level_id in ctx.levels_by_id else None
+        for axis, level_id in level_ids.items()
     }
     result = compute_score(ctx.model, weights, ctx.max_weights, ctx.bands, level_ids=level_ids, cell_ratings=ctx.cells)
     if result is None:

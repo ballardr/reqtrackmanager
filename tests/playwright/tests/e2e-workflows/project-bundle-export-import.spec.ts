@@ -39,27 +39,20 @@ test.describe("project bundle export/import", () => {
     await test.step("import the bundle as a new project", async () => {
       const newName = `E2E Imported Bundle (${Date.now()})`;
       await page.goto("/projects");
-      await page.getByRole("button", { name: "New project" }).click();
-      // "New project" opens a Modal (style guide "Pattern: modal dialog for
-      // entity create/rename") — scoped to it rather than "the first
-      // <select> on the page", since the org/role filter rows in the main
-      // page (still visible behind the modal's backdrop) have their own
-      // <select>s too. orgAdminAlphaBeta always belongs to 2 orgs, so the
-      // org picker is always rendered here — but it (and the Visibility
-      // select next to it) both mount asynchronously with orgs.length, so a
-      // one-shot `isVisible()` check can latch onto whichever select
-      // happens to already be in the DOM at that instant rather than
-      // waiting for the org picker specifically. Waiting for its actual
-      // option content (a retrying assertion, unlike an action's one-shot
-      // actionability wait) is robust to that race.
-      const form = page.getByRole("dialog", { name: "New project" });
+      // Import is the second door beside "New project": the chevron of the split button offers it, and it
+      // opens its own dialog (organisation, name, summary, file). The dialog is scoped, since the org/role
+      // filter rows behind the backdrop have their own <select>s, and the organisation picker mounts
+      // asynchronously, so its option content (a retrying assertion) is awaited before choosing.
+      await page.getByRole("button", { name: "More options" }).click();
+      await page.getByRole("button", { name: "Import project" }).click();
+      const form = page.getByRole("dialog", { name: "Import project" });
       await form.getByLabel("Name", { exact: true }).fill(newName);
       const orgSelect = form.locator("select").first();
       await expect(orgSelect).toContainText(ORG_NAMES.beta);
       await orgSelect.selectOption({ label: ORG_NAMES.beta });
       const fileInput = form.locator('input[type="file"][accept*="zip"]');
       await fileInput.setInputFiles(exportedPath);
-      await form.getByRole("button", { name: "Create" }).click();
+      await form.getByRole("button", { name: "Import", exact: true }).click();
 
       await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/, { timeout: 15000 });
       await page.getByRole("link", { name: "Requirements", exact: true }).click();

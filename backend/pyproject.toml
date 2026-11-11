@@ -25,9 +25,8 @@ ignore = [
 known-first-party = ["app"]
 
 [tool.mypy]
-# Static type check of the application package (`mypy` from backend/). Existing findings are
-# recorded in `mypy_baseline.json` and `scripts/check_mypy.py` fails on any finding not in it, so
-# the debt can only shrink (a finding is removed from the baseline as it is fixed).
+# Static type check of the application package (`mypy` from backend/). The package has no findings and
+# `scripts/check_mypy.py` fails on any, so a new one is fixed in the code, never ignored or baselined.
 python_version = "3.12"
 files = ["app"]
 warn_unused_ignores = true

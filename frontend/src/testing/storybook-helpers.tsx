@@ -22,12 +22,23 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import type { ScoringScheme } from "../api/scoring";
 import { AuthContext, type AuthContextValue } from "../context/AuthContextValue";
+import { PolicyAcceptanceContext } from "../context/PolicyAcceptanceValue";
 import { ProjectContext } from "../context/ProjectContextValue";
 import { ThemeProvider } from "../context/ThemeContext";
 import { StatefulAuthProvider } from "./StatefulAuthProvider";
 import type {
   ActionTypeDefinition,
+  Announcement,
   Category,
+  ComponentPhases,
+  PhasePlan,
+  PhasePlans,
+  MemberPolicy,
+  PendingPolicy,
+  Policy,
+  PolicyBody,
+  PolicySummary,
+  ComponentTrack,
   ChangeEntry,
   ChangeRequest,
   Comment,
@@ -38,10 +49,13 @@ import type {
   ProjectLinkTypes,
   Notification,
   Project,
+  PublicPolicy,
   ProposedLink,
   ProjectFile,
   ProjectListItem,
+  UnjoinedProjectListItem,
   ProjectStage,
+  StageWorkflow,
   ProjectStatusDefinition,
   Requirement,
   RequirementAction,
@@ -113,20 +127,20 @@ export function buildScoringScheme(overrides: Partial<ScoringScheme> = {}): Scor
   return {
     key: "pain_point", label: "Pain Point scoring", module_key: "context_strategy",
     axes: [
-      { key: "severity", label: "Severity", description: "How badly the problem affects the persona.", levels: [
+      { key: "severity", label: "Severity", description: "How badly the problem affects the persona.", per_target: true, levels: [
         { id: "sev-1", name: "Cosmetic", description: "Task unaffected.", weight: 1 },
         { id: "sev-2", name: "Minor", description: null, weight: 2 },
         { id: "sev-3", name: "Moderate", description: null, weight: 3 },
         { id: "sev-4", name: "Major", description: null, weight: 4 },
         { id: "sev-5", name: "Blocker", description: "Unusable for this persona; no workaround.", weight: 5 },
       ] },
-      { key: "frequency", label: "Frequency", description: null, levels: [
+      { key: "frequency", label: "Frequency", description: null, per_target: true, levels: [
         { id: "freq-1", name: "Rare", description: null, weight: 1 },
         { id: "freq-2", name: "Occasional", description: null, weight: 2 },
         { id: "freq-3", name: "Frequent", description: null, weight: 3 },
         { id: "freq-4", name: "Constant", description: null, weight: 4 },
       ] },
-      { key: "confidence", label: "Confidence", description: null, levels: [
+      { key: "confidence", label: "Confidence", description: null, per_target: true, levels: [
         { id: "conf-1", name: "Low", description: null, weight: 0.5 },
         { id: "conf-2", name: "High", description: null, weight: 1 },
       ] },
@@ -136,6 +150,7 @@ export function buildScoringScheme(overrides: Partial<ScoringScheme> = {}): Scor
       { key: "sxfxc", label: "Severity × Frequency × Confidence", axis_keys: ["severity", "frequency", "confidence"], bands, bands_source: "system", cell_ratings: [], cell_ratings_source: "none" },
     ],
     system_default_model_key: "sxfxc", default_model_key: "sxfxc", default_model_source: "system",
+    target_label: "persona",
     ...overrides,
   };
 }
@@ -210,14 +225,116 @@ export function buildProjectListItem(overrides: Partial<ProjectListItem> = {}): 
   return {
     ...buildProject(),
     current_stage_name: "Build",
-    current_stage_status: "scoping",
+    current_stage_phase_name: "Scoping",
+    current_stage_phase_kind: "open",
     my_roles: ["project_manager"],
     is_favorite: false,
     organization_name: "Acme Corp",
     requirement_count: 24,
+    is_member: true,
     children: [],
     ...overrides,
   };
+}
+
+/** A project row for a project the caller administers the organisation of but holds no role in. */
+export function buildUnjoinedProjectListItem(overrides: Partial<UnjoinedProjectListItem> = {}): UnjoinedProjectListItem {
+  return {
+    id: nextId("unjoined"), organization_id: "org-1", organization_name: "Acme Corp", name: "Unjoined project",
+    code: "UNJ", is_archived: false, is_template: false, parent_project_id: null, parent_project_name: null,
+    is_member: false, ...overrides,
+  };
+}
+
+/** The organisation's Standard workflow (phase ids `phase-scoping`, `phase-review`, ...), as a new organisation has it. */
+export function buildAnnouncement(overrides: Partial<Announcement> = {}): Announcement {
+  return {
+    id: "announcement-1", organization_id: null, title: "Planned maintenance", body: "The service restarts at night.",
+    severity: "warning", starts_at: null, ends_at: null, show_on_login: true, dismissible: true, status: "active", notified_at: null,
+    notified_count: null, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", ...overrides,
+  };
+}
+
+/** A paragraph-only policy body. */
+export function buildPolicyBody(...paragraphs: string[]): PolicyBody {
+  return { type: "doc", content: paragraphs.map((text) => ({ type: "paragraph", content: [{ type: "text", text }] })) };
+}
+
+export function buildPolicySummary(overrides: Partial<PolicySummary> = {}): PolicySummary {
+  return {
+    id: "policy-1", key: null, title: "Acceptable use policy", state: "draft", effective_from: null, current_version: 0,
+    has_unpublished_changes: true, updated_at: "2026-11-09T01:00:00Z", requires_acknowledgement: false, ...overrides,
+  };
+}
+
+export function buildPolicy(overrides: Partial<Policy> = {}): Policy {
+  return { ...buildPolicySummary(), id: "policy-1", body: buildPolicyBody("Use the service responsibly."), versions: [], ...overrides };
+}
+
+/** A member's view of a published organisation policy. */
+export function buildMemberPolicy(overrides: Partial<MemberPolicy> = {}): MemberPolicy {
+  return {
+    id: "org-policy-1", organization_id: "org-1", organization_name: "Acme", title: "Access policy", effective_from: null, version: 1,
+    published_at: "2026-11-09T01:00:00Z", requires_acknowledgement: false, acknowledged: false,
+    body: buildPolicyBody("Request access through your manager."), ...overrides,
+  };
+}
+
+/** A required policy the signed-in person has not accepted. */
+export function buildPendingPolicy(overrides: Partial<PendingPolicy> = {}): PendingPolicy {
+  return {
+    id: "org-policy-1", organization_id: "org-1", organization_name: "Acme", title: "Confidentiality agreement", effective_from: null,
+    version: 1, published_at: "2026-11-09T01:00:00Z", body: buildPolicyBody("Keep what you learn here to yourself."), ...overrides,
+  };
+}
+
+export function buildPublicPolicy(overrides: Partial<PublicPolicy> = {}): PublicPolicy {
+  return {
+    id: "policy-1", key: null, title: "Privacy policy", effective_from: "2026-12-01", version: 2, published_at: "2026-11-09T01:00:00Z",
+    body: buildPolicyBody("We keep only what the service needs."), ...overrides,
+  };
+}
+
+export function buildStageWorkflow(overrides: Partial<StageWorkflow> = {}): StageWorkflow {
+  return {
+    id: "workflow-1", name: "Standard", scope: "organisation", sort_order: 0, in_use: true,
+    used_by: { stage_names: [], stage_count: 0, track_count: 0, project_count: 0 },
+    phases: [
+      { id: "phase-scoping", name: "Scoping", kind: "open", sort_order: 0 },
+      { id: "phase-review", name: "Review", kind: "review", sort_order: 1 },
+      { id: "phase-approved", name: "Approved", kind: "locked", sort_order: 2 },
+      { id: "phase-completed", name: "Completed", kind: "closed", sort_order: 3 },
+      { id: "phase-archived", name: "Archived", kind: "on_hold", sort_order: 4 },
+    ],
+    ...overrides,
+  };
+}
+
+/** One component's track in one stage, as a component that was never customised shows it (Standard workflow, Scoping). */
+export function buildComponentTrack(overrides: Partial<ComponentTrack> = {}): ComponentTrack {
+  return {
+    component_id: "component-1", stage_id: "stage-1", workflow_id: "workflow-1", workflow_name: "Standard",
+    phase_id: "phase-scoping", phase_name: "Scoping", phase_kind: "open", not_applicable: false, customised: false,
+    owner: null, approved_at: null, completed_at: null, previous_closed: false, can_move: true, ...overrides,
+  };
+}
+
+/** The component-phases state a project returns: the switch and, when on, its tracks. */
+export function buildComponentPhases(overrides: Partial<ComponentPhases> = {}): ComponentPhases {
+  return { mode: "on", own_mode: "on", inherited: false, tracks: [buildComponentTrack()], ...overrides };
+}
+
+/** One phase's schedule row (the stage's own Scoping phase, unscheduled unless overridden). */
+export function buildPhasePlan(overrides: Partial<PhasePlan> = {}): PhasePlan {
+  return {
+    stage_id: "stage-1", component_id: null, phase_id: "phase-scoping", expected_from: null, expected_to: null,
+    started_at: null, completed_at: null, ...overrides,
+  };
+}
+
+/** The phase schedule a project returns: the lead time that applies and its stored plan rows. */
+export function buildPhasePlans(overrides: Partial<PhasePlans> = {}): PhasePlans {
+  return { lead_days: 7, own_lead_days: null, inherited: true, plans: [], ...overrides };
 }
 
 export function buildStage(overrides: Partial<ProjectStage> = {}): ProjectStage {
@@ -225,12 +342,17 @@ export function buildStage(overrides: Partial<ProjectStage> = {}): ProjectStage 
     id: nextId("stage"),
     project_id: "project-1",
     name: "Build",
-    status: "scoping",
+    workflow_id: "workflow-1",
+    workflow_name: "Standard",
+    phase_id: "phase-scoping",
+    phase_name: "Scoping",
+    phase_kind: "open",
     sort_order: 0,
     is_current: true,
     approved_at: null,
     completed_at: null,
     completed_by: null,
+    owner: null,
     review_deadline: null,
     ...overrides,
   };
@@ -463,8 +585,19 @@ export function buildChangeEntry(overrides: Partial<ChangeEntry> = {}): ChangeEn
     actor_id: "user-1",
     actor_display_name: "Alex Morgan",
     detail: null,
+    kind: "edited",
+    record_label: null,
     ...overrides,
   };
+}
+
+/** Wraps a story in `PolicyAcceptanceContext` with the policies the signed-in person must still accept. */
+export function withPolicyAcceptance(pending: PendingPolicy[], reload: () => Promise<void> = async () => undefined): Decorator {
+  return (Story) => (
+    <PolicyAcceptanceContext.Provider value={{ pending, reload }}>
+      <Story />
+    </PolicyAcceptanceContext.Provider>
+  );
 }
 
 /** Wraps a story in `AuthContext` with a fixture (or logged-out) user —

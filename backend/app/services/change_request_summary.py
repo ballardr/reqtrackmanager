@@ -90,7 +90,7 @@ def change_request_titles(db: Session, change_requests: Sequence[ChangeRequest])
             ).all()
         }
     return {
-        cr.id: proposed.get(cr.id) or requirement_names.get(cr.requirement_id) or _FALLBACK_TITLE
+        cr.id: proposed.get(cr.id) or (requirement_names.get(cr.requirement_id) if cr.requirement_id else None) or _FALLBACK_TITLE
         for cr in change_requests
     }
 

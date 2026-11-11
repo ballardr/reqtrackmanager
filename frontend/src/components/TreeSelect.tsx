@@ -18,6 +18,7 @@ import { ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Popover } from "./Popover";
+import { Tooltip } from "./Tooltip";
 import { TreeView } from "./TreeView";
 
 export interface TreeSelectNode {
@@ -31,6 +32,17 @@ export interface TreeSelectNode {
 
 function flatten(nodes: TreeSelectNode[]): TreeSelectNode[] {
   return nodes.flatMap((n) => [n, ...flatten(n.children)]);
+}
+
+/** One checkbox row of the opened tree; a disabled node explains why in a tooltip. */
+function TreeSelectOption({ n, checked, onToggle }: { n: TreeSelectNode; checked: boolean; onToggle: () => void }) {
+  const row = (
+    <label className="checkbox-label" style={{ gap: "var(--space-2)", fontSize: "0.85rem" }}>
+      <input type="checkbox" checked={checked} disabled={n.disabled} aria-label={n.label} onChange={onToggle} />
+      {n.label}
+    </label>
+  );
+  return n.disabled && n.title ? <Tooltip label={n.title} wrap>{row}</Tooltip> : row;
 }
 
 export function TreeSelect({
@@ -82,16 +94,7 @@ export function TreeSelect({
               emptyText="No options."
               nodeLabel={(n) => n.label}
               renderNode={(n) => (
-                <label className="checkbox-label" style={{ gap: "var(--space-2)", fontSize: "0.85rem" }} title={n.disabled ? n.title : undefined}>
-                  <input
-                    type="checkbox"
-                    checked={selected.has(n.id)}
-                    disabled={n.disabled}
-                    aria-label={n.label}
-                    onChange={() => toggle(n.id)}
-                  />
-                  {n.label}
-                </label>
+                <TreeSelectOption n={n} checked={selected.has(n.id)} onToggle={() => toggle(n.id)} />
               )}
             />
           </div>

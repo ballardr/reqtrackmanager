@@ -9,9 +9,13 @@
  * a cycle cannot be built from the UI (the backend rejects one anyway).
  * "One branch per stakeholder" is the `exclusive_children` flag: it makes the
  * group behave like a single-valued column such as Client.
+ *
+ * Creating a group in a project (`projectId` given) also offers the quick-link and tag fields every create form of a
+ * linkable, taggable type has; the caller applies them once the group exists. An organisation group offers neither.
  */
 import { useState } from "react";
 
+import type { CollectedLink } from "../../api/artefactLinks";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
 import { descendantIds, flattenGroupTree, buildGroupTree } from "./groupTree";
@@ -19,10 +23,14 @@ import { TextField } from "../../components/FormFields";
 import type { StakeholderGroup, StakeholderGroupFieldValues } from "./types";
 import { FormActions } from "../../components/FormActions";
 import { FormGrid, FormGridFull } from "../../components/FormGrid";
+import { QuickLinkField } from "../../components/QuickLinkField";
+import { TagField } from "../../components/TagField";
+import { STAKEHOLDERS_HELP } from "./help";
 
 export function StakeholderGroupFormModal({
   initial,
   groups,
+  projectId,
   defaultParentId = null,
   error,
   onCancel,
@@ -31,15 +39,19 @@ export function StakeholderGroupFormModal({
   initial?: StakeholderGroup;
   /** Every group this view can see, flat; the possible parents. */
   groups: StakeholderGroup[];
+  /** The project a new group is created in; with it a create form offers quick links and tags. */
+  projectId?: string;
   defaultParentId?: string | null;
   error?: string | null;
   onCancel: () => void;
-  onSave: (values: StakeholderGroupFieldValues) => void;
+  onSave: (values: StakeholderGroupFieldValues, quickLinks: CollectedLink[], tags: string[]) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [parentId, setParentId] = useState(initial ? (initial.parent_group_id ?? "") : (defaultParentId ?? ""));
   const [exclusive, setExclusive] = useState(initial?.exclusive_children ?? false);
+  const [quickLinks, setQuickLinks] = useState<CollectedLink[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
 
   const blocked = initial ? new Set([initial.id, ...descendantIds(groups, initial.id)]) : new Set<string>();
   const parentOptions = flattenGroupTree(buildGroupTree(groups))
@@ -54,7 +66,7 @@ export function StakeholderGroupFormModal({
             <TextField helpNotNeeded required label="Name" ariaLabel="Group name" value={name} onChange={setName} />
           </FormGridFull>
           <TextField helpNotNeeded label="Description" value={description} onChange={setDescription} />
-          <LabeledSelect helpNotNeeded label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />
+          <LabeledSelect help={STAKEHOLDERS_HELP.stakeholderGroupParent} label="Parent group" value={parentId} onChange={setParentId} options={parentOptions} placeholder="None (top level)" />
           <FormGridFull>
             <label className="checkbox-label" style={{ gap: "var(--space-3)" }}>
               <input type="checkbox" checked={exclusive} onChange={(e) => setExclusive(e.target.checked)} aria-label="One branch per stakeholder" />
@@ -67,12 +79,20 @@ export function StakeholderGroupFormModal({
               </span>
             </label>
           </FormGridFull>
+          {!initial && projectId && (
+            <FormGridFull>
+              <div className="stack">
+                <QuickLinkField projectId={projectId} artefactType="stakeholder_group" value={quickLinks} onChange={setQuickLinks} />
+                <TagField projectId={projectId} artefactType="stakeholder_group" value={tags} onChange={setTags} />
+              </div>
+            </FormGridFull>
+          )}
         </FormGrid>
         <FormActions
           error={error}
           onCancel={onCancel}
           onSave={() =>
-            onSave({ name: name.trim(), description, parent_group_id: parentId || null, exclusive_children: exclusive })}
+            onSave({ name: name.trim(), description, parent_group_id: parentId || null, exclusive_children: exclusive }, quickLinks, tags)}
         saveDisabled={name.trim() === ""}
         />
       </div>

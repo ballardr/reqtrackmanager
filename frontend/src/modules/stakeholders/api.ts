@@ -20,6 +20,7 @@ import type { FileAsset, PrincipalRef } from "../../api/types";
 import type { HiddenDefinition } from "../../components/RestoreOrgDefaultsButton";
 import type {
   AnonymousParticipant,
+  AnonymousParticipantDraft,
   CadenceHint,
   Engagement,
   EngagementAudience,
@@ -30,9 +31,11 @@ import type {
   EngagementOutcome,
   EngagementParticipant,
   EngagementPersona,
+  EngagementPersonaReached,
   EngagementPrompt,
   OutcomeKind,
   OutcomeTarget,
+  OutcomeTargetTypeAccess,
   OutcomeTargetType,
   ResearchFinding,
   StakeholderEngagement,
@@ -355,6 +358,7 @@ export type EngagementCreateValues = EngagementFieldValues & {
   stakeholder_ids?: string[];
   persona_ids?: string[];
   group_ids?: string[];
+  anonymous_participants?: AnonymousParticipantDraft[];
 };
 
 /** Partial update payload — only keys present are changed; `null` clears `retain_until`, and a `facilitators`
@@ -391,7 +395,7 @@ export const projectEngagementApi = {
   list: (projectId: string, filters: EngagementListFilters = {}) => {
     const params = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
-      if (key === "tags" || key === "tag_mode" || key === "project_scope") continue;
+      if (key === "tags" || key === "tag_mode" || key === "component_ids" || key === "category_ids" || key === "project_scope") continue;
       if (value !== undefined && value !== "") params.set(key, String(value));
     }
     appendTagParams(params, filters);
@@ -416,6 +420,9 @@ export const projectEngagementApi = {
   removeParticipant: (projectId: string, engagementId: string, stakeholderId: string) =>
     api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/participants/${stakeholderId}`),
 
+  /** Every Persona reached: recorded as covered, or represented by a Stakeholder or anonymous participant. */
+  listPersonasReached: (projectId: string, engagementId: string) =>
+    api.get<EngagementPersonaReached[]>(`${projectBase(projectId)}/engagements/${engagementId}/personas-reached`),
   listPersonas: (projectId: string, engagementId: string) =>
     api.get<EngagementPersona[]>(`${projectBase(projectId)}/engagements/${engagementId}/personas`),
   addPersona: (projectId: string, engagementId: string, personaId: string) =>
@@ -433,6 +440,9 @@ export const projectEngagementApi = {
     api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/audiences/${groupId}`),
 
   outcomes: buildOutcomeCalls("engagements"),
+  /** The record types an outcome can point at, each with the server's answer to whether the caller may create one. */
+  listOutcomeTargetTypes: (projectId: string) =>
+    api.get<OutcomeTargetTypeAccess[]>(`${projectBase(projectId)}/engagement-outcome-target-types`),
   /** The project's Pain Points / Needs / Open Questions an outcome can point at. */
   listOutcomeTargets: (projectId: string, targetType: OutcomeTargetType) =>
     api.get<OutcomeTarget[]>(`${projectBase(projectId)}/engagement-outcome-targets?target_type=${targetType}`),
@@ -475,6 +485,9 @@ export const projectResearchApi = {
     api.get<AnonymousParticipant[]>(`${projectBase(projectId)}/engagements/${engagementId}/anonymous-participants`),
   addAnonymousParticipant: (projectId: string, engagementId: string, values: { label: string; persona_id?: string | null }) =>
     api.post<AnonymousParticipant>(`${projectBase(projectId)}/engagements/${engagementId}/anonymous-participants`, values),
+  /** `persona_id: null` clears the Persona. */
+  updateAnonymousParticipant: (projectId: string, engagementId: string, participantId: string, values: { label?: string; persona_id?: string | null }) =>
+    api.patch<AnonymousParticipant>(`${projectBase(projectId)}/engagements/${engagementId}/anonymous-participants/${participantId}`, values),
   deleteAnonymousParticipant: (projectId: string, engagementId: string, participantId: string) =>
     api.delete<void>(`${projectBase(projectId)}/engagements/${engagementId}/anonymous-participants/${participantId}`),
 

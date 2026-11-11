@@ -13,7 +13,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import HTMLResponse
-from sqlalchemy import or_, select
+from sqlalchemy import false, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -27,6 +27,7 @@ from app.security import decode_email_unsubscribe_token
 from app.services.audit import log_event
 from app.services.email_branding import resolve_email_branding
 from app.services.email_templates import render_page
+from app.services.rbac import restrict_to_session_scope
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 settings = get_settings()
@@ -65,6 +66,14 @@ def list_notifications(
     if search:
         needle = f"%{search.lower()}%"
         query = query.where(or_(Notification.title.ilike(needle), Notification.body.ilike(needle)))
+    allowed_orgs, allowed_projects = db.info.get("pat_allowed_org_ids"), db.info.get("pat_allowed_project_ids")
+    if allowed_orgs is not None or allowed_projects is not None or "module_frame_project_id" in db.info:
+        # A scoped credential sees only what concerns a project it may reach, never the account-level notices.
+        reachable = restrict_to_session_scope(
+            db,
+            {p for p in db.scalars(select(Notification.project_id).where(Notification.user_id == current_user.id).distinct()) if p},
+        )
+        query = query.where(Notification.project_id.in_(reachable) if reachable else false())
     query = query.order_by(Notification.created_at.desc())
 
     if limit is None:
@@ -90,7 +99,7 @@ def mark_read(notification_id: UUID, current_user: User = Depends(get_current_us
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT)
 def mark_all_read(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     db.execute(
-        Notification.__table__.update()
+        update(Notification)
         .where(Notification.user_id == current_user.id, Notification.read_at.is_(None))
         .values(read_at=datetime.now(UTC))
     )

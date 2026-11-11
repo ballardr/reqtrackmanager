@@ -347,3 +347,68 @@ def test_parse_simple_eq_filter_is_not_vulnerable_to_polynomial_redos():
             pass
         elapsed = time.monotonic() - start
         assert elapsed < 1.0, f"took {elapsed:.2f}s on a {len(attack)}-char adversarial filter — possible ReDoS regression"
+
+
+def _provision(client, token, email="scim.strict@example.com"):
+    resp = client.post("/scim/v2/Users", json={"userName": email, "displayName": "Strict"}, headers=auth_headers(token))
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+def test_the_string_false_deactivates_and_unreadable_values_are_refused(client, admin_token, org_id):
+    token = _generate_scim_token(client, admin_token, org_id)
+    user_id = _provision(client, token)
+
+    resp = client.patch(
+        f"/scim/v2/Users/{user_id}", json={"Operations": [{"op": "replace", "path": "active", "value": "False"}]},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 200 and resp.json()["active"] is False
+
+    for bad in ("maybe", 0, None, [], {"x": 1}):
+        refused = client.patch(
+            f"/scim/v2/Users/{user_id}", json={"Operations": [{"op": "replace", "path": "active", "value": bad}]},
+            headers=auth_headers(token),
+        )
+        assert refused.status_code == 400, bad
+    assert client.put(f"/scim/v2/Users/{user_id}", json={"active": "yes"}, headers=auth_headers(token)).status_code == 400
+
+
+def test_malformed_scim_bodies_are_bad_requests_not_server_errors(client, admin_token, org_id):
+    token = _generate_scim_token(client, admin_token, org_id)
+    user_id = _provision(client, token)
+    h = auth_headers(token)
+    assert client.patch(f"/scim/v2/Users/{user_id}", json={"Operations": "replace"}, headers=h).status_code == 400
+    assert client.patch(f"/scim/v2/Users/{user_id}", json={"Operations": ["x"]}, headers=h).status_code == 400
+    assert client.post("/scim/v2/Groups", json={"displayName": "g" * 300}, headers=h).status_code == 400
+    assert client.post("/scim/v2/Groups", json={"displayName": 5}, headers=h).status_code == 400
+    assert client.post("/scim/v2/Groups", json={"displayName": "ok", "members": "x"}, headers=h).status_code == 400
+    assert client.post("/scim/v2/Users", json={"userName": ["a"]}, headers=h).status_code == 400
+    group = client.post("/scim/v2/Groups", json={"displayName": "Team"}, headers=h).json()["id"]
+    add_bad = {"Operations": [{"op": "add", "path": "members", "value": "x"}]}
+    assert client.patch(f"/scim/v2/Groups/{group}", json=add_bad, headers=h).status_code == 200
+    assert client.patch(f"/scim/v2/Groups/{group}", json={"Operations": [{"op": 5, "path": 5}]}, headers=h).status_code == 200
+
+
+def test_users_and_groups_are_paged_in_the_query(client, admin_token, org_id):
+    token = _generate_scim_token(client, admin_token, org_id)
+    for i in range(3):
+        _provision(client, token, f"paged{i}@example.com")
+    page = client.get("/scim/v2/Users?startIndex=2&count=1", headers=auth_headers(token)).json()
+    assert len(page["Resources"]) == 1 and page["totalResults"] >= 3 and page["startIndex"] == 2
+
+
+def test_a_platform_administrator_or_deactivated_account_cannot_be_provisioned(client, admin_token, org_id):
+    token = _generate_scim_token(client, admin_token, org_id)
+    other, _ = create_org_admin_in(client, admin_token, "Scim Other Org")
+    db = SessionLocal()
+    try:
+        from app.models.user import User
+
+        db.add(User(email="deactivated.scim@example.com", display_name="D", auth_backend="native", is_active=False))
+        db.commit()
+    finally:
+        db.close()
+    h = auth_headers(token)
+    assert client.post("/scim/v2/Users", json={"userName": "admin@example.com"}, headers=h).status_code == 409
+    assert client.post("/scim/v2/Users", json={"userName": "deactivated.scim@example.com"}, headers=h).status_code == 409

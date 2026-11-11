@@ -15,7 +15,10 @@ from tests.conftest import auth_headers, create_org_admin_in, create_org_user, c
 
 
 def _put_policy(client, token, org_id, **overrides):
-    body = {"kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "enforce_code_everywhere": False}
+    body = {
+        "kind": "alphanumeric", "min_length": 2, "max_length": 6, "assignment": "auto", "locked": False,
+        "enforce_code_everywhere": False,
+    }
     body.update(overrides)
     return client.put(f"/api/v1/orgs/{org_id}/code-policy", json=body, headers=auth_headers(token))
 
@@ -223,7 +226,9 @@ def test_policy_and_enforce_flag_are_readable_by_members(client, admin_token, ad
     member_token = login(client, "codes_reader@example.com", "Password123!")
     fetched = client.get(f"/api/v1/orgs/{org['id']}", headers=auth_headers(member_token)).json()
     assert fetched["code"] == org["code"]
-    assert fetched["project_code_policy"] == {"kind": "alphanumeric", "min_length": 2, "max_length": 8, "assignment": "auto"}
+    assert fetched["project_code_policy"] == {
+        "kind": "alphanumeric", "min_length": 2, "max_length": 8, "assignment": "auto", "locked": False,
+    }
     assert fetched["enforce_code_everywhere"] is True
 
 
@@ -234,6 +239,93 @@ def test_policy_change_is_audited(client, admin_in_new_org):
         events = db.scalars(select(AuditEvent).where(AuditEvent.action == "code_policy_updated")).all()
     assert len(events) == 1
     assert events[0].detail["assignment"] == "manual"
+
+
+# --- Lock after creation --------------------------------------------------------
+
+
+def _project_manager_in(client, admin_token, org, admin_token_org, project_id, email):
+    """A plain organisation member who is a manager of `project_id`; returns their token."""
+    user_id = create_org_user(client, admin_token, org["id"], email)
+    resp = client.post(
+        f"/api/v1/projects/{project_id}/roles", json={"user_id": user_id, "role": "project_manager"},
+        headers=auth_headers(admin_token_org),
+    )
+    assert resp.status_code in (200, 201, 204), resp.text
+    return login(client, email, "Password123!")
+
+
+def _patch_code(client, token, project_id, code):
+    return client.patch(f"/api/v1/projects/{project_id}", json={"code": code}, headers=auth_headers(token))
+
+
+def test_locked_codes_refuse_a_project_manager_but_not_an_organisation_administrator(client, admin_token, admin_in_new_org):
+    org, token = admin_in_new_org
+    project = create_project(client, token, org["id"], "Locked Project")
+    _put_policy(client, token, org["id"], assignment="manual", locked=True)
+    manager_token = _project_manager_in(client, admin_token, org, token, project["id"], "code_lock_manager@example.com")
+
+    refused = _patch_code(client, manager_token, project["id"], "NEWC")
+    assert refused.status_code == 403
+    assert "organisation administrator" in refused.json()["detail"]
+    # An unchanged code is not a change, so saving the rest of the settings still works for the manager.
+    assert _patch_code(client, manager_token, project["id"], project["code"]).status_code == 200
+
+    changed = _patch_code(client, token, project["id"], "NEWC")
+    assert changed.status_code == 200
+    assert changed.json()["code"] == "NEWC"
+    with SessionLocal() as db:
+        events = db.scalars(select(AuditEvent).where(AuditEvent.action == "code_changed")).all()
+    assert [e.detail for e in events] == [{"from": project["code"], "to": "NEWC"}]
+
+
+def test_lock_off_lets_a_project_manager_change_the_code(client, admin_token, admin_in_new_org):
+    org, token = admin_in_new_org
+    project = create_project(client, token, org["id"], "Unlocked Project")
+    _put_policy(client, token, org["id"], assignment="manual", locked=False)
+    manager_token = _project_manager_in(client, admin_token, org, token, project["id"], "code_unlock_manager@example.com")
+    assert _patch_code(client, manager_token, project["id"], "FREE").json()["code"] == "FREE"
+
+
+def test_lock_does_not_block_creating_a_project_with_a_code(client, admin_in_new_org):
+    org, token = admin_in_new_org
+    _put_policy(client, token, org["id"], assignment="manual", locked=True)
+    resp = client.post(
+        "/api/v1/projects", json={"organization_id": org["id"], "name": "Created", "summary": "", "code": "MADE"},
+        headers=auth_headers(token),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["code"] == "MADE"
+
+
+def test_project_reports_whether_its_code_is_locked_for_the_caller(client, admin_token, admin_in_new_org):
+    org, token = admin_in_new_org
+    project = create_project(client, token, org["id"], "Flagged Project")
+    manager_token = _project_manager_in(client, admin_token, org, token, project["id"], "code_flag_manager@example.com")
+    read = lambda t: client.get(f"/api/v1/projects/{project['id']}", headers=auth_headers(t)).json()["code_change_locked"]  # noqa: E731
+
+    _put_policy(client, token, org["id"], assignment="manual", locked=True)
+    assert read(manager_token) is True
+    assert read(token) is False  # the organisation administrator
+
+    _put_policy(client, token, org["id"], assignment="manual", locked=False)
+    assert read(manager_token) is False
+
+    # Under automatic assignment nobody can change a code, so the lock reads as not applying.
+    _put_policy(client, token, org["id"], assignment="auto", locked=True)
+    assert read(manager_token) is False
+
+
+def test_locking_is_an_organisation_administrator_action_and_is_audited(client, admin_token, admin_in_new_org):
+    org, token = admin_in_new_org
+    create_org_user(client, admin_token, org["id"], "code_lock_member@example.com")
+    member_token = login(client, "code_lock_member@example.com", "Password123!")
+    assert _put_policy(client, member_token, org["id"], locked=True).status_code == 403
+
+    assert _put_policy(client, token, org["id"], assignment="manual", locked=True).status_code == 200
+    with SessionLocal() as db:
+        events = db.scalars(select(AuditEvent).where(AuditEvent.action == "code_policy_updated")).all()
+    assert [e.detail["locked"] for e in events] == [True]
 
 
 # --- Qualified lookup ----------------------------------------------------------

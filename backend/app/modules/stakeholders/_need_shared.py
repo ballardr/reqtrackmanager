@@ -98,7 +98,7 @@ def need_to_out(
     db: Session, need: StakeholderNeed, version: StakeholderNeedVersion, *, labels: Labels | None = None
 ) -> NeedOut:
     """Merges a need with its current version (`labels` is a pre-resolved batch for list endpoints)."""
-    return NeedOut(
+    return NeedOut.model_validate(dict(
         id=need.id, project_id=need.project_id, unique_code=need.unique_code, creator_id=need.creator_id,
         is_archived=need.is_archived,
         archived_at=need.archived_at, archived_by=need.archived_by, name=version.name,
@@ -108,7 +108,7 @@ def need_to_out(
             labels if labels is not None else resolve_labels(db, [version], NEED_PRINCIPAL_FIELDS),
             version, NEED_PRINCIPAL_FIELDS,
         ),
-    )
+    ))
 
 
 def needs_to_out(db: Session, needs: Sequence[StakeholderNeed]) -> list[NeedOut]:
@@ -218,10 +218,10 @@ def transition_need_endpoint(
 
 def holder_to_out(db: Session, link, kind: str, record: Stakeholder | Persona) -> NeedHolderOut:
     """API shape of a "has need" link seen from the need."""
-    return NeedHolderOut(
+    return NeedHolderOut.model_validate(dict(
         link_id=link.id, kind=kind, id=record.id, name=holder_name(db, kind, record), scope=record.scope.value,
         unique_code=record.unique_code, organization_id=record.organization_id,
-    )
+    ))
 
 
 def held_need_to_out(db: Session, link, need: StakeholderNeed) -> HeldNeedOut:

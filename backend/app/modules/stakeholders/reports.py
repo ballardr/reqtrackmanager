@@ -92,7 +92,7 @@ from app.modules.stakeholders.models import (
     StakeholderNeedVersion,
     StakeholderVersion,
 )
-from app.modules.stakeholders.relationships import get_kind
+from app.modules.stakeholders.relationships import require_kind
 from app.modules.stakeholders.scoring import STAKEHOLDER_SCORING_SCHEME_KEY
 from app.modules.stakeholders.service import (
     GIVES_RISE_TO_FORWARD,
@@ -115,7 +115,7 @@ from app.modules.stakeholders.service import (
     suggest_cadence,
 )
 from app.services.labels import REQUIREMENT_STATUS_TONE
-from app.services.principals import principal_labels, principal_ref, principal_text
+from app.services.principals import label_of, principal_labels, principal_ref, principal_text
 from app.services.report_framework import (
     ReportContext,
     ReportMetric,
@@ -332,7 +332,7 @@ def _load_stakeholder_rows(db: Session, req: ReportContext, projects: list[Proje
             )
             stakeholder_refs = refs.get(stakeholder.id, [])
             row.groups = ", ".join(r.name for r in stakeholder_refs)
-            if has_root:
+            if has_root and group_by is not None:
                 row.branch = ", ".join(grp.branch_names(stakeholder_refs, universe, group_by))
                 row.branch_key = grp.branch_sort_key(stakeholder_refs, universe, group_by)
             rows.append(row)
@@ -342,7 +342,7 @@ def _load_stakeholder_rows(db: Session, req: ReportContext, projects: list[Proje
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "group_by must be a top-level stakeholder group.")
     owners = principal_labels(db, [principal_ref(r.version.owner_type, r.version.owner_id) for r in rows])
     for row in rows:
-        row.owner = principal_text(owners.get((row.version.owner_type, row.version.owner_id))) if row.version.owner_id else ""
+        row.owner = principal_text(label_of(owners, row.version.owner_type, row.version.owner_id))
     rows.sort(key=lambda r: (r.branch_key if group_by else (0, ""), r.project.name.lower(), r.version.name.lower()))
     return rows
 
@@ -528,7 +528,7 @@ def _load_persona_rows(
             findings_by_engagement.update(dict(db.execute(
                 select(ResearchFinding.engagement_id, func.count()).where(ResearchFinding.engagement_id.in_(list(dates)))
                 .group_by(ResearchFinding.engagement_id)
-            ).all()))
+            ).tuples().all()))
         for persona_id, row in by_id.items():
             row.stakeholders.sort(key=str.lower)
             row.engagement_ids = counted[persona_id]
@@ -537,7 +537,7 @@ def _load_persona_rows(
         rows.extend(by_id.values())
     owners = principal_labels(db, [principal_ref(r.version.owner_type, r.version.owner_id) for r in rows])
     for row in rows:
-        row.owner = principal_text(owners.get((row.version.owner_type, row.version.owner_id))) if row.version.owner_id else ""
+        row.owner = principal_text(label_of(owners, row.version.owner_type, row.version.owner_id))
     rows.sort(key=lambda r: (r.project.name.lower(), r.version.name.lower()))
     return rows
 
@@ -634,7 +634,7 @@ def collect_need_coverage(db: Session, req: ReportContext) -> ReportResult:
     gives = link_type_id_if_exists(db, org_id, GIVES_RISE_TO_FORWARD)
     has_need = link_type_id_if_exists(db, org_id, HAS_NEED_FORWARD)
     origin_types = [
-        link_type_id_if_exists(db, org_id, get_kind(key).forward) for key in ("provides_requirement", "affected_by_requirement")
+        link_type_id_if_exists(db, org_id, require_kind(key).forward) for key in ("provides_requirement", "affected_by_requirement")
     ]
     need_total = req_total = 0
     need_rows: list[list[str]] = []
@@ -760,11 +760,11 @@ def collect_engagement_staleness(db: Session, req: ReportContext) -> ReportResul
             excluded += 1
             continue
         tracked += 1
-        when = last.get((r.project.id, r.stakeholder.id))
-        if when is None:
+        last_engaged = last.get((r.project.id, r.stakeholder.id))
+        if last_engaged is None:
             overdue.append((r, None, None))
-        elif (req.today - when).days > interval:
-            overdue.append((r, when, (req.today - when).days - interval))
+        elif (req.today - last_engaged).days > interval:
+            overdue.append((r, last_engaged, (req.today - last_engaged).days - interval))
     overdue.sort(key=lambda t: (
         t[0].branch_key if by_branch else (0, ""), -t[0].influence_weight, -(t[2] if t[2] is not None else 10**6),
         t[0].version.name.lower(),

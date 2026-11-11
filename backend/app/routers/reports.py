@@ -30,9 +30,11 @@ from app.models.requirement import Requirement, RequirementVersion
 from app.models.user import User
 from app.schemas.report import ReportRequest
 from app.services import tags as tag_service
+from app.services.audit import log_event
 from app.services.codes import display_code
 from app.services.downloads import file_response, filename_safe
 from app.services.files import read_file
+from app.services.lookups import get_or_404, project_or_404
 from app.services.rbac import require_project_view
 from app.services.report_document import resolve_branding, resolve_report_images
 from app.services.report_file_names import org_default_stem
@@ -55,8 +57,8 @@ def _collect_rows(db: Session, project_id: UUID, payload: ReportRequest) -> list
     The ID is shown as the project's own report rule says (bare, or qualified by the project code when the
     organisation enforces it); the viewer's preference is not applied, so a saved report reads the same for everyone.
     """
-    project = db.get(Project, project_id)
-    enforced = db.get(Organization, project.organization_id).enforce_code_everywhere
+    project = project_or_404(db, project_id)
+    enforced = get_or_404(db, Organization, project.organization_id, "Organisation").enforce_code_everywhere
     components = {c.id: c for c in db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project_id)).all()}
     categories = {c.id: c for c in db.scalars(select(ProjectCategory).where(ProjectCategory.project_id == project_id)).all()}
     query = select(Requirement).where(Requirement.project_id == project_id)
@@ -135,6 +137,11 @@ def generate_report(
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found.")
     rows = _collect_rows(db, project_id, payload)
+    log_event(
+        db, entity_type="project", entity_id=project_id, action="requirements_report_generated", actor_id=current_user.id,
+        organization_id=project.organization_id, project_id=project_id, detail={"format": payload.format, "rows": len(rows)},
+    )
+    db.commit()
 
     org = db.get(Organization, project.organization_id)
     stem = org_default_stem(

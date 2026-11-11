@@ -52,7 +52,8 @@ QUEUE_SECONDS = 10
 #: Wall-clock seconds each tool may run.
 CONVERT_TIMEOUT_SECONDS = 30
 #: Limits applied to each tool process: address space, CPU seconds and the size of any file it writes.
-MAX_MEMORY_BYTES = 2 * 1024**3
+# Two conversions at once plus the 512 MB scratch space must fit the container's 2560 MB limit.
+MAX_MEMORY_BYTES = 900 * 1024**2
 MAX_CPU_SECONDS = 30
 MAX_OUTPUT_BYTES = 64 * 1024**2
 #: Largest SVG returned, in bytes.
@@ -266,16 +267,18 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self._error(413, "The file is too large.")
             return
-        data = self.rfile.read(length)
-        check, convert, wrong_type = route
-        if not check(data):
-            self._error(422, wrong_type)
-            return
+        # The slot is taken before the body is read, so waiting requests hold no upload in memory (up to 64 MiB each).
         if not _slots.acquire(timeout=QUEUE_SECONDS):
+            self.close_connection = True
             self._error(503, "The converter is busy. Try again in a moment.")
             return
         started = time.monotonic()
         try:
+            data = self.rfile.read(length)
+            check, convert, wrong_type = route
+            if not check(data):
+                self._error(422, wrong_type)
+                return
             svg = convert(data)
         except ToolMissingError as exc:
             self._error(503, str(exc))

@@ -30,7 +30,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -54,8 +55,11 @@ import { TagFilterField } from "../../components/TagFilterField";
 import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../../hooks/useCommitTags";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function ProjectOpenQuestionsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -83,10 +87,10 @@ export function ProjectOpenQuestionsPage() {
   async function reloadOpenQuestions() {
     if (!projectId) return;
     try {
-      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setOpenQuestions(await projectOpenQuestionApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 
@@ -155,22 +159,20 @@ export function ProjectOpenQuestionsPage() {
             sectionKey="context_strategy.open_questions.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Open Questions…" searchAriaLabel="Search Open Questions"
           >
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as OpenQuestionStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(OPEN_QUESTION_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Priority">
-              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as OpenQuestionPriority | "")}>
-                <option value="">All priorities</option>
-                {Object.entries(OPEN_QUESTION_PRIORITY_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(OPEN_QUESTION_STATUS_LABEL)}
+            />
+            <FilterSelect
+              label={strings.filters.priority}
+              value={priorityFilter}
+              onChange={setPriorityFilter}
+              allLabel="All priorities"
+              options={labelOptions(OPEN_QUESTION_PRIORITY_LABEL)}
+            />
             <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Overdue only" checked={overdueOnly} onChange={setOverdueOnly} />
             <FilterCheckbox label="Unowned only" checked={unownedOnly} onChange={setUnownedOnly} />
@@ -185,6 +187,7 @@ export function ProjectOpenQuestionsPage() {
           columns={columns}
           rows={filtered}
           rowKey={(q) => q.id}
+          placements={{ projectId, artefactType: "open_question", rowId: (q) => q.id }}
           onRowClick={(q) => navigate(`/projects/${rowProjectId(q, projectId)}/modules/context_strategy/open-questions/${q.id}`)}
           emptyState={
             <p className="text-muted">

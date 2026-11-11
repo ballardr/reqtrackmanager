@@ -13,8 +13,8 @@ rather than those core files importing this module.
 Design decisions (all Decided by: Agent):
 - A request's scoring levels (one per axis) travel by *axis and name* and are matched to the target organisation's
   `enhancement_request` levels; one the target lacks is left unset with a warning, so the request is "not
-  scored" on that axis rather than silently re-scored. The score is derived and never exported; scoring
-  configuration (levels, bands) is not part of a bundle.
+  scored" on that axis rather than silently re-scored. The score is derived and never exported; a project's
+  own scoring configuration travels in the core project bundle (`services.scoring_config`); the organisation's levels do not.
 - A request travels as its *current* content and status only. Version history, comments and comment
   attachments are not carried: a bundle is a migration artefact, and the imported request starts at version 1
   attributed to the importer where the author cannot be matched.
@@ -102,6 +102,7 @@ from app.services.bundle_common import BundleImportWarnings, UserResolver, expor
 from app.services.bundle_links import export_artefact_links, import_artefact_links
 from app.services.codes import label_title
 from app.services.link_types import ensure_org_link_type
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
 from app.services.rbac import lock_row_for_update
 from app.services.relationships import create_link
@@ -109,6 +110,7 @@ from app.services.scoring import list_levels, seed_missing_scoring_levels
 from app.services.scoring_custom import effective_scheme, export_definitions, import_definitions
 from app.services.sequences import code_owner, generate_unique_code
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _PENDING_CODES = "product_feedback_imported_codes"
 _LINKS_KEY = "enhancement_request_links"
@@ -155,6 +157,7 @@ def _export_requests(
     stored = version_levels(db, [v.id for _, v in pairs])
     references = refs.references_by_request(db, ids)
     prime_record_tag_names(db, REQUEST_ARTEFACT_TYPE, ids)
+    prime_record_placements(db, REQUEST_ARTEFACT_TYPE, ids)
     if assets is not None:
         prime_file_links(db, EnhancementRequestFile, "request_id", ids)
     emails = _emails(db, {u for r, v in pairs for u in (r.creator_id, r.archived_by, v.created_by)})
@@ -173,6 +176,7 @@ def _export_requests(
             "is_archived": request.is_archived, "archived_at": _j(request.archived_at),
             "archived_by_email": emails.get(request.archived_by) if request.archived_by else None,
             "tags": record_tag_names(db, REQUEST_ARTEFACT_TYPE, request.id),
+            "placements": record_placements(db, REQUEST_ARTEFACT_TYPE, request.id),
         }
         if assets is not None:
             entry["attachments"] = export_file_links(db, EnhancementRequestFile, "request_id", request.id, assets)
@@ -269,6 +273,10 @@ def _import_request(
     restore_record_tags(
         db, organization_id=holder.organization_id, record_project_id=holder.project_id, actor_id=creator_id,
         artefact_type=REQUEST_ARTEFACT_TYPE, artefact_id=request.id, names=entry.get("tags"),
+    )
+    restore_record_placements(
+        db, project_id=holder.project_id, actor_id=creator_id,
+        artefact_type=REQUEST_ARTEFACT_TYPE, artefact_id=request.id, entries=entry.get("placements"),
     )
     for attachment in entry.get("attachments", []):
         data = (file_bytes_by_ref or {}).get(attachment["file_ref"])
@@ -496,6 +504,15 @@ def _add_merges(db: Session, requests: list[EnhancementRequest], entries: list[d
             }
             if merge is not None and canonical_code is not None else None
         )
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """`ModuleProjectBundleHooks.template_reset`: starter requests become new, with no decline reason, merge,
+    requesters, informed parties or external references (people and systems of the template's own history)."""
+    fresh_drafts(
+        data.get("enhancement_requests", []), status=EnhancementRequestStatus.NEW.value, clear=("decline_reason", "merged_into"),
+        empty=("requested_by", "requester_channels", "informed", "references"),
+    )
 
 
 def import_project_data(

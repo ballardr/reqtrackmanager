@@ -92,6 +92,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
+from app.modules.decisions import activity_links as _activity_links
 from app.modules.decisions import export as bundle_export
 from app.modules.decisions.models import Decision
 from app.modules.decisions.perf_dataset import generate_decisions
@@ -230,7 +231,7 @@ def _decision_summaries(db: Session, decisions) -> list[ArtefactSummary]:
     names = (
         dict(db.execute(select(DecisionTypeDefinition.id, DecisionTypeDefinition.name).where(
             DecisionTypeDefinition.id.in_(type_ids)
-        )).all())
+        )).tuples().all())
         if type_ids else {}
     )
     return [
@@ -301,6 +302,9 @@ MODULE_DEFINITION = ModuleDefinition(
     org_bundle_hooks=ModuleOrgBundleHooks(export=bundle_export.export_org_data, import_=bundle_export.import_org_data),
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
+        template_configuration_keys=frozenset({"decision_types"}),
+        template_record_keys=frozenset({"decisions", "decision_links"}),
+        template_reset=bundle_export.reset_for_template,
     ),
     org_creation_choices=_ORG_CREATION_CHOICES,
     on_org_created_with_choices=_seed_org_templates,
@@ -319,6 +323,7 @@ MODULE_DEFINITION = ModuleDefinition(
             browse_levels=(BrowseLevel("decision_type", "Decision type"),),
         ),
     },
+    activity_link_ends={_activity_links.LINK_EVENT_TYPE: _activity_links.link_ends},
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,

@@ -19,7 +19,6 @@ from app.database import get_db
 from app.deps import get_request_channel
 from app.models.audit import AuditEvent
 from app.models.notification import NotificationType
-from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.enums import ComplianceApprovalState
 from app.modules.compliance.models import ARTEFACT_TYPE_EVIDENCE, ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT, ComplianceEvidence
@@ -29,6 +28,7 @@ from app.modules.compliance.service import build_evidence_out, build_requirement
 from app.schemas.audit import AuditEventOut
 from app.services import notifications, relationships
 from app.services.audit import log_event
+from app.services.lookups import project_or_404
 from app.services.rbac import require_ai_approvals_enabled
 
 router = APIRouter(tags=["compliance-project-assessment-workflow"])
@@ -117,7 +117,7 @@ def approve_requirement(
     that flag either way."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
-        require_ai_approvals_enabled(db, db.get(Project, project_id))
+        require_ai_approvals_enabled(db, project_or_404(db, project_id))
     if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -165,7 +165,7 @@ def reject_requirement(
     reached through the MCP server."""
     project_compliance, pcr = _get_pcr_or_404(db, project_id, project_compliance_id, pcr_id)
     if channel == "mcp":
-        require_ai_approvals_enabled(db, db.get(Project, project_id))
+        require_ai_approvals_enabled(db, project_or_404(db, project_id))
     if pcr.approval_state != ComplianceApprovalState.PENDING_APPROVAL:
         raise HTTPException(
             status.HTTP_409_CONFLICT,

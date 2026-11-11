@@ -49,13 +49,14 @@ import {
 import { copyCount, copyItems, isCopyable } from "../utils/reportCopySelection";
 import {
   applySetupFilter, buildSetupRows, EMPTY_SETUP_FILTER, isFiltering, rowCan,
-  type ReportSetupFilter, type ReportSetupRow, type SetupSourceFilter, type SetupStatusFilter, type SetupTypeFilter,
+  type ReportSetupFilter, type ReportSetupRow, 
 } from "../utils/reportSetupRows";
 import { ActionMenu, type ActionMenuItem } from "./ActionMenu";
 import { Badge } from "./Badge";
 import { ColumnChooser } from "./ColumnChooser";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { FilterField, FilterPanel } from "./FilterPanel";
+import { FilterPanel } from "./FilterPanel";
+import { FilterSelect } from "./FilterSelect";
 import { FolderTreeList, type FolderTreeChecks, type FolderTreeColumn } from "./FolderTreeList";
 import { MenuButton } from "./MenuButton";
 import { ReportCopyDialog } from "./ReportCopyDialog";
@@ -453,29 +454,28 @@ export function ReportSetupPanel({
         sectionKey={`reportSetup.${scope.kind}`} layout="top" matching={shown.length} total={rows.length}
         search={filter.search} onSearchChange={(search) => set({ search })} searchPlaceholder={text.searchPlaceholder} searchAriaLabel={text.searchLabel}
       >
-        <FilterField label={text.typeFilter}>
-          <select className="input" value={filter.type} onChange={(e) => set({ type: e.target.value as SetupTypeFilter })}>
-            <option value="">{text.any}</option>
-            <option value="report">{text.typeReport}</option>
-            <option value="sheet">{text.typeSheet}</option>
-            <option value="pack">{text.typePack}</option>
-          </select>
-        </FilterField>
-        <FilterField label={text.statusFilter}>
-          <select className="input" value={filter.status} onChange={(e) => set({ status: e.target.value as SetupStatusFilter })}>
-            <option value="">{text.any}</option>
-            <option value="moved">{text.statusMoved}</option>
-            <option value="hidden">{text.statusHidden}</option>
-          </select>
-        </FilterField>
+        <FilterSelect
+          label={text.typeFilter}
+          value={filter.type}
+          onChange={(v) => set({ type: v })}
+          allLabel={text.any}
+          options={[{ value: "report", label: text.typeReport }, { value: "sheet", label: text.typeSheet }, { value: "pack", label: text.typePack }]}
+        />
+        <FilterSelect
+          label={text.statusFilter}
+          value={filter.status}
+          onChange={(v) => set({ status: v })}
+          allLabel={text.any}
+          options={[{ value: "moved", label: text.statusMoved }, { value: "hidden", label: text.statusHidden }]}
+        />
         {inProject && (
-          <FilterField label={text.sourceFilter}>
-            <select className="input" value={filter.source} onChange={(e) => set({ source: e.target.value as SetupSourceFilter })}>
-              <option value="">{text.any}</option>
-              <option value="own">{text.sourceOwn}</option>
-              <option value="shared">{text.sourceShared}</option>
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={text.sourceFilter}
+            value={filter.source}
+            onChange={(v) => set({ source: v })}
+            allLabel={text.any}
+            options={[{ value: "own", label: text.sourceOwn }, { value: "shared", label: text.sourceShared }]}
+          />
         )}
       </FilterPanel>
       <FolderTreeList

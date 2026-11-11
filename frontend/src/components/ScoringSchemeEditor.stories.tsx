@@ -60,7 +60,9 @@ export const ShowsAxesAndDefaults: Story = {
     await expect(canvas.getByText("Frequency")).toBeInTheDocument();
     // Levels are weight-ordered, not manually reordered.
     await expect(canvas.queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
-    await expect(canvas.getAllByText("Module default").length).toBeGreaterThan(0);
+    // On an organisation page the module default is not a state to show: no pill, and no reset while nothing is custom.
+    await expect(canvas.queryByText("Module default")).toBeNull();
+    await expect(canvas.queryByRole("button", { name: "Reset to module default" })).toBeNull();
     // A scheme that does not score with several models at once, or take custom criteria, shows neither setting.
     await expect(canvas.queryByRole("heading", { name: "Models shown" })).not.toBeInTheDocument();
     await expect(canvas.queryByRole("heading", { name: "Criteria" })).not.toBeInTheDocument();

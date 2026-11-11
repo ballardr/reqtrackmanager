@@ -39,7 +39,7 @@ test.describe("project files: report image library, search and filters", () => {
 
     const searched: string[] = [];
     page.on("request", (req) => searched.push(req.url()));
-    await page.getByRole("link", { name: "Files", exact: true }).click();
+    await page.getByRole("link", { name: "Files", exact: true }).and(page.locator('[href*="/projects/"]')).click();
     const row = page.locator("tr", { has: page.getByRole("link", { name: picture, exact: true }) });
 
     await test.step("the picture is listed as a report image library file, with a preview and its origin", async () => {

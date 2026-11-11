@@ -93,9 +93,8 @@ that discussion; this just reorders the table to match it).
 | 3 | 5 | Requirements & Requirement Libraries | Not started | [module-05-requirements-and-libraries-plan.md](module-05-requirements-and-libraries-plan.md) | — (already largely built; does not need Module 0) | — | §14–16 |
 | 4 | 6 | Engineering Design | Not started | [module-06-engineering-design-plan.md](module-06-engineering-design-plan.md) | Module 0, Requirements (existing) | Decisions (4) — design/decision are usually created together, per the doc below; now satisfiable immediately, Decision Management having shipped | §3 Module 6 list, now superseded by [engineering-design-vs-decisions.md](engineering-design-vs-decisions.md) — a supplementary source the user provided 2026-09-16 with a full field-level spec, no longer the thinnest module |
 | 5 | 3 | Risk Management | Phases 0, 1a (core per-cell scoring override) and 1 (data model, scoring, RBAC, project API) shipped 2026-10-12; Phase 2 is next | [module-03-risk-management-plan.md](completed/module-03-risk-management-plan.md) | Module 0, Requirements (existing) | Context (1), Decisions (4), Design (6), Verification (existing) — all four satisfied by this point in the order except Context, which lands immediately before it | §11 |
-| 6 | 8 | Governance / Policies | Not started | [module-08-governance-plan.md](module-08-governance-plan.md) | — (does not itself need Module 0 — it governs artefacts, it doesn't create relationships between them) | Traceability (7) and Compliance (9) results, once those exist, feed Governance Health | §29–36 |
-| 7 | 7 | Traceability | Not started | [module-07-traceability-plan.md](module-07-traceability-plan.md) | Module 0, Module 8 (Governance) | Every artefact type its configured rules target (1, 2, 3, 4, 5, 6, 9) — a rule targeting a type that doesn't exist yet just can't be configured yet | §17–28 |
-| 8 | 9 | Compliance Integration | Not started | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Module 7, Module 8 | Risk (3), Decisions (4) — reserved relationship targets | §37 |
+| 6–7 | 7 (was 8 + 7) | Traceability & Governance (one module, ten sub-components; merged 2026-11-09, **Decided by: User**; also takes Module 5 Phase 1, Requirement Types) | Not started | [module-07-traceability-and-governance-plan.md](module-07-traceability-and-governance-plan.md) | Module 0 (Traceability half only; the Governance half needs nothing) | Compliance (9) results feed Governance Health and baseline checks; every artefact type a rule targets (1, 2, 3, 4, 5, 6, 9) — a rule targeting a type that doesn't exist yet just can't be configured yet | §17–36 |
+| 8 | 9 | Compliance Integration | Not started | [module-09-compliance-integration-plan.md](module-09-compliance-integration-plan.md) | Module 0, Compliance (existing, shipped), Module 7 (Traceability & Governance) | Risk (3), Decisions (4) — reserved relationship targets | §37 |
 | 9 | 10 | Reporting & Analysis | **Complete 2026-11-04** (custom-report layout designer over the core report framework; Executive Gap Analysis and Change Impact moved to Module 6 Phase 9) | [module-10-reporting-and-analysis-plan.md](completed/module-10-reporting-and-analysis-plan.md) | Module 0 | Consumes whatever of 1–9 is enabled at generation time; degrades gracefully, never blocks on a module not existing | §47 |
 | — | 13 | Product Variants | Not started — proposed 2026-10-04, generalised from tiers 2026-10-12 | [module-13-product-variants-plan.md](module-13-product-variants-plan.md) | Module 0 | Context & Strategy (1): intentional Pain Point → Variant links | not in the overview — requested by the user 2026-10-04 |
 | — | 14 | Product Feedback (Enhancement Requests) | **Built** (13/13, 2026-11-05) | [module-14-product-feedback-plan.md](completed/module-14-product-feedback-plan.md) | Module 0 | Context & Strategy (1): Pain Point links + report hook; Stakeholders & Personas (2): requester/Engagement links | not in the overview — requested by the user 2026-10-05 |
@@ -151,9 +150,10 @@ gains no more from staying paired with Risk than from moving up. Risk (3)
 moves to directly after Module 6 instead, so that by the time it ships,
 three of its four soft dependencies (Context, Decisions, Design) are
 already built and only Verification (already existing) was ever
-unconditional. Governance (8), Traceability (7 — its one hard dependency),
-and Compliance Integration (9 — hard-depends on both) keep their original
-relative order so Traceability ships with the maximum practical rule
+unconditional. Governance (8) and Traceability (7) are now one module,
+built Governance half first (the baseline-policy hook Traceability's "Required"
+level plugs into), then Compliance Integration (9 — hard-depends on both
+halves); they keep their original relative order so Traceability ships with the maximum practical rule
 surface (content modules 1–6 plus 9's precursor work) available, short of
 waiting on literally everything; Reporting (10) closes the list since it
 only ever consumes whatever else exists. **Module 11 is deliberately left
@@ -240,27 +240,24 @@ flowchart TD
         M5["Module 5\nRequirements & Libraries"]
     end
 
-    M8["Module 8\nGovernance"]
-    M7["Module 7\nTraceability"]
+    GT["Module 7\nTraceability & Governance"]
     M9["Module 9\nCompliance Integration"]
     M10["Module 10\nReporting & Analysis"]
 
     EXIST --> M0
     EXIST --> CONTENT
     M0 --> CONTENT
-    M0 --> M7
+    M0 --> GT
     M0 --> M9
     M0 --> M10
-    VER --> M7
+    VER --> GT
     VER --> M10
 
-    M8 --> M7
-    CONTENT --> M7
-    M7 --> M9
-    M8 --> M9
+    CONTENT --> GT
+    GT --> M9
     COMPEX --> M9
     CONTENT --> M10
-    M7 --> M10
+    GT --> M10
     M9 --> M10
 
     M1 -. reserved targets .-> M4
@@ -280,10 +277,10 @@ other are the three dotted, soft ones shown (Module 1 ↔ Module 4's reserved
 relationship targets, Module 6 → Module 4's design-to-decision link) — and
 can be sequenced in whatever order delivers value soonest. The overview's
 own §46 ordering is one reasonable choice, not the only one, which is
-exactly why Module 4 can jump the queue. Module 8 (Governance) has no hard
-dependency at all and could in principle be built early too. Module 7
-(Traceability) is the one real chokepoint after Module 0 — it hard-depends
-on Module 8 and, informally, on however many content modules exist yet to
+exactly why Module 4 can jump the queue. The Governance half of the merged
+module (8) has no hard dependency at all and could in principle be built early
+too. The Traceability half (7) is the one real chokepoint after Module 0 — it
+builds after the Governance half's baseline-policy hook and, informally, on however many content modules exist yet to
 write rules against (a rule can only target a type that already exists),
 though it can still ship and be enabled with a smaller rule set if built
 before every content module lands. Modules 9 and 10 are natural closers,
@@ -320,20 +317,29 @@ flowchart TD
     M4["4 Decision Management"]
     M5["5 Requirements & Libraries"]
     M6["6 Engineering Design"]
-    M7["7 Traceability"]
-    M8["8 Governance"]
+    subgraph GT["7 Traceability & Governance (one module)"]
+        direction LR
+        M8["8 Governance sub-components"]
+        M7["7 Traceability sub-components"]
+    end
     M9["9 Compliance Integration*"]
     M10["10 Reporting & Analysis"]
 
-    M7 -->|requires| M8
+    M7 -.->|"Required level only"| M8
 ```
 
 *(Rendered and checked with `@mermaid-js/mermaid-cli` before this was
 committed to the doc, same as the graph above.)*
 
-**Reading this literally: there is exactly one hard, enablement-blocking
-dependency among all ten modules — Traceability requires Governance.**
-Every other module can be turned on in any combination, including any of
+**Reading this literally: there is no hard, enablement-blocking dependency
+between any two modules.** Governance and Traceability were merged into one
+module on 2026-11-09 (**Decided by: User**), so the former "Traceability
+requires Governance" edge became a narrower, soft one between the module's own
+sub-components: Traceability's "Required" enforcement level is enforced only
+while the `baseline_policies` sub-component is enabled, and the only hard
+dependencies that remain are *inside* the module (exceptions and cross-project
+traceability require `traceability_rules`; see
+[the merged plan](module-07-traceability-and-governance-plan.md)). Every other module can be turned on in any combination, including any of
 the "no" answers implied by your examples:
 
 - **Module 4 (Decision Management) without Module 1 (Context & Strategy):
@@ -348,12 +354,13 @@ the "no" answers implied by your examples:
   reason — no overview text ties Engineering Design's own function to
   Context & Strategy at all; they don't even have a named optional
   relationship (see the matrix below).
-- **Module 7 (Traceability) without Module 8 (Governance): no.** This is
-  the one real exception, and it's explicit in the overview itself (§3.1:
-  "Formal Traceability should require Governance"), not an inference —
-  Traceability's whole enforcement model (§20) routes through Governance's
-  baseline/approval policies; without Governance, "Required for approval"
-  as an enforcement level would have nothing to actually enforce against.
+- **Traceability (7) without Governance (8): yes, with one limit.** The
+  overview (§3.1: "Formal Traceability should require Governance") ties
+  Traceability's enforcement model (§20) to Governance's baseline policies.
+  Now that both are one module, a project can run Traceability rules, status,
+  matrices and coverage with every Governance sub-component off; the
+  "Required for approval" level is then labelled "not enforced" because no
+  baseline policy exists to enforce it.
 
 ### Compatibility matrix — optional integrations (not dependencies)
 
@@ -373,7 +380,7 @@ rule targeting a disabled module's type just can't be configured yet), and
 Reporting consumes whatever's enabled and degrades gracefully otherwise
 (§47.1). Marking every cell in their row `○` would be true but would tell
 you nothing you don't already know from their own descriptions. Their real
-constraint is the hard edge above (7 requires 8) plus §37's explicit
+constraint is the soft edge above (7's Required level needs 8's baseline policies) plus §37's explicit
 Traceability↔Compliance optional link, called out in prose, not the table.
 
 | | 2 | 3 | 4 | 5 | 6 | 8 | 9\* |

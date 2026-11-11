@@ -22,6 +22,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { ArtefactLinksPanel } from "../../components/ArtefactLinksPanel";
+import { useUiPreference } from "../../hooks/useUiPreference";
 import { RecordActivity } from "../../components/RecordActivity";
 import { RecordTags } from "../../components/RecordTags";
 import { DetailLayout } from "../../components/DetailLayout";
@@ -35,14 +36,16 @@ import { Spinner } from "../../components/Spinner";
 import { useAuth } from "../../context/AuthContext";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { projectEngagementApi, projectPersonaApi, projectStakeholderApi, projectStakeholderGroupApi } from "./api";
-import { AnonymousParticipantsPanel } from "./AnonymousParticipantsPanel";
+import type { EngagementCreateValues } from "./api";
+import { applyParticipantChanges, loadParticipantEntries } from "./engagementParticipantEdits";
+import { EngagementParticipantsPanel } from "./EngagementParticipantsPanel";
 import { EngagementAudiencePanel } from "./EngagementAudiencePanel";
 import { EngagementFormModal } from "./EngagementFormModal";
 import { EngagementOutcomesPanel } from "./EngagementOutcomesPanel";
 import { RepresentationPanel } from "./RepresentationPanel";
 import { ResearchFindingsPanel } from "./ResearchFindingsPanel";
 import { ResearchPromptsPanel } from "./ResearchPromptsPanel";
-import type { Engagement, EngagementFieldValues, OutcomeTargetType, StakeholderGroup } from "./types";
+import type { Engagement, OutcomeTargetType, ParticipantEntries, StakeholderGroup } from "./types";
 import { ENGAGEMENT_CHANNEL_LABEL } from "./types";
 import { useResearchExtras } from "./useResearchExtras";
 import { Badge } from "../../components/Badge";
@@ -53,6 +56,12 @@ type Option = { value: string; label: string };
 /** The findings are listed in full below, so the Links panel starts with that group collapsed. */
 const COLLAPSED_LINK_TYPES = ["research_finding"] as const;
 
+/** The note beside a Persona that is reached only through participants, saying through whom. */
+function reachedVia(viaParticipants: boolean, viaAnonymous: boolean): string {
+  if (viaParticipants && viaAnonymous) return "via participants";
+  return viaAnonymous ? "via an anonymous participant" : "via a participant";
+}
+
 export function EngagementDetailPage() {
   const { projectId, engagementId } = useParams<{ projectId: string; engagementId: string }>();
   const { user } = useAuth();
@@ -62,7 +71,7 @@ export function EngagementDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
-  const [stakeholderOptions, setStakeholderOptions] = useState<Option[]>([]);
+  const [stakeholderOptions, setStakeholderOptions] = useState<Option[] | null>(null);
   const [personaOptions, setPersonaOptions] = useState<Option[]>([]);
   const [groups, setGroups] = useState<StakeholderGroup[]>([]);
   const [participantsKey, setParticipantsKey] = useState(0);
@@ -70,20 +79,24 @@ export function EngagementDetailPage() {
   const [linksKey, setLinksKey] = useState(0);
   const linksChanged = () => setLinksKey((k) => k + 1);
   const [editing, setEditing] = useState(false);
+  // What was recorded when the edit form opened (or after its last failed save); null when it could not be read.
+  const [recordedParticipants, setRecordedParticipants] = useState<ParticipantEntries | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const researchExtras = useResearchExtras(projectId);
+  // Codes beside participants and Personas are hidden until asked for, as Facilitators show none.
+  const [showCodes, setShowCodes] = useUiPreference<boolean>("engagement.showRecordCodes", false);
 
   useEffect(() => {
     if (!projectId || !engagementId) return;
     projectEngagementApi.get(projectId, engagementId).then(setEngagement).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Engagement could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Engagement could not be found, or you do not have access to it."));
     });
   }, [projectId, engagementId]);
 
   useEffect(() => {
     if (!projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then((p) => setOrganizationId(p.organization_id)).catch(() => undefined);
-    projectStakeholderApi.list(projectId).then((list) => setStakeholderOptions(list.map((s) => ({ value: s.id, label: s.name })))).catch(() => setStakeholderOptions([]));
+    projectStakeholderApi.list(projectId).then((list) => setStakeholderOptions(list.map((s) => ({ value: s.id, label: s.name })))).catch(() => setStakeholderOptions(null));
     projectPersonaApi.list(projectId).then((list) => setPersonaOptions(list.map((p) => ({ value: p.id, label: p.name })))).catch(() => setPersonaOptions([]));
     projectStakeholderGroupApi.list(projectId).then(setGroups).catch(() => setGroups([]));
   }, [projectId]);
@@ -106,14 +119,34 @@ export function EngagementDetailPage() {
     }
   }
 
-  async function saveEdit(values: EngagementFieldValues) {
+  async function openEdit() {
+    if (!projectId || !engagementId) return;
+    setRecordedParticipants(await loadParticipantEntries(projectId, engagementId, researchExtras === true).catch(() => null));
+    setEditing(true);
+  }
+
+  async function saveEdit(values: EngagementCreateValues) {
     if (!projectId || !engagement) return;
     setFormError(null);
+    const { stakeholder_ids, anonymous_participants, ...content } = values;
     try {
-      const updated = await projectEngagementApi.update(projectId, engagement.id, values);
+      const updated = await projectEngagementApi.update(projectId, engagement.id, content);
+      setEngagement(updated);
+      if (recordedParticipants && stakeholder_ids && anonymous_participants) {
+        try {
+          await applyParticipantChanges(projectId, engagement.id, recordedParticipants, { stakeholderIds: stakeholder_ids, anonymous: anonymous_participants });
+        } catch (err) {
+          // Part of the list may already be saved: compare the next attempt with what is recorded now.
+          setRecordedParticipants(await loadParticipantEntries(projectId, engagement.id, researchExtras === true).catch(() => recordedParticipants));
+          setParticipantsKey((k) => k + 1);
+          linksChanged();
+          throw err;
+        }
+        setParticipantsKey((k) => k + 1);
+        linksChanged();
+      }
       showToast("Engagement updated.");
       setEditing(false);
-      setEngagement(updated);
     } catch (err) {
       setFormError(toErrorMessage(err, "Could not update this Engagement."));
     }
@@ -147,7 +180,6 @@ export function EngagementDetailPage() {
   if (loadError) return <p className="text-muted">{loadError}</p>;
   if (engagement === null) return <Spinner />;
 
-  const stakeholderPath = (id: string) => `/projects/${projectId}/modules/stakeholders/stakeholders/${id}`;
   const personaPath = (id: string) => `/projects/${projectId}/modules/stakeholders/personas/${id}`;
 
   return (
@@ -160,7 +192,7 @@ export function EngagementDetailPage() {
         title={engagement.title}
         code={engagement.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="engagement" artefactId={engagement.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/stakeholders/engagements`, label: "← Engagements" }}
+        back={{ to: `/projects/${projectId}/modules/stakeholders/engagements`, label: "Engagements" }}
         badges={
           <>
             <Badge>{ENGAGEMENT_CHANNEL_LABEL[engagement.channel]}</Badge>
@@ -168,8 +200,15 @@ export function EngagementDetailPage() {
           </>
         }
         subtitle={engagement.engagement_date}
-        onEdit={() => setEditing(true)}
-        actions={[eraseAction.item]}
+        onEdit={() => void openEdit()}
+        actions={[
+          {
+            key: "toggle-codes", label: showCodes ? "Hide codes" : "Show codes",
+            title: "Show or hide the record codes beside participants and Personas covered",
+            onSelect: () => setShowCodes(!showCodes),
+          },
+          eraseAction.item,
+        ]}
       />
       {eraseAction.dialog}
 
@@ -197,34 +236,24 @@ export function EngagementDetailPage() {
           </FormGrid>
 
           <FormGrid>
-            <RepresentationPanel
-              heading="Participants"
-              emptyText="No Stakeholders are recorded as taking part."
-              reloadKey={participantsKey}
-              onChanged={linksChanged}
-              load={async () =>
-                (await projectEngagementApi.listParticipants(projectId, engagement.id)).map((p) => ({
-                  link_id: p.link_id, id: p.stakeholder_id, name: p.name, scope: p.scope, unique_code: p.unique_code, organization_id: p.organization_id,
-                }))
-              }
-              linkFor={(participant) => stakeholderPath(participant.id)}
-              edit={{
-                options: stakeholderOptions,
-                pickerLabel: "Stakeholder to add",
-                onAdd: async (stakeholderId) => {
-                  await projectEngagementApi.addParticipant(projectId, engagement.id, stakeholderId);
-                },
-                onRemove: (participant) => projectEngagementApi.removeParticipant(projectId, engagement.id, participant.id),
-              }}
+            <EngagementParticipantsPanel
+              projectId={projectId} engagementId={engagement.id} stakeholderOptions={stakeholderOptions}
+              researchExtras={researchExtras === true} showCodes={showCodes}
+              reloadKey={participantsKey} onChanged={linksChanged}
             />
 
             <RepresentationPanel
               heading="Personas covered"
+              showCodes={showCodes}
               onChanged={linksChanged}
+              reloadKey={linksKey}
               emptyText="No Persona is recorded as covered."
               load={async () =>
-                (await projectEngagementApi.listPersonas(projectId, engagement.id)).map((p) => ({
-                  link_id: p.link_id, id: p.persona_id, name: p.name, scope: p.scope, unique_code: p.unique_code, organization_id: p.organization_id,
+                (await projectEngagementApi.listPersonasReached(projectId, engagement.id)).map((p) => ({
+                  link_id: p.link_id ?? `reached:${p.persona_id}`, id: p.persona_id, name: p.name, scope: p.scope, unique_code: p.unique_code,
+                  organization_id: p.organization_id,
+                  // A Persona recorded as covered is a link of its own; one reached only through participants is shown, not removable.
+                  via: p.covered ? undefined : reachedVia(p.via_participants, p.via_anonymous),
                 }))
               }
               linkFor={(persona) => personaPath(persona.id)}
@@ -248,14 +277,14 @@ export function EngagementDetailPage() {
 
           </FormGrid>
 
-          {researchExtras && <AnonymousParticipantsPanel projectId={projectId} engagementId={engagement.id} personaOptions={personaOptions} />}
-
           {researchExtras && <ResearchPromptsPanel projectId={projectId} engagementId={engagement.id} />}
 
           <EngagementOutcomesPanel
             projectId={projectId}
+            holderType="engagement"
             holderId={engagement.id}
             api={projectEngagementApi.outcomes}
+            loadCreatableTypes={() => projectEngagementApi.listOutcomeTargetTypes(projectId)}
             loadTargets={(targetType: OutcomeTargetType) => projectEngagementApi.listOutcomeTargets(projectId, targetType)}
             onChanged={linksChanged}
           />
@@ -276,6 +305,8 @@ export function EngagementDetailPage() {
       {editing && (
         <EngagementFormModal
           initial={engagement}
+          initialParticipants={recordedParticipants ?? undefined}
+          projectId={projectId}
           error={formError}
           onCancel={() => { setEditing(false); setFormError(null); }}
           onSave={saveEdit}

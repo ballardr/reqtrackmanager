@@ -48,6 +48,7 @@ export function RepresentationPanel({
   edit,
   reloadKey,
   onChanged,
+  showCodes = true,
 }: {
   heading: string;
   emptyText: string;
@@ -59,6 +60,8 @@ export function RepresentationPanel({
   reloadKey?: number;
   /** Called after a link is added or removed, so a page's Links panel can refresh. */
   onChanged?: () => void;
+  /** Whether each item is preceded by its record code; a page that lets the person hide codes passes its choice. */
+  showCodes?: boolean;
 }) {
   const { showToast } = useToast();
   const [links, setLinks] = useState<RepresentedLink[] | null>(null);
@@ -86,7 +89,8 @@ export function RepresentationPanel({
 
   if (unavailable || links === null) return null;
 
-  const linkedIds = new Set(links.map((l) => l.id));
+  // An entry shown only for information (`via`) is not a link of its own, so it can still be added as one.
+  const linkedIds = new Set(links.filter((l) => !l.via).map((l) => l.id));
   const candidates = edit?.options.filter((o) => !linkedIds.has(o.value)) ?? [];
 
   async function mutate(action: () => Promise<void>, success: string, failure: string) {
@@ -131,15 +135,17 @@ export function RepresentationPanel({
             id: l.link_id,
             content: (
               <>
-                {l.unique_code && (
+                {showCodes && l.unique_code && (
                   <span className="text-muted" style={{ fontSize: "0.85rem" }}>
                     <ScopedRecordCode record={{ unique_code: l.unique_code, scope: l.scope, organization_id: l.organization_id }} />{" "}
                   </span>
                 )}
                 <Link to={linkFor(l)}>{l.name}</Link>
+                {l.via && <span className="text-muted" style={{ fontSize: "0.75rem" }}> {l.via}</span>}
               </>
             ),
             removeLabel: `Remove ${l.name}`,
+            removable: !l.via,
           }))}
           onRemove={edit ? (id) => setRemoving(links.find((l) => l.link_id === id) ?? null) : undefined}
           noun={heading.toLowerCase()}

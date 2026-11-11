@@ -33,6 +33,8 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
     """Metadata for one uploaded file; the bytes live in a storage backend.
 
     Attributes:
+        organization_id: The owning organisation; `None` for a platform-owned file (the platform logo and login
+            background), which no organisation's deletion, storage usage or upload rules touch.
         storage_backend: Which `FileStorageBackend` implementation holds the
             bytes ("local" or "s3"), so a deployment can migrate backends
             without losing track of where existing files are (I-M-10).
@@ -49,7 +51,9 @@ class FileAsset(UUIDPKMixin, TimestampMixin, Base):
 
     __tablename__ = "file_assets"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"))
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     storage_backend: Mapped[str] = mapped_column(String(20))
     storage_key: Mapped[str] = mapped_column(String(500))
     filename: Mapped[str] = mapped_column(String(255))

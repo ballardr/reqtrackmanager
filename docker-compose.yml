@@ -176,8 +176,11 @@ services:
       converter:
         condition: service_healthy
         required: false
+    # Published on the loopback address only: the API has an unauthenticated /metrics and /docs, and the reverse
+    # proxy (same host, or another container) is the public entry. BACKEND_BIND_ADDRESS=0.0.0.0 (or ::) publishes it
+    # on every interface for a proxy on another host; then restrict the port to that proxy.
     ports:
-      - "8000:8000"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 10s
@@ -208,6 +211,7 @@ services:
     pids_limit: 128
     mem_limit: 2560m
     cpus: 2
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8300/health', timeout=4)"]
       interval: 10s
@@ -347,6 +351,10 @@ services:
       # silently overridden by the default. The no-colon form only falls
       # back when the variable is truly absent.
       VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+      # Origins the Content-Security-Policy allows beyond this site (frontend/docker/env-config-entrypoint.sh):
+      # single-page-app module origins and sandboxed module frames. The frame list is the backend's own allow-list.
+      CSP_SCRIPT_SRC_EXTRA: ${CSP_SCRIPT_SRC_EXTRA:-}
+      MODULE_FRAME_ALLOWED_ORIGINS: ${MODULE_FRAME_ALLOWED_ORIGINS:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -447,13 +455,13 @@ services:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./observability/alerts:/etc/prometheus/alerts:ro
     ports:
-      - "9090:9090"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:9090:9090"
 
   loki:
     image: grafana/loki:3.1.1
     profiles: ["observability"]
     ports:
-      - "3100:3100"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
 
   tempo:
@@ -463,24 +471,38 @@ services:
     volumes:
       - ./observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
     ports:
-      - "3200:3200"
-      - "4317:4317"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3200:3200"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4317:4317"
 
   alloy:
     image: grafana/alloy:v1.4.3
     profiles: ["observability"]
     volumes:
       - ./observability/alloy.river:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       # Backup and restore-test metric textfiles (read only).
       - ${BACKUP_STATUS_VOLUME:-reqtrack_backup_status}:/backup/status:ro
     command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
     ports:
-      - "12345:12345"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:12345:12345"
     depends_on:
       - loki
       - tempo
       - prometheus
+      - docker-socket-proxy
+
+  # Alloy reads container metadata and logs through this proxy, which allows only read-only container calls, instead
+  # of holding the Docker socket itself (a socket mount is root on the host). No published port.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    profiles: ["observability"]
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    tmpfs:
+      - /run
 
   # Per-container CPU and memory for the "Resource usage" dashboard. It needs read access to the host's cgroups
   # and Docker's data directory, so it lives only in this profile, publishes no port (Prometheus reaches it on the
@@ -515,13 +537,19 @@ services:
     image: grafana/grafana:11.2.0
     profiles: ["observability"]
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # No anonymous access and no default administrator password: the stack will not start without one.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+    # Refuses to start without a password (a `:?` here would stop every stack that does not use this profile too).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - '[ -n "$$GF_SECURITY_ADMIN_PASSWORD" ] || { echo "Set GRAFANA_ADMIN_PASSWORD to use the observability profile." >&2; exit 1; }; exec /run.sh'
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
-      - "3300:3000"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3300:3000"
     depends_on:
       - prometheus
       - loki

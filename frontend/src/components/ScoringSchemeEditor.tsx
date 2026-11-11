@@ -96,6 +96,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
             custom={scheme.default_model_source === "org"}
             defaultLabel={SCORING_SOURCE_LABEL.system}
             resetLabel="Reset to module default"
+            platformFallback
             onReset={() =>
               void mutate(() => orgScoringApi.setDefaultModel(orgId, schemeKey, null), "Default model reset.", applySchemeResult)}
           />
@@ -111,6 +112,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
             scheme={scheme}
             custom={scheme.enabled_models_source === "org"}
             resetLabel="Reset to module default"
+            platformFallback
             onSave={(models) => mutate(() => criteria.setEnabledModels(models), "Models shown saved.", applySchemeResult)}
             onReset={() => mutate(() => criteria.setEnabledModels(null), "Models shown reset.", applySchemeResult)}
           />
@@ -139,6 +141,7 @@ export function ScoringSchemeEditor({ orgId, schemeKey }: { orgId: string; schem
           scheme={scheme}
           isCustom={(m) => m.bands_source === "org"}
           resetLabel="Reset to module default"
+          platformFallback
           onSave={(model, bands) =>
             mutate(() => orgScoringApi.setBands(orgId, schemeKey, model, bands), "Rating bands saved.", applySchemeResult)}
           onReset={(model) =>

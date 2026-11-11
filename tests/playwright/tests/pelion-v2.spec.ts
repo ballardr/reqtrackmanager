@@ -108,7 +108,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     }
     await newProjectDialog.getByLabel("Name", { exact: true }).fill(templateProjectName);
     await newProjectDialog.getByLabel("Summary").fill("Created by Playwright (Pelion v2 spec)");
-    await newProjectDialog.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: templateProjectName })).toBeVisible();
   });
@@ -298,6 +298,8 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     // "create a new project from the template" step below.
     await page.waitForLoadState("networkidle");
 
+    // The project is a template, which the list leaves out until "Show templates" is ticked.
+    await page.getByRole("checkbox", { name: "Show templates" }).check();
     const card = page.locator("main .card", { hasText: templateProjectName });
     await card.getByRole("button", { name: "Favourite" }).click();
     await expect(card.getByRole("button", { name: "Remove from favourites" })).toBeVisible();
@@ -323,7 +325,7 @@ test("Pelion v2 walkthrough: custom fields, attachments, notifications, favourit
     await newProjectDialog.getByLabel("Summary").fill("Cloned by Playwright (Pelion v2 spec)");
     await expect(newProjectDialog.getByLabel("Create from template")).toContainText(templateProjectName);
     await newProjectDialog.getByLabel("Create from template").selectOption({ label: templateProjectName });
-    await newProjectDialog.getByRole("button", { name: "Create" }).click();
+    await newProjectDialog.getByRole("button", { name: "Create", exact: true }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
     await expect(page.getByRole("heading", { name: clonedProjectName })).toBeVisible();
 

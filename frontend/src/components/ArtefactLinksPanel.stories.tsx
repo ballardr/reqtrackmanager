@@ -305,7 +305,7 @@ export const AddsALinkChoosingRecordTypeRelationshipAndRecord: Story = {
         buildOption(),
         buildOption({
           link_type_id: "lt-impl", forward_name: "Implements", reverse_name: "Is implemented by", direction: "incoming",
-          phrase: "Is implemented by", other_types: [{ type: "decision", label: "Decision" }],
+          phrase: "Is implemented by", other_types: [{ type: "decision", label: "Decision", can_create: false }],
         }),
       ]),
       candidates: fn(async (_p: string, _t: string, _i: string, params: { otherType: string }) => ({
@@ -372,7 +372,7 @@ export const SearchesEveryRecordTypeFromTwoCharacters: Story = {
 export const NarrowsATypeByItsBrowseLevels: Story = {
   args: {
     api: buildLinksApi({
-      options: fn(async () => [buildOption({ other_types: [{ type: "compliance_requirement", label: "Compliance standard clause" }] })]),
+      options: fn(async () => [buildOption({ other_types: [{ type: "compliance_requirement", label: "Compliance standard clause", can_create: false }] })]),
       browse: fn(async (_p: string, _t: string, _i: string, params: ArtefactLinkFinderParams) => {
         const chosen = params.selected ?? [];
         if (chosen.length === 0) {
@@ -435,7 +435,7 @@ export const NarrowsATypeByItsBrowseLevels: Story = {
 export const FiltersALongBrowseLevel: Story = {
   args: {
     api: buildLinksApi({
-      options: fn(async () => [buildOption({ other_types: [{ type: "requirement", label: "Requirement" }] })]),
+      options: fn(async () => [buildOption({ other_types: [{ type: "requirement", label: "Requirement", can_create: false }] })]),
       browse: fn(async (_p: string, _t: string, _i: string, params: ArtefactLinkFinderParams) =>
         buildBrowseStep({
           key: "component", label: "Component", truncated: true,
@@ -461,7 +461,7 @@ export const OffersAParentProjectAndSearchesIt: Story = {
   args: {
     api: buildLinksApi({
       projects: fn(async () => ({ items: [buildRelatedProject()], truncated: false })),
-      options: fn(async () => [buildOption({ other_types: [{ type: "decision", label: "Decision" }] })]),
+      options: fn(async () => [buildOption({ other_types: [{ type: "decision", label: "Decision", can_create: false }] })]),
     }),
   },
   play: async ({ canvasElement, args }) => {

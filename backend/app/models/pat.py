@@ -65,8 +65,9 @@ class PersonalAccessToken(UUIDPKMixin, TimestampMixin, Base):
         revoked_at: When set, the token is dead regardless of expiry —
             set by the owner, an org admin (for tokens touching their
             org), or a server admin (platform-wide), independently of
-            `User.token_version` (a PAT is deliberately not killed by a
-            password change/2FA-disable).
+            `User.token_version`. A routine password change leaves PATs alone (an integration is not
+            reconfigured by it); a password reset through an emailed link, switching two-factor
+            authentication off and an administrator's forced reset revoke every token of the person.
         last_used_at: Stamped on successful authentication, throttled to
             at most once per hour to avoid a DB write on every single
             request a busy integration makes.

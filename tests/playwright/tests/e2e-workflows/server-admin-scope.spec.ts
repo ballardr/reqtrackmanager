@@ -46,10 +46,10 @@ test.describe("server admin with zero org memberships", () => {
       await page.getByRole("link", { name: "Organisations", exact: true }).click();
       // Style guide "Pattern: action menu" — the row's Edit/Disable-Enable/
       // Delete buttons now live behind one `ActionMenu` kebab trigger
-      // (ServerOrganisationsPage.tsx), not a standalone "Edit" link.
+      // (ServerOrganisationsPage.tsx), not a standalone link.
       await page.getByRole("button", { name: `${ORG_NAMES.alpha} actions` }).click();
       await expect(page.getByRole("menu", { name: `${ORG_NAMES.alpha} actions` })).toBeVisible();
-      await page.getByRole("menuitem", { name: "Edit" }).click();
+      await page.getByRole("menuitem", { name: "Administration" }).click();
       // Org details alone are server-admin-visible (GET /orgs/{id} has a
       // documented bypass) — the degraded view shows the org's name so the
       // admin knows which org this is before deciding to join/bootstrap it
@@ -59,7 +59,7 @@ test.describe("server admin with zero org memberships", () => {
       // actions (see docs/decisions.md's "Organisation disable and hard
       // delete" / earlier OrgAdminPage degraded-view sections).
       await expect(page.getByRole("heading", { name: ORG_NAMES.alpha, exact: true })).toBeVisible();
-      await expect(page.getByText("You're not a member of this organisation")).toBeVisible();
+      await expect(page.getByText("You are not a member of this organisation")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Users" })).toHaveCount(0);
     });
 

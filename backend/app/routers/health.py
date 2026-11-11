@@ -15,7 +15,7 @@ import os
 from fastapi import APIRouter, Response
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, generate_latest, multiprocess
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 
 from app.database import engine
 from app.metrics import purge_dead_worker_gauges
@@ -39,7 +39,7 @@ def health() -> JSONResponse:
     db_ok = True
     try:
         with engine.connect() as conn:
-            conn.execute(text(f"SET LOCAL statement_timeout = {HEALTH_DB_TIMEOUT_MS}"))
+            conn.execute(select(func.set_config("statement_timeout", str(HEALTH_DB_TIMEOUT_MS), True)))
             conn.execute(text("SELECT 1"))
     except Exception:
         db_ok = False

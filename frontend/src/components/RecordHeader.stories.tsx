@@ -16,7 +16,7 @@ const meta: Meta<typeof RecordHeader> = {
     code: "PER-001",
     subtitle: "Analyst",
     version: 3,
-    back: { to: "/personas", label: "← Personas" },
+    back: { to: "/personas", label: "Personas" },
     badges: <><Badge>Project</Badge><Badge tone="accent">Active</Badge></>,
     onEdit: fn(),
     transitions: <button className="btn btn-danger">Retire</button>,
@@ -33,6 +33,8 @@ export const Default: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Edit" }));
     await expect(args.onEdit).toHaveBeenCalled();
     await expect(canvas.getByRole("button", { name: "Retire" })).toBeInTheDocument();
+    // The header draws the back arrow; the page passes only the list's plural name.
+    await expect(canvas.getByRole("link", { name: "← Personas" })).toHaveAttribute("href", "/personas");
     await userEvent.click(canvas.getByRole("button", { name: "Persona actions" }));
     await expect(within(document.body).getByRole("menuitem", { name: "Archive" })).toBeInTheDocument();
   },

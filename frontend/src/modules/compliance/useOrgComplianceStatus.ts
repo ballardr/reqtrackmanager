@@ -1,20 +1,10 @@
 /**
  * Module: modules/compliance/useOrgComplianceStatus
  *
- * Shared, deduplicated fetch of `listOrgProjectComplianceStatus(orgId)` —
- * extracted because
- * `ComplianceOrgOverviewTiles.tsx` (the `OrgOverviewPage.tsx` header tiles)
- * and `OrgComplianceDashboard.tsx` (the default-active `orgOverviewSections`
- * group on that same page) both need these exact rows and, by construction,
- * both mount at once on a normal page load (`OrgOverviewPage.tsx`'s own
- * `sections[0]` fallback renders the Dashboard group by default, right
- * alongside the always-visible header). Two independent `useEffect`/
- * `useState` fetches were firing the identical request twice per page load
- * and could transiently disagree if a compliance assessment changed
- * between the two requests resolving — the same "two copies of the same
- * logic drifting apart" risk `orgComplianceSummary.ts`'s own extraction
- * already targeted, one layer further down (the fetch itself, not just the
- * computation over its result).
+ * Shared, deduplicated fetch of `listOrgProjectComplianceStatus(orgId)`: the organisation's compliance widgets
+ * (`OrgComplianceWidgets.tsx`) and the Compliance sections of the organisation overview need these exact rows and can
+ * mount together, so one request serves them all and they cannot disagree if an assessment changes between two
+ * separate requests resolving.
  *
  * Deliberately a **self-contained hook backed by a tiny module-level
  * external store** (`useSyncExternalStore`), mirroring

@@ -115,7 +115,7 @@ export interface EnhancementRequest extends ProjectScopedRow {
   requirement_count: number;
   /** Requesters recorded as told the outcome. */
   informed_count: number;
-  /** Requesters still to be told; 0 unless the request is delivered or declined. */
+  /** Requesters still to be informed; 0 unless the request is delivered or declined. */
   loop_open_count: number;
   /** The canonical request this one was merged into (status `duplicate`), else null. */
   merged_into: RequestRef | null;
@@ -202,7 +202,7 @@ export interface LoopRequester {
   note: string;
 }
 
-/** `GET .../requests/{id}/close-the-loop`: what became of a request and who has been told. */
+/** `GET .../requests/{id}/close-the-loop`: what became of a request and who has been informed. */
 export interface CloseTheLoop {
   request_id: string;
   status: RequestStatus;
@@ -327,7 +327,7 @@ export interface RequestComment {
   attachments: FileAsset[];
 }
 
-/** A delivered or declined request with requesters still to be told (`GET .../close-the-loop`). */
+/** A delivered or declined request with requesters still to be informed (`GET .../close-the-loop`). */
 export interface OpenLoop {
   request: RequestRef;
   status: RequestStatus;

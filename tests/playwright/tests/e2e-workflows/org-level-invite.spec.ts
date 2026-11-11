@@ -126,7 +126,7 @@ test("org admin invites a user org-level, and they can sign up and get org acces
   await test.step("complete signup via the invite link and confirm org access but no project access", async () => {
     const url = new URL(inviteUrl);
     await page.goto(`${url.pathname}${url.search}`);
-    await expect(page.getByText("You've been invited")).toBeVisible();
+    await expect(page.getByText("You have been invited")).toBeVisible();
     await page.getByLabel("Display name").fill("Org Invitee");
     // The email field is prefilled by nothing server-side — the invite is
     // matched by the email the invitee types, so it must match exactly.

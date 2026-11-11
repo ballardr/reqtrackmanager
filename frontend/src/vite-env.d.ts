@@ -14,5 +14,5 @@ interface ImportMeta {
 
 interface Window {
   /** Runtime config injected by docker/env-config-entrypoint.sh at container startup. */
-  __ENV__?: { VITE_API_BASE_URL?: string };
+  __ENV__?: { VITE_API_BASE_URL?: string; CLARITY_PROJECT_ID?: string };
 }

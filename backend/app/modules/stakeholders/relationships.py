@@ -132,6 +132,15 @@ def get_kind(key: str) -> RelationshipKind | None:
     return _KIND_BY_KEY.get(key)
 
 
+def require_kind(key: str) -> RelationshipKind:
+    """The declared kind with this key.
+
+    Raises:
+        KeyError: No kind is declared with this key (a programming error for a constant key).
+    """
+    return _KIND_BY_KEY[key]
+
+
 def target_type_available(target_type: str) -> bool:
     """Whether `target_type` can be linked to right now: core Requirements
     always, anything else only while an installed module provides it."""

@@ -211,7 +211,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles/${GUIDING_PRINCIPLE_ID}`,
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
     ));
-    await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
   },
 };
 
@@ -244,7 +244,7 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Unassign: Guiding Principle owner" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/guiding-principles/${GUIDING_PRINCIPLE_ID}`,
@@ -264,7 +264,7 @@ export const VersionHistoryShowsOwners: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Versions" })).toBeInTheDocument());
     await expect(canvas.getByText("Initial creation.")).toBeInTheDocument();
-    await expect(canvas.getAllByText("Org group · 3 members").length).toBeGreaterThan(0);
+    await expect(canvas.getAllByText("Organisation group · 3 members").length).toBeGreaterThan(0);
   },
 };
 

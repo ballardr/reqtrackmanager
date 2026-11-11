@@ -17,7 +17,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +34,7 @@ from app.modules.registry import get_module_registry, sync_module_role_definitio
 from app.routers import (
     action_types,
     actions,
+    announcements,
     artefact_links,
     auth,
     auth_oidc,
@@ -42,10 +43,15 @@ from app.routers import (
     custom_reports,
     files,
     health,
+    nav_labels,
     notifications,
+    org_dashboards,
     org_record_tables,
     orgs,
+    overview_widgets,
     pats,
+    placements,
+    policies,
     project_link_types,
     projects,
     record_list_report,
@@ -66,11 +72,12 @@ from app.routers import (
     reviews,
     scim,
     search,
+    stage_workflows,
     system,
     tags,
     ws,
 )
-from app.services import pubsub, report_font_catalogue
+from app.services import pubsub, report_font_catalogue, secret_keys
 from app.services.bootstrap import run_bootstrap
 from app.services.client_date import reset_client_date, set_client_date
 from app.services.disk_monitor import run_disk_monitor_loop
@@ -81,6 +88,7 @@ from app.services.report_run_jobs import run_job_loop
 from app.services.scheduler import start_scheduler, stop_scheduler
 from app.services.scoring import sync_scoring_levels
 from app.services.storage_health import run_storage_health_loop
+from app.services.template_guard import enforce_template_read_only
 from app.version import APP_VERSION
 
 settings = get_settings()
@@ -132,6 +140,8 @@ async def lifespan(_: FastAPI):
             # from the registry, so a module installed after orgs exist still
             # gets its levels (see `sync_scoring_levels`).
             sync_scoring_levels(db)
+            # A wrong or lost encryption key is a logged error now, not locked-out users later.
+            secret_keys.warn_if_unreadable(db)
         finally:
             db.close()
     pubsub.set_event_loop(asyncio.get_event_loop())
@@ -187,6 +197,7 @@ app = FastAPI(
     # being frozen at the value set when the app was first scaffolded.
     version=APP_VERSION,
     lifespan=lifespan,
+    dependencies=[Depends(enforce_template_read_only)],
 )
 
 # Added before CORS so it ends up inside it (middleware added last runs first): a 413 still carries the CORS
@@ -211,7 +222,7 @@ app.add_middleware(
     # `Content-Disposition` carries the server's chosen name for a generated file (a pack's zip is named by its
     # file-name template); a cross-origin browser hides it from JS unless exposed, and the download would fall back
     # to a client-side guess.
-    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count", "Content-Disposition"],
+    expose_headers=["X-Total-Count", "X-Total-Unfiltered-Count", "X-Can-Include-Unjoined", "Content-Disposition"],
 )
 
 
@@ -281,6 +292,10 @@ async def security_headers_middleware(request: Request, call_next):
     frame_src_origins = get_settings().module_frame_allowed_origin_list
     frame_src = " ".join(frame_src_origins) if frame_src_origins else "'none'"
     response.headers["Content-Security-Policy"] = f"frame-ancestors 'none'; frame-src {frame_src}"
+    # An answer for a signed-in person is not kept by a shared cache or the browser's disk cache. Only JSON, and only
+    # when the route set no policy of its own: file downloads and health probes choose theirs.
+    if "cache-control" not in response.headers and response.headers.get("content-type", "").startswith("application/json"):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -374,6 +389,21 @@ app.include_router(custom_fields.router)
 app.include_router(action_types.router)
 app.include_router(actions.router)
 app.include_router(artefact_links.router)
+app.include_router(placements.router)
+app.include_router(stage_workflows.org_router)
+app.include_router(stage_workflows.project_router)
+app.include_router(announcements.system_router)
+app.include_router(announcements.org_router)
+app.include_router(announcements.reader_router)
+app.include_router(policies.system_router)
+app.include_router(policies.org_router)
+app.include_router(policies.member_router)
+app.include_router(policies.public_router)
+app.include_router(nav_labels.router)
+app.include_router(nav_labels.org_router)
+app.include_router(org_dashboards.router)
+app.include_router(overview_widgets.router)
+app.include_router(overview_widgets.org_router)
 app.include_router(tags.router)
 app.include_router(tags.org_router)
 app.include_router(project_link_types.router)

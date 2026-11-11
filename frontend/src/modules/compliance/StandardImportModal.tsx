@@ -29,6 +29,8 @@ import * as complianceApi from "./api";
 import type { StandardImportResult } from "./types";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { FileField } from "../../components/FormFields";
+import { useOrgLabelCapitalized } from "../../context/BrandingContext";
+import { useStrings } from "../../context/TerminologyContext";
 
 interface StandardImportOrgOption {
   id: string;
@@ -51,6 +53,8 @@ export function StandardImportModal({
   onCancel: () => void;
   onImported: (result: StandardImportResult) => void;
 }) {
+  const strings = useStrings();
+  const orgLabelCap = useOrgLabelCapitalized();
   const [selectedOrgId, setSelectedOrgId] = useState(orgId ?? (orgs?.length === 1 ? orgs[0].id : ""));
   const [file, setFile] = useState<File | null>(null);
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
@@ -83,11 +87,11 @@ export function StandardImportModal({
       <div className="stack">
         {!orgId && orgs && orgs.length > 1 && (
           <LabeledSelect helpNotNeeded
-            label="Organisation"
+            label={orgLabelCap}
             value={selectedOrgId}
             onChange={setSelectedOrgId}
             options={orgs.map((o) => ({ value: o.id, label: o.name }))}
-            placeholder="Select an organisation…"
+            placeholder={strings.filters.select}
             inputProps={{ autoFocus: true }}
           />
         )}

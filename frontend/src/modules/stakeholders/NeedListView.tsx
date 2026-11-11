@@ -63,6 +63,7 @@ export function NeedListView({
       onIncludeArchivedChange={onIncludeArchivedChange}
       onOpen={onOpen}
       tagFilter={tagFilter}
+      placementType="stakeholder_need"
       projectScope={projectScope}
       page={page}
       exportRecords={exportRecords && { ...exportRecords, recordType: "stakeholder_need" }}

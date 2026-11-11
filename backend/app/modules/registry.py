@@ -62,7 +62,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import DeclarativeBase, Session
 
 from app.config import get_settings
 from app.models.enums import LinkFlow, LinkNestingScope
@@ -348,11 +348,18 @@ class ModuleSubComponentDefinition:
             override row for this sub-component gets it enabled by
             default — this dataclass's own analogue of `ModuleDefinition.
             default_enabled` one tier down.
+        organization_only: The sub-component belongs to the organisation
+            (an organisation-owned list), so it has no project-level state:
+            projects are not offered a switch for it, the project API
+            rejects a write for it, no project row is ever created for it,
+            and `is_module_subcomponent_enabled` returns the
+            organisation's state, ignoring any stored project row.
     """
 
     key: str
     name: str
     default_enabled: bool = True
+    organization_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -860,6 +867,18 @@ class ModuleProjectBundleHooks:
             Strategy's per-persona Pain Point scores refer to Personas, which
             a later-registered module creates). `None` when `import_` alone
             suffices.
+        template_configuration_keys: The `export` keys that are project configuration (type
+            vocabularies, hidden organisation defaults, scoring definitions, settings), copied
+            unchanged when a project is created from a template.
+        template_record_keys: The `export` keys that hold starter records (and the links among
+            them), copied when a project is created from a template after `template_reset` has
+            returned them to their starting state.
+        template_excluded: `{export key: reason}` for each remaining key, which a template never
+            copies (lifecycle state of the template, such as assessments). Every key `export`
+            returns is in exactly one of the three sets; a test fails otherwise.
+        template_reset: Called on the filtered export before import: edits the starter records in
+            place to fresh drafts (initial status, no archive, review, vote or history state).
+            `None` for a module with no record keys.
     """
 
     export: Callable[[Session, Project], tuple[dict[str, Any], dict[uuid.UUID, FileAsset]]]
@@ -869,6 +888,10 @@ class ModuleProjectBundleHooks:
     import_late: (
         Callable[[Session, Project, dict[str, Any], dict[str, bytes], User, UserResolver, BundleImportWarnings], None] | None
     ) = None
+    template_configuration_keys: frozenset[str] = frozenset()
+    template_record_keys: frozenset[str] = frozenset()
+    template_excluded: Mapping[str, str] = field(default_factory=dict)
+    template_reset: Callable[[dict[str, Any]], None] | None = None
 
 
 #: `openapi_extra` key a route's own author sets to mark it as an
@@ -955,13 +978,13 @@ def build_mcp_tool_manifest() -> list[ResolvedMcpTool]:
         router_prefixes = [r.prefix for r in routers]
         routes_by_path_and_method: dict[tuple[str, str], object] = {}
         for r in routers:
-            for route in r.routes:
-                path = getattr(route, "path", None)
-                methods = getattr(route, "methods", None) or ()
+            for router_route in r.routes:
+                path = getattr(router_route, "path", None)
+                methods = getattr(router_route, "methods", None) or ()
                 if path is None:
                     continue
                 for method in methods:
-                    routes_by_path_and_method[(path, method.upper())] = route
+                    routes_by_path_and_method[(path, method.upper())] = router_route
 
         # A report that failed registry validation (unknown sub-component or role) answers 404 and is
         # not catalogued; its generated MCP tool (`report_mcp_tools`) must not be offered either.
@@ -1093,9 +1116,9 @@ def validate_scoring_model_maths(model: ScoringModelDefinition) -> None:
 
     Raises:
         ValueError: For an unknown combination; a product model with an exponent that is not in (0, 10] or names
-            an axis the model does not use, or with weighted-sum settings; a weighted-sum model with divisors,
-            exponents, an importance missing for an axis or naming another, a non-positive importance, a total
-            other than 100, or an inverted axis it does not sum.
+            an axis the model does not use, or with weighted-sum settings; a weighted-sum model with exponents,
+            an importance missing for an axis or naming another, a non-positive importance, a total other than
+            100, or an inverted axis it does not sum.
     """
     used = {*model.axis_keys, *model.divisor_axis_keys}
     if model.combination == "product":
@@ -1107,8 +1130,8 @@ def validate_scoring_model_maths(model: ScoringModelDefinition) -> None:
         if len({axis_key for axis_key, _ in model.exponents}) != len(model.exponents):
             raise ValueError(f"Model '{model.key}' lists an exponent twice.")
     elif model.combination == "weighted_sum":
-        if model.divisor_axis_keys or model.exponents:
-            raise ValueError(f"Model '{model.key}' is a weighted sum, so it takes no divisors or exponents.")
+        if model.exponents:
+            raise ValueError(f"Model '{model.key}' is a weighted sum, so it takes no exponents.")
         percentages = dict(model.importance)
         if set(percentages) != set(model.axis_keys) or len(percentages) != len(model.importance):
             raise ValueError(f"Model '{model.key}' needs one importance for each summed axis.")
@@ -1153,6 +1176,9 @@ class ScoringAxisDefinition:
             of being chosen manually; core only stores the name. Each level then has a `threshold`, and the level
             for a value is the one with the highest threshold not above it (the lowest level takes anything below). A scorer may still pick a level by
             hand, which then wins. `None` = an ordinary, manually chosen axis.
+        per_target: Only on a scheme with targets (`ScoringSchemeDefinition.target_label`): whether the axis is
+            scored separately for each target (a persona) rather than once for the whole record. A per-target
+            axis scored for the whole record is the default for the targets that are not scored individually.
     """
 
     key: str
@@ -1160,6 +1186,7 @@ class ScoringAxisDefinition:
     default_levels: tuple[ScoringLevelDefault, ...]
     description: str = ""
     derived_source: str | None = None
+    per_target: bool = False
 
 
 @dataclass(frozen=True)
@@ -1195,7 +1222,7 @@ class ScoringModelDefinition:
             `axis_keys`. The normalised score divides by the best case: every
             multiplied axis at its top weight and every divisor at its lowest.
         combination: `"product"` (the default: multiplied axes over divisors) or `"weighted_sum"` (each axis
-            scaled to 0..1 and summed by its importance).
+            scaled to 0..1 and summed by its importance, then divided by any divisor axes, as in WSJF).
         exponents: Product only: `(axis key, exponent)` pairs raising an axis's weight to a power, so a more
             important criterion counts for more; an axis not listed has exponent 1.
         importance: Weighted sum only: `(axis key, percentage)` for every axis in `axis_keys`, totalling 100.
@@ -1252,9 +1279,12 @@ class ScoringSchemeDefinition:
         allow_custom_criteria: Whether an organisation (and a project) may define its own axes and models on this
             scheme, beside the registered ones, which then can only be hidden, never deleted. Off keeps a scheme
             exactly as registered.
-        side_by_side_models: Whether the module shows several models' scores for one record at once, so the
-            administrator chooses which models are enabled (`enabled_model_keys`). Off hides that setting from
-            the scoring screens, because nothing would read it.
+        side_by_side_models: Whether the module offers only the enabled models (`enabled_model_keys`) when scoring
+            or viewing, or shows several at once, so the administrator chooses which models are enabled. Off hides
+            that setting from the scoring screens, because nothing would read it.
+        target_label: Names what a record may be scored for individually (`"persona"`), or `None` when a record
+            has one score set. A scheme with a target lets each axis choose whether it is scored per target
+            (`ScoringAxisDefinition.per_target`), and the custom-axis form asks which.
 
     Raises:
         ValueError: On construction, if keys are malformed or duplicated,
@@ -1273,6 +1303,7 @@ class ScoringSchemeDefinition:
     reassign_level_usage: Callable[[Session, uuid.UUID, uuid.UUID], None] | None = None
     allow_custom_criteria: bool = False
     side_by_side_models: bool = False
+    target_label: str | None = None
 
     def __post_init__(self) -> None:
         """Validates the scheme's internal consistency (see class docstring)."""
@@ -1311,6 +1342,8 @@ class ScoringSchemeDefinition:
                 validate_scoring_bands([(b.label, b.min_score, b.tone) for b in model.default_bands])
         if self.default_model_key not in model_keys:
             raise ValueError(f"Default model '{self.default_model_key}' is not one of scheme '{self.key}'s models.")
+        if self.target_label is None and any(a.per_target for a in self.axes):
+            raise ValueError(f"Scheme '{self.key}' has per-target axes but no target_label.")
         if (self.count_level_usage is None) != (self.reassign_level_usage is None):
             raise ValueError("count_level_usage and reassign_level_usage must be supplied together.")
 
@@ -1372,6 +1405,27 @@ class DemandParty:
     label: str
     weight: float | None
     weight_source: str = ""
+
+
+@dataclass(frozen=True)
+class ActivityLinkEnds:
+    """The two records one link audit event joins, read from the event's `detail` (see `activity_link_ends`).
+
+    Attributes:
+        source: `(artefact type, id)` of the end the relationship is read from.
+        target: `(artefact type, id)` of the other end.
+        link_type_id: The link type's id when the event names one; its forward name is looked up.
+        link_type_label: The relationship's forward name when the reader knows it without a lookup.
+    """
+
+    source: tuple[str, uuid.UUID]
+    target: tuple[str, uuid.UUID]
+    link_type_id: uuid.UUID | None = None
+    link_type_label: str | None = None
+
+
+#: Reads the ends of one link event's `detail`; returns `None` when the detail does not name two records.
+ActivityLinkEndsReader = Callable[[dict[str, Any]], ActivityLinkEnds | None]
 
 
 @dataclass(frozen=True)
@@ -1790,7 +1844,7 @@ class RecordColumn:
         label: The name a person sees.
         get: `(prepared, record) -> str`: the cell text, **unprefixed** (the engine adds the formula guard);
             also the "before" value an import compares against. Dates `YYYY-MM-DD`, instants UTC ISO 8601,
-            enums by the label users see, a person as an email (user) or `Name (Org group)` (group).
+            enums by the label users see, a person as an email (user) or `Name (Organisation group)` (group).
         parse: `(ctx, text) -> value`: the cell text (whitespace stripped, may be empty) to the value
             `create`/`update` receive; raises `RecordCellError`. `None` for an export-only column.
         kind: `text`, `enum`, `principal`, `date`, `number`, `bool`, `instant` or `list`, for the UI.
@@ -2002,6 +2056,72 @@ class ScalingProbeApi:
 
 
 @dataclass(frozen=True)
+class OverviewMetricValue:
+    """What one overview metric returns for one evaluation (`OverviewMetric.evaluate`).
+
+    Attributes:
+        value: The single figure, or `None` when the metric has none (a breakdown-only metric).
+        breakdown: `(key, label, value)` rows for a chart; `None` when the metric has no breakdown.
+        detail: Optional text per breakdown key (a stage's phase name).
+    """
+
+    value: float | None = None
+    breakdown: list[tuple[str, str, float]] | None = None
+    detail: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class OverviewMetric:
+    """One figure the project overview can show, from the bounded catalogue (never an arbitrary query).
+
+    A widget names a metric by key and passes `params`; the server checks the key against the catalogue and every
+    parameter against `params`, so a manager's configuration cannot reach data the metric does not define.
+
+    Attributes:
+        label: Name shown in the widget editor and as the default widget title.
+        unit: `count` or `percent`; decides the gauge's default range and the value's suffix.
+        evaluate: `(ctx, params) -> OverviewMetricValue`. `ctx` is a `services.overview_metrics.MetricContext`
+            (session, caller, project, project scope). Read-only; must not add a statement per record.
+        params: The configuration keys the metric accepts (`record_type`, `filters`); any other is refused.
+        breakdown: Whether the result carries a breakdown, so chart widgets offer the metric.
+        scalar: Whether the result carries a single value, so tile and gauge widgets offer the metric.
+        gate: `(module_key, sub_component_key | None)` that must be open for the project, `None` for a core metric.
+    """
+
+    label: str
+    unit: str
+    evaluate: Callable[[Any, Mapping[str, Any]], OverviewMetricValue]
+    params: frozenset[str] = frozenset()
+    breakdown: bool = False
+    scalar: bool = True
+    gate: tuple[str, str | None] | None = None
+
+
+@dataclass(frozen=True)
+class OverviewWidgetType:
+    """A widget type a module contributes to the project overview (`ModuleDefinition.overview_widgets`).
+
+    The module's frontend registers the renderer under the same key (`TierAModuleDefinition.overviewWidgets`); this
+    declaration lets the server validate stored layouts and offer the type only where the module is enabled.
+
+    Attributes:
+        label: Name in the "Add widget" list.
+        description: One sentence on what it shows (the `(?)` help in the editor).
+        width: The width in columns (of 12) a new widget of this type starts with.
+        height: The height in rows a new widget of this type starts with.
+        in_default_layout: Whether the built-in overview includes one of this type while the module is enabled (placed
+            after the key tiles), so a project that has set no layout shows the module's contribution. A layout a
+            person has saved is never changed when a module is enabled later; they add the widget themselves.
+    """
+
+    label: str
+    description: str
+    width: int = 4
+    height: int = 4
+    in_default_layout: bool = False
+
+
+@dataclass(frozen=True)
 class LinkTypeSeed:
     """A link type a module wants to exist in every organisation, so its
     artefact types can be linked meaningfully without a core edit
@@ -2150,6 +2270,12 @@ class ReportParamDefinition:
         choice_labels: Human labels keyed by choice value, for the generated
             select; a choice without one falls back to its humanised value.
             Keys must be among `choices`.
+        choices_for: `(db, organization_id, project_id) -> [(value, label), ...]` for a value set that differs by
+            project or organisation (the scoring models a project offers). The catalogue calls it for the project
+            (`project_id` set) or organisation (`project_id` `None`) it is built for and shows the result as the
+            select's options, so a person picks a name instead of typing a key. It is for display only: the value
+            is not checked against it (the collector checks it against each project reported on), so the
+            parameter must not also declare `choices`. A provider that raises leaves the control a text box.
     """
 
     name: str
@@ -2161,6 +2287,7 @@ class ReportParamDefinition:
     description: str = ""
     label: str = ""
     choice_labels: Mapping[Any, str] | None = None
+    choices_for: Callable[[Session, uuid.UUID, uuid.UUID | None], Sequence[tuple[Any, str]]] | None = None
 
 
 @dataclass(frozen=True)
@@ -2353,7 +2480,7 @@ class PrincipalReference:
             record deletes the row instead of creating a duplicate.
     """
 
-    model: type
+    model: type[DeclarativeBase]
     field: str
     label: str
     audit_entity_type: str
@@ -2799,6 +2926,18 @@ class ModuleDefinition:
             that is not searchable says why in `not_searchable`.
         not_searchable: `{artefact type: reason}` for a type deliberately left out of the
             global search. A backend test fails for a type that has neither.
+        activity_action_kinds: `{audit action: kind}` classifying the actions this module writes for the project
+            History page's Event filter (`services.activity_kinds`); a kind is one of its keys (`created`, `edited`,
+            `status`, `links`, `tags`, `access`, `comments`, `deleted`). An action left out shows under Other.
+        activity_link_ends: `{audit entity type: reader}` for each link event type this module logs outside the
+            generic link table (an entity type ending `_link`): the reader returns the two records the event joins from
+            its `detail` so the History page and Activity aside can name them (`services.activity_link_ends`). A
+            test fails for a logged `*_link` event type with no reader.
+        activity_metadata_types: `{audit entity type: metadata group}` for each event entity type this module logs that
+            is not one of its `artefact_types`, so the History page's Type filter lists it under Links and files
+            (`links`), Tags and places (`tags`), Access (`access`) or Structure and settings (`structure`); a link
+            family (`_link`) and a vocabulary (`_definition`) are found by their names. A type left out is listed
+            under Other. A test fails for a logged entity type that lands there.
         search_scopes: `{scope key: SearchScope}` the module adds to the search page's
             Scope filter (Compliance: one standard). Addressed in a request as
             `<module_key>:<scope_key>:<ref_id>`; a scope of a module that is off for the
@@ -2827,6 +2966,13 @@ class ModuleDefinition:
             it cannot be imported in `not_importable` (and still registers a provider for export).
         not_importable: `{artefact type: reason}` for a type deliberately left without import. A backend
             test fails for a type that has neither a provider able to import nor a reason.
+        not_placeable: `{artefact type: reason}` for a type that cannot be placed in the project's component/category
+            tree (a record that exists only as part of a structure of its own). Every other registered type is placed
+            through the shared `artefact_placements` table with no module code. Read via `get_not_placeable_types`.
+        not_creatable_from_links: `{artefact type: reason}` for a type a person cannot author, so the Links panel's
+            "Create new" never offers it (a record derived from an assigned standard). Every other type declares a
+            `linkedRecordCreators` entry on the frontend; a backend test fails when
+            `frontend/src/modules/creatableRecordTypes.json` disagrees with the registry.
         perf_generators: Maps one of this module's own `artefact_types` to a `PerfDatasetGenerator`, so the
             performance tooling's dataset tiers scale this type's records and their links. Read via
             `get_perf_generators`. A backend test fails for a registered type with neither a generator, a reason in
@@ -2840,6 +2986,18 @@ class ModuleDefinition:
             a workflow produces).
         no_perf_generator: `{artefact type: reason}` for a type that is not generated (a record produced by a
             workflow whose volume is not a function of the requirement count).
+        overview_metrics: Maps a metric key (unique within the module; served as `<module_key>:<key>`) to an
+            `OverviewMetric`, so a project overview widget can show a figure of this module. Read via
+            `get_overview_metrics`. Offered and evaluated only where the module is enabled for the project.
+        overview_widgets: Maps a widget key (served as `<module_key>:<key>`) to an `OverviewWidgetType` whose
+            renderer the module's frontend registers; read via `get_overview_widget_types`.
+        org_overview_metrics: Maps a metric key (served as `<module_key>:<key>`) to an `OverviewMetric` for the organisation's
+            dashboards (`get_org_overview_metrics`): `evaluate(ctx, params)` receives an
+            `services.org_dashboard_metrics.OrgMetricContext` (session, caller, organisation). Offered and evaluated only
+            while the organisation has the module enabled; usable by the metric tile, gauge and chart widgets.
+        org_overview_widgets: As `overview_widgets`, for the organisation's dashboards (`get_org_overview_widget_types`):
+            a widget draws the module's own figures for the organisation (its frontend registers the renderer under
+            `TierAModuleDefinition.orgOverviewWidgets`) and is offered only while the organisation has the module enabled.
         reports: The reports this module contributes, each
             a `ReportDefinition`. The module mounts the routers built by
             `app.services.report_framework.build_report_routers` and may
@@ -2932,6 +3090,9 @@ class ModuleDefinition:
     principal_references: tuple[PrincipalReference, ...] = field(default=())
     search_providers: dict[str, ArtefactSearchProvider] = field(default_factory=dict)
     not_searchable: dict[str, str] = field(default_factory=dict)
+    activity_action_kinds: dict[str, str] = field(default_factory=dict)
+    activity_link_ends: dict[str, ActivityLinkEndsReader] = field(default_factory=dict)
+    activity_metadata_types: dict[str, str] = field(default_factory=dict)
     search_scopes: dict[str, SearchScope] = field(default_factory=dict)
     report_fields: dict[str, ReportFieldProvider] = field(default_factory=dict)
     not_reportable: dict[str, str] = field(default_factory=dict)
@@ -2941,10 +3102,16 @@ class ModuleDefinition:
     report_snippets: tuple[ReportSnippet, ...] = field(default=())
     record_tables: dict[str, RecordTableProvider] = field(default_factory=dict)
     not_importable: dict[str, str] = field(default_factory=dict)
+    not_creatable_from_links: dict[str, str] = field(default_factory=dict)
+    not_placeable: dict[str, str] = field(default_factory=dict)
     perf_generators: dict[str, PerfDatasetGenerator] = field(default_factory=dict)
     scaling_probes: dict[str, ScalingProbe] = field(default_factory=dict)
     no_scaling_probe: dict[str, str] = field(default_factory=dict)
     no_perf_generator: dict[str, str] = field(default_factory=dict)
+    overview_metrics: dict[str, OverviewMetric] = field(default_factory=dict)
+    overview_widgets: dict[str, OverviewWidgetType] = field(default_factory=dict)
+    org_overview_metrics: dict[str, OverviewMetric] = field(default_factory=dict)
+    org_overview_widgets: dict[str, OverviewWidgetType] = field(default_factory=dict)
 
 
 # First-party modules. Always loaded regardless of `Settings.
@@ -3495,6 +3662,9 @@ def is_module_subcomponent_enabled(
        subcomponent_state`'s `enabled`) is `False` -> `False`; no project
        value can cross it, so an org-level Off reaches every project at
        once.
+    2b. The sub-component is `organization_only` -> `True` here (the
+       organisation's state decided it in step 2); no project row or
+       default is consulted, so a stale row cannot disagree.
     3. This project's own `ProjectModuleSubComponentEnablement` row ->
        its `enabled`. Projects get one copied in at creation (`snapshot_
        project_module_state`) and before an org default changes
@@ -3534,6 +3704,8 @@ def is_module_subcomponent_enabled(
     if not org_enabled:
         return False
 
+    if (definition := _find_subcomponent_definition(module_key, subcomponent_key)) and definition.organization_only:
+        return True
     project_override = _project_subcomponent_override(db, project_id, module_key, subcomponent_key)
     if project_override is not None:
         return project_override.enabled
@@ -3644,6 +3816,8 @@ def snapshot_project_module_state(db: Session, project_id: uuid.UUID, organizati
                 enabled=resolve_default_project_enabled(db, organization_id, definition.key),
             ))
         for sub in definition.sub_components:
+            if sub.organization_only:
+                continue
             org_enabled, org_default_project_enabled = resolve_org_subcomponent_state(
                 db, organization_id, definition.key, sub.key,
             )
@@ -3694,6 +3868,8 @@ def freeze_projects_subcomponent_default(
 
     org_state = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
     if org_state is None or not org_state[0] or not is_module_enabled(db, organization_id, module_key):
+        return
+    if (definition := _find_subcomponent_definition(module_key, subcomponent_key)) and definition.organization_only:
         return
     project_ids = _project_ids_without_row(
         db, organization_id, ProjectModuleSubComponentEnablement,
@@ -4065,7 +4241,8 @@ def get_frontend_manifest(module_key: str) -> ModuleFrontendManifest | None:
 
     from urllib.parse import urlsplit
 
-    origin = urlsplit(manifest.frame_url).scheme + "://" + urlsplit(manifest.frame_url).netloc
+    frame = urlsplit(manifest.frame_url or "")
+    origin = frame.scheme + "://" + frame.netloc
     settings = get_settings()
     if origin not in settings.module_frame_allowed_origin_list:
         logger.warning(
@@ -4357,6 +4534,8 @@ def _report_param_problem(param: ReportParamDefinition) -> str | None:
         return f"parameter '{param.name}' declares an empty choice set"
     if param.minimum is not None and param.maximum is not None and param.minimum > param.maximum:
         return f"parameter '{param.name}' has minimum above maximum"
+    if param.choices_for is not None and (param.choices is not None or param.choice_labels or param.type != "string"):
+        return f"parameter '{param.name}' takes its choices from a provider, so it declares no fixed choices or labels and is a string"
     if param.choice_labels and not set(param.choice_labels) <= set(param.choices or ()):
         return f"parameter '{param.name}' labels a value that is not one of its choices"
     default = param.default
@@ -4615,16 +4794,19 @@ def list_organization_artefact_summaries(
     the same name) is disabled for the organisation. Used to resolve an
     organisation-qualified record code."""
     found = _summary_provider_for(artefact_type)
-    if found is None or found[1].list_for_organization is None:
+    if found is None:
         return []
     definition, provider = found
+    list_for_organization = provider.list_for_organization
+    if list_for_organization is None:
+        return []
     if not is_module_enabled(db, organization_id, definition.key):
         return []
     if any(sub.key == artefact_type for sub in definition.sub_components) and not is_org_module_subcomponent_enabled(
         db, organization_id, definition.key, artefact_type
     ):
         return []
-    return provider.list_for_organization(db, organization_id)
+    return list_for_organization(db, organization_id)
 
 
 def get_search_providers() -> dict[str, ArtefactSearchProvider]:
@@ -4638,6 +4820,30 @@ def get_search_providers() -> dict[str, ArtefactSearchProvider]:
         for artefact_type, provider in definition.search_providers.items():
             merged.setdefault(artefact_type, provider)
     return merged
+
+
+def get_activity_action_kinds() -> dict[str, str]:
+    """`{audit action: kind}` merged from every module's `activity_action_kinds`."""
+    kinds: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        kinds.update(definition.activity_action_kinds)
+    return kinds
+
+
+def get_activity_metadata_types() -> dict[str, str]:
+    """`{audit entity type: metadata group}` merged from every module's `activity_metadata_types`."""
+    groups: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        groups.update(definition.activity_metadata_types)
+    return groups
+
+
+def get_activity_link_ends() -> dict[str, ActivityLinkEndsReader]:
+    """`{audit entity type: reader}` merged from every module's `activity_link_ends`."""
+    readers: dict[str, ActivityLinkEndsReader] = {}
+    for definition in get_module_registry().values():
+        readers.update(definition.activity_link_ends)
+    return readers
 
 
 def get_not_searchable_types() -> dict[str, str]:
@@ -4742,6 +4948,24 @@ def get_not_importable_types() -> dict[str, str]:
     return reasons
 
 
+def get_not_placeable_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type a module declared cannot be placed in a component (no core type is
+    among them)."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_placeable)
+    return reasons
+
+
+def get_not_creatable_from_links_types() -> dict[str, str]:
+    """`{artefact type: reason}` for every type the Links panel cannot offer "Create new" for: each module's
+    `not_creatable_from_links` (no core type is among them)."""
+    reasons: dict[str, str] = {}
+    for definition in get_module_registry().values():
+        reasons.update(definition.not_creatable_from_links)
+    return reasons
+
+
 def get_perf_generators() -> dict[str, PerfDatasetGenerator]:
     """Every registered artefact type's `PerfDatasetGenerator`: the core types'
     (`services.perf_dataset.core`) plus each module's `perf_generators`. A type claimed twice keeps the first."""
@@ -4780,6 +5004,42 @@ def get_no_scaling_probe_types() -> dict[str, str]:
     for definition in get_module_registry().values():
         reasons.update(definition.no_scaling_probe)
     return reasons
+
+
+def get_overview_metrics() -> dict[str, tuple[str, OverviewMetric]]:
+    """Every module-contributed overview metric as `{<module_key>:<key>: (module_key, metric)}`."""
+    return {
+        f"{definition.key}:{metric_key}": (definition.key, metric)
+        for definition in get_module_registry().values()
+        for metric_key, metric in definition.overview_metrics.items()
+    }
+
+
+def get_overview_widget_types() -> dict[str, tuple[str, OverviewWidgetType]]:
+    """Every module-contributed overview widget type as `{<module_key>:<key>: (module_key, type)}`."""
+    return {
+        f"{definition.key}:{widget_key}": (definition.key, widget)
+        for definition in get_module_registry().values()
+        for widget_key, widget in definition.overview_widgets.items()
+    }
+
+
+def get_org_overview_metrics() -> dict[str, tuple[str, OverviewMetric]]:
+    """Every module-contributed organisation dashboard metric as `{<module_key>:<key>: (module_key, metric)}`."""
+    return {
+        f"{definition.key}:{metric_key}": (definition.key, metric)
+        for definition in get_module_registry().values()
+        for metric_key, metric in definition.org_overview_metrics.items()
+    }
+
+
+def get_org_overview_widget_types() -> dict[str, tuple[str, OverviewWidgetType]]:
+    """Every module-contributed organisation dashboard widget type as `{<module_key>:<key>: (module_key, type)}`."""
+    return {
+        f"{definition.key}:{widget_key}": (definition.key, widget)
+        for definition in get_module_registry().values()
+        for widget_key, widget in definition.org_overview_widgets.items()
+    }
 
 
 def get_search_scopes() -> dict[str, tuple[ModuleDefinition, SearchScope]]:

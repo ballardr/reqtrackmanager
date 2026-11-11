@@ -362,6 +362,42 @@ export type PainPointPriority = "low" | "medium" | "high";
 
 export const PAIN_POINT_PRIORITY_LABEL: Record<PainPointPriority, string> = STRATEGY_PRIORITY_LABEL;
 
+/** Who may submit a Pain Point: any project member, or only a Pain Point Manager. */
+export type PainPointSubmissionPolicy = "members" | "managers";
+
+export const PAIN_POINT_SUBMISSION_POLICY_LABEL: Record<PainPointSubmissionPolicy, string> = {
+  members: "Any project member",
+  managers: "Pain Point Managers only",
+};
+
+/** Where a project's resolved submission policy comes from. */
+export type PainPointSubmissionSource = "project" | "ancestor" | "organization" | "default";
+
+export const PAIN_POINT_SUBMISSION_SOURCE_LABEL: Record<PainPointSubmissionSource, string> = {
+  project: "this project",
+  ancestor: "a parent project",
+  organization: "the organisation",
+  default: "the platform default",
+};
+
+/** `GET/PUT …/pain-point-settings` on a project: the resolved policy and what the caller may do under it. */
+export interface PainPointSubmissionSettings {
+  submission_policy: PainPointSubmissionPolicy;
+  source: PainPointSubmissionSource;
+  /** The project's own setting; null when it inherits. */
+  own_policy: PainPointSubmissionPolicy | null;
+  /** The organisation's default; null when it has not set one. */
+  organization_default: PainPointSubmissionPolicy | null;
+  can_submit: boolean;
+  /** Why the caller cannot submit and where to raise the request instead; null when they can. */
+  restriction_message: string | null;
+}
+
+/** `GET/PUT …/pain-point-settings` on an organisation. */
+export interface OrgPainPointSubmissionSettings {
+  submission_policy: PainPointSubmissionPolicy | null;
+}
+
 export type PainPointStatus = "submitted" | "triaged" | "rejected" | "duplicate" | "accepted" | "addressed" | "closed";
 
 export const PAIN_POINT_STATUS_LABEL: Record<PainPointStatus, string> = {
@@ -515,10 +551,10 @@ export const PAIN_POINT_ROLLUP_LABEL: Record<PainPointRollup, string> = {
 };
 
 /** How a score row's persona resolves (`pain_point_scores.TargetStatus`). */
-export type PainPointScoreTargetStatus = "all" | "active" | "inactive" | "unavailable";
+export type PainPointScoreTargetStatus = "general" | "active" | "inactive" | "unavailable";
 
 export const PAIN_POINT_SCORE_TARGET_STATUS_LABEL: Record<PainPointScoreTargetStatus, string> = {
-  all: "All personas",
+  general: "General",
   active: "Active",
   inactive: "Retired (not counted)",
   unavailable: "Persona unavailable",
@@ -538,9 +574,10 @@ export interface PainPointScoreEntry {
   label: string | null;
   weight: number | null;
   status: PainPointScoreTargetStatus;
-  severity_level_id: string | null;
-  frequency_level_id: string | null;
-  confidence_level_id: string | null;
+  /** What the row itself holds, level id by scoring axis key. */
+  levels: Record<string, string>;
+  /** What the row scores with: its own per-persona levels over the General row's. */
+  effective_levels: Record<string, string>;
   score: PainPointScoreValue | null;
   is_blocker: boolean;
 }
@@ -548,7 +585,7 @@ export interface PainPointScoreEntry {
 /** One Pain Point's roll-up under a model and method. */
 export interface PainPointScoringSummary {
   pain_point_id: string;
-  scope: "none" | "all_personas" | "per_persona";
+  scope: "none" | "general" | "per_persona";
   score: PainPointScoreValue | null;
   counted: number;
   is_blocker: boolean;
@@ -590,10 +627,10 @@ export interface PainPointScoringList {
 
 /** One requested row when replacing a Pain Point's scores. */
 export interface PainPointScoreInput {
+  /** The persona, or null for the General row. */
   target_id: string | null;
-  severity_level_id: string | null;
-  frequency_level_id: string | null;
-  confidence_level_id: string | null;
+  /** Level id by scoring axis key; a null level is not scored. */
+  levels: Record<string, string | null>;
 }
 
 // --- Comments (no reaction mechanism — same shape as StrategyComment/FutureStateComment) -

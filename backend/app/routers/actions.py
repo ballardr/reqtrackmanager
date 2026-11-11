@@ -48,6 +48,7 @@ from app.services.actions import (
 )
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_manage, require_project_view
 from app.services.relationships import get_all_links as get_all_artefact_links
@@ -108,7 +109,7 @@ def list_actions(
         labels = assignee_labels(db, actions)
         return [action_to_out(db, a, counts.get(a.id, 0), labels) for a in actions]
 
-    return project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement_action", rows_for)
+    return project_scope.collect(db, project_or_404(db, project_id), current_user.id, "requirement_action", rows_for)
 
 
 @router.get("/{action_id}", response_model=RequirementActionOut)
@@ -168,7 +169,7 @@ def update_action(
     other fields)."""
     _require_edit_role(db, current_user, project_id)
     action = get_requirement_action_in_project(db, project_id, action_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     edit_action(
         db, project, current_user, action, title=payload.title, description=payload.description,
         action_type_id=payload.action_type_id, assignee=payload.assignee, due_date=payload.due_date,
@@ -243,6 +244,7 @@ def add_comment(
     )
     db.add(comment)
     db.flush()
+    engagement.audit_comment(db, comment, action="comment_added", actor_id=current_user.id, project_id=project_id)
     db.commit()
     db.refresh(comment)
     return engagement.comment_to_out(db, comment, current_user.id)
@@ -277,6 +279,7 @@ def edit_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may edit it.")
     comment.body = payload.body
     comment.edited_at = datetime.now(UTC)
+    engagement.audit_comment(db, comment, action="comment_edited", actor_id=current_user.id, project_id=project_id)
     db.commit()
     db.refresh(comment)
     return engagement.comment_to_out(db, comment, current_user.id)
@@ -291,6 +294,7 @@ def react_to_comment(
     comment = db.get(ReviewComment, comment_id)
     if comment is None or comment.target_id != action_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    engagement.audit_comment(db, comment, action="comment_reacted", actor_id=current_user.id, project_id=project_id)
     engagement.add_reaction(db, comment_id, current_user.id)
 
 
@@ -303,6 +307,7 @@ def unreact_to_comment(
     comment = db.get(ReviewComment, comment_id)
     if comment is None or comment.target_id != action_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
+    engagement.audit_comment(db, comment, action="comment_reaction_removed", actor_id=current_user.id, project_id=project_id)
     engagement.remove_reaction(db, comment_id, current_user.id)
 
 
@@ -319,7 +324,7 @@ async def upload_comment_attachment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found.")
     if comment.author_id != current_user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the comment's author may attach a file to it.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     data = await file.read()
     asset = upload_file(
         db, organization_id=project.organization_id, uploaded_by=current_user.id,
@@ -351,7 +356,8 @@ def remove_comment_attachment(
     asset = db.get(FileAsset, file_id)
     db.delete(link)
     if asset is not None:
-        db.delete(asset)
+        delete_file(db, asset)  # the stored object goes too, not only the row
+    engagement.audit_comment(db, comment, action="comment_attachment_removed", actor_id=current_user.id, project_id=project_id)
     db.commit()
 
 
@@ -369,7 +375,7 @@ async def upload_action_attachment(
     state the way a requirement does)."""
     _require_edit_role(db, current_user, project_id)
     action = get_requirement_action_in_project(db, project_id, action_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     data = await file.read()
     asset = upload_file(
         db, organization_id=project.organization_id, uploaded_by=current_user.id,

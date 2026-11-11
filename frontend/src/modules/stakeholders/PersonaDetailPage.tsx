@@ -81,7 +81,7 @@ export function PersonaDetailPage() {
   const scopedApi = projectId ? projectPersonaApi : orgPersonaApi;
   const scopeId = projectId ?? organizationId;
   const backLink = projectId ? `/projects/${projectId}/modules/stakeholders/people?kind=persona` : "/org-overview";
-  const backLabel = projectId ? "← People" : "← Organisation overview";
+  const backLabel = projectId ? "People" : "Organisation overview";
 
   const [persona, setPersona] = useState<Persona | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export function PersonaDetailPage() {
   useEffect(() => {
     if (!scopeId || !personaId) return;
     scopedApi.get(scopeId, personaId).then(setPersona).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Persona could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Persona could not be found, or you do not have access to it."));
     });
     scopedApi.listVersions(scopeId, personaId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

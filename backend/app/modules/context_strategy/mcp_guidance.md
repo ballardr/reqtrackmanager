@@ -12,7 +12,8 @@ Read workflow: `list_<type>` then `get_<type>`; `list_<type>_relationships` show
 Write workflow:
 - `create_<type>` then `update_<type>`. Non-decisive transitions are one tool each (`propose_*`, `submit_*_for_review`, `send_*_back`, `supersede_*`, `triage_pain_point`, `accept_pain_point`, `investigate_open_question`, and so on). Call a transition only from a status that allows it; a conflict error means the status is wrong, so re-read the record.
 - Link artefacts with `create_<type>_relationship` (the `kind` decides the target type; list the existing relationships first to avoid duplicates). Supersession has its own `create_*_supersession` tools.
-- Score a pain point with `context_strategy_set_pain_point_scores`: it **replaces** all scores. Fetch the current scores and the project's scoring levels first, and use either all-persona or per-persona entries, never both.
+- Pain Point submission is restricted to Pain Point Managers unless the project or organisation allows any member; `context_strategy_create_pain_point` returns 403 for anyone else. Raise an Enhancement Request instead where the Product Feedback module is enabled.
+- Score a pain point with `context_strategy_set_pain_point_scores`: it **replaces** all scores. Fetch the current scores and the project's scoring scheme (axes, whether each is scored per persona or for the whole Pain Point, and levels) first. Send a General entry (`target_id` null) for the whole-Pain-Point criteria and the default for the per-persona ones, plus an entry for each persona that differs; each entry's `levels` maps an axis key to a level id.
 
 Rules and gotchas:
 - Decisive tools are approvals, gated by AI approval (see the main skill): `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question`. Only call them when the user asked for that specific item.

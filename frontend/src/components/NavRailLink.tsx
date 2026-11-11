@@ -23,18 +23,20 @@ import { Tooltip } from "./Tooltip";
  * a circular import through `Layout`.
  */
 export function NavRailLink({
-  to, label, icon, exact = false, railCollapsed, onNavigate,
+  to, label, icon, exact = false, alsoActiveOn, railCollapsed, onNavigate,
 }: {
   to: string;
   label: string;
   icon: ReactNode;
   exact?: boolean;
+  /** Another route family that also marks this entry active (an entry that redirects to a per-record page). */
+  alsoActiveOn?: RegExp;
   railCollapsed: boolean;
   /** Called when the link is clicked — lets a popover hosting the link close itself. */
   onNavigate?: () => void;
 }) {
   const location = useLocation();
-  const active = isNavPathActive(location.pathname, to, exact);
+  const active = isNavPathActive(location.pathname, to, exact) || (alsoActiveOn?.test(location.pathname) ?? false);
   const link = (
     <Link to={to} className={`nav-link${active ? " active" : ""}`} aria-label={label} onClick={onNavigate}>
       {icon} <span className="nav-label">{label}</span>

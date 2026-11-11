@@ -36,6 +36,7 @@ from tests.conftest import (
     create_project,
     create_project_group,
 )
+from tests.db_helpers import must_get
 
 
 def _user_ref(user_id) -> dict:
@@ -79,7 +80,7 @@ def test_create_with_each_principal_kind_and_group_display(client, admin_token):
         decision_maker={"type": "project_group", "id": squad},
     )
     assert by_org_group["owner"] == {
-        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True,
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False,
     }
     assert by_org_group["decision_maker"]["label"] == "Squad"
     assert by_org_group["decision_maker"]["type"] == "project_group"
@@ -332,12 +333,12 @@ def test_reports_name_a_group_with_its_kind(client, admin_token):
 
     d1 = section("decision-register", "register")
     row = d1["rows"][0]
-    assert row[d1["columns"].index("Owner")] == "Review Board (Org group)"
+    assert row[d1["columns"].index("Owner")] == "Review Board (Organisation group)"
     assert row[d1["columns"].index("Decision maker")] == "Delivery Squad (Project group)"
 
     d2 = section("approval-ageing", "awaiting")
     row = d2["rows"][0]
-    assert row[d2["columns"].index("Owner")] == "Review Board (Org group)"
+    assert row[d2["columns"].index("Owner")] == "Review Board (Organisation group)"
     assert row[d2["columns"].index("Decision maker")] == "Delivery Squad (Project group)"
 
 
@@ -367,7 +368,7 @@ def test_migration_backfills_existing_rows_to_user(client, admin_token):
 
     db = SessionLocal()
     try:
-        row = db.get(Decision, decision_id)
+        row = must_get(db, Decision, decision_id)
         assert (row.owner_type, str(row.owner_id)) == ("user", me)
         assert (row.decision_maker_type, str(row.decision_maker_id)) == ("user", me)
     finally:

@@ -32,13 +32,37 @@ The filter panel on the right narrows the list; the filters are held in the addr
 
 A picture you cannot read shows an icon in place of its preview. A *confidential* library picture is still listed for the project's members; the mark only stops a report from printing it.
 
+## Organisation files
+
+The **Files** entry in the navigation rail, directly below **Projects**, opens the organisation's **Files** page (a list of your organisations first, if you belong to several); so does the **Organisation files** icon beside the title of the organisation overview. The page which lists the files of every project you can open in one list. It shows exactly what you could already reach by visiting each project's Files page: an administrator of the organisation sees a project's files only with a role in that project. Each row names its project and links to it, and the filters are those of the project page plus:
+
+- **Project** limits the list to one project.
+- **Include archived projects** adds the files of archived projects, which are left out by default.
+
+| Organisation files |
+| --- |
+| Files of every project you can open, with the project and origin of each |
+| ![Organisation files page with a Project files tab, a Shared resources tab and a filter panel](../../static/img/screenshots/org-files.png) |
+
+Organisation shared resources have their own list and are not repeated here. If you can open more than 250 projects the page covers the first 250 by name and says so; choose a project to see the rest.
+
 ## Picture details
 
 Beside the name of a picture (JPEG, PNG, GIF, WebP or SVG) in any file list, an **i** button opens its details: its size in pixels (an SVG's declared size) and, for a photograph, when it was taken (on the camera's own clock, as the camera wrote it), the camera, any description saved in the file and the position where it was taken. Use them to tell photographs apart when their file names say nothing. The button appears in a requirement's or action's attachments, on discussion attachments, on the project's **Files** page and in an organisation's shared resources, and anyone who can download a file can see its details. Other files have no button.
 
 ## Organisation-wide shared resources
 
-Beyond per-item attachments, an organisation admin can upload **shared resources** (**Organisation admin → Shared resources**) — files that aren't specific to one requirement or change request, such as a standards document or a reference spec. A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report — see [Reports and export](./reports-and-export.md).
+Beyond per-item attachments, an organisation has **shared resources**: files that aren't specific to one requirement or change request, such as a standards document or a reference spec. They are on the organisation's **Files** page, on the **Shared resources** tab. Every member of the organisation can list and download them; the tab shows who uploaded each one, when, its size and how many requirements link it.
+
+Only people who manage shared resources see **Upload shared resource** and a delete button on each row. Organisation administrators manage them, and an administrator can give the right to a person or an organisation group through a [custom role](./role-management.md#the-shared-resource-permission) holding the `manage_org_resources` permission. Deleting a resource asks for confirmation; a resource that requirements link names how many, removes those links with it, and asks for the file name to be typed.
+
+A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report. A shared resource can be linked to requirements in any project in the organisation, and is available to append as an extra section on a generated report — see [Reports and export](./reports-and-export.md).
+
+## When uploads are disabled
+
+A server administrator can disable file uploads for the whole deployment (see [Server administration](../workflows/server-administration.md#server-management)). Every upload control then stays visible but unavailable, with a tooltip saying that uploads are disabled on this deployment. Files already attached stay readable and can still be deleted.
+
+The platform operator can also disable uploads for one organisation, or give it a storage limit (see [Organisation storage](../workflows/server-administration.md#organisation-storage)). With the organisation's switch off, the controls are unavailable with a tooltip naming the organisation; at the limit, an upload is refused with a message that names the limit and who to ask. Deleting files frees space.
 
 ## Where this fits
 

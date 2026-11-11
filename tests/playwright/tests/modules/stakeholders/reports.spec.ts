@@ -107,7 +107,8 @@ test.describe("Stakeholders & Personas: Reports", () => {
     const narrowed = page.waitForRequest((r) => r.url().includes("power-interest-grid") && r.url().includes(`group_id=${group.id}`));
     await page.getByLabel("Group", { exact: true }).selectOption({ label: `Team ${suffix}` });
     await narrowed;
-    await expect(page.getByText(outside)).toHaveCount(0);
+    // Scoped to the report: the project's activity feed behind it also names the new Stakeholder.
+    await expect(page.getByRole("dialog", { name: "Reports" }).getByText(outside)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Manage closely" }).getByText(inside)).toBeVisible();
 
     await chooseReport(page, "Engagement staleness");
@@ -115,7 +116,7 @@ test.describe("Stakeholders & Personas: Reports", () => {
     const stale = page.waitForRequest((r) => r.url().includes("engagement-staleness") && r.url().includes(`group_id=${group.id}`));
     await page.getByLabel("Group", { exact: true }).selectOption({ label: `Team ${suffix}` });
     await stale;
-    await expect(page.getByText(outside)).toHaveCount(0); // waits for the narrowed result to replace the full one
+    await expect(page.getByRole("dialog", { name: "Reports" }).getByText(outside)).toHaveCount(0); // waits for the narrowed result to replace the full one
     const overdue = page.getByRole("region", { name: "Overdue for engagement" });
     await expect(overdue.getByText(inside)).toBeVisible();
     await expect(overdue.getByRole("cell", { name: "Never engaged" })).toBeVisible();

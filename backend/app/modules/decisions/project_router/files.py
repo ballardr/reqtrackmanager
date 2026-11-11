@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.file import FileAsset
-from app.models.project import Project
 from app.models.user import User
 from app.modules.decisions.models import DecisionFile
 from app.modules.decisions.project_router._shared import _get_decision_in_project, _is_locked, _require_edit_role, _require_view
@@ -23,6 +22,7 @@ from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
 from app.schemas.file import FileAssetOut
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.lookups import project_or_404
 
 router = APIRouter(tags=["decisions-files"])
 
@@ -35,7 +35,7 @@ async def upload_decision_file(
     """Mirrors `routers.requirements.upload_requirement_attachment`'s
     pattern exactly: `decision_owner`-gated, and rejected once the
     Decision is locked."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     if _is_locked(decision):
@@ -72,7 +72,7 @@ def unlink_decision_file(
     project_id: UUID, decision_id: UUID, file_id: UUID,
     current_user: User = Depends(_require_view), db: Session = Depends(get_db),
 ):
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     link = db.scalar(select(DecisionFile).where(DecisionFile.decision_id == decision.id, DecisionFile.file_id == file_id))

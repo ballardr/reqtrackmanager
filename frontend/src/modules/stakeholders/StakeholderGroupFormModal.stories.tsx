@@ -1,5 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
+
+import { api } from "../../api/client";
+import { buildOption } from "../../testing/artefactLinksFixtures";
 
 import { buildStakeholderGroup } from "./fixtures";
 import { StakeholderGroupFormModal } from "./StakeholderGroupFormModal";
@@ -39,7 +42,7 @@ export const SavesParentAndExclusiveFlag: Story = {
     await userEvent.click(dialog().getByRole("button", { name: "Save" }));
     await expect(args.onSave).toHaveBeenCalledWith({
       name: "Beta Ltd", description: "", parent_group_id: "client", exclusive_children: true,
-    });
+    }, [], []);
   },
 };
 
@@ -63,5 +66,19 @@ export const ShowsAServerError: Story = {
   args: { error: "A group named 'Beta Ltd' already exists here." },
   play: async () => {
     await expect(dialog().getByText("A group named 'Beta Ltd' already exists here.")).toBeInTheDocument();
+  },
+};
+
+export const CreateInAProjectOffersQuickLinksAndTags: Story = {
+  args: { projectId: "p-1" },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path.includes("/tags")) return { names: [], suggestions: [], restricted: false, can_edit: true } as never;
+      return [buildOption()] as never;
+    });
+  },
+  play: async () => {
+    await waitFor(() => expect(dialog().getByText("Link to")).toBeInTheDocument());
+    await waitFor(() => expect(dialog().getByText("Tags")).toBeInTheDocument());
   },
 };

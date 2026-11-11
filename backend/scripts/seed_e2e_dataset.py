@@ -391,6 +391,17 @@ def create_report_pack(headers: dict, path: str, name: str, description: str, de
     return r.json()
 
 
+def create_org_workflow(headers: dict, org_id: str, name: str, phases: list[tuple[str, str]]) -> dict:
+    """An organisation stage workflow (name and ordered `(phase name, kind)` pairs), for a spec that starts from a
+    populated Stage workflows list; the first phase is the starting phase."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/stage-workflows",
+        json={"name": name, "phases": [{"name": phase, "kind": kind} for phase, kind in phases]}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def create_project_link_type(
     headers: dict, project_id: str, *, forward_name: str, reverse_name: str, flow: str = "none",
 ) -> dict:
@@ -582,12 +593,8 @@ def pain_point_levels(headers: dict, project_id: str) -> dict[str, dict[str, str
 
 
 def score_entry(levels: dict[str, dict[str, str]], target_id: str | None = None, **chosen: str) -> dict:
-    """One score row from level names (`severity="Major"`, ...); `target_id=None` = all personas."""
-    return {
-        "target_id": target_id,
-        **{f"{axis}_level_id": levels[axis][chosen[axis]] if axis in chosen else None
-           for axis in ("severity", "frequency", "confidence")},
-    }
+    """One score row from level names (`severity="Major"`, ...); `target_id=None` = the General row."""
+    return {"target_id": target_id, "levels": {axis: levels[axis][name] for axis, name in chosen.items()}}
 
 
 def set_persona_weight_override(headers: dict, project_id: str, persona_id: str, weight: float) -> dict:
@@ -809,6 +816,17 @@ def main() -> None:
     stakeholder_a2 = create_org_user(h_admin, alpha["id"], "e2e-stakeholder-a2@example.com", "E2E Stakeholder AlphaOnly Two", "member")
     member_ab = create_org_user(h_admin, alpha["id"], "e2e-member-ab@example.com", "E2E Member AlphaBeta", "member")
     create_org_user(h_admin, alpha["id"], "e2e-orphan@example.com", "E2E Orphan Candidate", "member")
+    # Server-tier subscription roles: ordinary Alpha members who additionally hold one cross-tenant role each.
+    for email, name, role in (
+        ("e2e-subscription-manager@example.com", "E2E Platform Subscription Manager", "subscription_manager"),
+        ("e2e-removal-authority@example.com", "E2E Subscription Removal Authority", "subscription_removal_authority"),
+        ("e2e-module-admin@example.com", "E2E Module Administrator", "module_administrator"),
+    ):
+        holder = create_org_user(h_admin, alpha["id"], email, name, "member")
+        r = httpx.post(
+            f"{BASE}/system/users/{holder['user_id']}/server-roles", json={"role": role}, headers=h_admin, timeout=30,
+        )
+        r.raise_for_status()
     # No org-level role at all — deliberately, for project-hierarchy.spec.ts:
     # exercises the relaxed parent-manage-only child-creation path (decision
     # 11, docs/decisions.md), which must work for a plain project manager
@@ -864,6 +882,11 @@ def main() -> None:
         headers=h_ab, timeout=30,
     )
     r.raise_for_status()
+
+    print("Creating Alpha's custom stage workflow (Stage workflows, step list, used-by)...")
+    create_org_workflow(h_ab, alpha["id"], "Seeded outsourced work", [
+        ("Scoping", "open"), ("Review board", "review"), ("Tendering", "on_hold"), ("Awarded", "locked"), ("Completion", "closed"),
+    ])
 
     print("Creating projects (2 per org)...")
     alpha1 = create_project(h_ab, alpha["id"], "Alpha-1 Robotic Arm Controller", "E2E seed project.")
@@ -1259,6 +1282,9 @@ def main() -> None:
     print("  e2e-stakeholder-a@example.com - stakeholder on Alpha-1 only")
     print("  e2e-stakeholder-a2@example.com - second stakeholder on Alpha-1 only (for vote-tally coverage)")
     print("  e2e-member-ab@example.com     - member on Alpha-1 and Beta-1; no org-admin/project-creator rights anywhere")
+    print("  e2e-subscription-manager@example.com - Alpha member holding the Platform subscription manager server role")
+    print("  e2e-removal-authority@example.com     - Alpha member holding the Subscription removal authority server role")
+    print("  e2e-module-admin@example.com          - Alpha member holding the Module administrator server role")
     print("  e2e-orphan@example.com        - zero org memberships (left Alpha via self-service); for user-directory/ban workflow")
     print("  e2e-projectmgr-g@example.com  - Gamma member only (no org-admin/project-creator); PM on Gamma-1,"
           " stakeholder on Gamma-3 (direct, shows up as forward-inherited on Gamma-4)")

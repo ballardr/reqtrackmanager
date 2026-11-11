@@ -50,7 +50,8 @@ import { useEffect, useState } from "react";
 
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { Modal } from "../../components/Modal";
 import { SidePanel } from "../../components/SidePanel";
 import { Spinner } from "../../components/Spinner";
@@ -500,14 +501,13 @@ export function RequirementTree({ orgId, standardId, versionId, isDraft, isPubli
             searchPlaceholder="Search requirements…"
           >
             <FilterCheckbox label="Mandatory action only" checked={mandatoryOnly} onChange={setMandatoryOnly} />
-            <FilterField label="Action type">
-              <select className="input" value={actionTypeFilter} onChange={(e) => setActionTypeFilter(e.target.value)}>
-                <option value="">All action types</option>
-                {actionTypes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label="Action type"
+              value={actionTypeFilter}
+              onChange={setActionTypeFilter}
+              allLabel="All action types"
+              options={actionTypes.map((t) => ({ value: t.id, label: t.name }))}
+            />
           </FilterPanel>
         </div>
       )}
@@ -847,7 +847,7 @@ function RequirementClarifyModal({
           <FormGridFull>
             <TextAreaField helpNotNeeded required
               label="Clarification note" value={clarificationNote} onChange={setClarificationNote}
-              inputProps={{ placeholder: "What changed, and why it's non-substantive." }}
+              inputProps={{ placeholder: "What changed, and why it is non-substantive." }}
             />
           </FormGridFull>
         </FormGrid>

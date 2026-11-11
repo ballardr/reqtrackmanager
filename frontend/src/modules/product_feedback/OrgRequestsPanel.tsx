@@ -58,7 +58,7 @@ export function OrgRequestsPanel({ orgId }: { orgId: string }) {
       // A switched-off inbox answers 403/404; say what that means instead of the server's bare message.
       setLoadError(
         err instanceof ApiError && (err.status === 403 || err.status === 404)
-          ? "The request inbox is switched off for this organisation, or you don't have access to it."
+          ? "The request inbox is switched off for this organisation, or you do not have access to it."
           : toErrorMessage(err, "Could not load the request inbox."),
       );
     }

@@ -73,6 +73,8 @@ export interface ScoringAxis {
   description: string | null;
   /** Names the module-computed number a derived axis (e.g. Demand) is read from; null/absent for a manual axis. */
   derived_source?: string | null;
+  /** On a scheme with targets (Pain Points, scored per persona): scored separately per target, not once for the whole record. */
+  per_target?: boolean;
   /** Who defined it: the module (`built_in`), the organisation or a project (`owner_project_id`). */
   origin?: ScoringCriterionOrigin;
   owner_project_id?: string | null;
@@ -136,6 +138,8 @@ export interface ScoringScheme {
   allow_custom_criteria?: boolean;
   /** Whether the module scores a record with several models at once, so which models are enabled matters. */
   side_by_side_models?: boolean;
+  /** What a record can be scored for individually (`persona`); null/absent when a record has one score set. */
+  target_label?: string | null;
   /** Registered or inherited criteria this tier hid, which it can restore. */
   hidden_criteria?: { kind: "axis" | "model"; key: string; label: string }[];
 }
@@ -183,6 +187,8 @@ export interface ScoringLevelSpec {
 export interface ScoringAxisInput {
   label: string;
   description: string | null;
+  /** Score per target (a persona) rather than once for the whole record; only on a scheme with targets, fixed at creation. */
+  per_target?: boolean;
   levels: ScoringLevelSpec[];
 }
 

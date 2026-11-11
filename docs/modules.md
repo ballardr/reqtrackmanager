@@ -232,7 +232,11 @@ can turn it off without touching its projects, declares a **separate**
 sub-component for that tier (Product Feedback's `organization_requests`, the
 organisation's request inbox, beside `enhancement_request` for the projects'
 lists). A shared key would not do: the organisation's `enabled` for it is also
-the default every project inherits.
+the default every project inherits. Such a sub-component sets
+`ModuleSubComponentDefinition.organization_only=True`: a project has no state for
+it, so the project list omits it, the project `PUT` answers 404, creation and
+template copies write no project row, and `is_module_subcomponent_enabled`
+returns the organisation's state, ignoring any stored row. No core file names the key.
 
 ```mermaid
 flowchart TD
@@ -376,6 +380,9 @@ class ModuleDefinition:
     artefact_summary_providers: dict[str, ArtefactSummaryProvider] = {}  # records others link to (§4f)
     search_providers: dict[str, ArtefactSearchProvider] = {}  # records the global search finds (§4j)
     not_searchable: dict[str, str] = {}  # artefact types deliberately outside the search, with the reason (§4j)
+    activity_action_kinds: dict[str, str] = {}  # {audit action: kind} for the project History page's Change filter (§4l7)
+    activity_link_ends: dict[str, ActivityLinkEndsReader] = {}  # {link event type: reader of its two records} (§4l7)
+    activity_metadata_types: dict[str, str] = {}  # {event entity type: metadata group} for the History Type filter (§4l7)
     search_scopes: dict[str, SearchScope] = {}  # extra places the search can be scoped to (§4j)
     record_tables: dict[str, RecordTableProvider] = {}  # a type's list as an exportable, importable table (§4l)
     not_importable: dict[str, str] = {}  # artefact types whose records import cannot author, with the reason (§4l)
@@ -866,7 +873,20 @@ flowchart LR
   *lowest* (`services.scoring.min_axis_weights`, passed to `compute_score` as
   `min_weights`), so the normalised score stays in (0, 1]. A divisor model has
   no cell ratings (`ScoringModelDefinition.supports_cell_ratings`). RICE is
-  Reach × Impact × Confidence ÷ Effort.
+  Reach × Impact × Confidence ÷ Effort. A `weighted_sum` model may name
+  divisors too: the importance-weighted sum is divided by the divisors' weights
+  and the best case divides by their lowest (Weighted Shortest Job First:
+  Cost of Delay ÷ Job size); exponents stay product-only.
+- **Scoring targets and axis scope.** A scheme with `target_label` (`persona`)
+  scores a record for individual targets as well as for the whole record, and
+  each axis says which with `ScoringAxisDefinition.per_target` (a custom axis
+  chooses at creation, `scoring_custom_axes.per_target`, and cannot change it,
+  because stored scores depend on it; a scheme without a target refuses it).
+  The scheme config carries both (`target_label`, `axes[].per_target`) so a
+  screen needs no module knowledge. What a record stores for a target is the
+  module's own: Context & Strategy holds a General row (every criterion, and
+  the default for the per-persona ones) and a row per persona that differs
+  (per-persona criteria only), one `pain_point_score_axes` row per criterion.
 - **Derived axes (Module 14 Phase 3b).** An axis with
   `ScoringAxisDefinition.derived_source` is read from a number the module
   computes (a weighted demand) instead of being chosen: each of its levels
@@ -903,7 +923,9 @@ flowchart LR
   `enabled_model_keys` and `enabled_models_source`. Nothing is stored per
   model: a module derives every enabled model's score on read. A scheme
   that does this sets `side_by_side_models`; the shared scoring screens show
-  the "Models shown" setting only then, because no other module reads it.
+  the "Models shown" setting only then, because no other module reads it. A
+  module that shows one model at a time still sets it when its picker offers
+  only the enabled models (Pain Points).
 - **Scoring screens (Module 14 Phase 5b).** `ScoringSchemeEditor` and
   `ProjectScoringSettings` also hold the threshold field of a derived axis,
   "Models shown" (`side_by_side_models`), and `ScoringCriteria` (a scheme with
@@ -1273,12 +1295,26 @@ Read left to right: core sections import first, then every module's `import_` in
 
 Rules for a hook (reference implementations: `modules/risk_management/export.py`, `modules/context_strategy/export.py`):
 
-- Cross-references use portable keys (type names, level axis and name, codes, labels, emails), never database ids. People and groups go through `principal_to_bundle` / `principal_columns_from_bundle`; a reference the target cannot match is left unset (or falls back to the importer for a mandatory owner) with a warning.
+- Cross-references use portable keys (type names, level axis and name, codes, labels, emails), never database ids. People and groups go through `principal_to_bundle` / `principal_columns_from_bundle`; a reference the target cannot match becomes an *imported person* (`services/imported_people.py`) through `UserResolver` / `principal_from_bundle(users=...)`, with a warning; never resolve an email yourself.
+- The bundle's `people` section (names for the addresses it contains) is added by the core export for every module by scanning for `email` / `*_email` keys, so a hook needs no code for it. A new column holding a person's email in a bundle should be named `*_email` so it is covered.
 - A record travels as its current content and status; history and comments do not. An import numbers records afresh with `generate_unique_code` and keeps the exported code only as a bundle `ref`.
 - Links between the module's own records and Requirements use `services.bundle_links.export_artefact_links` / `import_artefact_links`; attachments use `bundle_common.export_file_links` / `import_file_links`; tags use `record_tag_names` / `restore_record_tags`.
 - A type vocabulary carries its project overrides, project-only types and the organisation defaults the project has hidden (`ProjectDefinitionSuppression`).
 - An imported status is never an approval by someone else: no approver identity is carried, and project import is limited to organisation admins and project creators.
 - Add the export and import for a new table or column in the same change, with a round-trip test (export, import into a fresh project or organisation, compare).
+- Classify every key the project export returns for **template projects**: `template_configuration_keys` (vocabularies, hidden defaults, scoring definitions, settings), `template_record_keys` (starter records and the links among them) or `template_excluded` with a reason (the template's own lifecycle state or people). A project created from a template (`services/template_content.py`) exports through these hooks, keeps the configuration and record keys, calls `template_reset` (`services.template_reset.fresh_drafts` plus the module's initial status; no approval, review, vote or score state) and imports the result, so a module needs no clone code. `backend/tests/test_template_content.py` fails for an unclassified key, a key in two classes, record keys with no reset and an exclusion with no reason.
+- A project's own scoring configuration (default model, offered models, bands, level thresholds, cell ratings, for every registered scheme) is core, not a module hook: `services/scoring_config.py` exports it as the project bundle's `scoring_configuration` key and imports it after every module (a custom model or axis is created afresh with a new key, so the bundle carries its label and the import matches by label). A template copies it the same way. A level is matched by scheme, axis and name; one the target organisation lacks is skipped with a warning.
+
+```mermaid
+flowchart LR
+    T["Template project"] --> E["Hook export"]
+    E --> F["Keep configuration\nand record keys"]
+    F --> R["template_reset:\nfresh drafts"]
+    R --> I["Hook import_ and import_late"]
+    I --> N["New project"]
+```
+
+Read left to right: the template's own bundle export is filtered to its declared keys, the records are returned to drafts, and the module's ordinary import writes them into the new project.
 
 ### 4l. Record tables: export and import of every list (List data and form UX, Phase 8)
 
@@ -1307,16 +1343,16 @@ Read left to right: the same provider defines the columns of the file out and th
 - **Export-only tiers and types without a code.** A tier with no `create`/`update` is a read-only table; the type then gives its reason in `not_importable`. A module that declares no sub-components passes `subcomponent=None` (the module being enabled for the organisation is the whole gate). A type with no `PREFIX-nnn` code (the compliance requirement and its two project-level children, a recorded gap) returns a lightweight row object from `list_records` carrying the record and what its columns read, with `id`, `project_id` and `unique_code` (its clause reference, or blank) and gives `find` that always answers `None`; Compliance's `record_tables.py` is the reference.
 - **Organisation-owned rows.** A type the organisation can own (a Persona shared by every project) lists those rows in the project's table too. Give the provider `organization_owned(record) -> bool`: core then writes such a row with the organisation-qualified code (`ACME-PER-001`, always qualified, since its bare code could equal a project record's), and, because `find` searches the project's own records only, an import never changes one from a project (the row is reported as an unknown code). An organisation's own records are exported and imported at the organisation level.
 - **A write path the import can share.** A module's create/update that commits (a `*_from_payload` the endpoint calls) is split into a `stage_*` function that validates, writes and audits without committing, and a thin wrapper that commits and returns the API shape; the endpoint calls the wrapper and the provider the `stage_*` (see `modules/stakeholders/_*_shared.py`, `modules/context_strategy/edits.py`). Build the endpoint's own request payload (`PersonaCreate`, `StakeholderUpdate`) from the cells and turn a refusal into the row's error, so its length limits and tenancy checks apply unchanged.
-- **Format.** First column `code` (core writes it, qualified by the project code outside the request project or where the organisation enforces it). A person is one cell: an email, or `Name (Org group)` (`parse_principal_cell`, `PrincipalCells` for export). Enums by label, dates `YYYY-MM-DD`, instants UTC and export-only. Core adds the `'` formula guard on write and strips it on read; a provider never does.
+- **Format.** First column `code` (core writes it, qualified by the project code outside the request project or where the organisation enforces it). A person is one cell: an email, or `Name (Organisation group)` (`parse_principal_cell`, `PrincipalCells` for export). Enums by label, dates `YYYY-MM-DD`, instants UTC and export-only. Core adds the `'` formula guard on write and strips it on read; a provider never does.
 - **Approval gates.** A type with an approval gate sets `approval_gated=True` and gives its `status` no `parse`: a file creates drafts and edits content, it never approves (`tests/test_record_tables.py` fails otherwise).
 - **Personal data.** Classify a column with `sensitivity` (`personal`, `contact`, `free_text_people`); core leaves a tagged column out of every export and import unless the organisation's policy (its override, else the server default, else excluded) allows the tag **and** the person holds `export_personal_data` (`services/record_policy.py`). Never add a per-module check; the tag is the whole contract. Never expose a Restricted-classified value as a column.
 - **PDF and Word: the Record list report.** A provider's table is also a report (`GET /projects/{id}/reports/record-list?record_type=<type>&format=json|pdf|docx|csv`, `services/record_list_report.py`), listed in the report catalogue under the platform (`module_key` `platform`), not a module, with one `record_type` parameter holding exactly the types the caller may list. It adds no code per type: it renders `build_table`, so it shows the columns and rows the CSV export would. `format=csv` is the export's file byte for byte; a file (not the on-screen run) is audited as `records_exported`. A column colours its cells in PDF and Word with `RecordColumn.tones` (`{cell text: tone}`, tones as `report_model.TONE_FILL`); the text still names the value. The same MCP tool (`get_record_list_report`) serves every type.
-- **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (a Pain Point scored per persona has no single severity). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
+- **The bulk edit grid.** The same provider feeds the grid of a list (`GET /projects/{id}/records/{type}/grid`, `PATCH .../records/{type}/rows/{code}`; `build_grid` / `update_row` in `services/record_tables.py`, `components/RecordGrid.tsx`). A column is a grid cell when it is `editable`, importable and a closed-value kind (`enum`, `number`, `date`, `bool`); free text stays in the form. A save changes only the cells that differ from the value the grid loaded (`expected`; a cell changed since is refused with 409 and its current value), calls the provider's `update` in a savepoint and commits per row, so the type's own lock, validation and audit event apply and no second audit event is written. Two optional hooks say why something cannot be edited, as a courtesy to the person (the save is refused with the type's own message either way): `RecordTableProvider.read_only_reason(prepared, record)` for a whole row (a Requirement that is approved, a Pain Point at a terminal outcome) and `RecordColumn.cell_lock(prepared, record)` for one cell (none is used by Pain Points now that a General level can be edited beside persona rows). Rows of a related project (widened scope) and organisation-owned rows are read-only here. A list page offers the grid with `ViewToggle showGridOption` and `<RecordGrid projectId recordType filters contextKeys recordHref />`; the grid exists for the project tier only.
 - **Registration is required.** A type with no provider is listed in `PENDING_RECORD_TABLES` in `backend/tests/test_record_tables.py` (the list only shrinks). A type whose records import cannot author (produced by a workflow) still registers a provider for export (no `create`/`update`) and gives a reason in `not_importable`; a core type's reason is in `CORE_NOT_IMPORTABLE` (`services/record_tables_core.py`, change requests). Do not add per-type export or import code to a core file.
 
 ### 4l2. Creating and linking a record from the Links panel
 
-The shared Links panel's **Add link** menu offers **Create a new record** on every record page: a first step chooses the record type and relationship, then the owning module's own dialog creates the record and the panel links it, in one flow. A module opts in with two frontend fields on `TierAModuleDefinition`; core never imports a module's form.
+The shared Links panel's **Add link** menu offers **Create a new record** on every record page: a first step chooses the record type and relationship, then the owning module's own dialog creates the record and the panel links it, in one flow. Every registered artefact type a person can author has a creator (a module declares its own on `TierAModuleDefinition`; the three core types are listed in `modules/coreLinkedRecordCreators.tsx`); core never imports a module's form. Whether the caller may create a type is answered by the server, not by the module's frontend code.
 
 ```mermaid
 flowchart LR
@@ -1327,12 +1363,75 @@ flowchart LR
 
 | Field | Declared by | Purpose |
 | --- | --- | --- |
-| `linkedRecordCreators[type] = { label, render({ projectId, onCreated, onCancel }), canCreate? }` | The module that owns the *created* type | Its own create dialog; it creates the record itself and reports the id. `canCreate(projectId)` is declared where creating needs more than project membership, so the type is offered only to someone allowed to create it. |
+| `linkedRecordCreators[type] = { label, render({ projectId, pageRecord, onCreated, onCancel }) }` | The module that owns the *created* type | Its own create dialog (the type's form modal, so every edit field, the quick-link field and the tag field are present); it creates the record itself and reports the id. `pageRecord` is the record whose panel opened it, for a form that pre-fills from it. `hooks/useLinkedRecordSave` is the shared save step (create, quick links, tags, error). |
+| `ModuleDefinition.not_creatable_from_links[type] = reason` (backend) | The module that owns a type nobody authors | A type derived from an assigned standard (the three Compliance assessment types). Every other registered type needs a creator. |
 | `preferredLinkPhrases[type][otherType]` | The module that owns the *page* record | The relationship that carries meaning, e.g. a request's Pain Points are the ones it "Addresses". Other relationships stay selectable. |
 
+- The engagement outcome form (`EngagementOutcomesPanel`) uses the same registry for its "Create new": outcome links are dedicated, so `link-types` does not carry them, and `GET .../engagement-outcome-target-types` returns each outcome target type with its own `can_create`.
 - The panel offers only types that a link type from the page record reaches; the server's link options already leave out types of a module or sub-component that is off, so no separate gate is needed.
+- Each record type in a `link-types` option carries `can_create`, computed by `services.record_tables.creatable_record_types`: the type's `RecordTableProvider.can_create` (else the fine-grained `propose_create` permission), the same check an import of the type makes. A type with no record table is `false`. A module declares no creation check of its own; changing who may create a type changes its provider, and the Links panel, list import and the create endpoint then agree.
+- **Completeness is guarded.** `frontend/src/modules/creatableRecordTypes.json` lists the creatable and the not-creatable types; `backend/tests/test_creatable_record_types.py` keeps it equal to the registry, and `linkedRecordCreators.stories.tsx` fails for a creatable type with no creator and checks each creator opens a form with the quick-link and tag fields. A new artefact type therefore ships its creator (or a stated reason) in the same change.
+- **The flag cannot drift from the endpoint.** The same backend test replays each type's create request (its scaling probe's) as a plain member, a project manager, a stakeholder and the holder of each module role, and fails when `can_create` differs from whether the endpoint accepts. A gate added to an endpoint without its record-table check fails it. A provider's `can_create` and its endpoint share one function where the rule is more than a role list (`services.change_request_list.may_submit_change_request`).
 - Not offered where links go through a change request, or where the caller cannot link; then "Add link" is the plain button that opens the finder.
 - The server's own create endpoint still enforces permission and shows any refusal in the dialog.
+
+### 4l4. Navigation names: a module's entry is renameable with no code
+
+A project or organisation can rename any project navigation entry (`services/nav_labels.py`, `routers/nav_labels.py`, `NavLabelsPanel`). A module does nothing to take part: each entry of its frontend manifest (`ModuleFrontendManifest.all_nav_entries()`) gets the stable key `<module key>:<path below the module root>` (`decisions:`, `risk_management:risks`), so the key never holds a project id. The browser looks a name up by the route the entry opens, so the navigation rail, a `ListPageLayout` title and a `RecordHeader` back link whose `to` is that route show the name with no per-page code; a page that draws its own `h1` calls `useCurrentNavLabelOverride()`. Renaming a module's path changes its key, and a name stored under the old key is then ignored.
+
+### 4l5. Overview widgets and metrics
+
+The project overview is a configurable layout of widgets (`services/overview_widgets.py`, `services/overview_metrics.py`, `routers/overview_widgets.py`, `components/overview/`). A module takes part through two declarations, never an edit to a core file:
+
+- `ModuleDefinition.overview_metrics[key] = OverviewMetric(label, unit, evaluate, params, breakdown, scalar, gate)` adds a figure to the bounded catalogue as `<module key>:<key>`. `evaluate(ctx, params)` is read-only and returns an `OverviewMetricValue` (a `value`, a `breakdown`, or both); `ctx` is a `MetricContext` (session, caller, project, the reference's project scope). It is offered and evaluated only where the module is enabled for the project, and a figure the caller may not read raises `MetricUnavailable` so it shows as unavailable, never as zero. The metric must not add a statement per record (a `ScalingProbe` guards the lists it reads).
+- `ModuleDefinition.overview_widgets[key] = OverviewWidgetType(label, description, width, height, in_default_layout)` plus `TierAModuleDefinition.overviewWidgets[{key, render}]` on the frontend adds a whole widget type (`<module key>:<key>`), for example Compliance's per-standard status tiles (its `standards_status`, the first first-party consumer) or a heat map. The backend declaration lets the server validate a stored layout and offer the type only where the module is enabled; the frontend renders it through the registry with the widget's resolved `projectScope`. A module's widget is an ordinary widget, never a special group: it is placed, sized, hidden or removed like any other, and can sit anywhere in the layout. `width` and `height` are the size a new one starts with, and `in_default_layout` puts one in the built-in layout (after the key tiles) while the module is enabled; a layout a person has saved never changes when a module is enabled later. The widget's `config` is opaque to the core (a JSON object of at most 4 KiB). A widget that has nothing to show (a module with no tile yet) renders empty, and the page hides it until the layout is edited.
+
+A layout is `{scope, widgets}`: the overview's project scope (`this`, `parents`, `children`, `both`) and an ordered list of widgets, each with a width in columns of a 12-column grid, a height in rows (a minimum; a row grows with its content), an optional `scope` that overrides the overview's (not for the stage progress, activity and text widgets, which always read this project), a `visible` flag and a type-specific `config`. The grid is a flow with spans, so it collapses to six columns on a medium screen and two on a phone with no second layout. The layout is stored on `Project.overview_widgets` and `Organization.overview_widgets` (SQL NULL means none): own, else the nearest ancestor's, else the organisation's, else the built-in layout.
+
+Every widget's figure comes from one batched `POST /projects/{id}/overview-metrics`: each reference carries its own scope, references are validated against the catalogue (a metric key, its declared `params`, and for a record count the record type's own `filter_params` plus the shared tag, component and category filters), identical references (same metric, params and scope) are evaluated once, a batch holds at most 24, and a time budget turns the remainder into `timeout` results. Components and categories in a filter are named by prefix (`SW`, `SW/PERF`), so a layout needs no id remapping in a bundle, a template clone or a child project that inherits it.
+
+### 4l6. Organisation dashboards
+
+The organisation overview is a set of dashboard pages built from the same widget grid, editor and settings as the project overview (`services/org_dashboards.py`, `services/org_dashboard_metrics.py`, `routers/org_dashboards.py`, `components/overview/OrgDashboardView.tsx`). A module takes part through one declaration, never an edit to a core file: `ModuleDefinition.org_overview_widgets[key] = OverviewWidgetType(label, description, width, height, in_default_layout)` plus `TierAModuleDefinition.orgOverviewWidgets[{key, render({orgId, title, config})}]` on the frontend. The widget reads the module's own organisation endpoints and is offered only while the organisation has the module enabled; `in_default_layout` places it on the built-in Overview page (a layout an administrator has saved is never changed when a module is enabled later). Compliance contributes `summary` and `attention`, which replace its former separate dashboard page.
+
+The core types an organisation dashboard offers are the metric tile, gauge, chart and text widgets; the project-only types (stage progress, record totals, activity) are refused. The core organisation metrics are `org_project_count`, `org_requirement_count`, `org_member_count`, `org_file_storage`, `org_projects_by_status` and `org_record_count` (a registered record type counted across the projects the caller may read, each by the type's own rules); an organisation administrator sees the organisation's real totals and anyone else what their own roles let them open (`services/org_overview_stats.py`, shared with the stats endpoint). A figure the caller may not read is `unavailable`, never zero. A module adds organisation figures as metrics (`ModuleDefinition.org_overview_metrics[key] = OverviewMetric(...)`, served as `<module key>:<key>`, evaluated with an `OrgMetricContext`, offered only while the organisation has the module enabled) or as a whole widget of its own. The organisation record count takes the type's own list filters and tags (the same validation and filter building as a project's record count; components and categories are named by prefix and resolve per project). A page can be copied with its viewers.
+
+Pages are `organization_dashboards` rows with their viewers in `organization_dashboard_viewers`. The built-in Overview page exists before it is stored and is stored on its first edit; it cannot be renamed, moved or deleted. A page with no viewers is shown to every member, otherwise to the viewers (a user, or an organisation group by effective membership) and to organisation administrators, who always see and change every page. One predicate (`org_dashboards.can_view`) decides the list, the page read and the figures request, and a page the caller may not see is a 404 on every route. The viewer reference is a mandatory principal reference, so deleting a group that restricts a page needs a replacement and never widens who may see it. An import never widens a page either: a viewer that cannot be matched stands as the importing user. Pages travel in the organisation bundle (`organization_dashboards`, viewers by email or group name). A page is organisation-scoped with no project analogue, so there is no nested-project fallback; the route segment `dashboard-<id>` is reserved for pages, so a module section key never starts with it.
+
+### 4l3. Components on every record
+
+Any registered artefact type can sit in the project's component/category tree through one shared table, `artefact_placements`, with no per-module code (`services/placements.py`, `routers/placements.py`). A module adds nothing except declaring a type that cannot be placed.
+
+```mermaid
+flowchart LR
+    R["Record (any type)"] --> T["artefact_placements<br/>(type, id, component, category?)"]
+    T --> F["List filter<br/>(TagFilter: component_id, category_id)"]
+    T --> E["Shared export/import column<br/>placements"]
+    T --> S["Search field, report field"]
+    T --> B["Bundle: record_placements<br/>beside tags"]
+```
+
+| Piece | Where | Rule |
+| --- | --- | --- |
+| Table | `models/placement.py` | A plain registry-validated type string like `artefact_tags`, project-scoped, cascading with the project; unique per record, component and category. |
+| Requirement | `COLUMN_PLACED_TYPES` | Keeps its own `component_id`/`category_id` (the prefix forms its code); `pairs_for_records` gives one resolved view for every type. |
+| `ModuleDefinition.not_placeable[type] = reason` | The module that owns the type | A type that exists only inside a structure of its own (the three Compliance assessment types). The API answers 422; no column, filter, search field or bundle entry is offered. |
+| Organisation-owned records | | Cannot be placed: a component belongs to one project. |
+| Authority | `placements.can_place` | The authority to tag the type; an approved requirement's lock does not apply. |
+| List filter | `TagFilter` | `component_id` and `category_id`, repeatable, matching any, composed into the tag filter so every list, its export and the record-list report take one dependency. |
+| Export and import | `services/record_tables.py` | The engine adds a shared `placements` column (prefixes, `;`-separated) to every type's table except the requirement's, and applies an import through `set_record_placements` after the type's own create or update. A module adds no column. |
+| Bundles | `record_placements` / `restore_record_placements` | Carried by prefix in each bundle row beside the tags; a test fails when a file bundles tags without placements. |
+| Search and reports | `placements` field | Reserved in search (opt-in); a normal text field in `field_catalogue` for every placeable type. |
+| Frontend | `TagField`, `RecordTags`, `TagFilterField`, `DirectoryTable` | `ComponentField`, `RecordPlacements` and `ComponentFilterField` are rendered by the tag components, so every form, record page and list with tags has them; a list passes `placements` to `DirectoryTable` for the Components column. A page with its own component filter (the requirements list) passes `components={false}` to `TagFilterField`. |
+| Scaling | | Placements are read for a page at once (`placements_for_records`, `GET .../placements/{type}`); `perf_dataset.records.add_tags` also places each batch, so generators need no extra call. |
+
+The taxonomy endpoints keep the tree consistent: deleting a category moves its placements to the replacement, and deleting a component that records sit in is refused.
+
+### 4l7. Activity kinds and the History Type list
+
+The project History page filters events by **kind** (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, `deleted`, `other`), a fixed vocabulary over the open-ended `AuditEvent.action` strings (`services/activity_kinds.py`). Core actions are classified there once; a module classifies the actions **it** writes through `ModuleDefinition.activity_action_kinds = {"superseded": "status"}`, never an edit to the core map. An action nobody classified is `other`, so a filter by kind never hides an event. A test fails for a module value that is not a kind. The **kind of an event is decided by its entity type first**: every event of a link, tag, role or group entity has that group's kind (*Links and files*, *Tags and places*, *Access*) whatever its action, so a generic link's `created` is never *Created*; the action decides only for a record's own events and for structure and settings. The filter panel offers only the four record-change kinds as **Change**; the others are reached through the **Type** list, which is two levels (`activity_kinds.entity_groups`): **Records** (a registered artefact type under its owning module, `Core` for a core type, so a new module's types appear under its own heading) and **Metadata** (`links`, `tags`, `access`, `structure`, `other`). A non-record event entity type takes its metadata group from the core map, from `ModuleDefinition.activity_metadata_types = {"project_pain_point_type": "structure"}`, or from its name (`*_link`, `*_definition`); one in none of them is listed under Other. `backend/tests/test_history_filters.py` fails for a logged `entity_type="..."` that lands in Other and for a classified action with no wording in the frontend label map. The API takes `entity_type` (repeatable) and `group` (`records:<module key>`, `records:core`, `metadata:<group>`; an unknown value is ignored). A record of a module's type is named on the page by its `artefact_summary_providers` label and linked through `TierAModuleDefinition.artefactPaths`, with no further registration.
+
+A **link** event also names the two records it joins (`services/activity_link_ends.py`): `ChangeEntryOut.linked_records` (source then target, each with its type label and, only when the viewer may open it, its id, label and project) and `link_type_label`. The core event types (`artefact_link`, `requirement_link`, `requirement_action_link`) are read there; a module that logs its own `*_link` event type registers a reader with `ModuleDefinition.activity_link_ends = {"decision_link": reader}` returning an `ActivityLinkEnds` from the event's `detail`, never a case in a core file. `backend/tests/test_history_link_ends.py` fails for a logged `*_link` event type with no reader. Ends are labelled by one `ArtefactResolver` lookup per record type for the returned page.
 
 ### 4m. Custom reports: report fields and traversal (Module 10 Phase 1)
 
@@ -2465,6 +2564,9 @@ REPORT_ROUTERS = build_report_routers("tasks", REPORT_DEFINITIONS)
 # ModuleDefinition(reports=REPORT_DEFINITIONS, mcp_tools=(*other_tools, *report_mcp_tools(REPORT_DEFINITIONS, project_router_prefix=PREFIX)))
 ```
 
+A parameter whose allowed values differ by project or organisation (the scoring models a project offers, including those it or its organisation defined) declares `choices_for=(db, organization_id, project_id) -> [(value, label), ...]` instead of fixed `choices`. The catalogue calls it for the project (or, for an organisation-wide catalogue, the organisation) and returns the result as the select's options and labels, so the person picks a named value rather than typing a key. It is display only: the value is not checked against the list (the collector checks it against each project reported on, so an API caller may still pass any valid key), a parameter cannot declare both `choices` and `choices_for`, and a provider that raises leaves the control a text box instead of failing the catalogue. The layout designer's widget list has no project, so there such a parameter stays a text box.
+
+
 - **Access (generic, fail-closed).** A project route needs project membership
   and the module (and declared `subcomponent`) enabled, else 404. An
   organisation route also needs `org_role_key`, an org-scoped role of your
@@ -2648,7 +2750,19 @@ that configures one sub-component names it in the optional `subComponent` field
 (on `OrgAdminSectionDef` and `ProjectAdminSectionDef`); the page leaves the
 section out while that sub-component is off for the organisation or project, so
 no one is offered settings for a feature they cannot use (Product Feedback's
-External Systems is the first). See
+External Systems is the first).
+
+A module with several sections groups them with the optional `group`
+(`{ key, label }`, on both definitions). Sections that declare the same group are
+one expandable entry in the menu with the sections as its sub-pages, at
+`/…/admin/:group/:section`; a section with no group, or the only visible section of
+its group, stays one entry at `/…/admin/:section`. The menu has two levels at most.
+A group key must differ from every core group key and every section key, and one
+group key carries one label (a story guards the installed modules).
+`frontend/src/modules/adminMenu.ts` builds the entries and resolves the address for
+both admin pages, so neither names a module. The address used before grouping
+(`/…/admin/<section>`) and a bare group address (`/…/admin/<group>`) redirect to the
+grouped page, so bookmarks keep working. See
 `frontend/src/modules/compliance/module.ts` for a real example
 (`OrgCompliancePanel`, the org-wide compliance dashboard — Compliance's own
 former second section, `ComplianceAdminPanel`, was retired in Phase 18, see

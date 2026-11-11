@@ -83,7 +83,7 @@ def test_an_action_takes_each_principal_kind_and_shows_a_group_by_name(client, a
     assert unassigned.status_code == 201 and unassigned.json()["assignee"] is None
     by_org = _create_action(client, admin_token, pid, assignee=_org(team))
     assert by_org.json()["assignee"] == {
-        "type": "org_group", "id": team, "label": "QA Team", "member_count": 1, "exists": True,
+        "type": "org_group", "id": team, "label": "QA Team", "member_count": 1, "exists": True, "imported": False,
     }
     by_project = _create_action(client, admin_token, pid, assignee=_project(squad))
     assert by_project.json()["assignee"]["label"] == "Test Squad"
@@ -322,7 +322,7 @@ def test_a_task_takes_each_principal_kind_and_a_response_is_a_valid_request(clie
     none = client.post(url, json={"description": "Unassigned"}, headers=h).json()
     assert none["assignee"] is None
     by_org = client.post(url, json={"description": "Org", "assignee": _org(team)}, headers=h).json()
-    assert by_org["assignee"] == {"type": "org_group", "id": team, "label": "Task Team", "member_count": 1, "exists": True}
+    assert by_org["assignee"] == {"type": "org_group", "id": team, "label": "Task Team", "member_count": 1, "exists": True, "imported": False}
     by_project = client.post(url, json={"description": "Project", "assignee": _project(squad)}, headers=h).json()
     assert by_project["assignee"]["label"] == "Task Squad"
     by_user = client.post(url, json={"description": "User", "assignee": _user(member)}, headers=h).json()
@@ -522,7 +522,7 @@ def test_a_requirement_defaults_its_owner_to_the_creator_and_takes_each_principa
     default = _requirement(client, admin_token, pid)
     assert default["owner"]["type"] == "user" and default["owner"]["id"] == me and default["reviewer"] is None
     by_org = _requirement(client, admin_token, pid, owner=_org(team), reviewer=_project(squad))
-    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Req Owners", "member_count": 1, "exists": True}
+    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Req Owners", "member_count": 1, "exists": True, "imported": False}
     assert by_org["reviewer"]["label"] == "Req Squad" and by_org["reviewer"]["type"] == "project_group"
 
     listed = {r["id"]: r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=auth_headers(admin_token)).json()}
@@ -699,7 +699,7 @@ def test_csv_export_writes_a_group_and_the_same_file_imports_it_back(client, adm
     assert exported.status_code == 200
     text = exported.content.decode("utf-8-sig")
     rows = {r["name"]: r for r in csv.DictReader(io.StringIO(text))}
-    assert rows["Grouped"]["owner"] == "Csv Team (Org group)" and rows["Grouped"]["reviewer"] == "Csv Squad (Project group)"
+    assert rows["Grouped"]["owner"] == "Csv Team (Organisation group)" and rows["Grouped"]["reviewer"] == "Csv Squad (Project group)"
     assert rows["Personal"]["owner"] == me_email and rows["Personal"]["reviewer"] == ""
 
     target = create_project(client, admin_token, org_id, "Csv Target")
@@ -726,6 +726,29 @@ def test_csv_export_writes_a_group_and_the_same_file_imports_it_back(client, adm
     assert good["created"] == 1, good
     made = next(r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=h).json() if r["name"] == "By name")
     assert made["owner"]["type"] == "org_group" and made["reviewer"]["type"] == "project_group"
+
+
+def test_csv_import_still_reads_the_earlier_org_group_suffix(client, admin_token, org_id):
+    """A file exported before the label was spelled out ('(Org group)') still names the organisation group."""
+    import csv
+    import io
+
+    project = create_project(client, admin_token, org_id)
+    pid = project["id"]
+    create_org_group(client, admin_token, org_id, "Legacy Team")
+    _requirement(client, admin_token, pid, name="Seed")
+    h = auth_headers(admin_token)
+    exported = client.get(f"/api/v1/projects/{pid}/records/requirement/export", headers=h)
+    row = next(csv.DictReader(io.StringIO(exported.content.decode("utf-8-sig"))))
+    component, category = row["component"], row["category"]
+    resp = client.post(
+        f"/api/v1/projects/{pid}/records/requirement/import", params={"dry_run": "false"},
+        files={"file": ("r.csv", f"name,component,category,owner\nLegacy,{component},{category},Legacy Team (Org group)\n".encode(), "text/csv")},
+        headers=h,
+    )
+    assert resp.status_code == 200 and resp.json()["created"] == 1, resp.text
+    made = next(r for r in client.get(f"/api/v1/projects/{pid}/requirements", headers=h).json() if r["name"] == "Legacy")
+    assert made["owner"]["type"] == "org_group" and made["owner"]["label"] == "Legacy Team"
 
 
 def test_a_project_bundle_round_trips_requirement_people_and_reads_a_legacy_bundle(client, admin_token, org_id):

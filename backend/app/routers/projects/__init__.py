@@ -5,7 +5,8 @@ Aggregates the `projects` package's per-concern routers — `core` (CRUD,
 import, tree, favourites, files, export, terminology, changes, metrics),
 `hierarchy` (ancestors/children, member sources, effective members,
 access-inheritance materialization), `lifecycle`
-(archive/unarchive), `stages`, `taxonomy` (components/categories),
+(archive/unarchive), `stages`, `component_stages` (component phases), `stage_phase_plans`
+(phase schedule), `taxonomy` (components/categories),
 `groups`, `roles` (direct/group/by-email project role assignment,
 pending invites), `module_roles`, and `scoring` (project overrides of
 the generic scoring-matrix default model/bands) —
@@ -25,6 +26,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.routers.projects import (
+    component_stages,
     core,
     groups,
     hierarchy,
@@ -32,6 +34,7 @@ from app.routers.projects import (
     module_roles,
     roles,
     scoring,
+    stage_phase_plans,
     stages,
     taxonomy,
 )
@@ -48,6 +51,8 @@ router.include_router(core.router, prefix=_PREFIX)
 router.include_router(hierarchy.router, prefix=_PREFIX)
 router.include_router(lifecycle.router, prefix=_PREFIX)
 router.include_router(stages.router, prefix=_PREFIX)
+router.include_router(component_stages.router, prefix=_PREFIX)
+router.include_router(stage_phase_plans.router, prefix=_PREFIX)
 router.include_router(taxonomy.router, prefix=_PREFIX)
 router.include_router(groups.router, prefix=_PREFIX)
 router.include_router(roles.router, prefix=_PREFIX)

@@ -61,7 +61,7 @@ export const PrincipalFieldReadOnlyNamesAGroupWithItsKind: Story = {
   render: () => <RecordPrincipalField label="Owner" ariaLabel="Record owner" principal={TEAM} orgUsers={ORG_USERS} readOnly onChange={fn()} />,
   play: async ({ canvasElement }) => {
     await expect(within(canvasElement).getByText("Platform team")).toBeInTheDocument();
-    await expect(within(canvasElement).getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(within(canvasElement).getByText("Organisation group · 3 members")).toBeInTheDocument();
   },
 };
 

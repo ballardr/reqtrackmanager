@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { api } from "../api/client";
-import type { Organization, Project, ServerSettings } from "../api/types";
+import type { Organization, Project, ServerSettings, UploadsDisabledBy } from "../api/types";
 import { t } from "../i18n/strings";
 import { contrastTextHex, ensureContrast } from "../utils/color";
+import { BRANDING_CHANGED_EVENT } from "./brandingEvents";
 import { resolveEffectiveTheme, useTheme } from "./ThemeContext";
 
 const strings = t();
@@ -13,28 +14,35 @@ const DARK_BG_HEX = "#14181f";
 const DEFAULT_ACCENT_HEX = "#475569";
 
 export interface Branding {
+  /** The organisation whose branding applies (null when the platform default applies). */
+  organizationId: string | null;
   logoFileId: string | null;
   headerTitle: string;
   accentColorHex: string;
   orgLabel: string;
   orgLabelPlural: string;
+  /** Which rule stops new user files, if any: the deployment-wide switch or the organisation's own; null when allowed. */
+  fileUploadsDisabledBy: UploadsDisabledBy;
 }
 
 const DEFAULT_ORG_LABEL = "organisation";
 const DEFAULT_ORG_LABEL_PLURAL = "Organisations";
 
 const DEFAULT_BRANDING: Branding = {
+  organizationId: null,
   logoFileId: null,
   headerTitle: strings.appName,
   accentColorHex: DEFAULT_ACCENT_HEX,
   orgLabel: DEFAULT_ORG_LABEL,
   orgLabelPlural: DEFAULT_ORG_LABEL_PLURAL,
+  fileUploadsDisabledBy: null,
 };
 
 const BrandingContext = createContext<Branding>(DEFAULT_BRANDING);
 
 function fromOrg(org: Organization, serverDefault: Branding): Branding {
   return {
+    organizationId: org.id,
     logoFileId: org.logo_file_id ?? serverDefault.logoFileId,
     headerTitle: org.header_title || serverDefault.headerTitle,
     accentColorHex: org.accent_color_hex ?? serverDefault.accentColorHex,
@@ -43,6 +51,8 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
     // just carried through from the platform default unchanged.
     orgLabel: serverDefault.orgLabel,
     orgLabelPlural: serverDefault.orgLabelPlural,
+    // The deployment-wide switch takes precedence over the organisation's own.
+    fileUploadsDisabledBy: serverDefault.fileUploadsDisabledBy ?? (org.file_uploads_enabled === false ? "organization" : null),
   };
 }
 
@@ -54,7 +64,7 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
  * Resolution order:
  * - Inside a project's URL space: that project's own organisation,
  *   falling back field-by-field to the platform default (`ServerSettings`)
- *   for whichever of logo/title/colour that org hasn't set.
+ *   for whichever of logo/title/colour that org has not set.
  * - Everywhere else (org list, global projects list, Preferences,
  *   server-management pages — no single org is "the" context): if the
  *   viewer belongs to exactly one organisation, that org's branding is
@@ -70,18 +80,27 @@ function fromOrg(org: Organization, serverDefault: Branding): Branding {
  */
 export function BrandingProvider({ projectId, children }: { projectId: string | null; children: ReactNode }) {
   const [branding, setBranding] = useState<Branding>(DEFAULT_BRANDING);
+  const [version, setVersion] = useState(0);
   const { theme } = useTheme();
+
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    window.addEventListener(BRANDING_CHANGED_EVENT, bump);
+    return () => window.removeEventListener(BRANDING_CHANGED_EVENT, bump);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const serverSettings = await api.get<ServerSettings>("/api/v1/system/branding");
       const serverDefault: Branding = {
+        organizationId: null,
         logoFileId: serverSettings.default_logo_file_id,
         headerTitle: serverSettings.default_header_title || strings.appName,
         accentColorHex: serverSettings.accent_color_hex,
         orgLabel: serverSettings.org_label_singular || DEFAULT_ORG_LABEL,
         orgLabelPlural: serverSettings.org_label_plural || DEFAULT_ORG_LABEL_PLURAL,
+        fileUploadsDisabledBy: serverSettings.file_uploads_enabled === false ? "deployment" : null,
       };
 
       if (projectId) {
@@ -98,7 +117,7 @@ export function BrandingProvider({ projectId, children }: { projectId: string | 
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, version]);
 
   useEffect(() => {
     const effectiveTheme = resolveEffectiveTheme(theme);
@@ -137,4 +156,12 @@ export function useOrgLabelCapitalized(): string {
  * if no override is set. */
 export function useOrgLabelPlural(): string {
   return useContext(BrandingContext).orgLabelPlural;
+}
+
+/** Whether new user files may be stored for the organisation in view: false when the deployment-wide switch or the
+ * organisation's own switch is off (`useBranding().fileUploadsDisabledBy` says which). A storage limit is not part of it:
+ * it depends on the moment, so the server's refusal names it. Every upload control reads this and renders unavailable,
+ * with the reason, when it is false. */
+export function useFileUploadsEnabled(): boolean {
+  return useContext(BrandingContext).fileUploadsDisabledBy === null;
 }

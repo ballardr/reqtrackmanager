@@ -91,11 +91,11 @@ export function ProjectRequestsPage() {
     try {
       setRequests(await projectRequestApi.list(projectId, {
         include_archived: filters.includeArchived, scoring_model: filters.requestedModels,
-        tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope,
+        ...tagFilter.listFilters, project_scope: projectScope.scope,
       }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Product Feedback module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Product Feedback module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 
@@ -172,6 +172,7 @@ export function ProjectRequestsPage() {
             sort={filters.sort}
             onSort={(key) => filters.setSort((current) => cycleSort(current, key))}
             rowKey={(r) => r.id}
+            placements={{ projectId, artefactType: "enhancement_request", rowId: (r) => r.id }}
             rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/product_feedback/requests/${r.id}`}
             emptyState={
               <p className="text-muted">

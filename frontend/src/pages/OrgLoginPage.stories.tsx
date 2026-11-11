@@ -2,16 +2,21 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { OrgLoginInfo } from "../api/types";
+import type { AnnouncementNotice, OrgLoginInfo } from "../api/types";
 import { withAuth, withRouter } from "../testing/storybook-helpers";
 import { OrgLoginPage } from "./OrgLoginPage";
 
 function info(overrides: Partial<OrgLoginInfo>): OrgLoginInfo {
   return {
-    name: "Acme Corp", slug: "acme", logo_file_id: null, login_background_file_id: null,
+    name: "Acme Corp", slug: "acme", logo_file_id: null, logo_band_color_hex: "#14161c", logo_band_text_color_hex: "#ffffff", footer_position: "after_content", login_background_file_id: null,
     sso_enabled: false, sso_only: false,
     ...overrides,
   };
+}
+
+/** Answers the login-info read with `value` and the announcements read with `announcements` (none by default). */
+function mockLoginInfo(value: OrgLoginInfo, announcements: AnnouncementNotice[] = []) {
+  spyOn(api, "get").mockImplementation(async (path: string) => (path.includes("/announcements/login") ? announcements : value));
 }
 
 // Stable mock reference, reconfigured per-story via `beforeEach` — see
@@ -30,7 +35,7 @@ type Story = StoryObj<typeof OrgLoginPage>;
 
 export const NativeLoginOnly: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({}));
+    mockLoginInfo(info({}));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -40,9 +45,48 @@ export const NativeLoginOnly: Story = {
   },
 };
 
+/** The organisation's resolved footer position places the footer at the bottom edge of the window. */
+export const FooterAtTheBottomOfThePage: Story = {
+  beforeEach: () => {
+    mockLoginInfo(info({ footer_position: "bottom_of_page" }));
+  },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByText("Acme Corp");
+    const footer = await within(canvasElement).findByRole("contentinfo", { name: "Page footer" });
+    await waitFor(() => expect(Math.abs(footer.getBoundingClientRect().bottom - canvasElement.querySelector(".signed-out-page")!.getBoundingClientRect().bottom)).toBeLessThanOrEqual(1));
+  },
+};
+
+/** The organisation's resolved band colour is drawn behind its logo. */
+export const LogoBandColour: Story = {
+  beforeEach: () => {
+    mockLoginInfo(info({ logo_band_color_hex: "#7a1f3d", logo_band_text_color_hex: "#ffe9a8" }));
+  },
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByText("Acme Corp");
+    await expect(canvasElement.querySelector<HTMLElement>(".logo-band")?.style.background).toBe("rgb(122, 31, 61)");
+  },
+};
+
+/** The branded page shows the organisation's messages with the platform's and sends its slug. */
+export const ShowsPlatformAndOrganisationMessages: Story = {
+  beforeEach: () => {
+    mockLoginInfo(info({}), [
+      { id: "n1", title: "Platform notice", body: "", severity: "warning", scope: "server", dismissible: true },
+      { id: "n2", title: "Acme notice", body: "Badges are collected at reception.", severity: "information", scope: "organisation", dismissible: true },
+    ]);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Platform notice")).toBeInTheDocument();
+    await expect(canvas.getByText("Acme notice")).toBeInTheDocument();
+    await expect(api.get).toHaveBeenCalledWith("/api/v1/announcements/login?organization_slug=acme");
+  },
+};
+
 export const SsoAndNativeBothOffered: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({ sso_enabled: true, sso_only: false }));
+    mockLoginInfo(info({ sso_enabled: true, sso_only: false }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -56,7 +100,7 @@ export const SsoAndNativeBothOffered: Story = {
  * the only way in. */
 export const SsoOnlyHidesNativeForm: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({ sso_enabled: true, sso_only: true }));
+    mockLoginInfo(info({ sso_enabled: true, sso_only: true }));
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -78,7 +122,7 @@ export const OrgNotFound: Story = {
 
 export const NativeLoginError: Story = {
   beforeEach: () => {
-    spyOn(api, "get").mockResolvedValue(info({}));
+    mockLoginInfo(info({}));
     loginMock.mockRejectedValue(new ApiError(401, "Invalid email or password."));
   },
   play: async ({ canvasElement }) => {
@@ -91,5 +135,7 @@ export const NativeLoginError: Story = {
   },
 };
 
+export const LogoBandLightTheme: Story = { ...LogoBandColour, globals: { theme: "light" } };
+export const LogoBandDarkTheme: Story = { ...LogoBandColour, globals: { theme: "dark" } };
 export const LightTheme: Story = { ...SsoAndNativeBothOffered, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...SsoAndNativeBothOffered, globals: { theme: "dark" } };

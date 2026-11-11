@@ -65,7 +65,7 @@ test.describe("Context & Strategy: hide and restore organisation Pain Point type
 
     await test.step("hide the User type: confirm, and it leaves the list", async () => {
       await page.goto(`/projects/${hidingProject.id}/admin`);
-      await selectProjectAdminGroup(page, "Pain Point Types");
+      await selectProjectAdminGroup(page, "Pain Point Types", "Pain Points");
       await expect(page.getByRole("button", { name: /Add organisation defaults/ })).toHaveCount(0);
 
       const userRow = inputWithValue(page, "User").locator("xpath=ancestor::div[contains(@class,'definition-grid__row')][1]");
@@ -94,7 +94,7 @@ test.describe("Context & Strategy: hide and restore organisation Pain Point type
 
     await test.step("Add organisation defaults brings it back", async () => {
       await page.goto(`/projects/${hidingProject.id}/admin`);
-      await selectProjectAdminGroup(page, "Pain Point Types");
+      await selectProjectAdminGroup(page, "Pain Point Types", "Pain Points");
       await page.getByRole("button", { name: "Add organisation defaults (1)" }).click();
       const dialog = page.getByRole("dialog", { name: "Add organisation defaults" });
       await expect(dialog.getByRole("checkbox", { name: "User" })).toBeChecked();

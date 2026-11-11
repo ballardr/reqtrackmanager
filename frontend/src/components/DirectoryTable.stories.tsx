@@ -1,12 +1,13 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "storybook/test";
 
 import type { DirectoryColumn } from "./DirectoryTable";
 import { DirectoryTable } from "./DirectoryTable";
 import type { SortState } from "./sortState";
 import { orphanedControlViolations } from "../testing/orphanedControls";
+import { buildPlace, buildPlacementsApi, PLACEMENTS_PROJECT_ID } from "../testing/placementsFixtures";
 import { Badge } from "./Badge";
 
 interface DemoRow {
@@ -129,6 +130,40 @@ function HeaderActionDemo() {
 
 /** A column can carry its own control (a settings gear) beside its header: a sibling of the sort button,
  * so pressing it never sorts, and for a plain header it sits beside the text. */
+/** A Components column appears when a row on the page is placed, with one read for the whole page. */
+export const ComponentsColumnShowsWhereRowsArePlaced: Story = {
+  args: {
+    placements: {
+      projectId: PLACEMENTS_PROJECT_ID, artefactType: "pain_point", rowId: (row: DemoRow) => row.id,
+      api: buildPlacementsApi(undefined, {
+        page: fn(async () => ({ "u-alex": [buildPlace("c-hw", "k-cool"), buildPlace("c-sw")] })),
+      }),
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole("columnheader", { name: "Components" })).toBeInTheDocument();
+    await expect(canvas.getByText("Hardware / Cooling, Software")).toBeInTheDocument();
+    await expect(args.placements!.api!.page).toHaveBeenCalledTimes(1);
+    await expect(args.placements!.api!.page).toHaveBeenCalledWith(PLACEMENTS_PROJECT_ID, "pain_point", ["u-alex", "u-priya", "u-jordan"]);
+  },
+};
+
+/** No column when nothing on the page is placed, so a project that does not use components sees nothing new. */
+export const NoComponentsColumnWhenNothingIsPlaced: Story = {
+  args: {
+    placements: {
+      projectId: PLACEMENTS_PROJECT_ID, artefactType: "pain_point", rowId: (row: DemoRow) => row.id,
+      api: buildPlacementsApi(),
+    },
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(args.placements!.api!.page).toHaveBeenCalled());
+    await expect(canvas.queryByRole("columnheader", { name: "Components" })).not.toBeInTheDocument();
+  },
+};
+
 export const HeaderActionDoesNotSort: Story = {
   render: () => <HeaderActionDemo />,
   play: async ({ canvasElement }) => {

@@ -16,6 +16,7 @@ import { useTheme, type ThemePreference } from "../context/ThemeContext";
 import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { PROJECT_SCOPES, parseProjectScope } from "../api/projectScope";
+import { DEFAULT_NEW_PROJECT_ORG_PREFERENCE } from "../hooks/defaultProjectOrganization";
 import { DEFAULT_PROJECT_SCOPE_PREFERENCE } from "../hooks/useProjectScope";
 import { SHOW_PROJECT_CODE_PREFERENCE } from "../hooks/useRecordCode";
 import { useUiPreference } from "../hooks/useUiPreference";
@@ -90,6 +91,9 @@ export function PreferencesPage() {
   const [showProjectCode, setShowProjectCode] = useUiPreference<boolean>(SHOW_PROJECT_CODE_PREFERENCE, true);
   const [storedProjectScope, setDefaultProjectScope] = useUiPreference<string>(DEFAULT_PROJECT_SCOPE_PREFERENCE, "this");
   const defaultProjectScope = parseProjectScope(storedProjectScope) ?? "this";
+  const [storedNewProjectOrg, setDefaultNewProjectOrg] = useUiPreference<string>(DEFAULT_NEW_PROJECT_ORG_PREFERENCE, "");
+  // The active organisations the New project dialog offers (the same `mine=true` read).
+  const [creatableOrgs, setCreatableOrgs] = useState<Organization[]>([]);
   const [landingMode, setLandingMode] = useState<LandingMode>(landingModeFor(user?.landing_preference));
   const [landingProjectId, setLandingProjectId] = useState(
     landingModeFor(user?.landing_preference) === "project" ? user?.landing_preference ?? "" : ""
@@ -145,6 +149,7 @@ export function PreferencesPage() {
    */
   async function loadMyAccess() {
     api.get<ProjectListItem[]>("/api/v1/projects?archived=false").then(setMyProjects);
+    api.get<Organization[]>("/api/v1/orgs?mine=true").then((list) => setCreatableOrgs(list.filter((o) => o.is_active)));
     api.get<MyMemberships>("/api/v1/auth/me/memberships").then((memberships) => {
       setMyGroupsByOrg(
         Object.fromEntries(memberships.organizations.map((m) => [m.organization_id, m.groups]))
@@ -481,7 +486,7 @@ export function PreferencesPage() {
             disabled={user?.display_name_locked}
             hint={user?.display_name_locked ? strings.preferences.displayNameLocked(orgLabel) : undefined}
           />
-          <TextField helpNotNeeded label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
+          <TextField help={strings.help.pronouns} label={strings.preferences.pronouns} value={pronouns} onChange={setPronouns} />
           <LabeledSelect helpNotNeeded
             label={strings.preferences.theme}
             value={theme}
@@ -489,7 +494,7 @@ export function PreferencesPage() {
             options={[{ value: "light", label: strings.preferences.light }, { value: "dark", label: strings.preferences.dark }, { value: "system", label: strings.preferences.system }]}
             placeholder={null}
           />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.contentWidth}
             label={strings.preferences.contentWidth}
             value={contentBoxed ? "boxed" : "full"}
             onChange={(next) => setContentBoxed(next === "boxed")}
@@ -497,22 +502,29 @@ export function PreferencesPage() {
             placeholder={null}
           />
           <FormGridFull>
-            <CheckboxField helpNotNeeded
+            <CheckboxField help={strings.help.showProjectCode}
               label={strings.preferences.showProjectCode}
               checked={showProjectCode}
               onChange={setShowProjectCode}
-              hint={strings.preferences.showProjectCodeHint}
             />
           </FormGridFull>
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.defaultProjectScope}
             label={strings.preferences.defaultProjectScope}
             value={defaultProjectScope}
             onChange={setDefaultProjectScope}
             options={PROJECT_SCOPES.map((scope) => ({ value: scope, label: strings.projectScope.options[scope] }))}
             placeholder={null}
-            hint={strings.preferences.defaultProjectScopeHint}
           />
-          <LabeledSelect helpNotNeeded
+          {creatableOrgs.length > 1 && (
+            <LabeledSelect help={strings.help.defaultNewProjectOrg(orgLabel)}
+              label={strings.preferences.defaultNewProjectOrg(orgLabel)}
+              value={creatableOrgs.some((o) => o.id === storedNewProjectOrg) ? storedNewProjectOrg : ""}
+              onChange={setDefaultNewProjectOrg}
+              options={creatableOrgs.map((o) => ({ value: o.id, label: o.name }))}
+              placeholder={strings.preferences.defaultNewProjectOrgNone(orgLabel)}
+            />
+          )}
+          <LabeledSelect help={strings.help.landingPage}
             label={strings.preferences.landing}
             value={landingMode}
             onChange={(next) => setLandingMode(next as LandingMode)}
@@ -528,7 +540,7 @@ export function PreferencesPage() {
               placeholder={null}
             />
           )}
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.emailDigest}
             label={strings.preferences.emailDigest}
             value={digestMode}
             onChange={(next) => setDigestMode(next as DigestMode)}
@@ -770,7 +782,7 @@ export function PreferencesPage() {
                   value={newPatName}
                   onChange={setNewPatName}
                 />
-                <DateField helpNotNeeded
+                <DateField help={strings.help.tokenExpiry}
                   label={strings.preferences.patExpiry}
                   value={newPatExpiry}
                   onChange={(next) => {

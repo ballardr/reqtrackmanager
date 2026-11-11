@@ -7,6 +7,7 @@ and the category delete's cross-component reassignment (which also fixes up
 `Requirement.component_id`, not just `category_id`)."""
 
 from tests.conftest import auth_headers, create_component_and_category, create_org_user, create_project, login
+from tests.stage_helpers import move_stage
 
 
 def _assign_project_role(client, admin_token, project_id, user_id, role):
@@ -112,14 +113,10 @@ def test_delete_stage_blocked_by_existing_baseline(client, admin_token, org_id):
     stage = _stages(client, admin_token, project["id"])[0]
     other = _add_stage(client, admin_token, project["id"], "Other Stage")
 
-    review = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage['id']}/transition?new_status=review",
-        headers=auth_headers(admin_token),
+    review = move_stage(client, project['id'], stage['id'], "review", headers=auth_headers(admin_token),
     )
     assert review.status_code == 200, review.text
-    approve = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage['id']}/transition?new_status=approved",
-        headers=auth_headers(admin_token),
+    approve = move_stage(client, project['id'], stage['id'], "approved", headers=auth_headers(admin_token),
     )
     assert approve.status_code == 200, approve.text
 

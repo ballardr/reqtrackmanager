@@ -77,7 +77,7 @@ test.describe("Decision Management: groups as owners and decision makers", () =>
     // The list's Owner column names the group with its kind and size.
     const row = page.getByRole("row", { name: /DEC-001/ });
     await expect(row.getByText(groupName)).toBeVisible();
-    await expect(row.getByText("Org group · 1 member")).toBeVisible();
+    await expect(row.getByText("Organisation group · 1 member")).toBeVisible();
 
     // The quick view shows both the owner group and the decision-maker group.
     await page.getByRole("button", { name: "DEC-001" }).click();

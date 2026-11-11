@@ -81,7 +81,7 @@ ROLLUP_LABEL: dict[str, str] = {
 }
 
 SCORE_TARGET_STATUS_LABEL: dict[str, str] = {
-    "all": "All personas",
+    "general": "General",
     "active": "Active",
     "inactive": "Retired (not counted)",
     "unavailable": "Persona unavailable",

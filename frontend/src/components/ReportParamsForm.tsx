@@ -20,11 +20,15 @@
  * vocabulary; a module that needs exact wording either declares the labels or
  * owns the parameter in its view.
  */
+import { useId } from "react";
+
 import type { ReportParam, ReportRunValues } from "../api/reports";
 import { humanise } from "../utils/humanise";
+import { FieldCaption } from "./FieldHelp";
 import { LabeledSelect } from "./LabeledSelect";
 import { MultiSelectDropdown } from "./MultiSelectDropdown";
 import { ToggleSwitch } from "./ToggleSwitch";
+import { useStrings } from "../context/TerminologyContext";
 
 /**
  * @param params The report's declared parameters.
@@ -50,6 +54,7 @@ export function ReportParamsForm({
   projectMultiOptions?: { value: string; label: string }[];
   projectSingleOptions?: { value: string; label: string }[];
 }) {
+  const strings = useStrings();
   const shown = params.filter((p) => !hidden.includes(p.name));
   if (shown.length === 0 && !supportsIncludeChildren && !projectOptions && !projectMultiOptions && !projectSingleOptions) return null;
   const chosenProjects = new Set(typeof values.project_ids === "string" ? values.project_ids.split(",").filter(Boolean) : []);
@@ -57,16 +62,16 @@ export function ReportParamsForm({
     <div className="row" style={{ gap: "var(--space-5)", flexWrap: "wrap", alignItems: "flex-end" }} role="group" aria-label="Report options">
       {projectOptions && (
         <LabeledSelect helpNotNeeded
-          label="Project"
+          label={strings.filters.project}
           value={typeof values.project_id === "string" ? values.project_id : ""}
           onChange={(next) => onChange("project_id", next === "" ? null : next)}
           options={projectOptions}
-          placeholder="All projects"
+          placeholder={strings.filters.allProjects}
         />
       )}
       {projectSingleOptions && (
         <LabeledSelect helpNotNeeded
-          label="Project"
+          label={strings.filters.project}
           required
           value={typeof values.project_ids === "string" ? values.project_ids : ""}
           onChange={(next) => onChange("project_ids", next === "" ? null : next)}
@@ -76,10 +81,10 @@ export function ReportParamsForm({
       )}
       {projectMultiOptions && (
         <div className="stack" style={{ gap: "var(--space-1)" }}>
-          <span>Projects</span>
+          <span>{strings.filters.projects}</span>
           <MultiSelectDropdown
-            triggerLabel="Projects"
-            emptyLabel="All projects"
+            triggerLabel={strings.filters.projects}
+            emptyLabel={strings.filters.allProjects}
             filterable={projectMultiOptions.length > 8}
             summaryLimit={2}
             options={projectMultiOptions.map((project) => {
@@ -128,17 +133,18 @@ function ParamControl({
 }) {
   const label = param.label || humanise(param.name);
   const help = param.description || undefined;
+  const controlId = useId();
   if (param.type === "boolean") {
     return (
-      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }} title={help}>
+      <div className="row" style={{ alignItems: "center", gap: "var(--space-3)" }}>
         <ToggleSwitch label={label} checked={value === true} onChange={onChange} />
-        <span>{label}</span>
+        <FieldCaption label={label} help={help} />
       </div>
     );
   }
   if (param.choices && param.choices.length > 0) {
     return (
-      <LabeledSelect helpNotNeeded
+      <LabeledSelect help={help}
         label={label}
         value={value === undefined || value === null ? "" : String(value)}
         onChange={(next) => onChange(next === "" ? null : next)}
@@ -149,9 +155,10 @@ function ParamControl({
   }
   const inputType = param.type === "integer" ? "number" : param.type === "date" ? "date" : "text";
   return (
-    <label className="stack" style={{ gap: "var(--space-1)" }} title={help}>
-      <span>{label}</span>
+    <div className="stack" style={{ gap: "var(--space-1)" }}>
+      <FieldCaption label={label} help={help} htmlFor={controlId} />
       <input
+        id={controlId}
         className="input"
         type={inputType}
         min={param.type === "integer" ? param.minimum ?? undefined : undefined}
@@ -160,6 +167,6 @@ function ParamControl({
         placeholder={param.default !== null && param.default !== undefined ? `Default: ${param.default}` : undefined}
         onChange={(e) => onChange(e.target.value === "" ? null : param.type === "integer" ? Number(e.target.value) : e.target.value)}
       />
-    </label>
+    </div>
   );
 }

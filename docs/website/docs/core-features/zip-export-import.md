@@ -8,7 +8,7 @@ A project — or an entire organisation — can be exported as a self-contained,
 
 ## What's included
 
-The bundle carries the full structure and history: components, categories, custom field definitions, requirements with their complete version history, change requests, baselines, review outcomes, and file attachments. **Restricted**-classified secrets — SMTP/OIDC credentials, password hashes — are deliberately never included, so they're re-entered by hand after a restore rather than travelling inside the export file.
+The bundle carries the full structure and history: components, categories, custom field definitions, requirements with their complete version history, change requests, [requirement actions](requirement-actions.md) (the project's action types, each action with its outcome, assignee, due date, comments, attachments, tags and components, and its links to requirements), baselines, review outcomes, and file attachments. **Restricted**-classified secrets — SMTP/OIDC credentials, password hashes — are deliberately never included, so they're re-entered by hand after a restore rather than travelling inside the export file.
 
 ```mermaid
 flowchart LR
@@ -18,7 +18,9 @@ flowchart LR
     New -.->|"secrets, e.g. SMTP/OIDC"| Manual["Re-entered by hand"]
 ```
 
-Owners, reviewers and task assignees are written as a user's email or a group's name and matched in the importing organisation; one that cannot be matched becomes the importing user (an owner) or is left empty (a reviewer or assignee), with a warning.
+Owners, reviewers and task assignees are written as a user's email or a group's name and matched in the importing organisation; one that cannot be matched becomes an [imported person](#imported-people), with a warning.
+
+A project's own scoring configuration (default model, offered models, rating bands, thresholds and cell ratings) travels with the project; the organisation's scoring levels do not, and a level the target organisation lacks is skipped with a warning.
 
 Every module's records travel with the project, and its organisation-level records and vocabularies travel with the organisation. A module must do this, or say why it has nothing to carry:
 
@@ -31,9 +33,11 @@ Every module's records travel with the project, and its organisation-level recor
 | Stakeholders & Personas | Personas, stakeholders, needs, groups, relationships and engagements with their findings | Organisation-level personas, stakeholders, groups and type vocabularies |
 | Product Feedback | [Enhancement requests](../modules/product-feedback-module/enhancement-request.md) with their evidence, external references, requesters, Pain Point and Requirement links, who was told, active merges, the submission policy and section order, plus the project's scoring criteria, external systems and request channels (with defaults it hid) | The organisation's inbox requests and merges, scoring criteria, external systems and request channels |
 
-A record travels as it is now: its current content and status, not its version history or comments. Records are numbered afresh in the new project (Risks keep their codes), and references are matched by name, title or code, with a warning where one cannot be matched (for example a score against a persona the new project does not have, or a user who is not in the target organisation). Links only travel between records of the same project; a link to another project, or to a record that is not in the bundle, is dropped. Organisation-level attachments do not travel.
+Requirement actions keep their codes (`ACT-003`) and every comment and attachment; an action's links to requirements and to other actions travel, but a link from an action to a record of a module (a decision, a risk) does not. A bundle exported before actions were carried imports with the default action types and no actions.
 
-[Tags](tags.md) travel too: the project's tag list, colours and setting, and the tags on its requirements, personas, stakeholders, needs, engagements, research findings, risks, pain points, strategies, future states, guiding principles, open questions, decisions and enhancement requests. They are restored even if the new project only allows listed tags. An organisation bundle does not carry the tag list itself.
+A module's record travels as it is now: its current content and status, not its version history or comments. Records are numbered afresh in the new project (Risks keep their codes), and references are matched by name, title or code, with a warning where one cannot be matched (for example a score against a persona the new project does not have, or a user who is not in the target organisation). Links only travel between records of the same project; a link to another project, or to a record that is not in the bundle, is dropped. Organisation-level attachments do not travel.
+
+[Tags](tags.md) travel too: the project's tag list, colours and setting, and the tags on its requirements, change requests, requirement actions, compliance evidence, personas, stakeholders, needs, engagements, research findings, risks, pain points, strategies, future states, guiding principles, open questions, decisions and enhancement requests. They are restored even if the new project only allows listed tags. An organisation bundle does not carry the tag list itself.
 
 ## What's excluded, and why
 
@@ -49,6 +53,51 @@ Project-level **group membership** is deliberately excluded — only group struc
 | ![Project settings panel with the Export project bundle button](../../static/img/screenshots/project-admin-settings.png) |
 
 **Import**: from **Organisation admin → Import into this organisation**, choose a previously exported zip file to stand up a new project (or, for an organisation-level bundle, a new organisation) from it.
+
+### Who and what an import may bring
+
+People named in a bundle (authors, approvers, owners, voters) are matched by email address, and only people who already belong to the **target** organisation are matched. Anyone else becomes an [imported person](#imported-people). The project's recorded history is kept but shown as imported, with the original person's name and the time in the entry; an action by a member of the target organisation is recorded against you, never against that member, because a bundle cannot be trusted to say who did something. An organisation administrator can switch **Keep approval state on imported projects** off under **Organisation admin → Advanced settings → Security**: every imported record then returns to a draft and must be approved again in the new organisation. Bundles are checked before anything is read: an upload with too many entries, an oversized file or an implausibly high compression ratio is refused, and a damaged file is reported as invalid.
+
+### Imported people
+
+An imported person is a named record standing in for someone the bundle names who is not a member of the organisation. It cannot sign in, receive mail, hold a role or group membership, approve or vote, and it never appears in member lists, pickers or counts. It holds a display name only: the bundle's email address is not stored on it. Where it is shown as an owner, reviewer or similar, it carries an **Imported** badge. The same person in a later import into the same organisation reuses the same record.
+
+```mermaid
+flowchart TD
+    A[Person named in the bundle] --> B{Member of the target organisation?}
+    B -- Yes --> C[Matched member]
+    B -- No --> D[Imported person]
+    E[Your choice in the People step] -.-> C
+    E -.-> D
+```
+
+Read top to bottom: each person is matched or becomes an imported person unless you choose otherwise in the **People** step.
+
+After choosing the file, the import dialog lists every person in the bundle and how each will be recorded. For each person you can choose **Automatic**, **Imported person** (even where a member matches), **Me**, or any member of the organisation, for example after a change of employer or a name change. **Keep original email addresses in the history** records the original person's address in the replayed history entries; it is off by default, so no address of a non-member is stored.
+
+An organisation administrator manages imported people under **Organisation admin → Users → Imported people**: **Anonymise** renames one to "Former person" and keeps the records, and **Remove** deletes one that nothing refers to. The retention setting lists unused imported people as due for removal after a number of days; it is empty by default and nothing is removed automatically.
+
+### Importing when uploads are disabled
+
+A bundle's files are imported whenever they can be stored. When the server administrator has [disabled file uploads](../workflows/server-administration.md#server-management) and the bundle carries files, the import stops before anything is written and says how many files (and how much data) cannot be stored. The dialog then offers exactly two actions:
+
+- **Cancel import** — nothing is created.
+- **Import without files** — every record, link, tag and field is created, but no file attachment is. Merging into an organisation and creating a project from a template that carries files follow the same rule. A bundle with no files imports as usual.
+
+```mermaid
+flowchart TD
+    A[Import] --> B{Bundle has files?}
+    B -- No --> D[Records created]
+    B -- Yes --> C{Uploads allowed?}
+    C -- Yes --> E[Records and files created]
+    C -- No --> F{Person chooses}
+    F -- Cancel import --> G[Nothing created]
+    F -- Import without files --> H[Records created, files left out]
+```
+
+The same two choices appear when the bundle's files are larger than the space left under the organisation's [storage limit](../workflows/server-administration.md#organisation-storage), or when uploads are disabled for that organisation; the message gives the size of the files and the space left.
+
+A report file imported with its pictures lists, in its preview, each picture that cannot be stored.
 
 ## Where this fits
 

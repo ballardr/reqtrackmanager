@@ -42,7 +42,7 @@ export function NewUserFields({
         <TextField helpNotNeeded required label={strings.orgAdmin.name} value={values.displayName} onChange={(displayName) => onChange({ displayName })} />
       )}
       {showPassword && (
-        <TextField helpNotNeeded required
+        <TextField required help={strings.orgAdmin.newUserModalHint}
           label={strings.orgAdmin.password}
           value={values.password}
           onChange={(password) => onChange({ password })}
@@ -51,7 +51,7 @@ export function NewUserFields({
         />
       )}
       {showRole && (
-        <LabeledSelect helpNotNeeded
+        <LabeledSelect help={strings.help.newUserRole}
           label={strings.orgAdmin.role}
           value={values.role}
           onChange={(role) => onChange({ role: role as OrgRole })}

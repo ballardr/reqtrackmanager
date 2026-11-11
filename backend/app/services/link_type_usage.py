@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -201,12 +202,13 @@ def _artefact_project_ids(db: Session, ends: set[tuple[str, uuid.UUID]]) -> dict
     for artefact_type, artefact_id in ends:
         by_type[artefact_type].append(artefact_id)
     for artefact_type, ids in by_type.items():
+        rows: Sequence[tuple[uuid.UUID, uuid.UUID | None]]
         if artefact_type == ArtefactType.REQUIREMENT.value:
-            rows = db.execute(select(Requirement.id, Requirement.project_id).where(Requirement.id.in_(ids))).all()
+            rows = db.execute(select(Requirement.id, Requirement.project_id).where(Requirement.id.in_(ids))).tuples().all()
         elif artefact_type == ArtefactType.REQUIREMENT_ACTION.value:
-            rows = db.execute(select(RequirementAction.id, RequirementAction.project_id).where(RequirementAction.id.in_(ids))).all()
+            rows = db.execute(select(RequirementAction.id, RequirementAction.project_id).where(RequirementAction.id.in_(ids))).tuples().all()
         elif artefact_type == ArtefactType.CHANGE_REQUEST.value:
-            rows = db.execute(select(ChangeRequest.id, ChangeRequest.project_id).where(ChangeRequest.id.in_(ids))).all()
+            rows = db.execute(select(ChangeRequest.id, ChangeRequest.project_id).where(ChangeRequest.id.in_(ids))).tuples().all()
         else:
             rows = []
             for artefact_id in ids:
@@ -558,7 +560,10 @@ def delete_link_type(
 
     copies = _create_copies(db, link_type, set(copy_site.values()), parents, actor, organization_id, outcome)
     for link in kept_links:
-        copy = copies[copy_site[link_projects[link.id]]]  # type: ignore[index]  # kept links all have a project
+        link_project_id = link_projects[link.id]
+        if link_project_id is None:
+            raise ValueError("A kept link always belongs to a project.")
+        copy = copies[copy_site[link_project_id]]
         link.link_type_id = copy.id
         log_event(
             db, entity_type="artefact_link", entity_id=link.id, action="link_type_changed", actor_id=actor.id,

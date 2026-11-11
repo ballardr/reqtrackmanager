@@ -54,7 +54,7 @@ The **Register** tab shows each Risk's inherent and residual rating as a coloure
 
 ## Configuring scoring
 
-| Setting | Organisation (**Organisation admin → Risk Scoring**) | Project (**Project admin → Risk Scoring**) |
+| Setting | Organisation (**Organisation admin → Risk Management → Risk Scoring**) | Project (**Project admin → Risk Management → Risk Scoring**) |
 | --- | --- | --- |
 | Levels per axis (name, weight, guidance) | Edit, add, delete (at least two per axis; deleting an in-use level asks where to move its Risks) | Read-only |
 | Default model | Set, or reset to the module default | Override, or use the inherited value |

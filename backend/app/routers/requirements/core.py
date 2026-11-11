@@ -33,7 +33,7 @@ from app.models.enums import (
     ProjectRole,
     RequirementStatus,
     ReviewTargetType,
-    StageStatus,
+    StagePhaseKind,
 )
 from app.models.project import Project, ProjectCategory, ProjectComponent, ProjectStage
 from app.models.requirement import Requirement, RequirementVersion
@@ -46,11 +46,12 @@ from app.schemas.requirement import (
     RequirementUpdate,
     RequirementVersionOut,
 )
-from app.services import engagement, pubsub
+from app.services import component_stages, engagement, pubsub
 from app.services.audit import log_event
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
-from app.services.principals import validate_principal
+from app.services.lookups import project_or_404
+from app.services.principals import label_of, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
 from app.services.requirements import (
@@ -70,6 +71,7 @@ from app.services.requirements import (
     unarchive_requirement,
     version_people,
 )
+from app.services.stage_workflows import current_stage_kind
 
 router = APIRouter(tags=["requirements-core"])
 
@@ -138,7 +140,7 @@ def _to_out(
         has_open_change_request=open_cr,
         requires_approval=version.status in REQUIRES_APPROVAL_STATUSES,
         review_date=version.review_date, review_lead_days=version.review_lead_days,
-        reviewer=people[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
+        reviewer=label_of(people, version.reviewer_type, version.reviewer_id),
     )
 
 
@@ -226,6 +228,7 @@ def list_requirements(
     target_stage_to_id: UUID | None = Query(None, description="Only requirements whose target stage is this stage or an earlier one."),
     has_comments: bool | None = None,
     only_watched: bool | None = None,
+    phase: str | None = Query(None, description="Only requirements whose governing phase (their component's track, else the stage's) has this name."),
     include_archived: bool = False,
     sort: str | None = Query(None, pattern="^(unique_code|name|status|created_at)$"),
     order: str = Query("asc", pattern="^(asc|desc)$"),
@@ -279,7 +282,7 @@ def list_requirements(
         include_archived=include_archived, is_completed=is_completed, component_id=component_id, category_id=category_id,
         tag_names=tuple(tag), tag_match_all=tag_mode == "all", keyword=keyword, search=search, status=status_filter,
         target_stage_id=target_stage_id, target_stage_from_id=target_stage_from_id, target_stage_to_id=target_stage_to_id,
-        has_comments=has_comments, only_watched=only_watched,
+        has_comments=has_comments, only_watched=only_watched, phase=phase,
     )
 
     # One project, or a scope widened over related projects. With one project the database sorts and pages,
@@ -298,7 +301,7 @@ def list_requirements(
         matching += found.total
         return found.rows
 
-    rows = project_scope.collect(db, db.get(Project, project_id), current_user.id, "requirement", rows_for)
+    rows = project_scope.collect(db, project_or_404(db, project_id), current_user.id, "requirement", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if not single:
@@ -315,12 +318,16 @@ def list_requirements(
     # are fetched for this page alone, so a page of 50 costs the same in a project of 20,000.
     by_id = {r.id: r for r in requirements_by_ids(db, [row.id for row in rows])}
     prefetch = prefetch_for_list(db, list(by_id), current_user.id)
+    phase_of = component_stages.requirement_phase_lookup(db, project_or_404(db, project_id))
     out = []
     for row in rows:
         item = _to_out(db, by_id[row.id], prefetch.versions[row.id], current_user.id, prefetch)
         item.from_project_id, item.from_project_name, item.from_project_code = (
             row.from_project_id, row.from_project_name, row.from_project_code,
         )
+        # The governing phase is read for this project's own rows; a row of a related project is not annotated.
+        governing = phase_of(item.component_id, item.target_stage_id) if row.from_project_id is None else None
+        item.phase_name, item.phase_kind = (governing.name, governing.kind) if governing is not None else (None, None)
         out.append(item)
     return out
 
@@ -367,7 +374,7 @@ def update_requirement(
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     new_version = edit_requirement(
         db, project, requirement, current_user,
         name=payload.name, reasoning=payload.reasoning, clarification=payload.clarification,
@@ -496,22 +503,19 @@ def move_requirement(
 ):
     """Reorders a requirement within its list. Scoping-stage only (C-E-03)."""
     _require_edit_role(db, current_user, project_id)
-    current_stage = db.scalar(
-        select(ProjectStage).where(ProjectStage.project_id == project_id, ProjectStage.is_current.is_(True))
-    )
-    if current_stage is None or current_stage.status != StageStatus.SCOPING:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Requirements can only be reordered during scoping.")
+    if current_stage_kind(db, project_id) != StagePhaseKind.OPEN:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Requirements can only be reordered while the current stage is in an open phase.")
 
     requirement = db.get(Requirement, requirement_id)
     if requirement is None or requirement.project_id != project_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Requirement not found.")
 
-    siblings = db.scalars(
+    siblings = list(db.scalars(
         select(Requirement).where(
             Requirement.project_id == project_id, Requirement.component_id == requirement.component_id,
             Requirement.category_id == requirement.category_id, Requirement.is_archived.is_(False),
         )
-    ).all()
+    ).all())
     versions = {r.id: get_current_version(db, r.id) for r in siblings}
     siblings.sort(key=lambda r: versions[r.id].sort_order)
     idx = next(i for i, r in enumerate(siblings) if r.id == requirement.id)

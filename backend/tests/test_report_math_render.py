@@ -255,3 +255,29 @@ def test_text_only_consumers_see_the_source_of_an_equation_unchanged():
 
     assert value == r"see \(x^2\) and $$y$$" and isinstance(value, str)
     assert value.parts[1] == inline("x^2")
+
+
+def test_a_line_grows_to_hold_a_tall_inline_equation_instead_of_overlapping_the_next():
+    from reportlab.platypus import Paragraph as FlowParagraph
+
+    from app.services import report_pdf
+
+    drawn = report_math.typeset(r"t = \frac{E_{batt}}{P_{hover}} \geq 42", False)
+    assert drawn is not None
+    png = report_math.png_of(drawn)
+    assert png is not None
+    images = report_pdf._InlineImages()
+    try:
+        path = images.add(png)
+        markup = (
+            "With an 800 g payload the aircraft shall hover for at least "
+            f'<img src="{path}" width="{drawn.width:.2f}" height="{drawn.height:.2f}" valign="{-drawn.descent:.2f}"/>'
+            " minutes at sea level and 20 degrees."
+        )
+        flowable = FlowParagraph(markup, report_pdf._CELL)
+        _, height = flowable.wrap(140, 1000)
+    finally:
+        images.close()
+    lines = len(flowable.blPara.lines)
+    # Every line is at least the cell leading, and the line holding the equation is taller than the leading.
+    assert height > lines * report_pdf._CELL.leading

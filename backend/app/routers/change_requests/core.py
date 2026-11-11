@@ -6,7 +6,7 @@ drafting a change request (against an existing requirement, or proposing a
 new one, an action add/remove, or a link add/remove), listing/fetching one,
 and its per-entity activity timeline. Also home for `_to_out`/`_latest_version`
 (imported by `workflow.py`, the only other bucket that needs them),
-`CAN_SUBMIT_ROLES` (imported by `comments.py`), and `OPEN_CR_STATUSES`
+and `OPEN_CR_STATUSES`
 (imported by `votes.py`) — each used by exactly one sibling bucket besides
 this one, so kept here rather than promoted to `_shared.py` (see that
 module's own docstring for the "used by 3+ buckets" threshold).
@@ -51,6 +51,7 @@ from app.services.change_request_links import ProposedLinkProblem, check_propose
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.changes import get_project_changes
 from app.services.custom_fields import validate_custom_field_values
+from app.services.lookups import project_or_404
 from app.services.principals import principal_columns, principal_out, validate_principal
 from app.services.project_scope import ProjectScope
 from app.services.rbac import get_effective_project_roles, require_project_view
@@ -61,20 +62,12 @@ from app.services.tags import TagFilter
 
 router = APIRouter(tags=["change-requests-core"])
 
-CAN_SUBMIT_ROLES = (ProjectRole.PROJECT_MANAGER, ProjectRole.PROJECT_ADMINISTRATOR, ProjectRole.STAKEHOLDER)
-
 
 def _require_can_create_change_request(db: Session, user: User, project: Project) -> None:
-    """Like `comments._require_submit_role`, but also allows plain "members"
-    when the project has enabled member change-request submission (C-U-13,
-    defaults to enabled). Only applies to creating a change request —
-    commenting on one still requires stakeholder+ regardless of this toggle.
-    """
-    roles = get_effective_project_roles(db, user.id, project.id)
-    allowed = set(CAN_SUBMIT_ROLES)
-    if project.allow_member_change_requests:
-        allowed.add(ProjectRole.MEMBER)
-    if not roles & allowed:
+    """Raises 403 unless `user` may submit a change request here (`may_submit_change_request`, which also answers the
+    Links panel's "Create new"); the member toggle (C-U-13, enabled by default) applies to creating only, since
+    commenting on a request still requires stakeholder or above (`CAN_SUBMIT_ROLES`)."""
+    if not list_service.may_submit_change_request(db, user, project):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to submit change requests on this project.")
 
 
@@ -119,7 +112,7 @@ def _to_out(
         proposed_name=version.proposed_name, proposed_reasoning=version.proposed_reasoning,
         proposed_clarification=version.proposed_clarification, proposed_description=version.proposed_description,
         proposed_target_stage_id=version.proposed_target_stage_id, proposed_level=version.proposed_level,
-        proposed_attachment_file_ids=version.proposed_attachment_file_ids,
+        proposed_attachment_file_ids=[UUID(file_id) for file_id in version.proposed_attachment_file_ids],
         reason=version.reason,
         custom_fields=version.custom_fields,
         submitted_at=cr.submitted_at, decided_at=cr.decided_at, decided_by=cr.decided_by,
@@ -151,11 +144,14 @@ def _to_out(
 
 def _latest_version(db: Session, cr: ChangeRequest) -> ChangeRequestVersion:
     """Returns the most recently created version row for a change request."""
-    return db.scalars(
+    version = db.scalars(
         select(ChangeRequestVersion)
         .where(ChangeRequestVersion.change_request_id == cr.id)
         .order_by(ChangeRequestVersion.version_number.desc())
     ).first()
+    if version is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Change request version not found.")
+    return version
 
 
 MAX_PROPOSED_LINKS = 50
@@ -275,7 +271,7 @@ def create_change_request(
                 "Provide either proposed_action_link_id (to link an existing action) or "
                 "proposed_action_title and proposed_action_type_id (to create a new one) — not both, not neither.",
             )
-        if has_link:
+        if payload.proposed_action_link_id is not None:
             action = get_requirement_action_in_project(db, project_id, payload.proposed_action_link_id)
             existing = get_artefact_link_between(
                 db, source_type=ArtefactType.REQUIREMENT_ACTION, source_id=action.id,
@@ -535,7 +531,7 @@ def list_change_requests(
         facts = _list_facts(db, [cr for cr, _version in pairs], current_user.id)
         return [_to_out(db, cr, version, current_user.id, with_links=False, facts=facts) for cr, version in pairs]
 
-    out = project_scope.collect(db, db.get(Project, project_id), current_user.id, "change_request", rows_for)
+    out = project_scope.collect(db, project_or_404(db, project_id), current_user.id, "change_request", rows_for)
     response.headers["X-Total-Unfiltered-Count"] = str(unfiltered)
 
     if sort:

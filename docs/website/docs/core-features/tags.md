@@ -68,7 +68,7 @@ flowchart LR
 
 ## Moving tags between projects
 
-A project [export and import](zip-export-import.md) carries the project's tags, colours and setting, and the tags on its requirements, personas, stakeholders, needs, engagements, research findings and risks. They are restored even if the new project is restricted.
+A project [export and import](zip-export-import.md) carries the project's tags, colours and setting, and the tags on its requirements, change requests, personas, stakeholders, needs, engagements, research findings, risks and compliance evidence. They are restored even if the new project is restricted.
 
 ## For API clients and AI assistants
 

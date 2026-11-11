@@ -15,10 +15,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.enums import OrgRole, PrincipalType
 from app.models.organization import OrgGroup, OrgGroupMember
 from app.models.user import User
@@ -26,6 +27,7 @@ from app.modules.registry import run_org_group_deletion_hooks, run_org_group_mem
 from app.schemas.org import OrgGroupCreate, OrgGroupMemberAdd, OrgGroupOut, OrgGroupUpdate
 from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.services.audit import log_event
+from app.services.lookups import present
 from app.services.org_membership import assert_account_active
 from app.services.principals import compute_usage, prepare_group_deletion
 from app.services.rbac import (
@@ -121,14 +123,14 @@ def list_org_groups(
 
     out = []
     for g in groups:
-        member_ids = db.scalars(
+        member_ids = present(db.scalars(
             select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == g.id, OrgGroupMember.user_id.is_not(None))
-        ).all()
-        nested_group_ids = db.scalars(
+        ).all())
+        nested_group_ids = present(db.scalars(
             select(OrgGroupMember.member_org_group_id).where(
                 OrgGroupMember.org_group_id == g.id, OrgGroupMember.member_org_group_id.is_not(None)
             )
-        ).all()
+        ).all())
         out.append(
             OrgGroupOut(
                 id=g.id, name=g.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
@@ -204,14 +206,14 @@ def update_org_group(
     )
     db.commit()
     db.refresh(group)
-    member_ids = db.scalars(
+    member_ids = present(db.scalars(
         select(OrgGroupMember.user_id).where(OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id.is_not(None))
-    ).all()
-    nested_group_ids = db.scalars(
+    ).all())
+    nested_group_ids = present(db.scalars(
         select(OrgGroupMember.member_org_group_id).where(
             OrgGroupMember.org_group_id == group.id, OrgGroupMember.member_org_group_id.is_not(None)
         )
-    ).all()
+    ).all())
     return OrgGroupOut(
         id=group.id, name=group.name, member_user_ids=list(member_ids), member_org_group_ids=list(nested_group_ids),
         idp_synced_group_name=group.idp_synced_group_name, granted_org_role=group.granted_org_role,
@@ -277,7 +279,7 @@ def delete_org_group(
     handed_over = prepare_group_deletion(
         db, PrincipalRef(type=PrincipalType.ORG_GROUP, id=group_id), organization_id=organization_id,
         project_id=None, actor_id=current_user.id, clear_optional=clear_optional,
-        replacement=PrincipalRef(type=replacement_type, id=replacement_id) if replacement_type else None,
+        replacement=PrincipalRef(type=replacement_type, id=replacement_id) if replacement_type and replacement_id else None,
     )
 
     member_count = db.scalar(
@@ -304,11 +306,14 @@ def _get_org_group_in_org(db: Session, organization_id: UUID, group_id: UUID) ->
     """
     group = db.get(OrgGroup, group_id)
     if group is None or group.organization_id != organization_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Org group not found.")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation group not found.")
     return group
 
 
-@router.post("/{organization_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{organization_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def add_org_group_member(
     organization_id: UUID,
     group_id: UUID,
@@ -364,6 +369,8 @@ def add_org_group_member(
         # its members inherit membership here, crossing the tenant boundary
         # — same reasoning as `add_project_group_member`'s org_group_id
         # branch, one level up.
+        if payload.member_org_group_id is None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Provide user_id or member_org_group_id.")
         child_group = _get_org_group_in_org(db, organization_id, payload.member_org_group_id)
         if child_group.id == group_id or would_create_org_group_cycle(db, group_id, child_group.id):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "This would create a cycle of nested groups.")
@@ -381,7 +388,10 @@ def add_org_group_member(
             db.commit()
 
 
-@router.delete("/{organization_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{organization_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def remove_org_group_member(
     organization_id: UUID,
     group_id: UUID,
@@ -410,7 +420,7 @@ def remove_org_group_member(
         if block_message is not None:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, block_message)
     db.execute(
-        OrgGroupMember.__table__.delete().where(
+        delete(OrgGroupMember).where(
             OrgGroupMember.org_group_id == group_id,
             (OrgGroupMember.user_id == member_id) | (OrgGroupMember.member_org_group_id == member_id),
         )

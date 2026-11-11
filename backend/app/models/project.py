@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,8 +25,8 @@ from app.models.enums import (
     ProjectRoleInheritanceMode,
     ProjectVisibility,
     StageReviewResponseChoice,
-    StageStatus,
 )
+from app.models.principal import principal_check_constraint, principal_id_column, principal_type_column
 
 #: Longest Project report name: the same as `Project.name`, so the short name is never stricter than the name it stands for
 #: (how much fits in a header is the layout's concern, and wraps with the page size).
@@ -198,12 +198,28 @@ class Project(UUIDPKMixin, TimestampMixin, Base):
     # setting, else "free" (services.tags.resolve_tag_mode).
     tag_mode: Mapped[str | None] = mapped_column(String(12), nullable=True)
 
+    # Whether each component follows its own workflow per stage: "on" or "off". NULL inherits the
+    # nearest ancestor's setting, else "off" (services.component_stages.resolve_mode); off leaves the
+    # project stage as the only phase.
+    component_phases_mode: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    # Days before a phase's expected start that its "upcoming" reminder is sent; NULL inherits the nearest
+    # ancestor's, else `services.stage_phase_plans.DEFAULT_LEAD_DAYS`.
+    phase_reminder_lead_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # This project's own navigation names, keyed by stable navigation key (`services.nav_labels`); a key
+    # with no entry follows the nearest ancestor's name, then the organisation's, then the built-in one.
+    nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    # This project's own overview layout (`services.overview_widgets`): an object `{scope, widgets}`, the widgets an
+    # ordered list of instances. SQL NULL (not JSON null) means none: the nearest ancestor's, then the
+    # organisation's, then the built-in layout applies. An empty widget list is a layout with every widget removed.
+    overview_widgets: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+
 
 class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     """One lifecycle horizon of a project (C-G-08, C-G-10).
 
     Attributes:
-        status: scoping -> review -> approved -> completed.
+        workflow_id / phase_id: The workflow the stage follows and its current phase; the
+            phase's kind (not its name) drives the baseline, edit lock and completion.
         sort_order: Display/sequence order among a project's stages.
         approved_at / approved_by: Set when the stage transitions to
             approved; this is also when a baseline snapshot is written
@@ -212,13 +228,17 @@ class ProjectStage(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "project_stages"
-    __table_args__ = (UniqueConstraint("project_id", "name"),)
+    __table_args__ = (UniqueConstraint("project_id", "name"), principal_check_constraint("owner", nullable=True))
 
     project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
-    status: Mapped[StageStatus] = mapped_column(str_enum(StageStatus, 20), default=StageStatus.SCOPING)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stage_workflows.id"), index=True)
+    phase_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("stage_workflow_phases.id"), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_current: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Optional principal (a user or a group) reminded about the stage's phase schedule; with none, the project managers.
+    owner_type: Mapped[str | None] = principal_type_column(nullable=True)
+    owner_id: Mapped[uuid.UUID | None] = principal_id_column(nullable=True)
 
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

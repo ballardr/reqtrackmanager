@@ -14,23 +14,52 @@ export type OrgRole = "org_admin" | "project_creator" | "member";
 // backend docstring — it is never granted/revoked through the
 // `/server-roles` endpoints this type also describes, only through the
 // existing `/server-admin` boolean endpoint.
-export type ServerRole = "server_admin" | "module_administrator";
+export type ServerRole = "server_admin" | "module_administrator" | "subscription_manager" | "subscription_removal_authority";
+/** The server roles granted by row (every `ServerRole` except `server_admin`). */
+export type GrantableServerRole = Exclude<ServerRole, "server_admin">;
 export type ModuleEntitlementPolicy = "open" | "closed";
-export type StageStatus = "scoping" | "review" | "approved" | "completed" | "archived";
+/** What a stage workflow phase does, whatever it is called (backend `StagePhaseKind`). */
+export type StagePhaseKind = "open" | "review" | "locked" | "on_hold" | "closed";
 // Hierarchical projects: forward (parent -> child) RBAC-cascade mode — see
 // backend/app/models/enums.py::ProjectRoleInheritanceMode and
 // docs/decisions.md's "Hierarchical projects" entry.
 export type ProjectRoleInheritanceMode = "none" | "mirror_all" | "mirror_role" | "member_only";
 
-// Display-only wording (matches the design mocks); the underlying API value
-// stays unchanged since it gates real approval/locking logic server-side.
-export const STAGE_STATUS_LABEL: Record<StageStatus, string> = {
-  scoping: "Scoping",
-  review: "In review",
-  approved: "Ready for use",
-  completed: "Implemented",
-  archived: "Archived",
+/** Kind labels; a phase's own name is free text, so the kind is what a filter or a legend shows. */
+export const STAGE_PHASE_KIND_LABEL: Record<StagePhaseKind, string> = {
+  open: "Open",
+  review: "Review",
+  locked: "Locked",
+  on_hold: "On hold",
+  closed: "Closed",
 };
+export const STAGE_PHASE_KINDS = Object.keys(STAGE_PHASE_KIND_LABEL) as StagePhaseKind[];
+
+export interface StageWorkflowPhase {
+  id: string;
+  name: string;
+  kind: StagePhaseKind;
+  sort_order: number;
+}
+
+/** A stage workflow: `scope` says whether the organisation or only this project defines it. */
+export interface StageWorkflow {
+  id: string;
+  name: string;
+  scope: "organisation" | "project";
+  sort_order: number;
+  phases: StageWorkflowPhase[];
+  in_use: boolean;
+  /** Who follows it: in a project, that project's stage names and counts; at the organisation tier, counts only. */
+  used_by: { stage_names: string[]; stage_count: number; track_count: number; project_count: number };
+}
+
+/** A phase as saved: `id` is set for an existing phase so it keeps its identity. */
+export interface StageWorkflowPhaseWrite {
+  id?: string;
+  name: string;
+  kind: StagePhaseKind;
+}
 // C-G-11: completion is an overlay marker independent of lifecycle status
 // (`Requirement.is_completed`, below), not a `RequirementStatus` value —
 // see docs/decisions.md's entry on this rework. `"completed"` deliberately
@@ -187,9 +216,17 @@ export const ORG_ROLE_LABEL: Record<OrgRole, string> = {
   project_creator: "Project creator",
   member: "Member",
 };
+/** Where the footer of the signed-out pages sits (the values the backend stores). */
+export type FooterPosition = "after_content" | "bottom_of_page";
+export const FOOTER_POSITION_LABEL: Record<FooterPosition, string> = {
+  after_content: "After the content",
+  bottom_of_page: "Bottom of the page",
+};
 export const SERVER_ROLE_LABEL: Record<ServerRole, string> = {
   server_admin: "Server admin",
   module_administrator: "Module administrator",
+  subscription_manager: "Platform subscription manager",
+  subscription_removal_authority: "Subscription removal authority",
 };
 
 /**
@@ -260,6 +297,12 @@ function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+/** A sentence fragment standing on its own (a table cell, an exported cell) with a capital first letter. The Activity
+ * aside, whose sentence follows a person's name, uses the fragment as it is. */
+export function sentenceCase(text: string): string {
+  return capitalize(text);
+}
+
 /** `entityType === "organization"` isn't in `ENTITY_TYPE_LABEL` since its
  * label depends on the deployment's organisation-label override
  * (`useOrgLabelCapitalized`) rather than being a fixed word — callers pass
@@ -306,6 +349,121 @@ const ACTIVITY_ACTION_LABEL: Record<string, string> = {
   review_response_submitted: "responded to the review",
   merged: "merged",
   reclassified: "reclassified",
+  create: "created",
+  added: "added",
+  uploaded: "uploaded a file",
+  duplicated: "duplicated",
+  copied: "copied",
+  imported: "imported",
+  imported_from_bundle: "imported from a bundle",
+  merged_from_bundle: "merged from a bundle",
+  records_imported: "imported records",
+  invited: "invited a person",
+  signed_up: "signed up",
+  renamed: "renamed",
+  rename: "renamed",
+  moved_to_project: "moved to another project",
+  parented: "changed the parent",
+  version_saved: "saved a version",
+  scored: "scored",
+  set: "set a value",
+  owner_changed: "changed the owner",
+  reassigned: "reassigned",
+  principal_reassigned: "reassigned to another person or group",
+  layout_changed: "changed the layout",
+  code_updated: "updated the code",
+  code_changed: "changed the code",
+  audience_changed: "changed the audience",
+  visibility_hidden: "hid a default",
+  visibility_cleared: "cleared a visibility setting",
+  visibility_reset: "reset the visibility",
+  override_saved: "saved an override",
+  override_reset: "reset an override",
+  weight_override_set: "set a weight override",
+  weight_override_cleared: "cleared a weight override",
+  reviewed: "reviewed",
+  clarified: "clarified",
+  assessed: "assessed",
+  treatment_assessed: "assessed the treatment",
+  scheduled: "scheduled",
+  branding_updated: "updated the branding",
+  default_template_updated: "updated the default template",
+  advanced_settings_updated: "updated the advanced settings",
+  applicability_changed: "changed the applicability",
+  applicability_default_changed: "changed the default applicability",
+  marked_duplicate: "marked as a duplicate",
+  revalidated: "revalidated",
+  submitted_for_review: "submitted for review",
+  submitted_for_approval: "submitted for approval",
+  sent_back: "sent back",
+  closed: "closed",
+  resolved: "resolved",
+  published: "published",
+  unpublished: "unpublished",
+  activated: "activated",
+  retired: "retired",
+  superseded: "superseded",
+  proposed: "proposed",
+  accepted: "accepted",
+  unarchived: "unarchived",
+  restored: "restored",
+  investigating: "started investigating",
+  triaged: "triaged",
+  ready_for_decision: "marked ready for decision",
+  addressed: "addressed",
+  workflow_changed: "changed the workflow",
+  reconciled: "reconciled",
+  approval_invalidated: "invalidated the approval",
+  draft_discarded: "discarded the draft",
+  acknowledged: "acknowledged",
+  enabled: "enabled",
+  disabled: "disabled",
+  treatment_needs_reassessment: "flagged the treatment for reassessment",
+  linked: "created a link",
+  unlinked: "removed a link",
+  relationship_added: "added a relationship",
+  relationship_removed: "removed a relationship",
+  requirement_linked: "linked a requirement",
+  requirement_unlinked: "unlinked a requirement",
+  action_linked: "linked an action",
+  action_unlinked: "unlinked an action",
+  evidence_linked: "linked evidence",
+  evidence_unlinked: "unlinked evidence",
+  link_type_changed: "changed the type of a link",
+  represents_added: "added a represented record",
+  represents_removed: "removed a represented record",
+  policy_links_changed: "changed the linked policies",
+  tagged: "added a tag",
+  untagged: "removed a tag",
+  placed: "placed this in a component or category",
+  unplaced: "removed this from a component or category",
+  role_granted: "granted a role",
+  role_revoked: "revoked a role",
+  role_assigned: "assigned a role",
+  nested_group_added: "added a nested group",
+  holder_added: "added a holder",
+  holder_removed: "removed a holder",
+  watcher_added: "added a watcher",
+  watcher_removed: "removed a watcher",
+  inherited_access_materialized: "applied inherited access",
+  delete: "deleted",
+  removed: "removed",
+  erased: "erased",
+};
+
+/** The kinds of activity event the History page filters and labels by (`services/activity_kinds.py` holds the same keys). */
+export type ActivityKind = "created" | "edited" | "status" | "links" | "tags" | "access" | "comments" | "deleted" | "other";
+
+export const ACTIVITY_KIND_LABEL: Record<ActivityKind, string> = {
+  created: "Created",
+  edited: "Edited",
+  status: "Status changes",
+  links: "Links and files",
+  tags: "Tags and places",
+  access: "Access",
+  comments: "Comments",
+  deleted: "Deleted",
+  other: "Other",
 };
 
 export function activityActionLabel(action: string): string {
@@ -330,8 +488,15 @@ export type CoreNotificationType =
   | "comment_added"
   | "requirement_review_due"
   | "stage_review_auto_approved"
+  | "stage_phase_upcoming"
+  | "stage_phase_overdue"
+  | "stage_phase_completed"
   | "project_members_changed_by_org"
   | "system_storage_alert"
+  | "system_announcement"
+  | "policy_published"
+  | "policy_acknowledgement_required"
+  | "storage_limit_near"
   | "report_run_finished"
   | "compliance_required_action_due_soon"
   | "compliance_required_action_overdue"
@@ -384,6 +549,8 @@ export interface User {
   avatar_file_id: string | null;
   display_name_locked: boolean;
   is_2fa_enabled: boolean;
+  /** True after an administrator typed this account's password: the app asks for a new one before anything else. */
+  must_change_password?: boolean;
   email_digest_mode: DigestMode;
   /** General-purpose key/value bag for lightweight UI display preferences
    * that don't warrant their own dedicated field — e.g. per-list tile/list
@@ -411,6 +578,8 @@ export interface ProjectCodePolicy {
   min_length: number;
   max_length: number;
   assignment: ProjectCodeAssignment;
+  /** True when only an organisation administrator may change a project's code after creation. */
+  locked: boolean;
 }
 
 export const PROJECT_CODE_KIND_LABEL: Record<ProjectCodeKind, string> = {
@@ -449,7 +618,15 @@ export interface Organization {
   slug: string | null;
   is_active: boolean;
   disabled_at: string | null;
+  /** Whether this organisation may store new files (the operator's switch for this tenant). */
+  file_uploads_enabled?: boolean;
   accent_color_hex: string | null;
+  /** The band colour behind the logo; `null` follows the platform value. */
+  logo_band_color_hex: string | null;
+  /** The colour of the title on the band; `null` follows the platform value, then black or white by contrast. */
+  logo_band_text_color_hex: string | null;
+  /** Where the footer of this organisation's sign-in page sits; `null` follows the platform value. */
+  footer_position: FooterPosition | null;
   /** The accent colour of reports; `null` follows `accent_color_hex`. */
   report_accent_color_hex: string | null;
   /** Whether reports carry the organisation's logo. */
@@ -510,14 +687,51 @@ export interface OrgMergeResult {
 
 export interface ServerSettings {
   accent_color_hex: string;
+  /** The band colour behind the logo; `null` is the top bar colour. */
+  logo_band_color_hex: string | null;
+  /** The colour of the title on the band; `null` is black or white by contrast. */
+  logo_band_text_color_hex: string | null;
+  /** Where the footer of the signed-out pages sits. */
+  footer_position: FooterPosition;
   default_logo_file_id: string | null;
   default_header_title: string | null;
   default_login_background_file_id: string | null;
   email_footer_company_name: string | null;
   email_footer_website: string | null;
   email_footer_address: string | null;
+  /** Text shown before the company name in the footers ("Hosted by"). */
+  footer_prefix: string | null;
+  company_id_label: string | null;
+  company_id: string | null;
   org_label_singular: string | null;
   org_label_plural: string | null;
+  /** Whether the deployment accepts new user files (the deployment-wide switch). */
+  file_uploads_enabled: boolean;
+}
+
+/** The `code` of the 403 a refused upload or file-carrying import returns. */
+export const UPLOADS_DISABLED_CODE = "uploads_disabled";
+/** The `code` of the 403 returned when only this organisation's own upload switch stops new files. */
+export const ORGANIZATION_UPLOADS_DISABLED_CODE = "organization_uploads_disabled";
+/** The `code` of the 403 returned when a file (or a bundle's files) would exceed the organisation's storage limit. */
+export const STORAGE_QUOTA_EXCEEDED_CODE = "storage_quota_exceeded";
+
+/** What stops new files: the server administrator's deployment-wide switch, or this organisation's switch. */
+export type UploadsDisabledBy = "deployment" | "organization" | null;
+
+/** An organisation's storage rules and usage (`GET /orgs/{id}/storage`). */
+export interface OrgStorage {
+  file_uploads_enabled: boolean;
+  deployment_uploads_enabled: boolean;
+  /** The organisation's own limit in bytes; null follows the server default. */
+  storage_quota_bytes: number | null;
+  default_storage_quota_bytes: number | null;
+  effective_quota_bytes: number | null;
+  quota_source: "organization" | "server" | null;
+  used_bytes: number;
+  file_count: number;
+  warning: boolean;
+  can_edit: boolean;
 }
 
 export type SignupMode = "disabled" | "always_on" | "org_specified";
@@ -545,6 +759,12 @@ export interface FileAsset {
   created_at: string;
 }
 
+/** One organisation shared resource (`GET /orgs/{id}/resources`): the file, its uploader's name and how many {requirements} link it. */
+export interface OrgResource extends FileAsset {
+  uploaded_by_display_name: string;
+  link_count: number;
+}
+
 /** Where a project's file hangs from (`ProjectFile.source`); labelled by `strings.files.sources` (the labels carry the organisation's terminology). */
 export type ProjectFileSource = "requirement_attachment" | "action_attachment" | "comment_attachment" | "report_image";
 
@@ -560,6 +780,14 @@ export type ProjectFileKind = "image" | "document" | "other";
 export interface ProjectFileUploader extends ProjectScopedRow {
   id: string;
   display_name: string;
+}
+
+/** One project whose files the person may list (`GET /orgs/{id}/files/projects`, the organisation Files page's "Project" filter). */
+export interface OrganizationFileProject {
+  id: string;
+  name: string;
+  code: string;
+  is_archived: boolean;
 }
 
 /** One row of `GET /projects/{id}/files` (ProjectFilesPage) — a file
@@ -828,7 +1056,8 @@ export interface SystemUser {
   is_2fa_enabled: boolean;
   created_at: string;
   is_server_admin: boolean;
-  is_module_administrator: boolean;
+  /** Server roles granted by row (never `server_admin`, which is `is_server_admin`). */
+  server_roles: GrantableServerRole[];
   has_org_membership: boolean;
   organization_count: number;
   organization_names: string[];
@@ -876,6 +1105,9 @@ export interface Project {
   name: string;
   // Short upper-case code that qualifies this project's record codes (`ACME-REQ-001`).
   code: string;
+  /** True when the organisation has locked project codes and the caller is not an organisation administrator
+   * (sent when a single project is read, not on list rows). */
+  code_change_locked?: boolean;
   summary: string;
   /** A short name some reports print in headers and titles instead of `name`; null when unset. */
   report_name: string | null;
@@ -1257,6 +1489,57 @@ export interface ActionTypeDefinition {
   sort_order: number;
 }
 
+/** How an import resolves a person its bundle names (`POST /projects/import/preview`). */
+export type ImportedPersonResolution = "member" | "reassigned" | "me" | "stand_in";
+export const IMPORTED_PERSON_RESOLUTION_LABEL: Record<ImportedPersonResolution, string> = {
+  member: "Member",
+  reassigned: "Reassigned",
+  me: "Me",
+  stand_in: "Imported person",
+};
+export const IMPORTED_PERSON_RESOLUTION_TONE: Record<ImportedPersonResolution, BadgeTone | undefined> = {
+  member: undefined,
+  reassigned: "info",
+  me: "info",
+  stand_in: "warning",
+};
+
+/** One of an organisation's imported people (`GET /orgs/{id}/imported-people`). */
+export interface ImportedPersonRow {
+  id: string;
+  display_name: string;
+  created_at: string;
+  /** Whether any record, history entry or field still refers to them. */
+  in_use: boolean;
+  /** Whether the retention age has passed and nothing refers to them. */
+  due_for_removal: boolean;
+}
+
+export interface ImportedPeopleList {
+  retention_days: number | null;
+  people: ImportedPersonRow[];
+}
+
+/** One person a bundle names and how the import would resolve them. */
+export interface ImportedPerson {
+  email: string;
+  display_name: string;
+  resolution: ImportedPersonResolution;
+  member_id: string | null;
+  member_name: string | null;
+}
+
+/** The importer's decisions about the people in a bundle (the import's `people` field). */
+export interface ImportPeopleChoices {
+  /** Per bundle email: `"me"`, `"stand_in"` or an organisation member's user id; absent means automatic. */
+  mapping: Record<string, string>;
+  keep_original_email: boolean;
+}
+
+export interface ProjectImportPreview {
+  people: ImportedPerson[];
+}
+
 export interface ProjectImportResult {
   project: Project;
   warnings: string[];
@@ -1264,14 +1547,31 @@ export interface ProjectImportResult {
 
 export interface ProjectListItem extends Project {
   current_stage_name: string | null;
-  current_stage_status: StageStatus | null;
+  current_stage_phase_name: string | null;
+  current_stage_phase_kind: StagePhaseKind | null;
   my_roles: ProjectRole[];
   is_favorite: boolean;
   organization_name: string;
   requirement_count: number;
+  is_member: true;
   // Direct children, filtered to ones the caller can view (visibility
   // boundary — see `Project`'s note). No count of hidden ones either.
   children: ProjectAncestor[];
+}
+
+/** A project row for an organisation the caller administers and holds no role in (`include_unjoined`): identity
+ * only, never content. */
+export interface UnjoinedProjectListItem {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  name: string;
+  code: string;
+  is_archived: boolean;
+  is_template: boolean;
+  parent_project_id: string | null;
+  parent_project_name: string | null;
+  is_member: false;
 }
 
 /** The subset of `ProjectListItem`'s fields `ProjectHierarchyLabels` actually
@@ -1307,16 +1607,93 @@ export interface ProjectStage {
   id: string;
   project_id: string;
   name: string;
-  status: StageStatus;
+  workflow_id: string;
+  workflow_name: string;
+  phase_id: string;
+  phase_name: string;
+  phase_kind: StagePhaseKind;
   sort_order: number;
   is_current: boolean;
   approved_at: string | null;
   completed_at: string | null;
   completed_by: string | null;
   review_deadline: string | null;
+  /** Who is reminded about the stage's phase schedule; null means the project managers. */
+  owner: Principal | null;
+  /** Whether the caller may move the stage into or out of a locked phase (a project manager). */
+  can_lock?: boolean;
 }
 
 export type StageReviewResponseChoice = "approved" | "rejected";
+
+/** One component's standing in one stage (a component never customised shows the stage's defaults). */
+export interface ComponentTrack {
+  component_id: string;
+  stage_id: string;
+  workflow_id: string;
+  workflow_name: string;
+  phase_id: string;
+  phase_name: string;
+  phase_kind: StagePhaseKind;
+  not_applicable: boolean;
+  customised: boolean;
+  owner: Principal | null;
+  approved_at: string | null;
+  completed_at: string | null;
+  /** Whether the previous stage has reached a closed phase for this component; advisory only. */
+  previous_closed: boolean;
+  /** Whether the caller may move the track (a project manager, or its owner). */
+  can_move: boolean;
+}
+
+/** The expected range (calendar dates) and actual dates (UTC instants) of one phase of a stage, or of a component's track. */
+export interface PhasePlan {
+  stage_id: string;
+  /** Null for the stage's own phase. */
+  component_id: string | null;
+  phase_id: string;
+  expected_from: string | null;
+  expected_to: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+/** The project's phase schedule and the reminder lead time that applies. */
+export interface PhasePlans {
+  lead_days: number;
+  /** The project's own lead time; null when it follows an ancestor (or the default). */
+  own_lead_days: number | null;
+  inherited: boolean;
+  plans: PhasePlan[];
+}
+
+export type ComponentPhasesMode = "on" | "off";
+
+/** One navigation entry with the names that apply to it (`GET .../nav-labels`); `path` is absent in the organisation view. */
+export interface NavLabelItem {
+  key: string;
+  label: string;
+  path?: string | null;
+  module_key?: string | null;
+  own?: string | null;
+  inherited?: string | null;
+  inherited_from?: "ancestor" | "organisation" | null;
+  effective?: string | null;
+}
+
+/** The entries a project's navigation can show (or an organisation can name), in navigation order. */
+export interface NavLabels {
+  items: NavLabelItem[];
+}
+
+/** The project's component-phases switch and, when it is on, every track. */
+export interface ComponentPhases {
+  mode: ComponentPhasesMode;
+  /** The project's own setting; null when it follows an ancestor. */
+  own_mode: ComponentPhasesMode | null;
+  inherited: boolean;
+  tracks: ComponentTrack[];
+}
 
 export interface StageReviewResponseEntry {
   id: string;
@@ -1348,6 +1725,7 @@ export interface OrgProjectSummary {
   id: string;
   name: string;
   is_archived: boolean;
+  is_template: boolean;
 }
 
 /** `pages/OrgOverviewPage.tsx`'s stats header.
@@ -1356,10 +1734,17 @@ export interface OrgProjectSummary {
  * (`backend/app/schemas/org.py`) for the full scoping rules. */
 export interface OrgOverviewStats {
   project_count: number;
+  archived_project_count: number;
   requirement_count: number;
   member_count: number;
   total_file_size_bytes: number;
   is_full_org_total: boolean;
+  /** The effective storage limit in bytes; null means none. */
+  storage_quota_bytes: number | null;
+  /** False when the deployment-wide or the organisation's switch stops new files. */
+  uploads_enabled: boolean;
+  /** True when storage is at or above the warning level of the limit. */
+  storage_warning: boolean;
 }
 
 export interface ProjectGroup {
@@ -1382,7 +1767,8 @@ export interface ProjectGroup {
 export interface StageProgress {
   stage_id: string;
   name: string;
-  status: StageStatus;
+  phase_name: string;
+  phase_kind: StagePhaseKind;
   requirement_count: number;
   completed_percent: number;
 }
@@ -1411,6 +1797,9 @@ export interface ProjectMetrics {
 }
 
 export interface Requirement extends ProjectScopedRow {
+  /** The phase that governs the requirement (its component's track when component phases are on, else its stage's); null when not applicable. */
+  phase_name?: string | null;
+  phase_kind?: StagePhaseKind | null;
   id: string;
   project_id: string;
   unique_code: string;
@@ -1709,6 +2098,17 @@ export interface ChangeRequestVoteTally {
   reject_count: number;
 }
 
+/** One end of a link event; the identity fields are null when the viewer cannot open the record. */
+export interface LinkedRecord {
+  role: "source" | "target";
+  entity_type: string;
+  entity_type_label: string;
+  entity_id: string | null;
+  label: string | null;
+  project_id: string | null;
+  project_name: string | null;
+}
+
 export interface ChangeEntry {
   timestamp: string;
   entity_type: string;
@@ -1717,6 +2117,38 @@ export interface ChangeEntry {
   actor_id: string | null;
   actor_display_name: string | null;
   detail: Record<string, unknown> | null;
+  /** How the record changed; the Event filter's value. */
+  kind: ActivityKind;
+  /** The record's code and title when it is of a registered type the viewer may see (requirements and change requests carry theirs in `detail`). */
+  record_label: string | null;
+  /** The two records a link event joins, source first (empty for any other event). */
+  linked_records?: LinkedRecord[];
+  /** The relationship's name ("Depends on") for a link event whose link type is known. */
+  link_type_label?: string | null;
+}
+
+/** The verb phrase of a link event ("created a link") when it names both records, else `null`. A record's own
+ * Activity aside (`detail.other_label`) words a generic link from that record's side instead. */
+export function linkEventVerb(entry: ChangeEntry): string | null {
+  if (entry.linked_records?.length !== 2 || typeof entry.detail?.other_label === "string") return null;
+  if (entry.action === "deleted" || entry.action === "unlinked") return "removed a link";
+  if (entry.action === "link_type_changed") return "changed the type of a link";
+  return "created a link";
+}
+
+/** What a link event did, without its records ("created a link (Depends on)"): the History table's Event column, whose
+ * Record column names the two records. `null` for an event that is not about a link. */
+export function describeLinkEventAction(entry: ChangeEntry): string | null {
+  const verb = linkEventVerb(entry);
+  return verb === null ? null : `${verb}${entry.link_type_label ? ` (${entry.link_type_label})` : ""}`;
+}
+
+/** How one end of a link event reads: its label, or only its type when the viewer cannot open it; another
+ * project's record is followed by that project's name when `projectId` (the project shown) differs. */
+export function describeLinkedRecord(end: LinkedRecord, projectId?: string): string {
+  if (end.label === null) return `${end.entity_type_label} (unavailable)`;
+  const elsewhere = projectId !== undefined && end.project_id !== null && end.project_id !== projectId && end.project_name;
+  return elsewhere ? `${end.label} (${end.project_name})` : end.label;
 }
 
 /** Actor + action text for one activity entry (the entity-type badge, and
@@ -1728,15 +2160,30 @@ export interface ChangeEntry {
  * The note or comment typed with the change is not part of the sentence;
  * `activityEntryNotes` returns it for the caller to show beneath. */
 export function describeActivityEntry(entry: ChangeEntry): string {
-  const who = entry.actor_display_name ?? "Someone";
+  return `${entry.actor_display_name ?? "Someone"} ${describeActivityAction(entry)}`;
+}
+
+/** What an entry did, without who did it ("approved", `added the tag "Security"`): the Event column of the
+ * project History table, and the second half of `describeActivityEntry`'s sentence, so a wording change
+ * reaches the table and the record's Activity aside together. */
+export function describeActivityAction(entry: ChangeEntry, projectId?: string): string {
+  const linkVerb = linkEventVerb(entry);
+  if (linkVerb !== null) {
+    const [source, target] = entry.linked_records ?? [];
+    const type = entry.link_type_label ? ` (${entry.link_type_label})` : "";
+    return `${linkVerb}: ${describeLinkedRecord(source, projectId)} → ${describeLinkedRecord(target, projectId)}${type}`;
+  }
   if (entry.entity_type === "artefact_link" && entry.detail && typeof entry.detail.other_label === "string") {
     const removed = entry.action === "deleted";
     const preposition = entry.detail.direction === "incoming" ? "from" : "to";
     const kind = typeof entry.detail.other_type_label === "string" ? ` (${entry.detail.other_type_label})` : "";
-    return `${who} ${removed ? "removed a link" : "added a link"} ${preposition} ${entry.detail.other_label}${kind}`;
+    return `${removed ? "removed a link" : "added a link"} ${preposition} ${entry.detail.other_label}${kind}`;
   }
   if ((entry.action === "tagged" || entry.action === "untagged") && typeof entry.detail?.tag === "string") {
-    return `${who} ${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
+    return `${entry.action === "tagged" ? "added" : "removed"} the tag "${entry.detail.tag}"`;
+  }
+  if ((entry.action === "placed" || entry.action === "unplaced") && typeof entry.detail?.place === "string") {
+    return `${entry.action === "placed" ? "placed this in" : "removed this from"} ${entry.detail.place}`;
   }
   const action = activityActionLabel(entry.action);
   // AI approval via MCP (docs/decisions.md): every approval/decision/
@@ -1745,7 +2192,7 @@ export function describeActivityEntry(entry: ChangeEntry): string {
   // callers (ActivityPanel, ProjectHistoryPage, requirement/CR Activity
   // tabs) without each needing its own change.
   const viaMcp = entry.detail?.via === "mcp" ? " (via MCP)" : "";
-  return `${who} ${action}${viaMcp}`;
+  return `${action}${viaMcp}`;
 }
 
 /**
@@ -1807,6 +2254,8 @@ export function activityEntryLink(entry: ChangeEntry, projectId: string): { to: 
 export function notificationLink(n: Notification): string | null {
   // A background report: its page offers the download, or a fresh run once the file has been removed.
   if (n.entity_type === "generated_report" && n.entity_id) return `/report-runs/${n.entity_id}`;
+  // A policy published in the person's organisation: the Policies page opens it.
+  if (n.entity_type === "policy" && n.entity_id) return `/policies/${n.entity_id}`;
   if (n.project_id && n.entity_type && n.entity_id) {
     if (n.entity_type === "requirement") return `/projects/${n.project_id}/requirements/${n.entity_id}`;
     if (n.entity_type === "change_request") return `/projects/${n.project_id}/change-requests/${n.entity_id}`;
@@ -1849,6 +2298,8 @@ export interface OrgAdvancedSettings {
   // AI approval via MCP (docs/decisions.md) — see `Organization`'s own
   // field of the same name for the full resolution.
   allow_ai_approvals: boolean;
+  /** Whether a project import may keep the approval state its bundle carries (approved, decided and voted records). */
+  allow_imported_approval_state: boolean;
 }
 
 /** One module's state as seen by an org admin
@@ -2213,6 +2664,7 @@ export interface OrgSsoConfig {
   oidc_issuer_url: string | null;
   oidc_client_id: string | null;
   oidc_required_group: string | null;
+  oidc_allow_account_creation: boolean;
 }
 
 export interface ScimTokenStatus {
@@ -2253,6 +2705,12 @@ export interface OrgLoginInfo {
   name: string;
   slug: string;
   logo_file_id: string | null;
+  /** The resolved band behind the logo (the organisation's, else the platform's, else the top bar colour). */
+  logo_band_color_hex: string;
+  /** The resolved title colour on the band. */
+  logo_band_text_color_hex: string;
+  /** The resolved footer position (the organisation's, else the platform's). */
+  footer_position: FooterPosition;
   login_background_file_id: string | null;
   sso_enabled: boolean;
   sso_only: boolean;
@@ -2279,7 +2737,7 @@ export type PrincipalType = "user" | "org_group" | "project_group";
 
 export const PRINCIPAL_TYPE_LABEL: Record<PrincipalType, string> = {
   user: "User",
-  org_group: "Org group",
+  org_group: "Organisation group",
   project_group: "Project group",
 };
 
@@ -2296,6 +2754,8 @@ export interface Principal extends PrincipalRef {
   member_count: number | null;
   /** False once a group was deleted but a history row still names it. */
   exists: boolean;
+  /** True for an imported person (a stand-in for someone named in an import bundle). */
+  imported?: boolean;
 }
 
 /** The server's answer to "what still names this group" (`GET .../groups/{id}/usage`). */
@@ -2326,4 +2786,354 @@ export function principalRef(principal: Principal | null | undefined): Principal
  */
 export function savedPrincipalDisplay(value: PrincipalRef | null, saved: Principal | null | undefined): Principal | undefined {
   return saved && value && value.type === saved.type && value.id === saved.id ? saved : undefined;
+}
+
+/** How prominently an announcement is shown. */
+export type AnnouncementSeverity = "information" | "warning" | "critical";
+export const ANNOUNCEMENT_SEVERITY_LABEL: Record<AnnouncementSeverity, string> = {
+  information: "Information",
+  warning: "Warning",
+  critical: "Critical",
+};
+export const ANNOUNCEMENT_SEVERITIES = Object.keys(ANNOUNCEMENT_SEVERITY_LABEL) as AnnouncementSeverity[];
+
+/** Where an announcement stands in its window, resolved by the server. */
+export type AnnouncementStatus = "scheduled" | "active" | "ended";
+export const ANNOUNCEMENT_STATUS_LABEL: Record<AnnouncementStatus, string> = {
+  scheduled: "Scheduled",
+  active: "Active",
+  ended: "Ended",
+};
+export const ANNOUNCEMENT_STATUS_TONE: Record<AnnouncementStatus, BadgeTone> = {
+  scheduled: "info",
+  active: "accent",
+  ended: "muted",
+};
+
+/** An announcement as its administrators see it (`organization_id` null means platform-wide). */
+export interface Announcement {
+  id: string;
+  organization_id: string | null;
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  starts_at: string | null;
+  ends_at: string | null;
+  show_on_login: boolean;
+  dismissible: boolean;
+  status: AnnouncementStatus;
+  notified_at: string | null;
+  notified_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** The fields an administrator sets; the instants are UTC ISO 8601. */
+export interface AnnouncementWrite {
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  starts_at: string | null;
+  ends_at: string | null;
+  show_on_login: boolean;
+  dismissible: boolean;
+}
+
+/** An active announcement as a reader (login page or banner) sees it. */
+export interface AnnouncementNotice {
+  id: string;
+  title: string;
+  body: string;
+  severity: AnnouncementSeverity;
+  scope: "server" | "organisation";
+  /** False when the banner offers no close control for it. */
+  dismissible: boolean;
+}
+
+// --- Policies (`backend/app/routers/policies.py`) -----------------------------------------------
+
+/** A node of a policy body: the limited rich-text vocabulary the server validates (`services/policy_body.py`). */
+export interface PolicyNode {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: PolicyNode[];
+  text?: string;
+  marks?: { type: string; attrs?: { href?: string } }[];
+}
+
+/** A policy body: a document node holding blocks. */
+export interface PolicyBody {
+  type: "doc";
+  content: PolicyNode[];
+}
+
+export type PolicyState = "draft" | "published";
+export const POLICY_STATE_LABEL: Record<PolicyState, string> = { draft: "Not published", published: "Published" };
+export const POLICY_STATE_TONE: Record<PolicyState, BadgeTone> = { draft: "muted", published: "accent" };
+
+/** Built-in server policy slots: their titles are fixed. */
+export type PolicySlot = "privacy" | "data";
+
+/** One row of the administration list; a built-in slot not yet written has a null `id`. */
+export interface PolicySummary {
+  id: string | null;
+  key: PolicySlot | null;
+  title: string;
+  state: PolicyState;
+  effective_from: string | null;
+  current_version: number;
+  has_unpublished_changes: boolean;
+  updated_at: string | null;
+  /** Whether each person the policy applies to must accept its current version. */
+  requires_acknowledgement: boolean;
+}
+
+export interface PolicyVersion {
+  version: number;
+  title: string;
+  effective_from: string | null;
+  published_at: string;
+  change_note: string;
+}
+
+/** A policy with its working copy and version history, as administrators see it. */
+export interface Policy extends PolicySummary {
+  id: string;
+  body: PolicyBody;
+  versions: PolicyVersion[];
+}
+
+/** The fields an administrator sets (`key` only when creating a built-in slot). */
+export interface PolicyWrite {
+  key?: PolicySlot | null;
+  title: string;
+  body: PolicyBody;
+  effective_from: string | null;
+  /** Omitted on replace: unchanged. */
+  requires_acknowledgement?: boolean;
+}
+
+/** The fields an organisation administrator sets: the audience too (empty: every member; omitted on replace: unchanged). */
+export interface OrgPolicyWrite extends PolicyWrite {
+  audience?: PrincipalRef[];
+}
+
+/** A row of the organisation's policy list, with who it is limited to. */
+export interface OrgPolicySummary extends PolicySummary {
+  audience: Principal[];
+}
+
+/** An organisation policy with its working copy, audience and version history. */
+export interface OrgPolicy extends Policy {
+  audience: Principal[];
+}
+
+/** An organisation's policy settings; `starter_titles` are the suggestions the add dialog offers. */
+export interface OrgPolicySettings {
+  allow_links: boolean;
+  starter_titles: string[];
+}
+
+/** A published organisation policy in a member's list. */
+export interface MemberPolicySummary {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  title: string;
+  effective_from: string | null;
+  version: number;
+  published_at: string;
+  /** Whether the caller must accept this policy, and whether they have accepted this version. */
+  requires_acknowledgement: boolean;
+  acknowledged: boolean;
+}
+
+export interface MemberPolicy extends MemberPolicySummary {
+  body: PolicyBody;
+}
+
+/** A published policy in the public list. */
+export interface PublicPolicySummary {
+  id: string;
+  key: PolicySlot | null;
+  title: string;
+  effective_from: string | null;
+  version: number;
+  published_at: string;
+}
+
+export interface PublicPolicy extends PublicPolicySummary {
+  body: PolicyBody;
+}
+
+/** A required policy the caller has not accepted, with the text to read; `organization_id` is null for a server policy. */
+export interface PendingPolicy {
+  id: string;
+  organization_id: string | null;
+  organization_name: string | null;
+  title: string;
+  effective_from: string | null;
+  version: number;
+  published_at: string;
+  body: PolicyBody;
+}
+
+/** One person in a policy's acceptance status. */
+export interface PolicyAcceptanceRow {
+  user_id: string;
+  display_name: string;
+  email: string;
+  accepted_version: number | null;
+  accepted_at: string | null;
+  /** Whether the accepted version is the policy's current one. */
+  current: boolean;
+}
+
+/** Who has and has not accepted a policy's current version. */
+export interface PolicyAcceptanceStatus {
+  policy_id: string;
+  title: string;
+  version: number;
+  requires_acknowledgement: boolean;
+  required: number;
+  accepted: number;
+  truncated: boolean;
+  people: PolicyAcceptanceRow[];
+}
+
+/** The code the server returns with a refusal of a change while a required policy is unaccepted. */
+export const POLICY_ACCEPTANCE_REQUIRED_CODE = "policy_acknowledgement_required";
+
+// --- Project overview widgets (`backend/app/services/overview_widgets.py`) --------------------------
+
+/** The project scopes an overview or a widget reads in (`api/projectScope.ts` has the same type). */
+export type OverviewScope = "this" | "parents" | "children" | "both";
+
+/** One widget of an overview layout; `config` is the settings of its `type`. */
+export interface OverviewWidget {
+  id: string;
+  /** `metric_tile`, `gauge`, `status_chart`, `stage_progress`, `record_totals`, `activity`, `text` or `<module key>:<key>`. */
+  type: string;
+  title: string | null;
+  /** Columns of the 12-column grid, 1 to 12. */
+  width: number;
+  /** Rows, 1 to 12; a minimum, because a row grows with its content. */
+  height: number;
+  /** The widget's own scope, or `null` to follow the overview's. */
+  scope: OverviewScope | null;
+  visible: boolean;
+  config: Record<string, unknown>;
+}
+
+/** Where the layout in force comes from. */
+export type OverviewLayoutSource = "own" | "ancestor" | "organisation" | "default";
+
+/** The part of a layout the editor changes and the server stores. */
+export interface OverviewLayoutBody {
+  scope: OverviewScope;
+  widgets: OverviewWidget[];
+}
+
+export interface OverviewLayout extends OverviewLayoutBody {
+  source: OverviewLayoutSource;
+  /** Where the layout would come from without the project's own (project view only). */
+  inherited_source: OverviewLayoutSource | null;
+  /** Whether the caller may change the layout (the server's own check). */
+  can_customise: boolean;
+}
+
+/** One page of an organisation's overview dashboards. */
+export interface OrgDashboard {
+  /** The page id, or `overview` for the built-in first page (stored or not). */
+  id: string;
+  name: string;
+  /** True for the built-in Overview page, which cannot be renamed or deleted. */
+  is_default: boolean;
+  /** True when the page is limited to its viewers. */
+  restricted: boolean;
+  /** Who the page is limited to; sent to an organisation administrator only. */
+  viewers: Principal[];
+  can_manage: boolean;
+}
+
+/** A dashboard page with the layout in force. */
+export interface OrgDashboardLayout {
+  dashboard: OrgDashboard;
+  scope: OverviewScope;
+  widgets: OverviewWidget[];
+  /** True while the page shows the built-in layout (nothing stored for it). */
+  built_in: boolean;
+}
+
+export interface OverviewWidgetTypeInfo {
+  key: string;
+  label: string;
+  description: string;
+  module_key: string | null;
+  /** Columns (of 12) and rows a new widget of this type starts with. */
+  width: number;
+  height: number;
+}
+
+export interface OverviewMetricInfo {
+  key: string;
+  label: string;
+  unit: "count" | "percent";
+  scalar: boolean;
+  breakdown: boolean;
+  params: string[];
+  module_key: string | null;
+}
+
+export interface OverviewRecordTypeOption {
+  type: string;
+  label: string;
+  filter_params: string[];
+}
+
+/** What the widget editor offers for a project or an organisation. */
+export interface OverviewCatalogue {
+  widget_types: OverviewWidgetTypeInfo[];
+  metrics: OverviewMetricInfo[];
+  record_types: OverviewRecordTypeOption[];
+  max_widgets: number;
+}
+
+export interface OverviewMetricSpec {
+  id: string;
+  metric: string;
+  params: Record<string, unknown>;
+  scope: OverviewScope;
+}
+
+export interface OverviewBreakdownRow {
+  key: string;
+  label: string;
+  value: number;
+  detail: string | null;
+}
+
+/** One figure's outcome; only `ok` carries data. `unavailable` means the caller may not read it here (never zero). */
+export interface OverviewMetricResult {
+  state: "ok" | "unavailable" | "timeout" | "error";
+  unit: "count" | "percent" | "bytes" | null;
+  label: string | null;
+  /** How many projects the figure covers (1 unless its scope was widened). */
+  projects: number;
+  value: number | null;
+  breakdown: OverviewBreakdownRow[] | null;
+}
+
+export interface OverviewMetricsResponse {
+  results: Record<string, OverviewMetricResult>;
+}
+
+/** The signed-in person's server-tier access (`GET /system/access`): which server sections they may use. */
+export interface ServerAccess {
+  roles: ServerRole[];
+  can_view_organizations: boolean;
+  can_create_organizations: boolean;
+  can_delete_organizations: boolean;
+  can_manage_entitlements: boolean;
+  can_administer_server: boolean;
 }

@@ -64,7 +64,7 @@ async function setup(page: Page, request: APIRequestContext) {
   return { project, personaNames, titles, painPoints };
 }
 
-/** The scoring controls for one persona (or "All personas") on the detail page. */
+/** The scoring controls for one persona (or "General") on the detail page. */
 function scoreGroup(page: Page, name: string) {
   return page.getByRole("group", { name: `${name} scores` });
 }
@@ -91,7 +91,10 @@ test.describe("Context & Strategy: per-persona Pain Point scoring", () => {
     await test.step("score one Pain Point separately for each persona", async () => {
       await page.goto(`${base}/${painPoints.across.id}`);
       await expect(page.getByText("Not scored yet.")).toBeVisible();
-      await page.getByRole("combobox", { name: "Scoring mode", exact: true }).selectOption({ label: "Each persona separately" });
+      // A persona is added only where it differs from General, so the grid stays short.
+      for (const name of [personaNames.heavy, personaNames.light]) {
+        await page.getByRole("combobox", { name: "Add a persona that differs" }).selectOption({ label: name });
+      }
 
       await choose(page, personaNames.heavy, "Severity", "Major");
       await choose(page, personaNames.heavy, "Frequency", "Constant");
@@ -118,11 +121,11 @@ test.describe("Context & Strategy: per-persona Pain Point scoring", () => {
       await expect(rollup.getByText("Blocker", { exact: true })).toBeVisible(); // survives every roll-up
     });
 
-    await test.step("score the second Pain Point for all personas", async () => {
+    await test.step("score the second Pain Point in General", async () => {
       await page.goto(`${base}/${painPoints.everyone.id}`);
-      await choose(page, "All personas", "Severity", "Moderate");
-      await choose(page, "All personas", "Frequency", "Rare");
-      await choose(page, "All personas", "Confidence", "High");
+      await choose(page, "General", "Severity", "Moderate");
+      await choose(page, "General", "Frequency", "Rare");
+      await choose(page, "General", "Confidence", "High");
       await page.getByRole("button", { name: "Save scores" }).click();
       await expect(page.getByText("Scores saved.")).toBeVisible();
     });
@@ -146,6 +149,35 @@ test.describe("Context & Strategy: per-persona Pain Point scoring", () => {
       await page.getByRole("button", { name: /^Score settings: / }).click();
       await page.getByRole("combobox", { name: "Scoring model" }).selectOption({ label: "Severity × Confidence" });
       await expect.poll(order).toEqual([titles.everyone, titles.across]);
+    });
+  });
+
+  test("a persona overrides General, a whole-Pain-Point criterion is General only, and WSJF scores it", async ({ page, request }) => {
+    const { project, personaNames, painPoints } = await setup(page, request);
+    await page.goto(`/projects/${project.id}/modules/context_strategy/pain-points/${painPoints.across.id}`);
+
+    await test.step("General holds every criterion, including those scored for the whole Pain Point", async () => {
+      await choose(page, "General", "User/business value", "High");
+      await choose(page, "General", "Time criticality", "Moderate");
+      await choose(page, "General", "Risk reduction / opportunity enablement", "Low");
+      await choose(page, "General", "Job size", "Small");
+    });
+
+    await test.step("a persona that differs holds the per-persona criteria only", async () => {
+      await page.getByRole("combobox", { name: "Add a persona that differs" }).selectOption({ label: personaNames.heavy });
+      await choose(page, personaNames.heavy, "User/business value", "Exceptional");
+      await expect(scoreGroup(page, personaNames.heavy).getByRole("combobox", { name: "Job size" })).toHaveCount(0);
+      await page.getByRole("button", { name: "Save scores" }).click();
+      await expect(page.getByText("Scores saved.")).toBeVisible();
+    });
+
+    await test.step("the roll-up counts the persona that differs, under Cost of Delay and WSJF", async () => {
+      const rollup = page.getByRole("group", { name: "Rolled-up score" });
+      for (const model of ["Cost of Delay (value + time criticality + risk reduction)", "WSJF (Cost of Delay ÷ job size)"]) {
+        await page.getByRole("combobox", { name: "Scoring model" }).selectOption({ label: model });
+        await expect(rollup.getByText("1 score counted.")).toBeVisible();
+        await expect(rollup.getByText("Not scored yet.")).toHaveCount(0);
+      }
     });
   });
 

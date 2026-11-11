@@ -27,6 +27,7 @@ import { PanelTopOpen } from "lucide-react";
 import { useMemo, useState, type HTMLAttributes, type ReactNode } from "react";
 
 import { FilterCollapseContext } from "../context/FilterCollapseContext";
+import { useCurrentNavLabelOverride } from "../context/NavLabelValue";
 import { t } from "../i18n/strings";
 
 import { useListPosition } from "../hooks/useListPosition";
@@ -35,7 +36,7 @@ import { ListActions, ListActionsMenu, type RecordListActions } from "./ListActi
 const strings = t();
 
 /**
- * @param title The page heading (text or node); rendered as the page's `h1`.
+ * @param title The page heading (text or node); rendered as the page's `h1`. A name the project or organisation gave the page's navigation entry replaces it.
  * @param actions Page-level actions beside the title (a New button).
  * @param records The record type and filters of the list: adds the shared Export and Import controls (an array when
  *   the list shows several kinds at once, each with a `kindLabel`).
@@ -60,13 +61,14 @@ export function ListPageLayout({
   children: ReactNode;
 }) {
   useListPosition({ ready, loaded: loadedRows });
+  const navName = useCurrentNavLabelOverride();
   const [filterHidden, setFilterHidden] = useState(false);
   const collapse = useMemo(() => ({ collapsed: filterHidden, toggle: () => setFilterHidden((hidden) => !hidden) }), [filterHidden]);
   return (
     <div className={filterHidden ? "list-page list-page--filter-collapsed" : "list-page"}>
       <div className="stack list-page__header">
         <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-          <h1 style={{ margin: 0 }}>{title}</h1>
+          <h1 style={{ margin: 0 }}>{navName ?? title}</h1>
           <div className="row" style={{ alignItems: "center" }}>
             {actions}
             {records && (

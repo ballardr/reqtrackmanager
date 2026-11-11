@@ -18,11 +18,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, refuse_personal_access_token
 from app.models.custom_role import CustomRoleDefinition, UserCustomRoleGrant
 from app.models.enums import ExternalUserPolicy, OrgRole
 from app.models.module_role import UserModuleRole
@@ -52,6 +52,7 @@ from app.schemas.org import (
 )
 from app.services import credential_reset, engagement, invites
 from app.services.audit import log_event
+from app.services.lookups import present
 from app.services.notifications import notify
 from app.services.org_membership import (
     assert_account_active,
@@ -75,7 +76,10 @@ from app.services.user_provisioning import create_native_user, invite_user
 router = APIRouter(tags=["organizations-membership"])
 
 
-@router.post("/{organization_id}/users", response_model=OrgUserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{organization_id}/users", response_model=OrgUserOut, status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def create_org_user(
     organization_id: UUID,
     payload: OrgUserCreate,
@@ -605,12 +609,14 @@ def _org_users_with_project_access(db: Session, organization_id: UUID) -> set[UU
         ).all()
     )
     direct_group_ids = set(
-        db.scalars(
-            select(ProjectGroupMember.user_id)
-            .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
-            .join(Project, Project.id == ProjectGroup.project_id)
-            .where(Project.organization_id == organization_id, ProjectGroupMember.user_id.is_not(None))
-        ).all()
+        present(
+            db.scalars(
+                select(ProjectGroupMember.user_id)
+                .join(ProjectGroup, ProjectGroup.id == ProjectGroupMember.project_group_id)
+                .join(Project, Project.id == ProjectGroup.project_id)
+                .where(Project.organization_id == organization_id, ProjectGroupMember.user_id.is_not(None))
+            ).all()
+        )
     )
     return direct_role_ids | direct_group_ids
 
@@ -640,7 +646,7 @@ def set_display_name_lock(
     db.commit()
 
 
-@router.post("/{organization_id}/users/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{organization_id}/users/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_org_role(
     organization_id: UUID,
     user_id: UUID,
@@ -711,7 +717,10 @@ def assign_org_role(
         db.commit()
 
 
-@router.delete("/{organization_id}/users/{user_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{organization_id}/users/{user_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_org_role(
     organization_id: UUID,
     user_id: UUID,
@@ -787,7 +796,10 @@ def list_org_module_roles(
     ]
 
 
-@router.post("/{organization_id}/users/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{organization_id}/users/{user_id}/module-roles", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def assign_org_module_role(
     organization_id: UUID,
     user_id: UUID,
@@ -859,7 +871,7 @@ def assign_org_module_role(
 
 @router.delete(
     "/{organization_id}/users/{user_id}/module-roles/{module_key}/{role_key}", status_code=status.HTTP_204_NO_CONTENT
-)
+, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_org_module_role(
     organization_id: UUID,
     user_id: UUID,
@@ -893,7 +905,7 @@ def revoke_org_module_role(
         db.commit()
 
 
-@router.delete("/{organization_id}/membership", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{organization_id}/membership", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def leave_organization(
     organization_id: UUID,
     current_user: User = Depends(get_current_user),
@@ -984,12 +996,12 @@ def leave_organization(
     project_ids = [p.id for p in projects]
     if project_ids:
         db.execute(
-            UserProjectRole.__table__.delete().where(
+            delete(UserProjectRole).where(
                 UserProjectRole.user_id == current_user.id, UserProjectRole.project_id.in_(project_ids)
             )
         )
         db.execute(
-            ProjectGroupMember.__table__.delete().where(
+            delete(ProjectGroupMember).where(
                 ProjectGroupMember.user_id == current_user.id,
                 ProjectGroupMember.project_group_id.in_(
                     select(ProjectGroup.id).where(ProjectGroup.project_id.in_(project_ids))
@@ -997,7 +1009,7 @@ def leave_organization(
             )
         )
     db.execute(
-        OrgGroupMember.__table__.delete().where(
+        delete(OrgGroupMember).where(
             OrgGroupMember.user_id == current_user.id,
             OrgGroupMember.org_group_id.in_(
                 select(OrgGroup.id).where(OrgGroup.organization_id == organization_id)
@@ -1007,7 +1019,7 @@ def leave_organization(
     engagement.remove_subscriptions_and_favorites_for_projects(db, current_user.id, project_ids)
 
     db.execute(
-        UserOrgRole.__table__.delete().where(
+        delete(UserOrgRole).where(
             UserOrgRole.user_id == current_user.id, UserOrgRole.organization_id == organization_id
         )
     )
@@ -1196,11 +1208,11 @@ def deactivate_org_user(
     }
     for project in projects:
         db.execute(
-            UserProjectRole.__table__.delete().where(
+            delete(UserProjectRole).where(
                 UserProjectRole.user_id == user_id, UserProjectRole.project_id == project.id
             )
         )
-    db.execute(ProjectGroupMember.__table__.delete().where(ProjectGroupMember.user_id == user_id))
+    db.execute(delete(ProjectGroupMember).where(ProjectGroupMember.user_id == user_id))
 
     for project in projects:
         if not managers_before_by_project[project.id]:

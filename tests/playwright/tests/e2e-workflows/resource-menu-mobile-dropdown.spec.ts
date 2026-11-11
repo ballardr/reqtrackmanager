@@ -18,7 +18,7 @@ test.describe("resource menu: mobile dropdown collapse", () => {
   }) => {
     await page.setViewportSize({ width: 400, height: 900 });
     await loginAs(page, PERSONAS.orgAdminAlphaBeta.email);
-    await page.getByRole("link", { name: "My organisations" }).click();
+    await page.getByRole("link", { name: "Organisation settings" }).click();
     await page.getByRole("link", { name: ORG_NAMES.alpha }).click();
     await expect(page).toHaveURL(/\/orgs\/[0-9a-f-]+\/admin/);
 

@@ -56,6 +56,7 @@ import { Modal } from "../../components/Modal";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
 import { Tabs, tabPanelProps } from "../../components/Tabs";
+import { useCurrentNavLabelOverride } from "../../context/NavLabelValue";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { downloadBlob } from "../../utils/download";
 import * as complianceApi from "./api";
@@ -70,6 +71,7 @@ import { LabeledSelect } from "../../components/LabeledSelect";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
 import { useInitialSearchParams, oneOf } from "../../hooks/useInitialSearchParams";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
+import { COMPLIANCE_HELP } from "./help";
 
 const COMPLIANCE_TABS = ["standards", "evidence", "outstanding"] as const;
 type ComplianceTabKey = (typeof COMPLIANCE_TABS)[number];
@@ -84,6 +86,7 @@ interface AssignmentRow {
 }
 
 export function ProjectCompliancePage() {
+  const navName = useCurrentNavLabelOverride();
   const { projectId } = useParams<{ projectId: string }>();
   const { showToast } = useToast();
   const initialParams = useInitialSearchParams();
@@ -119,7 +122,7 @@ export function ProjectCompliancePage() {
       setLoadError(null);
     } catch (err) {
       setLoadError(
-        toErrorMessage(err, "The Compliance module isn't enabled for this project's organisation, or you don't have access to it.")
+        toErrorMessage(err, "The Compliance module is not enabled for this project's organisation, or you do not have access to it.")
       );
     }
   }
@@ -186,7 +189,7 @@ export function ProjectCompliancePage() {
 
   return (
     <div className="container stack">
-      <h1 style={{ margin: 0 }}>Compliance</h1>
+      <h1 style={{ margin: 0 }}>{navName ?? "Compliance"}</h1>
       <Tabs<ComplianceTabKey>
         idPrefix="project-compliance"
         active={tab}
@@ -318,7 +321,7 @@ function AssignStandardModal({
                 />
               )
             )}
-            <DateField helpNotNeeded label="Target compliance date" value={targetDate} onChange={setTargetDate} />
+            <DateField help={COMPLIANCE_HELP.targetComplianceDate} label="Target compliance date" value={targetDate} onChange={setTargetDate} />
           </FormGrid>
         )}
         <FormActions

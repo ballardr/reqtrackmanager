@@ -62,3 +62,19 @@ export const LongNameKeepsTheRemoveButtonBeside: Story = {
     await expect(orphanedControlViolations(canvasElement)).toEqual([]);
   },
 };
+
+/** An item marked not removable is listed without its "x"; the others keep theirs. */
+export const NotRemovableItemHasNoRemoveButton: Story = {
+  args: {
+    items: [
+      { id: "a", content: <span>Recorded</span>, removeLabel: "Remove Recorded" },
+      { id: "b", content: <span>Derived</span>, removeLabel: "Remove Derived", removable: false },
+    ],
+    onRemove: fn(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("button", { name: "Remove Recorded" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Remove Derived" })).not.toBeInTheDocument();
+  },
+};

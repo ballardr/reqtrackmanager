@@ -36,7 +36,7 @@ For example, a security team that owns "ISO 27001:2022" end to end would typical
 
 ## Groups as owners and assignees
 
-A standard's **Owner**, a required action's **Assignee** and a scheduled review's **Owner** can each be a user or a group, so a team can stay accountable when a person leaves. The record shows the group's name, its kind (Org group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the roles above still decide who can edit.
+A standard's **Owner**, a required action's **Assignee** and a scheduled review's **Owner** can each be a user or a group, so a team can stay accountable when a person leaves. The record shows the group's name, its kind (Organisation group or Project group) and how many people it stands for. A group never gives anyone a right they do not already have; the roles above still decide who can edit.
 
 - A standard is shared by every project, so its owner is a user or an organisation group, and a standard always has one. A standard-level review is organisation-wide too, so it takes the same two kinds.
 - A required action's assignee and a project-level review's owner can also be a group of that project.

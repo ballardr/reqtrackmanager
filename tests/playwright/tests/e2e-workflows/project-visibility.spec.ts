@@ -22,7 +22,7 @@ function visibilitySelect(scope: Page | Locator): Locator {
 }
 
 /**
- * Job to be done: a project can be marked "Org-wide visibility" so every
+ * Job to be done: a project can be marked "Organisation-wide visibility" so every
  * member of its organisation gets automatic read access with no explicit
  * user/group assignment — as opposed to the default "Only specified" mode,
  * where access requires one. Covers both places the toggle lives (the "New
@@ -57,7 +57,7 @@ test.describe("project visibility: org-wide vs only specified", () => {
       }
     });
 
-    await test.step("org admin creates a new project with Org-wide visibility set at creation", async () => {
+    await test.step("org admin creates a new project with Organisation-wide visibility set at creation", async () => {
       await loginAs(page, adminEmail);
       await page.goto("/projects");
       // "New project" opens a Modal (style guide "Pattern: modal dialog for
@@ -71,7 +71,7 @@ test.describe("project visibility: org-wide vs only specified", () => {
       await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
     });
 
-    await test.step("Project Admin's settings tab reflects Org-wide visibility", async () => {
+    await test.step("Project Admin's settings tab reflects Organisation-wide visibility", async () => {
       await page.getByRole("link", { name: "Project admin", exact: true }).click();
       await expect(visibilitySelect(page)).toHaveValue("org_wide");
     });

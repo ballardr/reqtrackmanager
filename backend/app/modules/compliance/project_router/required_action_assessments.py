@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_request_channel
-from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.models import (
     ARTEFACT_TYPE_EVIDENCE,
@@ -31,6 +30,7 @@ from app.modules.compliance.schemas import ComplianceEvidenceOut, ComplianceRequ
 from app.modules.compliance.service import assessment_to_out, assessments_to_out, build_evidence_outs
 from app.services import relationships
 from app.services.audit import log_event
+from app.services.lookups import project_or_404
 from app.services.principals import principal_columns
 from app.services.rbac import require_ai_approvals_enabled
 
@@ -139,7 +139,7 @@ def complete_required_action_assessment(
         db, project_id, project_compliance_id, pcr_id, assessment_id
     )
     if channel == "mcp":
-        require_ai_approvals_enabled(db, db.get(Project, project_id))
+        require_ai_approvals_enabled(db, project_or_404(db, project_id))
     if assessment.is_completed:
         raise HTTPException(status.HTTP_409_CONFLICT, "This required action is already marked completed.")
     assessment.is_completed = True

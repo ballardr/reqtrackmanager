@@ -20,7 +20,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization, OrgGroup, OrgGroupMember, PendingInvite, UserOrgRole
@@ -94,7 +94,8 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
            then, only an account `org` already has a claim on may be linked
            (`_assert_may_link`), and an account bound to another identity is refused.
         3. Otherwise, auto-provisions a new native-less account
-           (`auth_backend="oidc"`, `password_hash=None`).
+           (`auth_backend="oidc"`, `password_hash=None`), unless the organisation has switched that off
+           (`Organization.oidc_allow_account_creation`).
 
     Args:
         db: Active database session.
@@ -111,8 +112,9 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
         The resolved or newly created User (added to the session, not yet committed).
 
     Raises:
-        ValueError: If the claims carry no email, the email is unverified for an existing account, or the
-            existing account is not one `org` may link (see `_assert_may_link`).
+        ValueError: If the claims carry no email, the email is unverified for an existing account, the
+            existing account is not one `org` may link (see `_assert_may_link`), or a new account would be needed
+            and the organisation does not allow its identity provider to create one.
     """
     subject = claims["sub"]
     email = claims.get("email")
@@ -149,6 +151,11 @@ def find_or_provision_user(db: Session, claims: dict, *, issuer: str, org: Organ
         existing_by_email.oidc_issuer = issuer
         return existing_by_email
 
+    if org.oidc_allow_account_creation is False:  # None is an organisation not yet saved: the column defaults to allowed
+        # Same message for every address, so the refusal says nothing about whether the address is registered elsewhere.
+        raise ValueError(
+            "This organisation does not let its identity provider create accounts. Ask an administrator to add you first."
+        )
     user = User(
         id=uuid.uuid4(), email=email, display_name=claims.get("name") or email.split("@")[0],
         auth_backend="oidc", external_subject=subject, oidc_issuer=issuer, password_hash=None,
@@ -258,7 +265,7 @@ def sync_org_roles_from_claims(db: Session, user: User, org: Organization, claim
     roles_to_revoke = (existing_roles & sso_managed_roles) - mapped_roles
     if roles_to_revoke:
         db.execute(
-            UserOrgRole.__table__.delete().where(
+            delete(UserOrgRole).where(
                 UserOrgRole.user_id == user.id,
                 UserOrgRole.organization_id == org.id,
                 UserOrgRole.role.in_(roles_to_revoke),
@@ -311,7 +318,7 @@ def sync_org_groups_from_claims(db: Session, user: User, org: Organization, clai
     groups_to_leave = existing_member_of - should_be_member_of
     if groups_to_leave:
         db.execute(
-            OrgGroupMember.__table__.delete().where(
+            delete(OrgGroupMember).where(
                 OrgGroupMember.user_id == user.id, OrgGroupMember.org_group_id.in_(groups_to_leave)
             )
         )

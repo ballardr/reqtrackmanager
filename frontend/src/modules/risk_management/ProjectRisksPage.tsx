@@ -31,7 +31,8 @@ import { api } from "../../api/client";
 import type { OrgUser, Project } from "../../api/types";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
 import { FilterBadge } from "../../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
@@ -60,6 +61,8 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { addSharedListFilters } from "../../utils/listFilterParams";
 import { TagFilterField } from "../../components/TagFilterField";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 type View = "register" | "matrix";
 
@@ -97,6 +100,7 @@ function inCell(risk: Risk, cell: CellFilter): boolean {
 }
 
 export function ProjectRisksPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -151,19 +155,19 @@ export function ProjectRisksPage() {
     if (!projectId) return;
     let active = true;
     riskApi
-      .list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope })
+      .list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope })
       .then((list) => {
         if (!active) return;
         setRisks(list);
         setLoadError(null);
       })
       .catch((err) => {
-        if (active) setLoadError(toErrorMessage(err, "Risk Management isn't enabled for this project, or you don't have access to it."));
+        if (active) setLoadError(toErrorMessage(err, "Risk Management is not enabled for this project, or you do not have access to it."));
       });
     return () => {
       active = false;
     };
-  }, [projectId, includeArchived, refreshKey, tagFilter.tags, tagFilter.mode, projectScope.scope]);
+  }, [projectId, includeArchived, refreshKey, tagFilter.listFilters, projectScope.scope]);
 
   /** The register's filters by the names its export takes; the server applies the same rules the page does. */
   function filterParams(): URLSearchParams {
@@ -245,22 +249,20 @@ export function ProjectRisksPage() {
             sectionKey="risks.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search risks…" searchAriaLabel="Search risks"
           >
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as RiskStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(RISK_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Risk type">
-              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="">All types</option>
-                {riskTypes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(RISK_STATUS_LABEL)}
+            />
+            <FilterSelect
+              label="Risk type"
+              value={typeFilter}
+              onChange={setTypeFilter}
+              allLabel="All types"
+              options={riskTypes.map((t) => ({ value: t.id, label: t.name }))}
+            />
             <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Review overdue" checked={overdueOnly} onChange={setOverdueOnly} />
             <FilterCheckbox label="No effective treatment" checked={untreatedOnly} onChange={setUntreatedOnly} />
@@ -293,6 +295,7 @@ export function ProjectRisksPage() {
                 columns={columns}
                 rows={filtered}
                 rowKey={(r) => r.id}
+                placements={{ projectId, artefactType: "risk", rowId: (r) => r.id }}
                 rowHref={(r) => `/projects/${rowProjectId(r, projectId)}/modules/risk_management/risks/${r.id}`}
                 emptyState={
                   <p className="text-muted">
@@ -317,7 +320,7 @@ export function ProjectRisksPage() {
                 />
                 {unplotted > 0 && (
                   <p className="text-muted" style={{ margin: 0 }}>
-                    {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "isn't" : "aren't"} plotted.
+                    {unplotted} risk{unplotted === 1 ? " has" : "s have"} no {basis} likelihood and consequence, so {unplotted === 1 ? "is not" : "are not"} plotted.
                   </p>
                 )}
               </div>

@@ -13,16 +13,17 @@ Responsibilities:
 
 Design decisions:
 - Create and update go through the same checks as the endpoints: any project member may create (the
-  endpoints' gate), a record's owner role (`strategy_owner`, `pain_point_manager`, ...) may update, and a
+  endpoints' gate; a Pain Point only where the project or organisation opted in to member submission), a record's owner
+  role (`strategy_owner`, `pain_point_manager`, ...) may update, and a
   record past review or at a terminal outcome refuses the edit (the row's error carries the endpoint's message).
 - `status` is export-only for every type: a Strategy, Future State and Guiding Principle move through
   propose / review / approve, and a Pain Point and an Open Question through decide-tier transitions that need a
   comment, so a file never moves a record through its lifecycle (a created record starts as the endpoints
   start it: `draft`, `submitted`, `open`). All five are marked approval-gated for that reason.
 - `Tags` is export-only: tags are governed by the tag vocabulary and tag authority, which a column cannot
-  carry. A Pain Point's Severity, Frequency and Confidence are columns, but they are its "all personas" scores:
-  a Pain Point scored per persona shows them blank and locked (`cell_lock`) because one level cannot stand for
-  several personas, and they are edited on the Pain Point page. Writing them is the manager tier, as scoring is.
+  carry. Every scoring criterion the project offers (Severity, Frequency, Cost of Delay's, its own) is a column
+  holding the Pain Point's General level; the levels of individual personas are edited on the Pain Point page.
+  Writing them is the manager tier, as scoring is.
 - A Pain Point or Open Question owner is assigned by a manager (the create form has no owner field), so an
   import that names one on a new row needs the manager role and says so otherwise.
 - The project tier lists only a project's own records. Organisation-owned Strategies, Future States and Guiding
@@ -36,7 +37,7 @@ checks), `services.record_tables_core` (cell helpers), `services.tags`.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from fastapi import HTTPException
@@ -93,10 +94,12 @@ from app.modules.context_strategy.models import (
 from app.modules.context_strategy.pain_point_scores import (
     RollupMethod,
     build_pain_point_scoring,
+    general_row,
     load_scoring_context,
     resolve_model,
+    score_level_ids,
 )
-from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME_KEY
+from app.modules.context_strategy.scoring import PAIN_POINT_SCORING_SCHEME, PAIN_POINT_SCORING_SCHEME_KEY
 from app.modules.context_strategy.service import (
     FUTURE_STATE_ARTEFACT_TYPE,
     GUIDING_PRINCIPLE_ARTEFACT_TYPE,
@@ -106,6 +109,7 @@ from app.modules.context_strategy.service import (
     is_pain_point_locked,
     resolve_effective_pain_point_types,
 )
+from app.modules.context_strategy.submission_policy import can_submit_pain_point
 from app.modules.registry import (
     OrganizationRecordTable,
     RecordCellError,
@@ -117,6 +121,7 @@ from app.modules.registry import (
 from app.schemas.principal import PrincipalRef
 from app.services import tags as tag_service
 from app.services.client_date import effective_today
+from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.rbac import user_satisfies_module_role
 from app.services.record_tables import PrincipalCells, find_many_by_code
@@ -134,6 +139,7 @@ from app.services.record_tables_core import (
     text_parser,
 )
 from app.services.scoring import list_levels
+from app.services.scoring_custom import effective_scheme
 
 IMPORT_NOTE = "Edited by record import."
 
@@ -144,7 +150,7 @@ def _all_may_create(db: Session, user: User, project_id: uuid.UUID) -> bool:
 
 
 def _org_id(db: Session, project_id: uuid.UUID) -> uuid.UUID:
-    return db.get(Project, project_id).organization_id
+    return project_or_404(db, project_id).organization_id
 
 
 def _include_archived(filters: RecordFilters) -> bool:
@@ -266,7 +272,7 @@ def _list_org_strategies(db: Session, user: User, organization: Organization, fi
     return _filter_strategies(db, edits.organization_strategies(db, organization.id, _include_archived(filters)), filters)
 
 
-def _strategy_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _strategy_columns(db: Session, project: Project | None) -> list[RecordColumn]:
     return [
         _text("title", "Title", "title", required=True),
         _text("objective", "Objective", "objective", required=True),
@@ -416,7 +422,7 @@ def _list_org_future_states(db: Session, user: User, organization: Organization,
     return _filter_future_states(db, edits.organization_future_states(db, organization.id, _include_archived(filters)), filters)
 
 
-def _future_state_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _future_state_columns(db: Session, project: Project | None) -> list[RecordColumn]:
     return [
         _text("title", "Title", "title", required=True),
         _text("current_state", "Current state", "current_state"),
@@ -538,7 +544,7 @@ def _list_org_guiding_principles(
     return _filter_guiding_principles(db, edits.organization_guiding_principles(db, organization.id, _include_archived(filters)), filters)
 
 
-def _guiding_principle_columns(db: Session, project: Project) -> list[RecordColumn]:
+def _guiding_principle_columns(db: Session, project: Project | None) -> list[RecordColumn]:
     return [
         _text("name", "Name", "name", required=True),
         _text("principle_statement", "Principle statement", "principle_statement", required=True),
@@ -650,7 +656,7 @@ def _pain_point_type_names(db: Session, type_ids: set[uuid.UUID]) -> dict[uuid.U
     org_names = {
         o.id: o.name for o in db.scalars(select(PainPointTypeDefinition).where(PainPointTypeDefinition.id.in_(org_ids)))
     } if org_ids else {}
-    return {r.id: r.name_override if r.name_override is not None else org_names.get(r.org_type_id, "") for r in rows}
+    return {r.id: r.name_override if r.name_override is not None else (org_names.get(r.org_type_id, "") if r.org_type_id else "") for r in rows}
 
 
 def _prepare_pain_points(db: Session, project: Project, records: list[PainPoint]) -> _Prepared:
@@ -666,23 +672,22 @@ def _prepare_pain_points(db: Session, project: Project, records: list[PainPoint]
     return prepared
 
 
-#: The scoring axes of a Pain Point, which are also its three score columns' keys.
-_SCORE_AXES = ("severity", "frequency", "confidence")
+def _score_getter(axis: str) -> Callable[[_Prepared, PainPoint], str]:
+    """The column getter for one score axis."""
+    return lambda prepared, pain_point: _score_cell(prepared, pain_point, axis)
 
 
 def _score_cell(prepared: _Prepared, pain_point: PainPoint, axis: str) -> str:
-    """The "all personas" level name for `axis`; blank when unscored on it, or when scored per persona."""
-    rows = prepared.scores.get(pain_point.id, [])
-    row = next((r for r in rows if r.target_id is None), None)
-    level_id = getattr(row, f"{axis}_level_id", None) if row is not None else None
+    """The General level name for `axis`; blank when the General row is unscored on it."""
+    row = general_row(prepared.scores.get(pain_point.id, []))
+    level_id = score_level_ids(row).get(axis) if row is not None else None
     return prepared.level_names.get(level_id, "") if level_id is not None else ""
 
 
-def _score_lock(prepared: _Prepared, pain_point: PainPoint) -> str | None:
-    """Why a score cell cannot be edited in the grid: the Pain Point is scored per persona."""
-    if any(r.target_id is not None for r in prepared.scores.get(pain_point.id, [])):
-        return edits.PAIN_POINT_SCORED_PER_PERSONA
-    return None
+def _score_axis_keys(ctx: RecordImportContext) -> list[str]:
+    """The scoring criteria the import's project offers (the keys of its score columns)."""
+    scoring = cached_lookup(ctx, "pp:scoring", lambda: load_scoring_context(ctx.db, ctx.project))
+    return [axis.key for axis in scoring.scheme.axes]
 
 
 def _score_level_parser(axis: str, label: str) -> Any:
@@ -704,15 +709,16 @@ def _score_level_parser(axis: str, label: str) -> Any:
 
 
 def _score_columns(db: Session, project: Project) -> list[RecordColumn]:
-    """Severity, Frequency and Confidence as editable level-name columns (the scheme's levels, lowest first)."""
+    """Every scoring criterion of the project as an editable level-name column (the scheme's levels, lowest
+    first), holding the General level."""
     levels = list_levels(db, project.organization_id, PAIN_POINT_SCORING_SCHEME_KEY)
+    scheme = effective_scheme(db, project.organization_id, PAIN_POINT_SCORING_SCHEME, project.id)
     return [
         RecordColumn(
-            axis, label, lambda t, r, axis=axis: _score_cell(t, r, axis), _score_level_parser(axis, label), kind="enum",
-            editable=True, choices=tuple(level.name for level in levels.get(axis, [])),
-            cell_lock=_score_lock,
+            axis.key, axis.label, _score_getter(axis.key), _score_level_parser(axis.key, axis.label), kind="enum",
+            editable=True, choices=tuple(level.name for level in levels.get(axis.key, [])),
         )
-        for axis, label in zip(_SCORE_AXES, ("Severity", "Frequency", "Confidence"), strict=True)
+        for axis in scheme.axes
     ]
 
 
@@ -735,7 +741,7 @@ def _list_pain_points(db: Session, user: User, project_id: uuid.UUID, filters: R
         method = RollupMethod(filters.one("rollup") or RollupMethod.WEIGHTED_AVERAGE.value)
     except ValueError:
         raise HTTPException(422, "rollup is not a known roll-up method.") from None
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     scoring = load_scoring_context(db, project)
     summaries = {s.pain_point_id: s for s in build_pain_point_scoring(db, scoring, records, resolve_model(scoring, filters.one("model_key")), method)}
     return [
@@ -797,6 +803,11 @@ def _may_manage_pain_points(db: Session, user: User, project_id: uuid.UUID) -> b
     return can_manage_pain_points(db, user, organization_id=_org_id(db, project_id), project_id=project_id)
 
 
+def _may_submit_pain_point(db: Session, user: User, project_id: uuid.UUID) -> bool:
+    """The create endpoint's gate: any member, unless the project restricted submission to managers."""
+    return can_submit_pain_point(db, user, project_or_404(db, project_id))
+
+
 def _create_pain_point(ctx: RecordImportContext, values: Mapping[str, Any]) -> PainPoint:
     owner: PrincipalRef | None = values.get("owner")
     if owner is not None and not _may_manage_pain_points(ctx.db, ctx.user, ctx.project.id):
@@ -807,7 +818,7 @@ def _create_pain_point(ctx: RecordImportContext, values: Mapping[str, Any]) -> P
     )
     if owner is not None:
         edits.edit_project_pain_point_record(ctx.db, ctx.project, pain_point, ctx.user, owner=owner, owner_explicitly_set=True)
-    scored = {axis: values[axis] for axis in _SCORE_AXES if values.get(axis) is not None}
+    scored = {axis: values[axis] for axis in _score_axis_keys(ctx) if values.get(axis) is not None}
     if scored:
         if not _may_manage_pain_points(ctx.db, ctx.user, ctx.project.id):
             raise RecordCellError("Only a Pain Point Manager may score a Pain Point.")
@@ -816,19 +827,20 @@ def _create_pain_point(ctx: RecordImportContext, values: Mapping[str, Any]) -> P
 
 
 def _apply_scores(ctx: RecordImportContext, pain_point: PainPoint, levels: Mapping[str, uuid.UUID | None]) -> None:
-    """Writes the "all personas" levels through the scores endpoint's own function."""
+    """Writes the General levels through the scores endpoint's own function."""
     scoring = cached_lookup(ctx, "pp:scoring", lambda: load_scoring_context(ctx.db, ctx.project))
     edits.edit_project_pain_point_scores(ctx.db, scoring, pain_point, ctx.user, levels)
 
 
 def _update_pain_point(ctx: RecordImportContext, pain_point: PainPoint, values: Mapping[str, Any]) -> None:
-    if any(key not in _SCORE_AXES for key in values):
+    axes = _score_axis_keys(ctx)
+    if any(key not in axes for key in values):
         edits.edit_project_pain_point_record(
             ctx.db, ctx.project, pain_point, ctx.user,
             type_ref_id=_pain_point_type_ref(ctx, values["type"]) if "type" in values else None,
             owner=values.get("owner"), owner_explicitly_set="owner" in values, **_pain_point_fields(values),
         )
-    scores = {axis: values[axis] for axis in _SCORE_AXES if axis in values}
+    scores = {axis: values[axis] for axis in axes if axis in values}
     if scores:
         _apply_scores(ctx, pain_point, scores)
 
@@ -848,7 +860,7 @@ PAIN_POINT_TABLE = RecordTableProvider(
     update=_update_pain_point,
     filter_params=COMMON_FILTERS | {"open_only", "hide_intentional", "only_intentional", "blockers_only", "scored", "model_key", "rollup"},
     gate=(MODULE_KEY, "pain_point"),
-    can_create=_all_may_create,
+    can_create=_may_submit_pain_point,
     can_update=_may_manage_pain_points,
     approval_gated=True,
     read_only_reason=lambda prepared, pain_point: edits.PAIN_POINT_LOCKED if is_pain_point_locked(pain_point) else None,

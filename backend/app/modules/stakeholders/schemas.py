@@ -645,10 +645,16 @@ class GroupFromTextOut(BaseModel):
 # --- Engagements ------------------------------------------------------
 
 
+class AnonymousParticipantCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=200)
+    persona_id: UUID | None = None
+
+
 class EngagementCreate(BaseModel):
     """Logs an engagement. `stakeholder_ids`, `persona_ids` and `group_ids` are optional shortcuts that
     add participants, covered personas and audience groups (each group expanded to its current
-    members) in the same request, e.g. the "Log contact" quick-add."""
+    members) in the same request, e.g. the "Log contact" quick-add. `anonymous_participants` adds
+    participants with no Stakeholder record and needs the Research extras sub-component (409 while off)."""
 
     title: str = Field(min_length=1, max_length=300)
     channel: EngagementChannel
@@ -662,6 +668,7 @@ class EngagementCreate(BaseModel):
     stakeholder_ids: list[UUID] = Field(default_factory=list)
     persona_ids: list[UUID] = Field(default_factory=list)
     group_ids: list[UUID] = Field(default_factory=list)
+    anonymous_participants: list[AnonymousParticipantCreate] = Field(default_factory=list, max_length=100)
 
 
 class EngagementUpdate(BaseModel):
@@ -740,6 +747,22 @@ class EngagementPersonaOut(BaseModel):
     organization_id: UUID | None = None
 
 
+class EngagementPersonaReachedOut(BaseModel):
+    """One Persona the engagement reached, and how: recorded as covered (`link_id` set, removable), represented by
+    a Stakeholder participant, or represented by an anonymous participant. Read-only: nothing is stored for the
+    two derived sources."""
+
+    persona_id: UUID
+    name: str
+    scope: Literal["organization", "project"]
+    unique_code: str = ""
+    organization_id: UUID | None = None
+    link_id: UUID | None = None
+    covered: bool
+    via_participants: bool
+    via_anonymous: bool
+
+
 class EngagementPersonaCreate(BaseModel):
     persona_id: UUID
 
@@ -774,6 +797,13 @@ class OutcomeOut(BaseModel):
     target_type: str
     target_id: UUID
     label: str
+
+
+class OutcomeTargetTypeOut(BaseModel):
+    """A record type an outcome can point at, with whether the caller may create one from the outcome form."""
+
+    type: str
+    can_create: bool
 
 
 class OutcomeCreate(BaseModel):
@@ -817,11 +847,6 @@ class PromptOut(BaseModel):
     sort_order: int
     prompt: str
     response_notes: str
-
-
-class AnonymousParticipantCreate(BaseModel):
-    label: str = Field(min_length=1, max_length=200)
-    persona_id: UUID | None = None
 
 
 class AnonymousParticipantUpdate(BaseModel):

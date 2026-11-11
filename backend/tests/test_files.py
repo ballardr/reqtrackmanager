@@ -2,6 +2,8 @@
 shared resources (C-M-03), linking a shared resource to a requirement
 (C-M-04), and avatar/logo upload (C-U-18, U-C-02)."""
 
+import uuid
+
 from sqlalchemy import text
 
 from app.database import engine as app_engine
@@ -114,14 +116,29 @@ def test_html_attachment_is_forced_to_download_not_rendered_inline(client, admin
     assert download.headers["content-disposition"].startswith("attachment")
     assert download.headers["x-content-type-options"] == "nosniff"
 
-    # A genuine image still renders inline (no regression for the normal case).
+    # A genuine image still renders inline (no regression for the normal case); bytes that are not an image do not
+    # become one by claiming to be (`services.files.trusted_content_type`).
+    import io
+
+    from PIL import Image
+
+    png = io.BytesIO()
+    Image.new("RGB", (2, 2)).save(png, "PNG")
     img_resp = client.post(
         f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
-        files={"file": ("photo.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        files={"file": ("photo.png", png.getvalue(), "image/png")},
         headers=auth_headers(admin_token),
     )
     img_download = client.get(f"/api/v1/files/{img_resp.json()['id']}", headers=auth_headers(admin_token))
     assert img_download.headers["content-disposition"].startswith("inline")
+
+    fake = client.post(
+        f"/api/v1/projects/{project['id']}/requirements/{requirement['id']}/files",
+        files={"file": ("fake.png", b"<html><script>1</script></html>", "image/png")},
+        headers=auth_headers(admin_token),
+    )
+    fake_download = client.get(f"/api/v1/files/{fake.json()['id']}", headers=auth_headers(admin_token))
+    assert fake_download.headers["content-disposition"].startswith("attachment")
 
 
 def test_project_metrics_includes_file_count(client, admin_token, org_id):
@@ -328,6 +345,83 @@ def test_platform_default_logo_and_login_background_are_downloadable_with_no_aut
 
     assert client.get(f"/api/v1/files/{logo['default_logo_file_id']}").status_code == 200
     assert client.get(f"/api/v1/files/{background['default_login_background_file_id']}").status_code == 200
+
+
+def _platform_image(client, token, kind):
+    return client.post(
+        "/api/v1/system/branding/image", files={"file": (f"{kind}.png", b"\x89PNG", "image/png")},
+        data={"kind": kind}, headers=auth_headers(token),
+    ).json()
+
+
+def test_platform_images_belong_to_no_organisation_and_survive_an_organisation_deletion(client, admin_token, org_id):
+    """The platform logo is platform-owned: it is not stored against, counted for or deleted with any organisation."""
+    from sqlalchemy import select
+
+    from app.database import SessionLocal
+    from app.models.file import FileAsset
+
+    logo = _platform_image(client, admin_token, "logo")
+    file_id = logo["default_logo_file_id"]
+    with SessionLocal() as db:
+        asset = db.get(FileAsset, uuid.UUID(file_id))
+        assert asset is not None and asset.organization_id is None
+        assert asset.storage_key.startswith("platform/")
+    org = client.post("/api/v1/orgs", json={"name": "Doomed Org", "slug": "doomed-org"}, headers=auth_headers(admin_token))
+    assert org.status_code == 201, org.text
+    deleted = client.request(
+        "DELETE", f"/api/v1/orgs/{org.json()['id']}", json={"confirm_name": "Doomed Org"}, headers=auth_headers(admin_token),
+    )
+    assert deleted.status_code in (200, 204), deleted.text
+    assert client.get(f"/api/v1/files/{file_id}").status_code == 200
+    with SessionLocal() as db:
+        assert db.scalar(select(FileAsset).where(FileAsset.id == uuid.UUID(file_id))) is not None
+
+
+def test_platform_image_upload_works_with_a_full_organisation_storage_limit(client, admin_token, org_id):
+    """An organisation's upload switch and storage limit never refuse (or are used up by) a platform image."""
+    assert client.put(
+        f"/api/v1/orgs/{org_id}/storage", json={"file_uploads_enabled": False, "storage_quota_bytes": 1},
+        headers=auth_headers(admin_token),
+    ).status_code in (200, 204)
+    assert _platform_image(client, admin_token, "login_background")["default_login_background_file_id"]
+
+
+def test_replacing_a_platform_image_deletes_the_previous_file(client, admin_token):
+    from app.database import SessionLocal
+    from app.models.file import FileAsset
+
+    first = _platform_image(client, admin_token, "logo")["default_logo_file_id"]
+    second = _platform_image(client, admin_token, "logo")["default_logo_file_id"]
+    assert first != second
+    with SessionLocal() as db:
+        assert db.get(FileAsset, uuid.UUID(first)) is None
+        assert db.get(FileAsset, uuid.UUID(second)) is not None
+
+
+def test_removing_a_platform_image_reverts_to_the_built_in_picture(client, admin_token, org_id):
+    from app.database import SessionLocal
+    from app.models.file import FileAsset
+
+    uploaded = _platform_image(client, admin_token, "logo")["default_logo_file_id"]
+    removed = client.delete("/api/v1/system/branding/image?kind=logo", headers=auth_headers(admin_token))
+    assert removed.status_code == 200
+    assert removed.json()["default_logo_file_id"] is None
+    with SessionLocal() as db:
+        assert db.get(FileAsset, uuid.UUID(uploaded)) is None
+    # Idempotent, and a platform file that is no longer in use is not readable by an organisation member.
+    assert client.delete("/api/v1/system/branding/image?kind=logo", headers=auth_headers(admin_token)).status_code == 200
+    assert client.get(f"/api/v1/files/{uploaded}").status_code in (401, 404)
+
+
+def test_removing_a_platform_image_is_server_administrator_only(client, admin_token, org_id):
+    from tests.conftest import create_org_user, login
+
+    create_org_user(client, admin_token, org_id, "plain-brand@example.com")
+    member = login(client, "plain-brand@example.com", "Password123!")
+    assert client.delete("/api/v1/system/branding/image?kind=logo", headers=auth_headers(member)).status_code == 403
+    assert client.delete("/api/v1/system/branding/image?kind=logo").status_code in (401, 403)
+    assert client.delete("/api/v1/system/branding/image?kind=favicon", headers=auth_headers(admin_token)).status_code == 422
 
 
 def test_system_branding_image_rejects_invalid_or_missing_kind(client, admin_token):

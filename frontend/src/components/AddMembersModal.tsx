@@ -56,6 +56,10 @@ import { useStrings } from "../context/TerminologyContext";
 import { Modal } from "./Modal";
 import { UserAutocomplete } from "./UserAutocomplete";
 import { FormActions } from "./FormActions";
+import { InlineSelect } from "./LabeledSelect";
+
+/** The roles a staged member may be given, in the order the role select lists them. */
+const STAGED_ROLES: ProjectRole[] = ["project_manager", "project_administrator", "stakeholder", "member"];
 
 export type StagedMemberKind = "user" | "group" | "external";
 
@@ -99,7 +103,7 @@ export function AddMembersModal({
    * component's own docstring for the client-side-vs-server-side-search
    * modes this list feeds. */
   users: OrgUser[];
-  /** Org groups `UserAutocomplete` also matches by name. Omit to keep this
+  /** Organisation groups `UserAutocomplete` also matches by name. Omit to keep this
    * instance user/external-only. */
   groups?: OrgGroup[];
   /** This project's own groups, matched as a third kind purely to detect a
@@ -245,18 +249,14 @@ export function AddMembersModal({
                   <div className="row" style={{ gap: "var(--space-3)", alignItems: "center" }}>
                     <span style={{ flex: 1, minWidth: 0 }}>{entry.label}</span>
                     {showRole && (
-                      <select
-                        className="input"
-                        aria-label={strings.admin.roleForStagedMember(entry.label)}
+                      <InlineSelect<ProjectRole>
+                        ariaLabel={strings.admin.roleForStagedMember(entry.label)}
                         value={entry.role}
-                        onChange={(e) => setRole(entry.key, e.target.value as ProjectRole)}
+                        placeholder={null}
+                        onChange={(role) => setRole(entry.key, role)}
                         disabled={state.status === "pending"}
-                      >
-                        <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                        <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                        <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                        <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-                      </select>
+                        options={STAGED_ROLES.map((role) => ({ value: role, label: PROJECT_ROLE_LABEL[role] }))}
+                      />
                     )}
                     <button
                       type="button"

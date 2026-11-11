@@ -123,7 +123,7 @@ export function GuidingPrincipleDetailPage() {
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/guiding-principles`
     : `/org-overview`;
-  const backLabel = projectId ? "← Guiding Principle" : "← Organisation overview";
+  const backLabel = projectId ? "Guiding Principles" : "Organisation overview";
 
   const [guidingPrinciple, setGuidingPrinciple] = useState<GuidingPrinciple | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -142,7 +142,7 @@ export function GuidingPrincipleDetailPage() {
   useEffect(() => {
     if (!scopeId || !guidingPrincipleId) return;
     scopedApi.get(scopeId, guidingPrincipleId).then(setGuidingPrinciple).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Guiding Principle could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Guiding Principle could not be found, or you do not have access to it."));
     });
     scopedApi.listVersions(scopeId, guidingPrincipleId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

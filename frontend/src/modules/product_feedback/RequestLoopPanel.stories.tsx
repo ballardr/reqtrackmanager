@@ -17,7 +17,7 @@ type Story = StoryObj<typeof RequestLoopPanel>;
 export const ListsRequestersWithWhoWasTold: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("1 of 2 still to be told.")).toBeInTheDocument();
+    await expect(canvas.getByText("1 of 2 still to be informed.")).toBeInTheDocument();
     const table = within(canvas.getByRole("table", { name: "Requesters to tell" }));
     await expect(table.getByLabelText("Told Priya Shah")).not.toBeChecked();
     await expect(table.getByLabelText("Told Sam Rivera")).toBeChecked();
@@ -66,7 +66,7 @@ export const EveryoneToldDisablesMarkAll: Story = {
   args: { loop: buildLoop({ requesters: [buildLoopRequester({ informed: true, informed_at: "2026-11-03T10:00:00Z" })], informed_count: 1, open_count: 0 }) },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Everyone who asked has been told.")).toBeInTheDocument();
+    await expect(canvas.getByText("Every requester has been informed.")).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Mark all told" })).toBeDisabled();
   },
 };

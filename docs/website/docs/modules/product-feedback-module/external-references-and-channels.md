@@ -29,8 +29,8 @@ The channel records the route each requester used, set per requester from the [D
 
 Both lists work the same way as the other type lists:
 
-- The **organisation** owns the shared list, at **Organisation admin → External Systems** and **Request Channels** (Organisation admin or the Feedback List Admin role).
-- A **project** adds entries of its own and can **hide** an organisation entry it does not use (and restore it) at **Project admin → External Systems** and **Request Channels**.
+- The **organisation** owns the shared list, at **Organisation admin → Product Feedback → External Systems** and **Request Channels** (Organisation admin or the Feedback List Admin role).
+- A **project** adds entries of its own and can **hide** an organisation entry it does not use (and restore it) at **Project admin → Product Feedback → External Systems** and **Request Channels**.
 - A project with none of its own entries shows its nearest ancestor project's list, then the organisation's; its first change copies that list into it.
 - Deleting an entry that requests use asks you to reassign them first.
 

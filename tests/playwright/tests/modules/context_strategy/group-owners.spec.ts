@@ -65,7 +65,7 @@ test.describe("Context & Strategy: groups as owners", () => {
     await expect(page.getByText(/^Project group/).first()).toBeVisible();
     await page.goto(`/projects/${project.id}/modules/context_strategy/pain-points/${painPoint.id}`);
     await expect(page.getByText(teamName).first()).toBeVisible();
-    await expect(page.getByText(/^Org group/).first()).toBeVisible();
+    await expect(page.getByText(/^Organisation group/).first()).toBeVisible();
 
     // The Guiding Principle created with a group owner shows it too.
     await page.goto(`/projects/${project.id}/modules/context_strategy/guiding-principles/${principle.id}`);

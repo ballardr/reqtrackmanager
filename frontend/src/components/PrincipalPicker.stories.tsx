@@ -93,7 +93,7 @@ export const AssignedGroupShowsKindAndMembers: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Platform team")).toBeInTheDocument();
-    await expect(canvas.getByText("Org group · 4 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 4 members")).toBeInTheDocument();
   },
 };
 

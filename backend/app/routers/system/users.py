@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.enums import OrgRole, ServerRole
 from app.models.organization import Organization, OrgGroup, UserOrgRole
 from app.models.server_role import UserServerRole
@@ -34,6 +35,7 @@ from app.models.user import User
 from app.schemas.pat import BulkRevokeResult
 from app.services import credential_reset
 from app.services.audit import log_event
+from app.services.imported_people import assert_not_imported_person
 from app.services.pats import revoke_matching
 from app.services.rate_limit import RateLimiter
 from app.services.rbac import get_user_org_group_ids, require_server_admin
@@ -79,7 +81,8 @@ class SystemUserOut(BaseModel):
     is_2fa_enabled: bool
     created_at: datetime
     is_server_admin: bool
-    is_module_administrator: bool
+    #: Server-tier roles granted by row (never `server_admin`, which is `is_server_admin`).
+    server_roles: list[ServerRole]
     has_org_membership: bool
     organization_count: int
     organization_names: list[str]
@@ -269,7 +272,7 @@ def force_credential_reset(
     )
 
 
-@router.post("/users", response_model=SystemUserCreated, status_code=status.HTTP_201_CREATED)
+@router.post("/users", response_model=SystemUserCreated, status_code=status.HTTP_201_CREATED, dependencies=[Depends(refuse_personal_access_token)])
 def create_system_user(
     payload: SystemUserCreate,
     current_user: User = Depends(require_server_admin),
@@ -299,7 +302,7 @@ def create_system_user(
         if not payload.password or not (payload.display_name or "").strip():
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "A name and a password are required to create the account.")
         user = create_native_user(
-            db, email=payload.email, display_name=payload.display_name.strip(), password=payload.password,
+            db, email=payload.email, display_name=(payload.display_name or "").strip(), password=payload.password,
             organization_id=payload.organization_id, role=payload.role, actor_id=current_user.id,
         )
         db.commit()
@@ -353,7 +356,7 @@ def set_server_admin(
         # anyway, so doesn't cover for a revocation.
         active_admin_count = db.scalar(
             select(func.count()).select_from(User).where(User.is_server_admin.is_(True), User.is_active.is_(True))
-        )
+        ) or 0
         if target.is_active and active_admin_count <= 1:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot revoke the deployment's last active server admin.")
     target.is_server_admin = payload.is_server_admin
@@ -367,7 +370,7 @@ def set_server_admin(
     db.commit()
 
 
-@router.post("/users/{user_id}/server-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/users/{user_id}/server-roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def grant_server_role(
     user_id: UUID,
     payload: ServerRoleAssign,
@@ -406,7 +409,7 @@ def grant_server_role(
         db.commit()
 
 
-@router.delete("/users/{user_id}/server-roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/users/{user_id}/server-roles/{role}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_server_role(
     user_id: UUID,
     role: ServerRole,
@@ -524,15 +527,12 @@ def list_system_users(
     if limit is not None:
         users = users[offset:offset + limit]
     user_ids = [u.id for u in users]
-    module_admin_ids: set[UUID] = set()
+    server_roles_by_user: dict[UUID, list[ServerRole]] = {}
     if user_ids:
-        module_admin_ids = set(
-            db.scalars(
-                select(UserServerRole.user_id).where(
-                    UserServerRole.user_id.in_(user_ids), UserServerRole.role == ServerRole.MODULE_ADMINISTRATOR
-                )
-            ).all()
-        )
+        for user_id, role in db.execute(
+            select(UserServerRole.user_id, UserServerRole.role).where(UserServerRole.user_id.in_(user_ids))
+        ).all():
+            server_roles_by_user.setdefault(user_id, []).append(role)
     org_ids_by_user: dict[UUID, set[UUID]] = {}
     if user_ids:
         for user_id, organization_id in db.execute(
@@ -543,7 +543,7 @@ def list_system_users(
             org_ids_by_user.setdefault(user_id, set()).add(organization_id)
     all_org_ids = {oid for oids in org_ids_by_user.values() for oid in oids}
     org_names_by_id = (
-        dict(db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(all_org_ids))).all())
+        dict(db.execute(select(Organization.id, Organization.name).where(Organization.id.in_(all_org_ids))).tuples().all())
         if all_org_ids and settings.access_review_show_org_names
         else {}
     )
@@ -566,7 +566,7 @@ def list_system_users(
             user_id=u.id, email=u.email, display_name=u.display_name, is_active=u.is_active,
             is_banned=u.is_banned,
             last_login_at=u.last_login_at, is_2fa_enabled=u.is_2fa_enabled, created_at=u.created_at,
-            is_server_admin=u.is_server_admin, is_module_administrator=u.id in module_admin_ids,
+            is_server_admin=u.is_server_admin, server_roles=sorted(server_roles_by_user.get(u.id, []), key=lambda r: r.value),
             has_org_membership=u.id in org_ids_by_user,
             organization_count=len(org_ids_by_user.get(u.id, ())),
             organization_names=sorted(org_names_by_id[oid] for oid in org_ids_by_user.get(u.id, ()) if oid in org_names_by_id),
@@ -594,6 +594,7 @@ def _require_orphaned_user(db: Session, user_id: UUID) -> User:
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found.")
+    assert_not_imported_person(user)
     has_org_role = db.scalar(select(exists().where(UserOrgRole.user_id == user_id)))
     if has_org_role:
         raise HTTPException(

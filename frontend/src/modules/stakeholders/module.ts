@@ -4,6 +4,10 @@ import { ProjectScoringSettings } from "../../components/ProjectScoringSettings"
 import { ScoringSchemeEditor } from "../../components/ScoringSchemeEditor";
 import type { TierAModuleDefinition } from "../types";
 import { NEED_STATUS_LABEL, PERSONA_STATUS_LABEL, STAKEHOLDER_STATUS_LABEL } from "./types";
+import {
+  CreateEngagementDialog, CreateFindingDialog, CreateNeedDialog, CreatePersonaDialog, CreateStakeholderDialog,
+  CreateStakeholderGroupDialog,
+} from "./CreateLinkedRecordDialogs";
 import { EngagementDetailPage } from "./EngagementDetailPage";
 import { EngagementStalenessReportView } from "./EngagementStalenessReportView";
 import { NeedDetailPage } from "./NeedDetailPage";
@@ -52,8 +56,20 @@ import { STAKEHOLDER_SCORING_SCHEME } from "./useStakeholderScheme";
  *   `ScoringSchemeEditor` (org) and `ProjectScoringSettings` (project), the
  *   same way Context & Strategy configures Pain Point scoring (configuration).
  */
+
+/** The Persona and Stakeholder settings share one expandable entry in the project and organisation admin menus. */
+const STAKEHOLDER_ADMIN_GROUP = { key: "stakeholders", label: "Personas and Stakeholders" };
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "stakeholders",
+  linkedRecordCreators: {
+    persona: { label: "Persona", render: (props) => createElement(CreatePersonaDialog, props) },
+    stakeholder: { label: "Stakeholder", render: (props) => createElement(CreateStakeholderDialog, props) },
+    stakeholder_group: { label: "Stakeholder Group", render: (props) => createElement(CreateStakeholderGroupDialog, props) },
+    stakeholder_need: { label: "Stakeholder Need", render: (props) => createElement(CreateNeedDialog, props) },
+    engagement: { label: "Engagement", render: (props) => createElement(CreateEngagementDialog, props) },
+    research_finding: { label: "Finding", render: (props) => createElement(CreateFindingDialog, props) },
+  },
   artefactPaths: {
     persona: (projectId, id) => `/projects/${projectId}/modules/stakeholders/personas/${id}`,
     stakeholder: (projectId, id) => `/projects/${projectId}/modules/stakeholders/stakeholders/${id}`,
@@ -132,16 +148,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "stakeholders-persona-types",
       label: "Persona Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgPersonaTypesPanel, { orgId }),
     },
     {
       key: "stakeholders-stakeholder-types",
       label: "Stakeholder Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgStakeholderTypesPanel, { orgId }),
     },
     {
       key: "stakeholders-stakeholder-scoring",
       label: "Stakeholder Scoring",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: STAKEHOLDER_SCORING_SCHEME }),
     },
   ],
@@ -149,16 +168,19 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "stakeholders-persona-types",
       label: "Persona Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectPersonaTypesPanel, { projectId }),
     },
     {
       key: "stakeholders-stakeholder-types",
       label: "Stakeholder Types",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectStakeholderTypesPanel, { projectId }),
     },
     {
       key: "stakeholders-stakeholder-scoring",
       label: "Stakeholder Scoring",
+      group: STAKEHOLDER_ADMIN_GROUP,
       render: ({ projectId }) =>
         createElement(ProjectScoringSettings, { projectId, schemeKey: STAKEHOLDER_SCORING_SCHEME }),
     },

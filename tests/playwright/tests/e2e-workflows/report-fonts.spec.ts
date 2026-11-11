@@ -65,7 +65,8 @@ test("a server admin hides a provided report font from authors, renames it for W
   await row.getByRole("button", { name: "Settings: Liberation Mono" }).click();
   const name = page.getByRole("textbox", { name: "Name in Word and OpenDocument" });
   await name.fill("Courier Prime");
-  await name.blur();
+  // Typed text has its own Save; leaving the field saves nothing.
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(row).toContainText("Word and OpenDocument name: Courier Prime");
   await page.keyboard.press("Escape");
 

@@ -14,6 +14,12 @@
  * type whose module is off simply offers no records. Three fields is a lot for a
  * page that has several lists, so the form lives in a `Modal` behind a (+) button
  * and the list is a row of chips.
+ *
+ * "Create new" beside the record picker opens the owning module's own create dialog
+ * (`modules/linkedRecordCreators`, the one the Links panel uses) and records the outcome once
+ * the record exists, so a person never leaves the page. It is offered only for a type the
+ * server says the caller may create (`loadCreatableTypes`); the outcome link is made in
+ * addition to any quick links the dialog collected.
  */
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -26,8 +32,9 @@ import { RecordFieldGroup } from "../../components/RecordDetailParts";
 import { RemovableItemList } from "../../components/RemovableItemList";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
 import { getArtefactPath } from "../artefactPaths";
+import { getLinkedRecordCreator } from "../linkedRecordCreators";
 import type { OutcomeApi } from "./api";
-import type { EngagementOutcome, OutcomeKind, OutcomeTarget, OutcomeTargetType } from "./types";
+import type { EngagementOutcome, OutcomeKind, OutcomeTarget, OutcomeTargetType, OutcomeTargetTypeAccess } from "./types";
 import { OUTCOME_KIND_LABEL, OUTCOME_TARGET_TYPE_LABEL } from "./types";
 import { FormActions } from "../../components/FormActions";
 import { FormGrid } from "../../components/FormGrid";
@@ -45,18 +52,24 @@ function targetTypeLabel(targetType: string): string {
 export function EngagementOutcomesPanel({
   heading = "Raised and answered",
   projectId,
+  holderType,
   holderId,
   api,
   loadTargets,
+  loadCreatableTypes,
   onChanged,
 }: {
   heading?: string;
   projectId: string;
+  /** The holder's registered artefact type (`engagement` or `research_finding`), handed to a create dialog as the page record. */
+  holderType: string;
   /** The engagement or finding the outcomes belong to. */
   holderId: string;
   api: OutcomeApi;
   /** The project's records of a type, for the picker. */
   loadTargets: (targetType: OutcomeTargetType) => Promise<OutcomeTarget[]>;
+  /** The target types with whether the caller may create one; a type not flagged is not offered "Create new". */
+  loadCreatableTypes: () => Promise<OutcomeTargetTypeAccess[]>;
   /** Called after an outcome is added or removed, so a page's Links panel can refresh. */
   onChanged?: () => void;
 }) {
@@ -69,6 +82,8 @@ export function EngagementOutcomesPanel({
   const [removing, setRemoving] = useState<EngagementOutcome | null>(null);
   const [adding, setAdding] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [creatable, setCreatable] = useState<Set<string>>(new Set());
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -88,6 +103,18 @@ export function EngagementOutcomesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetType]);
 
+  useEffect(() => {
+    let active = true;
+    loadCreatableTypes()
+      .then((rows) => active && setCreatable(new Set(rows.filter((r) => r.can_create).map((r) => r.type))))
+      .catch(() => active && setCreatable(new Set()));
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  const creator = creatable.has(targetType) ? getLinkedRecordCreator(targetType) : null;
   const typeOptions = kind === "answered" ? ANSWERABLE_TYPE_OPTIONS : ALL_TYPE_OPTIONS;
   const linked = new Set((outcomes ?? []).filter((o) => o.kind === kind).map((o) => o.target_id));
   const candidates = targets.filter((t) => !linked.has(t.id)).map((t) => ({ value: t.id, label: t.label }));
@@ -152,6 +179,13 @@ export function EngagementOutcomesPanel({
               />
               <LabeledSelect helpNotNeeded required label="Outcome record" value={picked} onChange={setPicked} options={candidates} placeholder="Choose…" />
             </FormGrid>
+            {creator && (
+              <div>
+                <button type="button" className="btn btn-sm" aria-haspopup="dialog" onClick={() => setCreating(true)}>
+                  {`Create new ${OUTCOME_TARGET_TYPE_LABEL[targetType]}`}
+                </button>
+              </div>
+            )}
             <FormActions
               onCancel={() => setAdding(false)}
               onSave={() => {
@@ -166,6 +200,17 @@ export function EngagementOutcomesPanel({
           </div>
         </Modal>
       )}
+      {adding && creating && creator?.render({
+        projectId,
+        pageRecord: { type: holderType, id: holderId },
+        onCreated: (id) => {
+          setCreating(false);
+          setAdding(false);
+          setPicked("");
+          void mutate(() => api.add(projectId, holderId, kind, targetType, id), "Outcome recorded.", "The record was created, but the outcome could not be recorded.");
+        },
+        onCancel: () => setCreating(false),
+      })}
       {removing && (
         <ConfirmDialog
           title={`Remove ${removing.label}?`}

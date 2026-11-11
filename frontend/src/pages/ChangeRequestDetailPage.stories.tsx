@@ -96,6 +96,18 @@ export const DraftShowsSubmitAndWithdraw: Story = {
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Add password reset flow" })).toBeInTheDocument());
     await expect(canvas.getByRole("button", { name: "Submit" })).toBeInTheDocument();
     await expect(canvas.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "← Change requests" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/change-requests`);
+  },
+};
+
+/** A record that cannot be loaded says so, instead of leaving the spinner up. */
+export const UnavailableChangeRequestShowsNotFound: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockRejectedValue(new Error("Not found"));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Not found")).toBeInTheDocument());
   },
 };
 
@@ -436,7 +448,7 @@ export const GroupAssignedTasksFollowTheServersSaidCanMarkDone: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Mine via the group")).toBeInTheDocument());
     await expect(canvas.getByText("Review Board")).toBeInTheDocument();
-    await expect(canvas.getAllByText(/Org group/).length).toBeGreaterThan(0);
+    await expect(canvas.getAllByText(/Organisation group/).length).toBeGreaterThan(0);
     const [mine, others] = canvas.getAllByRole("checkbox");
     await expect(mine).toBeEnabled();
     await expect(others).toBeDisabled();

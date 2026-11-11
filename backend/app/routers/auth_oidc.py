@@ -32,7 +32,7 @@ from app.database import get_db
 from app.deps import get_client_ip
 from app.models.organization import Organization
 from app.security import create_access_token, create_oidc_state_token, decode_access_token
-from app.services import oidc_client
+from app.services import credential_reset, oidc_client
 from app.services.audit import log_event, log_login
 from app.services.invites import consume_pending_invites
 from app.services.oidc_provisioning import (
@@ -62,6 +62,7 @@ def start_oidc_login(
     slug: str,
     client_nonce: str = Query(..., min_length=16, max_length=256),
     client: str = Query("app", pattern="^(app|mcp)$"),
+    request_ip: str = Depends(get_client_ip),
     db: Session = Depends(get_db),
 ):
     """Redirects the browser to the organisation's configured identity
@@ -82,11 +83,19 @@ def start_oidc_login(
     values by the `pattern` validation above; never an arbitrary caller-
     supplied redirect target.
     """
+    credential_reset.enforce_oidc_start_rate_limit(request_ip)
     org = _get_sso_org_by_slug(db, slug)
-    discovery = oidc_client.discover(org.oidc_issuer_url)
-    state = create_oidc_state_token(str(org.id), client_nonce, client=client)
+    if org.oidc_issuer_url is None or org.oidc_client_id is None:  # `_get_sso_org_by_slug` has already refused this
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "SSO is not configured for this organisation.")
+    org_id, issuer_url, client_id = str(org.id), org.oidc_issuer_url, org.oidc_client_id
+    db.rollback()  # the network call below can take seconds on a host the tenant chose: do not hold a connection for it
+    try:
+        discovery = oidc_client.discover(issuer_url)
+    except ValueError:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "The identity provider is unavailable.") from None
+    state = create_oidc_state_token(org_id, client_nonce, client=client)
     authorize_url = oidc_client.build_authorize_url(
-        discovery, client_id=org.oidc_client_id, redirect_uri=_redirect_uri(), state=state,
+        discovery, client_id=client_id, redirect_uri=_redirect_uri(), state=state,
     )
     return RedirectResponse(authorize_url, status_code=status.HTTP_302_FOUND)
 
@@ -129,8 +138,8 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
     if org is None or not org.sso_enabled or not org.oidc_issuer_url or not org.oidc_client_id:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "SSO is not configured for this organisation.")
 
-    discovery = oidc_client.discover(org.oidc_issuer_url)
     try:
+        discovery = oidc_client.discover(org.oidc_issuer_url)
         tokens = oidc_client.exchange_code_for_tokens(
             discovery, client_id=org.oidc_client_id, client_secret=org.oidc_client_secret or "",
             redirect_uri=_redirect_uri(), code=code,
@@ -140,7 +149,7 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
         )
     except (KeyError, ValueError) as exc:
         log_login(
-            db, user_id=None, email_attempted=f"(oidc login failed: {org.slug})", ip_address=request_ip, success=False,
+            db, user_id=None, email_attempted=f"(oidc login failed: {org.slug})", ip_address=request_ip, success=False, kind="sso"
         )
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"SSO login failed: {exc}") from exc
@@ -154,7 +163,7 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
         log_event(db, entity_type="organization", entity_id=org.id, action="oidc_login_denied_not_provisioned",
                   actor_id=None, organization_id=org.id, detail={"subject": claims.get("sub"), "email": claims.get("email")})
         log_login(
-            db, user_id=None, email_attempted=claims.get("email") or "(unknown)", ip_address=request_ip, success=False,
+            db, user_id=None, email_attempted=claims.get("email") or "(unknown)", ip_address=request_ip, success=False, kind="sso"
         )
         db.commit()
         message = f"{org.name} has not provisioned you access."
@@ -174,7 +183,7 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
         db.rollback()
         log_event(db, entity_type="organization", entity_id=org.id, action="oidc_login_denied_link_refused",
                   actor_id=None, organization_id=org.id, detail={"subject": claims.get("sub")})
-        log_login(db, user_id=None, email_attempted=claims.get("email") or "(unknown)", ip_address=request_ip, success=False)
+        log_login(db, user_id=None, email_attempted=claims.get("email") or "(unknown)", ip_address=request_ip, success=False, kind="sso")
         db.commit()
         message = f"{org.name} has not provisioned you access."
         return RedirectResponse(
@@ -198,7 +207,7 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
         # so no such grant is ever committed for a rejected login.
         log_event(db, entity_type="user", entity_id=user.id, action="oidc_login_denied_inactive",
                   actor_id=None, organization_id=org.id)
-        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False)
+        log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=False, kind="sso")
         db.commit()
         message = "This account has been deactivated."
         return RedirectResponse(
@@ -219,7 +228,7 @@ def oidc_callback(code: str, state: str, request_ip: str = Depends(get_client_ip
     sync_org_groups_from_claims(db, user, org, claims)
     log_event(db, entity_type="user", entity_id=user.id, action="oidc_login",
               actor_id=user.id, organization_id=org.id, detail={"issuer": org.oidc_issuer_url})
-    log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True)
+    log_login(db, user_id=user.id, email_attempted=user.email, ip_address=request_ip, success=True, kind="sso")
     db.commit()
 
     app_token = create_access_token(str(user.id), token_version=user.token_version)

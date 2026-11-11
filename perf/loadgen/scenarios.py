@@ -34,6 +34,17 @@ SEARCH_WORDS = ("controller", "sensor", "interface", "recover", "audit", "gatewa
 TAG_WORDS = ("safety", "security", "performance", "usability", "regulatory")
 ATTACHMENT_BYTES = 256 * 1024
 LONG_TIMEOUT = 600
+
+#: The figures of the built-in overview layout (`services/overview_widgets.py`'s `default_layout`), one reference per widget.
+OVERVIEW_SPECS = [
+    {"id": widget_id, "metric": metric, "params": {}}
+    for widget_id, metric in (
+        ("percent-complete", "requirement_completed_percent"), ("file-count", "file_count"),
+        ("cr-proposed", "change_requests_proposed"), ("cr-approved", "change_requests_approved"),
+        ("cr-rejected", "change_requests_rejected"), ("requirements-by-status", "requirements_by_status"),
+        ("change-requests", "change_requests_by_outcome"), ("stage-progress", "stage_progress"), ("record-totals", "records_by_type"),
+    )
+]
 CAPACITY_TIMEOUT = 30
 #: The failure message of a request the server throttled on purpose; `run.py` reports these apart from failures.
 THROTTLED = "throttled"
@@ -76,6 +87,15 @@ class PerfUser(HttpUser):
     def get(self, path: str, name: str, **kwargs):
         """GET with the endpoint template as the statistics name."""
         return self.client.get(path, name=name, **kwargs)
+
+    def overview(self, query: str, label: str, **kwargs) -> None:
+        """Loads the project overview the way the page does: the layout, then every built-in widget's figure in one
+        batched request (`routers/overview_widgets.py`)."""
+        self.get(f"{self.base}/overview-layout", f"GET /projects/{{id}}/overview-layout {label}", **kwargs)
+        self.client.post(
+            f"{self.base}/overview-metrics{query}", json={"metrics": OVERVIEW_SPECS},
+            name=f"POST /projects/{{id}}/overview-metrics {label}", **kwargs,
+        )
 
     def typed(self, exclude: tuple = ("requirement",)) -> list[str]:
         """Record types this project has sampled records of (the manifest's `record_types`), except `exclude`."""
@@ -125,7 +145,7 @@ class Browse(PerfUser):
 
     @task(3)
     def dashboard(self) -> None:
-        self.get(f"{self.base}/metrics", "GET /projects/{id}/metrics (dashboard)")
+        self.overview("", "(dashboard)")
 
     @task(2)
     def tag_usage(self) -> None:
@@ -395,7 +415,7 @@ class ProjectScope(PerfUser):
 
     @task(1)
     def widened_dashboard(self) -> None:
-        self.get(f"{self.base}/metrics?project_scope=children", "GET /projects/{id}/metrics (project_scope=children)", timeout=LONG_TIMEOUT)
+        self.overview("?project_scope=children", "(project_scope=children)", timeout=LONG_TIMEOUT)
 
 
 class _TypeReads(PerfUser):

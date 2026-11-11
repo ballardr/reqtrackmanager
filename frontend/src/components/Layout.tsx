@@ -1,26 +1,33 @@
-import { BarChart3, Bell, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
-import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { BarChart3, Building2, CalendarClock, CheckSquare, Clock, Files, History, HelpCircle, Layers, LayoutDashboard, ListChecks, Settings, LogOut, GitPullRequest, FolderKanban, PanelLeftClose, PanelLeftOpen, Star, Wrench } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 
-import { api, fileUrl } from "../api/client";
-import type { SystemVersion } from "../api/types";
+import { fileUrl } from "../api/client";
 import builtInLogo from "../assets/logo.svg";
 import { useAuth } from "../context/AuthContext";
 import { BrandingProvider, useBranding, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { FavouritesProvider, useFavourites } from "../context/FavouritesContext";
+import { NavLabelProvider } from "../context/NavLabelContext";
+import { useNavLabeler } from "../context/NavLabelValue";
+import { PolicyAcceptanceProvider } from "../context/PolicyAcceptanceContext";
 import { TerminologyProvider, useStrings } from "../context/TerminologyContext";
 import { useClientConfig } from "../hooks/useClientConfig";
+import { useHasReviewsDue } from "../hooks/useHasReviewsDue";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useServerAccess } from "../hooks/useServerAccess";
 import { useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
+import { useProjectHasStages } from "../hooks/useProjectHasStages";
 import { useUiPreference } from "../hooks/useUiPreference";
 import { resolveNavIcon } from "../modules/navIcons";
 import type { ProjectNavItem } from "../navigation/projectNav";
 import { installedModules } from "../modules/registry";
-import { APP_VERSION, BUILD_DATE, GIT_SHA } from "../version";
+import { AnnouncementBanner } from "./AnnouncementBanner";
+import { AppFooter } from "./AppFooter";
 import { HeaderSearch } from "./HeaderSearch";
 import { NotificationBell } from "./NotificationBell";
 import { ReportRunsIndicator } from "./ReportRunsIndicator";
 import { NavRailLink } from "./NavRailLink";
+import { PolicyAcceptNotice } from "./PolicyAcceptNotice";
 import { ProjectNavSection } from "./ProjectNavSection";
 import { Tooltip } from "./Tooltip";
 
@@ -70,9 +77,13 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <TerminologyProvider projectId={projectId}>
       <BrandingProvider projectId={projectId}>
-        <FavouritesProvider>
-          <LayoutShell>{children}</LayoutShell>
-        </FavouritesProvider>
+        <NavLabelProvider projectId={projectId}>
+          <FavouritesProvider>
+            <PolicyAcceptanceProvider>
+              <LayoutShell>{children}</LayoutShell>
+            </PolicyAcceptanceProvider>
+          </FavouritesProvider>
+        </NavLabelProvider>
       </BrandingProvider>
     </TerminologyProvider>
   );
@@ -81,6 +92,7 @@ export function Layout({ children }: { children: ReactNode }) {
 function LayoutShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const strings = useStrings();
+  const navLabel = useNavLabeler();
   const location = useLocation();
   const [railCollapsed, setRailCollapsed] = useUiPreference<boolean>("nav_rail_collapsed", false);
   const isNarrowViewport = useNarrowViewport(MOBILE_BREAKPOINT_PX);
@@ -96,12 +108,16 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // Reactive to a favourite being toggled anywhere in the app, not just on
   // arrival at /projects or /favourites — see `FavouritesContext`.
   const { hasFavourites } = useFavourites();
-  const [backendVersion, setBackendVersion] = useState<SystemVersion | null>(null);
+  const hasReviewsDue = useHasReviewsDue(!!user);
+  const serverAccess = useServerAccess(!!user);
+  const showServerManagement = !!serverAccess && (serverAccess.can_administer_server || serverAccess.can_manage_entitlements);
   const clientConfig = useClientConfig(!!user);
 
   const projectMatch = location.pathname.match(/^\/projects\/([^/]+)/);
   const projectId = projectMatch ? projectMatch[1] : null;
   const { modules: enabledModules } = useProjectEnabledModules(projectId);
+  // Delivery status has nothing to show until the project goes beyond its default stage, so its entry waits for that.
+  const hasStages = useProjectHasStages(projectId ?? null);
   // Every installed module's own top-level nav links (`globalNavItems`) and
   // "standalone workspace" nav sections (`standaloneWorkspaces`,
   // `modules/types.ts`) — a generic mechanism a module registers into
@@ -136,12 +152,12 @@ function LayoutShell({ children }: { children: ReactNode }) {
   // the user's order/"More" preference to this list without knowing what any item is.
   const projectNavItems: ProjectNavItem[] = projectId
     ? [
-        { key: "overview", to: `/projects/${projectId}`, exact: true, label: strings.nav.overview, icon: <LayoutDashboard size={16} /> },
-        { key: "requirements", to: `/projects/${projectId}/requirements`, label: strings.nav.requirements, icon: <ListChecks size={16} /> },
-        { key: "change-requests", to: `/projects/${projectId}/change-requests`, label: strings.nav.changeRequests, icon: <GitPullRequest size={16} /> },
-        { key: "actions", to: `/projects/${projectId}/actions`, label: strings.nav.actions, icon: <CheckSquare size={16} /> },
-        { key: "files", to: `/projects/${projectId}/files`, label: strings.files.title, icon: <Files size={16} /> },
-        { key: "reviews-due", to: `/projects/${projectId}/reviews-due`, label: strings.reviews.projectTitle, icon: <Clock size={16} /> },
+        { key: "overview", to: `/projects/${projectId}`, exact: true, label: navLabel(`/projects/${projectId}`, strings.nav.overview), icon: <LayoutDashboard size={16} /> },
+        { key: "requirements", to: `/projects/${projectId}/requirements`, label: navLabel(`/projects/${projectId}/requirements`, strings.nav.requirements), icon: <ListChecks size={16} /> },
+        { key: "change-requests", to: `/projects/${projectId}/change-requests`, label: navLabel(`/projects/${projectId}/change-requests`, strings.nav.changeRequests), icon: <GitPullRequest size={16} /> },
+        { key: "actions", to: `/projects/${projectId}/actions`, label: navLabel(`/projects/${projectId}/actions`, strings.nav.actions), icon: <CheckSquare size={16} /> },
+        { key: "files", to: `/projects/${projectId}/files`, label: navLabel(`/projects/${projectId}/files`, strings.files.title), icon: <Files size={16} /> },
+        { key: "reviews-due", to: `/projects/${projectId}/reviews-due`, label: navLabel(`/projects/${projectId}/reviews-due`, strings.reviews.projectTitle), icon: <Clock size={16} /> },
         ...enabledModules.flatMap((moduleEntry) => {
           const manifest = moduleEntry.frontend_manifest;
           if (!manifest) return [];
@@ -164,23 +180,23 @@ function LayoutShell({ children }: { children: ReactNode }) {
             return {
               key: `${moduleEntry.module_key}:${entry.nav_path}`,
               to: entry.nav_path,
-              label: entry.nav_label,
+              label: navLabel(entry.nav_path, entry.nav_label),
               icon: <EntryIcon size={16} />,
             };
           });
         }),
-        { key: "history", to: `/projects/${projectId}/history`, label: strings.history.title, icon: <History size={16} /> },
-        { key: "admin", to: `/projects/${projectId}/admin`, label: strings.nav.admin, icon: <Settings size={16} /> },
+        ...(hasStages
+          ? [{ key: "stage-phases", to: `/projects/${projectId}/stage-phases`, label: navLabel(`/projects/${projectId}/stage-phases`, strings.stagePhases.title), icon: <Layers size={16} /> }]
+          : []),
+        { key: "history", to: `/projects/${projectId}/history`, label: navLabel(`/projects/${projectId}/history`, strings.history.title), icon: <History size={16} /> },
+        { key: "admin", to: `/projects/${projectId}/admin`, label: navLabel(`/projects/${projectId}/admin`, strings.nav.admin), icon: <Settings size={16} /> },
       ]
     : [];
 
-  useEffect(() => {
-    if (!user) return;
-    api.get<SystemVersion>("/api/v1/system/version").then(setBackendVersion);
-  }, [user]);
-
   return (
     <div style={{ minHeight: "100%" }}>
+      {user && <AnnouncementBanner organizationId={branding.organizationId} />}
+      {user && <PolicyAcceptNotice />}
       <header className="app-header" style={{ justifyContent: "space-between" }}>
         <Link
           to="/projects"
@@ -250,16 +266,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
               activeStandaloneWorkspace.render({ entityId: activeStandaloneWorkspace.entityId, railCollapsed: railIconOnly })}
             <div className="nav-section-label">Global</div>
             <NavRailLink to="/projects" exact label={strings.nav.projects} icon={<FolderKanban size={16} />} railCollapsed={railIconOnly} />
-            {/* "Organisation Overview" — a core, always-visible
-                nav-rail link (unlike the module-contributed
-                nav links below, this one carries general-purpose org stats every org
-                has regardless of compliance, so it's shown unconditionally,
-                the same precedent as the always-shown Projects link above —
-                see docs/decisions.md's "Compliance module, human review
-                follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
-                single-org/multi-org auto-redirect convention as its entry
-                point, the same way `/orgs` already does for org admin. */}
-            <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
+            {/* "Files" — the files of every project the person can open in their organisation. Shown to every
+                member, as the page is (it lists only files the caller may see); `/org-files` resolves the
+                organisation the way `/org-overview` does, and the entry stays active on the page itself. */}
+            <NavRailLink to="/org-files" exact alsoActiveOn={/^\/orgs\/[^/]+\/files(\/|$)/} label={strings.files.title} icon={<Files size={16} />} railCollapsed={railIconOnly} />
             {/* Module-contributed top-level nav links ("Compliance
                 Standards" is the first one) — each item owns its own
                 visibility and may render nothing at all; see this file's own
@@ -270,40 +280,41 @@ function LayoutShell({ children }: { children: ReactNode }) {
             {hasFavourites && (
               <NavRailLink to="/favourites" exact label={strings.nav.favourites} icon={<Star size={16} />} railCollapsed={railIconOnly} />
             )}
-            <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
-            <NavRailLink to="/notifications" exact label={strings.notifications.title} icon={<Bell size={16} />} railCollapsed={railIconOnly} />
+            {/* Shown only when a review is due (`useHasReviewsDue`); the page stays reachable by address and from
+                notifications. The full Notifications page has no entry here: the header bell links to it. */}
+            {hasReviewsDue && (
+              <NavRailLink to="/my-reviews" label={strings.nav.myReviews} icon={<CalendarClock size={16} />} railCollapsed={railIconOnly} />
+            )}
+            {/* "Organisation Overview" — a core, always-visible
+                nav-rail link (unlike the module-contributed
+                nav links above, this one carries general-purpose org stats every org
+                has regardless of compliance, so it's shown unconditionally,
+                the same precedent as the always-shown Projects link above —
+                see docs/decisions.md's "Compliance module, human review
+                follow-ups" entry). `/org-overview` reuses `OrgListPage`'s own
+                single-org/multi-org auto-redirect convention as its entry
+                point, the same way `/orgs` already does for org admin. */}
+            <NavRailLink to="/org-overview" exact label={strings.nav.orgOverview(orgLabelCap)} icon={<BarChart3 size={16} />} railCollapsed={railIconOnly} />
             {/* The only path to org administration: /orgs already auto-redirects
                 straight to a single org's admin page, or lists every org a
                 user belongs to otherwise — it just had no rail entry before
                 this, for anyone but a server admin drilling in through
                 /server/organisations. See docs/ux-style-guide.md, "Pattern:
                 wayfinding". */}
-            <NavRailLink to="/orgs" exact label={strings.nav.myOrganizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
-            {user.is_server_admin && (
+            <NavRailLink to="/orgs" exact label={strings.nav.orgSettings(orgLabelCap)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+            {/* Each entry shows only to someone the server says may use it (`useServerAccess`): a Platform
+                subscription manager or Subscription removal authority sees Organisations, a Module administrator
+                sees Server management (Modules only), a server administrator sees both. */}
+            {serverAccess && (serverAccess.can_view_organizations || showServerManagement) && (
               <>
                 <div className="nav-section-label">Administration</div>
-                <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
-                <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
+                {serverAccess.can_view_organizations && (
+                  <NavRailLink to="/server/organisations" label={strings.orgAdmin.organizations(orgLabelPlural)} icon={<Building2 size={16} />} railCollapsed={railIconOnly} />
+                )}
+                {showServerManagement && (
+                  <NavRailLink to="/server/management" label={strings.nav.serverManagement} icon={<Wrench size={16} />} railCollapsed={railIconOnly} />
+                )}
               </>
-            )}
-            {/* Build identity — "a way to see the version and date of the
-                frontend and backend in the UI".
-                Pinned to the bottom of the rail via `marginTop: auto` on the
-                flex-column `<nav>`; hidden in icon-only mode rather than
-                squeezed into it, same as every other rail label. The sha/date
-                detail lives in `title` (plain hover text, not the shared
-                `Tooltip`) since this is supplementary static text, not an
-                interactive control needing an accessible name. */}
-            {!railIconOnly && (
-              <div
-                className="text-muted"
-                style={{ marginTop: "auto", paddingTop: "var(--space-4)", fontSize: "0.7rem", lineHeight: 1.6 }}
-              >
-                <div title={strings.nav.frontendBuildDetail(GIT_SHA, BUILD_DATE)}>{strings.nav.frontendVersion(APP_VERSION)}</div>
-                <div title={backendVersion ? strings.nav.backendBuildDetail(backendVersion.git_sha, backendVersion.build_date) : undefined}>
-                  {backendVersion ? strings.nav.backendVersion(backendVersion.version) : strings.nav.backendVersionLoading}
-                </div>
-              </div>
             )}
           </div>
         </nav>
@@ -324,7 +335,10 @@ function LayoutShell({ children }: { children: ReactNode }) {
         </Tooltip>
       )}
       <main className={`app-content${contentBoxed ? " boxed" : ""}`}>
-        {contentBoxed ? <div className="content-inner">{children}</div> : children}
+        <div className="app-content-body">
+          {contentBoxed ? <div className="content-inner">{children}</div> : children}
+        </div>
+        <AppFooter />
       </main>
     </div>
   );

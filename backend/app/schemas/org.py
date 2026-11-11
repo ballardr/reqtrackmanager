@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.code_rules import ABSOLUTE_MAX_CODE_LENGTH
 from app.models.enums import ExternalUserPolicy, OrgRole, ProjectRole
+from app.services.branding import FOOTER_POSITIONS
 from app.services.report_colours import palette_problems
 
 
@@ -91,6 +92,8 @@ class CodePolicyOut(BaseModel):
     min_length: int
     max_length: int
     assignment: Literal["auto", "manual"]
+    # Only an organisation administrator may change a code after creation.
+    locked: bool = False
 
 
 class OrgCodePolicyUpdate(CodePolicyOut):
@@ -150,6 +153,12 @@ class OrganizationOut(BaseModel):
     is_active: bool = True
     disabled_at: datetime | None = None
     accent_color_hex: str | None = None
+    #: The organisation's logo band colour (`None` = follow the platform value).
+    logo_band_color_hex: str | None = None
+    #: The organisation's title colour on the band (`None` = follow the platform value, then automatic).
+    logo_band_text_color_hex: str | None = None
+    #: Where the footer of this organisation's sign-in page sits (`None` = follow the platform value).
+    footer_position: str | None = None
     #: The organisation's report accent colour (`None` = follow the UI accent) and whether its logo is on reports.
     report_accent_color_hex: str | None = None
     report_include_logo: bool = True
@@ -172,6 +181,49 @@ class OrganizationOut(BaseModel):
     # on, otherwise their own toggle would silently be a no-op. See
     # `Organization.allow_ai_approvals`'s model docstring.
     allow_ai_approvals: bool = False
+    #: Whether the organisation may store new files (the operator's switch for this tenant; the deployment-wide switch
+    #: is `GET /system/branding`). Readable by every member so upload controls can explain themselves.
+    file_uploads_enabled: bool = True
+
+
+class OrgStorageOut(BaseModel):
+    """An organisation's storage rules and usage (`GET /orgs/{id}/storage`).
+
+    Attributes:
+        file_uploads_enabled: The organisation's own switch.
+        deployment_uploads_enabled: The deployment-wide switch, which takes precedence.
+        storage_quota_bytes: The organisation's own limit; None means it follows the server default.
+        default_storage_quota_bytes: The server default limit; None means none.
+        effective_quota_bytes: The limit that applies (own, else default), or None.
+        quota_source: "organization", "server" or None.
+        used_bytes: Stored files plus stored report-run outputs.
+        file_count: The number of stored files.
+        warning: True when usage is at or above the warning level of the effective limit.
+        can_edit: Whether the caller may change the rules (server administrator or Platform subscription manager).
+    """
+
+    file_uploads_enabled: bool
+    deployment_uploads_enabled: bool
+    storage_quota_bytes: int | None
+    default_storage_quota_bytes: int | None
+    effective_quota_bytes: int | None
+    quota_source: str | None
+    used_bytes: int
+    file_count: int
+    warning: bool
+    can_edit: bool
+
+
+class OrgStorageUpdate(BaseModel):
+    """The storage rules a Platform subscription manager or server administrator sets for an organisation.
+
+    Attributes:
+        file_uploads_enabled: Whether the organisation may store new files.
+        storage_quota_bytes: The organisation's own limit in bytes; None follows the server default.
+    """
+
+    file_uploads_enabled: bool
+    storage_quota_bytes: int | None = Field(default=None, ge=0)
 
 
 class OrgImportResult(BaseModel):
@@ -238,9 +290,13 @@ class OrgBrandingUpdate(BaseModel):
     """Sets (or clears, with a null value) this organisation's UI accent
     colour, header wordmark override, and outgoing-email footer identity
     (`email_footer_*`). All fall back to the platform default
-    (`ServerSettings`) when null."""
+    (`ServerSettings`) when null. A partial update: a field not sent is left
+    as it is, a field sent as null is cleared."""
 
     accent_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    logo_band_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    logo_band_text_color_hex: str | None = Field(default=None, pattern=_HEX_COLOR_PATTERN)
+    footer_position: str | None = None
     header_title: str | None = Field(default=None, max_length=100)
     email_footer_company_name: str | None = Field(default=None, max_length=255)
     email_footer_website: str | None = Field(default=None, max_length=500)
@@ -258,6 +314,13 @@ class OrgBrandingUpdate(BaseModel):
             problems = palette_problems([e.model_dump() for e in value], "report_colour_scheme")
             if problems:
                 raise ValueError(problems[0][1])
+        return value
+
+    @field_validator("footer_position")
+    @classmethod
+    def _known_footer_position(cls, value: str | None) -> str | None:
+        if value is not None and value not in FOOTER_POSITIONS:
+            raise ValueError("Unknown footer position.")
         return value
 
     @field_validator("header_title", "email_footer_company_name", "email_footer_website", "email_footer_address")
@@ -289,6 +352,8 @@ class OrgAdvancedSettingsOut(BaseModel):
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = None
     report_output_retention_days: int | None = None
+    #: Age in days after which an unused imported person is offered for removal; `None` never offers one.
+    imported_person_retention_days: int | None = None
     report_file_name: str | None = None
     #: The report look the Configuration section sets (the accent and logo are on the Branding page).
     report_footer_text: str | None = None
@@ -304,6 +369,7 @@ class OrgAdvancedSettingsOut(BaseModel):
     allow_relaxed_child_project_creation: bool = True
     force_require_change_request_for_approved_links: bool = False
     allow_ai_approvals: bool = False
+    allow_imported_approval_state: bool = True
 
 
 class OrgAdvancedSettingsUpdate(BaseModel):
@@ -314,6 +380,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     smtp_use_tls: bool = True
     pat_max_lifetime_days: int | None = Field(default=None, ge=1, le=3650)
     report_output_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    imported_person_retention_days: int | None = Field(default=None, ge=1, le=3650)
     report_file_name: str | None = Field(default=None, max_length=200)
     #: Sent only when set: a client that does not know these leaves the report look as it is.
     report_footer_text: str | None = Field(default=None, max_length=500)
@@ -326,6 +393,7 @@ class OrgAdvancedSettingsUpdate(BaseModel):
     allow_relaxed_child_project_creation: bool = True
     force_require_change_request_for_approved_links: bool = False
     allow_ai_approvals: bool = False
+    allow_imported_approval_state: bool = True
 
 
 class ManifestNavEntryOut(BaseModel):
@@ -863,6 +931,7 @@ class OrgSsoConfigUpdate(BaseModel):
     oidc_client_id: str | None = None
     oidc_client_secret: str | None = None
     oidc_required_group: str | None = None
+    oidc_allow_account_creation: bool = True
 
 
 class OrgSsoConfigOut(BaseModel):
@@ -872,6 +941,7 @@ class OrgSsoConfigOut(BaseModel):
     oidc_issuer_url: str | None = None
     oidc_client_id: str | None = None
     oidc_required_group: str | None = None
+    oidc_allow_account_creation: bool = True
 
 
 class ScimTokenStatusOut(BaseModel):
@@ -897,6 +967,12 @@ class OrgLoginInfoOut(BaseModel):
     name: str
     slug: str
     logo_file_id: UUID | None = None
+    #: The resolved band behind the logo (the organisation's, else the platform's, else the top bar colour).
+    logo_band_color_hex: str
+    #: The resolved title colour on the band.
+    logo_band_text_color_hex: str
+    #: The resolved footer position (the organisation's, else the platform's).
+    footer_position: str
     login_background_file_id: UUID | None = None
     sso_enabled: bool
     sso_only: bool
@@ -912,6 +988,9 @@ class OrgProjectSummaryOut(BaseModel):
     id: UUID
     name: str
     is_archived: bool
+    #: Whether the project is a template (a flag, not content), so an organisation administrator can choose the
+    #: default template among every template in the organisation, including ones they hold no role in.
+    is_template: bool = False
 
 
 class OrgOverviewStatsOut(BaseModel):
@@ -932,14 +1011,22 @@ class OrgOverviewStatsOut(BaseModel):
     Known gap (see `get_org_overview_stats`'s own docstring for the full
     reasoning): a scoped (non-admin) caller's `total_file_size_bytes`
     excludes discussion-comment attachments (`CommentFile`) — a strict
-    undercount, never an over-exposure.
+    undercount, never an over-exposure. For the full total the figure is `services.storage_usage.used_bytes` (stored
+    files plus stored report-run outputs), the one measure a storage limit applies to.
     """
 
     project_count: int
+    archived_project_count: int
     requirement_count: int
     member_count: int
     total_file_size_bytes: int
     is_full_org_total: bool
+    #: The effective storage limit (the organisation's own, else the server default); None means none.
+    storage_quota_bytes: int | None = None
+    #: False when the deployment-wide or the organisation's switch stops new files.
+    uploads_enabled: bool = True
+    #: True when stored bytes are at or above the warning level of the limit (only meaningful for the full total).
+    storage_warning: bool = False
 
 
 class DisplayNameLockUpdate(BaseModel):
@@ -1024,3 +1111,28 @@ class UserAccessOut(BaseModel):
 
     org_groups: list[UserAccessGroupRef]
     projects: list[UserAccessProject]
+
+
+class ImportedPersonRowOut(BaseModel):
+    """One imported person of an organisation (a stand-in for someone named in an import bundle).
+
+    Attributes:
+        id: The stand-in's user id.
+        display_name: The name recorded at import ("Former person" once anonymised).
+        created_at: When the first import named them (UTC).
+        in_use: Whether any record, history entry or field still refers to them.
+        due_for_removal: Whether the organisation's retention age has passed and nothing refers to them.
+    """
+
+    id: UUID
+    display_name: str
+    created_at: datetime
+    in_use: bool
+    due_for_removal: bool
+
+
+class ImportedPeopleOut(BaseModel):
+    """The organisation's imported people and its retention age in days (`None` never offers removal)."""
+
+    retention_days: int | None
+    people: list[ImportedPersonRowOut]

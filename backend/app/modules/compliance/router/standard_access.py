@@ -15,10 +15,11 @@ point 2.
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.module_role import GroupModuleRole, UserModuleRole
 from app.models.notification import NotificationType
 from app.models.organization import OrgGroup
@@ -71,8 +72,8 @@ def list_standard_members(
         if user is None:
             continue
         members.append(
-            ComplianceStandardMemberOut(
-                user_id=user_id, display_name=user.display_name, email=user.email, role_keys=role_keys
+            ComplianceStandardMemberOut.model_validate(
+                dict(user_id=user_id, display_name=user.display_name, email=user.email, role_keys=role_keys)
             )
         )
     group_grants = db.scalars(
@@ -83,18 +84,20 @@ def list_standard_members(
         )
     ).all()
     role_keys_by_group: dict[UUID, list[str]] = {}
-    for grant in group_grants:
-        role_keys_by_group.setdefault(grant.org_group_id, []).append(grant.role_key)
+    for group_grant in group_grants:
+        if group_grant.org_group_id is None:
+            continue
+        role_keys_by_group.setdefault(group_grant.org_group_id, []).append(group_grant.role_key)
     group_members = []
     for group_id, role_keys in role_keys_by_group.items():
         group = db.get(OrgGroup, group_id)
         if group is None:
             continue
         group_members.append(
-            ComplianceStandardGroupMemberOut(
+            ComplianceStandardGroupMemberOut.model_validate(dict(
                 org_group_id=group_id, group_name=group.name, role_keys=role_keys,
                 member_count=len(effective_org_group_member_ids(db, group_id)),
-            )
+            ))
         )
     return ComplianceStandardMembersOut(
         group_members=group_members,
@@ -103,7 +106,10 @@ def list_standard_members(
     )
 
 
-@router.post("/standards/{standard_id}/members/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/standards/{standard_id}/members/{user_id}/roles", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def assign_standard_member_role(
     organization_id: UUID, standard_id: UUID, user_id: UUID, payload: ComplianceStandardMemberRoleAssign,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
@@ -151,7 +157,10 @@ def assign_standard_member_role(
         db.commit()
 
 
-@router.delete("/standards/{standard_id}/members/{user_id}/roles/{role_key}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/standards/{standard_id}/members/{user_id}/roles/{role_key}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_standard_member_role(
     organization_id: UUID, standard_id: UUID, user_id: UUID, role_key: str,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
@@ -195,7 +204,7 @@ def revoke_standard_member_role(
                 "before removing the last one.",
             )
     db.execute(
-        UserModuleRole.__table__.delete().where(
+        delete(UserModuleRole).where(
             UserModuleRole.user_id == user_id, UserModuleRole.module_key == "compliance",
             UserModuleRole.role_key == role_key, UserModuleRole.scope_entity_id == standard.id,
         )
@@ -208,7 +217,7 @@ def revoke_standard_member_role(
     db.commit()
 
 
-@router.post("/standards/{standard_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/standards/{standard_id}/group-roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_standard_group_role(
     organization_id: UUID, standard_id: UUID, payload: ComplianceStandardGroupRoleAssign,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
@@ -245,7 +254,10 @@ def assign_standard_group_role(
         db.commit()
 
 
-@router.delete("/standards/{standard_id}/group-roles/{org_group_id}/{role_key}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/standards/{standard_id}/group-roles/{org_group_id}/{role_key}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_standard_group_role(
     organization_id: UUID, standard_id: UUID, org_group_id: UUID, role_key: str,
     current_user: User = Depends(_require_standard_manage), db: Session = Depends(get_db),
@@ -288,7 +300,7 @@ def revoke_standard_group_role(
                 "before removing the last one.",
             )
     db.execute(
-        GroupModuleRole.__table__.delete().where(
+        delete(GroupModuleRole).where(
             GroupModuleRole.org_group_id == org_group_id, GroupModuleRole.module_key == "compliance",
             GroupModuleRole.role_key == role_key, GroupModuleRole.scope_entity_id == standard.id,
         )

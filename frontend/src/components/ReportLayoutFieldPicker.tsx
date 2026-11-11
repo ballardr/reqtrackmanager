@@ -22,6 +22,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { placeholder, type AliasInScope } from "../utils/reportLayoutText";
 import { nameText } from "../utils/reportLayoutTree";
 import { TextField } from "./FormFields";
+import { LabeledSelect } from "./LabeledSelect";
 
 /** The source filter's value for the report and project placeholders. */
 const SOURCE_GLOBAL = "\u0000global";
@@ -103,14 +104,18 @@ export function ReportLayoutFieldPicker({
         <div style={{ flex: 1 }}>
           <TextField helpNotNeeded label={text.fieldsFilter} value={filter} onChange={setFilter} />
         </div>
-        <label className="stack" style={{ gap: "var(--space-1)" }}>
-          <span>{text.fieldsSource}</span>
-          <select className="input" value={sourceValue} onChange={(e) => setSource(e.target.value)}>
-            <option value={SOURCE_ALL}>{text.fieldsSourceAll}</option>
-            <option value={SOURCE_GLOBAL}>{text.fieldsFromGlobal}</option>
-            {aliases.map((a) => <option key={a.name} value={a.name}>{nameText(a)}</option>)}
-          </select>
-        </label>
+        <LabeledSelect
+          helpNotNeeded
+          label={text.fieldsSource}
+          value={sourceValue}
+          placeholder={null}
+          onChange={setSource}
+          options={[
+            { value: SOURCE_ALL, label: text.fieldsSourceAll },
+            { value: SOURCE_GLOBAL, label: text.fieldsFromGlobal },
+            ...aliases.map((a) => ({ value: a.name, label: nameText(a) })),
+          ]}
+        />
       </div>
       {shown.length === 0 ? (
         <p className="text-muted" style={{ margin: 0 }}>{text.fieldsNoMatch}</p>

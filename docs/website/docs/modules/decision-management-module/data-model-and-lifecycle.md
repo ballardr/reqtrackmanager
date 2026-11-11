@@ -36,7 +36,7 @@ flowchart TD
 
 ### Groups as owners
 
-Pick a group in the **Owner** or **Decision maker** field and the Decision shows the group's name, its kind (Org group or Project group) and how many people it stands for. Everyone in the group, including members of groups nested inside it, counts as the owner for the "owner may propose" rule (see [Overview → Roles](./overview.md#roles)); a group never gives anyone an approval or edit right they do not already have. The list has an **Owned by me or my groups** filter. Deleting a group that still owns Decisions is blocked: the admin hands the Decisions to a user or another group first (the owner is required, so it cannot simply be cleared; an unwanted decision maker can).
+Pick a group in the **Owner** or **Decision maker** field and the Decision shows the group's name, its kind (Organisation group or Project group) and how many people it stands for. Everyone in the group, including members of groups nested inside it, counts as the owner for the "owner may propose" rule (see [Overview → Roles](./overview.md#roles)); a group never gives anyone an approval or edit right they do not already have. The list has an **Owned by me or my groups** filter. Deleting a group that still owns Decisions is blocked: the admin hands the Decisions to a user or another group first (the owner is required, so it cannot simply be cleared; an unwanted decision maker can).
 
 A Decision can also carry a discussion thread (comments, with their own file attachments) and direct file attachments, both listable independently of the Decision's own content.
 

@@ -1,25 +1,35 @@
-import { Pencil, Power, Trash2 } from "lucide-react";
+import { HardDrive, Settings, Power, Trash2 } from "lucide-react";
+import { ImportWarnings } from "../components/ImportWarnings";
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { ApiError, api } from "../api/client";
+import { api } from "../api/client";
 import type { Organization, OrgCreationChoice, OrgImportResult } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
+import { BundleImportDialog } from "../components/BundleImportDialog";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import type { DirectoryColumn } from "../components/DirectoryTable";
+import { DirectoryTable } from "../components/DirectoryTable";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { Modal } from "../components/Modal";
+import { OrgStorageDialog } from "../components/OrgStorageDialog";
 import { Spinner } from "../components/Spinner";
+import { cycleSort } from "../components/sortState";
+import { sortRows } from "../utils/sortRows";
+import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
 import { useStrings } from "../context/TerminologyContext";
-import { useToast } from "../context/ToastContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { FormActions } from "../components/FormActions";
 import { FormGrid } from "../components/FormGrid";
-import { FileField, TextField, CheckboxField } from "../components/FormFields";
+import { TextField, CheckboxField } from "../components/FormFields";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
-import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
+import { useServerAccess } from "../hooks/useServerAccess";
+import { useUrlChoice, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
 
 /**
  * Server-admin console listing every organisation on the deployment
@@ -30,6 +40,8 @@ import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
  * - **Disable/enable**: reversible, no data touched — blocks every org/
  *   project-scoped request for everyone, including the org's own admins,
  *   until re-enabled (e.g. a hosting customer stopped paying).
+ * - **Storage**: the organisation's own file upload switch and storage limit, for a Platform subscription manager or
+ *   server administrator (`OrgStorageDialog`).
  * - **Delete**: irreversible, gated behind typing the organisation's exact
  *   name to confirm — permanently removes everything it owns (projects,
  *   requirements, files, ...). See docs/decisions.md's "Organisation
@@ -38,24 +50,33 @@ import { useUrlChoice, useUrlText } from "../hooks/useUrlFilter";
 type StatusFilter = "active" | "disabled" | "all";
 const STATUS_PARAMS: readonly StatusFilter[] = ["disabled", "all"];
 
+type OrgSortKey = "name" | "status" | "created_at";
+const ORG_SORT_KEYS: readonly OrgSortKey[] = ["name", "status", "created_at"];
+
 export function ServerOrganisationsPage() {
   const strings = useStrings();
   const navigate = useNavigate();
   const orgLabel = useOrgLabel();
   const orgLabelCap = useOrgLabelCapitalized();
   const orgLabelPlural = useOrgLabelPlural();
+  // Each action shows only to a caller the server allows it for (`useServerAccess`): a Platform subscription manager
+  // provisions and suspends, a Subscription removal authority deletes, a server administrator does all of them.
+  const access = useServerAccess();
+  const canCreate = !!access?.can_create_organizations;
+  const canDelete = !!access?.can_delete_organizations;
   const [orgs, setOrgs] = useState<Organization[] | null>(null);
   // Search and the status filter live in the URL so the list comes back as it was left after a visit to an organisation.
   const [search, setSearch] = useUrlText("q");
   // Defaults to "active" (C-A-13-adjacent hygiene): a deployment that's
   // been running a while accumulates disabled orgs (non-payment, offboarded
   // customers, ...) that would otherwise dominate a plain, unfiltered list.
+  const [sort, setSort] = useUrlSort(ORG_SORT_KEYS);
   const [statusParam, setStatusParam] = useUrlChoice("status", STATUS_PARAMS);
   const statusFilter: StatusFilter = statusParam || "active";
   const setStatusFilter = (next: StatusFilter) => setStatusParam(next === "active" ? "" : next);
   const [showNewForm, setShowNewForm] = useState(false);
   const [newName, setNewName] = useState("");
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [showImportForm, setShowImportForm] = useState(false);
   // Every registered module's
   // optional org-creation seeding choices (e.g. Decision Management's ADR
   // template packs), fetched once and rendered generically; this page has
@@ -65,12 +86,12 @@ export function ServerOrganisationsPage() {
   const [selectedChoiceKeys, setSelectedChoiceKeys] = useState<Set<string> | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [deletingOrgId, setDeletingOrgId] = useState<string | null>(null);
   // ConfirmDialog (Tier 1) state for disable — converted from
   // `window.confirm` per the sixth-pass audit's "Confirmation and feedback
   // rollout, precisely" list. Delete already uses ConfirmDialog (Tier 2).
   const [disablingOrgId, setDisablingOrgId] = useState<string | null>(null);
+  const [storageOrgId, setStorageOrgId] = useState<string | null>(null);
   const { showToast } = useToast();
 
   async function reload() {
@@ -81,14 +102,16 @@ export function ServerOrganisationsPage() {
 
   useEffect(() => {
     // Fetched once, independent of the modal opening — the checkboxes only
-    // need to be ready by the time a server admin opens the "New Org" form,
-    // and this page's own load is a rare, admin-only action so the extra
-    // request is not worth deferring behind `showNewForm`.
+    // need to be ready by the time the "New Org" form opens, and this page's
+    // own load is a rare, admin-only action so the extra request is not worth
+    // deferring behind `showNewForm`. Only a caller who may create reads it
+    // (a Subscription removal authority is refused).
+    if (!canCreate) return;
     api.get<OrgCreationChoice[]>("/api/v1/orgs/creation-choices").then((choices) => {
       setCreationChoices(choices);
       setSelectedChoiceKeys(new Set(choices.filter((c) => c.default_selected).map((c) => c.key)));
     });
-  }, []);
+  }, [canCreate]);
 
   function toggleChoiceKey(key: string) {
     setSelectedChoiceKeys((prev) => {
@@ -102,23 +125,6 @@ export function ServerOrganisationsPage() {
   async function createOrg() {
     setCreateError(null);
     try {
-      if (importFile) {
-        // Full-fidelity organisation bundle import (`services.org_export`)
-        // — creates a brand-new organisation from an exported bundle
-        // (settings, members, report templates, and every project's
-        // structure/history), for backup restore, offboarding, or
-        // cross-instance migration. Module-contributed org-creation
-        // choices don't apply here — an imported bundle carries its own
-        // already-existing settings, there is nothing fresh to seed.
-        const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", importFile, { name: newName });
-        if (result.warnings.length > 0) setImportWarnings(result.warnings);
-        setNewName("");
-        setImportFile(null);
-        setShowNewForm(false);
-        reload();
-        showToast(strings.serverOrgs.createdToast(orgLabelCap));
-        return;
-      }
       await api.post("/api/v1/orgs", {
         name: newName,
         module_choice_keys: selectedChoiceKeys ? Array.from(selectedChoiceKeys) : undefined,
@@ -128,18 +134,35 @@ export function ServerOrganisationsPage() {
       reload();
       showToast(strings.serverOrgs.createdToast(orgLabelCap));
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Something went wrong.");
+      setCreateError(err instanceof Error ? err.message : strings.common.error);
     }
   }
 
+  /**
+   * Full-fidelity organisation bundle import (`services.org_export`): creates a brand-new organisation from an
+   * exported bundle (settings, members, report layouts and every project's structure and history), for backup
+   * restore, offboarding or cross-instance migration. Module-contributed creation choices do not apply: the
+   * bundle carries its own settings, so there is nothing fresh to seed. An error is thrown to
+   * `BundleImportDialog`, which shows it.
+   */
+  async function importOrg(file: File, skipFiles: boolean) {
+    const result = await api.postFile<OrgImportResult>("/api/v1/orgs/import", file, {
+      name: newName, ...(skipFiles ? { skip_files: "true" } : {}),
+    });
+    if (result.warnings.length > 0) setImportWarnings(result.warnings);
+    setNewName("");
+    setShowImportForm(false);
+    reload();
+    showToast(strings.serverOrgs.createdToast(orgLabelCap));
+  }
+
   async function runAction(action: () => Promise<void>, successMessage?: string) {
-    setActionError(null);
     try {
       await action();
       await reload();
       if (successMessage) showToast(successMessage);
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -157,7 +180,6 @@ export function ServerOrganisationsPage() {
   }
 
   function startDelete(org: Organization) {
-    setActionError(null);
     setDeletingOrgId(org.id);
   }
 
@@ -172,33 +194,106 @@ export function ServerOrganisationsPage() {
     setDeletingOrgId(null);
   }
 
+  const visibleOrgs = useMemo(() => {
+    const needle = search.toLowerCase();
+    const rows = (orgs ?? []).filter((o) => {
+      if (statusFilter === "active" && !o.is_active) return false;
+      if (statusFilter === "disabled" && o.is_active) return false;
+      return !needle || o.name.toLowerCase().includes(needle);
+    });
+    return sortRows(rows, sort, {
+      name: (o) => o.name,
+      status: (o) => (o.is_active ? 0 : 1),
+      created_at: (o) => o.created_at,
+    });
+  }, [orgs, search, statusFilter, sort]);
+
   if (!orgs) return <Spinner />;
 
-  const filteredOrgs = orgs.filter((o) => {
-    if (statusFilter === "active" && !o.is_active) return false;
-    if (statusFilter === "disabled" && o.is_active) return false;
-    if (search && !o.name.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
+  /** The row actions this caller may use: Administration opens the organisation's own administration, which only a server
+   * administrator reaches; the subscription roles never see content. */
+  function rowActions(o: Organization) {
+    return [
+      ...(access?.can_administer_server
+        ? [{ label: strings.serverOrgs.administration, icon: <Settings size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) }]
+        : []),
+      ...(canCreate
+        ? [
+            o.is_active
+              ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
+              : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
+          ]
+        : []),
+      ...(canCreate
+        ? [{ label: strings.orgStorage.action, icon: <HardDrive size={14} />, onSelect: () => setStorageOrgId(o.id) }]
+        : []),
+      ...(canDelete ? [{ label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) }] : []),
+    ];
+  }
+
+  // Row actions sit in one menu (style guide "Pattern: action menu"); each item opens the same dialog or page as before.
+  const columns: DirectoryColumn<Organization>[] = [
+    { key: "name", label: strings.serverOrgs.name, sortable: true, render: (o) => o.name },
+    {
+      key: "status", label: strings.serverOrgs.status, sortable: true,
+      render: (o) =>
+        o.is_active ? (
+          <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
+            {strings.serverOrgs.active}
+          </FilterBadge>
+        ) : (
+          <FilterBadge
+            active={statusFilter === "disabled"}
+            onClick={() => setStatusFilter("disabled")}
+            style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+          >
+            {strings.serverOrgs.disabled}
+          </FilterBadge>
+        ),
+    },
+    { key: "created_at", label: strings.serverOrgs.created, sortable: true, render: (o) => <span className="text-muted">{new Date(o.created_at).toLocaleDateString()}</span> },
+    {
+      key: "actions", label: "",
+      render: (o) => {
+        const items = rowActions(o);
+        return items.length > 0 ? (
+          <div className="row" style={{ justifyContent: "flex-end" }}>
+            <ActionMenu triggerLabel={strings.serverOrgs.actionsFor(o.name)} items={items} />
+          </div>
+        ) : null;
+      },
+    },
+  ];
 
   return (
     <div className="stack">
       <ListPageLayout
         title={strings.orgAdmin.organizations(orgLabelPlural)}
         actions={
-          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-            <Plus /> New {orgLabel}
-          </button>
+          canCreate ? (
+            <SplitButtonTrigger
+              icon={<Plus />}
+              label={strings.serverOrgs.newOrganization(orgLabel)}
+              onDefaultAction={() => setShowNewForm(true)}
+              menuTitle={strings.serverOrgs.newOrganization(orgLabel)}
+              moreOptionsLabel={strings.common.moreOptions}
+              alternatives={[{ label: strings.serverOrgs.importOrganization(orgLabel), onSelect: () => setShowImportForm(true) }]}
+            />
+          ) : undefined
         }
         filter={
-          <FilterPanel sectionKey="serverOrganisationsFilters">
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
-                <option value="active">{strings.serverOrgs.active}</option>
-                <option value="disabled">{strings.serverOrgs.disabled}</option>
-                <option value="all">{strings.serverOrgs.filterAll}</option>
-              </select>
-            </FilterField>
+          <FilterPanel
+            sectionKey="serverOrganisationsFilters"
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder={strings.serverOrgs.search(orgLabelPlural)}
+          >
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[{ value: "active", label: strings.serverOrgs.active }, { value: "disabled", label: strings.serverOrgs.disabled }, { value: "all", label: strings.serverOrgs.filterAll }]}
+            />
           </FilterPanel>
         }
       >
@@ -206,27 +301,21 @@ export function ServerOrganisationsPage() {
             a brand-new entity opens in a Modal, not a permanently-visible
             inline block that reflows the list underneath it. */}
         {showNewForm && (
-          <Modal title={`New ${orgLabel}`} onClose={() => setShowNewForm(false)} size="lg">
+          <Modal title={strings.serverOrgs.newOrganization(orgLabel)} onClose={() => setShowNewForm(false)} size="lg">
             <div className="stack">
               <FormGrid minColumn="18rem">
-                <TextField helpNotNeeded required={!importFile}
-                  label={`${orgLabelCap} name`}
-                  hint={importFile ? "Defaults to the bundle's own name when left blank." : undefined}
+                <TextField helpNotNeeded required
+                  label={strings.serverOrgs.organizationName(orgLabelCap)}
                   value={newName}
                   onChange={setNewName}
                   inputProps={{ autoFocus: true }}
-                />
-                <FileField helpNotNeeded
-                  label={`Or import from an exported ${orgLabel} bundle (.zip)`} accept=".zip,application/zip"
-                  onChange={setImportFile}
                 />
               </FormGrid>
               {/* Every registered
                   module's optional org-creation seeding choices, grouped by
                   `group_label`; this page has no hardcoded knowledge of what
-                  any of them are. Hidden for the import path (above), which
-                  carries its own already-existing settings instead. */}
-              {!importFile && creationChoices && creationChoices.length > 0 && (
+                  any of them are. */}
+              {creationChoices && creationChoices.length > 0 && (
                 <div className="stack" style={{ gap: "var(--space-3)" }}>
                   {[...new Set(creationChoices.map((c) => c.group_label))].map((groupLabel) => (
                     <div key={groupLabel} className="stack" style={{ gap: "var(--space-1)" }}>
@@ -234,10 +323,10 @@ export function ServerOrganisationsPage() {
                       {creationChoices
                         .filter((c) => c.group_label === groupLabel)
                         .map((choice) => (
-                          <CheckboxField helpNotNeeded
+                          <CheckboxField
                             key={choice.key}
                             label={choice.label}
-                            title={choice.description}
+                            help={choice.description}
                             checked={selectedChoiceKeys?.has(choice.key) ?? false}
                             onChange={() => toggleChoiceKey(choice.key)}
                           />
@@ -251,91 +340,43 @@ export function ServerOrganisationsPage() {
                 onCancel={() => setShowNewForm(false)}
                 onSave={createOrg}
                 saveLabel={strings.common.create}
-                saveDisabled={!importFile && !newName}
+                saveDisabled={!newName}
               />
             </div>
           </Modal>
         )}
-        {importWarnings && importWarnings.length > 0 && (
-          <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
-            <strong>Imported with warnings</strong>
-            <ul style={{ margin: 0 }}>
-              {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
-            </ul>
-          </div>
-        )}
-
-        {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
-          <div className="stack">
-            <input
-              className="input"
-              style={{ maxWidth: 280 }}
-              placeholder={strings.serverOrgs.search(orgLabelPlural)}
-              aria-label={strings.serverOrgs.search(orgLabelPlural)}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+        {showImportForm && (
+          <BundleImportDialog
+            title={strings.serverOrgs.importOrganization(orgLabel)}
+            fileLabel={strings.serverOrgs.bundleFile(orgLabelCap)}
+            fileHelp={strings.help.importOrganizationBundle(orgLabel)}
+            onClose={() => setShowImportForm(false)}
+            onImport={importOrg}
+          >
+            <TextField help={strings.help.importOrganizationName(orgLabel)}
+              label={strings.serverOrgs.organizationName(orgLabelCap)}
+              value={newName}
+              onChange={setNewName}
+              inputProps={{ autoFocus: true }}
             />
+          </BundleImportDialog>
+        )}
+        <ImportWarnings warnings={importWarnings} title={strings.projects.importWarnings} />
 
-            <div className="card" style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredOrgs.map((o) => (
-                    <tr key={o.id}>
-                      <td>{o.name}</td>
-                      <td>
-                        {o.is_active ? (
-                          <FilterBadge active={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-                            {strings.serverOrgs.active}
-                          </FilterBadge>
-                        ) : (
-                          <FilterBadge
-                            active={statusFilter === "disabled"}
-                            onClick={() => setStatusFilter("disabled")}
-                            style={{ color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
-                          >
-                            {strings.serverOrgs.disabled}
-                          </FilterBadge>
-                        )}
-                      </td>
-                      <td className="text-muted">{new Date(o.created_at).toLocaleDateString()}</td>
-                      <td>
-                        <div className="row" style={{ justifyContent: "flex-end" }}>
-                          {/* Style guide "Pattern: action menu" — three
-                              standalone row buttons (Edit/Disable-Enable/
-                              Delete) consolidated into one `ActionMenu`, per
-                              the addendum applying the same two-or-more-
-                              actions threshold inside a table row. Each item
-                              still opens the exact same dialog/navigation as
-                              before — the menu is just the entry point, not a
-                              replacement for either `ConfirmDialog` tier. */}
-                          <ActionMenu
-                            triggerLabel={strings.serverOrgs.actionsFor(o.name)}
-                            items={[
-                              { label: strings.common.edit, icon: <Pencil size={14} />, onSelect: () => navigate(`/orgs/${o.id}/admin`) },
-                              o.is_active
-                                ? { label: strings.serverOrgs.disable, icon: <Power size={14} />, onSelect: () => disableOrg(o) }
-                                : { label: strings.serverOrgs.enable, icon: <Power size={14} />, onSelect: () => enableOrg(o) },
-                              { label: strings.serverOrgs.delete, icon: <Trash2 size={14} />, onSelect: () => startDelete(o) },
-                            ]}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {orgs.length === 0 && <p className="text-muted">No {orgLabelPlural.toLowerCase()} yet.</p>}
-              {orgs.length > 0 && filteredOrgs.length === 0 && <p className="text-muted">{strings.serverOrgs.empty(orgLabelPlural)}</p>}
-            </div>
-          </div>
+        <DirectoryTable
+          ariaLabel={strings.orgAdmin.organizations(orgLabelPlural)}
+          columns={columns}
+          rows={visibleOrgs}
+          rowKey={(o) => o.id}
+          sort={sort}
+          onSort={(key) => setSort(cycleSort(sort, key as OrgSortKey))}
+          rowHref={access?.can_administer_server ? (o) => `/orgs/${o.id}/admin` : undefined}
+          emptyState={
+            <p className="text-muted">
+              {orgs.length === 0 ? strings.serverOrgs.none(orgLabelPlural) : strings.serverOrgs.empty(orgLabelPlural)}
+            </p>
+          }
+        />
       </ListPageLayout>
 
       {deletingOrgId &&
@@ -352,6 +393,13 @@ export function ServerOrganisationsPage() {
               onCancel={cancelDelete}
             />
           );
+        })()}
+
+      {storageOrgId &&
+        (() => {
+          const org = orgs.find((o) => o.id === storageOrgId);
+          if (!org) return null;
+          return <OrgStorageDialog orgId={org.id} orgName={org.name} onClose={() => setStorageOrgId(null)} />;
         })()}
 
       {disablingOrgId &&

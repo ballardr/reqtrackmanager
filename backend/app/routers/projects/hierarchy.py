@@ -23,6 +23,7 @@ from app.models.enums import OrgRole, ProjectRole
 from app.models.module_role import UserModuleRole
 from app.models.organization import Organization, OrgGroup
 from app.models.project import FavoriteProject, OrgGroupProjectRole, Project, ProjectMemberSource, ProjectStage, UserProjectRole
+from app.models.stage_workflow import StageWorkflowPhase
 from app.models.user import User
 from app.modules.registry import list_enabled_module_roles
 from app.routers.projects.core import _accessible_project_ids
@@ -30,6 +31,7 @@ from app.schemas.org import ModuleRoleGrantOut
 from app.schemas.project import (
     EffectiveMemberOut,
     MaterializeResultOut,
+    MemberSourceProvenanceOut,
     ProjectAncestorOut,
     ProjectListItemOut,
     ProjectMemberSourceAdd,
@@ -129,11 +131,12 @@ def get_project_children(
             select(Organization.id, Organization.name).where(
                 Organization.id.in_({c.organization_id for c in children})
             )
-        ).all()
+        ).tuples().all()
     )
     out = []
     for c in children:
         stage = db.scalar(select(ProjectStage).where(ProjectStage.project_id == c.id, ProjectStage.is_current.is_(True)))
+        phase = db.get(StageWorkflowPhase, stage.phase_id) if stage else None
         roles = sorted(get_effective_project_roles(db, current_user.id, c.id), key=lambda r: r.value)
         out.append(
             ProjectListItemOut(
@@ -146,7 +149,8 @@ def get_project_children(
                 visibility=c.visibility,
                 terminology=c.terminology, status_id=c.status_id,
                 current_stage_name=stage.name if stage else None,
-                current_stage_status=stage.status if stage else None,
+                current_stage_phase_name=phase.name if phase else None,
+                current_stage_phase_kind=phase.kind if phase else None,
                 my_roles=list(roles), is_favorite=c.id in favorite_ids,
                 organization_name=org_names.get(c.organization_id, ""),
                 parent_project_id=project_id, parent_project_name=None,
@@ -412,11 +416,11 @@ def get_effective_members(
             EffectiveMemberOut(
                 user_id=user_id, display_name=user.display_name, email=user.email, effective_role=effective_role,
                 sources=[
-                    {
+                    MemberSourceProvenanceOut.model_validate({
                         "kind": e["kind"], "role": e["role"], "via_project_id": e["via_project_id"],
                         "via_project_name": project_name(e["via_project_id"]), "via_mode": e["via_mode"],
                         "via_group_id": e["via_group_id"], "via_group_name": e["via_group_name"],
-                    }
+                    })
                     for e in entries
                 ],
                 module_roles=module_roles_by_user.get(user_id, []),

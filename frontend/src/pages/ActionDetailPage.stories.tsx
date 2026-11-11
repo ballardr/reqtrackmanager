@@ -75,7 +75,7 @@ export const GroupAssigneeIsShownAndSavedAsAPrincipal: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("QA Team")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/actions/${ACTION_ID}`,
@@ -100,6 +100,18 @@ export const PendingActionWithLinkedRequirement: Story = {
     );
     await expect(api.get).not.toHaveBeenCalledWith(expect.stringMatching(/\/requirements\/[^/]+\/actions$/));
     await expect(canvas.queryByRole("button", { name: /Remove link/ })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "← Actions" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/actions`);
+  },
+};
+
+/** A record that cannot be loaded says so, instead of leaving the spinner up. */
+export const UnavailableActionShowsNotFound: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockRejectedValue(new Error("Not found"));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Not found")).toBeInTheDocument());
   },
 };
 

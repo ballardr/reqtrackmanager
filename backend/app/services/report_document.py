@@ -57,8 +57,9 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.organization import Organization
-from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, readable_on_white
+from app.services.branding import DEFAULT_ACCENT_COLOR_HEX, explicit_logo_band_hex, get_server_settings, readable_on_white
 from app.services.files import read_file
+from app.services.logo_plate import plate_raster_bytes
 from app.services.report_fonts import active_face, draw_centred, mark_fallback, needs_fallback
 from app.services.report_model import TONE_FILL, text_on
 from app.services.report_org_values import report_accent_hex
@@ -116,7 +117,8 @@ def resolve_branding(db: Session, organization: Organization | None) -> ReportBr
 
     Returns:
         `None` when there is no organisation; otherwise the report accent colour, cover page flag, footer and (when the
-        organisation wants its logo on reports and has one) logo bytes.
+        organisation wants its logo on reports and has one) logo bytes, on a plate of the chosen logo band colour when
+        one is set.
     """
     if organization is None:
         return None
@@ -125,6 +127,9 @@ def resolve_branding(db: Session, organization: Organization | None) -> ReportBr
         logo_asset = db.get(FileAsset, organization.logo_file_id) if organization.logo_file_id else None
         if logo_asset is not None:
             logo_bytes = read_file(logo_asset)
+            band = explicit_logo_band_hex(organization, get_server_settings(db))
+            if band and logo_asset.content_type != "image/svg+xml":  # the cover draws a raster only
+                logo_bytes = plate_raster_bytes(logo_bytes, band)
     return ReportBranding(
         accent_color_hex=report_accent_hex(db, organization), include_cover_page=organization.report_include_cover_page,
         footer_text=organization.report_footer_text, logo_bytes=logo_bytes,
@@ -222,6 +227,12 @@ def build_pdf(story: list, *, footer_text: str | None = None, pagesize=A4, **doc
 _TONED_STYLES: dict[tuple[int, str], tuple[ParagraphStyle, ParagraphStyle]] = {}
 
 
+class TonedParagraph(Paragraph):
+    """A table-cell paragraph that `styled_table` paints with `tone_fill` as the cell background."""
+
+    tone_fill: colors.Color
+
+
 def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None, markup: str | None = None) -> Paragraph:
     """A table-cell paragraph whose cell `styled_table` fills with the tone's colour.
 
@@ -245,8 +256,8 @@ def toned_paragraph(text: str, style: ParagraphStyle, tone: str | None, markup: 
     if cached is None:
         toned = ParagraphStyle(f"{style.name}_{tone}", parent=style, textColor=colors.HexColor(f"#{text_on(TONE_FILL[tone])}"))
         cached = _TONED_STYLES[(id(style), tone)] = (style, toned)  # holds `style` so its id is never reused
-    paragraph = Paragraph(body, cached[1])
-    paragraph.tone_fill = colors.HexColor(f"#{TONE_FILL[tone]}")  # type: ignore[attr-defined]
+    paragraph = TonedParagraph(body, cached[1])
+    paragraph.tone_fill = colors.HexColor(f"#{TONE_FILL[tone]}")
     return paragraph
 
 
@@ -331,7 +342,7 @@ def styled_table(
         ]))
     fills = [
         ("BACKGROUND", (c, r), (c, r), cell.tone_fill)
-        for r, row in enumerate(data) for c, cell in enumerate(row) if getattr(cell, "tone_fill", None) is not None
+        for r, row in enumerate(data) for c, cell in enumerate(row) if isinstance(cell, TonedParagraph)
     ]
     if fills:
         table.setStyle(TableStyle(fills))  # after the zebra rows, so a toned cell overrides its stripe

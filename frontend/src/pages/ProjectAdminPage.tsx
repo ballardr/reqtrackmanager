@@ -1,7 +1,8 @@
 import { useMutation } from "../hooks/useMutation";
-import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Trash2 } from "lucide-react";
+import { usePhaseMove } from "../hooks/usePhaseMove";
+import { ArrowDown, ArrowUp, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError, api } from "../api/client";
 import type {
@@ -32,14 +33,22 @@ import type {
   ProjectRole,
   ProjectRoleInheritanceMode,
   ProjectStage,
+  StageWorkflow,
   ProjectStatusDefinition,
 } from "../api/types";
-import { CUSTOM_FIELD_TYPE_LABEL, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { CUSTOM_FIELD_TYPE_LABEL, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL } from "../api/types";
+import { stagePhaseLabel } from "../utils/stageBadge";
 import type { StagedMember } from "../components/AddMembersModal";
 import { AddMembersModal } from "../components/AddMembersModal";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { LinkTypesPanel } from "../components/LinkTypesPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Tooltip } from "../components/Tooltip";
+import { StageWorkflowEditor, type StageWorkflowValues } from "../components/StageWorkflowEditor";
+import { StageWorkflowsPanel } from "../components/StageWorkflowsPanel";
+import { ComponentPhasesPanel } from "../components/ComponentPhasesPanel";
+import { NavLabelsPanel } from "../components/NavLabelsPanel";
+import { PhaseSchedulePanel } from "../components/PhaseSchedulePanel";
 import { GroupInUseDialog } from "../components/GroupInUseDialog";
 import { ModuleSettingsList } from "../components/ModuleSettingsList";
 import { ToggleSwitch } from "../components/ToggleSwitch";
@@ -64,6 +73,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { toErrorMessage, useToast } from "../context/ToastContext";
 import { refreshProjectEnabledModules, useProjectEnabledModules } from "../hooks/useProjectEnabledModules";
 import type { ProjectAdminSectionDef } from "../modules/types";
+import { buildAdminMenuEntries, resolveAdminSection } from "../modules/adminMenu";
 import { installedModules } from "../modules/registry";
 import { loadProjectSwitcherOptions } from "../utils/entitySwitcherLoaders";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
@@ -77,13 +87,10 @@ import { ReportSnippetsPanel } from "../components/ReportSnippetsPanel";
 import { CheckboxField, InlineTextInput, TextAreaField, TextField, ToggleField } from "../components/FormFields";
 import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
-import { FormGrid, FormGridFull } from "../components/FormGrid";
+import { FormDivider, FormGrid, FormGridFull } from "../components/FormGrid";
 import { RecordFieldGroup } from "../components/RecordDetailParts";
-
-// MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
-// MEMBER_ONLY, which caps at baseline MEMBER — parity with
-// visibility=ORG_WIDE, no confirmation needed) — see docs/decisions.md.
-const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", "mirror_role"];
+import { ProjectNestingFields } from "../components/ProjectNestingFields";
+import { MODES_NEEDING_CONFIRMATION } from "../utils/projectInheritance";
 
 const TERMINOLOGY_KEYS = ["project", "stage", "component", "category", "requirement", "change_request"] as const;
 
@@ -130,7 +137,7 @@ const PROJECT_GROUP_ROLES: ProjectRole[] = ["project_manager", "project_administ
  * makes its inline role-toggle safe.
  */
 type CoreProjectAdminGroupKey =
-  | "overview" | "structure" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
+  | "overview" | "structure" | "stagesPhases" | "fieldsActions" | "members" | "groups" | "reportSetup" | "tags" | "modules";
 
 /** Widened to admit a module-contributed section's own key (2026-09-22) — mirrors `OrgAdminGroupKey`'s identical widening for
  * `OrgAdminPage.tsx`'s own `moduleAdminSections`. */
@@ -139,6 +146,7 @@ type ProjectAdminGroupKey = CoreProjectAdminGroupKey | string;
 const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
   "overview",
   "structure",
+  "stagesPhases",
   "fieldsActions",
   "members",
   "groups",
@@ -160,7 +168,7 @@ const PROJECT_ADMIN_GROUP_KEYS: CoreProjectAdminGroupKey[] = [
 export function ProjectAdminPage() {
   const run = useMutation();
   const strings = useStrings();
-  const { projectId, group: groupParam } = useParams<{ projectId: string; group?: string }>();
+  const { projectId, group: groupParam, section: sectionParam } = useParams<{ projectId: string; group?: string; section?: string }>();
   const layoutApi = useMemo(() => (projectId ? reportLayoutApi({ kind: "project", id: projectId }) : null), [projectId]);
   const snippetScope = useMemo(() => ({ kind: "project" as const, id: projectId ?? "" }), [projectId]);
   const packApi = useMemo(() => (projectId ? reportPackApi({ kind: "project", id: projectId }) : null), [projectId]);
@@ -186,12 +194,15 @@ export function ProjectAdminPage() {
       return !section.subComponent || !subs || subs.some((s) => s.subcomponent_key === section.subComponent && s.effective_enabled);
     }))
     .filter((section) => {
-      if ((PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(section.key)) {
+      const coreKeys = PROJECT_ADMIN_GROUP_KEYS as readonly string[];
+      if (coreKeys.includes(section.key) || (section.group && coreKeys.includes(section.group.key))) {
         console.error(`Module-contributed project-admin section "${section.key}" collides with a core group key; ignoring it.`);
         return false;
       }
       return true;
     });
+  const adminBasePath = `/projects/${projectId}/admin`;
+  const moduleRoute = resolveAdminSection(moduleAdminSections, adminBasePath, groupParam, sectionParam);
   const [project, setProject] = useState<Project | null>(null);
   // This project's own
   // Modules tab: every registered module's effective whole-module state
@@ -202,6 +213,10 @@ export function ProjectAdminPage() {
   // unconditionally" comment).
   const [projectModules, setProjectModules] = useState<ProjectModuleEnablement[]>([]);
   const [stages, setStages] = useState<ProjectStage[] | null>(null);
+  const [stageWorkflows, setStageWorkflows] = useState<StageWorkflow[]>([]);
+  const [newStageWorkflowId, setNewStageWorkflowId] = useState("");
+  const [creatingWorkflow, setCreatingWorkflow] = useState(false);
+  const [newWorkflowError, setNewWorkflowError] = useState<string | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
@@ -237,7 +252,6 @@ export function ProjectAdminPage() {
   // (the tree) rather than at project level.
   const [newCategoryInputs, setNewCategoryInputs] = useState<Record<string, { name: string; prefix: string }>>({});
   const [deadlineInputs, setDeadlineInputs] = useState<Record<string, string>>({});
-  const [cascadeInputs, setCascadeInputs] = useState<Record<string, boolean>>({});
 
   // Rename/delete state for stages/components/categories. Each "edits" map
   // is keyed by item id and only populated once the user actually starts
@@ -255,6 +269,8 @@ export function ProjectAdminPage() {
   const [settingsName, setSettingsName] = useState("");
   const [settingsCode, setSettingsCode] = useState("");
   const [codePolicy, setCodePolicy] = useState<ProjectCodePolicy | null>(null);
+  // Manual assignment, and not locked for this person (the organisation may lock codes after creation).
+  const codeEditable = codePolicy?.assignment === "manual" && !project?.code_change_locked;
   const [settingsSummary, setSettingsSummary] = useState("");
   const [settingsReportName, setSettingsReportName] = useState("");
   const [allowMemberCr, setAllowMemberCr] = useState(true);
@@ -433,9 +449,10 @@ export function ProjectAdminPage() {
     // invoked — not whenever it happens to reach the `loadGroups` line
     // near the bottom. See `loadGroupsRequestIdRef`'s own comment.
     const groupsRequestId = ++loadGroupsRequestIdRef.current;
-    const [p, s, c, cat, cf, at] = await Promise.all([
+    const [p, s, wf, c, cat, cf, at] = await Promise.all([
       api.get<Project>(`/api/v1/projects/${projectId}`),
       api.get<ProjectStage[]>(`/api/v1/projects/${projectId}/stages`),
+      api.get<StageWorkflow[]>(`/api/v1/projects/${projectId}/stage-workflows`),
       api.get<Component[]>(`/api/v1/projects/${projectId}/components`),
       api.get<Category[]>(`/api/v1/projects/${projectId}/categories`),
       api.get<CustomFieldDefinition[]>(`/api/v1/projects/${projectId}/custom-fields`),
@@ -461,6 +478,7 @@ export function ProjectAdminPage() {
     }
     if (!terminologyDirtyRef.current) setTerminology(p.terminology);
     setStages(s);
+    setStageWorkflows(wf);
     setComponents(c);
     setCategories(cat);
     await loadGroups(groupSearch, 0, false, groupSort, groupsRequestId);
@@ -555,6 +573,11 @@ export function ProjectAdminPage() {
     setPendingInvites(pendingInvites);
     setAvailableModuleRoles(availableModuleRoles);
   }
+
+  const stageMove = usePhaseMove(
+    { title: strings.admin.completeStage, cascade: strings.admin.cascadeToRequirements, cascadeHelp: strings.help.cascadeToRequirementsStage },
+    "move", () => void reload(),
+  );
 
   // A whole-module enablement change cascades into every one of that
   // module's own sub-components' *effective* state (`is_module_
@@ -665,7 +688,7 @@ export function ProjectAdminPage() {
     try {
       await api.patch(`/api/v1/projects/${projectId}`, {
         name: settingsName, summary: settingsSummary, report_name: settingsReportName.trim() || null,
-        ...(codePolicy?.assignment === "manual" && settingsCode !== project?.code ? { code: normaliseProjectCode(settingsCode) } : {}),
+        ...(codeEditable && settingsCode !== project?.code ? { code: normaliseProjectCode(settingsCode) } : {}),
         allow_member_change_requests: allowMemberCr,
         // `requireCrForLinks` always
         // carries this project's own stored opt-in, even while the org
@@ -792,20 +815,38 @@ export function ProjectAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
+  /** Creates a project workflow from the editor opened beside the new-stage form and selects it for the new stage. */
+  async function saveNewWorkflow(values: StageWorkflowValues) {
+    setNewWorkflowError(null);
+    try {
+      const created = await api.post<StageWorkflow>(`/api/v1/projects/${projectId}/stage-workflows`, values);
+      setNewStageWorkflowId(created.id);
+    } catch (err) {
+      setNewWorkflowError(toErrorMessage(err, strings.mutation.failure("save", strings.stageWorkflows.nounSingular)));
+      return;
+    }
+    setCreatingWorkflow(false);
+    reload();
+  }
+
   async function addStage() {
     if (!newStageName.trim()) return;
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, { name: newStageName }), "add", "{stage}"))) return;
+    const body = { name: newStageName, workflow_id: newStageWorkflowId || undefined };
+    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages`, body), "add", "{stage}"))) return;
     setNewStageName("");
     reload();
   }
 
-  async function startStageReview(stageId: string) {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=review`), "start", "{stage} review"))) return;
-    reload();
+  /** Moves a stage to a phase of its workflow; a closed phase first asks whether to complete its requirements. */
+  function requestStageMove(stage: ProjectStage, phaseId: string) {
+    const phase = stageWorkflows.find((w) => w.id === stage.workflow_id)?.phases.find((p) => p.id === phaseId);
+    if (!phase || phase.id === stage.phase_id) return;
+    stageMove.requestMove({ path: `/api/v1/projects/${projectId}/stages/${stage.id}/transition`, phase, noun: "{stage}" });
   }
 
-  async function approveStage(stageId: string) {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/transition?new_status=approved`), "approve", "{stage}"))) return;
+  async function changeStageWorkflow(stage: ProjectStage, workflowId: string) {
+    if (!workflowId || workflowId === stage.workflow_id) return;
+    if (!(await run(() => api.patch(`/api/v1/projects/${projectId}/stages/${stage.id}`, { name: stage.name, workflow_id: workflowId }), "change", "{stage} workflow"))) return;
     reload();
   }
 
@@ -818,11 +859,6 @@ export function ProjectAdminPage() {
 
   async function respondToStageReview(stageId: string, response: "approved" | "rejected") {
     if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/review-response`, { response }), "respond", "{stage} review"))) return;
-    reload();
-  }
-
-  async function completeStage(stageId: string, cascade: boolean) {
-    if (!(await run(() => api.post(`/api/v1/projects/${projectId}/stages/${stageId}/complete`, { cascade_to_requirements: cascade }), "complete", "{stage}"))) return;
     reload();
   }
 
@@ -1295,9 +1331,10 @@ export function ProjectAdminPage() {
   // including the later reversal from `Tabs` to `ResourceMenu` recorded
   // above `ProjectAdminGroupKey`, and the later "groups" -> "members"
   // + "groups" split recorded there too.
-  const activeGroup: ProjectAdminGroupKey =
-    (PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "") ||
-    moduleAdminSections.some((section) => section.key === groupParam)
+  // The active entry is a core group key or a module section key; the menu opens the group holding a section.
+  const activeGroup: ProjectAdminGroupKey = moduleRoute.section
+    ? moduleRoute.section.key
+    : (PROJECT_ADMIN_GROUP_KEYS as readonly string[]).includes(groupParam ?? "")
       ? (groupParam as ProjectAdminGroupKey)
       : "overview";
 
@@ -1462,16 +1499,29 @@ export function ProjectAdminPage() {
   const projectAdminGroups: ResourceMenuGroupDef<ProjectAdminGroupKey>[] = [
     { key: "overview", label: strings.admin.settings, href: `/projects/${projectId}/admin/overview` },
     { key: "structure", label: strings.admin.structure, href: `/projects/${projectId}/admin/structure` },
+    { key: "stagesPhases", label: strings.admin.stagesPhases, href: `/projects/${projectId}/admin/stagesPhases` },
     { key: "fieldsActions", label: strings.admin.fieldsAndActions, href: `/projects/${projectId}/admin/fieldsActions` },
     { key: "members", label: strings.admin.membersNav, href: `/projects/${projectId}/admin/members` },
     { key: "groups", label: strings.admin.groups, href: `/projects/${projectId}/admin/groups` },
     { key: "reportSetup", label: strings.admin.reportSetup, href: `/projects/${projectId}/admin/reportSetup` },
     { key: "tags", label: strings.admin.tagsNav, href: `/projects/${projectId}/admin/tags` },
     { key: "modules", label: strings.admin.modulesNav, href: `/projects/${projectId}/admin/modules` },
-    ...moduleAdminSections.map((section) => ({
-      key: section.key, label: section.label, href: `/projects/${projectId}/admin/${section.key}`,
-    })),
+    ...buildAdminMenuEntries(moduleAdminSections, adminBasePath),
   ];
+
+  // An earlier or partial module address (`/admin/<section>`, `/admin/<group>`) is replaced by the current one.
+  if (moduleRoute.redirectTo) return <Navigate to={moduleRoute.redirectTo} replace />;
+
+  // Unavailable until this project has opted in to being a parent; its explanation is a tooltip on the button.
+  const addSubProjectButton = (
+    <button
+      className="btn"
+      disabled={!project.can_be_parent}
+      onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
+    >
+      <Plus /> {strings.projects.addSubProject}
+    </button>
+  );
 
   return (
     <div className="stack">
@@ -1495,14 +1545,7 @@ export function ProjectAdminPage() {
             saved server value, not the settings tab's own possibly-
             unsaved checkbox edit, since a click here leads straight to a
             create flow the backend would otherwise reject. */}
-        <button
-          className="btn"
-          disabled={!project.can_be_parent}
-          title={project.can_be_parent ? undefined : strings.admin.canBeParentHint}
-          onClick={() => navigate(`/projects?parentProjectId=${project.id}&organizationId=${project.organization_id}`)}
-        >
-          <Plus /> {strings.projects.addSubProject}
-        </button>
+        {project.can_be_parent ? addSubProjectButton : <Tooltip label={strings.help.canBeParent} wrap>{addSubProjectButton}</Tooltip>}
       </div>
 
       <ResourceMenu ariaLabel={strings.admin.sectionsNav} groups={projectAdminGroups} active={activeGroup}>
@@ -1526,13 +1569,13 @@ export function ProjectAdminPage() {
               settingsDirtyRef.current = true;
               setSettingsCode(next.toUpperCase());
             }}
-            inputProps={{ readOnly: codePolicy?.assignment !== "manual", maxLength: codePolicy?.max_length, "aria-describedby": "project-code-hint" }}
+            inputProps={{ readOnly: !codeEditable, maxLength: codePolicy?.max_length, "aria-describedby": "project-code-hint" }}
           />
           <FormGridFull>
             <p id="project-code-hint" className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
-            {codePolicy?.assignment === "manual"
+            {codeEditable && codePolicy
               ? strings.projects.codeEditHint(describeCodePolicy(codePolicy))
-              : strings.projects.codeFixedHint}
+              : codePolicy?.assignment === "manual" ? strings.projects.codeLockedHint : strings.projects.codeFixedHint}
             </p>
           </FormGridFull>
           <TextField help={strings.help.projectReportName}
@@ -1570,7 +1613,7 @@ export function ProjectAdminPage() {
             once the org's own force is active and this project isn't
             exempt — see `exemptFromOrgLinkLock` below for the escape
             hatch. */}
-        <CheckboxField helpNotNeeded
+        <CheckboxField help={strings.help.requireChangeRequestForApprovedLinks}
           label={strings.admin.requireChangeRequestForApprovedLinks}
           checked={requireCrForLinks || (orgForceLinksLocked && !exemptFromOrgLinkLock)}
           onChange={(next) => {
@@ -1580,21 +1623,20 @@ export function ProjectAdminPage() {
           disabled={orgForceLinksLocked && !exemptFromOrgLinkLock}
           title={orgForceLinksLocked && !exemptFromOrgLinkLock ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg : undefined}
         />
-        <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
-          {orgForceLinksLocked && !exemptFromOrgLinkLock
-            ? strings.admin.requireChangeRequestForApprovedLinksForcedByOrg
-            : strings.admin.requireChangeRequestForApprovedLinksHint}
-        </p>
+        {orgForceLinksLocked && !exemptFromOrgLinkLock && (
+          <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>
+            {strings.admin.requireChangeRequestForApprovedLinksForcedByOrg}
+          </p>
+        )}
         {orgForceLinksLocked && (
           <>
-            <CheckboxField helpNotNeeded
+            <CheckboxField help={strings.help.exemptFromOrgLinkLock}
               label={strings.admin.exemptFromOrgLinkLock}
               checked={exemptFromOrgLinkLock}
               onChange={(next) => {
                 settingsDirtyRef.current = true;
                 setExemptFromOrgLinkLock(next);
               }}
-              hint={strings.admin.exemptFromOrgLinkLockHint}
             />
           </>
         )}
@@ -1603,7 +1645,7 @@ export function ProjectAdminPage() {
             rather than this page's own plain-checkbox convention above; a
             deliberate choice per the UX style guide's component-reuse
             principle, not an oversight. */}
-        <ToggleField helpNotNeeded
+        <ToggleField help={strings.help.projectAllowAiApprovals}
           label={strings.admin.allowAiApprovals}
           checked={allowAiApprovals}
           onChange={(next) => {
@@ -1615,7 +1657,6 @@ export function ProjectAdminPage() {
               setAllowAiApprovals(false);
             }
           }}
-          hint={strings.admin.allowAiApprovalsHint}
         />
         <CheckboxField help={strings.help.projectUsableAsTemplate}
           label={strings.admin.isTemplate}
@@ -1626,7 +1667,7 @@ export function ProjectAdminPage() {
           }}
         />
         <FormGrid minColumn="18rem">
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.projectVisibility(orgLabel)}
             label={strings.admin.visibility}
             value={visibility}
             onChange={(next) => {
@@ -1635,9 +1676,8 @@ export function ProjectAdminPage() {
             }}
             options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
             placeholder={null}
-            hint={strings.admin.visibilityHint(orgLabel)}
           />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.projectStatus}
             label={strings.admin.projectStatus}
             value={statusId}
             onChange={(next) => {
@@ -1654,14 +1694,13 @@ export function ProjectAdminPage() {
             have) a parent of its own — it's the opt-in mechanism other
             projects' managers need before this project appears in *their*
             "Parent project" picker at all. */}
-        <CheckboxField helpNotNeeded
+        <CheckboxField help={strings.help.canBeParent}
           label={strings.admin.canBeParent}
           checked={canBeParent}
           onChange={(next) => {
             settingsDirtyRef.current = true;
             setCanBeParent(next);
           }}
-          hint={strings.admin.canBeParentHint}
         />
         {/* The current parent's name is always shown plainly here (unlike
             ProjectListPage's list/tile "Child of:" label, which redacts a
@@ -1673,55 +1712,21 @@ export function ProjectAdminPage() {
             pick and no parent currently set — an empty "Parent project"
             picker with only "None" in it is confusing, not useful. */}
         {showParentField && (
-          <>
-            <FormGrid minColumn="18rem">
-              <LabeledSelect helpNotNeeded
-                label={strings.projects.parentProject}
-                value={parentProjectId}
-                onChange={(next) => {
-                  settingsDirtyRef.current = true;
-                  setParentProjectId(next);
-                  // Changing the parent while an elevated inheritance mode is
-                  // set must not silently carry that mode's confirmation over
-                  // to a *different* parent's role-holders — reset to "none"
-                  // (the safe default) so re-selecting MIRROR_ALL/MIRROR_ROLE
-                  // for the new parent goes back through
-                  // requestInheritModeChange's own confirmation dialog, which
-                  // will then correctly name the new parent.
-                  if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
-                    setRoleInheritanceMode("none");
-                  }
-                }}
-                options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
-                placeholder={strings.projects.noParent}
-              />
-              {parentProjectId && (
-                <>
-                  <LabeledSelect help={strings.help.projectInheritAccess}
-                    label={strings.projects.inheritFromParent}
-                    value={roleInheritanceMode}
-                    onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
-                    options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
-                      value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
-                    }))}
-                    placeholder={null}
-                  />
-                  {roleInheritanceMode === "mirror_role" && (
-                    <LabeledSelect help={strings.help.projectRoleToMirror}
-                      label={strings.projects.inheritModeFilterRole}
-                      value={roleInheritanceFilterRole}
-                      onChange={(next) => {
-                        settingsDirtyRef.current = true;
-                        setRoleInheritanceFilterRole(next as ProjectRole);
-                      }}
-                      options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
-                      placeholder={null}
-                    />
-                  )}
-                </>
-              )}
-            </FormGrid>
-          </>
+          <ProjectNestingFields
+            parentProjectId={parentProjectId}
+            parentOptions={parentOptions}
+            onParentChange={(next) => {
+              settingsDirtyRef.current = true;
+              setParentProjectId(next);
+            }}
+            mode={roleInheritanceMode}
+            onModeChange={requestInheritModeChange}
+            filterRole={roleInheritanceFilterRole}
+            onFilterRoleChange={(next) => {
+              settingsDirtyRef.current = true;
+              setRoleInheritanceFilterRole(next);
+            }}
+          />
         )}
         {settingsError && <div style={{ color: "var(--color-danger)" }}>{settingsError}</div>}
         {pendingInheritMode && selectedParent && (
@@ -1769,9 +1774,11 @@ export function ProjectAdminPage() {
             <button className="btn btn-primary" onClick={saveSettings}>
               {strings.admin.saveSettings}
             </button>
-            <button className="btn" onClick={exportProject} disabled={exporting} title={strings.admin.exportProjectHint(orgLabel)}>
-              <Download /> {exporting ? "Exporting…" : strings.admin.exportProject}
-            </button>
+            <Tooltip label={strings.admin.exportProjectHint(orgLabel)} wrap>
+              <button className="btn" onClick={exportProject} disabled={exporting}>
+                <Download /> {exporting ? "Exporting…" : strings.admin.exportProject}
+              </button>
+            </Tooltip>
           </div>
           <button className="btn btn-danger" onClick={toggleArchive}>
             {project.is_archived ? strings.admin.unarchiveProject : strings.admin.archiveProject}
@@ -1784,7 +1791,7 @@ export function ProjectAdminPage() {
             across the app is a separate, deliberately-deferred roadmap
             item (see docs/decisions.md); this is only where its existing
             (still mostly-inert) UI lives now. */}
-        <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)", margin: "var(--space-1) 0" }} />
+        <FormDivider />
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.admin.terminology}</h2>
         <p className="text-muted" style={{ margin: 0 }}>{strings.admin.terminologyHint}</p>
         <FormGrid minColumn="14rem">
@@ -1804,13 +1811,20 @@ export function ProjectAdminPage() {
         <button className="btn btn-primary" onClick={saveTerminology} style={{ alignSelf: "flex-start" }}>
           {strings.admin.saveTerminology}
         </button>
+        <FormDivider />
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.navLabels.heading}</h2>
+        {projectId && <NavLabelsPanel scope={{ kind: "project", projectId }} />}
       </div>
       )}
 
-      {activeGroup === "structure" && (
+      {activeGroup === "stagesPhases" && (
       <div className="stack">
         {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
-        <CollapsibleSection sectionKey="projectAdmin.structure.stages" title={strings.admin.stages} defaultCollapsed={false}>
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.stageWorkflows" title={strings.stageWorkflows.heading} defaultCollapsed={false}>
+          {projectId && <StageWorkflowsPanel scope={{ kind: "project", projectId }} onChanged={reload} />}
+        </CollapsibleSection>
+
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.stages" title={strings.admin.stages} defaultCollapsed={false}>
         {stages.map((s) => {
           const nameEdit = stageNameEdits[s.id] ?? s.name;
           const otherStages = stages.filter((other) => other.id !== s.id);
@@ -1832,7 +1846,7 @@ export function ProjectAdminPage() {
                     <Pencil />
                   </button>
                 )}
-                <Badge>{STAGE_STATUS_LABEL[s.status]}</Badge>
+                <Badge>{stagePhaseLabel(s.phase_name, s.phase_kind)}</Badge>
                 {s.review_deadline && <Badge>{strings.admin.reviewDeadline}: {new Date(s.review_deadline).toLocaleString()}</Badge>}
                 {s.completed_at && <Badge>{strings.admin.stageCompletedAt}: {new Date(s.completed_at).toLocaleDateString()}</Badge>}
                 <button
@@ -1845,30 +1859,28 @@ export function ProjectAdminPage() {
                   <Trash2 />
                 </button>
               </div>
-              {s.status === "scoping" && (
-                <button className="btn" onClick={() => startStageReview(s.id)}>
-                  {strings.admin.startReview}
-                </button>
-              )}
-              {s.status === "review" && (
-                <button className="btn" onClick={() => approveStage(s.id)}>
-                  <Check /> {strings.admin.approveStage}
-                </button>
-              )}
-              {s.status === "approved" && (
-                <div className="row">
-                  <CheckboxField helpNotNeeded
-                    label={strings.admin.cascadeToRequirements}
-                    checked={cascadeInputs[s.id] ?? false}
-                    onChange={(next) => setCascadeInputs((c) => ({ ...c, [s.id]: next }))}
+              <div className="row">
+                {stageWorkflows.length > 1 && (
+                  <InlineSelect
+                    ariaLabel={strings.stageWorkflows.changeWorkflowAria(s.name)} value={s.workflow_id} placeholder={null}
+                    disabled={s.phase_kind !== "open"} maxWidth={200}
+                    onChange={(next) => changeStageWorkflow(s, next)}
+                    options={stageWorkflows.map((w) => ({ value: w.id, label: w.name }))}
                   />
-                  <button className="btn" onClick={() => completeStage(s.id, cascadeInputs[s.id] ?? false)}>
-                    {strings.admin.completeStage}
-                  </button>
-                </div>
-              )}
+                )}
+                <InlineSelect
+                  ariaLabel={strings.stageWorkflows.changePhaseAria(s.name)} value={s.phase_id} placeholder={null} maxWidth={220}
+                  onChange={(next) => requestStageMove(s, next)}
+                  options={(stageWorkflows.find((w) => w.id === s.workflow_id)?.phases ?? [{ id: s.phase_id, name: s.phase_name, kind: s.phase_kind }])
+                    .map((p) => {
+                      // Entering or leaving a locked phase needs a project manager: show the choice as unavailable, with why.
+                      const locked = !s.can_lock && p.id !== s.phase_id && (p.kind === "locked" || s.phase_kind === "locked");
+                      return { value: p.id, label: locked ? strings.stageWorkflows.lockedNeedsManager(p.name) : p.name, disabled: locked };
+                    })}
+                />
+              </div>
             </div>
-            {s.status === "review" && (
+            {s.phase_kind === "review" && (
               <div className="row">
                 <InlineTextInput
                   type="datetime-local" maxWidth={220} ariaLabel={`${strings.admin.reviewDeadline}: ${s.name}`}
@@ -1898,12 +1910,38 @@ export function ProjectAdminPage() {
         })}
         <div className="row" style={{ alignItems: "flex-end" }}>
           <TextField helpNotNeeded label={strings.admin.name} placeholder={strings.admin.name} value={newStageName} onChange={setNewStageName} />
+          <LabeledSelect
+            label={strings.stageWorkflows.workflow} help={strings.help.stageWorkflowChoice} placeholder={null}
+            value={newStageWorkflowId || stageWorkflows[0]?.id || ""} onChange={setNewStageWorkflowId}
+            options={stageWorkflows.map((w) => ({ value: w.id, label: w.name }))}
+          />
+          <button className="btn" onClick={() => { setNewWorkflowError(null); setCreatingWorkflow(true); }}>
+            <Plus /> {strings.stageWorkflows.newWorkflow}
+          </button>
           <button className="btn btn-primary" onClick={addStage} disabled={!newStageName.trim()}>
             <Plus /> {strings.admin.newStage}
           </button>
         </div>
         </CollapsibleSection>
 
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.componentPhases" title={strings.componentPhases.heading} defaultCollapsed={false}>
+          {projectId && project && (
+            <ComponentPhasesPanel projectId={projectId} organizationId={project.organization_id} orgUsers={orgUsers} onChanged={reload} />
+          )}
+        </CollapsibleSection>
+
+        <CollapsibleSection sectionKey="projectAdmin.stagesPhases.phaseSchedule" title={strings.phaseSchedule.heading} defaultCollapsed={false}>
+          {projectId && project && (
+            <PhaseSchedulePanel projectId={projectId} organizationId={project.organization_id} orgUsers={orgUsers} onChanged={reload} />
+          )}
+        </CollapsibleSection>
+
+      </div>
+      )}
+
+      {activeGroup === "structure" && (
+      <div className="stack">
+        {structureError && <div style={{ color: "var(--color-danger)" }}>{structureError}</div>}
         {/* Audit finding: the tab bar used to call this "Categories" while
             its content opened with an <h2> reading "Components" — actually
             a two-level component -> category tree. This section's own
@@ -2125,7 +2163,7 @@ export function ProjectAdminPage() {
           </div>
         ))}
         <div className="row" style={{ alignItems: "flex-end" }}>
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.customFieldAppliesTo}
             label={strings.admin.fieldAppliesTo}
             value={newFieldKind}
             onChange={(next) => setNewFieldKind(next as CustomFieldEntityKind)}
@@ -2136,7 +2174,7 @@ export function ProjectAdminPage() {
             placeholder={null}
           />
           <TextField helpNotNeeded label={strings.admin.fieldName} placeholder={strings.admin.fieldName} value={newFieldName} onChange={setNewFieldName} />
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={strings.help.customFieldType}
             label={strings.admin.fieldTypeLabel}
             value={newFieldType}
             onChange={(next) => setNewFieldType(next as CustomFieldType)}
@@ -2149,14 +2187,14 @@ export function ProjectAdminPage() {
             placeholder={null}
           />
           {newFieldType === "list" && (
-            <TextField helpNotNeeded
+            <TextField help={strings.help.customFieldOptions}
               label={strings.admin.optionsCommaSeparated}
               placeholder={strings.admin.optionsCommaSeparated}
               value={newFieldOptions}
               onChange={setNewFieldOptions}
             />
           )}
-          <CheckboxField helpNotNeeded label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
+          <CheckboxField help={strings.help.customFieldRequired} label={strings.admin.required} checked={newFieldRequired} onChange={setNewFieldRequired} />
           <button className="btn btn-primary" onClick={addCustomField} disabled={!newFieldName}>
             <Plus /> {strings.admin.newCustomField}
           </button>
@@ -2777,6 +2815,10 @@ export function ProjectAdminPage() {
             {section.render({ projectId: project.id })}
           </div>
         ))}
+      {stageMove.dialog}
+      {creatingWorkflow && (
+        <StageWorkflowEditor workflow={null} error={newWorkflowError} onCancel={() => setCreatingWorkflow(false)} onSave={saveNewWorkflow} />
+      )}
       {deletingStageId && stages.some((st) => st.id === deletingStageId) && (
         <DeleteInUseDialog
           title={strings.admin.deleteInUseTitle(stages.find((st) => st.id === deletingStageId)!.name)}

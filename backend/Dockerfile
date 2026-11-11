@@ -18,8 +18,9 @@ ENV APP_VERSION=${APP_VERSION} \
 WORKDIR /app
 
 # EPS and PDF logos are converted by the separate converter service (../converter), not by tools in this image.
+# zlib1g is named so the patched release replaces the one the base image ships (CVE-2026-76844, CVE-2026-85091).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc curl \
+    libpq-dev gcc curl zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -35,9 +36,9 @@ COPY . .
 # still be root-owned and need a one-time `chown` after upgrading, same as
 # this project's other pre-release "reset and reseed" upgrade path.
 RUN useradd --system --create-home --home-dir /home/app app \
-    && mkdir -p /app/data/files \
+    && mkdir -p /app/data/files /demo/state /demo/status \
     && chmod +x /app/docker-entrypoint.sh \
-    && chown -R app:app /app
+    && chown -R app:app /app /demo
 USER app
 
 # Disaster-recovery backup tool (scripts/dr_backup.py, docs/disaster-recovery.md): the application image plus

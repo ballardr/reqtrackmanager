@@ -43,14 +43,17 @@ from app.modules.stakeholders.schemas import (
     EngagementParticipantOut,
     EngagementPersonaCreate,
     EngagementPersonaOut,
+    EngagementPersonaReachedOut,
     EngagementUpdate,
     OutcomeCreate,
     OutcomeOut,
+    OutcomeTargetTypeOut,
     RelationshipTargetOut,
     StakeholderEngagementOut,
 )
 from app.modules.stakeholders.service import STAKEHOLDERS_MODULE_KEY
 from app.schemas.file import FileAssetOut
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_project_module_enabled
 from app.services.tags import TagFilter
@@ -107,7 +110,7 @@ def list_engagements(
         return tag_filter.keep(db, pid, ENGAGEMENT_ARTEFACT_TYPE, engagements)
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, ENGAGEMENT_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, ENGAGEMENT_ARTEFACT_TYPE, rows_for,
         gate=(STAKEHOLDERS_MODULE_KEY, None),
     )
 
@@ -200,6 +203,15 @@ def list_personas(
     return es.list_personas(db, _get(db, project_id, engagement_id), project)
 
 
+@router.get("/engagements/{engagement_id}/personas-reached", response_model=list[EngagementPersonaReachedOut])
+def list_personas_reached(
+    project_id: UUID, engagement_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)
+):
+    """Every Persona reached: recorded as covered, or represented by a Stakeholder or anonymous participant."""
+    project = _project(db, project_id)
+    return es.list_personas_reached(db, _get(db, project_id, engagement_id), project)
+
+
 @router.post(
     "/engagements/{engagement_id}/personas", response_model=EngagementPersonaOut, status_code=status.HTTP_201_CREATED
 )
@@ -265,6 +277,15 @@ def remove_audience(
 
 
 # --- Raised / answered --------------------------------------------------------
+
+
+@router.get("/engagement-outcome-target-types", response_model=list[OutcomeTargetTypeOut])
+def list_outcome_target_types(
+    project_id: UUID, current_user: User = Depends(_require_view), db: Session = Depends(get_db)
+):
+    """The record types an engagement or finding can raise or answer, each with `can_create` (whether the caller
+    may create one from the outcome form)."""
+    return es.list_outcome_target_types(db, current_user, _project(db, project_id))
 
 
 @router.get("/engagement-outcome-targets", response_model=list[RelationshipTargetOut])

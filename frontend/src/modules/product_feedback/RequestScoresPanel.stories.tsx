@@ -21,7 +21,7 @@ export const ShowsEveryModelAndTheWorkedOutDemandLevel: Story = {
     await expect(canvas.getByRole("columnheader", { name: "ICE" })).toBeInTheDocument();
     await expect(canvas.getByRole("columnheader", { name: "RICE" })).toBeInTheDocument();
     await expect(canvas.getByText("High · 48")).toHaveClass("badge--accent");
-    await expect(canvas.getByText(/Worked out from 1 requester/)).toBeInTheDocument(); // the icon button's accessible name
+    await expect(canvas.getByText(/Calculated from 1 requester/)).toBeInTheDocument(); // the icon button's accessible name
   },
 };
 
@@ -49,6 +49,6 @@ export const InboxHidesDemand: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.queryByText(/requester/)).not.toBeInTheDocument();
-    await expect(canvas.getByText(/Worked out from demand/)).toBeInTheDocument();
+    await expect(canvas.getByText(/Calculated from demand/)).toBeInTheDocument();
   },
 };

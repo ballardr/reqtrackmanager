@@ -8,11 +8,12 @@ work identically for both entity types).
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Collection
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.change_request import ChangeRequest, ReviewComment
@@ -79,6 +80,37 @@ def comment_to_out(db: Session, comment: ReviewComment, current_user_id: UUID) -
     return comments_to_out(db, [comment], current_user_id)[0]
 
 
+_COMMENT_ENTITY_TYPE = {
+    ReviewTargetType.REQUIREMENT: "requirement",
+    ReviewTargetType.CHANGE_REQUEST: "change_request",
+    ReviewTargetType.ACTION: "requirement_action",
+}
+
+
+def audit_comment(db: Session, comment: ReviewComment, *, action: str, actor_id: UUID, project_id: UUID) -> None:
+    """Records a comment being added, edited, reacted to or having an attachment removed, against the record it is on.
+
+    The event carries the comment id and, for an add or edit, a short digest of the body so a change is provable
+    without storing the text again; the body itself is never written to the audit trail. Added to the session, not
+    committed.
+
+    Args:
+        db: Active session.
+        comment: The comment the action concerns.
+        action: `comment_added`, `comment_edited`, `comment_reacted`, `comment_reaction_removed` or
+            `comment_attachment_removed`.
+        actor_id: The person acting.
+        project_id: The project the record belongs to.
+    """
+    detail: dict[str, str] = {"comment_id": str(comment.id)}
+    if action in ("comment_added", "comment_edited"):
+        detail["body_sha256"] = hashlib.sha256(comment.body.encode("utf-8")).hexdigest()[:16]
+    log_event(
+        db, entity_type=_COMMENT_ENTITY_TYPE[comment.target_type], entity_id=comment.target_id, action=action,
+        actor_id=actor_id, project_id=project_id, detail=detail,
+    )
+
+
 def add_reaction(db: Session, comment_id: UUID, user_id: UUID) -> None:
     """Adds the current user's reaction to a comment (idempotent)."""
     existing = db.scalar(
@@ -123,7 +155,7 @@ def get_comment_counts(db: Session, target_type: ReviewTargetType, target_ids: C
         select(ReviewComment.target_id, func.count(ReviewComment.id)).where(
             ReviewComment.target_type == target_type, ReviewComment.target_id.in_(set(target_ids)),
         ).group_by(ReviewComment.target_id)
-    ).all())
+    ).tuples().all())
 
 
 def _own_subscription(user_id: UUID, entity_type: str, entity_id: UUID):
@@ -271,13 +303,13 @@ def remove_subscriptions_and_favorites_for_projects(db: Session, user_id: UUID, 
     entity_ids = list(requirement_ids) + list(cr_ids)
     if entity_ids:
         db.execute(
-            Subscription.__table__.delete().where(
+            delete(Subscription).where(
                 Subscription.subscriber_type == PrincipalType.USER.value, Subscription.subscriber_id == user_id,
                 Subscription.entity_id.in_(entity_ids),
             )
         )
     db.execute(
-        FavoriteProject.__table__.delete().where(
+        delete(FavoriteProject).where(
             FavoriteProject.user_id == user_id, FavoriteProject.project_id.in_(project_ids)
         )
     )

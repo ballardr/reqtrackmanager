@@ -15,6 +15,9 @@ target one: requirements by `unique_code`, change requests by `ref` (their
 definitions by name, and every user reference by email (resolved on import
 via `services.bundle_common.UserResolver`).
 
+Requirement actions travel too (`services.project_actions_bundle`): the project's action types, each action with its
+comments, attachments, tags and places, and its links to requirements, by `unique_code`.
+
 Deliberately out of scope (documented rather than silently dropped):
 `Notification`/`NotificationPreference`/`Subscription` (per-user, per-
 deployment inbox state that's meaningless once ids change) and `LoginEvent`
@@ -50,7 +53,6 @@ time by a portable `(standard reference, version label)` key.
 
 from __future__ import annotations
 
-import io
 import json
 import zipfile
 from datetime import UTC, date, datetime
@@ -80,7 +82,6 @@ from app.models.enums import (
     RequirementReviewOutcome,
     RequirementStatus,
     ReviewTargetType,
-    StageStatus,
 )
 from app.models.file import CommentFile, FileAsset, RequirementFile
 from app.models.organization import Organization
@@ -105,23 +106,30 @@ from app.models.requirement import (
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.user import User
 from app.modules.registry import get_all_module_project_bundle_hooks
+from app.services import nav_labels, overview_widgets
 from app.services.audit import log_event
+from app.services.bundle_approval_state import count_approval_state, strip_approval_state
 from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
     BundleImportWarnings,
     UserResolver,
-    enforce_upload_size_limit,
-    enforce_zip_uncompressed_size_limit,
     import_bundled_file,
     new_bundle_file,
+    open_bundle_zip,
+    read_bundle_files,
+    read_bundle_json,
     write_json_entry,
 )
 from app.services.change_request_summary import CHANGE_REQUEST_ARTEFACT_TYPE, CHANGE_REQUEST_CODE_PREFIX
 from app.services.codes import generate_project_code
-from app.services.definitions import get_default_project_status_id, seed_action_types
-from app.services.files import read_file
+from app.services.definitions import get_default_project_status_id
+from app.services.files import read_file, resolve_bundle_files
+from app.services.imported_people import PeopleChoices, PersonPreview, classify_people, people_section
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.principals import principal_columns_from_bundle, principal_to_bundle
+from app.services.project_actions_bundle import export_project_actions, import_project_action_types, import_project_actions
 from app.services.rbac import get_effective_project_managers
 from app.services.relationships import create_link as create_artefact_link
 from app.services.report_folder_bundle import export_project_folders, import_project_folders
@@ -129,8 +137,27 @@ from app.services.report_layout_bundle import export_project_layouts, import_pro
 from app.services.report_pack_bundle import export_project_packs, import_project_packs
 from app.services.report_placement_bundle import export_project_placements, import_project_placements
 from app.services.report_snippet_bundle import export_project_snippets, import_project_snippets
+from app.services.scoring_config import export_project_scoring, import_project_scoring
 from app.services.sequences import generate_unique_code
-from app.services.tags import export_vocabulary, import_vocabulary, keywords_for_requirements, set_keywords
+from app.services.stage_workflow_bundle import (
+    export_component_phases,
+    export_phase_schedule,
+    export_project_stage_workflows,
+    export_stage_phases,
+    import_component_phases,
+    import_phase_schedule,
+    import_project_stage_workflows,
+    import_stage,
+)
+from app.services.tags import (
+    export_vocabulary,
+    import_vocabulary,
+    keywords_for_requirements,
+    prime_record_tag_names,
+    record_tag_names,
+    restore_record_tags,
+    set_keywords,
+)
 
 PROJECT_BUNDLE_KIND = "project-export"
 PROJECT_BUNDLE_FORMAT_VERSION = 1
@@ -170,6 +197,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         A `(project_json, file_assets_by_id)` pair.
     """
     stages = list(db.scalars(select(ProjectStage).where(ProjectStage.project_id == project.id).order_by(ProjectStage.sort_order)))
+    stage_phases = export_stage_phases(db, stages)
     components = list(
         db.scalars(select(ProjectComponent).where(ProjectComponent.project_id == project.id).order_by(ProjectComponent.sort_order))
     )
@@ -288,10 +316,10 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     cr_versions = list(db.scalars(select(ChangeRequestVersion).where(ChangeRequestVersion.change_request_id.in_(cr_ids))) if cr_ids else [])
     cr_versions_by_cr: dict[UUID, list[ChangeRequestVersion]] = {}
-    for v in cr_versions:
-        cr_versions_by_cr.setdefault(v.change_request_id, []).append(v)
-    for vs in cr_versions_by_cr.values():
-        vs.sort(key=lambda v: v.version_number)
+    for cr_version in cr_versions:
+        cr_versions_by_cr.setdefault(cr_version.change_request_id, []).append(cr_version)
+    for cr_version_list in cr_versions_by_cr.values():
+        cr_version_list.sort(key=lambda v: v.version_number)
 
     cr_tasks = list(db.scalars(select(ChangeRequestTask).where(ChangeRequestTask.change_request_id.in_(cr_ids))) if cr_ids else [])
     cr_tasks_by_cr: dict[UUID, list[ChangeRequestTask]] = {}
@@ -300,8 +328,8 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
 
     cr_votes = list(db.scalars(select(ChangeRequestVote).where(ChangeRequestVote.change_request_id.in_(cr_ids))) if cr_ids else [])
     cr_votes_by_cr: dict[UUID, list[ChangeRequestVote]] = {}
-    for v in cr_votes:
-        cr_votes_by_cr.setdefault(v.change_request_id, []).append(v)
+    for cr_vote in cr_votes:
+        cr_votes_by_cr.setdefault(cr_vote.change_request_id, []).append(cr_vote)
 
     cr_comments_by_cr: dict[UUID, list[ReviewComment]] = {}
     for c in cr_comments_raw:
@@ -337,12 +365,12 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         user_ids.add(cr.creator_id)
         if cr.decided_by:
             user_ids.add(cr.decided_by)
-    for v in cr_versions:
-        user_ids.add(v.created_by)
+    for cr_version in cr_versions:
+        user_ids.add(cr_version.created_by)
     for t in cr_tasks:
         user_ids.add(t.created_by)
-    for v in cr_votes:
-        user_ids.add(v.user_id)
+    for cr_vote in cr_votes:
+        user_ids.add(cr_vote.user_id)
     for c in requirement_comments_raw + cr_comments_raw:
         user_ids.add(c.author_id)
     for b in baselines:
@@ -408,7 +436,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         {
             "source_unique_code": req_code_by_id.get(link.source_id),
             "target_unique_code": req_code_by_id.get(link.target_id),
-            "link_type_forward_name": link_type_forward_name_by_id.get(link.link_type_id),
+            "link_type_forward_name": (link_type_forward_name_by_id.get(link.link_type_id) if link.link_type_id else None),
             "created_by_email": email(link.created_by),
         }
         for link in links if link.source_id in req_code_by_id and link.target_id in req_code_by_id
@@ -419,30 +447,35 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         for c in requirement_comments_raw if c.target_id in req_code_by_id
     ]
 
+    prime_record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
+    prime_record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, [cr.id for cr in change_requests])
     change_requests_json = []
     for cr in change_requests:
         cr_versions_json = []
-        for v in cr_versions_by_cr.get(cr.id, []):
-            proposed_component_prefix = component_prefix_by_id.get(v.proposed_component_id) if v.proposed_component_id else None
-            proposed_category = category_by_id.get(v.proposed_category_id) if v.proposed_category_id else None
+        for cr_version in cr_versions_by_cr.get(cr.id, []):
+            proposed_component_prefix = component_prefix_by_id.get(cr_version.proposed_component_id) if cr_version.proposed_component_id else None
+            proposed_category = category_by_id.get(cr_version.proposed_category_id) if cr_version.proposed_category_id else None
             proposed_category_prefix = proposed_category.prefix if proposed_category else None
             cr_versions_json.append({
-                "version_number": v.version_number, "proposed_name": v.proposed_name, "proposed_reasoning": v.proposed_reasoning,
-                "proposed_clarification": v.proposed_clarification, "proposed_description": v.proposed_description,
+                "version_number": cr_version.version_number, "proposed_name": cr_version.proposed_name,
+                "proposed_reasoning": cr_version.proposed_reasoning,
+                "proposed_clarification": cr_version.proposed_clarification, "proposed_description": cr_version.proposed_description,
                 "proposed_component_prefix": proposed_component_prefix, "proposed_category_prefix": proposed_category_prefix,
-                "proposed_target_stage": stage_name_by_id.get(v.proposed_target_stage_id) if v.proposed_target_stage_id else None,
-                "proposed_level": v.proposed_level.value if v.proposed_level else None,
-                "proposed_review_date": _j(v.proposed_review_date), "proposed_review_lead_days": v.proposed_review_lead_days,
-                "proposed_reviewer": principal_to_bundle(db, v.proposed_reviewer_type, v.proposed_reviewer_id),
-                "changed_fields": v.changed_fields, "reason": v.reason,
-                "custom_fields": custom_fields_by_name(v.custom_fields),
-                "created_by_email": email(v.created_by), "created_at": _j(v.created_at),
+                "proposed_target_stage": stage_name_by_id.get(cr_version.proposed_target_stage_id) if cr_version.proposed_target_stage_id else None,
+                "proposed_level": cr_version.proposed_level.value if cr_version.proposed_level else None,
+                "proposed_review_date": _j(cr_version.proposed_review_date), "proposed_review_lead_days": cr_version.proposed_review_lead_days,
+                "proposed_reviewer": principal_to_bundle(db, cr_version.proposed_reviewer_type, cr_version.proposed_reviewer_id),
+                "changed_fields": cr_version.changed_fields, "reason": cr_version.reason,
+                "custom_fields": custom_fields_by_name(cr_version.custom_fields),
+                "created_by_email": email(cr_version.created_by), "created_at": _j(cr_version.created_at),
             })
         change_requests_json.append({
             "ref": cr_ref_by_id[cr.id], "requirement_unique_code": req_code_by_id.get(cr.requirement_id) if cr.requirement_id else None,
             "kind": cr.kind.value, "status": cr.status.value, "creator_email": email(cr.creator_id),
             "submitted_at": _j(cr.submitted_at), "decided_at": _j(cr.decided_at), "decided_by_email": email(cr.decided_by),
             "decision_note": cr.decision_note, "versions": cr_versions_json,
+            "tags": record_tag_names(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
+            "placements": record_placements(db, CHANGE_REQUEST_ARTEFACT_TYPE, cr.id),
             "tasks": [
                 {
                     "description": t.description, "assignee": principal_to_bundle(db, t.assignee_type, t.assignee_id),
@@ -461,6 +494,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
     baselines_json = [
         {
             "stage_name": stage_name_by_id.get(b.stage_id), "label": b.label, "created_by_email": email(b.created_by),
+            "component": component_prefix_by_id.get(b.component_id) if b.component_id else None,
             "created_at": _j(b.created_at),
             "items": [
                 {"unique_code": req_code_by_id.get(item.requirement_id), "version_number": next(
@@ -497,6 +531,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         **export_project_layouts(db, project, file_assets_by_id), **export_project_packs(db, project), **export_project_placements(db, project),
         **export_project_snippets(db, project, file_assets_by_id),
         **export_project_folders(db, project),
+        **export_project_actions(db, project, file_assets_by_id),
     }
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         module_json, module_file_assets = hooks.export(db, project)
@@ -510,7 +545,13 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         "exempt_from_org_link_lock": project.exempt_from_org_link_lock, "terminology": project.terminology,
         "review_reminder_lead_days_default": project.review_reminder_lead_days_default,
         "tags": export_vocabulary(db, project),
-        "stages": [{"name": s.name, "sort_order": s.sort_order} for s in stages],
+        **export_project_scoring(db, project),
+        **nav_labels.export_names(project.nav_label_overrides),
+        **overview_widgets.export_layout(project.overview_widgets),
+        **export_project_stage_workflows(db, project),
+        **export_component_phases(db, project, components, stages),
+        **export_phase_schedule(db, project, components, stages),
+        "stages": [{"name": s.name, "sort_order": s.sort_order, **stage_phases[s.id]} for s in stages],
         "components": [
             {
                 "name": c.name, "prefix": c.prefix, "sort_order": c.sort_order,
@@ -544,6 +585,7 @@ def collect_project_data(db: Session, project: Project) -> tuple[dict[str, Any],
         ],
         **module_bundle_json,
     }
+    project_json["people"] = people_section(db, project_json)
     return project_json, file_assets_by_id
 
 
@@ -597,14 +639,11 @@ def build_project_bundle(db: Session, project: Project, exported_by: User) -> IO
 
 
 def _read_bundle(zip_bytes: bytes, expected_kind: str) -> tuple[dict, dict, zipfile.ZipFile]:
-    enforce_upload_size_limit(zip_bytes, what="Bundle upload")
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-        enforce_zip_uncompressed_size_limit(zf)
-        manifest = json.loads(zf.read("manifest.json"))
-        data = json.loads(zf.read("project.json"))
-    except (zipfile.BadZipFile, KeyError, json.JSONDecodeError):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    zf = open_bundle_zip(zip_bytes)
+    manifest = read_bundle_json(zf, "manifest.json")
+    data = read_bundle_json(zf, "project.json")
+    if not isinstance(manifest, dict) or not isinstance(data, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.")
     if manifest.get("kind") != expected_kind:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Expected a {expected_kind!r} bundle, got {manifest.get('kind')!r}.")
     if manifest.get("format_version", 0) > PROJECT_BUNDLE_FORMAT_VERSION:
@@ -670,15 +709,16 @@ def apply_project_data(
             to be looked up once even if referenced from several projects).
         warnings: Accumulates human-readable import warnings.
     """
+    organization = db.get(Organization, project.organization_id)
+    if organization is not None and not organization.allow_imported_approval_state:
+        strip_approval_state(data)
+        warnings.add("This organisation does not keep imported approval state: imported records were returned to drafts.")
+    approved_count = count_approval_state(data)
     organization_id = project.organization_id
 
-    # Default action types (Review, Test) — a bundle doesn't currently carry
-    # its source project's action-type customisations across (unlike custom
-    # field definitions below), so every imported project simply starts
-    # with the same defaults a brand-new project would get. Matches
-    # `routers/projects.py::create_project`'s own default-seeding call for
-    # a manually-created (non-template) project.
-    seed_action_types(db, project.id)
+    # The bundle's own action types; a bundle that lists none (one written before action types were carried)
+    # starts with the defaults a brand-new project gets, as `routers/projects.py::create_project` does.
+    import_project_action_types(db, project, data)
     import_project_layouts(db, project, data, current_user, warnings, file_bytes_by_ref)
     import_project_packs(db, project, data, current_user, warnings)
     import_project_snippets(db, project, data, current_user, warnings, file_bytes_by_ref)
@@ -689,14 +729,12 @@ def apply_project_data(
 
     import_vocabulary(db, project, data.get("tags"), current_user.id)
 
+    project.nav_label_overrides = nav_labels.import_names(data, warnings)
+    project.overview_widgets = overview_widgets.import_layout(data, warnings)
+    import_project_stage_workflows(db, project, data, warnings)
     stage_id_by_name: dict[str, UUID] = {}
     for i, s in enumerate(data.get("stages", []) or [{"name": "Scoping", "sort_order": 0}]):
-        stage = ProjectStage(
-            project_id=project.id, name=s["name"], sort_order=s.get("sort_order", 0),
-            status=StageStatus.SCOPING, is_current=(i == 0),
-        )
-        db.add(stage)
-        db.flush()
+        stage = import_stage(db, project, s["name"], s.get("sort_order", 0), i == 0, s, warnings)
         stage_id_by_name[s["name"]] = stage.id
     fallback_stage_id = next(iter(stage_id_by_name.values()))
 
@@ -832,7 +870,7 @@ def apply_project_data(
             db.flush()
             version_id_by_code_and_number[(r["unique_code"], v["version_number"])] = version.id
         if r.get("keywords"):
-            set_keywords(db, requirement, r["keywords"], current_user.id, enforce_mode=False)
+            set_keywords(db, requirement, r["keywords"], current_user.id, enforce_mode=False, new_record=True)
         for att in r.get("attachments", []):
             asset = import_file_ref(att, "linked_by_email")
             if asset:
@@ -897,6 +935,8 @@ def apply_project_data(
         if req_id:
             import_comment(c, ReviewTargetType.REQUIREMENT, req_id, "uploaded_by_email")
 
+    import_project_actions(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+
     cr_id_by_ref: dict[str, UUID] = {}
     for cr in data.get("change_requests", []):
         requirement_id = requirement_id_by_code.get(cr["requirement_unique_code"]) if cr.get("requirement_unique_code") else None
@@ -913,6 +953,14 @@ def apply_project_data(
         db.add(change_request)
         db.flush()
         cr_id_by_ref[cr["ref"]] = change_request.id
+        restore_record_tags(
+            db, organization_id=project.organization_id, record_project_id=project.id, actor_id=current_user.id,
+            artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, names=cr.get("tags"),
+        )
+        restore_record_placements(
+            db, project_id=project.id, actor_id=current_user.id,
+            artefact_type=CHANGE_REQUEST_ARTEFACT_TYPE, artefact_id=change_request.id, entries=cr.get("placements"),
+        )
 
         for v in cr.get("versions", []):
             proposed_component_id = component_id_by_prefix.get(v["proposed_component_prefix"]) if v.get("proposed_component_prefix") else None
@@ -970,14 +1018,14 @@ def apply_project_data(
             version_id = version_id_by_code_and_number.get((r["unique_code"], v["version_number"]))
             cr_id = cr_id_by_ref.get(cr_ref)
             if version_id and cr_id:
-                db.get(RequirementVersion, version_id).change_request_id = cr_id
+                get_or_404(db, RequirementVersion, version_id, "Requirement version").change_request_id = cr_id
 
     for b in data.get("baselines", []):
         stage_id = stage_id_by_name.get(b["stage_name"])
         if stage_id is None:
             continue
         baseline = Baseline(
-            project_id=project.id, stage_id=stage_id, label=b["label"],
+            project_id=project.id, stage_id=stage_id, label=b["label"], component_id=component_id_by_prefix.get(b.get("component") or ""),
             created_by=users.resolve(b.get("created_by_email"), required=True, context=f"Baseline '{b['label']}' creator"),
         )
         db.add(baseline)
@@ -987,6 +1035,9 @@ def apply_project_data(
             version_id = version_id_by_code_and_number.get((item["unique_code"], item["version_number"]))
             if requirement_id and version_id:
                 db.add(BaselineItem(baseline_id=baseline.id, requirement_id=requirement_id, requirement_version_id=version_id))
+
+    import_component_phases(db, project, data, component_id_by_prefix, stage_id_by_name, users, warnings)
+    import_phase_schedule(db, project, data, component_id_by_prefix, stage_id_by_name, users, warnings)
 
     for rr in data.get("requirement_reviews", []):
         requirement_id = requirement_id_by_code.get(rr["unique_code"])
@@ -1004,17 +1055,35 @@ def apply_project_data(
     for _module_key, hooks in get_all_module_project_bundle_hooks():
         if hooks.import_late is not None:
             hooks.import_late(db, project, data, file_bytes_by_ref, current_user, users, warnings)
+    # After every module: the project's custom scoring models and axes exist by now, and the configuration names them.
+    import_project_scoring(db, project, data, warnings)
 
-    # Replays the source project's structural audit trail as its own
-    # events (rather than trying to preserve original ids/timestamps
-    # verbatim) — it's the only durable record of some structural changes
-    # (group/role/stage/component history), so dropping it on import would
-    # be a real, silent loss of project history.
+    # Replays the source project's structural audit trail so its history is not lost on a move. A person who is not a
+    # member of the organisation is recorded as the actor through an imported person, so the history still says who did
+    # it; a member is never named as the actor of an entry a bundle claims (the importer is recorded and the detail
+    # names the original person). Every entry is marked as imported, with the importer and time, so it is never read as
+    # an action taken in this project. The original address is kept in the detail only when the importer chose to.
+    imported_at = datetime.now(UTC).isoformat()
     for ev in data.get("audit_events", []):
+        if not (
+            isinstance(ev.get("entity_type"), str) and isinstance(ev.get("action"), str) and isinstance(ev.get("entity_id"), str)
+            and len(ev["entity_type"]) <= 50 and len(ev["action"]) <= 50 and len(ev["entity_id"]) <= 64
+        ):
+            continue
+        original = ev.get("detail")
+        detail = dict(original) if isinstance(original, dict) else {}
+        actor_email = ev.get("actor_email") if isinstance(ev.get("actor_email"), str) else None
+        origin: dict[str, Any] = {
+            "original_actor_name": users.display_name_for(actor_email), "original_created_at": ev.get("created_at"),
+            "imported_by": str(current_user.id), "imported_at": imported_at,
+        }
+        if users.choices.keep_original_email:
+            origin["original_actor_email"] = actor_email
+        detail["imported_from_bundle"] = origin
         log_event(
             db, entity_type=ev["entity_type"], entity_id=ev["entity_id"], action=ev["action"],
-            actor_id=users.resolve(ev.get("actor_email"), required=False, context="Audit event actor"),
-            organization_id=organization_id, project_id=project.id, detail=ev.get("detail"),
+            actor_id=users.actor_id(actor_email, "History"), organization_id=organization_id, project_id=project.id,
+            detail=detail,
         )
 
     if not get_effective_project_managers(db, project.id):
@@ -1022,26 +1091,61 @@ def apply_project_data(
 
     log_event(
         db, entity_type="project", entity_id=project.id, action="imported_from_bundle", actor_id=current_user.id,
-        organization_id=organization_id, project_id=project.id, detail={"warning_count": len(warnings.messages)},
+        organization_id=organization_id, project_id=project.id,
+        detail={"warning_count": len(warnings.messages), "records_with_approval_state": approved_count},
     )
+
+
+def preview_project_people(
+    db: Session, *, organization_id: UUID, zip_bytes: bytes, choices: PeopleChoices,
+) -> list[PersonPreview]:
+    """How each person a project bundle names would be resolved on import, without writing anything.
+
+    Args:
+        db: An active database session (read only).
+        organization_id: The organisation the bundle would be imported into.
+        zip_bytes: The uploaded bundle.
+        choices: The importer's decisions so far.
+
+    Returns:
+        One entry per person; see `imported_people.classify_people`.
+
+    Raises:
+        HTTPException: 400 when the bundle is not a valid project bundle.
+    """
+    _manifest, data, _zf = _read_bundle(zip_bytes, PROJECT_BUNDLE_KIND)
+    return classify_people(db, organization_id, data, choices)
 
 
 def import_project_bundle(
     db: Session, *, organization_id: UUID, name: str, summary: str | None, zip_bytes: bytes, current_user: User,
+    skip_files: bool = False, choices: PeopleChoices | None = None,
 ) -> tuple[Project, list[str]]:
     """Creates a brand-new project in `organization_id` from an exported
     project bundle. Never merges into an existing project — a fresh project
     keeps unique_code/prefix collisions and partial-import states impossible.
 
+    Args:
+        choices: The importer's decisions about the people the bundle names (`services.imported_people`).
+        skip_files: Import without the bundle's files; honoured only while files cannot be stored
+            (`services.files.resolve_bundle_files`).
+
     Returns:
         The new Project and a list of human-readable import warnings (e.g.
         user references that fell back to `current_user`).
+
+    Raises:
+        HTTPException: 403 (`uploads_disabled`) when the bundle has files, they cannot be stored and `skip_files`
+            is not set; nothing is written.
     """
     _manifest, data, zf = _read_bundle(zip_bytes, PROJECT_BUNDLE_KIND)
-    file_bytes_by_ref = {n.removeprefix("files/"): zf.read(n) for n in zf.namelist() if n.startswith("files/")}
+    file_bytes_by_ref = read_bundle_files(zf)
 
     warnings = BundleImportWarnings()
-    users = UserResolver(db, current_user, warnings)
+    file_bytes_by_ref = resolve_bundle_files(
+        db, organization_id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
+    )
+    users = UserResolver(db, current_user, warnings, organization_id=organization_id, data=data, choices=choices)
     project = new_project_from_bundle_data(db, organization_id, name, summary, data)
     db.add(project)
     db.flush()

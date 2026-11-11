@@ -5,9 +5,9 @@ test_org_lifecycle.py) — but with a self-service way out, since enrolling
 in 2FA isn't itself an org-scoped action.
 """
 
-import pyotp
 
 from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.totp_helpers import next_code
 
 
 def _set_require_2fa(client, token, org_id, value: bool):
@@ -24,7 +24,7 @@ def _enroll_2fa(client, token) -> None:
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(token))
     assert enroll.status_code == 200, enroll.text
     secret = enroll.json()["secret"]
-    code = pyotp.TOTP(secret).now()
+    code = next_code(secret)
     confirm = client.post(
         "/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=auth_headers(token)
     )

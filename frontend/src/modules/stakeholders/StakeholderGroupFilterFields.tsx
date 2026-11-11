@@ -9,9 +9,10 @@
  */
 import { useMemo, type ReactNode } from "react";
 
-import { FilterField } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { buildGroupTree, flattenGroupTree } from "./groupTree";
 import type { StakeholderGroup } from "./types";
+import { useStrings } from "../../context/TerminologyContext";
 
 /**
  * @param props.groups Every group in view, flat; renders nothing when empty.
@@ -34,27 +35,26 @@ export function StakeholderGroupFilterFields({
   onGroupByChange: (next: string) => void;
   afterGroup?: ReactNode;
 }) {
+  const strings = useStrings();
   const options = useMemo(() => flattenGroupTree(buildGroupTree(groups)), [groups]);
   if (groups.length === 0) return null;
   return (
     <>
-      <FilterField label="Group">
-        <select className="input" aria-label="Group" value={groupId} onChange={(e) => onGroupIdChange(e.target.value)}>
-          <option value="">All groups</option>
-          {options.map(({ group, depth }) => (
-            <option key={group.id} value={group.id}>{`${"  ".repeat(depth)}${group.name}`}</option>
-          ))}
-        </select>
-      </FilterField>
+      <FilterSelect
+        label={strings.filters.group}
+        value={groupId}
+        onChange={onGroupIdChange}
+        allLabel="All groups"
+        options={options.map(({ group, depth }) => ({ value: group.id, label: `${"  ".repeat(depth)}${group.name}` }))}
+      />
       {afterGroup}
-      <FilterField label="Group by">
-        <select className="input" aria-label="Group by" value={groupBy} onChange={(e) => onGroupByChange(e.target.value)}>
-          <option value="">No grouping</option>
-          {options.filter(({ depth }) => depth === 0).map(({ group }) => (
-            <option key={group.id} value={group.id}>{group.name}</option>
-          ))}
-        </select>
-      </FilterField>
+      <FilterSelect
+        label={strings.filters.groupBy}
+        value={groupBy}
+        onChange={onGroupByChange}
+        allLabel="No grouping"
+        options={options.filter(({ depth }) => depth === 0).map(({ group }) => ({ value: group.id, label: group.name }))}
+      />
     </>
   );
 }

@@ -4,11 +4,12 @@ sidebar_position: 17.5
 
 # Pain Point scoring
 
-A Low/Medium/High priority can't rank thirty "High" Pain Points, and a problem that is trivial for one persona can make the product unusable for another. Scoring ranks Pain Points on three inputs, **per persona**, and keeps any problem that blocks a persona visible however the numbers are averaged.
+A Low/Medium/High priority can't rank thirty "High" Pain Points, and a problem that is trivial for one persona can make the product unusable for another. Scoring ranks Pain Points on a set of criteria, scored for the whole Pain Point (**General**) and **per persona** where a persona differs, and keeps any problem that blocks a persona visible however the numbers are averaged.
 
 ```mermaid
 flowchart LR
-    L["Levels<br/>(set by the organisation)"] --> S["Score each persona:<br/>Severity · Frequency · Confidence"]
+    L["Levels<br/>(set by the organisation)"] --> G["General scores"]
+    G --> S["Personas that differ<br/>override per-persona criteria"]
     S --> M["Model<br/>(chosen when viewing)"]
     M --> R["Roll-up<br/>(chosen when viewing)"]
     R --> O["One score + rating band"]
@@ -17,25 +18,33 @@ flowchart LR
     B --> RP
 ```
 
-## The three inputs
+## The criteria
 
-| Input | Asks | Default levels (weight) |
+Each criterion is scored either **per persona** or **for the whole Pain Point**. The built-in criteria are:
+
+| Criterion | Asks | Scored | Default levels (weight) |
+| --- | --- | --- | --- |
+| **Severity** | How badly does the problem affect this persona? | Per persona | Cosmetic (1) · Minor (2) · Moderate (3) · Major (4) · **Blocker** (5): unusable for this persona, no workaround |
+| **Frequency** | How often do they hit it? | Per persona | Rare (1) · Occasional (2) · Frequent (3) · Constant (4) |
+| **Confidence** | How sure are we of the other two? | Per persona | Low (0.5) · Medium (0.8) · High (1) |
+| **User/business value** | How much is solving it worth? | Per persona | Minimal (1) · Low (2) · Moderate (3) · Substantial (5) · High (8) · Very high (13) · Exceptional (20) |
+| **Time criticality** | How quickly does waiting cost more? | Whole Pain Point | No deadline (1) … Immediate (20), on the same scale |
+| **Risk reduction / opportunity enablement** | Does solving it remove a risk or open an opportunity? | Whole Pain Point | None (1) … Exceptional (20), on the same scale |
+| **Job size** | How large is the work? | Whole Pain Point | Tiny (1) … Epic (20), on the same scale |
+
+Each level carries short guidance that appears beside the control when you score, so everyone reads "Major" the same way. The organisation can rename, re-weight, add, or remove levels, and define criteria of its own (see [Configuring scoring](#configuring-scoring)).
+
+A **scoring model** combines the chosen levels' weights:
+
+| Model | Combines | Highest possible (defaults) |
 | --- | --- | --- |
-| **Severity** | How badly does the problem affect this persona? | Cosmetic (1) · Minor (2) · Moderate (3) · Major (4) · **Blocker** (5): unusable for this persona, no workaround |
-| **Frequency** | How often do they hit it? | Rare (1) · Occasional (2) · Frequent (3) · Constant (4) |
-| **Confidence** | How sure are we of the other two? | Low (0.5) · Medium (0.8) · High (1) |
+| Severity × Frequency | Severity × Frequency | 20 |
+| Severity × Confidence | Severity × Confidence | 5 |
+| Severity × Frequency × Confidence | all three, multiplied | 20 |
+| **Cost of Delay** | User/business value + Time criticality + Risk reduction, added with equal importance | 100% |
+| **WSJF** (Weighted Shortest Job First) | Cost of Delay ÷ Job size | 100% of Cost of Delay at the smallest job |
 
-Each level carries short guidance that appears beneath the control when you score, so everyone reads "Major" the same way. The organisation can rename, re-weight, add, or remove levels (see [Configuring scoring](#configuring-scoring)).
-
-A **scoring model** multiplies the chosen levels' weights:
-
-| Model | Multiplies | Highest possible (defaults) |
-| --- | --- | --- |
-| Severity × Frequency | Severity, Frequency | 20 |
-| Severity × Confidence | Severity, Confidence | 5 |
-| Severity × Frequency × Confidence | all three | 20 |
-
-With the default weights Confidence only ever discounts a score: a Low-confidence "Blocker" scores less than a High-confidence one.
+With the default weights Confidence only ever discounts a score: a Low-confidence "Blocker" scores less than a High-confidence one. Under WSJF a larger job lowers the score, so a small piece of work with the same value ranks higher.
 
 Scores are shown two ways: the raw product on the Pain Point and in the list (for example **Critical · 12**), and as a 0–100 figure in the [reports](./report-reference.md) (the raw score as a percentage of the model's highest possible score).
 
@@ -48,13 +57,11 @@ Open a Pain Point and use the **Scoring** section. Saving scores is for the **Pa
 | Two personas scored separately: the Field Inspector (weight 5) rates it Minor, the BVLOS Remote Pilot (weight 2) rates it a Blocker |
 | ![Pain Point detail page scrolled to the Scoring section, with a model and roll-up selector, a Medium score of 4.3 with a Blocker badge, and Severity, Frequency and Confidence selectors for the Field Inspector and BVLOS Remote Pilot personas](../../../static/img/screenshots/pain-point-scoring-panel.png) |
 
-1. Choose a **Scoring mode**:
-   - **All personas together**: one set of ratings for everyone. Use it when you don't have persona-level knowledge yet, or when the problem is universal.
-   - **Each persona separately**: one set per persona. This option needs the [Stakeholders & Personas](../stakeholders-personas-module/overview.md) module, and offers the project's personas.
-2. Pick a Severity, Frequency and Confidence level. Leave any input blank if you don't know it.
+1. Set the **General** scores: a level for each criterion. General holds the criteria scored for the whole Pain Point (such as Job size), and is the default for the criteria scored per persona (such as Severity). Leave any criterion blank if you don't know it.
+2. If a persona is affected differently, choose it under **Add a persona that differs**. Its group holds the per-persona criteria only; a level left blank there takes General's. This option needs the [Stakeholders & Personas](../stakeholders-personas-module/overview.md) module, and offers the project's personas. The grid never lists every persona, so it stays short however many the project has. Remove a persona's group to return it to General.
 3. Select **Save scores**.
 
-A Pain Point has either one all-personas set **or** per-persona sets, never both: mixing them would make "applies to everyone" ambiguous when the sets are averaged, so saving in one mode replaces the other.
+A persona's score uses its own level where it has one and General's otherwise, so a persona group that overrides only Severity still scores on General's Frequency and Confidence. A criterion scored for the whole Pain Point can be set under General only.
 
 ### Scoring many Pain Points in the grid
 
@@ -73,7 +80,7 @@ Read left to right: each changed Pain Point is saved on its own, so one refusal 
 - Changed cells are tinted and counted on the **Save N changes** button. The undo button discards the changes and puts the saved values back. The grid has no Reload button; refresh the page to read the list again.
 - Switching to the grid leaves the filter panel as it was. Collapse it to give the table the full width; the **Filters** button beside the list actions menu brings it back, and collapsing never clears a filter. Every list page's filter panel has a round collapse button in its header.
 - The **Editing** column says whether each row can be edited (**Editable**, **Partly editable** or **Read-only**) with the reason on hover, next to the Pain Point's **Status**. The **Columns** button (table icon), the undo button and **Save** sit on the same row as the List and Grid buttons, before them. The **Columns** button opens a menu that chooses which columns show, including read-only ones such as Source or Impact; your choice is remembered.
-- The grid edits the **all personas** scores. A Pain Point scored per persona shows those cells as plain text with the reason on hover; score it on the Pain Point. A Pain Point at a terminal outcome is read-only the same way.
+- The grid edits the **General** scores of every criterion the project offers; persona overrides are set on the Pain Point and are left as they are when a General cell is saved. A Pain Point at a terminal outcome is read-only, with the reason on hover.
 - If someone else changed a cell after you loaded the grid, that row is not saved: its message says what the value is now, and your change stays in place until you reload or discard it.
 - **Enter** moves to the same column in the next row (**Shift+Enter** goes back); **Tab** moves along the row. After saving, a result such as "3 saved, 1 failed" appears.
 
@@ -91,7 +98,7 @@ The **Scoring model** and **Combine personas by** selectors sit above the score 
 
 "Pilots cannot tell which redundant flight controller is in command", under **Severity × Frequency** (highest possible 20):
 
-| Persona | Weight | Severity | Frequency | Raw score | 0–100 |
+| Persona (each differs from General) | Weight | Severity | Frequency | Raw score | 0–100 |
 | --- | --- | --- | --- | --- | --- |
 | Field Inspector | 5 | Minor (2) | Rare (1) | 2 | 10 |
 | BVLOS Remote Pilot | 2 | **Blocker** (5) | Occasional (2) | 10 | 50 |
@@ -117,7 +124,7 @@ A **Blocker** badge shows whenever any counted persona rates Severity at the axi
 
 - The filter panel can narrow the list to **Open only**, **Blockers only**, **Scoring** (scored or not scored), and **Hide** or **Only intentional limitations**. [Report figures](./reports.md#following-a-figure) open the list with these already applied.
 - **Not scored** means no persona has every input the chosen model needs. It is a gap, not a low priority: switch to a model whose inputs you have, or score it.
-- **Unscored personas are left out, not counted as zero.** If only one of five personas is scored, the Pain Point shows that persona's score.
+- **Unscored personas are left out, not counted as zero.** If only one of five personas is scored, the Pain Point shows that persona's score. With no persona groups, or only retired ones, the General score is the score.
 - A persona missing an input the chosen model needs is "Not scored" under that model only.
 
 ## Intentional limitations
@@ -140,11 +147,13 @@ The page never fails on a missing persona.
 
 ## Configuring scoring
 
-Levels belong to the organisation; a project can change only the default model, the rating bands and the cell ratings.
+Levels belong to the organisation (a project can edit the levels of a criterion it defined itself); a project can also change the default model, the models offered, the rating bands and the cell ratings.
 
-| Setting | Organisation (**Org Management → Pain Point Scoring**) | Project (**Project Admin → Pain Point Scoring**) |
+| Setting | Organisation (**Org Management → Pain Points → Pain Point Scoring**) | Project (**Project Admin → Pain Points → Pain Point Scoring**) |
 | --- | --- | --- |
-| Levels per input (name, weight, guidance) | Edit, add, delete (at least two per input; deleting an in-use level asks where to move its scores) | Read-only |
+| Levels per criterion (name, weight, guidance) | Edit, add, delete (at least two per criterion; deleting an in-use level asks where to move its scores) | Read-only, except a criterion the project defined |
+| Models offered | Choose which models appear when scoring and viewing (the default is always offered) | Override, or use the inherited value |
+| Criteria and models of your own | Add, edit, delete; hide a built-in one and restore it | Add, edit, delete for the project and the projects below it; hide a built-in or inherited one in this project |
 | Default model | Set, or reset to the module default | Override, or use the inherited value |
 | Rating bands per model | Set, or reset to the module defaults | Override, or use the inherited value |
 | Cell ratings per two-axis model | Pin cells to a band, or reset | Override, or use the inherited value |
@@ -153,6 +162,10 @@ Levels belong to the organisation; a project can change only the default model, 
 | --- | --- |
 | ![Organisation Pain Point Scoring settings showing the default model and the editable Severity levels, with Frequency, Confidence and rating bands below](../../../static/img/screenshots/pain-point-scoring-org.png) | ![Project Pain Point Scoring settings showing a custom default model of Severity × Frequency, the read-only levels summary, and the start of the rating bands](../../../static/img/screenshots/pain-point-scoring-project.png) |
 
+### Your own criteria and models
+
+Under **Criteria**, **Add axis** defines a criterion with its own levels and chooses how it is **Scored**: once for the whole record, or separately for each persona. That choice is fixed when the criterion is added, because scores already stored depend on it. **Add model** combines criteria as a product (multiplied, or divided by an axis), or as a weighted sum by importance (totalling 100%) that can also be divided by an axis, as WSJF divides by Job size. A built-in criterion or model can be hidden and restored, never deleted; a level already stored on a hidden criterion is kept and ignored until it is restored. Deleting a criterion that scores use asks whether to drop those scores.
+
 **Rating bands** (Low, Medium, High, Critical by default) label a score by where it sits as a percentage of the model's highest possible score, so they keep working when you change level weights. The module's starting points differ by model:
 
 | Model | Medium from | High from | Critical from |
@@ -160,6 +173,8 @@ Levels belong to the organisation; a project can change only the default model, 
 | Severity × Frequency | 20% | 40% | 60% |
 | Severity × Confidence | 30% | 50% | 80% |
 | Severity × Frequency × Confidence | 15% | 30% | 50% |
+| Cost of Delay | 30% | 50% | 75% |
+| WSJF | 6% | 15% | 35% |
 
 **Cell ratings** let you set the band of individual cells in a two-axis model's grid, for when thresholds on the score don't match how your organisation rates risk. For example, a Blocker that happens Rarely scores 25% (Medium), but you may rate it High. Under **Rating bands**, choose a two-axis model (Severity × Frequency or Severity × Confidence), pick a band in a cell's list, and select **Save cell ratings**. Cells left on **Thresholds** keep the band their score earns.
 
@@ -186,7 +201,7 @@ flowchart LR
 
 ## Automation
 
-An AI assistant or script can read and set scores: see the three scoring tools in [AI assistant (MCP) integration](./mcp-integration.md). Over REST, `GET .../pain-points/{id}/scores` returns a Pain Point's per-persona scores and roll-up, and `PUT` replaces them; `GET .../pain-point-scores` ranks every Pain Point under a model and roll-up. Level IDs come from the project's `pain_point` scoring scheme.
+An AI assistant or script can read and set scores: see the three scoring tools in [AI assistant (MCP) integration](./mcp-integration.md). Over REST, `GET .../pain-points/{id}/scores` returns a Pain Point's General and per-persona scores and roll-up, and `PUT` replaces them; each entry is `{target_id, levels}`, where `target_id` is a persona (or null for General) and `levels` maps a criterion key to a level ID. `GET .../pain-point-scores` ranks every Pain Point under a model and roll-up. Criterion keys and level IDs come from the project's `pain_point` scoring scheme, which also says which criteria are scored per persona.
 
 ## Where this fits
 

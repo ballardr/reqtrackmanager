@@ -179,7 +179,7 @@ test.describe("Risk Management", () => {
     await setUpOrg(page, "RiskTypes");
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-    await selectOrgAdminGroup(page, "Risk Types");
+    await selectOrgAdminGroup(page, "Risk Types", "Risk Management");
     await expect(page.locator(`input[value="Safety"]`)).toBeVisible();
     await expect(page.locator(`input[value="Schedule"]`)).toBeVisible();
   });

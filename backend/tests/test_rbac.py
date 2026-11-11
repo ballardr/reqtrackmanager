@@ -14,6 +14,7 @@ from tests.conftest import (
     direct_project_roles,
     login,
 )
+from tests.stage_helpers import move_stage
 
 
 def test_member_cannot_create_project(client, admin_token, org_id):
@@ -157,9 +158,7 @@ def test_only_project_manager_can_approve_stage(client, admin_token, org_id):
 
     stages = client.get(f"/api/v1/projects/{project['id']}/stages", headers=auth_headers(token)).json()
     stage_id = stages[0]["id"]
-    resp = client.post(
-        f"/api/v1/projects/{project['id']}/stages/{stage_id}/transition?new_status=approved",
-        headers=auth_headers(token),
+    resp = move_stage(client, project['id'], stage_id, "approved", headers=auth_headers(token),
     )
     assert resp.status_code == 403
 
@@ -580,7 +579,7 @@ def test_org_wide_visibility_does_not_reach_a_different_organisation(client, adm
 
 
 def test_org_wide_visibility_never_implies_manager_or_admin_rights(client, admin_token, org_id):
-    """Org-wide visibility is a read grant only — it must never let a plain
+    """Organisation-wide visibility is a read grant only — it must never let a plain
     member manage project settings or structure."""
     project = create_project(client, admin_token, org_id, "Org Wide Read Only")
     client.patch(

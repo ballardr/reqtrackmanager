@@ -5,25 +5,40 @@ File upload/download/delete built on top of the pluggable storage backend
 (I-M-10). Generates a collision-proof storage key per file rather than
 trusting the client-supplied filename, and records metadata in `FileAsset`
 regardless of which backend actually holds the bytes.
+
+`assert_uploads_allowed` is the one gate for every user-supplied file: the deployment-wide switch
+(`ServerSettings.file_uploads_enabled`), the organisation's switch and its storage limit (`services.storage_usage`) stop
+new files only, so reading and deleting existing files keep working.
+`resolve_bundle_files` applies the same rule to the files embedded in an imported bundle. Generated report outputs
+are written by `services/report_run_jobs.py` directly and are not uploads (see `docs/decisions.md`).
 """
 
 from __future__ import annotations
 
+import io
 import re
 import uuid
+from collections.abc import Callable
 from functools import lru_cache
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from PIL import Image as PilImage
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.file import FileAsset
+from app.models.organization import ServerSettings
+from app.services import storage_usage
 from app.storage_backends import FileStorageBackend, LocalFileStorageBackend, S3CompatibleFileStorageBackend
 
 settings = get_settings()
 
 _UNSAFE_KEY_CHARS = re.compile(r"[^A-Za-z0-9_.-]+")
+
+UPLOADS_DISABLED_CODE = "uploads_disabled"
+UPLOADS_DISABLED_MESSAGE = "File uploads are disabled on this deployment."
 
 
 def _safe_key_component(filename: str) -> str:
@@ -71,10 +86,127 @@ def get_storage_backend() -> FileStorageBackend:
     return LocalFileStorageBackend(settings.storage_local_dir)
 
 
+def upload_refusal(db: Session, organization_id: UUID | None, incoming_bytes: int = 0) -> dict[str, object] | None:
+    """Decides whether new user files may be stored, under every rule in order.
+
+    The rules are the deployment-wide switch, the organisation's switch, then the organisation's storage limit
+    (`services.storage_usage.refusal`).
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation the file would belong to (None checks only the deployment-wide switch).
+        incoming_bytes: The size about to be stored; 0 asks only whether storing is allowed at all.
+
+    Returns:
+        None when allowed; otherwise the 403 detail naming the rule that applied.
+    """
+    enabled = db.scalar(select(ServerSettings.file_uploads_enabled))
+    if enabled is False:
+        return {"code": UPLOADS_DISABLED_CODE, "message": UPLOADS_DISABLED_MESSAGE}
+    if organization_id is None:
+        return None
+    return storage_usage.refusal(db, organization_id, incoming_bytes)
+
+
+def uploads_allowed(db: Session, organization_id: UUID | None = None, incoming_bytes: int = 0) -> bool:
+    """Whether `incoming_bytes` more may be stored; the boolean form of `upload_refusal`."""
+    return upload_refusal(db, organization_id, incoming_bytes) is None
+
+
+def assert_uploads_allowed(db: Session, organization_id: UUID | None = None, incoming_bytes: int = 0) -> None:
+    """Refuses a new file while uploads are disabled or the organisation's storage limit would be exceeded.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation the file would belong to.
+        incoming_bytes: The size about to be stored.
+
+    Raises:
+        HTTPException: 403 with the rule's code in the detail (`uploads_disabled`, `organization_uploads_disabled` or
+            `storage_quota_exceeded`).
+    """
+    detail = upload_refusal(db, organization_id, incoming_bytes)
+    if detail is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+def resolve_bundle_files(
+    db: Session, organization_id: UUID | None, file_bytes_by_ref: dict[str, bytes], *, skip_files: bool, warn: Callable[[str], None],
+) -> dict[str, bytes]:
+    """Decides what happens to the files embedded in a bundle being imported.
+
+    Files are imported whenever they can be stored, judged by the same rules as a single upload with the bundle's total
+    size. When they cannot, the import either stops before any row is written, or (with `skip_files`) goes ahead without
+    them and reports how many were left out. Every importer already skips a record file that has no bytes, so returning
+    an empty map is the whole mechanism.
+
+    Args:
+        db: An active database session.
+        organization_id: The organisation that would own the files.
+        file_bytes_by_ref: The bundle's embedded files, by reference.
+        skip_files: The person's choice to import without files; ignored while files can be stored.
+        warn: Records one import warning (`BundleImportWarnings.add`).
+
+    Returns:
+        `file_bytes_by_ref` unchanged when files can be stored or there are none, else an empty map.
+
+    Raises:
+        HTTPException: 403 with the rule's code, the file count, the total size in bytes and (for a limit) the space left
+            when files cannot be stored and `skip_files` is not set.
+    """
+    if not file_bytes_by_ref:
+        return file_bytes_by_ref
+    count = len(file_bytes_by_ref)
+    total = sum(len(data) for data in file_bytes_by_ref.values())
+    detail = upload_refusal(db, organization_id, total)
+    if detail is None:
+        return file_bytes_by_ref
+    if not skip_files:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail={**detail, "file_count": count, "file_bytes": total},
+        )
+    noun, verb = ("files", "were") if count != 1 else ("file", "was")
+    reason = "there is not enough storage space" if detail["code"] == "storage_quota_exceeded" else "file uploads are disabled"
+    warn(f"{count} {noun} in the bundle {verb} not imported because {reason}.")
+    return {}
+
+
+_RASTER_BY_FORMAT = {"PNG": "image/png", "JPEG": "image/jpeg", "GIF": "image/gif", "WEBP": "image/webp"}
+_OCTET_STREAM = "application/octet-stream"
+
+
+def trusted_content_type(claimed: str, data: bytes) -> str:
+    """The content type to store: the client's claim, except that an `image/*` claim must match the bytes.
+
+    A PNG, JPEG, GIF or WebP is stored as what its header says (whatever the claim); an SVG claim is kept when the
+    bytes look like SVG text; any other bytes claimed as an image are stored as `application/octet-stream`, so a
+    file cannot pass as a picture (an outgoing email's logo, a branded page) it is not. Downloads of anything that is
+    not a raster picture or a PDF are already forced to save rather than display.
+
+    Args:
+        claimed: The `Content-Type` the client sent (may be empty).
+        data: The file's bytes.
+
+    Returns:
+        The content type to store.
+    """
+    claim = (claimed or _OCTET_STREAM).split(";")[0].strip().lower() or _OCTET_STREAM
+    if not claim.startswith("image/"):
+        return claim
+    try:
+        with PilImage.open(io.BytesIO(data), formats=list(_RASTER_BY_FORMAT)) as image:
+            return _RASTER_BY_FORMAT.get(image.format or "", _OCTET_STREAM)
+    except Exception:  # noqa: BLE001 - Pillow raises several types for bytes that are not an image
+        pass
+    if claim == "image/svg+xml" and b"<svg" in data[:4096].lower():
+        return claim
+    return _OCTET_STREAM
+
+
 def upload_file(
     db: Session,
     *,
-    organization_id: UUID,
+    organization_id: UUID | None,
     uploaded_by: UUID,
     filename: str,
     content_type: str,
@@ -88,7 +220,8 @@ def upload_file(
         db: An active database session (the FileAsset row is added but not
             committed; the caller commits as part of its own transaction).
         organization_id: The owning organisation, used both for storage-key
-            namespacing and access control.
+            namespacing and access control; `None` stores a platform-owned file (only the deployment-wide switch and the
+            size limit apply, and no organisation's usage counts it).
         uploaded_by: The user performing the upload.
         filename: The original filename, shown back to users.
         content_type: The file's MIME type.
@@ -100,15 +233,19 @@ def upload_file(
         The created FileAsset (not yet committed).
 
     Raises:
-        HTTPException: 413 when `data` is larger than `Settings.max_upload_bytes`.
+        HTTPException: 403 (`uploads_disabled`) while uploads are disabled; 413 when `data` is larger than
+            `Settings.max_upload_bytes`.
     """
+    assert_uploads_allowed(db, organization_id, len(data))
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(
             status.HTTP_413_CONTENT_TOO_LARGE,
             f"The file is too large (limit {settings.max_upload_bytes // (1024 * 1024)} MB).",
         )
+    if organization_id is not None:
+        storage_usage.note_upload(db, organization_id, len(data))
     backend = get_storage_backend()
-    key = f"{organization_id}/{uuid.uuid4()}_{_safe_key_component(filename)}"
+    key = f"{organization_id or 'platform'}/{uuid.uuid4()}_{_safe_key_component(filename)}"
     backend.save(key, data)
 
     file_asset = FileAsset(
@@ -116,7 +253,7 @@ def upload_file(
         storage_backend=backend.name,
         storage_key=key,
         filename=filename,
-        content_type=content_type,
+        content_type=trusted_content_type(content_type, data),
         size_bytes=len(data),
         uploaded_by=uploaded_by,
         is_org_resource=is_org_resource,

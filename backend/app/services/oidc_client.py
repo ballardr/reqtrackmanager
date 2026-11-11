@@ -17,6 +17,9 @@ storage at all.
 
 from __future__ import annotations
 
+import json
+import time
+from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -26,7 +29,7 @@ from joserfc.jwk import KeySet
 from joserfc.jwt import JWTClaimsRegistry
 
 from app.config import get_settings
-from app.services.net_guard import assert_public_host
+from app.services.net_guard import assert_public_host, resolve_public_addresses
 
 _HTTP_TIMEOUT = 10.0
 
@@ -96,13 +99,79 @@ def _internal_url(url: str) -> str:
     return urlunsplit((override_parts.scheme, override_parts.netloc, parts.path, parts.query, parts.fragment))
 
 
+#: A provider's answer is never larger than this; a tenant-chosen host cannot make a worker read an unbounded body.
+_MAX_RESPONSE_BYTES = 1024 * 1024
+#: How long a discovery document is reused (it changes rarely, and each fetch holds a worker on a tenant's host).
+_DISCOVERY_TTL_SECONDS = 300.0
+_DISCOVERY_CACHE_MAX = 256
+_discovery_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _pinned_target(url: str) -> tuple[str, dict]:
+    """The URL to connect to and the extra request arguments that keep the request about the original host.
+
+    When the SSRF guard applies, the host is resolved once here, judged, and the connection is made to that
+    address (the original name still goes in the `Host` header and, for HTTPS, the TLS server name), so a name
+    that answers differently the second time cannot redirect the connection. When the guard is switched off by
+    the operator the URL is used as it is.
+    """
+    settings = get_settings()
+    if settings.oidc_internal_base_url_override or settings.oidc_allow_private_network_targets:
+        return url, {}
+    parts = urlsplit(url)
+    hostname = parts.hostname or ""
+    address = resolve_public_addresses(hostname)[0]
+    host = f"[{address}]" if ":" in address else address
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    request_host = f"{hostname}:{parts.port}" if parts.port else hostname
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment)), {
+        "headers": {"Host": request_host}, "extensions": {"sni_hostname": hostname},
+    }
+
+
+def _request_json(method: str, url: str, *, data: dict | None = None) -> dict:
+    """One bounded request to the provider: no redirects, a byte cap on the answer, connection pinned to the checked address.
+
+    Raises:
+        ValueError: The answer is too large, not JSON, or the host is not permitted.
+        httpx.HTTPError: The request failed or the provider answered with an error status.
+    """
+    target, extra = _pinned_target(_internal_url(url))
+    with httpx.stream(method, target, data=data, timeout=_HTTP_TIMEOUT, follow_redirects=False, **extra) as resp:
+        resp.raise_for_status()
+        body = bytearray()
+        for chunk in resp.iter_bytes():
+            body += chunk
+            if len(body) > _MAX_RESPONSE_BYTES:
+                raise ValueError("The identity provider's response is too large.")
+    try:
+        parsed = json.loads(bytes(body))
+    except ValueError as exc:
+        raise ValueError("The identity provider's response is not valid JSON.") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("The identity provider's response is not a JSON object.")
+    return parsed
+
+
 def discover(issuer_url: str) -> dict:
-    """Fetches an OIDC provider's discovery document."""
+    """Fetches an OIDC provider's discovery document (reused for a few minutes).
+
+    Raises:
+        ValueError: The issuer is not permitted, unreachable, or its answer is unusable.
+    """
     url = f"{issuer_url.rstrip('/')}/.well-known/openid-configuration"
+    cached = _discovery_cache.get(url)
+    if cached is not None and time.monotonic() - cached[0] < _DISCOVERY_TTL_SECONDS:
+        return cached[1]
     _assert_safe_external_url(url)
-    resp = httpx.get(_internal_url(url), timeout=_HTTP_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    try:
+        document = _request_json("GET", url)
+    except httpx.HTTPError as exc:
+        raise ValueError("The identity provider could not be reached.") from exc
+    if len(_discovery_cache) >= _DISCOVERY_CACHE_MAX:
+        _discovery_cache.clear()
+    _discovery_cache[url] = (time.monotonic(), document)
+    return document
 
 
 def build_authorize_url(discovery: dict, *, client_id: str, redirect_uri: str, state: str) -> str:
@@ -117,16 +186,16 @@ def build_authorize_url(discovery: dict, *, client_id: str, redirect_uri: str, s
 def exchange_code_for_tokens(discovery: dict, *, client_id: str, client_secret: str, redirect_uri: str, code: str) -> dict:
     """Exchanges an authorization code for tokens at the provider's token endpoint."""
     _assert_safe_external_url(discovery["token_endpoint"])
-    resp = httpx.post(
-        _internal_url(discovery["token_endpoint"]),
-        data={
-            "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
-            "client_id": client_id, "client_secret": client_secret,
-        },
-        timeout=_HTTP_TIMEOUT,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    try:
+        return _request_json(
+            "POST", discovery["token_endpoint"],
+            data={
+                "grant_type": "authorization_code", "code": code, "redirect_uri": redirect_uri,
+                "client_id": client_id, "client_secret": client_secret,
+            },
+        )
+    except httpx.HTTPError as exc:
+        raise ValueError("The identity provider rejected the sign-in or could not be reached.") from exc
 
 
 def verify_id_token(discovery: dict, id_token: str, *, client_id: str, issuer_url: str) -> dict:
@@ -138,9 +207,11 @@ def verify_id_token(discovery: dict, id_token: str, *, client_id: str, issuer_ur
             its issuer/audience don't match what was configured.
     """
     _assert_safe_external_url(discovery["jwks_uri"])
-    jwks_resp = httpx.get(_internal_url(discovery["jwks_uri"]), timeout=_HTTP_TIMEOUT)
-    jwks_resp.raise_for_status()
-    key_set = KeySet.import_key_set(jwks_resp.json())
+    try:
+        jwks = _request_json("GET", discovery["jwks_uri"])
+    except httpx.HTTPError as exc:
+        raise ValueError("The identity provider's signing keys could not be fetched.") from exc
+    key_set = KeySet.import_key_set(cast(Any, jwks))
     try:
         token = jose_jwt.decode(id_token, key_set, algorithms=_ALLOWED_ID_TOKEN_ALGORITHMS)
         # OIDC Core 1.0 §2 requires iss/aud/exp on every ID token; this app

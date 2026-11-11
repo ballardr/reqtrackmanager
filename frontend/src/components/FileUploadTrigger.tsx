@@ -18,9 +18,17 @@
  * a separate submit step, which is a genuinely different shape (a form
  * field to fill in, not a one-click trigger that acts immediately) than
  * every other call site converted here. See docs/decisions.md.
+ *
+ * While file uploads are disabled for the deployment or for the organisation in view (`Branding.fileUploadsDisabledBy`) every
+ * trigger renders as an unavailable button that explains which in a tooltip, and the input is disabled: one place covers every
+ * call site, and the control stays visible so it does not read as a defect.
  */
 import type { ChangeEvent, ReactNode } from "react";
 import { forwardRef } from "react";
+
+import { useBranding } from "../context/BrandingContext";
+import { useStrings } from "../context/TerminologyContext";
+import { Tooltip } from "./Tooltip";
 
 export const FileUploadTrigger = forwardRef<
   HTMLInputElement,
@@ -42,6 +50,10 @@ export const FileUploadTrigger = forwardRef<
   { onSelect, children, id, accept, disabled, title, "aria-label": ariaLabel, className, showTrigger = true },
   ref
 ) {
+  const { fileUploadsDisabledBy: disabledBy } = useBranding();
+  const strings = useStrings();
+  const unavailable = disabledBy !== null;
+
   function handleChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) onSelect(file);
@@ -54,13 +66,27 @@ export const FileUploadTrigger = forwardRef<
       id={id}
       type="file"
       accept={accept}
-      disabled={disabled}
+      disabled={disabled || unavailable}
       style={{ display: "none" }}
       onChange={handleChange}
     />
   );
 
   if (!showTrigger) return input;
+
+  if (unavailable) {
+    return (
+      <Tooltip label={disabledBy === "organization" ? strings.fileUploads.unavailableOrganization : strings.fileUploads.unavailable} pinnable wrap>
+        <span
+          className={`btn${className ? ` ${className}` : ""}`} role="button" tabIndex={0} aria-disabled="true"
+          aria-label={ariaLabel}
+        >
+          {children}
+          {input}
+        </span>
+      </Tooltip>
+    );
+  }
 
   return (
     <label

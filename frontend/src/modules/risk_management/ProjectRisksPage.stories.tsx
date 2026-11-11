@@ -63,7 +63,7 @@ export const RegisterShowsRatingsStatusOwnerAndOverdue: Story = {
     await expect(row.getByText("Low")).toHaveClass("badge--muted");
     await expect(row.getByText("Mitigated")).toBeInTheDocument();
     await expect(row.getByText("Safety Board")).toBeInTheDocument();
-    await expect(row.getByText("Org group · 2 members")).toBeInTheDocument();
+    await expect(row.getByText("Organisation group · 2 members")).toBeInTheDocument();
     await expect(row.getByText("Overdue")).toBeInTheDocument();
     await expect(within(table).getByRole("link", { name: "RSK-001" })).toHaveAttribute(
       "href", `/projects/${PROJECT_ID}/modules/risk_management/risks/risk-1`,

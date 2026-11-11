@@ -145,8 +145,23 @@ services:
       # Worker processes (CPU cores the API can use); see backend/docker-entrypoint.sh.
       BACKEND_WORKERS: ${BACKEND_WORKERS:-4}
       DATABASE_URL: postgresql://reqtrack:reqtrack@db:5432/reqtrack_test
-      JWT_SECRET: test-secret-not-for-production
-      APP_SECRET_ENCRYPTION_KEY: test-encryption-key-not-for-production
+      # Fixed values only for the local test stack; the demonstration (scripts/demo.sh) generates its own and
+      # turns REQUIRE_STRONG_SECRETS on, so a published name never runs on these.
+      JWT_SECRET: ${JWT_SECRET:-test-secret-not-for-production}
+      APP_SECRET_ENCRYPTION_KEY: ${APP_SECRET_ENCRYPTION_KEY:-test-encryption-key-not-for-production}
+      REQUIRE_STRONG_SECRETS: ${REQUIRE_STRONG_SECRETS:-false}
+      # The seeds and the Playwright suite sign in as accounts whose passwords the seed typed; production forces a change.
+      FORCE_PASSWORD_CHANGE_ON_ADMIN_SET: ${FORCE_PASSWORD_CHANGE_ON_ADMIN_SET:-false}
+      # Every suite sign-in comes from one address and the Playwright suite signs in hundreds of times, some with a wrong
+      # password on purpose, so the per-address allowance (30 failures in 15 minutes) would delay later sign-ins with a 429.
+      # The per-account delay stays at its default.
+      LOGIN_DELAY_FREE_ATTEMPTS_ADDRESS: ${LOGIN_DELAY_FREE_ATTEMPTS_ADDRESS:-100000}
+      # Every signed-out page reads the published policies (the footer link) and announcements, and the suite loads those
+      # pages hundreds of times from one address, so the default per-address allowance (30 burst, 60 a minute) answers 429
+      # and the pages read it as "nothing published".
+      PUBLIC_ANNOUNCEMENT_RATE_LIMIT_BURST: ${PUBLIC_ANNOUNCEMENT_RATE_LIMIT_BURST:-100000}
+      PUBLIC_ANNOUNCEMENT_RATE_LIMIT_PER_MINUTE: ${PUBLIC_ANNOUNCEMENT_RATE_LIMIT_PER_MINUTE:-100000}
+      REQUIRE_EMAIL_CONFIRMATION: ${REQUIRE_EMAIL_CONFIRMATION:-false}
       SERVER_ADMIN_ENABLED: "true"
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}
       SERVER_ADMIN_PASSWORD: ${SERVER_ADMIN_PASSWORD:-ChangeMe123!}
@@ -183,6 +198,10 @@ services:
       REPORT_FONTS_DIR: /app/report-fonts
     volumes:
       - ./report-fonts:/app/report-fonts:ro
+      # The demonstration command's state (a rotated password) and status (reset metrics): shared with the
+      # demo-scheduler service, so a manual and a scheduled reset see the same files.
+      - reqtrack_demo_state:/demo/state
+      - reqtrack_demo_status:/demo/status
     networks:
       - default
       - converter
@@ -237,6 +256,12 @@ services:
       # root docker-compose.yml; preserves an explicitly-empty value rather
       # than treating it as unset.
       VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL-http://localhost:8000}
+      # Origins the Content-Security-Policy allows beyond this site (frontend/docker/env-config-entrypoint.sh):
+      # single-page-app module origins and sandboxed module frames. The frame list is the backend's own allow-list.
+      CSP_SCRIPT_SRC_EXTRA: ${CSP_SCRIPT_SRC_EXTRA:-}
+      MODULE_FRAME_ALLOWED_ORIGINS: ${MODULE_FRAME_ALLOWED_ORIGINS:-}
+      # Optional Microsoft Clarity project id for a demonstration (scripts/demo.sh --clarity <id>); empty loads nothing.
+      CLARITY_PROJECT_ID: ${DEMO_CLARITY_PROJECT_ID:-}
     depends_on:
       backend:
         condition: service_healthy
@@ -254,6 +279,64 @@ services:
       start_period: 60s
       timeout: 5s
       retries: 10
+
+  # Daily demonstration reset (docs/development.md, "Demonstration"): the backend image running
+  # `demo_setup.py schedule`, so the demonstration data is removed and seeded again at DEMO_RESET_AT in
+  # DEMO_RESET_TZ. Not started by default; use `docker compose --profile demo-schedule up -d demo-scheduler`.
+  # A host with cron or systemd can run `demo_setup.py --demo --reset` instead; do not run both. It is a
+  # separate opt-in service, not a backend job, so a deployment cannot reset itself by accident. Every run
+  # applies the same guards as a manual reset.
+  demo-scheduler:
+    extends:
+      service: backend
+    profiles: ["demo-schedule"]
+    entrypoint: ["python", "scripts/demo_setup.py"]
+    command: ["schedule"]
+    ports: !reset []
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    environment:
+      DEMO_MODE: "1"
+      DEMO_API_BASE: http://backend:8000/api/v1
+      DEMO_RESET_AT: ${DEMO_RESET_AT:-00:00}
+      DEMO_RESET_TZ: ${DEMO_RESET_TZ:-UTC}
+      DEMO_ROTATE_PASSWORDS: ${DEMO_ROTATE_PASSWORDS:-}
+      DEMO_ALLOW_UPLOADS: ${DEMO_ALLOW_UPLOADS:-}
+      DEMO_CONFIRM_DATABASE: ${DEMO_CONFIRM_DATABASE:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Usage metrics for a demonstration (docs/demo.md, "Usage metrics"): scripts/demo.sh starts it (profile
+  # demo-metrics) and `--export-metrics` bundles what it collected. Scrapes the backend only. Samples are kept for
+  # 30 days (and at most 2 GB) in a named volume that a demonstration reset leaves alone. The admin API is enabled
+  # for the bundle's snapshot, so the port is published on the loopback address only and the listener also takes IPv6.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["demo-metrics"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=2GB
+      - --web.enable-admin-api
+      - --web.listen-address=[::]:9090
+    volumes:
+      - ../../observability/prometheus.demo.yml:/etc/prometheus/prometheus.yml:ro
+      - reqtrack_demo_metrics:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      start_period: 20s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      backend:
+        condition: service_healthy
 
   # See the root docker-compose.yml's mcp-server service for the full
   # explanation — same service, dev/test defaults.
@@ -320,3 +403,6 @@ networks:
 volumes:
   reqtrack_test_db_data:
   reqtrack_test_storage_data:
+  reqtrack_demo_state:
+  reqtrack_demo_status:
+  reqtrack_demo_metrics:

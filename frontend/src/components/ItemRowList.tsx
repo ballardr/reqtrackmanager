@@ -18,7 +18,7 @@ export interface ItemRow {
   /** What the row is called; empty shows `emptyName`. */
   name: string;
   /** A muted second part after the name, e.g. the field's code. */
-  detail?: string;
+  detail?: ReactNode;
   /** The row's controls, drawn right-aligned. */
   actions?: ReactNode;
 }
@@ -35,7 +35,15 @@ export function ItemRowList({ items, label, emptyName }: { items: ItemRow[]; lab
         <li key={item.id} className="item-list-row">
           <span className="item-list-row__name">
             {item.name !== "" ? item.name : <span className="text-muted">{emptyName}</span>}
-            {item.detail && <span className="text-muted item-list-row__detail"> {item.detail}</span>}
+            {item.detail && (
+              typeof item.detail === "string" ? (
+                <span className="text-muted item-list-row__detail"> {item.detail}</span>
+              ) : (
+                <span className="text-muted item-list-row__detail" style={{ display: "inline-flex", gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center", marginLeft: "var(--space-2)" }}>
+                  {item.detail}
+                </span>
+              )
+            )}
           </span>
           {item.actions && <span className="item-list-row__actions">{item.actions}</span>}
         </li>

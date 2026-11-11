@@ -109,6 +109,7 @@ from uuid import UUID
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.modules.context_strategy import activity_links as _activity_links
 from app.modules.context_strategy import export as bundle_export
 from app.modules.context_strategy._shared import FUTURE_STATE_APPROVE_PERMISSION as _FUTURE_STATE_APPROVE_PERMISSION
 from app.modules.context_strategy._shared import (
@@ -478,7 +479,8 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
             params=[_PROJECT_ID_PARAM, _id_param("future_state", "The Future State to update."), *_FUTURE_STATE_CREATE_UPDATE_PARAMS],
         ),
         McpToolDefinition(
-            name="create_pain_point", description="Submits a new Pain Point (any project member may do this).",
+            name="create_pain_point",
+            description="Submits a new Pain Point (Pain Point Managers, or any project member where the project or organisation allows it).",
             method="POST", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-points",
             params=[_PROJECT_ID_PARAM, *_PAIN_POINT_CREATE_PARAMS],
         ),
@@ -489,13 +491,13 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
         ),
         McpToolDefinition(
             name="list_pain_point_scores",
-            description="Lists every Pain Point's persona-rolled-up score and Blocker flag under a scoring model.",
+            description="Lists every Pain Point's score (rolled up over its personas) and Blocker flag under a scoring model.",
             method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-point-scores",
             params=[_PROJECT_ID_PARAM, *_PAIN_POINT_SCORING_QUERY_PARAMS],
         ),
         McpToolDefinition(
             name="get_pain_point_scores",
-            description="Fetches a Pain Point's per-persona scores, roll-up and the personas it can be scored against.",
+            description="Fetches a Pain Point's General and per-persona scores, roll-up and the personas it can be scored against.",
             method="GET", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-points/{{pain_point_id}}/scores",
             params=[_PROJECT_ID_PARAM, _id_param("pain_point", "The Pain Point to read scores for."),
                     *_PAIN_POINT_SCORING_QUERY_PARAMS],
@@ -503,9 +505,11 @@ def _build_mcp_tools() -> tuple[McpToolDefinition, ...]:
         McpToolDefinition(
             name="set_pain_point_scores",
             description=(
-                "Replaces a Pain Point's scores. Each entry is {target_id (a persona id, or null for all "
-                "personas), severity_level_id, frequency_level_id, confidence_level_id}; level ids come from "
-                "the project's pain_point scoring scheme. Use all-personas OR per-persona entries, not both."
+                "Replaces a Pain Point's scores. Each entry is {target_id (a persona id, or null for the General "
+                "row), levels: {axis key: level id}}; axis keys and level ids come from the project's pain_point "
+                "scoring scheme. The General row holds every whole-Pain-Point criterion and the default for the "
+                "per-persona ones; a persona entry holds per-persona criteria only and overrides General for that "
+                "persona. Entries may be General alone, personas alone, or both."
             ),
             method="PUT", path_template=f"{_PROJECT_ROUTER_PREFIX}/pain-points/{{pain_point_id}}/scores",
             params=[
@@ -770,8 +774,8 @@ def _artefact_ids_in_organization(db: Session, organization_id: UUID) -> set[UUI
         ids.update(db.scalars(select(model.id).where(
             or_(model.organization_id == organization_id, model.project_id.in_(project_ids))
         )).all())
-    for model in (PainPoint, OpenQuestion):
-        ids.update(db.scalars(select(model.id).where(model.project_id.in_(project_ids))).all())
+    for project_only_model in (PainPoint, OpenQuestion):
+        ids.update(db.scalars(select(project_only_model.id).where(project_only_model.project_id.in_(project_ids))).all())
     return ids
 
 
@@ -781,6 +785,7 @@ _MCP_GUIDANCE = (Path(__file__).parent / "mcp_guidance.md").read_text(encoding="
 
 MODULE_DEFINITION = ModuleDefinition(
     key=CONTEXT_STRATEGY_MODULE_KEY,
+    activity_metadata_types={"project_pain_point_type": "structure"},
     name="Context & Strategy",
     description=(
         "Record organisation and project Strategy — objective, current/desired future state, rationale, "
@@ -807,6 +812,13 @@ MODULE_DEFINITION = ModuleDefinition(
     project_bundle_hooks=ModuleProjectBundleHooks(
         export=bundle_export.export_project_data, import_=bundle_export.import_project_data,
         import_late=bundle_export.import_late_project_data,
+        template_configuration_keys=frozenset({
+            "pain_point_project_types", "pain_point_submission_policy", "pain_point_hidden_org_types", "pain_point_scoring_definitions",
+        }),
+        template_record_keys=frozenset({
+            "strategies", "future_states", "guiding_principles", "pain_points", "open_questions", "context_strategy_links",
+        }),
+        template_reset=bundle_export.reset_for_template,
     ),
     models_import_path="app.modules.context_strategy.models",
     migrations_dir="app/modules/context_strategy/migrations",
@@ -861,6 +873,7 @@ MODULE_DEFINITION = ModuleDefinition(
     artefact_ids_in_organization=_artefact_ids_in_organization,
     reports=REPORT_DEFINITIONS,
     artefact_summary_providers=ARTEFACT_SUMMARY_PROVIDERS,
+    activity_link_ends={_activity_links.LINK_EVENT_TYPE: _activity_links.link_ends},
     search_providers=SEARCH_PROVIDERS,
     report_fields=REPORT_FIELDS,
     record_attachments=RECORD_ATTACHMENTS,

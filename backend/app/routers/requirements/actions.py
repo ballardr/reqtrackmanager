@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.action_type import ActionTypeDefinition
 from app.models.enums import ArtefactType
-from app.models.project import Project
 from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.routers.requirements.core import _get_requirement_in_project, _require_edit_role
@@ -32,6 +31,7 @@ from app.services.actions import (
     get_requirement_action_in_project,
 )
 from app.services.audit import log_event
+from app.services.lookups import project_or_404
 from app.services.principals import principal_columns, validate_principal
 from app.services.rbac import require_project_view
 from app.services.relationships import create_link as create_artefact_link
@@ -107,7 +107,7 @@ def create_and_link_action(
             status.HTTP_409_CONFLICT,
             "This requirement is approved; actions can only be added via a change request.",
         )
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     action_type = db.get(ActionTypeDefinition, payload.action_type_id)
     if action_type is None or action_type.project_id != project_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "action_type_id must be an action type defined in this project.")

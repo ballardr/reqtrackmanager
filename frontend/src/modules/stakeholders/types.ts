@@ -348,6 +348,8 @@ export interface RepresentedLink {
   unique_code?: string;
   /** The owning organisation of an organisation-scoped record, which qualifies its code. */
   organization_id?: string | null;
+  /** Set for an entry that is shown but not a link of its own (a Persona reached through a participant): how it was reached. Such an entry cannot be removed. */
+  via?: string;
 }
 
 
@@ -573,6 +575,19 @@ export interface EngagementPersona {
   organization_id: string | null;
 }
 
+/** A Persona the engagement reached: recorded as covered (`link_id`), or represented by a Stakeholder or anonymous participant. */
+export interface EngagementPersonaReached {
+  persona_id: string;
+  name: string;
+  scope: "organization" | "project";
+  unique_code: string;
+  organization_id: string | null;
+  link_id: string | null;
+  covered: boolean;
+  via_participants: boolean;
+  via_anonymous: boolean;
+}
+
 export interface EngagementAudience {
   link_id: string;
   group_id: string;
@@ -612,6 +627,12 @@ export interface EngagementOutcome {
   label: string;
 }
 
+/** An outcome target type and whether the caller may create a record of it from the outcome form. */
+export interface OutcomeTargetTypeAccess {
+  type: string;
+  can_create: boolean;
+}
+
 /** One record the outcome picker can offer. */
 export interface OutcomeTarget {
   id: string;
@@ -640,6 +661,27 @@ export interface EngagementPrompt {
 }
 
 /** Research extras: a participant who is a label (and optionally a Persona) rather than a Stakeholder record. */
+/** An anonymous participant entered on the create form, before the engagement exists. */
+export interface AnonymousParticipantDraft {
+  label: string;
+  persona_id: string | null;
+}
+
+/**
+ * An anonymous participant as the engagement form holds it: a draft (no `id`) or, when editing, an
+ * existing one (`id` set, `persona_name` for a Persona hidden from the project's list).
+ */
+export interface AnonymousParticipantEntry extends AnonymousParticipantDraft {
+  id?: string;
+  persona_name?: string | null;
+}
+
+/** Everyone recorded as taking part in an engagement, as the form edits them. */
+export interface ParticipantEntries {
+  stakeholderIds: string[];
+  anonymous: AnonymousParticipantEntry[];
+}
+
 export interface AnonymousParticipant {
   id: string;
   engagement_id: string;

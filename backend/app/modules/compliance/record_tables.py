@@ -86,6 +86,7 @@ from app.modules.registry import (
 )
 from app.services import tags as tag_service
 from app.services.client_date import effective_today
+from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.rbac import get_effective_permissions, permission_satisfied, user_satisfies_module_role
 from app.services.record_tables import PrincipalCells, find_many_by_code
@@ -117,6 +118,23 @@ NOT_IMPORTABLE = {
     ),
 }
 
+#: Why each derived type cannot be created from the Links panel (`ModuleDefinition.not_creatable_from_links`).
+NOT_CREATABLE_FROM_LINKS = {
+    ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT: "A standard's requirements are authored in a draft version of the standard, not beside another record.",
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT: (
+        "A project's assessment exists once a standard version is assigned to the project; it is not authored."
+    ),
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT: "A required-action assessment is produced when a standard is assigned; it is not authored.",
+}
+
+#: Types that exist only inside an assigned standard's own structure (its requirements, clauses and actions), which
+#: is their classification; a project's component/category tree does not apply to them.
+NOT_PLACEABLE = {
+    ARTEFACT_TYPE_COMPLIANCE_REQUIREMENT: "A standard's requirements are classified by the standard's own structure.",
+    ARTEFACT_TYPE_PROJECT_COMPLIANCE_REQUIREMENT: "An assessment follows the standard's requirement it assesses.",
+    ARTEFACT_TYPE_REQUIRED_ACTION_ASSESSMENT: "A required-action assessment follows the standard's required action.",
+}
+
 #: The filters of the assessment-side lists, by the names their exports take. `assignment` is a project compliance
 #: (one standard version assigned to the project); `standard` and `version` narrow to a standard or one of its
 #: versions, and `section` to one top-level requirement and everything beneath it (the outstanding panel's filters).
@@ -125,7 +143,7 @@ ASSESSMENT_FILTERS = frozenset({"assignment", "standard", "version", "section", 
 
 def _may_manage_evidence(db: Session, user: User, project_id: uuid.UUID) -> bool:
     """The evidence endpoints' gate: the Compliance Officer role, or a `(compliance_evidence, manage)` grant."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     if user_satisfies_module_role(
         db, user, COMPLIANCE_MODULE_KEY, "compliance_officer", organization_id=project.organization_id, project_id=project.id,
     ):
@@ -276,7 +294,7 @@ def _assigned(db: Session, project_id: uuid.UUID, filters: RecordFilters) -> lis
     for pc in cache.assignments(project_id):
         if (wanted is not None and pc.id != wanted) or (version_id is not None and pc.standard_version_id != version_id):
             continue
-        if standard_id is not None and cache.version(pc.standard_version_id).standard_id != standard_id:
+        if standard_id is not None and cache.require_version(pc.standard_version_id).standard_id != standard_id:
             continue
         kept.append((pc, cache))
     return kept
@@ -303,8 +321,8 @@ def _identifying(row: _Row) -> list[str]:
 def _list_assessments(db: Session, user: User, project_id: uuid.UUID, filters: RecordFilters) -> list[_AssessedRow]:
     rows: list[_AssessedRow] = []
     for pc, cache in _assigned(db, project_id, filters):
-        version = cache.version(pc.standard_version_id)
-        standard = cache.standard(version.standard_id)
+        version = cache.require_version(pc.standard_version_id)
+        standard = cache.require_standard(version.standard_id)
         requirements = cache.requirements(version.id)
         pcrs, applicability = load_pcrs_and_applicability(
             db, project_compliance_id=pc.id, standard_version_id=version.id, requirements=requirements, pcrs=cache.pcrs(pc.id),
@@ -405,8 +423,8 @@ def _list_action_assessments(db: Session, user: User, project_id: uuid.UUID, fil
     rows: list[_ActionRow] = []
     today = effective_today()
     for pc, cache in _assigned(db, project_id, filters):
-        version = cache.version(pc.standard_version_id)
-        standard = cache.standard(version.standard_id)
+        version = cache.require_version(pc.standard_version_id)
+        standard = cache.require_standard(version.standard_id)
         requirements = cache.requirements(version.id)
         pcrs, applicability = load_pcrs_and_applicability(
             db, project_compliance_id=pc.id, standard_version_id=version.id, requirements=requirements, pcrs=cache.pcrs(pc.id),
@@ -510,8 +528,8 @@ def _list_project_requirements(db: Session, user: User, project_id: uuid.UUID, f
     if not assigned:
         return []
     cache = assigned[0][1]
-    versions = [cache.version(pc.standard_version_id) for pc, _ in assigned]
-    standards = [cache.standard(v.standard_id) for v in versions]
+    versions = [cache.require_version(pc.standard_version_id) for pc, _ in assigned]
+    standards = [cache.require_standard(v.standard_id) for v in versions]
     return _requirement_rows(db, standards, versions, project_id, filters)
 
 

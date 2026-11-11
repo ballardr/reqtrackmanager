@@ -42,7 +42,7 @@ function DetailPage() {
   const navigate = useNavigate();
   return (
     <div style={{ height: 400 }}>
-      <RecordHeader recordLabel="Thing" title="A thing" back={{ to: "/things", label: "← Things" }} />
+      <RecordHeader recordLabel="Thing" title="A thing" back={{ to: "/things", label: "Things" }} />
       <button className="btn" onClick={() => navigate(-1)}>Browser back</button>
     </div>
   );

@@ -35,7 +35,8 @@ import { useNavigate } from "react-router-dom";
 
 import { ListActions } from "../../components/ListActions";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
 import { toErrorMessage, useToast } from "../../context/ToastContext";
@@ -46,8 +47,11 @@ import type { Strategy, StrategyFieldValues, StrategyPriority, StrategyStatus } 
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { filterString } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
+  const strings = useStrings();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [strategies, setStrategies] = useState<Strategy[] | null>(null);
@@ -66,7 +70,7 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
       setStrategies(await orgStrategyApi.list(orgId, { include_archived: includeArchived }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this organisation, or you do not have access to it."));
     }
   }
 
@@ -116,22 +120,20 @@ export function OrgStrategiesPanel({ orgId }: { orgId: string }) {
           sectionKey="context_strategy.orgStrategies.list" total={filtered.length}
           search={search} onSearchChange={setSearch} searchPlaceholder="Search Strategy…" searchAriaLabel="Search organisation Strategy"
         >
-          <FilterField label="Status">
-            <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StrategyStatus | "")}>
-              <option value="">All statuses</option>
-              {Object.entries(STRATEGY_STATUS_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Priority">
-            <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as StrategyPriority | "")}>
-              <option value="">All priorities</option>
-              {Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={strings.filters.status}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            allLabel="All statuses"
+            options={labelOptions(STRATEGY_STATUS_LABEL)}
+          />
+          <FilterSelect
+            label={strings.filters.priority}
+            value={priorityFilter}
+            onChange={setPriorityFilter}
+            allLabel="All priorities"
+            options={labelOptions(STRATEGY_PRIORITY_LABEL)}
+          />
           <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
         </FilterPanel>
       </div>

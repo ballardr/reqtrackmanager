@@ -44,7 +44,7 @@ export function buildOption(overrides: Partial<ArtefactLinkTypeOption> = {}): Ar
   return {
     link_type_id: "lt-related", forward_name: "Related to", reverse_name: "Related to", flow: "none",
     nesting_scope: "ancestor_either_way", direction: "outgoing", phrase: "Related to",
-    other_types: [{ type: "decision", label: "Decision" }, { type: "pain_point", label: "Pain Point" }],
+    other_types: [{ type: "decision", label: "Decision", can_create: false }, { type: "pain_point", label: "Pain Point", can_create: true }],
     ...overrides,
   };
 }

@@ -1,28 +1,47 @@
-import { Plus, Star } from "lucide-react";
+import { Plus, Settings, Star } from "lucide-react";
+import { ImportWarnings } from "../components/ImportWarnings";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { api } from "../api/client";
 import type {
+  ImportPeopleChoices,
+  OrgUser,
   Organization,
   Project,
+  ProjectImportPreview,
   ProjectImportResult,
   ProjectListItem,
   ProjectRole,
   ProjectRoleInheritanceMode,
   ProjectTreeNode,
-  StageStatus,
+  StagePhaseKind,
+  UnjoinedProjectListItem,
 } from "../api/types";
-import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_INHERITANCE_MODE_LABEL, PROJECT_ROLE_LABEL, STAGE_STATUS_LABEL } from "../api/types";
+import { collapseProjectRoles, MAX_PROJECT_REPORT_NAME_LENGTH, PROJECT_ROLE_LABEL, STAGE_PHASE_KIND_LABEL, STAGE_PHASE_KINDS } from "../api/types";
+import { stageBadgeText } from "../utils/stageBadge";
+import { BundleImportDialog } from "../components/BundleImportDialog";
+import type { ImportMemberOption } from "../components/ImportPeopleStep";
+import { UploadsDisabledPrompt } from "../components/UploadsDisabledPrompt";
+import { uploadsDisabledInfo, type UploadsDisabledInfo } from "../utils/uploadsDisabled";
+import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Badge } from "../components/Badge";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { LoadMoreButton } from "../components/LoadMoreButton";
+import { ManageProjectUsersModal } from "../components/ManageProjectUsersModal";
 import { Modal } from "../components/Modal";
 import { ProjectHierarchyLabels } from "../components/ProjectHierarchyLabels";
+import { ProjectIdentityFields } from "../components/ProjectIdentityFields";
+import { ProjectNestingFields } from "../components/ProjectNestingFields";
+import { MODES_NEEDING_CONFIRMATION } from "../utils/projectInheritance";
 import { ProjectTree } from "../components/ProjectTree";
 import { Spinner } from "../components/Spinner";
+import { Tooltip } from "../components/Tooltip";
+import { SplitButtonTrigger } from "../components/SplitButtonTrigger";
 import { useViewMode, ViewToggle } from "../components/ViewToggle";
 import { useAuth } from "../context/AuthContext";
 import { useOrgLabel, useOrgLabelCapitalized, useOrgLabelPlural } from "../context/BrandingContext";
@@ -32,25 +51,39 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useLatest } from "../hooks/useLatest";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { describeCodePolicy, normaliseProjectCode } from "../utils/codePolicy";
-import { FileField, TextAreaField, TextField } from "../components/FormFields";
-import { LabeledSelect } from "../components/LabeledSelect";
+import { TextField } from "../components/FormFields";
+import { InlineSelect, LabeledSelect } from "../components/LabeledSelect";
 import { FormActions } from "../components/FormActions";
 import { FormGrid, FormGridFull } from "../components/FormGrid";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { DEFAULT_NEW_PROJECT_ORG_PREFERENCE, resolveNewProjectOrgId } from "../hooks/defaultProjectOrganization";
 import { useResetOnChange } from "../hooks/useResetOnChange";
+import { useUiPreference } from "../hooks/useUiPreference";
 import { useRestoredRowCount } from "../hooks/useListPosition";
 import { useUrlChoice, useUrlFlag, useUrlText } from "../hooks/useUrlFilter";
 
-// MIRROR_ALL/MIRROR_ROLE can convey manager/admin control (unlike
-// MEMBER_ONLY, which caps at baseline MEMBER — parity with
-// visibility=ORG_WIDE, no confirmation needed) — see docs/decisions.md.
-const MODES_NEEDING_CONFIRMATION: ProjectRoleInheritanceMode[] = ["mirror_all", "mirror_role"];
-
 const PAGE_SIZE = 30;
 
-function stageBadgeText(stageName: string, status: StageStatus | null): string {
-  if (!status || stageName.toLowerCase() === status) return stageName;
-  return `${stageName} · ${STAGE_STATUS_LABEL[status]}`;
+/** One row of the project list: a project the caller belongs to, or one they only administer the organisation of. */
+type ProjectListRow = ProjectListItem | UnjoinedProjectListItem;
+
+/**
+ * The gear on a project the person is not a member of, opening the dialog that manages who has access to it.
+ *
+ * @param props.project The non-member row.
+ * @param props.onOpen Called with the row when the gear is pressed.
+ * @returns A square icon button with a tooltip naming the project.
+ */
+function ManageUsersGear({ project, onOpen }: { project: UnjoinedProjectListItem; onOpen: (project: UnjoinedProjectListItem) => void }) {
+  const strings = useStrings();
+  const label = strings.projects.manageUsersOf(project.name);
+  return (
+    <Tooltip label={label}>
+      <button type="button" className="btn btn-sm btn-icon" aria-label={label} onClick={() => onOpen(project)} style={{ flexShrink: 0 }}>
+        <Settings />
+      </button>
+    </Tooltip>
+  );
 }
 
 /**
@@ -68,7 +101,7 @@ export function ProjectListPage() {
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
   const orgLabelCap = useOrgLabelCapitalized();
-  const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
+  const [projects, setProjects] = useState<ProjectListRow[] | null>(null);
   const [total, setTotal] = useState(0);
   // Unfiltered mandatory-scope count — powers
   // `ResultCount` in `FilterPanel`'s header alongside `total` above, which
@@ -78,23 +111,32 @@ export function ProjectListPage() {
   const [showArchived, setShowArchived] = useUrlFlag("archived");
   const [search, setSearch] = useUrlText("q");
   const [roleFilter, setRoleFilter] = useUrlChoice("role", Object.keys(PROJECT_ROLE_LABEL) as ProjectRole[]);
-  const [stageStatusFilter, setStageStatusFilter] = useUrlChoice("stage_status", Object.keys(STAGE_STATUS_LABEL) as StageStatus[]);
+  const [stagePhaseKindFilter, setStagePhaseKindFilter] = useUrlChoice("stage_phase_kind", STAGE_PHASE_KINDS);
   const [orgFilter, setOrgFilter] = useUrlText("org");
   const [favoriteOnly, setFavoriteOnly] = useUrlFlag("favourites");
+  const [showTemplates, setShowTemplates] = useUrlFlag("templates");
+  // Organisation administrators only: also list the projects of their organisations that they hold no role in.
+  const [includeUnjoined, setIncludeUnjoined] = useUrlFlag("not_member");
+  const [canIncludeUnjoined, setCanIncludeUnjoined] = useState(false);
+  const [managedProject, setManagedProject] = useState<UnjoinedProjectListItem | null>(null);
   const limitFor = useRestoredRowCount(PAGE_SIZE);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [showNewForm, setShowNewForm] = useState(false);
+  const [showImportForm, setShowImportForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newSummary, setNewSummary] = useState("");
   const [newReportName, setNewReportName] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newOrgId, setNewOrgId] = useState("");
+  // The organisation the New project dialog starts on (Preferences); a deep link sets `newOrgId` first.
+  const [defaultNewOrgId] = useUiPreference<string>(DEFAULT_NEW_PROJECT_ORG_PREFERENCE, "");
   const [templateProjectId, setTemplateProjectId] = useState("");
   const [newVisibility, setNewVisibility] = useState<"only_specified" | "org_wide">("only_specified");
-  const [importFile, setImportFile] = useState<File | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [createFilesPrompt, setCreateFilesPrompt] = useState<UploadsDisabledInfo | null>(null);
   const [importWarnings, setImportWarnings] = useState<string[] | null>(null);
   const [allProjects, setAllProjects] = useState<ProjectListItem[]>([]);
+  const [templateProjects, setTemplateProjects] = useState<ProjectListItem[]>([]);
   const [storedViewMode, setViewMode] = useViewMode("projects");
   // Hierarchical projects (docs/decisions.md).
   const [parentProjectId, setParentProjectId] = useState("");
@@ -155,7 +197,7 @@ export function ProjectListPage() {
     const params = new URLSearchParams({ archived: String(showArchived), limit: String(limitFor(offset)), offset: String(offset) });
     if (search) params.set("search", search);
     if (roleFilter) params.set("role", roleFilter);
-    if (stageStatusFilter) params.set("stage_status", stageStatusFilter);
+    if (stagePhaseKindFilter) params.set("stage_phase_kind", stagePhaseKindFilter);
     if (orgFilter) params.set("organization_id", orgFilter);
     // Same `favorite_only` param `FavouritesPage.tsx` already uses server-side
     // — filtering here rather than
@@ -163,6 +205,8 @@ export function ProjectListPage() {
     // page, all of which narrow the paginated result set itself rather
     // than hiding already-loaded rows.
     if (favoriteOnly) params.set("favorite_only", "true");
+    if (showTemplates) params.set("include_templates", "true");
+    if (includeUnjoined) params.set("include_unjoined", "true");
     return params;
   }
 
@@ -181,8 +225,9 @@ export function ProjectListPage() {
 
   async function loadProjects(offset: number, append: boolean) {
     const isLatest = beginLoad();
-    const page = await api.getPage<ProjectListItem>(`/api/v1/projects?${listParamsRef.current(offset).toString()}`);
+    const page = await api.getPage<ProjectListRow>(`/api/v1/projects?${listParamsRef.current(offset).toString()}`);
     if (!isLatest()) return;
+    setCanIncludeUnjoined(page.canIncludeUnjoined ?? false);
     setProjects((prev) => (append && prev ? [...prev, ...page.items] : page.items));
     setTotal(page.total);
     setTotalUnfiltered(page.totalUnfiltered ?? page.total);
@@ -190,13 +235,15 @@ export function ProjectListPage() {
 
   async function reload() {
     setProjects(null);
-    const [orgList, everyProject] = await Promise.all([
+    const [orgList, everyProject, templates] = await Promise.all([
       // `mine=true`: a server admin otherwise sees every organisation in the
       // deployment here (the plain `GET /orgs` directory-listing bypass,
       // meant for the platform-level org directory) rather than just the
       // ones they can actually create a project in or usefully filter by.
       api.get<Organization[]>("/api/v1/orgs?mine=true"),
       api.get<ProjectListItem[]>("/api/v1/projects?archived=false"),
+      // The template picker reads its own list: the default list leaves templates out.
+      api.get<ProjectListItem[]>("/api/v1/projects?archived=false&templates_only=true"),
       loadProjects(0, false),
     ]);
     // A disabled org can't hold any (newly) visible projects (the list
@@ -207,10 +254,11 @@ export function ProjectListPage() {
     const activeOrgs = orgList.filter((o) => o.is_active);
     setOrgs(activeOrgs);
     setAllProjects(everyProject);
-    if (!newOrgId && activeOrgs[0]) setNewOrgId(activeOrgs[0].id);
+    setTemplateProjects(templates);
+    if (!newOrgId && activeOrgs[0]) setNewOrgId(resolveNewProjectOrgId(activeOrgs, defaultNewOrgId));
   }
 
-  useLoadOnChange(reload, [showArchived, search, roleFilter, stageStatusFilter, orgFilter, favoriteOnly]);
+  useLoadOnChange(reload, [showArchived, search, roleFilter, stagePhaseKindFilter, orgFilter, favoriteOnly, showTemplates, includeUnjoined]);
 
   // C-E-04: pre-select the organisation's default template project (if
   // one is configured) whenever the target org changes, rather than
@@ -236,31 +284,25 @@ export function ProjectListPage() {
   }
 
   const newOrg = orgs.find((o) => o.id === newOrgId);
-  const templateOptions = allProjects.filter((p) => p.is_template && p.organization_id === newOrgId);
+  // The organisation's default template is offered even when the caller cannot see it in the list (an
+  // administrator chose it for every new project), under a generic name so nothing of it is revealed.
+  const defaultTemplateId = newOrg?.default_template_project_id ?? null;
+  const templateOptions: { id: string; name: string }[] = templateProjects
+    .filter((p) => p.organization_id === newOrgId)
+    .map((p) => ({ id: p.id, name: p.name }));
+  if (defaultTemplateId && !templateOptions.some((p) => p.id === defaultTemplateId)) {
+    templateOptions.push({ id: defaultTemplateId, name: strings.projects.organisationDefaultTemplate });
+  }
   const showOrgColumn = orgs.length > 1 || !!user?.is_server_admin;
 
-  function toggleStageStatusFilter(status: StageStatus | null) {
+  function toggleStagePhaseKindFilter(status: StagePhaseKind | null) {
     if (!status) return;
-    setStageStatusFilter((current) => (current === status ? "" : status));
+    setStagePhaseKindFilter((current) => (current === status ? "" : status));
   }
 
-  async function createProject() {
+  async function createProject(skipFiles = false) {
     setCreateError(null);
     try {
-      if (importFile) {
-        // Full-fidelity project bundle import (`services.project_export`) —
-        // a distinct path from template cloning: the bundle carries its own
-        // structure/history and may have been exported from a different
-        // organisation entirely, so it goes to a dedicated endpoint rather
-        // than reusing `template_project_id`.
-        const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", importFile, {
-          organization_id: newOrgId, name: newName, summary: newSummary,
-        });
-        if (result.warnings.length > 0) setImportWarnings(result.warnings);
-        showToast(strings.projects.created);
-        navigate(`/projects/${result.project.id}`);
-        return;
-      }
       const project = await api.post<Project>("/api/v1/projects", {
         organization_id: newOrgId,
         name: newName,
@@ -268,6 +310,10 @@ export function ProjectListPage() {
         report_name: newReportName.trim() || null,
         code: newOrg?.project_code_policy.assignment === "manual" ? normaliseProjectCode(newCode) : null,
         template_project_id: templateProjectId || null,
+        // "None" is an explicit choice: without it the organisation's default template would apply.
+        use_template: templateProjectId !== "",
+        // Honoured by the server only while the template's files cannot be stored (uploads disabled).
+        skip_files: skipFiles,
         visibility: newVisibility,
         parent_project_id: parentProjectId || null,
         role_inheritance_mode: roleInheritanceMode,
@@ -276,12 +322,54 @@ export function ProjectListPage() {
       showToast(strings.projects.created);
       navigate(`/projects/${project.id}`);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : strings.common.error);
+      const filesInfo = skipFiles ? null : uploadsDisabledInfo(err);
+      if (filesInfo) setCreateFilesPrompt(filesInfo);
+      else setCreateError(err instanceof Error ? err.message : strings.common.error);
     }
+  }
+
+  /**
+   * Full-fidelity project bundle import (`services.project_export`): a distinct path from template cloning, since
+   * the bundle carries its own structure and history and may come from a different organisation entirely.
+   * An error is thrown to `BundleImportDialog`, which shows it.
+   */
+  async function importProject(file: File, skipFiles: boolean, choices: ImportPeopleChoices) {
+    const result = await api.postFile<ProjectImportResult>("/api/v1/projects/import", file, {
+      organization_id: newOrgId, name: newName, summary: newSummary, people: JSON.stringify(choices),
+      ...(skipFiles ? { skip_files: "true" } : {}),
+    });
+    if (result.warnings.length > 0) setImportWarnings(result.warnings);
+    showToast(strings.projects.created);
+    navigate(`/projects/${result.project.id}`);
+  }
+
+  /** The People step's preview: who the bundle names and how each would be recorded in the chosen organisation. */
+  async function loadImportPeople(file: File, choices: ImportPeopleChoices) {
+    const preview = await api.postFile<ProjectImportPreview>("/api/v1/projects/import/preview", file, {
+      organization_id: newOrgId, people: JSON.stringify(choices),
+    });
+    return preview.people;
+  }
+
+  // The members a person can be reassigned to, read when the import dialog is open for an organisation.
+  const [importMembers, setImportMembers] = useState<ImportMemberOption[]>([]);
+  useLoadOnChange(async () => {
+    if (!showImportForm || !newOrgId) return;
+    try {
+      const users = await api.get<OrgUser[]>(`/api/v1/orgs/${newOrgId}/users`);
+      setImportMembers(users.filter((u) => u.is_active && !u.is_archived).map((u) => ({ user_id: u.user_id, display_name: u.display_name })));
+    } catch {
+      setImportMembers([]);
+    }
+  }, [showImportForm, newOrgId]);
+
+  function closeImportForm() {
+    setShowImportForm(false);
   }
 
   function closeNewForm() {
     setShowNewForm(false);
+    setCreateFilesPrompt(null);
     setNewCode("");
     setParentProjectId("");
     setRoleInheritanceMode("none");
@@ -323,9 +411,14 @@ export function ProjectListPage() {
         loadedRows={projects?.length}
         title={strings.projects.title}
         actions={
-          <button className="btn btn-primary" onClick={() => setShowNewForm(true)}>
-            <Plus /> {strings.projects.newProject}
-          </button>
+          <SplitButtonTrigger
+            icon={<Plus />}
+            label={strings.projects.newProject}
+            onDefaultAction={() => setShowNewForm(true)}
+            menuTitle={strings.projects.newProject}
+            moreOptionsLabel={strings.common.moreOptions}
+            alternatives={[{ label: strings.projects.importProject, onSelect: () => setShowImportForm(true) }]}
+          />
         }
         filter={
           <FilterPanel
@@ -337,45 +430,45 @@ export function ProjectListPage() {
             searchPlaceholder={strings.projects.search}
           >
             <FilterCheckbox label={strings.projects.favouritesOnly} checked={favoriteOnly} onChange={setFavoriteOnly} />
-            <FilterField label="Status">
-              <select className="input" value={showArchived ? "archived" : "active"} onChange={(e) => setShowArchived(e.target.value === "archived")}>
-                <option value="active">{strings.projects.active}</option>
-                <option value="archived">{strings.projects.archived}</option>
-              </select>
-            </FilterField>
-            {orgs.length > 1 && (
-              <FilterField label="Organisation">
-                <select className="input" value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}>
-                  <option value="">{strings.projects.allOrganisations(orgLabelPlural)}</option>
-                  {orgs.map((o) => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
-              </FilterField>
+            <FilterCheckbox label={strings.projects.showTemplates} checked={showTemplates} onChange={setShowTemplates} />
+            {canIncludeUnjoined && (
+              <FilterCheckbox
+                label={strings.projects.includeUnjoined}
+                checked={includeUnjoined}
+                onChange={setIncludeUnjoined}
+                help={strings.help.includeUnjoinedProjects(orgLabel)}
+              />
             )}
-            <FilterField label="Role">
-              <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as ProjectRole | "")}>
-                <option value="">{strings.projects.allRoles}</option>
-                <option value="project_manager">{PROJECT_ROLE_LABEL.project_manager}</option>
-                <option value="project_administrator">{PROJECT_ROLE_LABEL.project_administrator}</option>
-                <option value="stakeholder">{PROJECT_ROLE_LABEL.stakeholder}</option>
-                <option value="member">{PROJECT_ROLE_LABEL.member}</option>
-              </select>
-            </FilterField>
-            <FilterField label={strings.projects.stageStatusLabel}>
-              <select
-                className="input"
-                value={stageStatusFilter}
-                onChange={(e) => setStageStatusFilter(e.target.value as StageStatus | "")}
-              >
-                <option value="">{strings.projects.allStages}</option>
-                <option value="scoping">{STAGE_STATUS_LABEL.scoping}</option>
-                <option value="review">{STAGE_STATUS_LABEL.review}</option>
-                <option value="approved">{STAGE_STATUS_LABEL.approved}</option>
-                <option value="completed">{STAGE_STATUS_LABEL.completed}</option>
-                <option value="archived">{STAGE_STATUS_LABEL.archived}</option>
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={showArchived ? "archived" : "active"}
+              onChange={(v) => setShowArchived(v === "archived")}
+              options={[{ value: "active", label: strings.projects.active }, { value: "archived", label: strings.projects.archived }]}
+            />
+            {orgs.length > 1 && (
+              <FilterSelect
+                label={orgLabelCap}
+                value={orgFilter}
+                onChange={setOrgFilter}
+                allLabel={strings.projects.allOrganisations(orgLabelPlural)}
+                options={orgs.map((o) => ({ value: o.id, label: o.name }))}
+              />
+            )}
+            <FilterSelect
+              label={strings.filters.role}
+              value={roleFilter}
+              onChange={setRoleFilter}
+              allLabel={strings.projects.allRoles}
+              options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }, { value: "member", label: PROJECT_ROLE_LABEL.member }]}
+            />
+            <FilterSelect
+              label={strings.projects.stagePhaseKindLabel}
+              help={strings.help.stagePhaseKindFilter}
+              value={stagePhaseKindFilter}
+              onChange={setStagePhaseKindFilter}
+              allLabel={strings.projects.allStages}
+              options={STAGE_PHASE_KINDS.map((kind) => ({ value: kind, label: STAGE_PHASE_KIND_LABEL[kind] }))}
+            />
           </FilterPanel>
         }
       >
@@ -384,136 +477,105 @@ export function ProjectListPage() {
             inline block that reflows the list underneath it. */}
         {showNewForm && (
           <Modal title={strings.projects.newProject} onClose={closeNewForm} size="lg">
+            {createFilesPrompt ? (
+              <UploadsDisabledPrompt info={createFilesPrompt} onCancel={closeNewForm} onContinue={() => createProject(true)} />
+            ) : (
             <div className="stack">
               <FormGrid minColumn="18rem">
-                {orgs.length > 1 && (
-                  <LabeledSelect helpNotNeeded required
-                    label={orgLabelCap}
-                    value={newOrgId}
-                    onChange={setNewOrgId}
-                    options={orgs.map((o) => ({ value: o.id, label: o.name }))}
-                    placeholder={null}
-                    inputProps={{ autoFocus: true }}
-                  />
-                )}
-                <TextField helpNotNeeded required
-                  label={strings.projects.name}
-                  value={newName}
-                  onChange={setNewName}
-                  inputProps={{ autoFocus: orgs.length <= 1 }}
-                />
-                {newOrg?.project_code_policy.assignment === "manual" && !importFile && (
-                  <TextField helpNotNeeded required
-                    label={strings.projects.code}
-                    value={newCode}
-                    onChange={(next) => setNewCode(next.toUpperCase())}
-                    hint={strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
-                    inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
-                  />
-                )}
-                {newOrg?.project_code_policy.assignment === "auto" && (
-                  <FormGridFull>
-                    <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.codeAutomatic}</p>
-                  </FormGridFull>
-                )}
-                {!importFile && (
+                <ProjectIdentityFields
+                  orgs={orgs} orgLabelCap={orgLabelCap} orgId={newOrgId} onOrgChange={setNewOrgId}
+                  name={newName} onNameChange={setNewName}
+                  nameHelp={newOrg?.project_code_policy.assignment === "auto" ? strings.help.newProjectNameAutoCode : undefined}
+                  summary={newSummary} onSummaryChange={setNewSummary}
+                  beforeName={templateOptions.length > 0 && (
+                    <LabeledSelect help={strings.help.useTemplate}
+                      label={strings.projects.useTemplate}
+                      value={templateProjectId}
+                      onChange={setTemplateProjectId}
+                      options={templateOptions.map((p) => ({ value: p.id, label: p.name }))}
+                      placeholder={strings.projects.noTemplate}
+                      inputProps={{ autoFocus: orgs.length <= 1 }}
+                    />
+                  )}
+                >
+                  {newOrg?.project_code_policy.assignment === "manual" && (
+                    <TextField helpNotNeeded required
+                      label={strings.projects.code}
+                      value={newCode}
+                      onChange={(next) => setNewCode(next.toUpperCase())}
+                      hint={strings.projects.codeHint(describeCodePolicy(newOrg.project_code_policy))}
+                      inputProps={{ maxLength: newOrg.project_code_policy.max_length }}
+                    />
+                  )}
                   <TextField help={strings.help.projectReportName}
                     label={strings.projects.reportName}
                     value={newReportName}
                     onChange={setNewReportName}
                     inputProps={{ maxLength: MAX_PROJECT_REPORT_NAME_LENGTH }}
                   />
-                )}
-                <FormGridFull>
-                  <TextAreaField helpNotNeeded label={strings.projects.summary} value={newSummary} onChange={setNewSummary} rows={2} />
-                </FormGridFull>
-                {!importFile && templateOptions.length > 0 && (
-                  <LabeledSelect helpNotNeeded
-                    label={strings.projects.useTemplate}
-                    value={templateProjectId}
-                    onChange={setTemplateProjectId}
-                    options={templateOptions.map((p) => ({ value: p.id, label: p.name }))}
-                    placeholder={strings.projects.noTemplate}
-                  />
-                )}
-                <LabeledSelect helpNotNeeded
+                </ProjectIdentityFields>
+                <LabeledSelect help={strings.help.projectVisibility(orgLabel)}
                   label={strings.admin.visibility}
                   value={newVisibility}
                   onChange={(next) => setNewVisibility(next as "only_specified" | "org_wide")}
                   options={[{ value: "only_specified", label: strings.admin.visibilityOnlySpecified }, { value: "org_wide", label: strings.admin.visibilityOrgWide }]}
                   placeholder={null}
-                  hint={strings.admin.visibilityHint(orgLabel)}
                 />
-                {/* Small usability fix: picking an import file below used to silently hide
-                    the template picker above with no explanation — this note
-                    replaces the silent disappearance, rather than a bigger
-                    redesign of the two fields' relationship. */}
-                {importFile && templateOptions.length > 0 && (
+                {/* can_be_parent-gated (docs/decisions.md) — hidden entirely when there's nothing eligible to pick,
+                    rather than showing a picker with only "None" in it. Parent, inheritance and mirrored role are
+                    one collapsed group: most projects are top-level, so the default dialog stays short. */}
+                {showParentField && (
                   <FormGridFull>
-                    <p className="text-muted" style={{ margin: 0, fontSize: "0.8rem" }}>{strings.projects.importIgnoresTemplate}</p>
+                    <CollapsibleSection
+                      sectionKey="newProjectNesting"
+                      variant="plain"
+                      defaultCollapsed
+                      title={strings.projects.nesting}
+                      summary={selectedParent?.name}
+                      marked={!!selectedParent}
+                    >
+                      <ProjectNestingFields
+                        parentProjectId={parentProjectId}
+                        parentOptions={parentOptions}
+                        onParentChange={setParentProjectId}
+                        mode={roleInheritanceMode}
+                        onModeChange={requestInheritModeChange}
+                        filterRole={roleInheritanceFilterRole}
+                        onFilterRoleChange={setRoleInheritanceFilterRole}
+                      />
+                    </CollapsibleSection>
                   </FormGridFull>
                 )}
-                {/* can_be_parent-gated (docs/decisions.md) — hidden entirely
-                    when there's nothing eligible to pick, rather than showing a
-                    picker with only "None" in it. */}
-                {showParentField && (
-                  <>
-                    <LabeledSelect help={strings.help.projectParent}
-                      label={strings.projects.parentProject}
-                      value={parentProjectId}
-                      onChange={(next) => {
-                        setParentProjectId(next);
-                        // Same reasoning as ProjectAdminPage.tsx's parent select:
-                        // don't let a mode confirmed for one candidate parent
-                        // silently carry over to a different one before submit.
-                        if (MODES_NEEDING_CONFIRMATION.includes(roleInheritanceMode)) {
-                          setRoleInheritanceMode("none");
-                        }
-                      }}
-                      options={parentOptions.map((p) => ({ value: p.id, label: p.name }))}
-                      placeholder={strings.projects.noParent}
-                    />
-                    {parentProjectId && (
-                      <>
-                        <LabeledSelect help={strings.help.projectInheritAccess}
-                          label={strings.projects.inheritFromParent}
-                          value={roleInheritanceMode}
-                          onChange={(next) => requestInheritModeChange(next as ProjectRoleInheritanceMode)}
-                          options={(Object.keys(PROJECT_ROLE_INHERITANCE_MODE_LABEL) as ProjectRoleInheritanceMode[]).map((m) => ({
-                            value: m, label: PROJECT_ROLE_INHERITANCE_MODE_LABEL[m],
-                          }))}
-                          placeholder={null}
-                        />
-                        {roleInheritanceMode === "mirror_role" && (
-                          <LabeledSelect help={strings.help.projectRoleToMirror}
-                            label={strings.projects.inheritModeFilterRole}
-                            value={roleInheritanceFilterRole}
-                            onChange={(next) => setRoleInheritanceFilterRole(next as ProjectRole)}
-                            options={[{ value: "project_manager", label: PROJECT_ROLE_LABEL.project_manager }, { value: "project_administrator", label: PROJECT_ROLE_LABEL.project_administrator }, { value: "stakeholder", label: PROJECT_ROLE_LABEL.stakeholder }]}
-                            placeholder={null}
-                          />
-                        )}
-                      </>
-                    )}
-                  </>
-                )}
-                <FormGridFull>
-                  <FileField helpNotNeeded
-                    label={strings.projects.importFromBundle} accept=".zip,application/zip"
-                    onChange={setImportFile}
-                  />
-                </FormGridFull>
               </FormGrid>
               <FormActions
                 error={createError}
                 onCancel={closeNewForm}
-                onSave={createProject}
+                onSave={() => createProject()}
                 saveLabel={strings.common.create}
-                saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !importFile && !newCode)}
+                saveDisabled={!newName || !newOrgId || (newOrg?.project_code_policy.assignment === "manual" && !newCode)}
               />
             </div>
+            )}
           </Modal>
         )}
+        {showImportForm && (
+          <BundleImportDialog
+            title={strings.projects.importProject}
+            fileLabel={strings.projects.bundleFile}
+            fileHelp={strings.help.importProjectBundle}
+            onClose={closeImportForm}
+            onImport={importProject}
+            canImport={!!newName && !!newOrgId}
+            people={{ load: loadImportPeople, members: importMembers, dependsOn: newOrgId }}
+          >
+            <ProjectIdentityFields
+              orgs={orgs} orgLabelCap={orgLabelCap} orgId={newOrgId} onOrgChange={setNewOrgId}
+              name={newName} onNameChange={setNewName} nameHelp={strings.help.importProjectName}
+              summary={newSummary} onSummaryChange={setNewSummary}
+            />
+          </BundleImportDialog>
+        )}
+        {managedProject && <ManageProjectUsersModal project={managedProject} onClose={() => setManagedProject(null)} />}
         {pendingInheritMode && selectedParent && (
           <ConfirmDialog
             title={strings.projects.inheritConfirmTitle}
@@ -530,14 +592,7 @@ export function ProjectListPage() {
             }}
           />
         )}
-        {importWarnings && importWarnings.length > 0 && (
-          <div className="card stack" style={{ borderColor: "var(--color-warning, #b58900)" }}>
-            <strong>{strings.projects.importWarnings}</strong>
-            <ul style={{ margin: 0 }}>
-              {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
-            </ul>
-          </div>
-        )}
+        <ImportWarnings warnings={importWarnings} title={strings.projects.importWarnings} />
           <div className="stack">
             <div className="row" style={{ justifyContent: "flex-end" }}>
               <ViewToggle mode={viewMode} onChange={setViewMode} showTreeOption={hasHierarchy} />
@@ -546,11 +601,10 @@ export function ProjectListPage() {
             {viewMode === "tree" && hasHierarchy && (
               <div className="stack">
                 {orgsWithHierarchy.length > 1 && (
-                  <select className="input" style={{ maxWidth: 280 }} aria-label={orgLabelCap} value={treeOrgId} onChange={(e) => setTreeOrgId(e.target.value)}>
-                    {orgsWithHierarchy.map((o) => (
-                      <option key={o.id} value={o.id}>{o.name}</option>
-                    ))}
-                  </select>
+                  <InlineSelect
+                    maxWidth={280} ariaLabel={orgLabelCap} value={treeOrgId} placeholder={null} onChange={setTreeOrgId}
+                    options={orgsWithHierarchy.map((o) => ({ value: o.id, label: o.name }))}
+                  />
                 )}
                 {!treeNodes && <Spinner />}
                 {treeNodes && (
@@ -565,7 +619,22 @@ export function ProjectListPage() {
             {viewMode !== "tree" && projects && projects.length === 0 && <p className="text-muted">{strings.projects.empty}</p>}
             {projects && projects.length > 0 && viewMode === "tiles" && (
               <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}>
-                {projects.map((p) => (
+                {projects.map((p) => p.is_member === false ? (
+                  <div key={p.id} className="card stack text-muted" style={{ gap: "var(--space-3)" }}>
+                    <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
+                      <span style={{ fontWeight: 600, fontSize: "1.05rem", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.name}>
+                        {p.name}
+                      </span>
+                      <ManageUsersGear project={p} onOpen={setManagedProject} />
+                    </div>
+                    <div className="row" style={{ gap: "var(--space-2)" }}>
+                      <Badge>{strings.projects.notMember}</Badge>
+                      {p.is_template && <Badge>{strings.projects.template}</Badge>}
+                    </div>
+                    {showOrgColumn && <div style={{ fontSize: "0.8rem" }}>{p.organization_name}</div>}
+                    <ProjectHierarchyLabels project={{ ...p, children: [] }} />
+                  </div>
+                ) : (
                   <div key={p.id} className="card stack" style={{ gap: "var(--space-3)" }}>
                     <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "nowrap" }}>
                       <Link
@@ -578,6 +647,7 @@ export function ProjectListPage() {
                       >
                         {p.name}
                       </Link>
+                      {p.is_template && <Badge className="badge-after">{strings.projects.template}</Badge>}
                       <button
                         className="btn"
                         onClick={() => toggleFavorite(p)}
@@ -592,11 +662,11 @@ export function ProjectListPage() {
                     <ProjectHierarchyLabels project={p} />
                     {p.current_stage_name && (
                       <FilterBadge
-                        active={stageStatusFilter === p.current_stage_status}
-                        onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                        active={stagePhaseKindFilter === p.current_stage_phase_kind}
+                        onClick={() => toggleStagePhaseKindFilter(p.current_stage_phase_kind)}
                         style={{ alignSelf: "flex-start" }}
                       >
-                        {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                        {stageBadgeText(p.current_stage_name, p.current_stage_phase_name)}
                       </FilterBadge>
                     )}
                     <p
@@ -636,7 +706,22 @@ export function ProjectListPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {projects.map((p) => (
+                    {projects.map((p) => p.is_member === false ? (
+                      <tr key={p.id} className="text-muted">
+                        <td><ManageUsersGear project={p} onOpen={setManagedProject} /></td>
+                        <td>
+                          {p.name}
+                          <Badge className="badge-after">{strings.projects.notMember}</Badge>
+                          {p.is_template && <Badge className="badge-after">{strings.projects.template}</Badge>}
+                          <ProjectHierarchyLabels project={{ ...p, children: [] }} />
+                        </td>
+                        {showOrgColumn && <td>{p.organization_name}</td>}
+                        <td />
+                        <td>—</td>
+                        <td>—</td>
+                        <td>—</td>
+                      </tr>
+                    ) : (
                       <tr key={p.id}>
                         <td>
                           <button
@@ -650,6 +735,7 @@ export function ProjectListPage() {
                         </td>
                         <td>
                           <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                          {p.is_template && <Badge className="badge-after">{strings.projects.template}</Badge>}
                           <div
                             className="text-muted"
                             style={{
@@ -665,10 +751,10 @@ export function ProjectListPage() {
                         <td>
                           {p.current_stage_name && (
                             <FilterBadge
-                              active={stageStatusFilter === p.current_stage_status}
-                              onClick={() => toggleStageStatusFilter(p.current_stage_status)}
+                              active={stagePhaseKindFilter === p.current_stage_phase_kind}
+                              onClick={() => toggleStagePhaseKindFilter(p.current_stage_phase_kind)}
                             >
-                              {stageBadgeText(p.current_stage_name, p.current_stage_status)}
+                              {stageBadgeText(p.current_stage_name, p.current_stage_phase_name)}
                             </FilterBadge>
                           )}
                         </td>

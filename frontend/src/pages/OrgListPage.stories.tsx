@@ -11,9 +11,9 @@ function org(overrides: Partial<Organization>): Organization {
   return {
     id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-    disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
+    disabled_at: null, accent_color_hex: null, logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
-  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
     ...overrides,
@@ -88,7 +88,7 @@ export const NoOrganisations: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("You don't belong to any organisations yet.")).toBeInTheDocument();
+    await expect(canvas.getByText("You do not belong to any organisations yet.")).toBeInTheDocument();
   },
 };
 
@@ -116,6 +116,48 @@ export const SingleOrganisationRedirectsToOverview: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByText("Org overview page")).toBeInTheDocument();
+  },
+};
+
+const withOrgFilesRoutes: Decorator = (Story) => (
+  <MemoryRouter initialEntries={["/org-files"]}>
+    <Routes>
+      <Route path="/org-files" element={<Story />} />
+      <Route path="/orgs/:id/files" element={<div>Org files page</div>} />
+    </Routes>
+  </MemoryRouter>
+);
+
+/** `target="files"` — `/org-files` (the navigation rail entry) redirects straight to the one organisation's Files page. */
+export const SingleOrganisationRedirectsToFiles: Story = {
+  args: { target: "files" },
+  decorators: [withOrgFilesRoutes],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") return [org({ id: "org-1", name: "Acme Corp" })];
+      throw new Error(`Unexpected api.get(${path})`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText("Org files page")).toBeInTheDocument();
+  },
+};
+
+/** With several organisations the entry lists them, each linking to its own Files page. */
+export const MultipleOrganisationsListForFiles: Story = {
+  args: { target: "files" },
+  decorators: [withOrgFilesRoutes],
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string) => {
+      if (path === "/api/v1/orgs?mine=true") {
+        return [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })];
+      }
+      throw new Error(`Unexpected api.get(${path})`);
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByRole("link", { name: "Beta Inc" })).toHaveAttribute("href", "/orgs/org-2/files");
   },
 };
 

@@ -6,6 +6,7 @@ import type { TierAModuleDefinition } from "../types";
 import {
   OrgExternalSystemsPanel, OrgRequestChannelsPanel, ProjectExternalSystemsPanel, ProjectRequestChannelsPanel,
 } from "./FeedbackListPanels";
+import { CreateRequestDialog } from "./CreateRequestDialog";
 import { OrgRequestsPanel } from "./OrgRequestsPanel";
 import { ProjectRequestsPage } from "./ProjectRequestsPage";
 import { RequestDetailPage } from "./RequestDetailPage";
@@ -37,8 +38,14 @@ import { REQUEST_STATUS_LABEL } from "./types";
  */
 const REQUEST_SCORING_SCHEME = "enhancement_request";
 
+/** The Product Feedback settings share one expandable entry in the project and organisation admin menus. */
+const PRODUCT_FEEDBACK_ADMIN_GROUP = { key: "product-feedback", label: "Product Feedback" };
+
 export const moduleDefinition: TierAModuleDefinition = {
   key: "product_feedback",
+  linkedRecordCreators: {
+    enhancement_request: { label: "Enhancement Request", render: (props) => createElement(CreateRequestDialog, props) },
+  },
   artefactPaths: {
     enhancement_request: (projectId, id) => `/projects/${projectId}/modules/product_feedback/requests/${id}`,
   },
@@ -70,40 +77,47 @@ export const moduleDefinition: TierAModuleDefinition = {
     {
       key: "product-feedback-scoring",
       label: "Request Scoring",
+      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       render: ({ orgId }) => createElement(ScoringSchemeEditor, { orgId, schemeKey: REQUEST_SCORING_SCHEME }),
     },
     {
       key: "product-feedback-external-systems",
       label: "External Systems",
+      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       subComponent: EXTERNAL_REFERENCES_KEY,
       render: ({ orgId }) => createElement(OrgExternalSystemsPanel, { orgId }),
     },
     {
       key: "product-feedback-request-channels",
       label: "Request Channels",
+      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       render: ({ orgId }) => createElement(OrgRequestChannelsPanel, { orgId }),
     },
   ],
   projectAdminSections: [
     {
       key: "product-feedback-settings",
-      label: "Product Feedback",
+      label: "Submission policy",
+      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       render: ({ projectId }) => createElement(SubmissionPolicyPanel, { projectId }),
     },
     {
       key: "product-feedback-scoring",
       label: "Request Scoring",
+      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectScoringSettings, { projectId, schemeKey: REQUEST_SCORING_SCHEME }),
     },
     {
       key: "product-feedback-external-systems",
       label: "External Systems",
+      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       subComponent: EXTERNAL_REFERENCES_KEY,
       render: ({ projectId }) => createElement(ProjectExternalSystemsPanel, { projectId }),
     },
     {
       key: "product-feedback-request-channels",
       label: "Request Channels",
+      group: PRODUCT_FEEDBACK_ADMIN_GROUP,
       render: ({ projectId }) => createElement(ProjectRequestChannelsPanel, { projectId }),
     },
   ],

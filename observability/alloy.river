@@ -9,11 +9,11 @@
 // forwarding path ready to receive them).
 
 discovery.docker "containers" {
-  host = "unix:///var/run/docker.sock"
+  host = "tcp://docker-socket-proxy:2375"
 }
 
 loki.source.docker "containers" {
-  host       = "unix:///var/run/docker.sock"
+  host       = "tcp://docker-socket-proxy:2375"
   targets    = discovery.docker.containers.targets
   forward_to = [loki.write.default.receiver]
 }

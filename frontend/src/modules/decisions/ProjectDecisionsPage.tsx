@@ -39,7 +39,8 @@ import { useParams } from "react-router-dom";
 import type { OrgUser, Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { PrincipalBadge } from "../../components/PrincipalBadge";
 import { Spinner } from "../../components/Spinner";
@@ -64,8 +65,11 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function ProjectDecisionsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -102,13 +106,12 @@ export function ProjectDecisionsPage() {
         decision_type_id: decisionTypeFilter || undefined,
         include_archived: includeArchived,
         owner_mine: ownedByMe,
-        tags: tagFilter.tags,
-        tag_mode: tagFilter.mode,
+        ...tagFilter.listFilters,
         project_scope: projectScope.scope,
       }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Decisions module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Decisions module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 
@@ -177,22 +180,20 @@ export function ProjectDecisionsPage() {
             sectionKey="decisions.list" total={rows.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search decisions…" searchAriaLabel="Search decisions"
           >
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as DecisionStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(DECISION_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Decision type">
-              <select className="input" value={decisionTypeFilter} onChange={(e) => setDecisionTypeFilter(e.target.value)}>
-                <option value="">All types</option>
-                {decisionTypes.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(DECISION_STATUS_LABEL)}
+            />
+            <FilterSelect
+              label="Decision type"
+              value={decisionTypeFilter}
+              onChange={setDecisionTypeFilter}
+              allLabel="All types"
+              options={decisionTypes.map((t) => ({ value: t.id, label: t.name }))}
+            />
             <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Owned by me or my groups" checked={ownedByMe} onChange={setOwnedByMe} />
             <ProjectScopeFilter scope={projectScope} />
@@ -206,6 +207,7 @@ export function ProjectDecisionsPage() {
           columns={columns}
           rows={rows}
           rowKey={(d) => d.id}
+          placements={{ projectId, artefactType: "decision", rowId: (d) => d.id }}
           onRowClick={setSelected}
           emptyState={
             <p className="text-muted">

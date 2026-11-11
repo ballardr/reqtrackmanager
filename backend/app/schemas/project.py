@@ -18,8 +18,8 @@ from app.models.enums import (
     ProjectRole,
     ProjectRoleInheritanceMode,
     ProjectVisibility,
+    StagePhaseKind,
     StageReviewResponseChoice,
-    StageStatus,
 )
 from app.models.project import MAX_REPORT_NAME_LENGTH
 
@@ -28,6 +28,7 @@ from app.models.project import MAX_REPORT_NAME_LENGTH
 # than duplicated — the reverse direction of the existing `orgs.py`
 # importing `MoveDirection` from this very module.
 from app.schemas.org import ModuleRoleGrantOut
+from app.schemas.principal import PrincipalOut, PrincipalRef
 
 # Fixed, documented set of overridable terminology keys (C-C-03). Not a
 # freeform key-value store — terminology only covers these nouns.
@@ -85,6 +86,12 @@ class ProjectCreate(BaseModel):
     #: Short display name for reports (`{{project_report_name}}`); blank means "use the project name".
     report_name: str | None = None
     template_project_id: UUID | None = None  # C-E-05: create from an existing template project
+    #: With no `template_project_id`: `True` falls back to the organisation's default template (C-E-04), `False`
+    #: creates a blank project even when a default exists ("None" in the New project form).
+    use_template: bool = True
+    #: With a template whose files cannot be stored (uploads disabled): create the project without them. Ignored
+    #: while files can be stored, so the default is always to copy them.
+    skip_files: bool = False
     # The project's short code. Required when the organisation's policy is manual assignment,
     # rejected when it is automatic (`services.codes.assign_project_code`).
     code: str | None = None
@@ -170,6 +177,29 @@ class ProjectOut(BaseModel):
     # parent_project_name above, never redacted: it says nothing about any
     # other project's identity, just this one's own setting.
     can_be_parent: bool = False
+    # True when the organisation has locked project codes and the caller is not an organisation administrator, so the
+    # code is shown read-only. Computed for the caller; the server enforces the lock regardless (`services.codes`).
+    code_change_locked: bool = False
+
+
+class ImportedPersonOut(BaseModel):
+    """One person an import bundle names and how the import would resolve them (`POST /projects/import/preview`).
+
+    `resolution` is `member` (matched by email), `reassigned` (the importer chose a member), `me` (the importer) or
+    `stand_in` (an imported person is created or reused). `member_id` / `member_name` are set for the first two.
+    """
+
+    email: str
+    display_name: str
+    resolution: str
+    member_id: UUID | None = None
+    member_name: str | None = None
+
+
+class ProjectImportPreview(BaseModel):
+    """The people step of a project import: nothing has been written."""
+
+    people: list[ImportedPersonOut]
 
 
 class ProjectImportResult(BaseModel):
@@ -356,11 +386,13 @@ class ProjectListItemOut(ProjectOut):
     """Project list view row (U-E-03): includes stage and role context."""
 
     current_stage_name: str | None = None
-    current_stage_status: StageStatus | None = None
+    current_stage_phase_name: str | None = None
+    current_stage_phase_kind: StagePhaseKind | None = None
     my_roles: list[ProjectRole] = []
     is_favorite: bool = False
     organization_name: str = ""
     requirement_count: int = 0
+    is_member: Literal[True] = True
     # Both None unless the caller has effective view access to the parent —
     # deliberately redacted for casual list/tile browsing, never a hint that
     # a hidden parent exists. See `list_projects`'s population logic.
@@ -370,12 +402,35 @@ class ProjectListItemOut(ProjectOut):
     children: list[ProjectAncestorOut] = []
 
 
+class UnjoinedProjectListItemOut(BaseModel):
+    """Project list row for a project the caller administers the organisation of but holds no role in
+    (`GET /projects?include_unjoined=true`). Identity only: no summary, counts, stage, status, dates of work or
+    owners, so a wider list never carries project content (an organisation administrator may manage who has access
+    but not read the project)."""
+
+    id: UUID
+    organization_id: UUID
+    organization_name: str = ""
+    name: str
+    code: str
+    is_archived: bool = False
+    is_template: bool = False
+    # The organisation administrator sees the true hierarchy of every project in their organisation.
+    parent_project_id: UUID | None = None
+    parent_project_name: str | None = None
+    is_member: Literal[False] = False
+
+
 class ProjectStageCreate(BaseModel):
     name: str
+    workflow_id: UUID | None = None  # default: the project's default workflow
 
 
 class ProjectStageUpdate(BaseModel):
     name: str
+    workflow_id: UUID | None = None  # moves the stage to the start of another workflow while it is still open
+    #: Sent (even as null) to set or clear the owner reminded about the stage's phase schedule; absent leaves it unchanged.
+    owner: PrincipalRef | None = None
 
 
 class ProjectStageOut(BaseModel):
@@ -384,13 +439,21 @@ class ProjectStageOut(BaseModel):
     id: UUID
     project_id: UUID
     name: str
-    status: StageStatus
+    workflow_id: UUID
+    workflow_name: str = ""
+    phase_id: UUID
+    phase_name: str = ""
+    phase_kind: StagePhaseKind
     sort_order: int
     is_current: bool
     approved_at: datetime | None = None
     completed_at: datetime | None = None
     completed_by: UUID | None = None
     review_deadline: datetime | None = None
+    owner: PrincipalOut | None = None
+    # Whether the caller may move the stage into or out of a locked phase (a project manager), so a picker can show
+    # the locked phases as unavailable instead of failing after the choice; the server enforces it regardless.
+    can_lock: bool = False
 
 
 class StageReviewDeadlineSet(BaseModel):
@@ -409,10 +472,6 @@ class StageReviewResponseOut(BaseModel):
     response: StageReviewResponseChoice
     comment: str | None = None
     responded_at: datetime
-
-
-class StageCompleteRequest(BaseModel):
-    cascade_to_requirements: bool = False
 
 
 class ComponentCreate(BaseModel):
@@ -593,7 +652,8 @@ class StageProgressOut(BaseModel):
 
     stage_id: UUID
     name: str
-    status: StageStatus
+    phase_name: str
+    phase_kind: StagePhaseKind
     requirement_count: int
     completed_percent: float
 

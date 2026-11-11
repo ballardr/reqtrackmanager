@@ -1,19 +1,21 @@
-import { Ban, Eye, KeyRound, ShieldCheck, Upload, UserCheck, UserX } from "lucide-react";
-import { useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Ban, Eye, KeyRound, ShieldCheck, UserCheck, UserX } from "lucide-react";
+import { useState } from "react";
+import { Link, Navigate, useParams } from "react-router-dom";
 
-import { ApiError, api, fileUrl } from "../api/client";
-import type { BulkRevokeResult, ServerRole, ServerSettings, SignupConfig, SignupMode, SystemUser } from "../api/types";
+import { api } from "../api/client";
+import type { BulkRevokeResult, GrantableServerRole, ServerRole, SystemUser } from "../api/types";
 import { SERVER_ROLE_LABEL } from "../api/types";
 import { ActionMenu } from "../components/ActionMenu";
 import { AddUserMenu } from "../components/AddUserMenu";
+import { Badge } from "../components/Badge";
 import { CollapsibleSection } from "../components/CollapsibleSection";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { DirectoryColumn } from "../components/DirectoryTable";
 import { DirectoryTable } from "../components/DirectoryTable";
 import { ForceCredentialResetModal } from "../components/ForceCredentialResetModal";
-import { FileUploadTrigger } from "../components/FileUploadTrigger";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FieldHelp } from "../components/FieldHelp";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { Modal } from "../components/Modal";
 import { PersonalDataPolicyPanel } from "../components/PersonalDataPolicyPanel";
 import type { ResourceMenuGroupDef } from "../components/ResourceMenu";
@@ -26,17 +28,22 @@ import { toErrorMessage, useToast } from "../context/ToastContext";
 import { t } from "../i18n/strings";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { AddUserModal, type AddUserMode } from "./AddUserModal";
+import { AnnouncementsPanel } from "../components/AnnouncementsPanel";
+import { PoliciesPanel } from "../components/PoliciesPanel";
 import { ServerModulesTab } from "./ServerModulesTab";
 import { ServerReportFontsTab } from "./ServerReportFontsTab";
-import { ColorField, TextAreaField, TextField } from "../components/FormFields";
-import { LabeledSelect } from "../components/LabeledSelect";
-import { FormGrid, FormGridFull } from "../components/FormGrid";
-import { PictureImage } from "../components/PictureImage";
+import { FileUploadsTab, PlatformBrandingTab, ServerDetailsTab, SignupModeTab, TestEmailTab } from "./ServerSettingsGroups";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
+import { useServerAccess } from "../hooks/useServerAccess";
 
 const strings = t();
 
 const PAGE_SIZE = 30;
+
+/** The server roles in the order the assignment dialog lists them. */
+const SERVER_ROLE_ORDER: ServerRole[] = [
+  "server_admin", "module_administrator", "subscription_manager", "subscription_removal_authority",
+];
 
 type ReviewView = "orphaned" | "server_admins" | "all";
 
@@ -46,8 +53,8 @@ type AccessReviewConfirmKind =
   | "forceReset"
   | "grantServerAdmin"
   | "revokeServerAdmin"
-  | "grantModuleAdministrator"
-  | "revokeModuleAdministrator";
+  | "grantServerRole"
+  | "revokeServerRole";
 
 /** Sortable columns of the Access Review `DirectoryTable` — mirrors `list_org_users`'s own
  * `sort`/`order` contract; `created_at` is the one addition `/system/users`
@@ -64,15 +71,13 @@ function AccessReviewTab() {
   // (`PAGE_SIZE`/`LoadMoreButton`), so sorting has to be honoured
   // server-side, same reasoning as Org Admin's Users table.
   const [sort, setSort] = useState<SortState<SystemUserSortKey> | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [patResult, setPatResult] = useState<string | null>(null);
   const orgLabel = useOrgLabel();
   const orgLabelPlural = useOrgLabelPlural();
   const { showToast } = useToast();
   // ConfirmDialog (Tier 1) state for the account/access actions below —
   // converted from `window.confirm` per the sixth-pass audit's
   // "Confirmation and feedback rollout, precisely" list.
-  const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ kind: AccessReviewConfirmKind; userId: string; role?: GrantableServerRole } | null>(null);
   const [revokeAllPatsOpen, setRevokeAllPatsOpen] = useState(false);
   const [addUserMode, setAddUserMode] = useState<AddUserMode | null>(null);
   // Password reset: one person's emailed link (Tier 1 dialog) and the wide "force a credential reset" dialog.
@@ -149,13 +154,12 @@ function AccessReviewTab() {
   }
 
   async function runAction(action: () => Promise<void>, successMessage?: string) {
-    setActionError(null);
     try {
       await action();
       await reload();
       if (successMessage) showToast(successMessage);
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : "Something went wrong.");
+      showToast(toErrorMessage(err, strings.common.error), "error");
     }
   }
 
@@ -199,17 +203,17 @@ function AccessReviewTab() {
     setConfirmAction({ kind: "revokeServerAdmin", userId });
   }
 
-  function grantModuleAdministrator(userId: string) {
-    setConfirmAction({ kind: "grantModuleAdministrator", userId });
+  function grantServerRole(userId: string, role: GrantableServerRole) {
+    setConfirmAction({ kind: "grantServerRole", userId, role });
   }
 
-  function revokeModuleAdministrator(userId: string) {
-    setConfirmAction({ kind: "revokeModuleAdministrator", userId });
+  function revokeServerRole(userId: string, role: GrantableServerRole) {
+    setConfirmAction({ kind: "revokeServerRole", userId, role });
   }
 
   function confirmPendingAction() {
     if (!confirmAction) return;
-    const { kind, userId } = confirmAction;
+    const { kind, userId, role } = confirmAction;
     setConfirmAction(null);
     switch (kind) {
       case "deactivate":
@@ -239,17 +243,21 @@ function AccessReviewTab() {
           strings.system.revokedServerAdminToast
         );
         break;
-      case "grantModuleAdministrator":
-        runAction(
-          () => api.post(`/api/v1/system/users/${userId}/server-roles`, { role: "module_administrator" }),
-          strings.system.grantedModuleAdministratorToast
-        );
+      case "grantServerRole":
+        if (role) {
+          runAction(
+            () => api.post(`/api/v1/system/users/${userId}/server-roles`, { role }),
+            strings.system.serverRoleCopy[role].granted
+          );
+        }
         break;
-      case "revokeModuleAdministrator":
-        runAction(
-          () => api.delete(`/api/v1/system/users/${userId}/server-roles/module_administrator`),
-          strings.system.revokedModuleAdministratorToast
-        );
+      case "revokeServerRole":
+        if (role) {
+          runAction(
+            () => api.delete(`/api/v1/system/users/${userId}/server-roles/${role}`),
+            strings.system.serverRoleCopy[role].revoked
+          );
+        }
         break;
     }
   }
@@ -258,7 +266,7 @@ function AccessReviewTab() {
     setRevokeAllPatsOpen(false);
     try {
       const result = await api.post<BulkRevokeResult>("/api/v1/system/pats/revoke-all");
-      setPatResult(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
+      showToast(strings.system.patRevokeAllResult.replace("{n}", String(result.revoked_count)));
     } catch (err) {
       showToast(toErrorMessage(err, strings.common.error), "error");
     }
@@ -282,15 +290,15 @@ function AccessReviewTab() {
       message: strings.system.revokeServerAdminConfirm,
       confirmLabel: strings.system.revokeServerAdmin,
     },
-    grantModuleAdministrator: {
-      title: strings.system.grantModuleAdministratorTitle,
-      message: strings.system.grantModuleAdministratorConfirm,
-      confirmLabel: strings.system.grantModuleAdministrator,
+    grantServerRole: {
+      title: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].grantTitle : "",
+      message: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].grantConfirm : "",
+      confirmLabel: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].grant : "",
     },
-    revokeModuleAdministrator: {
-      title: strings.system.revokeModuleAdministratorTitle,
-      message: strings.system.revokeModuleAdministratorConfirm,
-      confirmLabel: strings.system.revokeModuleAdministrator,
+    revokeServerRole: {
+      title: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].revokeTitle : "",
+      message: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].revokeConfirm : "",
+      confirmLabel: confirmAction?.role ? strings.system.serverRoleCopy[confirmAction.role].revoke : "",
     },
   };
 
@@ -326,12 +334,7 @@ function AccessReviewTab() {
           <span className="row" style={{ gap: "var(--space-2)", flexWrap: "wrap", alignItems: "center" }}>
             <span>{shownNames.join(", ")}</span>
             {canExpand && (
-              <button
-                type="button"
-                className="btn"
-                style={{ fontSize: "0.75rem", padding: "0.15rem var(--space-3)" }}
-                onClick={() => toggleExpandedOrgs(u.user_id)}
-              >
+              <button type="button" className="btn btn-sm" onClick={() => toggleExpandedOrgs(u.user_id)}>
                 {expanded
                   ? strings.system.showFewerOrganizations
                   : strings.system.showAllOrganizations(u.organization_names.length)}
@@ -353,6 +356,17 @@ function AccessReviewTab() {
         const shown = u.group_names.slice(0, 2).join(", ");
         return u.group_names.length > 2 ? `${shown}, ${strings.system.groupsMore(u.group_names.length - 2)}` : shown;
       },
+    },
+    {
+      key: "status", label: strings.system.status,
+      render: (u) =>
+        u.is_banned ? (
+          <Badge tone="danger">{strings.system.bannedBadge}</Badge>
+        ) : !u.is_active ? (
+          <Badge tone="warning">{strings.system.deactivated}</Badge>
+        ) : (
+          <Badge tone="accent">{strings.system.statusActive}</Badge>
+        ),
     },
     {
       key: "last_login_at", label: strings.system.lastLogin, sortable: true,
@@ -380,8 +394,6 @@ function AccessReviewTab() {
       key: "actions", label: "",
       render: (u) => (
         <div className="row" style={{ gap: "var(--space-2)", justifyContent: "flex-end" }}>
-          {u.is_banned && <span className="text-muted">{strings.system.bannedBadge}</span>}
-          {!u.is_active && !u.is_banned && <span className="text-muted">{strings.system.deactivated}</span>}
           <ActionMenu
             triggerLabel={strings.system.usersActionsFor(u.display_name)}
             items={[
@@ -413,17 +425,13 @@ function AccessReviewTab() {
 
   return (
     <div className="stack">
-      <div className="card stack">
-        <div className="row" style={{ justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "var(--space-3)" }}>
-          <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.users}</h2>
-          <div className="row">
-            <button className="btn" onClick={() => setForceResetOpen(true)}>{strings.passwordReset.forceOpen}</button>
-            <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
-          </div>
+      <CollapsibleSection
+        sectionKey="serverManagement.users" title={strings.system.users} help={strings.system.usersHint(orgLabel)} collapsible={false}
+      >
+        <div className="row" style={{ justifyContent: "flex-end", flexWrap: "wrap", gap: "var(--space-3)" }}>
+          <button className="btn" onClick={() => setForceResetOpen(true)}>{strings.passwordReset.forceOpen}</button>
+          <AddUserMenu onInvite={() => setAddUserMode("invite")} onNewUser={() => setAddUserMode("password")} />
         </div>
-        <p className="text-muted" style={{ margin: 0 }}>{strings.system.usersHint(orgLabel)}</p>
-
-        {actionError && <div style={{ color: "var(--color-danger)" }}>{actionError}</div>}
 
         {!users ? (
           <Spinner />
@@ -443,13 +451,12 @@ function AccessReviewTab() {
               onSearchChange={setSearch}
               searchPlaceholder={strings.system.searchUsers}
             >
-              <FilterField label={strings.system.view}>
-                <select className="input" value={view} onChange={(e) => setView(e.target.value as ReviewView)}>
-                  <option value="orphaned">{strings.system.viewOrphaned}</option>
-                  <option value="server_admins">{strings.system.viewServerAdmins}</option>
-                  <option value="all">{strings.system.viewAll}</option>
-                </select>
-              </FilterField>
+              <FilterSelect
+                label={strings.system.view}
+                value={view}
+                onChange={setView}
+                options={[{ value: "orphaned", label: strings.system.viewOrphaned }, { value: "server_admins", label: strings.system.viewServerAdmins }, { value: "all", label: strings.system.viewAll }]}
+              />
               <FilterCheckbox
                 label={strings.system.includeDeactivated}
                 checked={includeDeactivated}
@@ -469,16 +476,15 @@ function AccessReviewTab() {
             />
           </div>
         )}
-      </div>
+      </CollapsibleSection>
 
-      <div className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.system.patRevokeAll}</h2>
-        <p className="text-muted">{strings.system.patRevokeAllHint(orgLabelPlural)}</p>
+      <CollapsibleSection
+        sectionKey="serverManagement.tokens" title={strings.system.patRevokeAll} help={strings.system.patRevokeAllHint(orgLabelPlural)} collapsible={false}
+      >
         <button className="btn btn-danger" onClick={() => setRevokeAllPatsOpen(true)} style={{ alignSelf: "flex-start" }}>
           {strings.system.patRevokeAll}
         </button>
-        {patResult && <div style={{ color: "var(--color-accent)" }}>{patResult}</div>}
-      </div>
+      </CollapsibleSection>
 
       {addUserMode && <AddUserModal mode={addUserMode} onClose={() => setAddUserMode(null)} onCreated={userAdded} />}
       {resetLinkUser && (
@@ -501,8 +507,9 @@ function AccessReviewTab() {
       {revokeAllPatsOpen && (
         <ConfirmDialog
           title={strings.system.patRevokeAllTitle}
-          message={strings.system.patRevokeAllConfirm}
+          message={strings.system.patRevokeAllConfirm(strings.system.patRevokeAllTyped)}
           confirmLabel={strings.system.patRevokeAll}
+          requireTypedText={strings.system.patRevokeAllTyped}
           onConfirm={revokeAllPatsPlatformWide}
           onCancel={() => setRevokeAllPatsOpen(false)}
         />
@@ -537,345 +544,42 @@ function AccessReviewTab() {
             className="stack"
             style={{ gap: "0.6rem" }}
           >
-            {(["server_admin", "module_administrator"] as ServerRole[]).map((role) => {
-              const checked = role === "server_admin" ? assignRolesUser.is_server_admin : assignRolesUser.is_module_administrator;
+            {SERVER_ROLE_ORDER.map((role) => {
+              const checked = role === "server_admin" ? assignRolesUser.is_server_admin : assignRolesUser.server_roles.includes(role);
               const roleLabel = SERVER_ROLE_LABEL[role];
               return (
-                <label key={role} className="row" style={{ gap: "var(--space-3)" }}>
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    aria-label={
-                      checked
-                        ? strings.system.revokeServerRole(roleLabel, assignRolesUser.display_name)
-                        : strings.system.grantServerRole(roleLabel, assignRolesUser.display_name)
-                    }
-                    onChange={() =>
-                      role === "server_admin"
-                        ? checked
-                          ? revokeServerAdmin(assignRolesUser.user_id)
-                          : grantServerAdmin(assignRolesUser.user_id)
-                        : checked
-                          ? revokeModuleAdministrator(assignRolesUser.user_id)
-                          : grantModuleAdministrator(assignRolesUser.user_id)
-                    }
+                <div key={role} className="row" style={{ gap: "var(--space-3)" }}>
+                  <label className="row" style={{ gap: "var(--space-3)" }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={
+                        checked
+                          ? strings.system.revokeServerRole(roleLabel, assignRolesUser.display_name)
+                          : strings.system.grantServerRole(roleLabel, assignRolesUser.display_name)
+                      }
+                      onChange={() =>
+                        role === "server_admin"
+                          ? checked
+                            ? revokeServerAdmin(assignRolesUser.user_id)
+                            : grantServerAdmin(assignRolesUser.user_id)
+                          : checked
+                            ? revokeServerRole(assignRolesUser.user_id, role)
+                            : grantServerRole(assignRolesUser.user_id, role)
+                      }
+                    />
+                    {roleLabel}
+                  </label>
+                  <FieldHelp
+                    label={roleLabel}
+                    help={role === "server_admin" ? strings.system.serverAdminRoleHelp : strings.system.serverRoleCopy[role].help}
                   />
-                  {roleLabel}
-                </label>
+                </div>
               );
             })}
           </div>
         </Modal>
       )}
-    </div>
-  );
-}
-
-function PlatformBrandingTab() {
-  const currentOrgLabel = useOrgLabel();
-  const [settings, setSettings] = useState<ServerSettings | null>(null);
-  const [accentColor, setAccentColor] = useState("#475569");
-  const [headerTitle, setHeaderTitle] = useState("");
-  const [orgLabelSingular, setOrgLabelSingular] = useState("");
-  const [orgLabelPlural, setOrgLabelPlural] = useState("");
-  const [emailFooterCompanyName, setEmailFooterCompanyName] = useState("");
-  const [emailFooterWebsite, setEmailFooterWebsite] = useState("");
-  const [emailFooterAddress, setEmailFooterAddress] = useState("");
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Guards the branding fields above against `reload()` — also called
-  // from `uploadLogo`/`uploadLoginBackground` below, not just this
-  // component's own mount/save. If a background upload's own reload() is
-  // still in flight when the user edits and saves a text field right
-  // after starting that upload, its response clobbers the edit back to
-  // the last-saved value before Save is even clicked. Same real,
-  // CI-reproducible race as OrgAdminPage.tsx's advancedDirtyRef — see its
-  // own comment and docs/decisions.md.
-  const brandingDirtyRef = useRef(false);
-
-  async function reload() {
-    const s = await api.get<ServerSettings>("/api/v1/system/branding");
-    setSettings(s);
-    if (!brandingDirtyRef.current) {
-      setAccentColor(s.accent_color_hex);
-      setHeaderTitle(s.default_header_title ?? "");
-      setOrgLabelSingular(s.org_label_singular ?? "");
-      setOrgLabelPlural(s.org_label_plural ?? "");
-      setEmailFooterCompanyName(s.email_footer_company_name ?? "");
-      setEmailFooterWebsite(s.email_footer_website ?? "");
-      setEmailFooterAddress(s.email_footer_address ?? "");
-    }
-  }
-
-  useLoadOnChange(reload, []);
-
-  async function save() {
-    setError(null);
-    setSaved(false);
-    try {
-      await api.put("/api/v1/system/branding", {
-        accent_color_hex: accentColor,
-        default_header_title: headerTitle || null,
-        org_label_singular: orgLabelSingular || null,
-        org_label_plural: orgLabelPlural || null,
-        email_footer_company_name: emailFooterCompanyName || null,
-        email_footer_website: emailFooterWebsite || null,
-        email_footer_address: emailFooterAddress || null,
-      });
-      setSaved(true);
-      brandingDirtyRef.current = false;
-      reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : strings.common.error);
-    }
-  }
-
-  const [logoUploading, setLogoUploading] = useState(false);
-  const [logoUploaded, setLogoUploaded] = useState(false);
-  const [logoError, setLogoError] = useState<string | null>(null);
-
-  async function uploadLogo(file: File) {
-    setLogoError(null);
-    setLogoUploaded(false);
-    setLogoUploading(true);
-    try {
-      await api.postFile("/api/v1/system/branding/image", file, { kind: "logo" });
-      await reload();
-      setLogoUploaded(true);
-    } catch (err) {
-      setLogoError(err instanceof Error ? err.message : strings.common.error);
-    } finally {
-      setLogoUploading(false);
-    }
-  }
-
-  const [loginBackgroundUploading, setLoginBackgroundUploading] = useState(false);
-  const [loginBackgroundUploaded, setLoginBackgroundUploaded] = useState(false);
-  const [loginBackgroundError, setLoginBackgroundError] = useState<string | null>(null);
-
-  async function uploadLoginBackground(file: File) {
-    setLoginBackgroundError(null);
-    setLoginBackgroundUploaded(false);
-    setLoginBackgroundUploading(true);
-    try {
-      await api.postFile("/api/v1/system/branding/image", file, { kind: "login_background" });
-      await reload();
-      setLoginBackgroundUploaded(true);
-    } catch (err) {
-      setLoginBackgroundError(err instanceof Error ? err.message : strings.common.error);
-    } finally {
-      setLoginBackgroundUploading(false);
-    }
-  }
-
-  if (!settings) return <Spinner />;
-
-  return (
-    <div className="card stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.hint(currentOrgLabel)}</p>
-      <div className="stack" style={{ gap: "var(--space-1)" }}>
-        <label htmlFor="platform-logo-input">{strings.serverSettings.logo}</label>
-        <FileUploadTrigger id="platform-logo-input" accept="image/*" disabled={logoUploading} onSelect={uploadLogo}>
-          <Upload size={14} /> {strings.common.chooseFile}
-        </FileUploadTrigger>
-      </div>
-      {logoUploading && <Spinner />}
-      {logoError && <div style={{ color: "var(--color-danger)" }}>{logoError}</div>}
-      {logoUploaded && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.logoUploaded}</div>}
-      {settings.default_logo_file_id && (
-        <PictureImage src={fileUrl(settings.default_logo_file_id)} style={{ height: 40 }} />
-      )}
-      <FormGrid minColumn="18rem">
-        <TextField helpNotNeeded
-          label={strings.serverSettings.headerTitle}
-          value={headerTitle}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setHeaderTitle(next);
-          }}
-          placeholder={strings.appName}
-          hint={strings.serverSettings.headerTitleHint}
-        />
-        <TextField helpNotNeeded
-          label={strings.serverSettings.orgLabelSingular}
-          value={orgLabelSingular}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setOrgLabelSingular(next);
-          }}
-          placeholder="organisation"
-          hint={strings.serverSettings.orgLabelSingularHint}
-        />
-        <TextField helpNotNeeded
-          label={strings.serverSettings.orgLabelPlural}
-          value={orgLabelPlural}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setOrgLabelPlural(next);
-          }}
-          placeholder="Organisations"
-          hint={strings.serverSettings.orgLabelPluralHint}
-        />
-      </FormGrid>
-      <ColorField helpNotNeeded
-        label={strings.serverSettings.accentColor}
-        value={accentColor}
-        onChange={(next) => {
-          brandingDirtyRef.current = true;
-          setAccentColor(next);
-        }}
-      />
-      <div className="stack" style={{ gap: "var(--space-1)" }}>
-        <label htmlFor="platform-login-background-input">{strings.serverSettings.loginBackground}</label>
-        <FileUploadTrigger
-          id="platform-login-background-input"
-          accept="image/*"
-          disabled={loginBackgroundUploading}
-          onSelect={uploadLoginBackground}
-        >
-          <Upload size={14} /> {strings.common.chooseFile}
-        </FileUploadTrigger>
-      </div>
-      {loginBackgroundUploading && <Spinner />}
-      {loginBackgroundError && <div style={{ color: "var(--color-danger)" }}>{loginBackgroundError}</div>}
-      {loginBackgroundUploaded && (
-        <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.loginBackgroundUploaded}</div>
-      )}
-      {settings.default_login_background_file_id && (
-        <img src={fileUrl(settings.default_login_background_file_id)} alt="" style={{ maxHeight: 100, borderRadius: "var(--radius-sm)" }} />
-      )}
-      <hr style={{ width: "100%", border: "none", borderTop: "1px solid var(--color-border)" }} />
-      <h3 style={{ margin: 0 }}>{strings.serverSettings.emailFooterTitle}</h3>
-      <p className="text-muted" style={{ margin: 0 }}>{strings.serverSettings.emailFooterHint(currentOrgLabel)}</p>
-      <FormGrid minColumn="18rem">
-        <TextField helpNotNeeded
-          label={strings.serverSettings.emailFooterCompanyName}
-          value={emailFooterCompanyName}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterCompanyName(next);
-          }}
-          placeholder={strings.appName}
-          hint={strings.serverSettings.emailFooterCompanyNameHint}
-        />
-        <TextField helpNotNeeded
-          label={strings.serverSettings.emailFooterWebsite}
-          value={emailFooterWebsite}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterWebsite(next);
-          }}
-        />
-        <FormGridFull>
-          <TextAreaField helpNotNeeded
-          label={strings.serverSettings.emailFooterAddress}
-          value={emailFooterAddress}
-          onChange={(next) => {
-            brandingDirtyRef.current = true;
-            setEmailFooterAddress(next);
-          }}
-          rows={3}
-        />
-        </FormGridFull>
-      </FormGrid>
-      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-      <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
-        {strings.serverSettings.save}
-      </button>
-      {saved && <div style={{ color: "var(--color-accent)" }}>{strings.serverSettings.saved}</div>}
-    </div>
-  );
-}
-
-function TestEmailTab() {
-  const [recipient, setRecipient] = useState("");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  async function send() {
-    setError(null);
-    setSuccess(false);
-    setSending(true);
-    try {
-      await api.post("/api/v1/system/test-email", recipient ? { to_email: recipient } : {});
-      setSuccess(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : strings.common.error);
-    } finally {
-      setSending(false);
-    }
-  }
-
-  return (
-    <div className="card stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.system.testEmailHint}</p>
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        <TextField helpNotNeeded
-          label={strings.system.testEmailRecipient}
-          hint={strings.system.testEmailRecipientHint}
-          value={recipient}
-          onChange={setRecipient}
-          inputProps={{ type: "email" }}
-        />
-        <button className="btn btn-primary" onClick={send} disabled={sending}>
-          {sending ? strings.system.testEmailSending : strings.system.testEmail}
-        </button>
-      </div>
-      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-      {success && <div style={{ color: "var(--color-accent)" }}>{strings.system.testEmailSent}</div>}
-    </div>
-  );
-}
-
-function SignupModeTab() {
-  const orgLabel = useOrgLabel();
-  const orgLabelPlural = useOrgLabelPlural();
-  const [config, setConfig] = useState<SignupConfig | null>(null);
-  const [mode, setMode] = useState<SignupMode>("disabled");
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function reload() {
-    const c = await api.get<SignupConfig>("/api/v1/system/signup-config");
-    setConfig(c);
-    setMode(c.signup_mode);
-  }
-
-  useLoadOnChange(reload, []);
-
-  async function save() {
-    setError(null);
-    setSaved(false);
-    try {
-      await api.put("/api/v1/system/signup-config", { signup_mode: mode });
-      setSaved(true);
-      reload();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : strings.common.error);
-    }
-  }
-
-  if (!config) return <Spinner />;
-
-  return (
-    <div className="card stack">
-      <p className="text-muted" style={{ margin: 0 }}>{strings.signupSettings.hint}</p>
-      <LabeledSelect helpNotNeeded
-        label={strings.signupSettings.mode}
-        value={mode}
-        onChange={(next) => setMode(next as SignupMode)}
-        options={[{ value: "disabled", label: strings.signupSettings.modeDisabled }, { value: "always_on", label: strings.signupSettings.modeAlwaysOn(orgLabel) }, { value: "org_specified", label: strings.signupSettings.modeOrgSpecified(orgLabel) }]}
-        placeholder={null}
-      />
-      {mode === "org_specified" && (
-        <p className="text-muted" style={{ fontSize: "0.85rem" }}>{strings.signupSettings.modeOrgSpecifiedHint(orgLabelPlural)}</p>
-      )}
-      {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-      <button className="btn btn-primary" onClick={save} style={{ alignSelf: "flex-start" }}>
-        {strings.signupSettings.save}
-      </button>
-      {saved && <div style={{ color: "var(--color-accent)" }}>{strings.signupSettings.saved}</div>}
     </div>
   );
 }
@@ -894,9 +598,9 @@ function SignupModeTab() {
  * ResourceMenu call, since this page never exceeded 5 tabs on its own.
  * See `docs/ux-style-guide.md` Principle 1 and `docs/decisions.md`.
  */
-type ServerManagementGroupKey = "accessReview" | "branding" | "signup" | "email" | "modules" | "reportFonts" | "dataPolicy";
+type ServerManagementGroupKey = "accessReview" | "signup" | "branding" | "details" | "reportFonts" | "files" | "policies" | "personalDataExport" | "email" | "messages" | "modules";
 
-const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "branding", "signup", "email", "modules", "reportFonts", "dataPolicy"];
+const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview", "signup", "branding", "details", "reportFonts", "files", "policies", "personalDataExport", "email", "messages", "modules"];
 
 /**
  * Server-admin console: access review (C-A-13), platform-wide branding
@@ -909,22 +613,54 @@ const SERVER_MANAGEMENT_GROUP_KEYS: ServerManagementGroupKey[] = ["accessReview"
  */
 export function ServerManagementPage() {
   const { group: groupParam } = useParams<{ group?: string }>();
+  const access = useServerAccess();
 
-  const activeGroup: ServerManagementGroupKey = SERVER_MANAGEMENT_GROUP_KEYS.includes(
+  // "Data policy" is now the published document; the export rule this group held was renamed, so an older address
+  // or bookmark lands on the renamed group.
+  if (groupParam === "dataPolicy") return <Navigate to="/server/management/personalDataExport" replace />;
+
+  const requestedGroup: ServerManagementGroupKey = SERVER_MANAGEMENT_GROUP_KEYS.includes(
     groupParam as ServerManagementGroupKey
   )
     ? (groupParam as ServerManagementGroupKey)
     : "accessReview";
 
-  const groups: ResourceMenuGroupDef<ServerManagementGroupKey>[] = [
-    { key: "accessReview", label: strings.orgAdmin.accessReview, href: "/server/management/accessReview" },
-    { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
+  // Flat list ordered by relatedness: people and access, appearance, data handling, communication, then modules.
+  const allGroups: ResourceMenuGroupDef<ServerManagementGroupKey>[] = [
+    { key: "accessReview", label: strings.system.users, href: "/server/management/accessReview" },
     { key: "signup", label: strings.signupSettings.title, href: "/server/management/signup" },
-    { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
-    { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
+    { key: "branding", label: strings.serverSettings.title, href: "/server/management/branding" },
+    { key: "details", label: strings.serverSettings.detailsTitle, href: "/server/management/details" },
     { key: "reportFonts", label: strings.reportFonts.title, href: "/server/management/reportFonts" },
-    { key: "dataPolicy", label: strings.personalDataPolicy.groupTitle, href: "/server/management/dataPolicy" },
+    { key: "files", label: strings.fileUploads.title, href: "/server/management/files" },
+    { key: "policies", label: strings.policies.heading, href: "/server/management/policies" },
+    { key: "personalDataExport", label: strings.personalDataPolicy.groupTitle, href: "/server/management/personalDataExport" },
+    { key: "email", label: strings.system.emailTab, href: "/server/management/email" },
+    { key: "messages", label: strings.announcements.heading, href: "/server/management/messages" },
+    { key: "modules", label: strings.serverModules.title, href: "/server/management/modules" },
   ];
+  // Only the sections this person may use, from the server's own answer: every group needs the server
+  // administrator except Modules, which a Module administrator or Platform subscription manager also uses.
+  const groups = allGroups.filter((g) =>
+    access?.can_administer_server ? true : g.key === "modules" && !!access?.can_manage_entitlements
+  );
+  if (access === null) return <Spinner />;
+  if (groups.length === 0) {
+    return (
+      <div className="card stack" role="alert">
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>{strings.nav.serverManagement}</h2>
+        <p>{strings.system.accessDenied}</p>
+        <Link to="/" className="btn" style={{ alignSelf: "flex-start" }}>{strings.system.accessDeniedHome}</Link>
+      </div>
+    );
+  }
+
+  // A group the person may not use falls back to the first one they may (the server refuses its data anyway); the
+  // address is replaced so it names the group shown.
+  const activeGroup = groups.some((g) => g.key === requestedGroup) ? requestedGroup : groups[0].key;
+  if (groupParam !== undefined && groupParam !== activeGroup) {
+    return <Navigate to={`/server/management/${activeGroup}`} replace />;
+  }
 
   return (
     <div className="stack">
@@ -935,16 +671,31 @@ export function ServerManagementPage() {
         active={activeGroup}
       >
         {activeGroup === "accessReview" && <AccessReviewTab />}
-        {activeGroup === "branding" && <PlatformBrandingTab />}
         {activeGroup === "signup" && <SignupModeTab />}
-        {activeGroup === "email" && <TestEmailTab />}
-        {activeGroup === "modules" && <ServerModulesTab />}
+        {activeGroup === "branding" && <PlatformBrandingTab />}
+        {activeGroup === "details" && <ServerDetailsTab />}
         {activeGroup === "reportFonts" && <ServerReportFontsTab />}
-        {activeGroup === "dataPolicy" && (
-          <CollapsibleSection sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.title}>
+        {activeGroup === "files" && <FileUploadsTab />}
+        {activeGroup === "policies" && (
+          <CollapsibleSection sectionKey="serverManagement.policies" title={strings.policies.heading} collapsible={false}>
+            <PoliciesPanel scope={{ kind: "server" }} />
+          </CollapsibleSection>
+        )}
+        {activeGroup === "personalDataExport" && (
+          <CollapsibleSection
+            sectionKey="serverManagement.personalData" title={strings.personalDataPolicy.groupTitle}
+            help={strings.personalDataPolicy.serverHint} collapsible={false}
+          >
             <PersonalDataPolicyPanel scope={{ kind: "server" }} />
           </CollapsibleSection>
         )}
+        {activeGroup === "email" && <TestEmailTab />}
+        {activeGroup === "messages" && (
+          <CollapsibleSection sectionKey="serverManagement.messages" title={strings.announcements.heading} collapsible={false}>
+            <AnnouncementsPanel scope={{ kind: "server" }} />
+          </CollapsibleSection>
+        )}
+        {activeGroup === "modules" && <ServerModulesTab />}
       </ResourceMenu>
     </div>
   );

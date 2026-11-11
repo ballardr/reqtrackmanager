@@ -44,6 +44,7 @@ from tests.conftest import (
     create_project,
     create_project_group,
 )
+from tests.db_helpers import must_get
 
 
 def _user(user_id) -> dict:
@@ -66,7 +67,7 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
     persona = _create_project_persona(
         client, token, project["id"], owner={"type": "org_group", "id": team}, champion={"type": "project_group", "id": squad},
     )
-    assert persona["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True}
+    assert persona["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False}
     assert persona["champion"]["label"] == "Squad" and persona["champion"]["type"] == "project_group"
 
     stakeholder = _create_project_stakeholder(client, token, project["id"], owner={"type": "project_group", "id": squad})
@@ -378,7 +379,7 @@ def test_migration_backfills_existing_versions_to_user(client, admin_token):
         command.upgrade(build_alembic_config(), "head")
 
     with SessionLocal() as db:
-        row = db.get(PersonaVersion, version_id)
+        row = must_get(db, PersonaVersion, version_id)
         assert (row.owner_type, str(row.owner_id)) == ("user", me)
         assert row.champion_type is None and row.champion_id is None
     resp = client.get(f"{_project_base(project['id'])}/personas/{persona['id']}", headers=auth_headers(token))

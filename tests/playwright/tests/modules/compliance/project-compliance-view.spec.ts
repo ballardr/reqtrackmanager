@@ -173,7 +173,7 @@ test.describe("Compliance Module: project compliance view", () => {
     // --- Attach evidence from the requirement panel's own "link existing
     //     evidence" control — first create it on the top-level Evidence tab.
     await page.getByRole("button", { name: "Close" }).click();
-    await page.getByRole("button", { name: "← Back" }).click();
+    await page.getByRole("button", { name: "← Compliance assignments" }).click();
     await page.getByRole("tab", { name: "Evidence" }).click();
     await page.getByRole("button", { name: "Add evidence" }).click();
     const addEvidenceDialog = page.getByRole("dialog", { name: "Add evidence" });
@@ -228,7 +228,7 @@ test.describe("Compliance Module: project compliance view", () => {
     // And visible in the project's own Evidence library too, its file
     // already attached with no separate upload step.
     await page.getByRole("button", { name: "Close" }).click();
-    await page.getByRole("button", { name: "← Back" }).click();
+    await page.getByRole("button", { name: "← Compliance assignments" }).click();
     await page.getByRole("tab", { name: "Evidence" }).click();
     await expect(page.getByText(inlineEvidenceTitle)).toBeVisible();
     await page.getByRole("link", { name: inlineEvidenceTitle }).click();
@@ -312,7 +312,7 @@ test.describe("Compliance Module: project compliance view", () => {
     await page.getByRole("button", { name: "Update assessment" }).click();
     await expect(page.getByText("Current state: Assessed")).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
-    await page.getByRole("button", { name: "← Back" }).click();
+    await page.getByRole("button", { name: "← Compliance assignments" }).click();
 
     await page.getByRole("tab", { name: "Outstanding" }).click();
     await expect(page.getByText(childRequirementName)).toBeVisible();

@@ -56,9 +56,9 @@
   <tr>
     <td align="center" style="padding: 32px 12px;">
       <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="rtm-container" style="width: 600px; max-width: 600px;">
-        <!-- Brand header: platform icon + header title on a black background (the default requested style, unthemed by design) -->
+        <!-- Brand header: logo + header title on the logo band colour (unthemed by design) -->
         <tr>
-          <td align="center" style="background-color: #000000; padding: 28px 24px; border-radius: 10px 10px 0 0;">
+          <td align="center" bgcolor="{{ branding.logo_band_hex }}" style="background-color: {{ branding.logo_band_hex }}; padding: 28px 24px; border-radius: 10px 10px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0">
               <tr>
                 {% if logo_src %}
@@ -67,7 +67,7 @@
                 </td>
                 {% endif %}
                 <td style="vertical-align: middle;">
-                  <span style="color: #ffffff; font-size: 18px; font-weight: 700; letter-spacing: 0.2px;">{{ branding.header_title }}</span>
+                  <span style="color: {{ branding.logo_band_text_hex }}; font-size: 18px; font-weight: 700; letter-spacing: 0.2px;">{{ branding.header_title }}</span>
                 </td>
               </tr>
             </table>
@@ -87,10 +87,13 @@
         <tr>
           <td align="center" style="padding: 24px 20px 0;">
             <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">
-              &copy; {{ now_year }} {{ branding.footer_company_name }}{% if branding.footer_website %} &middot; <a href="{{ branding.footer_website }}" class="rtm-footer-link" style="text-decoration: underline;">{{ branding.footer_website }}</a>{% endif %}
+              {% if branding.footer_prefix %}{{ branding.footer_prefix }}{% else %}&copy; {{ now_year }}{% endif %} {{ branding.footer_company_name }}{% if branding.footer_website %} &middot; <a href="{{ branding.footer_website }}" class="rtm-footer-link" style="text-decoration: underline;">{{ branding.footer_website }}</a>{% endif %}
             </p>
             {% if branding.footer_address %}
             <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">{{ branding.footer_address | nl2br }}</p>
+            {% endif %}
+            {% if branding.footer_company_id %}
+            <p class="rtm-footer-text" style="margin: 0 0 6px; font-size: 12px; line-height: 1.6;">{{ branding.footer_company_id }}</p>
             {% endif %}
             {% if unsubscribe_url %}
             <p class="rtm-footer-text" style="margin: 0 0 24px; font-size: 12px; line-height: 1.6;">

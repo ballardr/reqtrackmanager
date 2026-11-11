@@ -34,6 +34,13 @@ def _rating(risk: dict, which: str = "inherent") -> dict | None:
     return risk[f"{which}_rating"]
 
 
+def _rated(risk: dict, which: str = "inherent") -> dict:
+    """The risk's rating, which the test expects to exist."""
+    rating = _rating(risk, which)
+    assert rating is not None, f"the risk has no {which} rating"
+    return rating
+
+
 def test_scheme_registration_and_seeded_defaults(client, admin_token):
     _, project, token = setup(client, admin_token, "Risk Scheme Co")
     resp = client.get(f"/api/v1/projects/{project['id']}/scoring-schemes/{SCHEME}", headers=auth_headers(token))
@@ -54,14 +61,14 @@ def test_inherent_and_residual_ratings_follow_the_default_matrix(client, admin_t
         client, token, project["id"], lv, inherent_likelihood="Almost certain", inherent_consequence="Catastrophic",
         residual_likelihood="Unlikely", residual_consequence="Minor",
     )
-    assert _rating(risk)["label"] == "Critical" and _rating(risk)["normalised"] == 1.0 and _rating(risk)["raw"] == 25
-    assert _rating(risk)["scoring_model_key"] == "lxc" and _rating(risk)["tone"] == "danger"
-    assert _rating(risk, "residual")["label"] == "Low" and _rating(risk, "residual")["raw"] == 4
+    assert _rated(risk)["label"] == "Critical" and _rated(risk)["normalised"] == 1.0 and _rated(risk)["raw"] == 25
+    assert _rated(risk)["scoring_model_key"] == "lxc" and _rated(risk)["tone"] == "danger"
+    assert _rated(risk, "residual")["label"] == "Low" and _rated(risk, "residual")["raw"] == 4
 
     expected = {("Possible", "Moderate"): "Medium", ("Likely", "Major"): "High", ("Almost certain", "Major"): "Critical"}
     for (likelihood, consequence), label in expected.items():
         scored = _risk(client, token, project["id"], lv, inherent_likelihood=likelihood, inherent_consequence=consequence)
-        assert _rating(scored)["label"] == label, (likelihood, consequence)
+        assert _rated(scored)["label"] == label, (likelihood, consequence)
 
 
 def test_a_risk_missing_an_axis_is_not_scored_and_rating_updates_with_the_levels(client, admin_token):
@@ -72,7 +79,7 @@ def test_a_risk_missing_an_axis_is_not_scored_and_rating_updates_with_the_levels
     assert _rating(risk) is None and _rating(risk, "residual") is None
     url = f"{project_base(project['id'])}/risks/{risk['id']}"
     scored = client.put(url, json={"inherent_consequence_level_id": lv["consequence"]["Major"]}, headers=h).json()
-    assert _rating(scored)["label"] == "High"
+    assert _rated(scored)["label"] == "High"
     cleared = client.put(url, json={"inherent_likelihood_level_id": None}, headers=h).json()
     assert _rating(cleared) is None
     listed = client.get(project_base(project["id"]) + "/risks", headers=h).json()
@@ -84,16 +91,16 @@ def test_three_axis_model_needs_detectability(client, admin_token):
     h = auth_headers(token)
     lv = levels(client, token, project["id"])
     risk = _risk(client, token, project["id"], lv, inherent_likelihood="Almost certain", inherent_consequence="Catastrophic")
-    assert _rating(risk)["label"] == "Critical"
+    assert _rated(risk)["label"] == "Critical"
 
     resp = client.put(f"/api/v1/projects/{project['id']}/scoring-schemes/{SCHEME}/default-model", json={"model": "lxcxd"}, headers=h)
     assert resp.status_code == 200, resp.text
     url = f"{project_base(project['id'])}/risks/{risk['id']}"
     assert _rating(client.get(url, headers=h).json()) is None  # no detectability yet
     scored = client.put(url, json={"inherent_detectability_level_id": lv["detectability"]["Undetectable"]}, headers=h).json()
-    assert _rating(scored)["raw"] == 125 and _rating(scored)["label"] == "Critical" and _rating(scored)["scoring_model_key"] == "lxcxd"
+    assert _rated(scored)["raw"] == 125 and _rated(scored)["label"] == "Critical" and _rated(scored)["scoring_model_key"] == "lxcxd"
     easy = client.put(url, json={"inherent_detectability_level_id": lv["detectability"]["Detected immediately"]}, headers=h).json()
-    assert _rating(easy)["raw"] == 25 and _rating(easy)["label"] == "High"  # 25/125 = 0.2
+    assert _rated(easy)["raw"] == 25 and _rated(easy)["label"] == "High"  # 25/125 = 0.2
 
 
 def test_per_cell_override_makes_the_matrix_non_monotonic(client, admin_token):
@@ -104,7 +111,7 @@ def test_per_cell_override_makes_the_matrix_non_monotonic(client, admin_token):
     # 1 x 5 = 5 of 25 = 0.2: "Medium" by threshold, while 2 x 3 = 6 is also Medium.
     risk = _risk(client, token, project["id"], lv, **rare_catastrophic)
     other = _risk(client, token, project["id"], lv, inherent_likelihood="Unlikely", inherent_consequence="Major")
-    assert _rating(risk)["label"] == "Medium" and _rating(other)["label"] == "Medium"
+    assert _rated(risk)["label"] == "Medium" and _rated(other)["label"] == "Medium"
 
     resp = client.put(
         f"/api/v1/orgs/{org['id']}/scoring-schemes/{SCHEME}/models/lxc/cell-ratings",

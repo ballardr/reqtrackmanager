@@ -30,6 +30,7 @@ from app.modules.decisions.service import (
     submit_decision_for_review,
 )
 from tests.conftest import auth_headers, create_org_admin_in, create_project
+from tests.db_helpers import must_get, must_scalar
 
 
 def _current_user_id(client, token: str) -> uuid.UUID:
@@ -41,9 +42,7 @@ def _current_user_id(client, token: str) -> uuid.UUID:
 def _first_decision_type_id(project_id: uuid.UUID) -> uuid.UUID:
     db = SessionLocal()
     try:
-        return db.query(DecisionTypeDefinition.id).filter(
-            DecisionTypeDefinition.project_id == project_id
-        ).first()[0]
+        return must_scalar(db, select(DecisionTypeDefinition.id).where(DecisionTypeDefinition.project_id == project_id))
     finally:
         db.close()
 
@@ -67,7 +66,7 @@ def _create_decision(*, project_id: uuid.UUID, decision_type_id: uuid.UUID, user
 def _status(decision_id: uuid.UUID) -> DecisionStatus:
     db = SessionLocal()
     try:
-        return db.get(Decision, decision_id).status
+        return must_get(db, Decision, decision_id).status
     finally:
         db.close()
 
@@ -99,13 +98,13 @@ def test_full_legal_transition_sequence_is_recorded_in_audit_log(client, admin_t
 
     db = SessionLocal()
     try:
-        decision = db.get(Decision, decision_id)
+        decision = must_get(db, Decision, decision_id)
         propose_decision(db, decision, user_id)
         db.commit()
-        decision = db.get(Decision, decision_id)
+        decision = must_get(db, Decision, decision_id)
         submit_decision_for_review(db, decision, user_id)
         db.commit()
-        decision = db.get(Decision, decision_id)
+        decision = must_get(db, Decision, decision_id)
         approve_decision(db, decision, user_id, comment="Looks good.")
         db.commit()
     finally:
@@ -123,7 +122,7 @@ def test_rejecting_from_under_review_records_the_comment(client, admin_token):
 
     db = SessionLocal()
     try:
-        decision = db.get(Decision, decision_id)
+        decision = must_get(db, Decision, decision_id)
         propose_decision(db, decision, user_id)
         submit_decision_for_review(db, decision, user_id)
         reject_decision(db, decision, user_id, comment="Not aligned with strategy.")
@@ -159,11 +158,11 @@ def test_illegal_transitions_are_rejected(client, admin_token, from_status, to_s
 
     db = SessionLocal()
     try:
-        decision = db.get(Decision, decision_id)
+        decision = must_get(db, Decision, decision_id)
         decision.status = from_status
         db.commit()
 
-        decision = db.get(Decision, decision_id)
+        decision = must_get(db, Decision, decision_id)
         transition_fn = {
             DecisionStatus.PROPOSED: propose_decision,
             DecisionStatus.UNDER_REVIEW: submit_decision_for_review,
@@ -187,14 +186,14 @@ def test_supersession_link_created_but_new_decision_not_yet_approved_does_not_fl
 
     db = SessionLocal()
     try:
-        old_decision = db.get(Decision, old_id)
+        old_decision = must_get(db, Decision, old_id)
         propose_decision(db, old_decision, user_id)
         submit_decision_for_review(db, old_decision, user_id)
         approve_decision(db, old_decision, user_id)
         db.commit()
 
-        old_decision = db.get(Decision, old_id)
-        new_decision = db.get(Decision, new_id)
+        old_decision = must_get(db, Decision, old_id)
+        new_decision = must_get(db, Decision, new_id)
         link = create_supersession(db, new_decision=new_decision, old_decision=old_decision, actor_id=user_id)
         db.commit()
         assert link.source_id == new_id
@@ -207,7 +206,7 @@ def test_supersession_link_created_but_new_decision_not_yet_approved_does_not_fl
 
     db = SessionLocal()
     try:
-        new_decision = db.get(Decision, new_id)
+        new_decision = must_get(db, Decision, new_id)
         propose_decision(db, new_decision, user_id)
         submit_decision_for_review(db, new_decision, user_id)
         approve_decision(db, new_decision, user_id)
@@ -229,14 +228,14 @@ def test_supersession_created_after_new_decision_already_approved_flips_immediat
     db = SessionLocal()
     try:
         for decision_id in (old_id, new_id):
-            decision = db.get(Decision, decision_id)
+            decision = must_get(db, Decision, decision_id)
             propose_decision(db, decision, user_id)
             submit_decision_for_review(db, decision, user_id)
             approve_decision(db, decision, user_id)
         db.commit()
 
-        old_decision = db.get(Decision, old_id)
-        new_decision = db.get(Decision, new_id)
+        old_decision = must_get(db, Decision, old_id)
+        new_decision = must_get(db, Decision, new_id)
         create_supersession(db, new_decision=new_decision, old_decision=old_decision, actor_id=user_id)
         db.commit()
     finally:
@@ -255,8 +254,8 @@ def test_supersedes_link_type_is_created_once_per_org_and_reused(client, admin_t
 
     db = SessionLocal()
     try:
-        create_supersession(db, new_decision=db.get(Decision, b_id), old_decision=db.get(Decision, a_id), actor_id=user_id)
-        create_supersession(db, new_decision=db.get(Decision, c_id), old_decision=db.get(Decision, b_id), actor_id=user_id)
+        create_supersession(db, new_decision=must_get(db, Decision, b_id), old_decision=must_get(db, Decision, a_id), actor_id=user_id)
+        create_supersession(db, new_decision=must_get(db, Decision, c_id), old_decision=must_get(db, Decision, b_id), actor_id=user_id)
         db.commit()
     finally:
         db.close()
@@ -290,9 +289,9 @@ def test_supersession_validation_errors(client, admin_token):
 
     db = SessionLocal()
     try:
-        a = db.get(Decision, a_id)
-        b = db.get(Decision, b_id)
-        cross = db.get(Decision, cross_project_id)
+        a = must_get(db, Decision, a_id)
+        b = must_get(db, Decision, b_id)
+        cross = must_get(db, Decision, cross_project_id)
 
         with pytest.raises(ValueError, match="cannot supersede itself"):
             create_supersession(db, new_decision=a, old_decision=a, actor_id=user_id)
@@ -303,8 +302,8 @@ def test_supersession_validation_errors(client, admin_token):
         create_supersession(db, new_decision=b, old_decision=a, actor_id=user_id)
         db.commit()
 
-        b = db.get(Decision, b_id)
-        a = db.get(Decision, a_id)
+        b = must_get(db, Decision, b_id)
+        a = must_get(db, Decision, a_id)
         with pytest.raises(ValueError, match="already supersedes"):
             create_supersession(db, new_decision=b, old_decision=a, actor_id=user_id)
         db.rollback()
@@ -322,14 +321,14 @@ def test_cannot_supersede_an_already_superseded_decision(client, admin_token):
     db = SessionLocal()
     try:
         for decision_id in (a_id, b_id):
-            decision = db.get(Decision, decision_id)
+            decision = must_get(db, Decision, decision_id)
             propose_decision(db, decision, user_id)
             submit_decision_for_review(db, decision, user_id)
             approve_decision(db, decision, user_id)
         db.commit()
 
         # b supersedes a immediately (b is already APPROVED).
-        create_supersession(db, new_decision=db.get(Decision, b_id), old_decision=db.get(Decision, a_id), actor_id=user_id)
+        create_supersession(db, new_decision=must_get(db, Decision, b_id), old_decision=must_get(db, Decision, a_id), actor_id=user_id)
         db.commit()
     finally:
         db.close()
@@ -339,7 +338,7 @@ def test_cannot_supersede_an_already_superseded_decision(client, admin_token):
     db = SessionLocal()
     try:
         with pytest.raises(ValueError, match="already been superseded"):
-            create_supersession(db, new_decision=db.get(Decision, c_id), old_decision=db.get(Decision, a_id), actor_id=user_id)
+            create_supersession(db, new_decision=must_get(db, Decision, c_id), old_decision=must_get(db, Decision, a_id), actor_id=user_id)
         db.rollback()
     finally:
         db.close()
@@ -369,12 +368,12 @@ def test_create_supersession_rejects_a_new_decision_that_can_never_be_approved(c
 
     db = SessionLocal()
     try:
-        rejected = db.get(Decision, rejected_id)
+        rejected = must_get(db, Decision, rejected_id)
         propose_decision(db, rejected, user_id)
         reject_decision(db, rejected, user_id, comment="No longer needed.")
 
         for decision_id in (superseded_new_id, predecessor_id):
-            decision = db.get(Decision, decision_id)
+            decision = must_get(db, Decision, decision_id)
             propose_decision(db, decision, user_id)
             submit_decision_for_review(db, decision, user_id)
             approve_decision(db, decision, user_id)
@@ -382,7 +381,7 @@ def test_create_supersession_rejects_a_new_decision_that_can_never_be_approved(c
 
         # Give superseded_new_id a predecessor of its own so it becomes SUPERSEDED.
         create_supersession(
-            db, new_decision=db.get(Decision, predecessor_id), old_decision=db.get(Decision, superseded_new_id),
+            db, new_decision=must_get(db, Decision, predecessor_id), old_decision=must_get(db, Decision, superseded_new_id),
             actor_id=user_id,
         )
         db.commit()
@@ -394,15 +393,15 @@ def test_create_supersession_rejects_a_new_decision_that_can_never_be_approved(c
 
     db = SessionLocal()
     try:
-        old_decision = db.get(Decision, old_id)
+        old_decision = must_get(db, Decision, old_id)
         with pytest.raises(ValueError, match="can never be approved"):
-            create_supersession(db, new_decision=db.get(Decision, rejected_id), old_decision=old_decision, actor_id=user_id)
+            create_supersession(db, new_decision=must_get(db, Decision, rejected_id), old_decision=old_decision, actor_id=user_id)
         db.rollback()
 
-        old_decision = db.get(Decision, old_id)
+        old_decision = must_get(db, Decision, old_id)
         with pytest.raises(ValueError, match="can never be approved"):
             create_supersession(
-                db, new_decision=db.get(Decision, superseded_new_id), old_decision=old_decision, actor_id=user_id,
+                db, new_decision=must_get(db, Decision, superseded_new_id), old_decision=old_decision, actor_id=user_id,
             )
         db.rollback()
     finally:
@@ -431,7 +430,7 @@ def test_concurrent_approve_and_reject_on_the_same_decision_are_serialized(clien
     )
     db = SessionLocal()
     try:
-        decision = db.get(Decision, decision_id)
+        decision = must_get(db, Decision, decision_id)
         propose_decision(db, decision, user_id)
         submit_decision_for_review(db, decision, user_id)
         db.commit()
@@ -448,7 +447,7 @@ def test_concurrent_approve_and_reject_on_the_same_decision_are_serialized(clien
         db = SessionLocal()
         try:
             barrier.wait(timeout=5)
-            locked = db.scalar(select(Decision).where(Decision.id == decision_id).with_for_update())
+            locked = must_scalar(db, select(Decision).where(Decision.id == decision_id).with_for_update())
             try:
                 if action == "approve":
                     approve_decision(db, locked, user_id, comment="Approving.")

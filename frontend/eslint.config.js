@@ -52,6 +52,7 @@ export default tseslint.config(
             "useOrgLabel",
             "useOrgLabelCapitalized",
             "useOrgLabelPlural",
+            "useFileUploadsEnabled",
           ],
         },
       ],

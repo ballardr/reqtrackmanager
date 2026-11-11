@@ -9,7 +9,8 @@ Responsibilities:
   `enum_field`, `date_field`, `principal_field`, `name_lookup_field`).
 - Describe the fields of a type for a field picker (`field_catalogue`).
 - Load records by id in one query per type (`load_records`), with enum values as labels,
-  principals as names, tags as text and the reserved `code`/`title`/`status`/`tags` fields.
+  principals as names, tags as text and the reserved `code`/`title`/`status`/`tags` fields. Every placeable type
+  also offers the shared `placements` text field (`Component / Category; Component`), built here, not by a provider.
 - Format a loaded value as report text (`format_value`).
 
 Design decisions:
@@ -25,7 +26,7 @@ Design decisions:
 - Values are returned typed (`date`, `datetime`, `bool`, numbers) and formatted at the edge
   (`format_value`), so a renderer can sort and compare before it prints. A past instant stays UTC;
   a calendar date is a plain `date` and means the person's own day.
-- A person field shows the user's name or `Name (Org group)` for a group (`principal_text`), never
+- A person field shows the user's name or `Name (Organisation group)` for a group (`principal_text`), never
   an email address.
 
 Dependencies: `modules.registry` (provider shapes and merge), `services.principals` (names),
@@ -49,8 +50,10 @@ from app.modules.registry import (
     ArtefactSearchProvider,
     ReportField,
     ReportFieldProvider,
+    get_not_placeable_types,
     get_report_field_providers,
 )
+from app.services.placements import PLACEMENTS_FIELD_KEY, placement_texts
 from app.services.principals import principal_labels, principal_ref, principal_text
 from app.services.project_hierarchy import get_project_chain_ids
 from app.services.tags import tag_names_for_records
@@ -293,6 +296,8 @@ def field_catalogue(artefact_type: str) -> list[FieldInfo]:
         FieldInfo(f.key, f.label, f.kind, choices=tuple(f.labels.values()) if f.kind == "enum" else (), math=f.math)
         for f in provider.fields
     ]
+    if artefact_type not in get_not_placeable_types():
+        own.append(FieldInfo(PLACEMENTS_FIELD_KEY, "Component and category", "text"))
     return reserved + own
 
 
@@ -327,6 +332,8 @@ def field_domain(db: Session, artefact_type: str, key: str, project_ids: Sequenc
     if key in RESERVED_FIELD_KEYS:  # code, title, tags: free text
         return None
     by_key = {f.key: f for f in provider.fields}
+    if key == PLACEMENTS_FIELD_KEY and key not in by_key and artefact_type not in get_not_placeable_types():
+        return None  # free text
     if key not in by_key:
         raise UnknownReportFieldError(f"{artefact_type}.{key}")
     report_field = by_key[key]
@@ -390,7 +397,11 @@ def load_records(
     provider = provider_for(artefact_type)
     by_key = {f.key: f for f in provider.fields}
     wanted: list[ReportField] = []
+    with_placements = False
     for key in dict.fromkeys(k for k in field_keys if k not in RESERVED_FIELD_KEYS):
+        if key == PLACEMENTS_FIELD_KEY and key not in by_key and artefact_type not in get_not_placeable_types():
+            with_placements = True
+            continue
         if key not in by_key:
             raise UnknownReportFieldError(f"{artefact_type}.{key}")
         wanted.append(by_key[key])
@@ -445,6 +456,10 @@ def load_records(
                 record.values[f.key] = _plain(raw)
         out[record.id] = record
 
+    if with_placements and out:
+        for rid, text in placement_texts(db, artefact_type, list(out)).items():
+            if rid in out:
+                out[rid].values[PLACEMENTS_FIELD_KEY] = text
     if with_tags and out:
         for rid, names in tag_names_for_records(db, artefact_type, list(out)).items():
             if rid in out:

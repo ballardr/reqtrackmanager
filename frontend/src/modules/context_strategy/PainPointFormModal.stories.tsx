@@ -4,8 +4,8 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../../api/client";
 import { buildCandidate, buildOption } from "../../testing/artefactLinksFixtures";
 import { buildRecordTags, openTagPicker } from "../../testing/tagsFixtures";
-import { buildScoringScheme } from "../../testing/storybook-helpers";
 
+import { buildPainPointScheme } from "./painPointScoringFixtures";
 import { PainPointFormModal } from "./PainPointFormModal";
 import type { EffectivePainPointType, PainPoint } from "./types";
 
@@ -36,14 +36,13 @@ export const CreateNew: Story = {
   },
 };
 
-/** The picked type's definition shows under the picker, so the author knows what belongs there. */
+/** Every offered type's definition is in the Type field's help, one line per type, so the types can be compared before choosing. */
 export const ShowsTheTypeDefinition: Story = {
   args: { types: TYPES.map((t) => (t.id === "type-operator" ? { ...t, definition: "People who run and maintain the product." } : t)) },
   play: async () => {
     const body = within(document.body);
-    await expect(body.queryByText("People who run and maintain the product.")).not.toBeInTheDocument();
-    await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
-    await expect(body.getByText("People who run and maintain the product.")).toBeInTheDocument();
+    await userEvent.hover(body.getByRole("button", { name: "Help: Type" }));
+    await expect(body.getByText(/Operator: People who run and maintain the product\./)).toBeInTheDocument();
   },
 };
 
@@ -133,7 +132,7 @@ function mockLinkFinder() {
         truncated: false,
       };
     }
-    if (path.includes("/link-types")) return [buildOption({ other_types: [{ type: "persona", label: "Persona" }] })];
+    if (path.includes("/link-types")) return [buildOption({ other_types: [{ type: "persona", label: "Persona", can_create: false }] })];
     if (path.endsWith("/tags")) return buildRecordTags({ tags: [] });
     throw new Error(`unmocked path: ${path}`);
   });
@@ -190,7 +189,7 @@ export const EditDoesNotOfferTheQuickLinkField: Story = {
 };
 
 const SCORING = {
-  scheme: buildScoringScheme(),
+  scheme: buildPainPointScheme(),
   targets: [
     { id: "persona-1", label: "Field Technician", weight: 3, is_active: true },
     { id: "persona-2", label: "Back-office Planner", weight: 1, is_active: true },
@@ -205,40 +204,41 @@ export const NoScoringSectionWithoutTheScoringTier: Story = {
   },
 };
 
-/** A manager scores the Pain Point on all personas together while creating it. */
-export const ScoresAllPersonasOnCreate: Story = {
+/** A manager scores the Pain Point (General) while creating it. */
+export const ScoresGeneralOnCreate: Story = {
   args: { scoring: SCORING },
   play: async ({ args }) => {
     const body = within(document.body);
     await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
     await userEvent.type(body.getByLabelText("Pain Point title"), "Field reports require paper re-keying");
-    const group = within(body.getByRole("group", { name: "All personas scores" }));
+    const group = within(body.getByRole("group", { name: "General scores" }));
     await userEvent.selectOptions(group.getByRole("combobox", { name: "Severity" }), "sev-5");
     await userEvent.selectOptions(group.getByRole("combobox", { name: "Frequency" }), "freq-1");
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
       expect.objectContaining({
-        scores: [{ target_id: null, severity_level_id: "sev-5", frequency_level_id: "freq-1", confidence_level_id: null }],
+        scores: [{ target_id: null, levels: { severity: "sev-5", frequency: "freq-1" } }],
       }), [], [],
     ));
   },
 };
 
-/** Per-persona scoring lists the active personas only and sends one row per scored persona. */
-export const ScoresEachPersonaOnCreate: Story = {
+/** A persona that differs is added from the active personas only, and sends its own row. */
+export const ScoresAPersonaThatDiffersOnCreate: Story = {
   args: { scoring: SCORING },
   play: async ({ args }) => {
     const body = within(document.body);
     await userEvent.selectOptions(body.getByLabelText("Type"), "type-operator");
     await userEvent.type(body.getByLabelText("Pain Point title"), "Field reports require paper re-keying");
-    await userEvent.selectOptions(body.getByRole("combobox", { name: "Scoring mode" }), "persona");
-    await expect(body.queryByRole("group", { name: "Retired Persona scores" })).not.toBeInTheDocument();
+    const adder = body.getByRole("combobox", { name: "Add a persona that differs" });
+    await expect(within(adder).queryByRole("option", { name: "Retired Persona" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(adder, "persona-2");
     const planner = within(body.getByRole("group", { name: "Back-office Planner scores" }));
     await userEvent.selectOptions(planner.getByRole("combobox", { name: "Severity" }), "sev-2");
     await userEvent.click(body.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
       expect.objectContaining({
-        scores: [{ target_id: "persona-2", severity_level_id: "sev-2", frequency_level_id: null, confidence_level_id: null }],
+        scores: [{ target_id: "persona-2", levels: { severity: "sev-2" } }],
       }), [], [],
     ));
   },

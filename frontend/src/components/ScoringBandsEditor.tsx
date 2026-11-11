@@ -19,6 +19,7 @@ import { SCORING_BAND_TONE_LABEL, type ScoringBand } from "../api/scoring";
 import type { BadgeTone } from "../api/types";
 import { OverridePill } from "./OverridePill";
 import { Badge } from "./Badge";
+import { InlineSelect } from "./LabeledSelect";
 
 interface DraftBand {
   label: string;
@@ -62,12 +63,14 @@ function validateBandDraft(draft: { label: string; percent: string }[]): string 
  * @param onReset Clears the override; same feedback contract as `onSave`.
  */
 export function ScoringBandsEditor({
-  bands, custom, defaultLabel, resetLabel, onSave, onReset,
+  bands, custom, defaultLabel, resetLabel, platformFallback, onSave, onReset,
 }: {
   bands: ScoringBand[];
   custom: boolean;
   defaultLabel: string;
   resetLabel?: string;
+  /** The fallback is the module default on an organisation page: no pill, only a reset while custom. */
+  platformFallback?: boolean;
   onSave: (bands: ScoringBand[]) => Promise<void>;
   onReset: () => Promise<void>;
 }) {
@@ -100,7 +103,7 @@ export function ScoringBandsEditor({
     <div className="stack" style={{ gap: "var(--space-3)" }}>
       <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
         <span>Rating bands</span>
-        <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel}
+        <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel} platformFallback={platformFallback}
           onReset={() => void run(onReset)} disabled={busy} />
       </div>
       <div className="definition-grid" style={{ gridTemplateColumns: "minmax(8rem, 1fr) 6.5rem 8rem 6rem max-content" }}>
@@ -121,10 +124,11 @@ export function ScoringBandsEditor({
                 onChange={(e) => update(i, { percent: e.target.value })} />
             </div>
             <div className="definition-grid__cell">
-              <select className="input" aria-label={`Band ${i + 1} colour`} value={band.tone}
-                onChange={(e) => update(i, { tone: e.target.value as BadgeTone })}>
-                {TONES.map((tone) => <option key={tone} value={tone}>{SCORING_BAND_TONE_LABEL[tone]}</option>)}
-              </select>
+              <InlineSelect<BadgeTone>
+                ariaLabel={`Band ${i + 1} colour`} value={band.tone} placeholder={null}
+                onChange={(tone) => update(i, { tone })}
+                options={TONES.map((tone) => ({ value: tone, label: SCORING_BAND_TONE_LABEL[tone] }))}
+              />
             </div>
             <div className="definition-grid__cell"><Badge tone={band.tone}>{band.label || "—"}</Badge></div>
             <div className="definition-grid__actions">

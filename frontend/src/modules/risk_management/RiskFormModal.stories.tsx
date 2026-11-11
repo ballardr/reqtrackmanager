@@ -62,7 +62,7 @@ export const ChoosesAGroupOwner: Story = {
     await userEvent.type(d.getByLabelText("Risk title"), "Supplier may slip");
     await userEvent.type(d.getByRole("combobox", { name: "Owner" }), "safety");
     await userEvent.click(await d.findByText("Safety Board"));
-    await expect(d.getByText("Org group")).toBeInTheDocument();
+    await expect(d.getByText("Organisation group")).toBeInTheDocument();
     await userEvent.click(d.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } }), "", [], []
@@ -95,7 +95,7 @@ export const EditShowsAGroupOwner: Story = {
   play: async () => {
     const d = dialog();
     await expect(d.getByText("Safety Board")).toBeInTheDocument();
-    await expect(d.getByText("Org group · 2 members")).toBeInTheDocument();
+    await expect(d.getByText("Organisation group · 2 members")).toBeInTheDocument();
   },
 };
 

@@ -19,6 +19,8 @@ from app.deps import get_current_user
 from app.models.project import Project, ProjectComponent
 from app.models.user import User
 from app.schemas.requirement import RequirementDueForReviewOut
+from app.services.principals import label_of
+from app.services.rbac import restrict_to_session_scope
 from app.services.reviews import get_due_reviews_for_user, reviewer_labels
 
 router = APIRouter(prefix="/api/v1/me", tags=["me"])
@@ -40,11 +42,19 @@ def list_my_due_reviews(
     `RequirementDueForReviewOut`. `limit`/`offset` (U-P-06) are optional,
     same contract as `list_requirements`: omitting both returns everything.
     """
-    due = get_due_reviews_for_user(db, current_user.id)
+    due = [(version, req) for version, req in get_due_reviews_for_user(db, current_user.id) if version.review_date is not None]
+    # A Personal Access Token or module frame reaches only the projects it is scoped to.
+    reachable = restrict_to_session_scope(db, {req.project_id for _, req in due})
+    due = [(version, req) for version, req in due if req.project_id in reachable]
+    response.headers["X-Total-Count"] = str(len(due))
+    # Page first, so the lookups below read only the rows returned: the navigation asks for `limit=1` on every
+    # session to learn whether anything is due, and must not pay for labelling the whole list.
+    if limit is not None:
+        due = due[offset:offset + limit]
     reviewers = reviewer_labels(db, [version for version, _ in due])
     component_ids = {req.component_id for _, req in due}
     component_names = (
-        dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).all())
+        dict(db.execute(select(ProjectComponent.id, ProjectComponent.name).where(ProjectComponent.id.in_(component_ids))).tuples().all())
         if component_ids
         else {}
     )
@@ -56,17 +66,14 @@ def list_my_due_reviews(
     )
     project_names = {pid: name for pid, name, _ in project_rows}
     project_codes = {pid: code for pid, _, code in project_rows}
-    out = [
+    return [
         RequirementDueForReviewOut(
             requirement_id=req.id, project_id=req.project_id, project_name=project_names.get(req.project_id),
             project_code=project_codes.get(req.project_id),
             unique_code=req.unique_code, name=version.name, review_date=version.review_date,
-            reviewer=reviewers[(version.reviewer_type, version.reviewer_id)] if version.reviewer_id else None,
+            reviewer=label_of(reviewers, version.reviewer_type, version.reviewer_id),
             component_id=req.component_id, component_name=component_names.get(req.component_id, ""),
         )
         for version, req in due
+        if version.review_date is not None
     ]
-    response.headers["X-Total-Count"] = str(len(out))
-    if limit is not None:
-        out = out[offset:offset + limit]
-    return out

@@ -34,6 +34,8 @@ The token is shown exactly once, at creation — copy it immediately. It can be 
 
 Paste the resulting `rtm_pat_...` value into any client config exactly where a session token would go.
 
+A sign-in that is repeated wrongly is delayed, and a script that calls the login endpoint should respect the `Retry-After` header on a 429 answer. Prefer a personal access token for anything unattended.
+
 ## The manual way — call the login endpoint directly
 
 Useful for scripting or a one-off token:

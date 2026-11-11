@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { ArtefactLinkCandidate, ArtefactLinkTypeOption } from "../api/artefactLinks";
 import type { Category, Component, ProjectStage } from "../api/types";
 import {
-  buildFileAsset, buildProjectListItem, buildRequirement, buildUser,
+  buildFileAsset, buildProjectListItem, buildRequirement, buildStageWorkflow, buildUser,
   withRouter, withStatefulAuth, withTerminology, withToast,
 } from "../testing/storybook-helpers";
 import { buildCandidate, buildOption } from "../testing/artefactLinksFixtures";
@@ -25,8 +25,8 @@ const categories: Category[] = [
   { id: "cat2", project_id: PROJECT_ID, component_id: "c2", name: "Export", prefix: "EXP", sort_order: 0 },
 ];
 const stages: ProjectStage[] = [
-  { id: "s1", project_id: PROJECT_ID, name: "Build", status: "scoping", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
-  { id: "s2", project_id: PROJECT_ID, name: "Test", status: "scoping", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, review_deadline: null },
+  { id: "s1", project_id: PROJECT_ID, name: "Build", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 0, is_current: true, approved_at: null, completed_at: null, completed_by: null, owner: null, review_deadline: null },
+  { id: "s2", project_id: PROJECT_ID, name: "Test", workflow_id: "wf1", workflow_name: "Standard", phase_id: "ph-scoping", phase_name: "Scoping", phase_kind: "open", sort_order: 1, is_current: false, approved_at: null, completed_at: null, completed_by: null, owner: null, review_deadline: null },
 ];
 
 /** The quick-link field's finder reads: the link types usable from a new requirement and the records a search finds. */
@@ -55,6 +55,7 @@ function mockRequirementsListApis(
     if (path.includes("archived=false")) return [buildProjectListItem({ id: PROJECT_ID, my_roles: myRoles === "manager" ? ["project_manager"] : ["member"] })];
     if (path.includes("/components")) return comps;
     if (path.includes("/categories")) return cats;
+    if (path.endsWith("/stage-workflows")) return [buildStageWorkflow()];
     if (path.includes("/stages")) return stages;
     if (path.includes("custom-fields")) return [];
     if (path.endsWith(`/projects/${PROJECT_ID}`)) return { organization_id: "org-1", name: "Atlas Platform" };
@@ -535,7 +536,7 @@ export const CreateStepAttachFileThenFinish: Story = {
 export const CreateRequirementLinksTheChosenRecords: Story = {
   beforeEach: () => {
     mockRequirementsListApis("manager", {
-      linkOptions: [buildOption({ other_types: [{ type: "requirement", label: "Requirement" }] })],
+      linkOptions: [buildOption({ other_types: [{ type: "requirement", label: "Requirement", can_create: false }] })],
       candidates: [buildCandidate({ type: "requirement", id: "r1", type_label: "Requirement", label: "AUTH-LOG-001 Reset password" })],
     });
     spyOn(api, "post").mockImplementation(async (path: string) => {
@@ -763,3 +764,15 @@ export const BulkArchivePartialFailureShowsToast: Story = {
 
 export const LightTheme: Story = { ...TilesView, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...TilesView, globals: { theme: "dark" } };
+
+/** A requirement shows the phase that governs it beside its target version, and the Phase filter sends the phase name. */
+export const ShowsAndFiltersByGoverningPhase: Story = {
+  beforeEach: () => mockRequirementsListApis("manager"),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const select = await canvas.findByRole("combobox", { name: "Phase" });
+    await expect(within(select).getByRole("option", { name: "Review" })).toBeInTheDocument();
+    await userEvent.selectOptions(select, "Review");
+    await waitFor(() => expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("phase=Review")));
+  },
+};

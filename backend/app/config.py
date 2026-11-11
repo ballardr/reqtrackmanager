@@ -26,6 +26,12 @@ class Settings(BaseSettings):
         database_url: SQLAlchemy connection string for PostgreSQL.
         jwt_secret: Symmetric secret used to sign access tokens.
         jwt_algorithm: JWT signing algorithm.
+        database_migration_url: The connection the schema is migrated and protected with, when it differs from
+            `database_url` (the owner role, with the right to change tables). The application itself then connects as
+            the runtime role in `database_url`. Unset: both are `database_url`.
+        audit_runtime_role: The name of the database role the application connects as, when it is not the table owner.
+            At start-up the audit tables are made append-only for that role (`services.audit_protection`). Empty: no
+            protection (the application owns its tables, so a revoke would change nothing).
         app_secret_encryption_key: Symmetric key used to encrypt genuine
             secrets at rest at the application layer — `Organization.
             oidc_client_secret`, `Organization.smtp_password`, and `User.
@@ -35,6 +41,9 @@ class Settings(BaseSettings):
             `jwt_secret`, this must be a strong random value distinct per
             deployment — the production Compose stack fails fast if it's
             left unset.
+        app_secret_encryption_key_previous: Comma-separated earlier values of `app_secret_encryption_key`, kept only
+            so values written under them still decrypt while the key is being rotated (new values always use the
+            current key; `scripts/rotate_secret_key.py` re-encrypts the stored ones, after which this is emptied).
         access_token_expire_minutes: Access token lifetime in minutes.
         server_admin_enabled: Whether the deployment-config server admin
             bootstrap user is created/enabled on startup (I-M-06).
@@ -66,6 +75,8 @@ class Settings(BaseSettings):
             `GET /api/v1/system/storage-health` still works.
         storage_health_check_interval_seconds: Seconds between probes
             (minimum 60). Raising it is the cheaper alternative to disabling.
+        storage_health_failures_before_alert: Consecutive failed probes before
+            server admins are alerted, so one dropped write is not an outage.
         websocket_enabled: Whether the optional live-update WebSocket
             interface (I-A-04) is mounted at all. Deployments that can't or
             don't want persistent socket connections (e.g. behind certain
@@ -131,6 +142,20 @@ class Settings(BaseSettings):
             for a given account once `two_factor_max_failed_attempts` is
             reached. The lockout is per-*account*, not per-challenge-token,
             so re-authenticating for a fresh token does not reset it.
+        require_email_confirmation: Whether an account created by public self-sign-up (no invitation) must open a link emailed
+            to its address before it can sign in (`services.email_confirmation`). On by default.
+        force_password_change_on_admin_set: Whether an account whose password an administrator typed must change it at
+            its first sign-in (`User.must_change_password`). On by default; a person who sets their own password (sign-up,
+            invitation, reset link) is never asked.
+        login_delay_window_minutes / login_delay_free_attempts_account / login_delay_free_attempts_address /
+            login_delay_base_seconds / login_delay_max_seconds: The progressive delay on `/auth/login`
+            (`services.login_throttle`). Failed attempts inside the window count against the account (since its
+            last success) and against the source address; past the free allowance each further failure doubles
+            the wait from the base up to the maximum. A delay, not a lock: it ends by itself, so a third party
+            cannot keep a person out for longer than the maximum.
+        login_lock_wait_seconds: How long a sign-in waits for another attempt on the same account to finish (attempts
+            on one account are serialised so a burst cannot all pass the failure count). Past it the attempt is
+            answered 429 with a one-second wait; 0 refuses at once.
         oidc_allow_private_network_targets: Deployment-level opt-in that
             disables the SSRF guard's public-IP check for org-configured
             OIDC endpoints (`services.oidc_client._assert_safe_external_url`),
@@ -181,6 +206,10 @@ class Settings(BaseSettings):
             A link issued from the command line may ask for longer, up to 1440, with `--ttl-minutes`.
         public_auth_rate_limit_burst / public_auth_rate_limit_per_minute: Token bucket per client address
             and per worker process for the unauthenticated "forgot password" and "reset password" calls.
+            0 disables it.
+        public_announcement_rate_limit_burst / public_announcement_rate_limit_per_minute: Token bucket per
+            client address and per worker process for the unauthenticated reads of login-page messages
+            (one call per login page view) and of published server policies (a separate bucket each).
             0 disables it.
         credential_reset_send_rate_limit_burst / credential_reset_send_rate_limit_per_minute: Token bucket
             per administrator and per worker process for sending reset links to other people. 0 disables it.
@@ -291,8 +320,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql://reqtrack:reqtrack@localhost:5432/reqtrack"
+    database_migration_url: str | None = None
+    audit_runtime_role: str = ""
     jwt_secret: str = "change-me-in-production"
     app_secret_encryption_key: str = "change-me-in-production"
+    app_secret_encryption_key_previous: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 12
 
@@ -323,6 +355,7 @@ class Settings(BaseSettings):
     disk_usage_warning_threshold_percent: int = 90
     storage_health_check_enabled: bool = True
     storage_health_check_interval_seconds: int = Field(default=300, ge=60)
+    storage_health_failures_before_alert: int = Field(default=2, ge=1)
 
     websocket_enabled: bool = True
 
@@ -340,6 +373,14 @@ class Settings(BaseSettings):
     report_run_record_retention_days: int = 400
     two_factor_max_failed_attempts: int = 5
     two_factor_lockout_minutes: int = 15
+    force_password_change_on_admin_set: bool = True
+    require_email_confirmation: bool = True
+    login_delay_window_minutes: int = Field(default=15, ge=1, le=1440)
+    login_delay_free_attempts_account: int = Field(default=5, ge=1)
+    login_delay_free_attempts_address: int = Field(default=30, ge=1)
+    login_delay_base_seconds: int = Field(default=5, ge=1)
+    login_delay_max_seconds: int = Field(default=300, ge=1)
+    login_lock_wait_seconds: int = Field(default=5, ge=0, le=30)
     oidc_internal_base_url_override: str | None = None
     oidc_allow_private_network_targets: bool = False
     org_smtp_allow_private_network_targets: bool = False
@@ -353,6 +394,8 @@ class Settings(BaseSettings):
     credential_reset_token_minutes: int = Field(default=60, ge=5, le=1440)
     public_auth_rate_limit_burst: int = 10
     public_auth_rate_limit_per_minute: int = 10
+    public_announcement_rate_limit_burst: int = 30
+    public_announcement_rate_limit_per_minute: int = 60
     credential_reset_send_rate_limit_burst: int = 20
     credential_reset_send_rate_limit_per_minute: int = 30
     require_strong_secrets: bool = False

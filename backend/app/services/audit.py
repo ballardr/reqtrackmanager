@@ -66,6 +66,7 @@ def log_login(
     email_attempted: str,
     ip_address: str,
     success: bool,
+    kind: str = "password",
 ) -> LoginEvent:
     """Writes a login attempt event (C-A-07).
 
@@ -75,6 +76,8 @@ def log_login(
         email_attempted: The email address supplied at login.
         ip_address: The client IP address.
         success: Whether authentication succeeded.
+        kind: `password`, `second_factor`, `sso` or `throttled` (refused by the progressive delay in
+            `services.login_throttle` before the password was checked).
 
     Returns:
         The LoginEvent instance that was added to the session.
@@ -85,6 +88,7 @@ def log_login(
         ip_address=ip_address,
         location=None,
         success=success,
+        kind=kind,
         created_at=datetime.now(UTC),
     )
     db.add(event)

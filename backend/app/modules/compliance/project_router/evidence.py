@@ -28,7 +28,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.deps import get_current_user_or_module_frame
 from app.models.file import FileAsset
-from app.models.project import Project
 from app.models.user import User
 from app.modules.compliance.evidence_edits import EDITABLE_FIELDS, stage_evidence, stage_evidence_update
 from app.modules.compliance.models import (
@@ -68,6 +67,7 @@ from app.schemas.file import FileAssetOut, LinkResourceRequest
 from app.services import relationships
 from app.services.audit import log_event
 from app.services.files import delete_file, upload_file
+from app.services.lookups import project_or_404
 from app.services.project_scope import ProjectScope
 from app.services.rbac import require_permission
 from app.services.tags import TagFilter
@@ -158,7 +158,7 @@ def create_evidence(
         _get_assessment_for_project_or_404(db, project_id, assessment_id)
 
     evidence = stage_evidence(
-        db, db.get(Project, project_id), current_user, title=payload.title, description=payload.description,
+        db, project_or_404(db, project_id), current_user, title=payload.title, description=payload.description,
         issuing_organisation=payload.issuing_organisation, issued_date=payload.issued_date,
         expiry_date=payload.expiry_date, notes=payload.notes,
     )
@@ -196,7 +196,7 @@ def list_evidence(
         return build_evidence_outs(db, list(evidence_rows))
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, "compliance_evidence", rows_for,
+        db, project_or_404(db, project_id), current_user.id, "compliance_evidence", rows_for,
         gate=("compliance", None),
     )
 
@@ -435,7 +435,7 @@ async def upload_evidence_attachment(
     existing attachment/file mechanisms where possible" rather than a
     second, independent file storage mechanism."""
     evidence = _get_evidence_or_404(db, project_id, evidence_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     data = await file.read()
     asset = upload_file(
         db, organization_id=project.organization_id, uploaded_by=current_user.id,
@@ -460,7 +460,7 @@ def link_evidence_org_resource(
     """Links an organisation shared resource file to a piece of evidence —
     mirrors `routers.requirements.link_org_resource`'s shape exactly."""
     evidence = _get_evidence_or_404(db, project_id, evidence_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     asset = db.get(FileAsset, payload.file_id)
     if asset is None or not asset.is_org_resource or asset.organization_id != project.organization_id:
         raise HTTPException(

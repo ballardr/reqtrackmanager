@@ -47,6 +47,7 @@ from tests.conftest import (
     create_project,
     create_project_group,
 )
+from tests.db_helpers import must_get
 
 
 def _user(user_id) -> dict:
@@ -87,7 +88,7 @@ def test_each_artefact_takes_each_principal_kind_and_shows_a_group_by_name(clien
     updated = _update_pain_point(client, token, project["id"], pain_point, owner={"type": "org_group", "id": team})
     assert updated.status_code == 200, updated.text
     assert updated.json()["owner"] == {
-        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True,
+        "type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False,
     }
     second_pp = _create_pain_point(client, token, project["id"], title="Second")
     _update_pain_point(client, token, project["id"], second_pp, owner={"type": "project_group", "id": squad})
@@ -288,9 +289,9 @@ def test_open_question_register_prints_and_groups_by_owner_principal(client, adm
 
     owners_column = _section(report, "open")["columns"].index("Owner")
     assert sorted(row[owners_column] for row in _section(report, "open")["rows"]) == [
-        "Triage Team (Org group)", "Triage Team (Org group)", "Unowned",
+        "Triage Team (Organisation group)", "Triage Team (Organisation group)", "Unowned",
     ]
-    assert dict(_section(report, "by_owner")["rows"]) == {"Triage Team (Org group)": "2", "Unowned": "1"}
+    assert dict(_section(report, "by_owner")["rows"]) == {"Triage Team (Organisation group)": "2", "Unowned": "1"}
     assert [r[0] for r in _section(report, "unowned")["rows"]] == ["OQ-003 Nobody?"]
 
 
@@ -311,7 +312,7 @@ def test_guiding_principle_usage_report_prints_a_group_owner(client, admin_token
 
     register = _section(_report(client, token, project["id"], "guiding-principle-usage"), "register")
 
-    assert register["rows"][0][register["columns"].index("Owner")] == "Principle Stewards (Org group)"
+    assert register["rows"][0][register["columns"].index("Owner")] == "Principle Stewards (Organisation group)"
 
 
 # --- Migration backfill ---------------------------------------------------------------------------------
@@ -342,9 +343,9 @@ def test_migration_backfills_existing_rows_to_user(client, admin_token):
         command.upgrade(build_alembic_config(), "head")
 
     with SessionLocal() as db:
-        row = db.get(OpenQuestion, owned_id)
+        row = must_get(db, OpenQuestion, owned_id)
         assert (row.owner_type, str(row.owner_id)) == ("user", me)
-        other = db.get(OpenQuestion, uuid.UUID(unowned["id"]))
+        other = must_get(db, OpenQuestion, uuid.UUID(unowned["id"]))
         assert other.owner_type is None and other.owner_id is None
     resp = client.get(f"{_project_base(project['id'])}/open-questions/{owned_id}", headers=auth_headers(token))
     assert resp.status_code == 200 and resp.json()["owner"]["id"] == me

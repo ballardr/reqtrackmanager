@@ -109,7 +109,7 @@ export const ChoosesAGroupOwner: Story = {
     await userEvent.type(body.getByLabelText("Decision statement"), "Use PostgreSQL as the backing store.");
     await userEvent.type(body.getByRole("combobox", { name: "Owner" }), "platform");
     await userEvent.click(await body.findByText("Platform Architecture"));
-    await expect(body.getByText("Org group")).toBeInTheDocument();
+    await expect(body.getByText("Organisation group")).toBeInTheDocument();
     await userEvent.click(body.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith(
@@ -168,7 +168,7 @@ export const EditExisting: Story = {
     await expect(body.queryByLabelText("Start from a template")).not.toBeInTheDocument();
     // The existing group owner shows its name, kind and member count.
     await expect(body.getByText("Platform Architecture")).toBeInTheDocument();
-    await expect(body.getByText("Org group · 2 members")).toBeInTheDocument();
+    await expect(body.getByText("Organisation group · 2 members")).toBeInTheDocument();
   },
 };
 

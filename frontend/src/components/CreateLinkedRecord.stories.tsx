@@ -4,14 +4,13 @@ import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { api } from "../api/client";
 import { buildGraph, buildLinksApi, buildOption, LINKS_ARTEFACT_ID, LINKS_PROJECT_ID } from "../testing/artefactLinksFixtures";
 import { buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
-import { getLinkedRecordCreator } from "../modules/linkedRecordCreators";
 import { ArtefactLinksPanel } from "./ArtefactLinksPanel";
 
 const ADDRESSES = buildOption({
   link_type_id: "lt-addresses", forward_name: "Addresses", reverse_name: "Is addressed by", phrase: "Addresses",
-  other_types: [{ type: "pain_point", label: "Pain Point" }],
+  other_types: [{ type: "pain_point", label: "Pain Point", can_create: true }],
 });
-const RELATED = buildOption({ other_types: [{ type: "pain_point", label: "Pain Point" }, { type: "decision", label: "Decision" }] });
+const RELATED = buildOption({ other_types: [{ type: "pain_point", label: "Pain Point", can_create: true }, { type: "decision", label: "Decision", can_create: false }] });
 
 /**
  * The panel's "Add link" menu, "Create a new record": a first step chooses the record type and relationship, then the
@@ -81,7 +80,7 @@ export const OffersTheRelationshipWhenSeveralReachTheType: Story = {
     api: buildLinksApi({
       graph: fn(async () => buildGraph([], { can_link: true })),
       // Listed with the preferred one last: the request's own module says "Addresses" leads.
-      options: fn(async () => [buildOption({ link_type_id: "lt-derives", forward_name: "Derives from", phrase: "Derives from", other_types: [{ type: "pain_point", label: "Pain Point" }] }), ADDRESSES]),
+      options: fn(async () => [buildOption({ link_type_id: "lt-derives", forward_name: "Derives from", phrase: "Derives from", other_types: [{ type: "pain_point", label: "Pain Point", can_create: true }] }), ADDRESSES]),
       create: fn(async () => {}),
     }),
   },
@@ -109,7 +108,7 @@ export const OffersNothingWhereNothingCanBeCreated: Story = {
   args: {
     api: buildLinksApi({
       graph: fn(async () => buildGraph([], { can_link: true })),
-      options: fn(async () => [buildOption({ other_types: [{ type: "nothing_registered", label: "Nothing" }] })]),
+      options: fn(async () => [buildOption({ other_types: [{ type: "nothing_registered", label: "Nothing", can_create: false }] })]),
     }),
   },
   play: async ({ canvasElement }) => {
@@ -133,20 +132,16 @@ export const OffersNothingWhenLinksAreReadOnly: Story = {
   },
 };
 
-/** A type whose module declares a create check is offered only to someone it allows (a role-gated type never shows a refused choice). */
+/** A type the server says the caller may not create (`can_create` false) is never offered, so a role-gated type shows no refused choice. */
 export const OffersATypeOnlyToSomeoneAllowedToCreateIt: Story = {
   args: {
     api: buildLinksApi({
       graph: fn(async () => buildGraph([], { can_link: true })),
-      options: fn(async () => [ADDRESSES]),
+      options: fn(async () => [buildOption({
+        link_type_id: "lt-addresses", forward_name: "Addresses", reverse_name: "Is addressed by", phrase: "Addresses",
+        other_types: [{ type: "pain_point", label: "Pain Point", can_create: false }],
+      })]),
     }),
-  },
-  // The check must be in place before the panel mounts; the original is restored afterwards.
-  beforeEach: () => {
-    const creator = getLinkedRecordCreator("pain_point")!;
-    const original = creator.canCreate;
-    creator.canCreate = async () => false;
-    return () => { creator.canCreate = original; };
   },
   play: async ({ canvasElement }) => {
     const addLink = await within(canvasElement).findByRole("button", { name: "Add link" });

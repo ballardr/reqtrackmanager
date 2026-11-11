@@ -5,11 +5,11 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 import { ApiError, api } from "../../api/client";
 import type { OrgGroup, OrgUser, Principal, ProjectGroup } from "../../api/types";
 import { buildGraph, buildGraphNode } from "../../testing/artefactLinksFixtures";
-import { buildProject, buildUser, withAuth, withToast } from "../../testing/storybook-helpers";
+import { buildProject, buildUser, withStatefulAuth, withToast } from "../../testing/storybook-helpers";
 import { EngagementDetailPage } from "./EngagementDetailPage";
 import { buildEngagement, buildFinding, buildPersona, buildStakeholder, buildStakeholderGroup } from "./fixtures";
 import type {
-  AnonymousParticipant, Engagement, EngagementAudience, EngagementOutcome, EngagementParticipant, EngagementPersona,
+  AnonymousParticipant, Engagement, EngagementAudience, EngagementOutcome, EngagementParticipant, EngagementPersona, EngagementPersonaReached,
   EngagementPrompt,
 } from "./types";
 import { chooseRecordAction } from "../../testing/recordActions";
@@ -34,6 +34,10 @@ const TEAM: Principal = { type: "org_group", id: "group-1", label: "Platform Arc
 
 const PARTICIPANTS: EngagementParticipant[] = [{ link_id: "pa1", stakeholder_id: "stakeholder-1", name: "Pat Regulator", scope: "project", unique_code: "STK-001", organization_id: null }];
 const PERSONAS: EngagementPersona[] = [{ link_id: "pe1", persona_id: "persona-1", name: "Field Technician", scope: "project", unique_code: "PER-001", organization_id: null }];
+const reached = (researchExtras: boolean): EngagementPersonaReached[] => [
+  { persona_id: "persona-1", name: "Field Technician", scope: "project", unique_code: "PER-001", organization_id: null, link_id: "pe1", covered: true, via_participants: false, via_anonymous: researchExtras },
+  { persona_id: "persona-2", name: "Safety Officer", scope: "project", unique_code: "PER-002", organization_id: null, link_id: null, covered: false, via_participants: true, via_anonymous: false },
+];
 const AUDIENCES: EngagementAudience[] = [{ link_id: "au1", group_id: "g-client", name: "Client", scope: "organization" }];
 const OUTCOMES: EngagementOutcome[] = [{ link_id: "o1", kind: "raised", target_type: "pain_point", target_id: "pp-1", label: "Reports arrive late" }];
 const PROMPTS: EngagementPrompt[] = [
@@ -45,9 +49,14 @@ const ANONYMOUS: AnonymousParticipant[] = [
 
 interface Mocks {
   researchExtras?: boolean;
+  /** The project's Stakeholders (default: Pat Regulator and Sam Client). */
+  stakeholders?: ReturnType<typeof buildStakeholder>[];
 }
 
-function mockDetailApis(current: Engagement, { researchExtras = false }: Mocks = {}) {
+function mockDetailApis(
+  current: Engagement,
+  { researchExtras = false, stakeholders = [buildStakeholder(), buildStakeholder({ id: "stakeholder-2", name: "Sam Client" })] }: Mocks = {},
+) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path === `/api/v1/projects/${PROJECT_ID}`) return buildProject({ id: PROJECT_ID, organization_id: "org-1" });
     if (path === "/api/v1/orgs/org-1/groups") return ORG_GROUPS;
@@ -57,7 +66,7 @@ function mockDetailApis(current: Engagement, { researchExtras = false }: Mocks =
     if (path === `${BASE}/subcomponents`) {
       return [{ module_key: "stakeholders", subcomponent_key: "research_extras", name: "Research extras", effective_enabled: researchExtras }];
     }
-    if (path === `${BASE}/stakeholders`) return [buildStakeholder(), buildStakeholder({ id: "stakeholder-2", name: "Sam Client" })];
+    if (path === `${BASE}/stakeholders`) return stakeholders;
     if (path === `${BASE}/personas`) return [buildPersona()];
     if (path === `${BASE}/stakeholder-groups`) return [buildStakeholderGroup({ id: "g-client", name: "Client" }), buildStakeholderGroup({ id: "g-ops", name: "Operations" })];
     if (path.includes(`/artefacts/engagement/${ENGAGEMENT_ID}/link-graph`)) {
@@ -66,8 +75,10 @@ function mockDetailApis(current: Engagement, { researchExtras = false }: Mocks =
     if (path === EBASE) return current;
     if (path === `${EBASE}/participants`) return PARTICIPANTS;
     if (path === `${EBASE}/personas`) return PERSONAS;
+    if (path === `${EBASE}/personas-reached`) return reached(researchExtras);
     if (path === `${EBASE}/audiences`) return AUDIENCES;
     if (path === `${EBASE}/outcomes`) return OUTCOMES;
+    if (path === `${BASE}/engagement-outcome-target-types`) return [{ type: "stakeholder_need", can_create: true }];
     if (path.startsWith(`${BASE}/engagement-outcome-targets`)) return [];
     if (path === `${EBASE}/prompts`) return PROMPTS;
     if (path === `${EBASE}/anonymous-participants`) return ANONYMOUS;
@@ -89,7 +100,7 @@ const meta: Meta<typeof EngagementDetailPage> = {
   title: "Modules/Stakeholders/EngagementDetailPage",
   component: EngagementDetailPage,
   decorators: [
-    withAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
+    withStatefulAuth(buildUser({ id: "user-1", display_name: "Alex Morgan" })),
     (Story) => (
       <MemoryRouter initialEntries={[DETAIL_PATH]}>
         <Routes>
@@ -124,6 +135,20 @@ export const ShowsFieldsPeopleAndOutcomes: Story = {
   },
 };
 
+/** Codes beside participants and Personas are hidden by default (as Facilitators show none) and a menu item reveals them. */
+export const RecordCodesAreHiddenUntilShown: Story = {
+  beforeEach: () => mockDetailApis(buildEngagement()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByRole("link", { name: "Pat Regulator" })).toBeInTheDocument());
+    await expect(canvas.queryByText("STK-001")).not.toBeInTheDocument();
+    await chooseRecordAction(canvas, "Engagement", "Show codes");
+    await waitFor(() => expect(canvas.getByText("STK-001")).toBeInTheDocument());
+    await chooseRecordAction(canvas, "Engagement", "Hide codes");
+    await waitFor(() => expect(canvas.queryByText("STK-001")).not.toBeInTheDocument());
+  },
+};
+
 /** Past the retain-until date the engagement is flagged for review; nothing is deleted. */
 export const RetentionDueIsFlagged: Story = {
   beforeEach: () => mockDetailApis(buildEngagement({ retain_until: "2026-04-01", retention_due: true })),
@@ -153,7 +178,8 @@ export const ResearchExtrasShownWhenOn: Story = {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Session prompts")).toBeInTheDocument());
     await expect(canvas.getByText("Walk me through an inspection")).toBeInTheDocument();
-    await expect(canvas.getByText("Participant 1 · Field Technician")).toBeInTheDocument();
+    await expect(canvas.getByText("Participant 1")).toBeInTheDocument();
+    await expect(canvas.queryByLabelText("Persona represented by Participant 1")).not.toBeInTheDocument();
     await expect(canvas.getByText("Technicians skip the checklist when offline")).toBeInTheDocument();
   },
 };
@@ -169,10 +195,53 @@ export const AddsAParticipantFromTheUnlinkedCandidates: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Add to Participants" }));
     const popover = within(within(document.body).getByRole("dialog", { name: "Add to Participants" }));
     // Pat already takes part, so is not offered again.
-    await expect(popover.queryByRole("option", { name: "Pat Regulator" })).not.toBeInTheDocument();
-    await userEvent.selectOptions(popover.getByRole("combobox", { name: "Stakeholder to add" }), "stakeholder-2");
-    await userEvent.click(popover.getByRole("button", { name: "Add" }));
+    await expect(popover.queryByRole("checkbox", { name: "Participant Pat Regulator" })).not.toBeInTheDocument();
+    await userEvent.click(popover.getByRole("checkbox", { name: "Participant Sam Client" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${EBASE}/participants`, { stakeholder_id: "stakeholder-2" }));
+  },
+};
+
+/** One Participants list holds Stakeholders and anonymous participants; typed text that is not a Stakeholder is added as an anonymous one. Its chip has no Persona select, so it reads like a Stakeholder's. */
+export const AnonymousParticipantsShareTheParticipantsList: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildEngagement({ anonymous_participant_count: 1 }), { researchExtras: true });
+    spyOn(api, "post").mockResolvedValue({ id: "ap2", engagement_id: ENGAGEMENT_ID, label: "Participant 2", persona_id: null, persona_name: null });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByText("Participant 1"));
+    await expect(canvas.getByRole("link", { name: "Pat Regulator" })).toBeInTheDocument();
+    await expect(canvas.queryByText("Anonymous participants")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Add to Participants" }));
+    await userEvent.type(await within(document.body).findByRole("searchbox"), "Participant 2");
+    await userEvent.click(within(document.body).getByRole("button", { name: "Add “Participant 2” as an anonymous participant" }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${EBASE}/anonymous-participants`, { label: "Participant 2" }));
+    await userEvent.keyboard("{Escape}");
+    await expect(canvas.queryByRole("combobox", { name: /Persona represented by/ })).not.toBeInTheDocument();
+  },
+};
+
+/** Personas covered lists the recorded ones and those reached through participants; only a recorded one can be removed. */
+export const PersonasCoveredIncludeThoseReachedThroughParticipants: Story = {
+  beforeEach: () => mockDetailApis(buildEngagement()),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("link", { name: "Safety Officer" }));
+    await expect(canvas.getByText("via a participant")).toBeInTheDocument();
+    await expect(canvas.getByRole("button", { name: "Remove Field Technician" })).toBeInTheDocument();
+    await expect(canvas.queryByRole("button", { name: "Remove Safety Officer" })).not.toBeInTheDocument();
+  },
+};
+
+/** With no Stakeholders in the project the add control is unavailable, so the panel says why and where to add one. */
+export const ExplainsWhyNobodyCanBeAddedWhenThereAreNoStakeholders: Story = {
+  beforeEach: () => mockDetailApis(buildEngagement(), { stakeholders: [] }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText(/No Stakeholders exist in this project yet\./)).toBeInTheDocument());
+    await expect(canvas.getByRole("button", { name: "Add to Participants" })).toBeDisabled();
+    await expect(canvas.getByRole("link", { name: "Add a Stakeholder" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/modules/stakeholders/stakeholders`);
   },
 };
 
@@ -197,7 +266,7 @@ export const FacilitatorsCanBeAddedAsUsersOrGroups: Story = {
         facilitators: [{ type: "user", id: "user-2" }, { type: "org_group", id: "group-1" }],
       }),
     );
-    await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
   },
 };
 
@@ -232,6 +301,36 @@ export const EditOpensThePrefilledForm: Story = {
     await userEvent.click(dialog.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(EBASE, expect.objectContaining({ title: "Renamed review", channel: "meeting" })));
     await waitFor(() => expect(canvas.getByRole("heading", { name: "Renamed review" })).toBeInTheDocument());
+  },
+};
+
+/** The edit form holds the participants like the create form: it gives an anonymous participant a Persona later, adds someone who arrived late and saves only what changed. */
+export const EditChangesParticipantsAndTheirPersona: Story = {
+  beforeEach: () => {
+    mockDetailApis(buildEngagement({ anonymous_participant_count: 1 }), { researchExtras: true });
+    spyOn(api, "put").mockResolvedValue(buildEngagement());
+    spyOn(api, "post").mockResolvedValue({ id: "ap2", engagement_id: ENGAGEMENT_ID, label: "Participant 2", persona_id: null, persona_name: null });
+    spyOn(api, "patch").mockResolvedValue({ ...ANONYMOUS[0], persona_id: null, persona_name: null });
+    spyOn(api, "delete").mockResolvedValue(undefined);
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => canvas.getByRole("button", { name: "Edit" }));
+    await userEvent.click(canvas.getByRole("button", { name: "Edit" }));
+    const dialog = within(await within(document.body).findByRole("dialog", { name: "Edit Quarterly review with the regulator" }));
+    await waitFor(() => dialog.getByLabelText("Persona represented by Participant 1"));
+    await expect(dialog.getByLabelText("Persona represented by Participant 1")).toHaveValue("persona-1");
+    await userEvent.selectOptions(dialog.getByLabelText("Persona represented by Participant 1"), "");
+    await userEvent.click(dialog.getByRole("button", { name: "Add to Participants" }));
+    await userEvent.type(await within(document.body).findByRole("searchbox"), "Participant 2");
+    await userEvent.click(within(document.body).getByRole("button", { name: "Add “Participant 2” as an anonymous participant" }));
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(dialog.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(`${EBASE}/anonymous-participants/ap1`, { persona_id: null }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(`${EBASE}/anonymous-participants`, { label: "Participant 2", persona_id: null }));
+    // Nothing else was recorded or removed, and the content update carries no participant lists.
+    await expect(api.delete).not.toHaveBeenCalled();
+    await expect(api.put).toHaveBeenCalledWith(EBASE, expect.not.objectContaining({ stakeholder_ids: expect.anything() }));
   },
 };
 

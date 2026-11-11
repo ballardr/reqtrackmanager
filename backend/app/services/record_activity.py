@@ -39,6 +39,8 @@ from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_registered_artefact_types, get_artefact_type_label
 from app.schemas.changes import ChangeEntryOut, RecordActivityOut
+from app.services.activity_kinds import AUDIT_TRAIL_ONLY_ACTIONS, AUDIT_TRAIL_ONLY_ENTITY_TYPES, action_kinds, kind_of
+from app.services.activity_link_ends import attach_link_ends
 from app.services.changes import attach_actor_names, get_project_changes
 from app.services.link_graph import ArtefactResolver
 
@@ -75,7 +77,11 @@ def _own_events(db: Session, artefact_type: str, artefact_id: uuid.UUID) -> list
             AuditEvent.entity_type == artefact_type, AuditEvent.entity_id == str(artefact_id)
         )
     ).all()
-    return [_entry(e, detail=_scrub(e.detail) if e.detail else None) for e in events]
+    return [
+        _entry(e, detail=_scrub(e.detail) if e.detail else None)
+        for e in events
+        if not (artefact_type in AUDIT_TRAIL_ONLY_ENTITY_TYPES and e.action in AUDIT_TRAIL_ONLY_ACTIONS)
+    ]
 
 
 def _generic_link_entries(
@@ -193,10 +199,15 @@ def get_record_activity(
     else:
         entries = _own_events(db, artefact_type, artefact_id)
     entries += _generic_link_entries(db, resolver, project, artefact_type, artefact_id)
-    entries += _legacy_link_entries(db, project, artefact_id)
+    legacy_links = _legacy_link_entries(db, project, artefact_id)
+    attach_link_ends(db, project, user.id, legacy_links)
+    entries += legacy_links
 
     attach_actor_names(db, [e for e in entries if e.actor_display_name is None])
     entries.sort(key=lambda e: e.timestamp, reverse=True)
     size = max(1, min(limit, MAX_PAGE_SIZE))
     page = entries[offset:offset + size]
+    known = action_kinds()
+    for entry in page:
+        entry.kind = kind_of(entry.action, known, entry.entity_type)
     return RecordActivityOut(entries=page, has_more=len(entries) > offset + size)

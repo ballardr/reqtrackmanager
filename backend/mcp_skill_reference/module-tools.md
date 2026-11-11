@@ -604,7 +604,8 @@ Read workflow: `list_<type>` then `get_<type>`; `list_<type>_relationships` show
 Write workflow:
 - `create_<type>` then `update_<type>`. Non-decisive transitions are one tool each (`propose_*`, `submit_*_for_review`, `send_*_back`, `supersede_*`, `triage_pain_point`, `accept_pain_point`, `investigate_open_question`, and so on). Call a transition only from a status that allows it; a conflict error means the status is wrong, so re-read the record.
 - Link artefacts with `create_<type>_relationship` (the `kind` decides the target type; list the existing relationships first to avoid duplicates). Supersession has its own `create_*_supersession` tools.
-- Score a pain point with `context_strategy_set_pain_point_scores`: it **replaces** all scores. Fetch the current scores and the project's scoring levels first, and use either all-persona or per-persona entries, never both.
+- Pain Point submission is restricted to Pain Point Managers unless the project or organisation allows any member; `context_strategy_create_pain_point` returns 403 for anyone else. Raise an Enhancement Request instead where the Product Feedback module is enabled.
+- Score a pain point with `context_strategy_set_pain_point_scores`: it **replaces** all scores. Fetch the current scores and the project's scoring scheme (axes, whether each is scored per persona or for the whole Pain Point, and levels) first. Send a General entry (`target_id` null) for the whole-Pain-Point criteria and the default for the per-persona ones, plus an entry for each persona that differs; each entry's `levels` maps an axis key to a level id.
 
 Rules and gotchas:
 - Decisive tools are approvals, gated by AI approval (see the main skill): `approve_strategy`, `approve_future_state`, `activate_guiding_principle`, `retire_guiding_principle`, `resolve_open_question`. Only call them when the user asked for that specific item.
@@ -731,7 +732,7 @@ Parameters: `project_id*` (uuid, in path), `future_state_id*` (uuid, in path), `
 
 #### `context_strategy_create_pain_point` (write)
 
-Submits a new Pain Point (any project member may do this).
+Submits a new Pain Point (Pain Point Managers, or any project member where the project or organisation allows it).
 
 Parameters: `project_id*` (uuid, in path), `pain_point_type_id*` (uuid, in body), `title*` (string, in body), `description` (string, in body), `source` (string, in body), `impact` (string, in body), `evidence` (string, in body), `priority` (string, in body), `date_identified` (string, in body), `is_intentional` (boolean, in body)
 
@@ -743,19 +744,19 @@ Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `pa
 
 #### `context_strategy_list_pain_point_scores` (read)
 
-Lists every Pain Point's persona-rolled-up score and Blocker flag under a scoring model.
+Lists every Pain Point's score (rolled up over its personas) and Blocker flag under a scoring model.
 
 Parameters: `project_id*` (uuid, in path), `model_key` (string, in query), `rollup` (string, in query)
 
 #### `context_strategy_get_pain_point_scores` (read)
 
-Fetches a Pain Point's per-persona scores, roll-up and the personas it can be scored against.
+Fetches a Pain Point's General and per-persona scores, roll-up and the personas it can be scored against.
 
 Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `model_key` (string, in query), `rollup` (string, in query)
 
 #### `context_strategy_set_pain_point_scores` (write)
 
-Replaces a Pain Point's scores. Each entry is {target_id (a persona id, or null for all personas), severity_level_id, frequency_level_id, confidence_level_id}; level ids come from the project's pain_point scoring scheme. Use all-personas OR per-persona entries, not both.
+Replaces a Pain Point's scores. Each entry is {target_id (a persona id, or null for the General row), levels: {axis key: level id}}; axis keys and level ids come from the project's pain_point scoring scheme. The General row holds every whole-Pain-Point criterion and the default for the per-persona ones; a persona entry holds per-persona criteria only and overrides General for that persona. Entries may be General alone, personas alone, or both.
 
 Parameters: `project_id*` (uuid, in path), `pain_point_id*` (uuid, in path), `scores*` (array, in body)
 
@@ -1078,7 +1079,7 @@ Read workflow:
 
 Write workflow: `create_*` -> `update_*` -> `activate_*`; `retire_*` ends use. Classify stakeholders with **stakeholder groups**: `stakeholders_list_stakeholder_groups` (flat; build the tree from `parent_group_id`), `create_stakeholder_group`, `update_stakeholder_group` (rename, move with `parent_group_id`), `add_stakeholder_to_group` / `remove_stakeholder_from_group`, and the `group_id` filter on `stakeholders_list_stakeholders` (includes groups beneath it unless `direct_only=true`). Link with `add_*_relationship`, `add_stakeholder_persona`, `add_need_holder` and `add_need_requirement` (records that a need gave rise to a requirement); each has a matching `remove_*`.
 
-Engagement workflow: `create_engagement` (a quick log needs only title, channel, date and `stakeholder_ids`; pass `group_ids` to aim it at a stakeholder group and add that group's current members), then `add_engagement_participant` / `add_engagement_persona` / `add_engagement_audience` as needed, and `add_engagement_outcome` with `kind` `raised` (pain point, need or open question) or `answered` (open question); find candidate ids with `stakeholders_list_relationship_targets`. `stakeholders_list_stakeholder_engagements` is a stakeholder's timeline, and `stakeholders_list_engagements` filters by channel, stakeholder, persona, date range or `retention_due`. Research extras: `add_engagement_prompt` / `update_engagement_prompt`, `add_anonymous_participant`, `create_research_finding` / `update_research_finding` and `add_finding_outcome`.
+Engagement workflow: `create_engagement` (a quick log needs only title, channel, date and `stakeholder_ids`; pass `group_ids` to aim it at a stakeholder group and add that group's current members; with research extras on, `anonymous_participants` takes labels, each with an optional `persona_id`, and is refused with 409 while they are off), then `add_engagement_participant` / `add_engagement_persona` / `add_engagement_audience` as needed, and `add_engagement_outcome` with `kind` `raised` (pain point, need or open question) or `answered` (open question); find candidate ids with `stakeholders_list_relationship_targets`. `stakeholders_list_stakeholder_engagements` is a stakeholder's timeline, and `stakeholders_list_engagements` filters by channel, stakeholder, persona, date range or `retention_due`. Research extras: `add_engagement_prompt` / `update_engagement_prompt`, `add_anonymous_participant`, `create_research_finding` / `update_research_finding` and `add_finding_outcome`.
 
 Reports (`stakeholders_get_*_report`, project-level, read-only) answer cross-cutting questions in one call: the power/interest grid (stakeholders by Manage closely, Keep satisfied, Keep informed, Monitor, plus unscored; filter with `group_id`, arrange with `group_by`), persona validation (the evidence behind each persona; those with none are assumptions), need coverage (needs no requirement came from, requirements tracing to no need, stakeholder or persona), engagement staleness (stakeholders overdue against their own target cadence, those with no cadence, personas not engaged lately) and engagement and research yield (by channel and persona, and what engagements raised). Prefer a report over listing and fetching every record.
 

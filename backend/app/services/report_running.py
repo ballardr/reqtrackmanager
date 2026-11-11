@@ -92,7 +92,9 @@ def read_marks(text: str) -> list[tuple[str, bool, bool]]:
         wanted = kinds[item[0]]
         if all(opened[k] is not None for k in wanted) and item[2]:
             for k in wanted:
-                items[opened[k]][3] = items[index][3] = True  # type: ignore[index]
+                open_index = opened[k]
+                if open_index is not None:
+                    items[open_index][3] = items[index][3] = True
                 opened[k] = None
         elif all(opened[k] is None for k in wanted) and item[1]:
             for k in wanted:

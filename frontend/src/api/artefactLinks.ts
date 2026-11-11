@@ -68,6 +68,11 @@ export interface ArtefactTypeRef {
   label: string;
 }
 
+/** A record type at the other end of a link option; `can_create` is the server's answer for the signed-in person. */
+export interface ArtefactLinkOtherType extends ArtefactTypeRef {
+  can_create: boolean;
+}
+
 export interface ArtefactLinkTypeOption {
   link_type_id: string;
   forward_name: string;
@@ -76,7 +81,7 @@ export interface ArtefactLinkTypeOption {
   nesting_scope: string;
   direction: LinkOrientation;
   phrase: string;
-  other_types: ArtefactTypeRef[];
+  other_types: ArtefactLinkOtherType[];
 }
 
 export interface ArtefactLinkCandidate {

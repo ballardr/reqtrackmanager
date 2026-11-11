@@ -53,6 +53,23 @@ export const OpensToShowAllOptions: Story = {
   },
 };
 
+/** The opened list lines up with the trigger and is at least as wide as it, like a native select list, so
+ * in a form it sits directly under the field and not offset to its right. */
+export const OpenListLinesUpWithTheTrigger: Story = {
+  decorators: [(Story) => <div style={{ width: 520 }}><Story /></div>],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole("button", { name: "Alex Morgan's roles" });
+    await userEvent.click(trigger);
+
+    const panel = within(document.body).getByRole("dialog", { name: "Alex Morgan's roles" });
+    const triggerBox = trigger.getBoundingClientRect();
+    const panelBox = panel.getBoundingClientRect();
+    await expect(Math.abs(panelBox.left - triggerBox.left)).toBeLessThan(1);
+    await expect(panelBox.width).toBeGreaterThanOrEqual(triggerBox.width - 1);
+  },
+};
+
 /** Toggling one option calls that option's own `onToggle` immediately —
  * there's no separate "apply"/"save" step, matching every other immediate
  * toggle in the app (Principle 7, feedback on every mutation is the
@@ -160,5 +177,29 @@ export const IconTriggerOpensTheSameList: Story = {
     await expect(trigger).not.toHaveTextContent("Member");
     await userEvent.click(trigger);
     await expect(within(within(document.body).getByRole("group", { name: "Columns" })).getByRole("checkbox", { name: "Revoke Member from Alex Morgan" })).toBeChecked();
+  },
+};
+
+/** A two-level list: a section caption opens each section, a bold heading's checkbox chooses its group, and the
+ * options under it are indented. */
+export const GroupedOptions: Story = {
+  args: {
+    triggerLabel: "Type",
+    emptyLabel: "All types",
+    options: [
+      { value: "core", label: "Core", heading: true, section: "Records", checked: false, optionLabel: "Core", onToggle: fn() },
+      { value: "requirement", label: "Requirement", indent: true, checked: false, optionLabel: "Requirement", onToggle: fn() },
+      { value: "links", label: "Links and files", heading: true, section: "Metadata", checked: true, optionLabel: "Links and files", onToggle: fn() },
+      { value: "link", label: "Link", indent: true, checked: true, disabled: true, optionLabel: "Link", onToggle: fn() },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    await userEvent.click(within(canvasElement).getByRole("button", { name: "Type" }));
+    const group = within(within(document.body).getByRole("group", { name: "Type" }));
+    await expect(group.getByText("Records")).toBeInTheDocument();
+    await expect(group.getByText("Metadata")).toBeInTheDocument();
+    await expect(group.getByRole("checkbox", { name: "Links and files" })).toBeChecked();
+    await expect(group.getByRole("checkbox", { name: "Link" })).toBeDisabled();
+    await expect(group.getByText("Core")).toHaveStyle({ fontWeight: "600" });
   },
 };

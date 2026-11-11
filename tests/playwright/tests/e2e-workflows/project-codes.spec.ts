@@ -83,7 +83,8 @@ test.describe("project codes", () => {
     await openNewProjectForm(page);
     const dialog = page.getByRole("dialog", { name: "New project" });
     await expect(dialog.getByLabel("Code")).toHaveCount(0);
-    await expect(dialog.getByText(/assigned automatically from the name/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Help: Name" }).hover();
+    await expect(page.getByText(/assigned automatically from the name/)).toBeVisible();
     await dialog.getByLabel("Name", { exact: true }).fill("Rail Signalling Upgrade");
     await dialog.getByRole("button", { name: "Create" }).click();
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]+$/);
@@ -100,7 +101,7 @@ test.describe("project codes", () => {
 
     await test.step("switch the organisation to manual assignment", async () => {
       await page.goto(`/orgs/${world.orgId}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Projects");
       const toggle = page.getByRole("button", { name: "Project codes section" });
       if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
       await page.getByLabel("Assignment").selectOption("manual");
@@ -175,5 +176,41 @@ test.describe("project codes", () => {
     expect(await found.json()).toMatchObject({ artefact_type: "requirement", id: requirement.id, project_id: project.id, qualified_code: qualified });
     const missing = await page.request.get(`${apiBaseUrl}/api/v1/orgs/${world.orgId}/records/by-code/${project.code}-REQ-999`, { headers: world.headers });
     expect(missing.status()).toBe(404);
+  });
+  test("locked codes: a project manager sees the code read-only, an organisation administrator can still change it", async ({ page }) => {
+    const world = await createWorld(page.request, "locked");
+    const { project } = await createProject(page.request, world, "Locked Project");
+    const policy = await page.request.put(`${apiBaseUrl}/api/v1/orgs/${world.orgId}/code-policy`, {
+      headers: world.headers,
+      data: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "manual", locked: true, enforce_code_everywhere: false },
+    });
+    expect(policy.ok()).toBeTruthy();
+
+    const managerEmail = `e2e-locked-manager-${Date.now()}@example.com`;
+    const created = await page.request.post(`${apiBaseUrl}/api/v1/orgs/${world.orgId}/users`, {
+      headers: world.headers,
+      data: { email: managerEmail, display_name: "E2E Locked Manager", password: PASSWORD, role: "member" },
+    });
+    expect(created.ok()).toBeTruthy();
+    const granted = await page.request.post(`${apiBaseUrl}/api/v1/projects/${project.id}/roles`, {
+      headers: world.headers, data: { user_id: (await created.json()).user_id, role: "project_manager" },
+    });
+    expect(granted.ok()).toBeTruthy();
+
+    await test.step("the manager cannot edit the code", async () => {
+      await loginAs(page, managerEmail);
+      await page.goto(`/projects/${project.id}/admin`);
+      const code = page.getByLabel("Code", { exact: true });
+      await expect(code).toHaveValue(project.code);
+      await expect(code).toHaveAttribute("readonly", "");
+      await expect(page.getByText("Locked by your organisation")).toBeVisible();
+    });
+
+    await test.step("the organisation administrator can", async () => {
+      await loginAs(page, world.adminEmail);
+      await page.goto(`/projects/${project.id}/admin`);
+      const code = page.getByLabel("Code", { exact: true });
+      await expect(code).not.toHaveAttribute("readonly", "");
+    });
   });
 });

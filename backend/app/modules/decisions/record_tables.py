@@ -49,6 +49,7 @@ from app.modules.registry import (
     RecordTableProvider,
 )
 from app.services import tags as tag_service
+from app.services.lookups import project_or_404
 from app.services.principals import principal_ref
 from app.services.record_tables import PrincipalCells, find_many_by_code
 from app.services.record_tables_core import (
@@ -167,7 +168,7 @@ def _may_create(db: Session, user: User, project_id: uuid.UUID) -> bool:
 
 def _may_update(db: Session, user: User, project_id: uuid.UUID) -> bool:
     """The edit endpoint's gate: the Decision Owner role (composing with admin and project manager)."""
-    return edits.user_is_decision_owner(db, user, db.get(Project, project_id))
+    return edits.user_is_decision_owner(db, user, project_or_404(db, project_id))
 
 
 def _create(ctx: RecordImportContext, values: Mapping[str, Any]) -> Decision:

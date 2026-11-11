@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,9 @@ from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
 from app.models.notification import DigestMode
+
+if TYPE_CHECKING:  # the relationship target names the model; importing it at run time would be circular
+    from app.models.organization import UserOrgRole
 
 
 class User(UUIDPKMixin, TimestampMixin, Base):
@@ -59,6 +62,7 @@ class User(UUIDPKMixin, TimestampMixin, Base):
             per org. Implies `is_active = False`, but is tracked separately
             so "banned" survives even if something else were to flip
             `is_active` back on.
+        imported_organization_id / imported_key: Mark an imported person (see the column notes below).
         banned_at / banned_by: Set when `is_banned` transitions to True;
             cleared on unban.
         landing_preference: Where the user is sent after login ("auto",
@@ -124,6 +128,12 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "users"
+    __table_args__ = (
+        Index(
+            "uq_users_imported_org_key", "imported_organization_id", "imported_key", unique=True,
+            postgresql_where="imported_organization_id IS NOT NULL",
+        ),
+    )
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(255))
@@ -141,6 +151,17 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     is_server_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Set only on an imported person: a stand-in for someone named in an import bundle who is not a member of the
+    #: organisation it was imported into (`services.imported_people`). The row is always inactive and archived, holds
+    #: no password and a synthetic non-routable address, and belongs to exactly this organisation.
+    imported_organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="RESTRICT", use_alter=True, name="fk_users_imported_organization_id"),
+        nullable=True, index=True,
+    )
+    #: Keyed hash of the bundle's normalised email (per organisation), used only to reuse the same stand-in on a later
+    #: import; the address itself is never stored on the row.
+    imported_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     banned_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
@@ -160,6 +181,14 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     totp_secret: Mapped[str | None] = mapped_column(EncryptedString(255), nullable=True)
     failed_2fa_attempts: Mapped[int] = mapped_column(Integer, default=0)
     failed_2fa_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: True from public self-sign-up until the person opens the link emailed to the address: the account cannot sign in
+    #: before then (`auth_backends.native`). Invitations, administrators, SCIM and a verified identity provider never set it.
+    email_confirmation_pending: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    #: True after an administrator typed this account's password: until the person changes it, the only requests the
+    #: account may make are reading itself, changing the password and signing out (`services.password_change_gate`).
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    #: The latest TOTP time step already accepted; a code for that step or an earlier one is refused (no replay).
+    last_totp_step: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     email_digest_mode: Mapped[DigestMode] = mapped_column(str_enum(DigestMode, 20), default=DigestMode.INSTANT)
 
@@ -171,4 +200,4 @@ class User(UUIDPKMixin, TimestampMixin, Base):
     # (stale_since_days / never_logged_in) in routers/orgs.py and system.py.
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    org_roles: Mapped[list[UserOrgRole]] = relationship(back_populates="user")  # noqa: F821
+    org_roles: Mapped[list[UserOrgRole]] = relationship(back_populates="user")

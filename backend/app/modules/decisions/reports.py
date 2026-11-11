@@ -45,10 +45,9 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -69,7 +68,7 @@ from app.modules.registry import (
     is_module_enabled_for_project,
 )
 from app.services import relationships
-from app.services.principals import principal_labels, principal_text
+from app.services.principals import PrincipalRef, principal_labels, principal_text
 from app.services.report_framework import (
     ReportContext,
     ReportMetric,
@@ -108,11 +107,19 @@ def _clip(text: str | None, limit: int = _CLIP) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
 
 
-def _people(db: Session, decisions: list[Decision], *, owner: bool = True) -> Callable[[str | None, uuid.UUID | None, str], str]:
+class _PrincipalText(Protocol):
+    """A resolved principal lookup: `(type value, id, text when empty) -> text`."""
+
+    def __call__(self, type_value: str | None, principal_id: uuid.UUID | None, empty: str = "") -> str: ...
+
+
+def _people(db: Session, decisions: list[Decision], *, owner: bool = True) -> _PrincipalText:
     """Resolves the principals (owner and decision maker) of `decisions` once; returns a lookup
     `(type, id, empty) -> text` (`services.principals.principal_text`: a group reads
     `Name (Organisation group)`). `owner=False` skips the owners when only decision makers are printed."""
-    refs = [(d.decision_maker_type, d.decision_maker_id) for d in decisions if d.decision_maker_id]
+    refs: list[PrincipalRef | tuple[str, uuid.UUID] | None] = [
+        (d.decision_maker_type, d.decision_maker_id) for d in decisions if d.decision_maker_id and d.decision_maker_type
+    ]
     if owner:
         refs += [(d.owner_type, d.owner_id) for d in decisions]
     labels = principal_labels(db, refs)
@@ -145,7 +152,7 @@ def _type_names(db: Session, decisions: list[Decision]) -> dict[uuid.UUID, str]:
         return {}
     return dict(db.execute(
         select(DecisionTypeDefinition.id, DecisionTypeDefinition.name).where(DecisionTypeDefinition.id.in_(ids))
-    ).all())
+    ).tuples().all())
 
 
 def _supersession(db: Session, req: ReportContext, decisions: list[Decision]) -> tuple[dict, dict, dict]:
@@ -333,7 +340,7 @@ def collect_approval_ageing(db: Session, req: ReportContext) -> ReportResult:
     since = _waiting_since(db, decisions)
     type_names = _type_names(db, decisions)
     people = _people(db, decisions)
-    entries = [
+    entries: list[dict[str, Any]] = [
         {
             "decision": d, "days": max((req.today - since[d.id].date()).days, 0),
             "unassigned": d.decision_maker_id is None,

@@ -86,7 +86,7 @@ export const UnderReviewShowsApproveReject: Story = {
     await expect(canvas.getByRole("button", { name: "Reject" })).toBeInTheDocument();
     // Owner (a group, with its kind and size) and decision maker (a user) are shown.
     await expect(canvas.getByText("Platform Architecture")).toBeInTheDocument();
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await expect(canvas.getByText("Alex Morgan")).toBeInTheDocument();
   },
 };

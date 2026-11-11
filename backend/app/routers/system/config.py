@@ -25,8 +25,9 @@ from app.config import get_settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.enums import SignupMode
-from app.models.organization import Organization
+from app.models.organization import Organization, ServerSettings
 from app.models.user import User
+from app.schemas.branding import DefaultStorageQuota, FileUploadsConfig
 from app.schemas.email import TestEmailRequest
 from app.schemas.signup import SelfSignupOrgOut, SignupConfigOut, SignupConfigUpdate
 from app.services.audit import log_event
@@ -186,3 +187,55 @@ def update_signup_config(
     db.commit()
     db.refresh(server_settings)
     return get_signup_config(db)
+
+
+# --- File uploads ------------------------------------------------------------------------------------------
+
+
+@router.put("/file-uploads", response_model=FileUploadsConfig)
+def update_file_uploads(
+    payload: FileUploadsConfig,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+) -> FileUploadsConfig:
+    """Enables or disables new file uploads for the whole deployment (server-admin only).
+
+    Disabling stops new files only: existing files stay readable and deletable. The current value is read by every
+    client from `GET /system/branding`. The audit event carries the new value and nothing about any file.
+    """
+    server_settings = get_server_settings(db)
+    server_settings.file_uploads_enabled = payload.file_uploads_enabled
+    log_event(db, entity_type="system", entity_id="platform", action="file_uploads_updated",
+              actor_id=current_user.id, detail={"file_uploads_enabled": payload.file_uploads_enabled})
+    db.commit()
+    return FileUploadsConfig(file_uploads_enabled=server_settings.file_uploads_enabled)
+
+
+@router.get("/default-storage-quota", response_model=DefaultStorageQuota)
+def get_default_storage_quota(
+    current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
+) -> DefaultStorageQuota:
+    """Reads the storage limit applied to organisations that have none of their own (server-admin only)."""
+    return DefaultStorageQuota(default_storage_quota_bytes=db.scalar(select(ServerSettings.default_storage_quota_bytes)))
+
+
+@router.put("/default-storage-quota", response_model=DefaultStorageQuota)
+def update_default_storage_quota(
+    payload: DefaultStorageQuota,
+    current_user: User = Depends(require_server_admin),
+    db: Session = Depends(get_db),
+) -> DefaultStorageQuota:
+    """Sets the storage limit applied to organisations that have none of their own (server-admin only).
+
+    A deployment-wide setting, so it stays with the server administrator; a Platform subscription manager sets a limit
+    for one organisation instead. Null removes the default. Lowering it only blocks new files. The audit event carries
+    the old and new values and nothing about any file.
+    """
+    server_settings = get_server_settings(db)
+    before = server_settings.default_storage_quota_bytes
+    server_settings.default_storage_quota_bytes = payload.default_storage_quota_bytes
+    log_event(db, entity_type="system", entity_id="platform", action="default_storage_quota_updated",
+              actor_id=current_user.id,
+              detail={"before": before, "after": payload.default_storage_quota_bytes})
+    db.commit()
+    return DefaultStorageQuota(default_storage_quota_bytes=server_settings.default_storage_quota_bytes)

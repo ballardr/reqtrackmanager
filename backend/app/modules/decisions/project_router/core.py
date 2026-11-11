@@ -27,7 +27,8 @@ from app.modules.decisions.project_router._shared import _get_decision_in_projec
 from app.modules.decisions.schemas import DecisionCreate, DecisionOut, DecisionUpdate
 from app.modules.decisions.service import DECISION_ARTEFACT_TYPE
 from app.services.audit import log_event
-from app.services.principals import principal_labels, principal_ref
+from app.services.lookups import project_or_404
+from app.services.principals import label_of, principal_labels, principal_ref
 from app.services.project_scope import ProjectScope
 from app.services.tags import TagFilter
 
@@ -44,7 +45,7 @@ def _decisions_to_out(db: Session, decisions: Sequence[Decision]) -> list[Decisi
             title=d.title, decision_statement=d.decision_statement,
             decision_type_id=d.decision_type_id, status=d.status,
             decision_date=d.decision_date,
-            decision_maker=labels[(d.decision_maker_type, d.decision_maker_id)] if d.decision_maker_id else None,
+            decision_maker=label_of(labels, d.decision_maker_type, d.decision_maker_id),
             owner=labels[(d.owner_type, d.owner_id)], context=d.context, options_considered=d.options_considered,
             chosen_option=d.chosen_option, rationale=d.rationale, consequences=d.consequences,
             assumptions=d.assumptions, constraints=d.constraints, creator_id=d.creator_id,
@@ -122,7 +123,7 @@ def list_decisions(
         return _decisions_to_out(db, decisions)
 
     return project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, DECISION_ARTEFACT_TYPE, rows_for,
+        db, project_or_404(db, project_id), current_user.id, DECISION_ARTEFACT_TYPE, rows_for,
         gate=("decisions", None),
     )
 
@@ -142,7 +143,7 @@ def update_decision(
 ):
     """Direct edit of a Decision's content fields. 409s once the Decision
     is locked (`APPROVED`/`SUPERSEDED`) — see this module's own docstring."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     edits.stage_decision_update(db, project, decision, current_user, {name: getattr(payload, name) for name in DecisionUpdate.model_fields})
@@ -161,7 +162,7 @@ def archive_decision(
     content lock: archiving isn't a content edit, the same distinction
     `routers.requirements.delete_requirement` draws (no `is_locked` check
     there either)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     if decision.is_archived:
@@ -185,7 +186,7 @@ def unarchive_decision(
     restore_requirement`'s existing "every archive has an unarchive"
     convention. **Decided by: Agent** (small, symmetric addition; not
     separately called out in the task brief, but a codebase-wide pattern)."""
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     decision = _get_decision_in_project(db, project_id, decision_id)
     _require_edit_role(db, current_user, project)
     if not decision.is_archived:

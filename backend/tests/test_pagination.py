@@ -93,7 +93,7 @@ def test_projects_list_paginates_and_reports_total(client, admin_token, org_id):
 
 def test_projects_list_reports_unfiltered_count_alongside_filtered_total(client, admin_token, org_id):
     """Same contract as the requirements-list test above, but for
-    `ProjectListPage` — `organization_id`/`search`/`role`/`stage_status`/
+    `ProjectListPage` — `organization_id`/`search`/`role`/`stage_phase_kind`/
     `favorite_only` all narrow `X-Total-Count` without moving
     `X-Total-Unfiltered-Count`, which stays at the caller's full
     accessible/`archived`-scope count."""
@@ -262,6 +262,11 @@ def test_my_reviews_due_paginates_reports_total_and_includes_project_name(client
     page2 = client.get("/api/v1/me/reviews/due?limit=2&offset=2", headers=auth_headers(reviewer_token))
     assert len(page2.json()) == 1
     assert {r["requirement_id"] for r in page1.json()} & {r["requirement_id"] for r in page2.json()} == set()
+
+    # The navigation asks for one row to learn whether anything is due; the total still counts every row.
+    probe = client.get("/api/v1/me/reviews/due?limit=1", headers=auth_headers(reviewer_token))
+    assert len(probe.json()) == 1
+    assert probe.headers["x-total-count"] == "3"
 
 
 def test_system_users_paginates_and_reports_total(client, admin_token, org_id):

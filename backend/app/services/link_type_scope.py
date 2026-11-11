@@ -43,7 +43,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.organization import Organization
@@ -152,7 +152,7 @@ def resolve_link_type_scope(db: Session, project: Project) -> list[ScopedLinkTyp
 
     winners: dict[str, RequirementLinkTypeDefinition] = {}
     scoped: list[ScopedLinkType] = []
-    for link_type, owner in ordered:
+    for link_type, scope_owner in ordered:
         key = link_type.forward_name.casefold()
         shadowed_by = winners.get(key)
         if shadowed_by is None:
@@ -164,7 +164,7 @@ def resolve_link_type_scope(db: Session, project: Project) -> list[ScopedLinkTyp
                 break
         scoped.append(
             ScopedLinkType(
-                link_type, owner, hidden, hidden_by, visibility.get((project.id, link_type.id)), shadowed_by
+                link_type, scope_owner, hidden, hidden_by, visibility.get((project.id, link_type.id)), shadowed_by
             )
         )
     return scoped
@@ -192,7 +192,7 @@ def resolve_artefact_rule_rows(
     chain: list[uuid.UUID] = []
     if project_id is not None and not is_customisation_locked(db, organization_id):
         chain = get_project_chain_ids(db, project_id)
-    condition = ArtefactTypeLinkRule.project_id.is_(None)
+    condition: ColumnElement[bool] = ArtefactTypeLinkRule.project_id.is_(None)
     if chain:
         condition = or_(condition, ArtefactTypeLinkRule.project_id.in_(chain))
     rules = db.scalars(

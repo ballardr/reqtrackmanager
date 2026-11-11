@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.code_rules import CodePolicy
 from app.config import get_settings
 from app.database import get_db
+from app.deps import refuse_personal_access_token
 from app.models.enums import OrgRole
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleSubComponentDefault
 from app.models.organization import Organization
@@ -89,6 +90,7 @@ def get_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        imported_person_retention_days=org.imported_person_retention_days,
         report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
         report_include_cover_page=org.report_include_cover_page,
         report_chapters_per_component=org.report_chapters_per_component,
@@ -100,10 +102,15 @@ def get_advanced_settings(
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
         force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
         allow_ai_approvals=org.allow_ai_approvals,
+        allow_imported_approval_state=org.allow_imported_approval_state,
     )
 
 
-@router.put("/{organization_id}/advanced-settings", response_model=OrgAdvancedSettingsOut)
+@router.put(
+    "/{organization_id}/advanced-settings", response_model=OrgAdvancedSettingsOut,
+    # Sets the token lifetime cap, the mail relay, two-factor and sign-up rules: a token must not widen its own limits.
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def update_advanced_settings(
     organization_id: UUID, payload: OrgAdvancedSettingsUpdate,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
@@ -112,7 +119,10 @@ def update_advanced_settings(
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organisation not found.")
-    if payload.allow_self_signup and org.sso_only:
+    # A partial update: a field the client does not send is left as it is, so a Save in one settings group never
+    # resets another group's values (email, security and report configuration are saved separately).
+    sent = payload.model_fields_set
+    if payload.allow_self_signup and "allow_self_signup" in sent and org.sso_only:
         # Self-signup is anonymous and un-gated by an admin, unlike every
         # other native-account-creation path (create_org_user, an admin-
         # sent invite) — letting it hand out a native password credential
@@ -122,44 +132,59 @@ def update_advanced_settings(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Self-signup cannot be enabled for an SSO-only organisation."
         )
-    org.smtp_host = payload.smtp_host
-    org.smtp_port = payload.smtp_port
-    org.smtp_username = payload.smtp_username
+    if "smtp_host" in sent:
+        org.smtp_host = payload.smtp_host
+    if "smtp_port" in sent:
+        org.smtp_port = payload.smtp_port
+    if "smtp_username" in sent:
+        org.smtp_username = payload.smtp_username
     if payload.smtp_password:
         # Blank means "leave unchanged" — the field is never returned by GET,
         # so a client re-submitting the form has no value to send back.
         org.smtp_password = payload.smtp_password
-    org.smtp_use_tls = payload.smtp_use_tls
-    org.pat_max_lifetime_days = payload.pat_max_lifetime_days
+    if "smtp_use_tls" in sent:
+        org.smtp_use_tls = payload.smtp_use_tls
+    if "pat_max_lifetime_days" in sent:
+        org.pat_max_lifetime_days = payload.pat_max_lifetime_days
     # Stored output of background custom reports; capped by the platform ceiling when read
     # (`services.report_run_jobs.effective_retention_days`), so a larger value is accepted but not honoured.
-    org.report_output_retention_days = payload.report_output_retention_days
-    file_name = (payload.report_file_name or "").strip() or None
-    if file_name is not None:
-        problems = template_problems(file_name, allowed=ORG_FILE_NAME_PLACEHOLDERS, variables=None)
-        if problems:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problems[0])
-    org.report_file_name = file_name
-    if "report_footer_text" in payload.model_fields_set:
+    if "report_output_retention_days" in sent:
+        org.report_output_retention_days = payload.report_output_retention_days
+    if "imported_person_retention_days" in sent:
+        org.imported_person_retention_days = payload.imported_person_retention_days
+    if "report_file_name" in sent:
+        file_name = (payload.report_file_name or "").strip() or None
+        if file_name is not None:
+            problems = template_problems(file_name, allowed=ORG_FILE_NAME_PLACEHOLDERS, variables=None)
+            if problems:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, problems[0])
+        org.report_file_name = file_name
+    if "report_footer_text" in sent:
         org.report_footer_text = (payload.report_footer_text or "").strip() or None
     if payload.report_include_cover_page is not None:
         org.report_include_cover_page = payload.report_include_cover_page
     if payload.report_chapters_per_component is not None:
         org.report_chapters_per_component = payload.report_chapters_per_component
-    org.require_2fa = payload.require_2fa
-    org.allow_self_signup = payload.allow_self_signup
-    org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
-    org.external_user_policy = payload.external_user_policy
+    if "require_2fa" in sent:
+        org.require_2fa = payload.require_2fa
+    if "allow_self_signup" in sent:
+        org.allow_self_signup = payload.allow_self_signup
+    if "auto_accept_email_domain" in sent:
+        org.auto_accept_email_domain = payload.auto_accept_email_domain.lower() if payload.auto_accept_email_domain else None
+    if "external_user_policy" in sent:
+        org.external_user_policy = payload.external_user_policy
     # Hierarchical projects (decision 13 in docs/decisions.md): lets an org
     # admin opt back into the stricter "all project creation needs
     # ORG_ADMIN/PROJECT_CREATOR" behaviour, including for children, turning
     # off routers.projects.create_project's relaxed parent-manage-only path.
-    org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
+    if "allow_relaxed_child_project_creation" in sent:
+        org.allow_relaxed_child_project_creation = payload.allow_relaxed_child_project_creation
     # Org-wide force of the traceability-
     # link change-request requirement — see `services.requirements.
     # requires_change_request_for_links` and `Organization.
     # force_require_change_request_for_approved_links`'s docstring.
-    org.force_require_change_request_for_approved_links = payload.force_require_change_request_for_approved_links
+    if "force_require_change_request_for_approved_links" in sent:
+        org.force_require_change_request_for_approved_links = payload.force_require_change_request_for_approved_links
     # AI approval via MCP (docs/decisions.md): org half of the two-level
     # opt-in gate. The frontend requires an explicit acknowledgment dialog
     # before ever sending `allow_ai_approvals=true` here — this endpoint
@@ -167,10 +192,14 @@ def update_advanced_settings(
     # server-enforced" pattern as every other advanced-settings checkbox on
     # this endpoint), since the decision is a human's, not something to
     # validate server-side.
-    org.allow_ai_approvals = payload.allow_ai_approvals
+    if "allow_ai_approvals" in sent:
+        org.allow_ai_approvals = payload.allow_ai_approvals
+    if "allow_imported_approval_state" in sent:
+        org.allow_imported_approval_state = payload.allow_imported_approval_state
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="advanced_settings_updated",
         actor_id=current_user.id, organization_id=organization_id,
+        detail={"fields": sorted(sent)},  # names only, never values (a secret such as the SMTP password)
     )
     db.commit()
     db.refresh(org)
@@ -178,6 +207,7 @@ def update_advanced_settings(
         smtp_host=org.smtp_host, smtp_port=org.smtp_port, smtp_username=org.smtp_username,
         smtp_use_tls=org.smtp_use_tls,
         pat_max_lifetime_days=org.pat_max_lifetime_days, report_output_retention_days=org.report_output_retention_days,
+        imported_person_retention_days=org.imported_person_retention_days,
         report_file_name=org.report_file_name, report_footer_text=org.report_footer_text,
         report_include_cover_page=org.report_include_cover_page,
         report_chapters_per_component=org.report_chapters_per_component,
@@ -189,6 +219,7 @@ def update_advanced_settings(
         allow_relaxed_child_project_creation=org.allow_relaxed_child_project_creation,
         force_require_change_request_for_approved_links=org.force_require_change_request_for_approved_links,
         allow_ai_approvals=org.allow_ai_approvals,
+        allow_imported_approval_state=org.allow_imported_approval_state,
     )
 
 
@@ -322,13 +353,12 @@ def update_org_module_enablement(
             OrganizationModuleEnablement.module_key == module_key,
         )
     )
-    is_new_row = row is None
     # Copy-before-change (Decided by: User, 2026-10-04): an org default only
     # affects projects created afterwards, so existing projects still
     # reading it live get today's value written in first.
     new_default = (
         payload.default_project_enabled if payload.default_project_enabled is not None
-        else payload.enabled if is_new_row else row.default_project_enabled
+        else payload.enabled if row is None else row.default_project_enabled
     )
     if new_default != resolve_default_project_enabled(db, organization_id, module_key):
         freeze_projects_module_default(db, organization_id, module_key)
@@ -447,10 +477,9 @@ def update_org_module_subcomponent_default(
             OrganizationModuleSubComponentDefault.subcomponent_key == subcomponent_key,
         )
     )
-    is_new_row = row is None
     new_default = (
         payload.default_project_enabled if payload.default_project_enabled is not None
-        else payload.enabled if is_new_row else row.default_project_enabled
+        else payload.enabled if row is None else row.default_project_enabled
     )
     _, current_default = resolve_org_subcomponent_state(db, organization_id, module_key, subcomponent_key)
     if new_default != current_default:
@@ -583,10 +612,11 @@ def get_sso_config(
         slug=org.slug, sso_enabled=org.sso_enabled, sso_only=org.sso_only,
         oidc_issuer_url=org.oidc_issuer_url, oidc_client_id=org.oidc_client_id,
         oidc_required_group=org.oidc_required_group,
+        oidc_allow_account_creation=org.oidc_allow_account_creation,
     )
 
 
-@router.put("/{organization_id}/sso-config", response_model=OrgSsoConfigOut)
+@router.put("/{organization_id}/sso-config", response_model=OrgSsoConfigOut, dependencies=[Depends(refuse_personal_access_token)])
 def update_sso_config(
     organization_id: UUID, payload: OrgSsoConfigUpdate,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
@@ -628,6 +658,7 @@ def update_sso_config(
         # Blank means "leave unchanged" — same pattern as smtp_password above.
         org.oidc_client_secret = payload.oidc_client_secret
     org.oidc_required_group = payload.oidc_required_group
+    org.oidc_allow_account_creation = payload.oidc_allow_account_creation
     log_event(db, entity_type="organization", entity_id=organization_id, action="sso_config_updated",
               actor_id=current_user.id, organization_id=organization_id)
     db.commit()
@@ -636,6 +667,7 @@ def update_sso_config(
         slug=org.slug, sso_enabled=org.sso_enabled, sso_only=org.sso_only,
         oidc_issuer_url=org.oidc_issuer_url, oidc_client_id=org.oidc_client_id,
         oidc_required_group=org.oidc_required_group,
+        oidc_allow_account_creation=org.oidc_allow_account_creation,
     )
 
 
@@ -654,7 +686,7 @@ def get_scim_token_status(
     return ScimTokenStatusOut(enabled=org.scim_token_hash is not None, token_prefix=org.scim_token_prefix)
 
 
-@router.post("/{organization_id}/scim-token", response_model=ScimTokenCreatedOut)
+@router.post("/{organization_id}/scim-token", response_model=ScimTokenCreatedOut, dependencies=[Depends(refuse_personal_access_token)])
 def regenerate_scim_token(
     organization_id: UUID,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),
@@ -676,7 +708,7 @@ def regenerate_scim_token(
     return ScimTokenCreatedOut(token=raw_token, token_prefix=token_prefix)
 
 
-@router.delete("/{organization_id}/scim-token", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{organization_id}/scim-token", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def revoke_scim_token(
     organization_id: UUID,
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)),

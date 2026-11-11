@@ -6,6 +6,7 @@ Alembic autogeneration and for `Base.metadata.create_all()` in tests.
 """
 
 from app.models.action_type import ActionTypeDefinition
+from app.models.announcement import Announcement
 from app.models.audit import AuditEvent, LoginEvent
 from app.models.change_request import (
     ChangeRequest,
@@ -30,6 +31,7 @@ from app.models.generated_report import GeneratedReport
 from app.models.module import OrganizationModuleEnablement, OrganizationModuleEntitlement, ServerModuleDefault
 from app.models.module_role import GroupModuleRole, ModuleRoleDefinitionRow, UserModuleRole
 from app.models.notification import Notification, NotificationPreference
+from app.models.org_dashboard import OrganizationDashboard, OrganizationDashboardViewer
 from app.models.organization import (
     Organization,
     OrgGroup,
@@ -39,6 +41,8 @@ from app.models.organization import (
     UserOrgRole,
 )
 from app.models.pat import PersonalAccessToken
+from app.models.placement import ArtefactPlacement
+from app.models.policy import PolicyAcknowledgement, PolicyAudience, PolicyDocument, PolicyDocumentVersion
 from app.models.project import (
     FavoriteProject,
     OrgGroupProjectRole,
@@ -54,6 +58,7 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.project_status import ProjectStatusDefinition
+from app.models.rate_limit import RateLimitBucket
 from app.models.record_policy import OrganizationRecordSensitivityOverride, ServerRecordSensitivityDefault
 from app.models.relationship import ArtefactLink
 from app.models.report_folder import ReportFolder
@@ -89,14 +94,22 @@ from app.models.scoring import (
 )
 from app.models.sequence import OrganizationSequenceCounter, ProjectSequenceCounter
 from app.models.server_role import UserServerRole
+from app.models.stage_workflow import ComponentStageState, StagePhasePlan, StageWorkflow, StageWorkflowPhase
 from app.models.tag import ArtefactTag, Tag
 from app.models.user import User
 
 __all__ = [
     "ActionTypeDefinition",
+    "ArtefactPlacement",
     "ArtefactTag",
     "Tag",
+    "Announcement",
+    "PolicyAcknowledgement",
+    "PolicyAudience",
+    "PolicyDocument",
+    "PolicyDocumentVersion",
     "AuditEvent",
+    "RateLimitBucket",
     "LoginEvent",
     "ChangeRequest",
     "ChangeRequestTask",
@@ -149,6 +162,12 @@ __all__ = [
     "ProjectMemberSource",
     "ProjectStage",
     "ProjectStatusDefinition",
+    "ComponentStageState",
+    "StagePhasePlan",
+    "OrganizationDashboard",
+    "OrganizationDashboardViewer",
+    "StageWorkflow",
+    "StageWorkflowPhase",
     "StageReviewResponse",
     "UserProjectRole",
     "ArtefactLink",

@@ -99,7 +99,7 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     await setOrgModuleAvailability(page, "Context & Strategy", "default_on");
 
     await test.step("org tier: Market/User/Operator are seeded, and a new org type can be added", async () => {
-      await selectOrgAdminGroup(page, "Pain Point Types");
+      await selectOrgAdminGroup(page, "Pain Point Types", "Pain Points");
       await expect(inputWithValue(page, "Market")).toBeVisible();
       await expect(inputWithValue(page, "User")).toBeVisible();
       await expect(inputWithValue(page, "Operator")).toBeVisible();
@@ -111,7 +111,7 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
 
     await test.step("project tier: the new org type appears in this project's effective list and can be overridden locally", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "Pain Point Types");
+      await selectProjectAdminGroup(page, "Pain Point Types", "Pain Points");
       // Scoped to this type's own row — every untouched org default (Market/
       // User/Operator, and this new org type before its override) shares the
       // same "Org default" text, so a page-wide `getByText` would match more
@@ -173,7 +173,7 @@ test.describe("Context & Strategy: Pain Point lifecycle and type vocabulary", ()
     });
 
     // --- Back on the list, the Pain Point shows its final status.
-    await page.getByRole("link", { name: "← Pain Point", exact: true }).click();
+    await page.getByRole("link", { name: "← Pain Points", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/modules/context_strategy/pain-points(?:\\?.*)?$`));
     // The list opens on open Pain Points only, so a closed one appears once that filter is cleared.
     await expect(page.getByRole("checkbox", { name: "Open only" })).toBeChecked();

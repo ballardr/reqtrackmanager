@@ -140,7 +140,7 @@ test.describe("project admin: Members section", () => {
       const checkbox = rolesGroup.getByRole("checkbox", { name: new RegExp(`Revoke Stakeholder from ${PERSONAS.memberAlphaBeta.name}`) });
       await expect(checkbox).toBeChecked();
       await expect(checkbox).toBeDisabled();
-      await expect(checkbox).toHaveAttribute("title", /isn't a direct grant/);
+      await expect(checkbox).toHaveAttribute("title", /is not a direct grant/);
       await page.keyboard.press("Escape");
     });
 

@@ -14,26 +14,25 @@ package) as a pure code-organization refactor — see
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import json
 from datetime import datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.change_request import ChangeRequest
 from app.models.enums import (
-    ChangeRequestStatus,
     OrgRole,
     ProjectRole,
     ProjectRoleInheritanceMode,
-    StageStatus,
+    ProjectVisibility,
+    StagePhaseKind,
 )
-from app.models.file import RequirementFile
 from app.models.organization import Organization
 from app.models.project import (
     FavoriteProject,
@@ -45,14 +44,17 @@ from app.models.project import (
     UserProjectRole,
 )
 from app.models.project_status import ProjectStatusDefinition
-from app.models.requirement import Baseline, BaselineItem, Requirement, RequirementVersion
+from app.models.requirement import Requirement
 from app.models.user import User
 from app.modules.registry import memoize_module_state, run_on_project_created_hooks, snapshot_project_module_state
 from app.schemas.changes import ChangeEntryOut
 from app.schemas.file import ProjectFileOut, ProjectFileSearchIn, ProjectFileUploaderOut
+from app.schemas.principal import PrincipalOut
 from app.schemas.project import (
+    ImportedPersonOut,
     ProjectAncestorOut,
     ProjectCreate,
+    ProjectImportPreview,
     ProjectImportResult,
     ProjectListItemOut,
     ProjectMetricsOut,
@@ -63,17 +65,24 @@ from app.schemas.project import (
     RecordTypeCountOut,
     StageProgressOut,
     TerminologyUpdate,
+    UnjoinedProjectListItemOut,
 )
 from app.services import tags as tag_service
+from app.services.activity_kinds import entity_groups
 from app.services.audit import log_event
 from app.services.bundle_common import bundle_size, iter_bundle_file
-from app.services.changes import get_project_changes
-from app.services.codes import assign_project_code, change_project_code
+from app.services.changes import ChangeFilter, build_filter, get_project_changes_page, history_entity_types, named_actors
+from app.services.changes_export import MAX_DOCUMENT_ROWS, MAX_EXPORT_ROWS, audit_history_export, build_history_result, history_csv
+from app.services.codes import assign_project_code, change_project_code, project_code_locked_for
 from app.services.definitions import get_default_project_status_id, seed_action_types
-from app.services.downloads import filename_safe
+from app.services.downloads import file_response, filename_safe
+from app.services.imported_people import PeopleChoices
+from app.services.lookups import project_or_404
 from app.services.org_membership import assert_account_active
 from app.services.project_access import accessible_project_ids as _accessible_project_ids
-from app.services.project_export import build_project_bundle, import_project_bundle
+from app.services.project_access import administered_org_ids
+from app.services.project_counts import project_counts, project_stage_progress
+from app.services.project_export import build_project_bundle, import_project_bundle, preview_project_people
 from app.services.project_files import FileFilters, project_file_rows, project_uploaders, row_identity
 from app.services.project_hierarchy import build_project_tree, would_create_project_cycle
 from app.services.project_scope import ProjectScope
@@ -92,6 +101,10 @@ from app.services.rbac import (
     require_project_view_or_manage,
 )
 from app.services.record_counts import count_records_by_type
+from app.services.report_document import resolve_branding
+from app.services.report_framework import DOCUMENT_FORMATS, ReportFormat, render_result
+from app.services.stage_workflows import new_stage, phase_index
+from app.services.template_guard import ensure_may_publish_template
 from app.services.templates import clone_project
 
 router = APIRouter(tags=["projects-core"])
@@ -128,6 +141,7 @@ def _project_out_with_redacted_parent(db: Session, current_user: User, project: 
     value they already have the power to change is not a new disclosure.
     """
     out = ProjectOut.model_validate(project)
+    out.code_change_locked = project_code_locked_for(db, project, current_user.id)
     if project.parent_project_id is None:
         return out
     if can_manage_project_settings(db, current_user, project) or project.parent_project_id in _accessible_project_ids(
@@ -268,11 +282,10 @@ def create_project(
         parent_required = True
 
     template_project_id = payload.template_project_id
-    if template_project_id is None:
+    if template_project_id is None and payload.use_template:
         # C-E-04: fall back to the organisation's configured default template
-        # when the caller didn't specify one. The frontend's "New project"
-        # form pre-selects this same default in its template dropdown so a
-        # user can still explicitly override it before submitting.
+        # when the caller didn't specify one and did not ask for none
+        # (`use_template=False` creates a blank project even when a default exists).
         template_project_id = org.default_template_project_id
 
     project_code = assign_project_code(db, payload.organization_id, payload.name, payload.code)
@@ -285,9 +298,21 @@ def create_project(
             or not template.is_template
         ):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "template_project_id must be a template project in this organisation.")
+        # A template is used by reading it, so the caller must be able to: a hidden template is not usable by
+        # guessing its id. The organisation's default template is the exception: an organisation administrator
+        # chose it to be the starting point for every new project, so its creators may use it without access.
+        is_org_default = template.id == org.default_template_project_id  # an administrator's deliberate offer to creators
+        if not is_org_default and not get_effective_project_roles(db, current_user.id, template.id) and not can_manage_project_settings(
+            db, current_user, template,
+        ):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "You cannot view that template project. Choose another template, or choose none to create a blank project.",
+            )
         project = clone_project(
             db, template, name=payload.name, summary=payload.summary, creator=current_user,
             parent_project_id=payload.parent_project_id, code=project_code, report_name=payload.report_name,
+            skip_files=payload.skip_files,
         )
         db.flush()
         _ensure_project_has_a_manager(db, project, current_user.id)
@@ -300,7 +325,7 @@ def create_project(
         db.add(project)
         db.flush()
 
-        db.add(ProjectStage(project_id=project.id, name="Scoping", status=StageStatus.SCOPING, sort_order=0, is_current=True))
+        new_stage(db, project, "Scoping", 0, is_current=True)
 
         # C-U-10: the creator becomes the project's initial manager via a
         # direct grant — no group is auto-created any more (docs/decisions.md). This project
@@ -328,6 +353,10 @@ def create_project(
     # default never flips this project (Decided by: User, 2026-10-04).
     snapshot_project_module_state(db, project.id, project.organization_id)
 
+    ensure_may_publish_template(
+        db, current_user, payload.organization_id, is_template=payload.is_template, visibility=payload.visibility,
+        already_published=False,
+    )
     if payload.terminology:
         project.terminology = payload.terminology
     if payload.is_template:
@@ -368,11 +397,41 @@ def create_project(
     return _project_out_with_redacted_parent(db, current_user, project)
 
 
+def _people_choices(raw: str | None) -> PeopleChoices:
+    """Parses the `people` form field; malformed JSON is a 422, never a silent default."""
+    if not raw:
+        return PeopleChoices()
+    try:
+        return PeopleChoices.from_json(json.loads(raw))
+    except json.JSONDecodeError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The people choices are not valid JSON.") from None
+
+
+@router.post("/import/preview", response_model=ProjectImportPreview)
+async def preview_project_import(
+    request: Request, organization_id: UUID = Form(...), file: UploadFile = File(...), people: str | None = Form(None),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    """The People step of a project import: each person the uploaded bundle names and how they would be resolved
+    in `organization_id` (a member, a reassigned member, the importer, or an imported person). Writes nothing.
+
+    Same authorisation as `POST /import`. Registered before `GET /{project_id}` like it.
+    """
+    check_pat_scope(request, organization_id)
+    org_roles = get_effective_org_roles(db, current_user.id, organization_id)
+    if not org_roles & {OrgRole.ORG_ADMIN, OrgRole.PROJECT_CREATOR}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only org admins or project creators may create projects.")
+    found = preview_project_people(
+        db, organization_id=organization_id, zip_bytes=await file.read(), choices=_people_choices(people),
+    )
+    return ProjectImportPreview(people=[ImportedPersonOut(**vars(p)) for p in found])
+
+
 @router.post("/import", response_model=ProjectImportResult, status_code=status.HTTP_201_CREATED)
 async def import_project(
     request: Request,
     organization_id: UUID = Form(...), name: str = Form(...), summary: str | None = Form(None),
-    file: UploadFile = File(...),
+    file: UploadFile = File(...), skip_files: bool = Form(False), people: str | None = Form(None),
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     """Creates a brand-new project in `organization_id` from an uploaded
@@ -385,6 +444,13 @@ async def import_project(
     is what makes cross-organisation import safe: the bundle itself carries
     no ids or org references, only names/prefixes/emails resolved fresh
     against whatever org the caller is authorized to create in.
+
+    The bundle's files are imported whenever they can be stored. While uploads are disabled the call is refused
+    (403 `uploads_disabled`, with the file count and size) unless `skip_files` is set, which imports without them.
+
+    `people` is the JSON the People step of `POST /import/preview` builds (`{"mapping": {email: "me" | "stand_in" |
+    member id}, "keep_original_email": bool}`); omitted, each person is matched by email and otherwise becomes an
+    imported person.
 
     Registered before `GET /{project_id}` so the static "/import" path
     isn't swallowed by that dynamic route.
@@ -399,7 +465,8 @@ async def import_project(
     # each scope's tag list is read once, not once per record.
     with memoize_user_lookups(), tag_service.reuse_offered_tags():
         project, warnings = import_project_bundle(
-            db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes, current_user=current_user
+            db, organization_id=organization_id, name=name, summary=summary, zip_bytes=zip_bytes,
+            current_user=current_user, skip_files=skip_files, choices=_people_choices(people),
         )
     return ProjectImportResult(project=ProjectOut.model_validate(project), warnings=warnings)
 
@@ -423,21 +490,29 @@ def get_project_tree(
     return build_project_tree(db, organization_id, accessible_ids)
 
 
-@router.get("", response_model=list[ProjectListItemOut])
+@router.get("", response_model=list[ProjectListItemOut | UnjoinedProjectListItemOut])
 def list_projects(
+    request: Request,
     response: Response,
     archived: bool = False,
     search: str | None = None,
     role: ProjectRole | None = None,
-    stage_status: StageStatus | None = None,
+    stage_phase_kind: StagePhaseKind | None = None,
     organization_id: UUID | None = None,
     favorite_only: bool = False,
+    include_templates: bool = False,
+    templates_only: bool = False,
+    include_unjoined: bool = False,
     limit: int | None = Query(None, ge=1),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Project list view (U-E-03, U-E-04): active/archived projects the user can access.
+
+    Template projects (`is_template`) are left out unless `include_templates` is set;
+    `templates_only` returns only templates (the "New project" template picker and the
+    organisation default-template setting use it), and overrides `include_templates`.
 
     `favorite_only` powers `FavouritesPage`, the same shape as every other
     filter here rather than a separate endpoint — a favourited-projects
@@ -446,8 +521,8 @@ def list_projects(
     first no more or less than the unfiltered list already gets below).
 
     Supports an optional `role` filter (only projects where the caller holds
-    the given effective project role), `stage_status` filter (only projects
-    whose current stage is in the given status) for U-E-05, and
+    the given effective project role), `stage_phase_kind` filter (only projects
+    whose current stage is in a phase of the given kind) for U-E-05, and
     `organization_id` (only projects in that organisation — for a user
     belonging to more than one, this replaces having to visit each
     organisation separately to see just its projects). Results are sorted
@@ -455,10 +530,18 @@ def list_projects(
     `limit`/`offset` (U-P-06) are optional pagination — see
     `list_requirements` for the same pattern and its rationale.
 
+    `include_unjoined` adds the projects of every organisation the caller administers that the caller holds no
+    role in, as identity-only rows (`UnjoinedProjectListItemOut`: no summary, counts, stage or status). It is
+    honoured only for those organisations and ignored for anyone else, never widened; `X-Can-Include-Unjoined`
+    tells the page whether the caller administers any organisation, so the filter is offered only to them. The
+    extra rows follow the same archived, template, organisation and search filters; the `role`,
+    `stage_phase_kind` and `favorite_only` filters describe membership and so exclude them. Opening such a
+    project is still refused (`require_project_view`); the only action on a row is managing its users.
+
     `X-Total-Unfiltered-Count` is a second response header reporting the
     count within only the mandatory accessible-projects + default
     archived-visibility scope, before `organization_id`/`search`/`role`/
-    `stage_status`/`favorite_only` narrow it further — unlike
+    `stage_phase_kind`/`favorite_only` narrow it further — unlike
     `X-Total-Count`, it does not change when the caller applies one of
     those filters.
     """
@@ -471,6 +554,19 @@ def list_projects(
         # organisations", so even server admins only see projects they hold a
         # genuine role in, same as anyone else.
         accessible_ids = _accessible_project_ids(db, current_user.id)
+        administered_ids = administered_org_ids(db, current_user, getattr(request.state, "pat_allowed_org_ids", None))
+        response.headers["X-Can-Include-Unjoined"] = "true" if administered_ids else "false"
+        unjoined_scope = [
+            Project.organization_id.in_(administered_ids),
+            Project.id.not_in(accessible_ids) if accessible_ids else true(),
+            Project.is_archived == archived,
+        ]
+        # A token that names projects reaches only those, including in the administrator's view of other projects.
+        token_projects = db.info.get("pat_allowed_project_ids")
+        if token_projects is not None:
+            unjoined_scope.append(Project.id.in_(token_projects))
+        unjoined_projects: list[Project] = []
+        projects: list[Project]
         if not accessible_ids:
             projects = []
             response.headers["X-Total-Unfiltered-Count"] = "0"
@@ -506,13 +602,34 @@ def list_projects(
             conditions = list(base_conditions)
             if organization_id is not None:
                 conditions.append(Project.organization_id == organization_id)
-            projects = db.scalars(
+            projects = list(db.scalars(
                 select(Project).join(Organization, Organization.id == Project.organization_id).where(*conditions)
-            ).all()
+            ).all())
+
+        if include_unjoined and administered_ids:
+            # One extra read of the administered organisations' projects the caller holds no role in. Which of them
+            # count towards the unfiltered total follows the same mandatory scope as the member projects above.
+            unjoined_projects = list(db.scalars(select(Project).where(*unjoined_scope)).all())
+            response.headers["X-Total-Unfiltered-Count"] = str(
+                int(response.headers["X-Total-Unfiltered-Count"]) + len(unjoined_projects)
+            )
+            if organization_id is not None:
+                unjoined_projects = [p for p in unjoined_projects if p.organization_id == organization_id]
+
+        if templates_only:
+            projects = [p for p in projects if p.is_template]
+            unjoined_projects = [p for p in unjoined_projects if p.is_template]
+        elif not include_templates:
+            projects = [p for p in projects if not p.is_template]
+            unjoined_projects = [p for p in unjoined_projects if not p.is_template]
 
         if search:
             needle = search.lower()
             projects = [p for p in projects if needle in p.name.lower() or needle in p.summary.lower()]
+            unjoined_projects = [p for p in unjoined_projects if needle in p.name.lower()]
+        # Membership-only filters have nothing to say about a project the caller holds no role in.
+        if role is not None or stage_phase_kind is not None or favorite_only:
+            unjoined_projects = []
 
         favorite_ids = set(
             db.scalars(select(FavoriteProject.project_id).where(FavoriteProject.user_id == current_user.id)).all()
@@ -520,16 +637,16 @@ def list_projects(
         org_names = dict(
             db.execute(
                 select(Organization.id, Organization.name).where(
-                    Organization.id.in_({p.organization_id for p in projects})
+                    Organization.id.in_({p.organization_id for p in (*projects, *unjoined_projects)})
                 )
-            ).all()
+            ).tuples().all()
         )
         requirement_counts = dict(
             db.execute(
                 select(Requirement.project_id, func.count(Requirement.id))
                 .where(Requirement.project_id.in_({p.id for p in projects}), Requirement.is_archived.is_(False))
                 .group_by(Requirement.project_id)
-            ).all()
+            ).tuples().all()
         )
 
         # Hierarchical projects: parent_project_name/children are populated only
@@ -551,15 +668,15 @@ def list_projects(
         # present in `projects`, not per row.
         admin_org_ids = {
             oid for oid in {p.organization_id for p in projects} if is_org_admin(db, current_user.id, oid)
-        }
+        } | {p.organization_id for p in unjoined_projects}
         visible_parent_ids = {p.parent_project_id for p in projects if p.parent_project_id is not None} & accessible_ids
         visible_parent_ids |= {
             p.parent_project_id
-            for p in projects
+            for p in (*projects, *unjoined_projects)
             if p.parent_project_id is not None and p.organization_id in admin_org_ids
         }
         parent_names = (
-            dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(visible_parent_ids))).all())
+            dict(db.execute(select(Project.id, Project.name).where(Project.id.in_(visible_parent_ids))).tuples().all())
             if visible_parent_ids
             else {}
         )
@@ -584,15 +701,17 @@ def list_projects(
                 select(ProjectStage).where(ProjectStage.project_id.in_(project_ids), ProjectStage.is_current.is_(True))
             ).all()
         } if project_ids else {}
+        phases = phase_index(db, {s.phase_id for s in current_stages.values()})
 
         # Bulk-loads each listed project's role inputs into the request memo,
         # so the per-row `get_effective_project_roles` below doesn't query.
         prefetch_project_roles(db, current_user.id, project_ids)
 
-        out = []
+        out: list[ProjectListItemOut] = []
         for p in projects:
             stage = current_stages.get(p.id)
-            if stage_status is not None and (stage is None or stage.status != stage_status):
+            phase = phases.get(stage.phase_id) if stage else None
+            if stage_phase_kind is not None and (phase is None or phase.kind != stage_phase_kind):
                 continue
             roles = sorted(get_effective_project_roles(db, current_user.id, p.id), key=lambda r: r.value)
             if role is not None and role not in roles:
@@ -609,13 +728,16 @@ def list_projects(
                     visibility=p.visibility,
                     terminology=p.terminology, status_id=p.status_id,
                     current_stage_name=stage.name if stage else None,
-                    current_stage_status=stage.status if stage else None,
+                    current_stage_phase_name=phase.name if phase else None,
+                    current_stage_phase_kind=phase.kind if phase else None,
                     my_roles=list(roles),
                     is_favorite=p.id in favorite_ids,
                     organization_name=org_names.get(p.organization_id, ""),
                     requirement_count=requirement_counts.get(p.id, 0),
                     parent_project_id=p.parent_project_id if parent_visible else None,
-                    parent_project_name=parent_names.get(p.parent_project_id) if parent_visible else None,
+                    parent_project_name=(
+                        parent_names.get(p.parent_project_id) if parent_visible and p.parent_project_id else None
+                    ),
                     role_inheritance_mode=p.role_inheritance_mode,
                     role_inheritance_filter_role=p.role_inheritance_filter_role,
                     can_be_parent=p.can_be_parent,
@@ -624,12 +746,22 @@ def list_projects(
             )
         if favorite_only:
             out = [item for item in out if item.is_favorite]
-        out.sort(key=lambda item: (not item.is_favorite, item.name.lower()))
+        rows: list[ProjectListItemOut | UnjoinedProjectListItemOut] = [*out]
+        rows.extend(
+            UnjoinedProjectListItemOut(
+                id=p.id, organization_id=p.organization_id, organization_name=org_names.get(p.organization_id, ""),
+                name=p.name, code=p.code, is_archived=p.is_archived, is_template=p.is_template,
+                parent_project_id=p.parent_project_id if p.parent_project_id in parent_names else None,
+                parent_project_name=parent_names.get(p.parent_project_id) if p.parent_project_id else None,
+            )
+            for p in unjoined_projects
+        )
+        rows.sort(key=lambda item: (not getattr(item, "is_favorite", False), item.name.lower()))
 
-        response.headers["X-Total-Count"] = str(len(out))
+        response.headers["X-Total-Count"] = str(len(rows))
         if limit is not None:
-            out = out[offset:offset + limit]
-        return out
+            rows = rows[offset:offset + limit]
+        return rows
 
 
 @router.put("/{project_id}/favorite", status_code=status.HTTP_204_NO_CONTENT)
@@ -861,7 +993,7 @@ def update_project(
     if payload.name is not None:
         project.name = payload.name
     if payload.code is not None:
-        new_code = change_project_code(db, project, payload.code)
+        new_code = change_project_code(db, project, payload.code, current_user.id)
         if new_code != project.code:
             log_event(
                 db, entity_type="project", entity_id=project.id, action="code_changed", actor_id=current_user.id,
@@ -891,6 +1023,12 @@ def update_project(
         # ever sending `allow_ai_approvals=true`, same as the org-level
         # counterpart in update_advanced_settings.
         project.allow_ai_approvals = payload.allow_ai_approvals
+    ensure_may_publish_template(
+        db, current_user, project.organization_id,
+        is_template=project.is_template if payload.is_template is None else payload.is_template,
+        visibility=project.visibility if payload.visibility is None else payload.visibility,
+        already_published=project.is_template and project.visibility == ProjectVisibility.ORG_WIDE,
+    )
     if payload.is_template is not None:
         project.is_template = payload.is_template
     if payload.can_be_parent is not None:
@@ -905,8 +1043,7 @@ def update_project(
 
     parent_changing = "parent_project_id" in payload.model_fields_set and payload.parent_project_id != project.parent_project_id
     new_parent_id = payload.parent_project_id if "parent_project_id" in payload.model_fields_set else project.parent_project_id
-    mode_sent = payload.role_inheritance_mode is not None
-    new_mode = payload.role_inheritance_mode if mode_sent else project.role_inheritance_mode
+    new_mode = payload.role_inheritance_mode if payload.role_inheritance_mode is not None else project.role_inheritance_mode
     new_filter_role = (
         payload.role_inheritance_filter_role if payload.role_inheritance_filter_role is not None
         else project.role_inheritance_filter_role
@@ -1031,86 +1168,131 @@ def get_project_changes_endpoint(
     since: datetime | None = None,
     until: datetime | None = None,
     include_comments: bool = False,
-    entity_type: str | None = None,
-    limit: int | None = Query(None, ge=1),
+    entity_type: list[str] = Query([], description="Only events about these entity types."),
+    group: list[str] = Query(
+        [],
+        description=(
+            "Only events about the entity types of these Type-filter groups (`records:<module>`, `records:core`, "
+            "`metadata:<group>`, see `/changes/facets`). An unknown group is ignored."
+        ),
+    ),
+    kind: list[str] = Query(
+        [],
+        description=(
+            "Only these kinds of event (`created`, `edited`, `status`, `links`, `tags`, `access`, `comments`, "
+            "`deleted`, `other`). A link, tag, role or group event has the kind of its entity type, whatever its action."
+        ),
+    ),
+    actor: list[str] = Query(
+        [], description="Only events by these people or groups, each `user:<id>`, `org_group:<id>` or `project_group:<id>`.",
+    ),
+    order: Literal["newest", "oldest"] = Query("newest", description="Which end of the timeline the page starts from."),
+    limit: int = Query(30, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_project_view),
     db: Session = Depends(get_db),
 ):
-    """Project changes-over-time view (C-A-10): a unified timeline of
-    requirement/change-request/audit events, with an optional time range
-    and entity-type filter. Discussion comments are excluded unless
-    `include_comments=true`.
+    """Project changes-over-time view (C-A-10): a unified timeline of requirement/change-request/audit events,
+    narrowed by time range, entity type, kind of event and person or group. Discussion comments are excluded
+    unless `include_comments=true` or the `comments` kind is asked for.
 
-    `limit`/`offset` (U-P-06) are optional, same contract as
-    `list_requirements`: omitting both returns the full timeline unchanged
-    from before pagination existed. When `limit` is given, the total match
-    count (before slicing) is returned in the `X-Total-Count` response
-    header. Slicing happens here rather than in `get_project_changes`
-    itself, since that function has two other, unpaginated callers
-    (`requirements.py`/`change_requests.py`'s per-entity activity panels)
-    that need its complete merged-and-sorted result to filter down
-    themselves.
+    One page is read: every filter is part of each source's query and each source reads only its newest
+    `offset + limit` rows, so the cost follows the page and not the size of the project
+    (`services.changes.get_project_changes_page`). The match count, before slicing, is in `X-Total-Count`. Each
+    entry carries its `kind` and, for a record of a registered type the caller may see, its `record_label`.
+
+    Raises:
+        HTTPException: 404 the project; 422 an unknown kind, a malformed person or a group of another
+            organisation or project.
     """
-    entries = get_project_changes(
-        db, project_id, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+    project = project_or_404(db, project_id)
+    flt = build_filter(
+        db, project, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+        kinds=kind, actors=actor, oldest_first=order == "oldest", groups=group,
     )
-    response.headers["X-Total-Count"] = str(len(entries))
-    if limit is not None:
-        entries = entries[offset:offset + limit]
+    entries, total = get_project_changes_page(db, project, flt, limit=limit, offset=offset, viewer_id=current_user.id)
+    response.headers["X-Total-Count"] = str(total)
     return entries
 
 
-@dataclass
-class _ProjectCounts:
-    """One project's overview counts (`id` is the project, which is what `ProjectScope.collect` keys rows on)."""
+@router.get("/{project_id}/changes/facets")
+def get_project_changes_facets(
+    project_id: UUID, current_user: User = Depends(require_project_view), db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """What the History page's filters offer for this project: the entity types it has events for, those types in
+    two levels (`groups`: `{key, label, section, types}`, Records by module then Metadata), and how many events the
+    unfiltered history holds (the filter panel's "N total")."""
+    project = project_or_404(db, project_id)
+    _, total = get_project_changes_page(db, project, ChangeFilter(), limit=1)
+    entity_types = history_entity_types(db, project_id)
+    return {"entity_types": entity_types, "groups": entity_groups(entity_types), "total": total}
 
-    id: UUID
-    requirements: int = 0
-    completed: int = 0
-    proposed: int = 0
-    approved: int = 0
-    rejected: int = 0
-    files: int = 0
-    by_status: dict[str, int] = field(default_factory=dict)
+
+@router.get("/{project_id}/changes/actors", response_model=list[PrincipalOut])
+def get_project_changes_actors(
+    project_id: UUID,
+    actor: list[str] = Query([], description="`user:<id>`, `org_group:<id>` or `project_group:<id>`, as the History filter sends them."),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+):
+    """The people and groups of a History filter, named for display (a filter restored from a link shows names)."""
+    return named_actors(db, project_or_404(db, project_id), actor)
 
 
-def _project_counts(db: Session, pid: UUID) -> _ProjectCounts:
-    """The overview counts of one project: live requirements (and how many are completed, by status),
-    change requests by outcome, and distinct requirement attachments.
+@router.get("/{project_id}/changes/export", responses={200: {"content": {"application/pdf": {}, "text/csv": {}}}})
+def export_project_changes(
+    project_id: UUID,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    include_comments: bool = False,
+    entity_type: list[str] = Query([]),
+    group: list[str] = Query([]),
+    kind: list[str] = Query([]),
+    actor: list[str] = Query([]),
+    format: ReportFormat = Query("csv", description="csv (default), pdf, docx, odt, ods, xlsx or html."),
+    current_user: User = Depends(require_project_view),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The filtered timeline as a file, with the page's own filters (never the full history).
 
-    Each figure is an aggregate computed by the database in a fixed number of statements, so the cost does not
-    grow with the number of requirements (no id list is read back or sent in an `IN (...)`).
+    The Person column follows the personal-data export rule of the record lists. One `records_exported` audit
+    event records the format, counts and filter names, never the entries.
+
+    Raises:
+        HTTPException: 404 the project; 413 more than `MAX_EXPORT_ROWS` entries (or `MAX_DOCUMENT_ROWS` for a
+            PDF or Word document); 422 a bad filter.
     """
-    counts = _ProjectCounts(id=pid)
-    live = (Requirement.project_id == pid, Requirement.is_archived.is_(False))
-    # C-G-11: completion is `Requirement.is_completed`, an overlay marker independent of
-    # `RequirementVersion.status` (no longer a `RequirementStatus` value at all), so it is read off the
-    # identity row, not the version.
-    counts.requirements, completed = db.execute(
-        select(func.count(), func.count().filter(Requirement.is_completed.is_(True))).where(*live)
-    ).one()
-    counts.completed = completed
-    if counts.requirements:
-        for status_value, total in db.execute(
-            select(RequirementVersion.status, func.count())
-            .join(Requirement, Requirement.id == RequirementVersion.requirement_id)
-            .where(*live, RequirementVersion.valid_to.is_(None))
-            .group_by(RequirementVersion.status)
-        ).all():
-            counts.by_status[status_value.value] = total
-        counts.files = db.scalar(
-            select(func.count(RequirementFile.file_id.distinct()))
-            .join(Requirement, Requirement.id == RequirementFile.requirement_id)
-            .where(*live)
-        ) or 0
-    by_outcome = {outcome: total for outcome, total in db.execute(
-        select(ChangeRequest.status, func.count()).where(ChangeRequest.project_id == pid).group_by(ChangeRequest.status)
-    ).all()}
-    counts.proposed = by_outcome.get(ChangeRequestStatus.SUBMITTED, 0) + by_outcome.get(ChangeRequestStatus.IN_REVIEW, 0)
-    counts.approved = by_outcome.get(ChangeRequestStatus.APPROVED, 0)
-    counts.rejected = by_outcome.get(ChangeRequestStatus.REJECTED, 0)
-    return counts
+    project = project_or_404(db, project_id)
+    flt = build_filter(
+        db, project, since=since, until=until, include_comments=include_comments, entity_type=entity_type,
+        kinds=kind, actors=actor, groups=group,
+    )
+    entries, total = get_project_changes_page(db, project, flt, limit=MAX_EXPORT_ROWS, viewer_id=current_user.id)
+    if total > MAX_EXPORT_ROWS or (format in DOCUMENT_FORMATS and total > MAX_DOCUMENT_ROWS):
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"This history has {total} entries, more than one file holds. Narrow the filters"
+            + ("" if format in DOCUMENT_FORMATS and total <= MAX_EXPORT_ROWS else "."),
+        )
+    filter_keys = sorted(
+        name for name, given in (
+            ("since", since), ("until", until), ("include_comments", include_comments or None),
+            ("entity_type", entity_type or None), ("group", group or None), ("kind", kind or None), ("actor", actor or None),
+        ) if given
+    )
+    result, include_person = build_history_result(db, current_user, project, entries, filter_keys=filter_keys)
+    stem = f"{filename_safe(project.name, fallback='project')}-history"
+    if format == "csv":
+        content, ext = history_csv(result), "csv"
+    else:
+        organization = db.get(Organization, project.organization_id)
+        rendered = render_result(result, format, branding=resolve_branding(db, organization))
+        content, ext = rendered.content, rendered.extension
+    audit_history_export(
+        db, current_user, project, fmt=ext, rows=len(entries), columns=len(result.sections[0].columns),
+        filter_keys=filter_keys, omitted=not include_person,
+    )
+    return file_response(content, stem, ext)
 
 
 @router.get("/{project_id}/metrics", response_model=ProjectMetricsOut)
@@ -1125,7 +1307,7 @@ def get_project_metrics(
     progress stays this project's own: stages and baselines belong to one project.
     """
     per_project = project_scope.collect(
-        db, db.get(Project, project_id), current_user.id, "requirement", lambda pid: [_project_counts(db, pid)],
+        db, project_or_404(db, project_id), current_user.id, "requirement", lambda pid: [project_counts(db, pid)],
     )
     own = next(c for c in per_project if c.id == project_id)
     requirement_count = sum(c.requirements for c in per_project)
@@ -1142,44 +1324,15 @@ def get_project_metrics(
     own_requirement_count = own.requirements
     # Read-only: each module tier is read once per organisation or project, not once per record type.
     with memoize_module_state():
-        record_counts = count_records_by_type(db, current_user, db.get(Project, project_id), project_scope)
+        record_counts = count_records_by_type(db, current_user, project_or_404(db, project_id), project_scope)
 
-    # Per-stage progress (dashboard "Stage Progress" chart): a stage that has
-    # been baselined (C-G-10) shows completion across the requirements
-    # captured in that baseline; a stage not yet approved has no baseline
-    # yet, so it shows the project's current requirement count at 0%
-    # complete rather than a stage-specific count that doesn't exist yet.
-    stages = db.scalars(
-        select(ProjectStage).where(ProjectStage.project_id == project_id).order_by(ProjectStage.sort_order)
-    ).all()
-    stage_progress: list[StageProgressOut] = []
-    # One query for every baselined stage: items captured and how many of them are now completed (the
-    # oldest baseline of a stage when it somehow has several).
-    baselined: dict[UUID, tuple[int, int]] = {}
-    for stage_id, total, done in db.execute(
-        select(Baseline.stage_id, func.count(BaselineItem.requirement_id),
-               func.count(Requirement.id).filter(Requirement.is_completed.is_(True)))
-        .select_from(Baseline)
-        .outerjoin(BaselineItem, BaselineItem.baseline_id == Baseline.id)
-        .outerjoin(Requirement, Requirement.id == BaselineItem.requirement_id)
-        .where(Baseline.project_id == project_id)
-        .group_by(Baseline.id, Baseline.stage_id, Baseline.created_at)
-        .order_by(Baseline.created_at, Baseline.id)
-    ).all():
-        baselined.setdefault(stage_id, (total, done))
-    for stage in stages:
-        if stage.id in baselined:
-            stage_requirement_count, stage_completed = baselined[stage.id]
-            stage_percent = (stage_completed / stage_requirement_count * 100.0) if stage_requirement_count else 0.0
-        else:
-            stage_requirement_count = own_requirement_count
-            stage_percent = 0.0
-        stage_progress.append(
-            StageProgressOut(
-                stage_id=stage.id, name=stage.name, status=stage.status,
-                requirement_count=stage_requirement_count, completed_percent=round(stage_percent, 1),
-            )
+    stage_progress = [
+        StageProgressOut(
+            stage_id=row.stage_id, name=row.name, phase_name=row.phase_name, phase_kind=row.phase_kind,
+            requirement_count=row.requirement_count, completed_percent=row.completed_percent,
         )
+        for row in project_stage_progress(db, project_id, own_requirement_count)
+    ]
 
     return ProjectMetricsOut(
         requirement_count=requirement_count,

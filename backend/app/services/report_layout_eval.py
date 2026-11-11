@@ -87,8 +87,10 @@ from app.models.project import Project
 from app.models.report_layout import FAMILY_DOCUMENT, FAMILY_TABLE
 from app.modules.registry import is_module_enabled_for_project
 from app.services import report_font_catalogue
+from app.services.branding import explicit_logo_band_hex, get_server_settings
 from app.services.link_graph import ArtefactResolver
 from app.services.link_type_scope import resolve_link_type_scope
+from app.services.placements import PLACEMENT_TEXT_SEPARATOR, PLACEMENTS_FIELD_KEY
 from app.services.report_colours import effective_scheme, is_name, resolve_colour
 from app.services.report_column_width import sheet_widths_cm
 from app.services.report_fields import RESERVED_FIELD_KEYS, FieldInfo, ReportRecord, field_catalogue, format_value, load_records
@@ -581,7 +583,11 @@ class _Run:
         """
         if file_ref not in self._images:
             if file_ref == ORG_LOGO_FILE:
-                image, reason = load_org_logo(self.db, self.ctx.organization.logo_file_id, self.ctx.organization.id)
+                organization = self.ctx.organization
+                image, reason = load_org_logo(
+                    self.db, organization.logo_file_id, organization.id,
+                    explicit_logo_band_hex(organization, get_server_settings(self.db)),
+                )
             else:
                 image, reason = load_image(self.db, self.ctx.organization.id, self.layout_project_id, uuid.UUID(file_ref))
             self._images[file_ref] = image
@@ -763,12 +769,14 @@ class _Run:
         font, size = self.block_look(source)
         colour = source.get("colour")
         self.note_colours(colour)
+        left_width, centre_width, right_width = (source.get(f"{name}_width") for name in SLOT_NAMES)
+        left_valign, centre_valign, right_valign = (source.get(f"{name}_valign") for name in SLOT_NAMES)
         return RunningBand(
             **cells, logo=logo, logo_slot=slot, logo_height_cm=height, first_page=source.get("first_page", "same") != "none",
             font=font, size=size,
             colour=resolve_colour(colour, self.org_values["report_accent"], self.scheme) if colour else None,
-            widths=tuple(source.get(f"{name}_width") for name in SLOT_NAMES),  # type: ignore[arg-type]
-            valigns=tuple(source.get(f"{name}_valign") for name in SLOT_NAMES),  # type: ignore[arg-type]
+            widths=(left_width, centre_width, right_width),
+            valigns=(left_valign, centre_valign, right_valign),
             valign=source.get("valign"), kind=kind,
         )
 
@@ -829,14 +837,17 @@ class _Run:
     def group_labels(self, record: ReportRecord, key: str) -> list[str]:
         """The group labels a record falls under when grouped by `key`.
 
-        A single-valued field gives one label (`(none)` when empty). Tags give one label per tag, so a record with two
-        tags is in both groups (group counts then add up to more than the records); an untagged record is in `(none)`.
+        A single-valued field gives one label (`(none)` when empty). Tags and placements give one label per tag or place, so a record with two
+        of either is in both groups (group counts then add up to more than the records); an untagged record is in `(none)`.
         A tag name cannot contain a comma, so the joined text splits back into the names.
         """
         text = self.text_of(record, key)
         if key == "tags":
             names = list(dict.fromkeys(n for n in text.split(", ") if n))
             return names or [EMPTY_GROUP_LABEL]
+        if key == PLACEMENTS_FIELD_KEY:
+            places = list(dict.fromkeys(n for n in text.split(PLACEMENT_TEXT_SEPARATOR) if n))
+            return places or [EMPTY_GROUP_LABEL]
         return [text or EMPTY_GROUP_LABEL]
 
     def resolve_sheet_links(self, offset: int) -> None:
@@ -1540,7 +1551,7 @@ def _eval_group(run: _Run, node: dict[str, Any], scope: Scope) -> None:
             groups.setdefault(label, []).append(record)
 
     def order(label: str) -> tuple[bool, Any]:
-        typed = None if key == "tags" else run.sort_key(groups[label][0], key)
+        typed = None if key in ("tags", PLACEMENTS_FIELD_KEY) else run.sort_key(groups[label][0], key)
         return label == EMPTY_GROUP_LABEL, (label.casefold() if typed is None else typed)
 
     for label in sorted(groups, key=order):

@@ -33,11 +33,13 @@ import { useStrings } from "../context/TerminologyContext";
  * @param onResetCells Clears a model's cell-rating override.
  */
 export function ScoringModelBands({
-  scheme, isCustom, resetLabel, onSave, onReset, isCellsCustom, onSaveCells, onResetCells,
+  scheme, isCustom, resetLabel, platformFallback, onSave, onReset, isCellsCustom, onSaveCells, onResetCells,
 }: {
   scheme: ScoringScheme;
   isCustom: (model: ScoringModel) => boolean;
   resetLabel?: string;
+  /** The fallback is the module default (an organisation page): no pill, only a reset while custom. */
+  platformFallback?: boolean;
   onSave: (modelKey: string, bands: ScoringBand[]) => Promise<void>;
   onReset: (modelKey: string) => Promise<void>;
   isCellsCustom?: (model: ScoringModel) => boolean;
@@ -64,6 +66,7 @@ export function ScoringModelBands({
         custom={isCustom(model)}
         defaultLabel={SCORING_SOURCE_LABEL[model.bands_source]}
         resetLabel={resetLabel}
+        platformFallback={platformFallback}
         onSave={(bands) => onSave(model.key, bands)}
         onReset={() => onReset(model.key)}
       />
@@ -71,7 +74,7 @@ export function ScoringModelBands({
         <ScoringCellRatingsEditor
           xAxis={xAxis} yAxis={yAxis} bands={model.bands} cellRatings={model.cell_ratings}
           custom={isCellsCustom(model)} defaultLabel={SCORING_SOURCE_LABEL[model.cell_ratings_source]}
-          resetLabel={resetLabel} caption={`Preview (${model.label}).`}
+          resetLabel={resetLabel} platformFallback={platformFallback} caption={`Preview (${model.label}).`}
           onSave={(cells) => onSaveCells(model.key, cells)} onReset={() => onResetCells(model.key)}
         />
       ) : xAxis && yAxis && (

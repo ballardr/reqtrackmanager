@@ -305,14 +305,24 @@ def _xml(root: etree._Element) -> bytes:
 
 
 def _rewrite(source: zipfile.ZipFile, replace: dict[str, bytes], compression: int) -> bytes:
-    """Copies a package, replacing/adding parts and keeping the order (the OpenDocument `mimetype` stays first and stored)."""
+    """Copies a package, replacing/adding parts and keeping the order (the OpenDocument `mimetype` stays first and stored).
+
+    Entries keep the source's timestamps and added parts take the package's first one, never the clock, so the same
+    input always gives the same bytes.
+    """
     buffer = io.BytesIO()
+    items = source.infolist()
+    stamp = items[0].date_time if items else (1980, 1, 1, 0, 0, 0)
     with zipfile.ZipFile(buffer, "w") as target:
-        for item in source.infolist():
+        for item in items:
             payload = replace.pop(item.filename, None)
             stored = item.filename == "mimetype"
-            target.writestr(item.filename, source.read(item.filename) if payload is None else payload,
-                            compress_type=zipfile.ZIP_STORED if stored else compression)
+            entry = zipfile.ZipInfo(item.filename, item.date_time)
+            entry.external_attr = item.external_attr
+            entry.compress_type = zipfile.ZIP_STORED if stored else compression
+            target.writestr(entry, source.read(item.filename) if payload is None else payload)
         for name, payload in replace.items():
-            target.writestr(name, payload, compress_type=compression)
+            entry = zipfile.ZipInfo(name, stamp)
+            entry.compress_type = compression
+            target.writestr(entry, payload)
     return buffer.getvalue()

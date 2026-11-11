@@ -3,7 +3,8 @@
  *
  * The "Tags" field of a create form: choose the tags the new record starts with. Nothing is
  * written here; the form applies them with `useCommitTags` once the record exists, the same
- * contract as `QuickLinkField`.
+ * contract as `QuickLinkField`. It also renders `ComponentField`, so every create form that has tags offers the
+ * components too, and `useCommitTags` applies both.
  *
  * It asks the server about a record that does not exist yet (`DRAFT_ARTEFACT_ID`), so the
  * vocabulary, the project's mode and the caller's authority are the ones that will apply, and it
@@ -15,6 +16,7 @@ import { useEffect, useState } from "react";
 import { DRAFT_ARTEFACT_ID } from "../api/artefactLinks";
 import { recordTagsApi, type RecordTags, type RecordTagsApi } from "../api/tags";
 import { useStrings } from "../context/TerminologyContext";
+import { ComponentField } from "./ComponentField";
 import { TagInput } from "./TagInput";
 
 /**
@@ -46,12 +48,16 @@ export function TagField({
     };
   }, [api, projectId, artefactType]);
 
-  if (!data || !data.can_edit) return null;
   return (
-    <div className="stack" style={{ gap: "var(--space-1)" }}>
-      <span>{strings.tags.label}</span>
-      <TagInput value={value} onChange={onChange} suggestions={data.suggestions} restricted={data.restricted} />
-      <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.tags.create.hint}</span>
-    </div>
+    <>
+      {data?.can_edit && (
+        <div className="stack" style={{ gap: "var(--space-1)" }}>
+          <span>{strings.tags.label}</span>
+          <TagInput value={value} onChange={onChange} suggestions={data.suggestions} restricted={data.restricted} />
+          <span className="text-muted" style={{ fontSize: "0.8rem" }}>{strings.tags.create.hint}</span>
+        </div>
+      )}
+      <ComponentField projectId={projectId} artefactType={artefactType} />
+    </>
   );
 }

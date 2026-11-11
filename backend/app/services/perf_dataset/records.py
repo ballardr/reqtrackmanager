@@ -37,6 +37,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from app.models.placement import ArtefactPlacement
 from app.models.relationship import ArtefactLink
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
 from app.models.sequence import ProjectSequenceCounter
@@ -207,10 +208,40 @@ def add_comments(
     ctx.add_count(model.__tablename__, insert_rows(ctx.db, model, rows))
 
 
+def add_placements(ctx: PerfProjectContext, batch: RecordBatch) -> None:
+    """Places a batch's records in the project's components and categories (a few distinct places each), with the
+    "placed" audit events the application writes. Does nothing for a type that keeps its own component (a
+    requirement), a type a module declared not placeable, or a project with no categories."""
+    from app.modules.registry import get_not_placeable_types
+    from app.services.placements import COLUMN_PLACED_TYPES
+
+    rng, spec = ctx.rng, ctx.spec
+    places = ctx.project.categories
+    if not places or not batch.ids or batch.artefact_type in COLUMN_PLACED_TYPES or batch.artefact_type in get_not_placeable_types():
+        return
+    prefixes = dict(ctx.project.components)
+    rows = []
+    for index, record_id in enumerate(batch.ids):
+        at = batch.created[index] + timedelta(hours=1)
+        for category_id, component_id, category_prefix in rng.sample(places, min(_poisson(rng, spec.ratios.placements_per_record), len(places))):
+            rows.append({
+                "id": uuid_from(rng), "project_id": ctx.project_uuid, "artefact_type": batch.artefact_type, "artefact_id": record_id,
+                "component_id": component_id, "category_id": category_id, "created_by": ctx.user_ids[0], "created_at": at,
+            })
+            batch.audit.add(
+                batch.artefact_type, record_id, "placed", ctx.user_ids[0], at,
+                detail={"place": f"{prefixes.get(component_id, '')}/{category_prefix}"}, organization_id=ctx.organization_uuid,
+            )
+    ctx.add_count("artefact_placements", insert_rows(ctx.db, ArtefactPlacement, rows))
+    batch.audit.flush()
+
+
 def add_tags(ctx: PerfProjectContext, batch: RecordBatch) -> None:
     """Attaches tags from the project's vocabulary to a batch's records (popular tags are chosen more), with the
-    "tagged" audit events the application writes. Does nothing when the project has no tags."""
+    "tagged" audit events the application writes, and places them in components (`add_placements`): every
+    generator calls this one function for a batch's classification. Does nothing for tags when the project has none."""
     rng, spec = ctx.rng, ctx.spec
+    add_placements(ctx, batch)
     if not ctx.tags or not batch.ids:
         return
     vocabulary = len(ctx.tags)

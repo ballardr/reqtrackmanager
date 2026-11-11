@@ -11,6 +11,7 @@ import io
 import zipfile
 
 from tests.conftest import auth_headers, create_component_and_category, create_org_admin_in, create_project
+from tests.stage_helpers import move_stage
 
 
 def _create_custom_field(client, admin_token, project_id, *, name, field_type="short_text", entity_kind="requirement"):
@@ -26,11 +27,9 @@ def _create_custom_field(client, admin_token, project_id, *, name, field_type="s
 def _approve_current_stage(client, admin_token, project_id):
     stages = client.get(f"/api/v1/projects/{project_id}/stages", headers=auth_headers(admin_token)).json()
     stage_id = stages[0]["id"]
-    assert client.post(
-        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=review", headers=auth_headers(admin_token)
+    assert move_stage(client, project_id, stage_id, "review", headers=auth_headers(admin_token)
     ).status_code == 200
-    resp = client.post(
-        f"/api/v1/projects/{project_id}/stages/{stage_id}/transition?new_status=approved", headers=auth_headers(admin_token)
+    resp = move_stage(client, project_id, stage_id, "approved", headers=auth_headers(admin_token)
     )
     assert resp.status_code == 200
 
@@ -160,7 +159,9 @@ def test_import_reconstructs_structure_and_full_history_in_the_same_org(client, 
     new_project = result["project"]
     assert new_project["name"] == "Reimported Project"
     assert new_project["organization_id"] == org_id
-    assert result["warnings"] == []
+    # The source stage was approved; an import never makes that approval on someone's behalf, and says so.
+    assert [w for w in result["warnings"] if "Approved" in w] == result["warnings"]
+    assert len(result["warnings"]) == 1
 
     components = client.get(f"/api/v1/projects/{new_project['id']}/components", headers=auth_headers(admin_token)).json()
     assert {c["prefix"] for c in components} == {"SW"}
@@ -302,7 +303,7 @@ def test_import_rejects_a_non_zip_file(client, admin_token, org_id):
     assert resp.status_code == 400
 
 
-def test_unmatched_required_user_reference_falls_back_to_importer_with_a_warning(client, admin_token, org_id):
+def test_unmatched_required_user_reference_becomes_an_imported_person_with_a_warning(client, admin_token, org_id):
     """Unit-level test of `import_project_bundle` (rather than round-tripping
     through a real export) so a bundle can reference an email that matches
     no real account — every user in this app is a real, never-deleted
@@ -356,13 +357,16 @@ def test_unmatched_required_user_reference_falls_back_to_importer_with_a_warning
             db, organization_id=UUID(org_id), name="Ghost Import", summary=None,
             zip_bytes=buffer.getvalue(), current_user=importing_user,
         )
-        assert any("ghost@example.com" in w for w in warnings)
+        assert any("imported person" in w for w in warnings)
         owner_id = db.scalar(
             select(RequirementVersion.owner_id)
             .join(Requirement, Requirement.id == RequirementVersion.requirement_id)
             .where(Requirement.project_id == project.id)
         )
-        assert owner_id == importing_user.id
+        # A person who is not a member becomes an imported person rather than the importer, and the address is not kept.
+        owner = db.get(User, owner_id)
+        assert owner is not None and owner.id != importing_user.id and owner.imported_organization_id == UUID(org_id)
+        assert "ghost@example.com" not in owner.email
     finally:
         db.close()
 

@@ -58,6 +58,12 @@ Granting an existing role — fixed, module, or custom — to a user or an organ
 
 `manage_org_report_layouts` and `manage_project_report_layouts` are permission atoms in the same list. They let their holder create, edit, version and delete custom report layouts for the organisation, or for one project (and, in a project, hide a layout it inherits and restore it). They are separate so that trusting someone with a project's layouts does not let them change the ones every project inherits. Organisation admins hold both; project administrators and managers hold the project one in their own project. Running a layout needs neither.
 
+`publish_organization_templates` is another permission atom in the list. It lets its holder make a project both a template and visible to the whole organisation; a project manager can set either alone but not both. Organisation admins hold it, and it can be given to others through a custom role.
+
+## The shared resource permission
+
+`manage_org_resources` is a permission atom in the same list. It lets its holder upload and delete the organisation's shared resources on the organisation **Files** page. Every member can list and download them without it. Organisation admins hold it; give it to a person or to an organisation group (nested groups count) through a custom role to let a team look after the resources without the administrator role.
+
 ## What `grant_roles` lets a delegate do
 
 `grant_roles` is itself a permission atom, so an org admin can grant it to someone else without making them a full org admin. A holder of `grant_roles` can assign **any** existing role — fixed, module, or custom — to any user or group, with two deliberate exceptions that stay admin-only regardless: **Organisation Admin** and **Module Administrator** can never be granted this way, only by an existing holder of that same role (or a server admin).

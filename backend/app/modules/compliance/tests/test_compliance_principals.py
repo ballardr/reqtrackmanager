@@ -49,6 +49,7 @@ from tests.conftest import (
     create_project_group,
     login,
 )
+from tests.db_helpers import must_get
 
 TODAY = date.today()
 PASSWORD = "Password123!"
@@ -102,7 +103,7 @@ def test_standard_owner_defaults_to_the_creator_and_takes_ancreate_org_group(cli
     assert default["owner"]["type"] == "user" and default["owner"]["id"] == me
 
     owned = _create_standard(client, admin_token, org_id, reference="OWN-GROUP", owner={"type": "org_group", "id": team})
-    assert owned["owner"] == {"type": "org_group", "id": team, "label": "Standards Board", "member_count": 1, "exists": True}
+    assert owned["owner"] == {"type": "org_group", "id": team, "label": "Standards Board", "member_count": 1, "exists": True, "imported": False}
     assert client.get(f"{_base(org_id)}/standards/{owned['id']}", headers=h).json()["owner"]["label"] == "Standards Board"
     listed = {s["reference"]: s for s in client.get(f"{_base(org_id)}/standards", headers=h).json()}
     assert listed["OWN-GROUP"]["owner"]["type"] == "org_group" and listed["OWN-DEFAULT"]["owner"]["id"] == me
@@ -218,7 +219,7 @@ def test_project_review_owner_takes_each_kind_and_recurrence_keeps_it(client, ad
     )
     assert created.status_code == 201, created.text
     review = created.json()
-    assert review["owner"] == {"type": "project_group", "id": squad, "label": "Review Squad", "member_count": 1, "exists": True}
+    assert review["owner"] == {"type": "project_group", "id": squad, "label": "Review Squad", "member_count": 1, "exists": True, "imported": False}
 
     updated = client.patch(
         f"{_project_base(project['id'])}/reviews/{review['id']}",
@@ -559,11 +560,11 @@ def test_migration_backfills_existing_rows_to_user(client, admin_token, org_id):
         command.upgrade(build_alembic_config(), "head")
 
     with SessionLocal() as db:
-        review = db.get(ComplianceReview, legacy_review)
+        review = must_get(db, ComplianceReview, legacy_review)
         assert (review.owner_type, str(review.owner_id)) == ("user", me)
-        other = db.get(ComplianceReview, uuid.UUID(unowned["id"]))
+        other = must_get(db, ComplianceReview, uuid.UUID(unowned["id"]))
         assert other.owner_type is None and other.owner_id is None
-        owned_standard = db.get(ComplianceStandard, uuid.UUID(standard["id"]))
+        owned_standard = must_get(db, ComplianceStandard, uuid.UUID(standard["id"]))
         assert owned_standard.owner_type == "user" and str(owned_standard.owner_id) == me
     resp = client.get(
         _assessment_url(project["id"], assignment["id"], pcr_id, assessment_id), headers=auth_headers(admin_token),

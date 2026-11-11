@@ -80,7 +80,7 @@ def list_votes(
     cr = _get_cr_in_project(db, project_id, cr_id)
     votes = db.scalars(select(ChangeRequestVote).where(ChangeRequestVote.change_request_id == cr.id)).all()
     return ChangeRequestVoteTallyOut(
-        votes=list(votes),
+        votes=[ChangeRequestVoteOut.model_validate(v) for v in votes],
         approve_count=sum(1 for v in votes if v.vote == ChangeRequestVoteChoice.APPROVE),
         reject_count=sum(1 for v in votes if v.vote == ChangeRequestVoteChoice.REJECT),
     )

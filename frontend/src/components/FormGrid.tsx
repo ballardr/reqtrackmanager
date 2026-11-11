@@ -36,3 +36,12 @@ export function FormGrid({ children, minColumn }: { children: ReactNode; minColu
 export function FormGridFull({ children }: { children: ReactNode }) {
   return <div className="form-grid__full">{children}</div>;
 }
+
+/**
+ * A full-width rule that separates one group of fields from the next, for example the field the others
+ * depend on from the fields beneath it. Decorative (hidden from assistive technology); the grouping
+ * must also be clear from the order of the fields. Spans the whole row inside a `FormGrid`.
+ */
+export function FormDivider() {
+  return <hr className="form-divider" aria-hidden="true" />;
+}

@@ -70,8 +70,11 @@ from app.modules.stakeholders.service import (
 )
 from app.services.bundle_common import BundleImportWarnings, UserResolver, export_file_links, import_bundled_file, prime_file_links
 from app.services.current_versions import prime_current_versions
+from app.services.lookups import get_or_404
+from app.services.placements import prime_record_placements, record_placements, restore_record_placements
 from app.services.relationships import prime_links
 from app.services.tags import prime_record_tag_names, record_tag_names, restore_record_tags
+from app.services.template_reset import fresh_drafts
 
 _TEXT_FIELDS = (
     "name", "description", "role", "organisation_group", "interests", "responsibilities", "goals_needs",
@@ -119,10 +122,11 @@ def _stakeholder_json(db: Session, stakeholder: Stakeholder, organization_id: UU
         "type_is_project_local": type_is_local, "status": v.status.value,
         "target_cadence": v.target_cadence.value if v.target_cadence else None,
         "influence_level": _level_name(db, v.influence_level_id), "interest_level": _level_name(db, v.interest_level_id),
-        **principals_to_bundle(db, v, STAKEHOLDER_PRINCIPAL_FIELDS), "user_email": emails.get(v.user_id),
+        **principals_to_bundle(db, v, STAKEHOLDER_PRINCIPAL_FIELDS), "user_email": (emails.get(v.user_id) if v.user_id else None),
         "created_by_email": emails.get(stakeholder.creator_id), "is_archived": stakeholder.is_archived,
         "archived_at": _j(stakeholder.archived_at), "created_at": _j(stakeholder.created_at),
         "tags": record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
+        "placements": record_placements(db, STAKEHOLDER_ARTEFACT_TYPE, stakeholder.id),
         "represents": [
             {"persona_name": get_current_persona_version(db, p.id).name, "persona_scope": p.scope.value}
             for _, p in list_represented_personas(db, stakeholder, organization_id)
@@ -162,7 +166,7 @@ def _export_groups(
     prime_current_versions(db, StakeholderVersion, "stakeholder_id", list(member_rows))
     for g in wanted:
         chain = [g, *grp.ancestor_chain(universe, g.id)][::-1]
-        names = {}
+        names: dict[tuple[str, str], None] = {}
         for sid in members_of[g.id]:
             member = member_rows.get(sid)
             if member is not None:
@@ -278,7 +282,7 @@ def _create_stakeholder_from_json(
 ) -> Stakeholder:
     context = f"Stakeholder {data['name']!r}"
     creator_id = users.resolve(data.get("created_by_email"), required=True, context=f"{context} creator")
-    creator = db.get(User, creator_id)
+    creator = get_or_404(db, User, creator_id, "User")
     influence = _level_by_name(db, organization_id, INFLUENCE_AXIS_KEY, data.get("influence_level"))
     interest = _level_by_name(db, organization_id, INTEREST_AXIS_KEY, data.get("interest_level"))
     for label, wanted, found in (("influence", data.get("influence_level"), influence), ("interest", data.get("interest_level"), interest)):
@@ -306,6 +310,10 @@ def _create_stakeholder_from_json(
     restore_record_tags(
         db, organization_id=organization_id, record_project_id=project_id, actor_id=creator_id,
         artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, names=data.get("tags"),
+    )
+    restore_record_placements(
+        db, project_id=project_id, actor_id=creator_id,
+        artefact_type=STAKEHOLDER_ARTEFACT_TYPE, artefact_id=stakeholder.id, entries=data.get("placements"),
     )
     for rep in data.get("represents", []):
         persona_id = personas.get((rep["persona_name"], rep["persona_scope"]))
@@ -382,6 +390,7 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
     STAKEHOLDER_TYPES.prime_display_names(db, [(v.org_type_id, v.project_type_id) for v in versions.values()])
     prime_links(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_record_tag_names(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
+    prime_record_placements(db, STAKEHOLDER_ARTEFACT_TYPE, ids)
     prime_file_links(db, StakeholderFile, "stakeholder_id", ids)
     emails = _stakeholder_emails(db, stakeholders)
     stakeholders_json = []
@@ -403,11 +412,13 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
             "display_order_override": row.display_order_override, "is_enabled": row.is_enabled,
         })
     visibility_json = []
-    for row in db.scalars(select(ProjectStakeholderVisibility).where(ProjectStakeholderVisibility.project_id == project.id)):
-        target = db.get(Stakeholder, row.stakeholder_id)
+    for visibility_row in db.scalars(
+        select(ProjectStakeholderVisibility).where(ProjectStakeholderVisibility.project_id == project.id)
+    ):
+        target = db.get(Stakeholder, visibility_row.stakeholder_id)
         if target is not None and target.scope == StakeholderScope.ORGANIZATION:
             visibility_json.append({
-                "org_stakeholder_name": get_current_stakeholder_version(db, target.id).name, "hidden": row.hidden,
+                "org_stakeholder_name": get_current_stakeholder_version(db, target.id).name, "hidden": visibility_row.hidden,
             })
     return {
         "project_stakeholder_types": types_json,
@@ -416,6 +427,11 @@ def export_project_data(db: Session, project: Project) -> tuple[dict[str, Any], 
         "project_stakeholder_visibility": visibility_json,
         "project_stakeholder_groups": _export_groups(db, project.organization_id, project.id, StakeholderScope.PROJECT),
     }, assets
+
+
+def reset_for_template(data: dict[str, Any]) -> None:
+    """Starter Stakeholders become drafts."""
+    fresh_drafts(data.get("project_stakeholders", []), status=StakeholderStatus.DRAFT.value)
 
 
 def import_project_data(

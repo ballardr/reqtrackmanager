@@ -161,7 +161,7 @@ export const ListsGroupGrants: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Security Reviewers")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group")).toBeInTheDocument();
     await expect(canvas.getByText("3 members")).toBeInTheDocument();
   },
 };

@@ -193,7 +193,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}`,
       expect.objectContaining({ owner: { type: "org_group", id: "group-1" } })
     ));
-    await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
   },
 };
 
@@ -226,7 +226,7 @@ export const GroupOwnerIsNamedAndCanBeUnassigned: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Platform Architecture")).toBeInTheDocument());
-    await expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument();
+    await expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Unassign: Open Question owner" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(
       `/api/v1/projects/${PROJECT_ID}/modules/context_strategy/open-questions/${OPEN_QUESTION_ID}`,

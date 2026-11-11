@@ -94,7 +94,6 @@ Security decisions (see `docs/decisions.md` and
 
 from __future__ import annotations
 
-import io
 import json
 import re
 import zipfile
@@ -113,21 +112,26 @@ from app.models.organization import Organization, OrgGroup, OrgGroupMember, User
 from app.models.project import Project
 from app.models.user import User
 from app.modules.registry import get_all_module_org_bundle_hooks
+from app.services import announcements, nav_labels, org_dashboards, org_policies, overview_widgets
 from app.services.audit import log_event
+from app.services.branding import FOOTER_POSITIONS
 from app.services.bundle_common import (
     LEGACY_REPORT_CONTENT_KEYS,
     BundleImportWarnings,
     UserResolver,
-    enforce_upload_size_limit,
-    enforce_zip_uncompressed_size_limit,
     import_bundled_file,
     new_bundle_file,
+    open_bundle_zip,
+    read_bundle_files,
+    read_bundle_json,
     write_json_entry,
 )
 from app.services.custom_role_presets import seed_custom_role_presets
 from app.services.definitions import seed_link_types, seed_project_statuses
-from app.services.files import read_file
+from app.services.files import read_file, resolve_bundle_files
+from app.services.imported_people import people_section
 from app.services.invites import create_pending_invite
+from app.services.lookups import present
 from app.services.org_membership import external_account_refusal, holds_org_role
 from app.services.project_export import (
     PROJECT_BUNDLE_FORMAT_VERSION,
@@ -144,6 +148,7 @@ from app.services.report_pack_bundle import export_org_packs, import_org_packs
 from app.services.report_placement_bundle import export_org_placements, import_org_placements
 from app.services.report_snippet_bundle import export_org_snippets, import_org_snippets
 from app.services.scoring import seed_missing_scoring_levels
+from app.services.stage_workflow_bundle import export_org_stage_workflows, import_org_stage_workflows
 
 ORG_BUNDLE_KIND = "org-export"
 ORG_BUNDLE_FORMAT_VERSION = 1
@@ -205,6 +210,12 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         **export_org_layouts(db, org.id, file_assets_by_id), **export_org_packs(db, org.id), **export_org_placements(db, org.id),
         **export_org_snippets(db, org.id, file_assets_by_id),
         **export_org_folders(db, org.id),
+        **export_org_stage_workflows(db, org.id),
+        **nav_labels.export_names(org.nav_label_overrides),
+        **overview_widgets.export_layout(org.overview_widgets),
+        **announcements.export_org(db, org.id),
+        **org_dashboards.export_org(db, org.id),
+        **org_policies.export_org(db, org.id),
     }
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         module_bundle_json.update(hooks.export(db, org))
@@ -252,25 +263,31 @@ def _write_org_bundle(db: Session, org: Organization, exported_by: User, zf: zip
         file_assets_by_id[background_asset.id] = background_asset
 
     org_json = {
-        "name": org.name, "accent_color_hex": org.accent_color_hex, "header_title": org.header_title,
+        "name": org.name, "accent_color_hex": org.accent_color_hex, "logo_band_color_hex": org.logo_band_color_hex,
+        "logo_band_text_color_hex": org.logo_band_text_color_hex, "footer_position": org.footer_position,
+        "header_title": org.header_title,
         "require_2fa": org.require_2fa, "allow_self_signup": org.allow_self_signup,
         "auto_accept_email_domain": org.auto_accept_email_domain, "external_user_policy": org.external_user_policy.value,
         "smtp_host": org.smtp_host, "smtp_port": org.smtp_port, "smtp_username": org.smtp_username,
         "smtp_use_tls": org.smtp_use_tls,
+        "allow_imported_approval_state": org.allow_imported_approval_state,
         # Reference only — never re-applied on import (see module docstring).
         "source_sso_enabled": org.sso_enabled, "source_sso_only": org.sso_only,
         "oidc_issuer_url": org.oidc_issuer_url, "oidc_client_id": org.oidc_client_id,
-        "oidc_required_group": org.oidc_required_group, "pat_max_lifetime_days": org.pat_max_lifetime_days,
+        "oidc_required_group": org.oidc_required_group, "oidc_allow_account_creation": org.oidc_allow_account_creation,
+        "pat_max_lifetime_days": org.pat_max_lifetime_days,
         "report_output_retention_days": org.report_output_retention_days,
+        "imported_person_retention_days": org.imported_person_retention_days,
         "report_file_name": org.report_file_name,
         "logo_file_ref": f"{logo_asset.id}_{logo_asset.filename}" if logo_asset else None,
         "logo_content_type": logo_asset.content_type if logo_asset else None,
         "login_background_file_ref": f"{background_asset.id}_{background_asset.filename}" if background_asset else None,
         "login_background_content_type": background_asset.content_type if background_asset else None,
-        "default_template_project_ref": project_ref_by_id.get(org.default_template_project_id),
+        "default_template_project_ref": (project_ref_by_id.get(org.default_template_project_id) if org.default_template_project_id else None),
         "report_look": report_look, "members": members_json, "org_groups": org_groups_json,
         **module_bundle_json,
     }
+    org_json["people"] = people_section(db, org_json)
 
     manifest = {
         "kind": ORG_BUNDLE_KIND, "format_version": ORG_BUNDLE_FORMAT_VERSION,
@@ -295,14 +312,11 @@ def _parse_org_bundle(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, Any],
         HTTPException: 400/413 for a malformed, wrong-kind, too-large, or
             too-new bundle.
     """
-    enforce_upload_size_limit(zip_bytes, what="Bundle upload")
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-        enforce_zip_uncompressed_size_limit(zf)
-        manifest = json.loads(zf.read("manifest.json"))
-        data = json.loads(zf.read("org.json"))
-    except (zipfile.BadZipFile, KeyError, json.JSONDecodeError):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.") from None
+    zf = open_bundle_zip(zip_bytes)
+    manifest = read_bundle_json(zf, "manifest.json")
+    data = read_bundle_json(zf, "org.json")
+    if not isinstance(manifest, dict) or not isinstance(data, dict):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Not a valid export bundle.")
     if manifest.get("kind") != ORG_BUNDLE_KIND:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Expected an {ORG_BUNDLE_KIND!r} bundle, got {manifest.get('kind')!r}.")
     if manifest.get("format_version", 0) > ORG_BUNDLE_FORMAT_VERSION:
@@ -313,12 +327,12 @@ def _parse_org_bundle(zip_bytes: bytes) -> tuple[dict[str, Any], dict[str, Any],
     # Each project is its own `projects/<ref>/project.json` zip entry (see
     # `build_org_bundle`), not nested inside org.json — this discovers them
     # by path rather than assuming a `data["projects"]` key that doesn't exist.
-    file_bytes_by_ref = {n.removeprefix("files/"): zf.read(n) for n in zf.namelist() if n.startswith("files/")}
+    file_bytes_by_ref = read_bundle_files(zf)
     project_data_by_ref: dict[str, dict[str, Any]] = {}
     for entry in zf.namelist():
         if entry.startswith("projects/") and entry.endswith("/project.json"):
             ref = entry.removeprefix("projects/").removesuffix("/project.json")
-            project_data_by_ref[ref] = json.loads(zf.read(entry))
+            project_data_by_ref[ref] = read_bundle_json(zf, entry)
     return manifest, data, file_bytes_by_ref, project_data_by_ref
 
 
@@ -496,11 +510,11 @@ def _import_org_groups(
                 existing_idp_synced_names.add(idp_synced_group_name)
         elif merge_by_name:
             existing_member_ids = set(
-                db.scalars(
+                present(db.scalars(
                     select(OrgGroupMember.user_id).where(
                         OrgGroupMember.org_group_id == group.id, OrgGroupMember.user_id.is_not(None)
                     )
-                ).all()
+                ).all())
             )
         for email in g.get("member_emails", []):
             existing = find_user(email)
@@ -518,11 +532,11 @@ def _import_org_groups(
     for g in data.get("org_groups", []):
         group = groups_by_bundle_name[g["name"].strip().lower()]
         existing_nested_ids: set[UUID] = set(
-            db.scalars(
+            present(db.scalars(
                 select(OrgGroupMember.member_org_group_id).where(
                     OrgGroupMember.org_group_id == group.id, OrgGroupMember.member_org_group_id.is_not(None)
                 )
-            ).all()
+            ).all())
         )
         for nested_name in g.get("nested_group_names", []):
             child = groups_by_bundle_name.get(nested_name.strip().lower())
@@ -542,6 +556,11 @@ def _warn_legacy_report_content(data: dict[str, Any], warnings: BundleImportWarn
     )
     if legacy:
         warnings.add("Report introductions, chapters and appendices in this bundle were not imported: report content has been removed.")
+
+
+def _hex_or_none(value: Any) -> str | None:
+    """`value` when it is a `#rrggbb` colour, otherwise `None` (a bundle is unverified and a colour reaches style attributes)."""
+    return value if isinstance(value, str) and re.fullmatch(r"#[0-9a-fA-F]{6}", value) else None
 
 
 def _bundled_file_name(value: Any, warnings: BundleImportWarnings) -> str | None:
@@ -628,7 +647,9 @@ def _import_projects(
     return project_id_by_ref
 
 
-def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, current_user: User) -> tuple[Organization, list[str]]:
+def import_org_bundle(
+    db: Session, *, name: str | None, zip_bytes: bytes, current_user: User, skip_files: bool = False,
+) -> tuple[Organization, list[str]]:
     """Creates a brand-new organisation from an exported org bundle,
     including every project it contains. Never merges into an existing
     organisation — see the module docstring for why (mirrors
@@ -640,26 +661,38 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         name: Overrides the bundle's own org name if given.
         zip_bytes: The uploaded bundle's raw bytes.
         current_user: The server admin performing the import.
+        skip_files: Import without the bundle's files; honoured only while files cannot be stored.
 
     Returns:
         The new Organization and a list of human-readable import warnings.
+
+    Raises:
+        HTTPException: 403 (`uploads_disabled`) when the bundle has files, they cannot be stored and `skip_files`
+            is not set; nothing is written.
     """
     _manifest, data, file_bytes_by_ref, project_data_by_ref = _parse_org_bundle(zip_bytes)
     warnings = BundleImportWarnings()
+    file_bytes_by_ref = resolve_bundle_files(db, None, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add)
 
     org = Organization(
         name=name if name else data.get("name", "Imported Organisation"),
-        accent_color_hex=data.get("accent_color_hex"), header_title=data.get("header_title"),
+        accent_color_hex=_hex_or_none(data.get("accent_color_hex")), header_title=data.get("header_title"),
+        logo_band_color_hex=_hex_or_none(data.get("logo_band_color_hex")),
+        logo_band_text_color_hex=_hex_or_none(data.get("logo_band_text_color_hex")),
+        footer_position=data.get("footer_position") if data.get("footer_position") in FOOTER_POSITIONS else None,
         require_2fa=data.get("require_2fa", False), allow_self_signup=data.get("allow_self_signup", False),
         auto_accept_email_domain=data.get("auto_accept_email_domain"),
         external_user_policy=data.get("external_user_policy", "disabled"),
         smtp_host=data.get("smtp_host"), smtp_port=data.get("smtp_port"), smtp_username=data.get("smtp_username"),
         smtp_use_tls=data.get("smtp_use_tls", True),
+        allow_imported_approval_state=data.get("allow_imported_approval_state", True),
         # Deliberately not carried over from the bundle — see module docstring.
         sso_enabled=False, sso_only=False,
         oidc_issuer_url=data.get("oidc_issuer_url"), oidc_client_id=data.get("oidc_client_id"),
-        oidc_required_group=data.get("oidc_required_group"), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
+        oidc_required_group=data.get("oidc_required_group"),
+        oidc_allow_account_creation=data.get("oidc_allow_account_creation", True), pat_max_lifetime_days=data.get("pat_max_lifetime_days"),
         report_output_retention_days=data.get("report_output_retention_days"),
+        imported_person_retention_days=data.get("imported_person_retention_days"),
         report_file_name=_bundled_file_name(data.get("report_file_name"), warnings),
     )
     db.add(org)
@@ -670,6 +703,9 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     import_org_snippets(db, org.id, data, current_user, warnings, merge=False, file_bytes_by_ref=file_bytes_by_ref)
     import_org_placements(db, org.id, data, current_user, warnings)
     import_org_folders(db, org.id, data, current_user, warnings)
+    org.nav_label_overrides = nav_labels.import_names(data, warnings)
+    org.overview_widgets = overview_widgets.import_layout(data, warnings)
+    announcements.import_org(db, org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
     # Default project statuses/link types, same as any other new
     # organisation (`routers/orgs.py::create_organization`) — a bundle
@@ -680,6 +716,8 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
     # exist before it creates this org's first imported project.
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    # The bundle's workflows (a customised Standard included); the default only when it carried none.
+    import_org_stage_workflows(db, org.id, data, warnings, seed_if_empty=True)
     seed_custom_role_presets(db, org.id)
     # Scoring levels likewise start at registry defaults.
     seed_missing_scoring_levels(db, org.id)
@@ -706,8 +744,10 @@ def import_org_bundle(db: Session, *, name: str | None, zip_bytes: bytes, curren
         org.login_background_file_id = asset.id
 
     acting_user, find_user = _import_members(db, org, data, current_user, warnings, reassign_acting_user=True)
-    users = UserResolver(db, acting_user, warnings)
+    users = UserResolver(db, acting_user, warnings, organization_id=org.id, data=data)
     _import_org_groups(db, org, data, find_user, warnings, merge_by_name=False)
+    org_dashboards.import_org(db, org.id, data, acting_user, warnings)
+    org_policies.import_org(db, org.id, data, acting_user, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, org, data, users, warnings, None)
     project_id_by_ref = _import_projects(db, org, project_data_by_ref, file_bytes_by_ref, acting_user, users, warnings, resolutions=None)
@@ -773,6 +813,7 @@ def detect_merge_conflicts(db: Session, target_org: Organization, zip_bytes: byt
 
 def merge_org_bundle(
     db: Session, *, target_org: Organization, zip_bytes: bytes, resolutions: dict[str, str], current_user: User,
+    skip_files: bool = False,
 ) -> tuple[list[str], dict[str, int]]:
     """Imports an org bundle's users, groups and projects
     into `target_org` — an organisation that already exists,
@@ -808,6 +849,7 @@ def merge_org_bundle(
             -> `"skip"`/`"import_as_copy"` for a `"project"` or
             `"compliance_standard"` conflict, or `"keep_existing"`/
         current_user: The org admin performing the import.
+        skip_files: Import without the bundle's files; honoured only while files cannot be stored.
 
     Returns:
         Human-readable warnings (same shape as `import_org_bundle`'s), and
@@ -839,14 +881,25 @@ def merge_org_bundle(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid resolution value for: {', '.join(invalid)}.")
 
     warnings = BundleImportWarnings()
+    file_bytes_by_ref = resolve_bundle_files(
+        db, target_org.id, file_bytes_by_ref, skip_files=skip_files, warn=warnings.add,
+    )
     acting_user, find_user = _import_members(db, target_org, data, current_user, warnings, reassign_acting_user=False)
-    users = UserResolver(db, acting_user, warnings)
+    users = UserResolver(db, acting_user, warnings, organization_id=target_org.id, data=data)
     _import_org_groups(db, target_org, data, find_user, warnings, merge_by_name=True)
     import_org_layouts(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_packs(db, target_org.id, data, current_user, warnings, merge=True)
     import_org_snippets(db, target_org.id, data, current_user, warnings, merge=True, file_bytes_by_ref=file_bytes_by_ref)
     import_org_placements(db, target_org.id, data, current_user, warnings)
+    import_org_stage_workflows(db, target_org.id, data, warnings, seed_if_empty=False)
     import_org_folders(db, target_org.id, data, current_user, warnings)
+    # A merge keeps the organisation's own names and adds only those it has not set.
+    target_org.nav_label_overrides = {**nav_labels.import_names(data, warnings), **(target_org.nav_label_overrides or {})}
+    if target_org.overview_widgets is None:
+        target_org.overview_widgets = overview_widgets.import_layout(data, warnings)
+    announcements.import_org(db, target_org.id, data, current_user, warnings)
+    org_dashboards.import_org(db, target_org.id, data, current_user, warnings)
+    org_policies.import_org(db, target_org.id, data, current_user, warnings)
     _warn_legacy_report_content(data, warnings)
     for _module_key, hooks in get_all_module_org_bundle_hooks():
         hooks.import_(db, target_org, data, users, warnings, resolutions)

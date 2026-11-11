@@ -1,0 +1,20 @@
+# The MCP server serves /mcp, /login and /health at the root of its origin, so it has a host name of its own.
+{$DEMO_MCP_HOST:mcp.localhost} {
+	import ../modes/{$DEMO_TLS_MODE:internal}.caddy
+	encode zstd gzip
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>uri regexp \?.* ""
+			request>headers delete
+			resp_headers>Set-Cookie delete
+		}
+	}
+	header -Server
+	reverse_proxy mcp-server:8100 {
+		header_up X-Forwarded-For {http.request.remote.host}
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {http.request.host}
+	}
+}

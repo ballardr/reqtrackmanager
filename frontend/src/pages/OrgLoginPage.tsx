@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { ApiError, api, apiUrl, fileUrl } from "../api/client";
+import { ApiError, api, apiUrl } from "../api/client";
 import type { OrgLoginInfo } from "../api/types";
+import { LoginAnnouncements } from "../components/LoginAnnouncements";
 import { LoginBrandHeader } from "../components/LoginBrandHeader";
+import { SignedOutPage } from "../components/SignedOutPage";
 import { useAuth } from "../context/AuthContext";
 import { t } from "../i18n/strings";
 import { resolveLandingPath } from "./LoginPage";
@@ -96,62 +98,52 @@ export function OrgLoginPage() {
   }
   if (!info) return null;
 
-  const backgroundStyle = info.login_background_file_id
-    ? {
-        backgroundImage: `url(${fileUrl(info.login_background_file_id)})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        minHeight: "100vh",
-      }
-    : { minHeight: "100vh" };
-
   return (
-    <div style={backgroundStyle}>
-      <div className="container" style={{ maxWidth: 380, paddingTop: "4rem" }}>
-        <div className="card stack">
-          <LoginBrandHeader logoFileId={info.logo_file_id} title={info.name} />
+    <SignedOutPage backgroundFileId={info.login_background_file_id} footerPosition={info.footer_position}>
+    <LoginAnnouncements organizationSlug={slug} />
+    <div className="card stack">
+      <LoginBrandHeader logoFileId={info.logo_file_id} title={info.name} bandColorHex={info.logo_band_color_hex} bandTextColorHex={info.logo_band_text_color_hex} />
 
-          {info.sso_enabled && (
-            <a
-              className="btn btn-primary"
-              href={apiUrl(`/api/v1/auth/oidc/${slug}/login?client_nonce=${encodeURIComponent(ssoNonce)}`)}
-              style={{ textAlign: "center" }}
-            >
-              {strings.login.signInWithSso}
-            </a>
-          )}
+      {info.sso_enabled && (
+        <a
+          className="btn btn-primary"
+          href={apiUrl(`/api/v1/auth/oidc/${slug}/login?client_nonce=${encodeURIComponent(ssoNonce)}`)}
+          style={{ textAlign: "center" }}
+        >
+          {strings.login.signInWithSso}
+        </a>
+      )}
 
-          {info.sso_enabled && !info.sso_only && (
-            <div className="row" style={{ justifyContent: "center", color: "var(--color-text-muted)" }}>
-              {strings.login.orDivider}
-            </div>
-          )}
-
-          {!info.sso_only && (
-            <form className="stack" onSubmit={handleSubmit}>
-              <TextField helpNotNeeded
-                label={strings.login.email}
-                value={email}
-                onChange={setEmail}
-                inputProps={{ required: true, type: "email" }}
-              />
-              <TextField helpNotNeeded
-                label={strings.login.password}
-                value={password}
-                onChange={setPassword}
-                inputProps={{ required: true, type: "password" }}
-              />
-              {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
-              <button className="btn btn-primary" type="submit" disabled={submitting}>
-                {submitting ? "…" : strings.login.submit}
-              </button>
-              <a className="text-muted" href="/forgot-password" style={{ textAlign: "center" }}>
-                {strings.passwordReset.forgotLink}
-              </a>
-            </form>
-          )}
+      {info.sso_enabled && !info.sso_only && (
+        <div className="row" style={{ justifyContent: "center", color: "var(--color-text-muted)" }}>
+          {strings.login.orDivider}
         </div>
-      </div>
+      )}
+
+      {!info.sso_only && (
+        <form className="stack" onSubmit={handleSubmit}>
+          <TextField helpNotNeeded
+            label={strings.login.email}
+            value={email}
+            onChange={setEmail}
+            inputProps={{ required: true, type: "email" }}
+          />
+          <TextField helpNotNeeded
+            label={strings.login.password}
+            value={password}
+            onChange={setPassword}
+            inputProps={{ required: true, type: "password" }}
+          />
+          {error && <div style={{ color: "var(--color-danger)" }}>{error}</div>}
+          <button className="btn btn-primary" type="submit" disabled={submitting}>
+            {submitting ? "…" : strings.login.submit}
+          </button>
+          <a className="text-muted" href="/forgot-password" style={{ textAlign: "center" }}>
+            {strings.passwordReset.forgotLink}
+          </a>
+        </form>
+      )}
     </div>
+    </SignedOutPage>
   );
 }

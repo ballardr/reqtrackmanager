@@ -86,7 +86,7 @@ export const HideAFamily: Story = {
   },
 };
 
-/** The gear holds the Word name and generic fallback; a name saves when the field loses focus. */
+/** The gear holds the Word name and generic fallback; the name has its own Save, and the fallback saves at once. */
 export const ChangeTheWordNameAndFallback: Story = {
   beforeEach: () => {
     mockApis();
@@ -97,9 +97,13 @@ export const ChangeTheWordNameAndFallback: Story = {
     await userEvent.click(canvas.getByRole("button", { name: "Settings: Fira Sans" }));
     const popover = within(document.body);
     const name = popover.getByRole("textbox", { name: "Name in Word and OpenDocument" });
+    await expect(popover.getByRole("button", { name: "Save" })).toBeDisabled();
     await userEvent.clear(name);
     await userEvent.type(name, "Fira Sans Book");
+    // Leaving the field saves nothing; the Save button does.
     await userEvent.tab();
+    await expect(api.put).not.toHaveBeenCalled();
+    await userEvent.click(popover.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith("/api/v1/system/report-fonts/x-fira-sans", {
       word_name: "Fira Sans Book", generic: "sans-serif", enabled: true,
     }));

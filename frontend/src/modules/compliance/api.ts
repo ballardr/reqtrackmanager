@@ -38,7 +38,7 @@
  *
  * Standard-level import/export: `exportStandard`/
  * `importStandard` — `exportStandard` returns a `Blob` (`api.getForBlob`,
- * the same shape `OrgComplianceDashboard.tsx`'s report downloads already
+ * the same shape `OrgComplianceWidgets.tsx`'s report downloads already
  * use) rather than parsed JSON, since the caller only ever hands it
  * straight to `downloadBlob`; `importStandard` uploads via `api.postFile`,
  * the same helper `ProjectListPage.tsx`'s own project-bundle import uses.
@@ -247,7 +247,7 @@ function reportQueryString(kind: ComplianceReportKind, filters: ComplianceReport
 }
 
 /** `GET .../orgs/{id}/modules/compliance/reports?format={pdf,docx,odt,html,csv,xlsx,ods}`, scoped
- * by `filters` — the org-wide report `OrgComplianceDashboard.tsx`'s own
+ * by `filters` — the org-wide report `OrgComplianceWidgets.tsx`'s own
  * unfiltered "Download PDF/CSV report" already calls unscoped; this is the
  * filtered counterpart `OrgComplianceStandardsPanel.tsx`/
  * `OrgComplianceOutstandingPanel.tsx`'s own Export triggers use. Merged

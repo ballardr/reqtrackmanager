@@ -57,18 +57,21 @@ class CodePolicy:
         max_length: Most characters a code may have (at most `ABSOLUTE_MAX_CODE_LENGTH`).
         assignment: `auto` has the server generate every code; `manual` has the
             creator choose it.
+        locked: When set, only an organisation administrator may change a project's
+            code after it has been created (creation itself is never blocked).
     """
 
     kind: str = "alphanumeric"
     min_length: int = 2
     max_length: int = 6
     assignment: str = "auto"
+    locked: bool = False
 
-    def as_dict(self) -> dict[str, str | int]:
+    def as_dict(self) -> dict[str, str | int | bool]:
         """The policy as the plain mapping stored on `Organization.project_code_policy`."""
         return {
             "kind": self.kind, "min_length": self.min_length, "max_length": self.max_length,
-            "assignment": self.assignment,
+            "assignment": self.assignment, "locked": self.locked,
         }
 
     @classmethod
@@ -77,7 +80,7 @@ class CodePolicy:
         merged = {**DEFAULT_POLICY.as_dict(), **(stored or {})}
         return cls(
             kind=str(merged["kind"]), min_length=int(merged["min_length"]), max_length=int(merged["max_length"]),
-            assignment=str(merged["assignment"]),
+            assignment=str(merged["assignment"]), locked=bool(merged["locked"]),
         )
 
 

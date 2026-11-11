@@ -29,6 +29,8 @@ import { toErrorMessage, useToast } from "../../context/ToastContext";
 import * as complianceApi from "./api";
 import { EvidenceFormModal } from "./EvidenceFormModals";
 import { COMPLIANCE_EVIDENCE_VALIDITY_STATE_LABEL, type ComplianceEvidence } from "./types";
+import { useCommitQuickLinks } from "../../hooks/useCommitQuickLinks";
+import { useCommitTags } from "../../hooks/useCommitTags";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { evidencePath } from "./paths";
 
@@ -39,6 +41,8 @@ import { evidencePath } from "./paths";
  */
 export function EvidencePanel({ projectId }: { projectId: string }) {
   const { showToast } = useToast();
+  const commitQuickLinks = useCommitQuickLinks(projectId, "compliance_evidence");
+  const commitTags = useCommitTags(projectId, "compliance_evidence");
   const [evidence, setEvidence] = useState<ComplianceEvidence[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -94,6 +98,7 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
           columns={columns}
           rows={filtered}
           rowKey={(e) => e.id}
+          placements={{ projectId, artefactType: "compliance_evidence", rowId: (e) => e.id }}
           rowHref={(e) => evidencePath(projectId, e.id)}
           emptyState={<p className="text-muted">No evidence recorded for this project yet.</p>}
         />
@@ -107,8 +112,9 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
 
       {creating && (
         <EvidenceFormModal
+          projectId={projectId}
           onCancel={() => setCreating(false)}
-          onSave={async (values, files) => {
+          onSave={async (values, files, quickLinks, tags) => {
             try {
               const created = await complianceApi.createEvidence(projectId, values);
               for (const file of files) {
@@ -116,6 +122,8 @@ export function EvidencePanel({ projectId }: { projectId: string }) {
               }
               showToast(files.length > 0 ? "Evidence created and file(s) attached." : "Evidence created.");
               setCreating(false);
+              await commitQuickLinks(created.id, quickLinks);
+              await commitTags(created.id, tags);
               await reload();
             } catch (err) {
               showToast(toErrorMessage(err, "Could not create evidence."), "error");

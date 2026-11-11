@@ -19,34 +19,18 @@ import json
 from datetime import UTC
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models.enums import OrgRole
-from app.models.file import FileAsset, RequirementActionFile, RequirementFile
+from app.models.enums import OrgRole, ServerRole
 from app.models.organization import Organization, UserOrgRole
 from app.models.project import Project
-from app.models.requirement import Requirement
-from app.models.requirement_action import RequirementAction
 from app.models.user import User
 from app.modules.registry import get_org_creation_choices, memoize_module_state, run_on_org_created_hooks
-
-# `_accessible_project_ids` (the overview-stats endpoint reuses the
-# exact same project-visibility computation `GET /projects` already uses,
-# rather than duplicating it here) — this codebase already has precedent
-# for importing an underscore-prefixed helper across a module boundary
-# (`routers/projects.py` itself imports `_direct_project_member_ids_base`/
-# `_descendant_org_group_ids` from `services/rbac.py`) own spec offers "move it to a shared service
-# (or import it)" as the two options and this repo has no existing
-# convention of one router importing from another, but moving ~150 lines of
-# heavily-documented, actively-relied-on RBAC logic out of `projects.py`
-# for one new read-only endpoint is a disproportionate risk for this
-# change — importing it is the lower-risk option.
-from app.routers.projects.core import _accessible_project_ids
 from app.schemas.org import (
     MergeConflictOut,
     OrganizationCreate,
@@ -67,8 +51,19 @@ from app.services.definitions import seed_link_types, seed_project_statuses
 from app.services.downloads import filename_safe
 from app.services.org_deletion import delete_organization_cascade
 from app.services.org_export import build_org_bundle, detect_merge_conflicts, import_org_bundle, merge_org_bundle
-from app.services.rbac import get_effective_org_roles, memoize_user_lookups, require_org_role, require_server_admin
+from app.services.org_overview_stats import org_overview_stats
+from app.services.rbac import (
+    check_pat_scope,
+    get_effective_org_roles,
+    get_granted_server_roles,
+    memoize_user_lookups,
+    require_org_role,
+    require_server_admin,
+    require_server_role,
+    server_role_used,
+)
 from app.services.report_starters import add_starter_layouts
+from app.services.stage_workflows import seed_stage_workflow
 
 router = APIRouter(tags=["organizations-core"])
 
@@ -81,28 +76,32 @@ def _now():
 
 
 @router.get("/creation-choices", response_model=list[OrgCreationChoiceOut])
-def list_org_creation_choices(current_user: User = Depends(require_server_admin)):
+def list_org_creation_choices(
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
+):
     """Lists every registered module's optional org-creation seeding
     choices (`ModuleDefinition.org_creation_choices`, e.g. Decision
     Management's ADR template packs) for the org-creation form to render
     generically — this core router never imports a specific module's own
-    choice list. Server-admin only, matching `POST /orgs` (only a server
-    admin ever creates an organisation)."""
+    choice list. Platform subscription manager (or server administrator),
+    matching `POST /orgs`."""
     return get_org_creation_choices()
 
 
 @router.post("", response_model=OrganizationOut, status_code=status.HTTP_201_CREATED)
 def create_organization(
     payload: OrganizationCreate,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
     db: Session = Depends(get_db),
 ):
-    """Creates a new organisation. Server-admin only (I-M-05)."""
+    """Creates a new organisation. Platform subscription manager or server
+    administrator (I-M-05); the audit event names the role used."""
     org = Organization(name=payload.name)
     db.add(org)
     db.flush()
     seed_project_statuses(db, org.id)
     seed_link_types(db, org.id)
+    seed_stage_workflow(db, org.id)
     seed_custom_role_presets(db, org.id)
     # Generic module-contributed org-creation seeding (e.g. Compliance's
     # `seed_compliance_action_types`, or a module's opt-in `org_creation_
@@ -116,7 +115,10 @@ def create_organization(
     selected_keys = None if payload.module_choice_keys is None else frozenset(payload.module_choice_keys)
     run_on_org_created_hooks(db, org.id, selected_keys)
     add_starter_layouts(db, org.id, actor_id=None)
-    log_event(db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id)
+    log_event(
+        db, entity_type="organization", entity_id=org.id, action="created", actor_id=current_user.id,
+        detail={"role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_MANAGER)},
+    )
     db.commit()
     db.refresh(org)
     return org
@@ -124,8 +126,9 @@ def create_organization(
 
 @router.post("/import", response_model=OrgImportResult, status_code=status.HTTP_201_CREATED)
 async def import_organization(
-    name: str | None = Form(None), file: UploadFile = File(...),
-    current_user: User = Depends(require_server_admin), db: Session = Depends(get_db),
+    name: str | None = Form(None), file: UploadFile = File(...), skip_files: bool = Form(False),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
+    db: Session = Depends(get_db),
 ):
     """Creates a brand-new organisation from an uploaded organisation export
     bundle (`GET /{organization_id}/export` — see `services.org_export`'s
@@ -133,17 +136,23 @@ async def import_organization(
     decisions behind what is/isn't carried over: secrets are never
     included, and SSO is always left disabled post-import).
 
-    Server-admin only, matching plain organisation creation (`POST /orgs`)
-    — creating an organisation is a platform-level action either way.
+    Platform subscription manager or server administrator, matching plain
+    organisation creation (`POST /orgs`) — creating an organisation is a
+    platform-level action either way.
 
     Registered before `POST /{organization_id}/join-as-admin` (in this file's
     declaration order) purely for readability grouping with `POST ""`; it
     doesn't need static-route-ordering protection like `/import` in
     `routers/projects.py` does, since no bare `POST /{organization_id}`
     route exists here to collide with.
+
+    The bundle's files are imported whenever they can be stored. While uploads are disabled the call is refused
+    (403 `uploads_disabled`, with the file count and size) unless `skip_files` is set, which imports without them.
     """
     zip_bytes = await file.read()
-    org, warnings = import_org_bundle(db, name=name, zip_bytes=zip_bytes, current_user=current_user)
+    org, warnings = import_org_bundle(
+        db, name=name, zip_bytes=zip_bytes, current_user=current_user, skip_files=skip_files,
+    )
     return OrgImportResult(organization=OrganizationOut.model_validate(org), warnings=warnings)
 
 
@@ -210,7 +219,7 @@ async def preview_organization_merge(
 
 @router.post("/{organization_id}/import/merge", response_model=OrgMergeResult)
 async def merge_organization_bundle(
-    organization_id: UUID, file: UploadFile = File(...), resolutions: str = Form("{}"),
+    organization_id: UUID, file: UploadFile = File(...), resolutions: str = Form("{}"), skip_files: bool = Form(False),
     current_user: User = Depends(require_org_role(OrgRole.ORG_ADMIN)), db: Session = Depends(get_db),
 ):
     """Merges an uploaded organisation export bundle's users, groups,
@@ -222,7 +231,7 @@ async def merge_organization_bundle(
     `merge_org_bundle`'s docstrings for the exact id/value shapes.
 
     Same `ORG_ADMIN`-only, no-server-admin-bypass authorization as
-    `preview_organization_merge` above.
+    `preview_organization_merge` above. Files follow the same rule as `POST /import` (`skip_files`).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -236,6 +245,7 @@ async def merge_organization_bundle(
     zip_bytes = await file.read()
     warnings, summary = merge_org_bundle(
         db, target_org=org, zip_bytes=zip_bytes, resolutions=parsed_resolutions, current_user=current_user,
+        skip_files=skip_files,
     )
     return OrgMergeResult(warnings=warnings, **summary)
 
@@ -297,15 +307,16 @@ def join_organization_as_admin(
 @router.post("/{organization_id}/disable", response_model=OrganizationOut)
 def disable_organization(
     organization_id: UUID,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
     db: Session = Depends(get_db),
 ):
     """Suspends an organisation (e.g. non-payment): every org/project-scoped
     request against it is rejected (`services.rbac._require_org_active`),
     for every user including this org's own admins, until re-enabled. No
     data is touched or removed — the reversible alternative to
-    `delete_organization` below. Server-admin only; this is tenancy
-    management, not organisation content access (I-M-05).
+    `delete_organization` below. Platform subscription manager or server
+    administrator; this is tenancy management, not organisation content
+    access (I-M-05).
     """
     org = db.get(Organization, organization_id)
     if org is None:
@@ -315,7 +326,10 @@ def disable_organization(
     org.is_active = False
     org.disabled_at = _now()
     org.disabled_by = current_user.id
-    log_event(db, entity_type="organization", entity_id=org.id, action="disabled", actor_id=current_user.id)
+    log_event(
+        db, entity_type="organization", entity_id=org.id, action="disabled", actor_id=current_user.id,
+        detail={"role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_MANAGER)},
+    )
     db.commit()
     db.refresh(org)
     return org
@@ -324,7 +338,7 @@ def disable_organization(
 @router.post("/{organization_id}/enable", response_model=OrganizationOut)
 def enable_organization(
     organization_id: UUID,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_MANAGER)),
     db: Session = Depends(get_db),
 ):
     """Reverses `disable_organization`, restoring normal access immediately."""
@@ -336,7 +350,10 @@ def enable_organization(
     org.is_active = True
     org.disabled_at = None
     org.disabled_by = None
-    log_event(db, entity_type="organization", entity_id=org.id, action="enabled", actor_id=current_user.id)
+    log_event(
+        db, entity_type="organization", entity_id=org.id, action="enabled", actor_id=current_user.id,
+        detail={"role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_MANAGER)},
+    )
     db.commit()
     db.refresh(org)
     return org
@@ -346,7 +363,7 @@ def enable_organization(
 def delete_organization(
     organization_id: UUID,
     payload: OrganizationDeleteConfirm,
-    current_user: User = Depends(require_server_admin),
+    current_user: User = Depends(require_server_role(ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY)),
     db: Session = Depends(get_db),
 ):
     """Permanently deletes an organisation and everything it owns: every
@@ -354,8 +371,10 @@ def delete_organization(
     group, report template, custom field definition, uploaded file (removed
     from actual storage, not just its database row), and any Personal
     Access Token's reach into this org. Irreversible — unlike
-    `disable_organization` above, there is no archive/undo. Server-admin
-    only (I-M-05: tenancy management, not organisation content access).
+    `disable_organization` above, there is no archive/undo. Subscription
+    removal authority or server administrator (I-M-05: tenancy management,
+    not organisation content access); a Platform subscription manager is
+    refused.
 
     Requires `payload.confirm_name` to exactly match the organisation's
     current name — the same "type the name to confirm" pattern used for
@@ -382,11 +401,36 @@ def delete_organization(
 
     log_event(
         db, entity_type="organization", entity_id=organization_id, action="deleted",
-        actor_id=current_user.id, detail={"name": org.name},
+        actor_id=current_user.id,
+        detail={
+            "name": org.name,
+            "role_used": server_role_used(db, current_user, ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY),
+        },
     )
     delete_organization_cascade(db, organization_id)
     db.delete(org)
     db.commit()
+
+
+# Server-tier roles that read the organisation directory (names, state, logo
+# only). Both subscription roles need it to find the target of their action.
+_DIRECTORY_ROLES = frozenset({ServerRole.SUBSCRIPTION_MANAGER, ServerRole.SUBSCRIPTION_REMOVAL_AUTHORITY})
+
+
+def _sees_every_organization(db: Session, user: User) -> bool:
+    """Whether `user` may read every organisation's thin directory record.
+
+    True for a server administrator and for a holder of either subscription
+    role; the record carries no tenant content (see `list_organizations`).
+
+    Args:
+        db: Database session.
+        user: The caller.
+
+    Returns:
+        True when the whole directory is visible to the caller.
+    """
+    return user.is_server_admin or bool(get_granted_server_roles(db, user) & _DIRECTORY_ROLES)
 
 
 @router.get("", response_model=list[OrganizationOut])
@@ -409,11 +453,17 @@ def list_organizations(
     full server-wide directory would let a server admin with no real
     membership anywhere pick an organisation they hold no role in at all.
     """
-    if current_user.is_server_admin and not mine:
-        return db.scalars(select(Organization).order_by(Organization.name)).all()
+    allowed_orgs = db.info.get("pat_allowed_org_ids")  # a Personal Access Token lists only its own organisations
+    if not mine and _sees_every_organization(db, current_user):
+        everything = select(Organization).order_by(Organization.name)
+        if allowed_orgs is not None:
+            everything = everything.where(Organization.id.in_(allowed_orgs))
+        return db.scalars(everything).all()
     org_ids = db.scalars(
         select(UserOrgRole.organization_id).where(UserOrgRole.user_id == current_user.id)
     ).all()
+    if allowed_orgs is not None:
+        org_ids = [o for o in org_ids if o in allowed_orgs]
     if not org_ids:
         return []
     return db.scalars(
@@ -424,13 +474,17 @@ def list_organizations(
 @router.get("/{organization_id}", response_model=OrganizationOut)
 def get_organization(
     organization_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    check_pat_scope(request, organization_id)
     org = db.get(Organization, organization_id)
     if org is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found.")
-    if not current_user.is_server_admin and not get_effective_org_roles(db, current_user.id, organization_id):
+    if not _sees_every_organization(db, current_user) and not get_effective_org_roles(
+        db, current_user.id, organization_id
+    ):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this organisation.")
     return org
 
@@ -502,106 +556,7 @@ def get_org_overview_stats(
     Agent — previously archived projects were counted, so a member's
     "Projects" figure disagreed with their own project list.)
     """
-    org_roles = get_effective_org_roles(db, current_user.id, organization_id)
-    sees_full_totals = current_user.is_server_admin or OrgRole.ORG_ADMIN in org_roles
-
-    member_count = db.scalar(
-        select(func.count(func.distinct(User.id)))
-        .select_from(User)
-        .join(UserOrgRole, UserOrgRole.user_id == User.id)
-        .where(UserOrgRole.organization_id == organization_id, User.is_archived.is_(False))
-    ) or 0
-
-    if sees_full_totals:
-        project_count = db.scalar(
-            select(func.count()).select_from(Project).where(
-                Project.organization_id == organization_id, Project.is_archived.is_(False)
-            )
-        ) or 0
-        requirement_count = db.scalar(
-            select(func.count())
-            .select_from(Requirement)
-            .join(Project, Project.id == Requirement.project_id)
-            .where(
-                Project.organization_id == organization_id, Project.is_archived.is_(False),
-                Requirement.is_archived.is_(False),
-            )
-        ) or 0
-        total_file_size_bytes = db.scalar(
-            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
-                FileAsset.organization_id == organization_id
-            )
-        ) or 0
-    else:
-        accessible_ids = _accessible_project_ids(db, current_user.id)
-        org_project_ids = set(
-            db.scalars(
-                select(Project.id).where(
-                    Project.organization_id == organization_id, Project.id.in_(accessible_ids)
-                )
-            ).all()
-        ) if accessible_ids else set()
-        active_project_ids = set(
-            db.scalars(select(Project.id).where(Project.id.in_(org_project_ids), Project.is_archived.is_(False))).all()
-        ) if org_project_ids else set()
-        project_count = len(active_project_ids)
-        requirement_count = (
-            db.scalar(select(func.count()).select_from(Requirement).where(
-                Requirement.project_id.in_(active_project_ids), Requirement.is_archived.is_(False),
-            ))
-            if active_project_ids
-            else 0
-        ) or 0
-
-        # Distinct files this member can account for: this org's own shared
-        # resources (`is_org_resource`, visible to any member regardless of
-        # per-project access — same as `GET /{organization_id}/resources`)
-        # plus files attached to a requirement/action within their
-        # accessible-project set. A file could match both a requirement
-        # attachment and (if it's also an org resource) the first clause —
-        # `union()` de-duplicates by file id so it's never double-counted.
-        #
-        # Known, deliberate gap: `CommentFile` (a file attached to a
-        # `ReviewComment`, C-M-02's discussion-thread attachment path) is
-        # NOT included here. `ReviewComment.target_id` is polymorphic
-        # (`ReviewTargetType.REQUIREMENT`/`ACTION`/`CHANGE_REQUEST`, no FK),
-        # so resolving it back to a project id for scoping would need a
-        # three-way branch per target type — a disproportionate amount of
-        # complexity for what these comment-thread attachments actually
-        # weigh, versus the admin branch above (a plain per-org sum, which
-        # *does* include every `CommentFile`'s underlying `FileAsset`
-        # regardless of type). This makes a scoped member's own total a
-        # strict undercount, never an over-exposure — the safe direction
-        # for a visibility boundary — but it is a real, known accuracy gap:
-        # revisit if comment attachments turn out to matter for this figure.
-        org_resource_file_ids = select(FileAsset.id.label("file_id")).where(
-            FileAsset.organization_id == organization_id, FileAsset.is_org_resource.is_(True)
-        )
-        if org_project_ids:
-            requirement_ids = select(Requirement.id).where(Requirement.project_id.in_(org_project_ids))
-            action_ids = select(RequirementAction.id).where(RequirementAction.project_id.in_(org_project_ids))
-            file_ids_via_requirement = select(RequirementFile.file_id).where(
-                RequirementFile.requirement_id.in_(requirement_ids)
-            )
-            file_ids_via_action = select(RequirementActionFile.file_id).where(
-                RequirementActionFile.action_id.in_(action_ids)
-            )
-            distinct_file_ids = org_resource_file_ids.union(file_ids_via_requirement, file_ids_via_action).subquery()
-        else:
-            distinct_file_ids = org_resource_file_ids.subquery()
-        total_file_size_bytes = db.scalar(
-            select(func.coalesce(func.sum(FileAsset.size_bytes), 0)).where(
-                FileAsset.id.in_(select(distinct_file_ids.c.file_id))
-            )
-        ) or 0
-
-    return OrgOverviewStatsOut(
-        project_count=project_count,
-        requirement_count=requirement_count,
-        member_count=member_count,
-        total_file_size_bytes=total_file_size_bytes,
-        is_full_org_total=sees_full_totals,
-    )
+    return org_overview_stats(db, current_user, organization_id)
 
 
 @router.get("/{organization_id}/projects", response_model=list[OrgProjectSummaryOut])

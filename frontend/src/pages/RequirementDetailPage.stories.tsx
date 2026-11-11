@@ -152,6 +152,18 @@ export const MemberSeesReadOnlyView: Story = {
     await waitFor(() => expect(canvas.getByText(/Users can reset a forgotten password/)).toBeInTheDocument());
     await expect(canvas.queryByLabelText("Name")).not.toBeInTheDocument();
     await expect(await recordActionNames(canvas, "Requirement")).not.toContain("Archive");
+    await expect(canvas.getByRole("link", { name: "← Requirements" })).toHaveAttribute("href", `/projects/${PROJECT_ID}/requirements`);
+  },
+};
+
+/** A record that cannot be loaded says so, instead of leaving the spinner up. */
+export const UnavailableRequirementShowsNotFound: Story = {
+  beforeEach: () => {
+    spyOn(api, "get").mockRejectedValue(new Error("Not found"));
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Not found")).toBeInTheDocument());
   },
 };
 
@@ -401,7 +413,7 @@ const OTHER_REQUIREMENT = buildGraphNode({
 });
 const DEPENDS_ON: ArtefactLinkTypeOption = buildOption({
   link_type_id: "lt1", forward_name: "Depends on", reverse_name: "Is a dependency of", phrase: "Depends on",
-  other_types: [{ type: "requirement", label: "Requirement" }],
+  other_types: [{ type: "requirement", label: "Requirement", can_create: false }],
 });
 const OTHER_REQUIREMENT_CANDIDATE = buildCandidate({
   type: "requirement", id: "requirement-2", type_label: "Requirement", label: OTHER_REQUIREMENT.label,

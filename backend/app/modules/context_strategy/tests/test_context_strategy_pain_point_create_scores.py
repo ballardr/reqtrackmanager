@@ -21,6 +21,7 @@ from app.modules.context_strategy.tests.test_context_strategy_pain_point_scoring
     _setup,
 )
 from tests.conftest import auth_headers, create_org_user, login
+from tests.db_helpers import must_scalar
 
 
 def _create(client, token, project_id, **extra):
@@ -33,10 +34,10 @@ def _create(client, token, project_id, **extra):
 
 def _count(project_id) -> int:
     with SessionLocal() as db:
-        return db.scalar(select(func.count()).select_from(PainPoint).where(PainPoint.project_id == project_id))
+        return must_scalar(db, select(func.count()).select_from(PainPoint).where(PainPoint.project_id == project_id))
 
 
-def test_create_persists_all_persona_scores(client, admin_token):
+def test_create_persists_general_scores(client, admin_token):
     _, project, token = _setup(client, admin_token, "PP Create Scores Co")
     pid = project["id"]
     levels = _levels(client, token, pid)
@@ -44,7 +45,7 @@ def test_create_persists_all_persona_scores(client, admin_token):
     resp = _create(client, token, pid, scores=[_entry(levels, severity="Blocker", frequency="Rare", confidence="High")])
     assert resp.status_code == 201, resp.text
     body = _get(client, token, pid, resp.json()["id"], model_key="sxf")
-    assert body["scope"] == "all_personas" and body["is_blocker"] is True
+    assert body["scope"] == "general" and body["is_blocker"] is True
     assert body["score"]["raw"] == 5
 
 
@@ -76,8 +77,10 @@ def test_invalid_score_creates_nothing(client, admin_token):
     levels = _levels(client, token, pid)
     before = _count(pid)
 
-    wrong_axis = {**_entry(levels), "severity_level_id": levels["frequency"]["Rare"]}
+    wrong_axis = {"target_id": None, "levels": {"severity": levels["frequency"]["Rare"]}}
     assert _create(client, token, pid, scores=[wrong_axis]).status_code == 400
+    earlier_shape = {"target_id": None, "severity_level_id": levels["severity"]["Minor"]}
+    assert _create(client, token, pid, scores=[earlier_shape]).status_code == 422  # not silently dropped
     unknown = _entry(levels, "00000000-0000-0000-0000-000000000001", severity="Minor")
     assert _create(client, token, pid, scores=[unknown]).status_code == 400
     assert _count(pid) == before
@@ -90,6 +93,10 @@ def test_member_can_create_but_not_score_and_is_told_so(client, admin_token):
     user_id = create_org_user(client, token, org["id"], "pp_create_scores_member@example.com")
     assert client.post(f"/api/v1/projects/{pid}/roles", json={"user_id": user_id, "role": "member"}, headers=auth_headers(token)).status_code == 204
     member = login(client, "pp_create_scores_member@example.com", "Password123!")
+    allow = client.put(
+        _cs(pid) + "/pain-point-settings", json={"submission_policy": "members"}, headers=auth_headers(token),
+    )
+    assert allow.status_code == 200, allow.text
     before = _count(pid)
 
     assert _create(client, member, pid).status_code == 201

@@ -190,7 +190,7 @@ function ReviewFormModal({
       <div className="stack">
         <FormGrid minColumn="18rem">
           <FormGridFull>
-            <TextField helpNotNeeded required
+            <TextField help={COMPLIANCE_HELP.reviewFrequency} required
               label="Frequency / description"
               ariaLabel="Frequency label"
               value={frequencyLabel}
@@ -206,7 +206,7 @@ function ReviewFormModal({
             inputProps={{ min: 1, type: "number" }}
           />
           <FormGridFull>
-            <PrincipalFormField helpNotNeeded
+            <PrincipalFormField help={COMPLIANCE_HELP.reviewOwner}
               label="Owner" orgUsers={orgUsers} organizationId={organizationId} projectId={projectId}
               value={owner} display={savedPrincipalDisplay(owner, initial?.owner)} onChange={setOwner} ariaLabel="Review owner"
             />

@@ -20,7 +20,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { ScopedRecordCode } from "../../components/ScopedRecordCode";
 import { Spinner } from "../../components/Spinner";
@@ -41,8 +42,11 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 export function ProjectStrategiesPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -66,10 +70,10 @@ export function ProjectStrategiesPage() {
   async function reloadStrategies() {
     if (!projectId) return;
     try {
-      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setStrategies(await projectStrategyApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 
@@ -128,22 +132,20 @@ export function ProjectStrategiesPage() {
             sectionKey="context_strategy.strategies.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Strategy…" searchAriaLabel="Search Strategy"
           >
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StrategyStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(STRATEGY_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Priority">
-              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as StrategyPriority | "")}>
-                <option value="">All priorities</option>
-                {Object.entries(STRATEGY_PRIORITY_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(STRATEGY_STATUS_LABEL)}
+            />
+            <FilterSelect
+              label={strings.filters.priority}
+              value={priorityFilter}
+              onChange={setPriorityFilter}
+              allLabel="All priorities"
+              options={labelOptions(STRATEGY_PRIORITY_LABEL)}
+            />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
             <FilterCheckbox label="Show archived" checked={includeArchived} onChange={setIncludeArchived} />
@@ -155,6 +157,7 @@ export function ProjectStrategiesPage() {
           columns={columns}
           rows={filtered}
           rowKey={(s) => s.id}
+          placements={{ projectId, artefactType: "strategy", rowId: (s) => s.id }}
           onRowClick={(s) => navigate(`/projects/${rowProjectId(s, projectId)}/modules/context_strategy/strategies/${s.id}`)}
           emptyState={<p className="text-muted">No Strategy recorded for this project yet.</p>}
         />

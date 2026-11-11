@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +22,9 @@ from app.database import Base
 from app.models.base import TimestampMixin, UUIDPKMixin, str_enum
 from app.models.encrypted_type import EncryptedString
 from app.models.enums import ExternalUserPolicy, ModuleEntitlementPolicy, OrgRole, ProjectRole, SignupMode
+
+if TYPE_CHECKING:  # the relationship target names the model; importing it at run time would be circular
+    from app.models.user import User
 
 
 class Organization(UUIDPKMixin, TimestampMixin, Base):
@@ -71,6 +75,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             (`settings.pat_default_max_lifetime_days`). Enforced dynamically
             at PAT auth time, not just at creation — see
             `models.pat.PersonalAccessToken`'s docstring.
+        file_uploads_enabled / storage_quota_bytes / storage_warned: The operator's storage rules for this tenant
+            (see the column comment below).
         is_active: Whether this organisation's content is currently
             reachable at all (e.g. suspended for non-payment). Reversible,
             unlike deletion: no data is touched, just gated. Deliberately
@@ -181,6 +187,10 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
             code even inside its own project, overriding each user's preference.
         tag_mode: `"free"` or `"restricted"`: whether organisation-owned records may take a tag
             nobody listed in the organisation's tag vocabulary.
+        nav_label_overrides: The organisation's default navigation names by stable navigation key
+            (`services.nav_labels`); a project's own or inherited name takes precedence.
+        overview_widgets: The organisation's default project overview layout (`services.overview_widgets`); SQL NULL
+            means none (the built-in layout applies). A project's own or inherited layout takes precedence.
     """
 
     __tablename__ = "organizations"
@@ -196,6 +206,8 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     enforce_code_everywhere: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     tag_mode: Mapped[str] = mapped_column(String(12), default="free", server_default=text("'free'"))
+    nav_label_overrides: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict, server_default=text("'{}'::jsonb"))
+    overview_widgets: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     require_2fa: Mapped[bool] = mapped_column(Boolean, default=False)
     allow_self_signup: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -251,6 +263,9 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     )
     pat_max_lifetime_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     report_output_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Age in days after which an imported person that nothing refers to is offered for removal on the organisation's
+    #: People page; `None` (the default) never offers one. Nothing is deleted automatically.
+    imported_person_retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: Default file name template (without extension) for a generated report that sets none of its own
     #: (`services.report_file_names`); `None` keeps the built-in "<scope>-<report>" names.
     report_file_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -269,6 +284,15 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     report_chapters_per_component: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
 
     accent_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Colour of the band drawn behind the organisation's logo on the login page, in outgoing email and (when set) on
+    #: reports, so a light logo stays visible. `None` follows the platform value, then the application top bar colour
+    #: (`services.branding.DEFAULT_LOGO_BAND_HEX`).
+    logo_band_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Colour of the title drawn on the band; `None` follows the platform value, then black or white by contrast.
+    logo_band_text_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Where the footer of this organisation's sign-in page sits (`services.branding.FOOTER_POSITIONS`); `None`
+    #: follows the platform value.
+    footer_position: Mapped[str | None] = mapped_column(String(20), nullable=True)
     header_title: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -291,6 +315,27 @@ class Organization(UUIDPKMixin, TimestampMixin, Base):
     # deliberate, in-the-moment human decision. See docs/decisions.md's "AI
     # approval via MCP" entry.
     allow_ai_approvals: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Whether this organisation's identity provider may create a new account for an address nobody has registered. Off
+    # keeps sign-in to accounts that already exist (an invitation, SCIM or an administrator creates them first), so a
+    # tenant's provider cannot take an address another person would have registered. On by default: no change on upgrade.
+    oidc_allow_account_creation: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Whether a project bundle imported into this organisation may keep the approval state it carries (approved,
+    # decided or voted records). On by default so a restore or a move reproduces the project; off returns every
+    # imported record to a fresh draft (`services.bundle_approval_state`). Either way, imported approvers must be
+    # members of this organisation and the import is audited with the number of records that arrived approved.
+    allow_imported_approval_state: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # Whether the organisation's own policies may contain links (`services.org_policies`). Off by default: the page is
+    # members-only, so the phishing concern of an organisation message does not apply, but a link on a page every
+    # member trusts is still a choice the organisation makes.
+    allow_policy_links: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # Storage rules the platform operator sets for this tenant (`services.storage_usage`, `services.files`). They are the
+    # operator's policy, not the organisation's content, so they are not in the organisation bundle.
+    # `file_uploads_enabled` off stops new files for this organisation only; `storage_quota_bytes` null means "use the
+    # server default limit" (itself null for no limit); `storage_warned` records that the 90% notice was sent for the
+    # current crossing, so it is sent once and again only after usage has fallen below the threshold.
+    file_uploads_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    storage_warned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
 
 class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
@@ -359,6 +404,13 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
             falls back to the built-in product name if left unset, same as
             `default_header_title`; the website/address have no built-in
             fallback and are simply omitted from the footer when unset.
+        footer_prefix: Short text shown before the platform company name in the page footer and the email footer
+            ("Hosted by", "Managed by"), so a person using the deployment for another organisation is not led to think
+            the operator is their own company. Shown only with a platform company name, and in an email only when the
+            organisation has not set its own company name.
+        company_id_label / company_id: The company's registration identifier (label such as "ABN", and the number),
+            shown after the address in the page footer and the email footer under the same rule as `footer_prefix`.
+            The identifier shows only when it is set; a label without one is ignored.
         singleton_guard: Always `True` — see class docstring. Not read or
             written by any application code; its only job is being the
             target of a `UNIQUE` constraint.
@@ -366,12 +418,25 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
             entitlement (`ModuleEntitlementPolicy`; see its docstring in
             `models/enums.py`), used by the entitlement resolution
             when an organisation has no explicit override row.
+        file_uploads_enabled: Whether the deployment accepts new user files
+            at all (`services/files.py::assert_uploads_allowed`). Off stops
+            new files only; existing files stay readable and deletable.
+        default_storage_quota_bytes: The storage limit, in bytes, of an organisation that has none of its own
+            (`Organization.storage_quota_bytes`); null means no limit.
     """
 
     __tablename__ = "server_settings"
 
     singleton_guard: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, unique=True)
     accent_color_hex: Mapped[str] = mapped_column(String(7), default="#475569")
+    #: Platform value of the logo band colour (see `Organization.logo_band_color_hex`); `None` is the top bar colour.
+    logo_band_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Platform value of the band title colour (see `Organization.logo_band_text_color_hex`); `None` is automatic.
+    logo_band_text_color_hex: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    #: Where the footer of the signed-out pages sits: `after_content` (below the card) or `bottom_of_page`; one of
+    #: `services.branding.FOOTER_POSITIONS`, validated by the update schema. An organisation may override it for its own
+    #: sign-in page (`Organization.footer_position`).
+    footer_position: Mapped[str] = mapped_column(String(20), nullable=False, default="after_content", server_default="after_content")
     default_logo_file_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("file_assets.id", use_alter=True, name="fk_server_settings_default_logo_file_id"),
@@ -387,6 +452,9 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     email_footer_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     email_footer_website: Mapped[str | None] = mapped_column(String(500), nullable=True)
     email_footer_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    footer_prefix: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    company_id_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    company_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     org_label_singular: Mapped[str | None] = mapped_column(String(50), nullable=True)
     org_label_plural: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Module system: the deployment-
@@ -400,6 +468,8 @@ class ServerSettings(UUIDPKMixin, TimestampMixin, Base):
     default_module_entitlement_policy: Mapped[ModuleEntitlementPolicy] = mapped_column(
         str_enum(ModuleEntitlementPolicy), default=ModuleEntitlementPolicy.OPEN
     )
+    file_uploads_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    default_storage_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 
 class PendingInvite(UUIDPKMixin, TimestampMixin, Base):
@@ -475,15 +545,15 @@ class UserOrgRole(UUIDPKMixin, TimestampMixin, Base):
     )
     role: Mapped[OrgRole] = mapped_column(str_enum(OrgRole))
 
-    user: Mapped[User] = relationship(back_populates="org_roles")  # noqa: F821
+    user: Mapped[User] = relationship(back_populates="org_roles")
 
 
 class OrgGroup(UUIDPKMixin, TimestampMixin, Base):
     """A named grouping of organisation users (C-U-08 groups requirement).
 
-    Org groups can be nested inside project groups (C-U-12) so that an
+    Organisation groups can be nested inside project groups (C-U-12) so that an
     organisational team (e.g. "Development Team") can be granted a project
-    role in a single step. Org groups can also be nested inside *other* org
+    role in a single step. Organisation groups can also be nested inside *other* org
     groups (`OrgGroupMember.member_org_group_id`), transitively — unlike
     org-group-in-project-group nesting, which deliberately resolves only
     one level deep (see docs/decisions.md), this nesting is fully

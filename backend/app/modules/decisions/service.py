@@ -226,7 +226,10 @@ DECISION_TEMPLATE_PACKS: tuple[DecisionTemplatePack, ...] = (
 def seed_decision_types(db: Session, project_id: uuid.UUID) -> None:
     """Adds the 5 default `DecisionTypeDefinition` rows for a newly
     created project (not committed/flushed — caller owns the transaction).
-    Mirrors `services.definitions.seed_action_types`'s identical shape."""
+    Mirrors `services.definitions.seed_action_types`'s identical shape. A project that already has its own
+    types (copied from a template) is left as it is, so the defaults never duplicate or override the template's."""
+    if db.scalar(select(DecisionTypeDefinition.id).where(DecisionTypeDefinition.project_id == project_id).limit(1)) is not None:
+        return
     for i, name in enumerate(DEFAULT_DECISION_TYPES):
         db.add(DecisionTypeDefinition(project_id=project_id, name=name, sort_order=i))
 

@@ -174,11 +174,12 @@ def get_group_in_scope(
         GroupRuleError: 404 if absent, of another scope, or owned by another organisation/project.
     """
     group = db.get(StakeholderGroup, group_id)
-    owned = group is not None and group.scope == scope and (
-        group.organization_id == organization_id if scope == StakeholderScope.ORGANIZATION
-        else group.project_id == project_id
-    )
-    if not owned:
+    if group is None or not (
+        group.scope == scope and (
+            group.organization_id == organization_id if scope == StakeholderScope.ORGANIZATION
+            else group.project_id == project_id
+        )
+    ):
         raise GroupRuleError("Stakeholder group not found.", 404)
     return group
 
@@ -193,7 +194,7 @@ def _clean_name(name: str) -> str:
     return name
 
 
-def _owner_filters(scope: StakeholderScope, organization_id: uuid.UUID, project_id: uuid.UUID | None) -> list:
+def _owner_filters(scope: StakeholderScope, organization_id: uuid.UUID | None, project_id: uuid.UUID | None) -> list:
     return [
         StakeholderGroup.scope == scope,
         StakeholderGroup.organization_id == organization_id if scope == StakeholderScope.ORGANIZATION
@@ -201,7 +202,7 @@ def _owner_filters(scope: StakeholderScope, organization_id: uuid.UUID, project_
     ]
 
 
-def sibling_filters(group_scope: StakeholderScope, organization_id: uuid.UUID, project_id: uuid.UUID | None,
+def sibling_filters(group_scope: StakeholderScope, organization_id: uuid.UUID | None, project_id: uuid.UUID | None,
                     parent_group_id: uuid.UUID | None) -> list:
     """Filter expressions selecting a group's siblings (same owner and parent)."""
     parent = StakeholderGroup.parent_group_id.is_(None) if parent_group_id is None else StakeholderGroup.parent_group_id == parent_group_id
@@ -551,7 +552,7 @@ def text_proposals(
     ids = [s.id for s in stakeholders]
     texts = dict(db.execute(select(StakeholderVersion.stakeholder_id, StakeholderVersion.organisation_group).where(
         StakeholderVersion.stakeholder_id.in_(ids), StakeholderVersion.valid_to.is_(None)
-    )).all()) if ids else {}
+    )).tuples().all()) if ids else {}
     counts: dict[str, int] = defaultdict(int)
     spelling: dict[str, str] = {}
     for sid in ids:
@@ -595,7 +596,7 @@ def create_from_text(
     by_name = {g.name.lower(): g for g in universe.values() if g.parent_group_id == root.id}
     texts = dict(db.execute(select(StakeholderVersion.stakeholder_id, StakeholderVersion.organisation_group).where(
         StakeholderVersion.stakeholder_id.in_([s.id for s in stakeholders]), StakeholderVersion.valid_to.is_(None)
-    )).all()) if stakeholders else {}
+    )).tuples().all()) if stakeholders else {}
     children, added = [], 0
     for name in chosen:
         child = by_name.get(name.lower())

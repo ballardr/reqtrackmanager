@@ -4,11 +4,11 @@ profile edits, org-admin display-name locking (C-U-16), and TOTP 2FA
 
 from concurrent.futures import ThreadPoolExecutor
 
-import pyotp
 from sqlalchemy import text
 
 from app.database import engine as app_engine
 from tests.conftest import auth_headers, login
+from tests.totp_helpers import next_code
 
 
 def _audit_action_count(entity_id: str, action: str) -> int:
@@ -211,12 +211,12 @@ def test_password_change_invalidates_the_old_token(client, admin_token):
 def test_2fa_disable_invalidates_the_old_token(client, admin_token):
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
     secret = enroll.json()["secret"]
-    code = pyotp.TOTP(secret).now()
+    code = next_code(secret)
     client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=auth_headers(admin_token))
 
     assert client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).status_code == 200
 
-    disable_code = pyotp.TOTP(secret).now()
+    disable_code = next_code(secret)
     resp = client.post(
         "/api/v1/auth/2fa/status", json={"action": "disable", "code": disable_code}, headers=auth_headers(admin_token)
     )
@@ -245,7 +245,7 @@ def test_password_change_and_2fa_actions_are_audit_logged(client, admin_token):
     secret = enroll.json()["secret"]
     resp = client.post(
         "/api/v1/auth/2fa/status",
-        json={"action": "confirm", "code": pyotp.TOTP(secret).now()},
+        json={"action": "confirm", "code": next_code(secret)},
         headers=auth_headers(token),
     )
     assert resp.status_code == 204
@@ -253,7 +253,7 @@ def test_password_change_and_2fa_actions_are_audit_logged(client, admin_token):
 
     resp = client.post(
         "/api/v1/auth/2fa/status",
-        json={"action": "disable", "code": pyotp.TOTP(secret).now()},
+        json={"action": "disable", "code": next_code(secret)},
         headers=auth_headers(token),
     )
     assert resp.status_code == 204
@@ -293,7 +293,7 @@ def test_2fa_enroll_confirm_and_login_flow(client, admin_token):
     secret = enroll.json()["secret"]
     assert enroll.json()["qr_code_png_base64"]
 
-    code = pyotp.TOTP(secret).now()
+    code = next_code(secret)
     confirm = client.post(
         "/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=auth_headers(admin_token)
     )
@@ -321,7 +321,7 @@ def test_2fa_enroll_confirm_and_login_flow(client, admin_token):
     # Correct code completes login.
     resp = client.post(
         "/api/v1/auth/2fa/verify",
-        json={"challenge_token": challenge_token, "code": pyotp.TOTP(secret).now()},
+        json={"challenge_token": challenge_token, "code": next_code(secret)},
     )
     assert resp.status_code == 200
     real_token = resp.json()["access_token"]
@@ -335,7 +335,7 @@ def test_2fa_enroll_confirm_and_login_flow(client, admin_token):
     assert resp.status_code == 400
     resp = client.post(
         "/api/v1/auth/2fa/status",
-        json={"action": "disable", "code": pyotp.TOTP(secret).now()},
+        json={"action": "disable", "code": next_code(secret)},
         headers=auth_headers(real_token),
     )
     assert resp.status_code == 204
@@ -356,7 +356,7 @@ def test_2fa_verify_locks_out_after_repeated_failed_codes(client, admin_token):
     secret = enroll.json()["secret"]
     client.post(
         "/api/v1/auth/2fa/status",
-        json={"action": "confirm", "code": pyotp.TOTP(secret).now()},
+        json={"action": "confirm", "code": next_code(secret)},
         headers=auth_headers(admin_token),
     )
 
@@ -376,7 +376,7 @@ def test_2fa_verify_locks_out_after_repeated_failed_codes(client, admin_token):
     fresh_challenge_token = fresh_login.json()["challenge_token"]
     resp = client.post(
         "/api/v1/auth/2fa/verify",
-        json={"challenge_token": fresh_challenge_token, "code": pyotp.TOTP(secret).now()},
+        json={"challenge_token": fresh_challenge_token, "code": next_code(secret)},
     )
     assert resp.status_code == 401
     assert "too many failed attempts" in resp.json()["detail"].lower()
@@ -391,7 +391,7 @@ def test_2fa_status_rejects_missing_or_invalid_action(client, admin_token):
     merged endpoints in this codebase."""
     enroll = client.post("/api/v1/auth/2fa/enroll", headers=auth_headers(admin_token))
     secret = enroll.json()["secret"]
-    code = pyotp.TOTP(secret).now()
+    code = next_code(secret)
 
     missing = client.post("/api/v1/auth/2fa/status", json={"code": code}, headers=auth_headers(admin_token))
     assert missing.status_code == 422
@@ -412,7 +412,7 @@ def test_2fa_lockout_clears_once_the_window_passes(client, admin_token):
     secret = enroll.json()["secret"]
     client.post(
         "/api/v1/auth/2fa/status",
-        json={"action": "confirm", "code": pyotp.TOTP(secret).now()},
+        json={"action": "confirm", "code": next_code(secret)},
         headers=auth_headers(admin_token),
     )
     user_id = client.get("/api/v1/auth/me", headers=auth_headers(admin_token)).json()["id"]
@@ -429,6 +429,32 @@ def test_2fa_lockout_clears_once_the_window_passes(client, admin_token):
     challenge_token = login_resp.json()["challenge_token"]
     resp = client.post(
         "/api/v1/auth/2fa/verify",
-        json={"challenge_token": challenge_token, "code": pyotp.TOTP(secret).now()},
+        json={"challenge_token": challenge_token, "code": next_code(secret)},
     )
     assert resp.status_code == 200
+
+
+def test_a_totp_code_is_accepted_once(client, admin_token):
+    """A code seen by someone watching cannot be used again inside its time window; the next one works."""
+    import time
+
+    import pyotp
+
+    from app.services import totp as totp_service
+    from tests.totp_helpers import TotpClock
+
+    headers = auth_headers(admin_token)
+    secret = client.post("/api/v1/auth/2fa/enroll", headers=headers).json()["secret"]
+    code = next_code(secret)
+    assert client.post("/api/v1/auth/2fa/status", json={"action": "confirm", "code": code}, headers=headers).status_code == 204
+
+    login_reply = client.post("/api/v1/auth/login", json={"email": "admin@example.com", "password": "ChangeMe123!"}).json()
+    challenge = login_reply["challenge_token"]
+    replay = client.post("/api/v1/auth/2fa/verify", json={"challenge_token": challenge, "code": code})
+    assert replay.status_code == 401  # the enrolment already used this code
+    assert client.post("/api/v1/auth/2fa/verify", json={"challenge_token": challenge, "code": next_code(secret)}).status_code == 200
+
+    now = TotpClock.now
+    assert totp_service.matching_step(secret, pyotp.TOTP(secret).at(now - 30), now) is not None  # one step of drift
+    assert totp_service.matching_step(secret, pyotp.TOTP(secret).at(now - 90), now) is None
+    assert time.time() > 0

@@ -97,6 +97,7 @@ export function PersonaListView({
       onShowHidden={onShowHidden}
       onOpen={onOpen}
       tagFilter={tagFilter}
+      placementType="persona"
       projectScope={projectScope}
       page={page}
       exportRecords={exportRecords && { ...exportRecords, recordType: "persona" }}

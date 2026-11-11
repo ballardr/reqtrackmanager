@@ -23,6 +23,7 @@ import { REPORT_FORMAT } from "../api/reportFormats";
 import type { ReportFileKind } from "../api/reports";
 import { useStrings } from "../context/TerminologyContext";
 import { useUiPreference } from "../hooks/useUiPreference";
+import { Tooltip } from "./Tooltip";
 import { defaultReportFormat, REPORT_FORMAT_PREFERENCE } from "../utils/reportFormatChoice";
 
 /**
@@ -62,17 +63,21 @@ export function ReportFormatDownload<K extends ReportFileKind>({
         <fieldset className="stack" style={{ gap: "var(--space-1)", border: 0, margin: 0, padding: 0, minWidth: 0 }}>
           <legend style={{ fontWeight: 600, padding: 0, marginBottom: "var(--space-1)" }}>{text.formatLegend}</legend>
           {kinds.map((kind) => (
-            <label key={kind} className="checkbox-label" title={REPORT_FORMAT[kind].title}>
-              <input
-                type="radio" name={groupName} value={kind} checked={kind === selected}
-                disabled={downloading} onChange={() => setPicked(kind)}
-              />
-              <span>{REPORT_FORMAT[kind].label}</span>
-            </label>
+            <Tooltip key={kind} label={REPORT_FORMAT[kind].title}>
+              <label className="checkbox-label">
+                <input
+                  type="radio" name={groupName} value={kind} checked={kind === selected}
+                  disabled={downloading} onChange={() => setPicked(kind)}
+                />
+                <span>{REPORT_FORMAT[kind].label}</span>
+              </label>
+            </Tooltip>
           ))}
         </fieldset>
       ) : (
-        <p className="text-muted" style={{ margin: 0 }} title={REPORT_FORMAT[selected].title}>{text.formatOnly(REPORT_FORMAT[selected].label)}</p>
+        <Tooltip label={REPORT_FORMAT[selected].title}>
+          <p className="text-muted" style={{ margin: 0 }}>{text.formatOnly(REPORT_FORMAT[selected].label)}</p>
+        </Tooltip>
       )}
       <div className="row">
         <button

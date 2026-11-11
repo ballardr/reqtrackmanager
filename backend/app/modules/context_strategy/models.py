@@ -143,10 +143,11 @@ Future State/Guiding Principle's identity+version split:
   member).
 
 Reporting adds `PainPoint.is_intentional` and
-`PainPointScore` — one Severity/Frequency/Confidence rating of a Pain Point
-for one target (a persona, or "all personas" when the target is null).
+`PainPointScore` — the ratings of a Pain Point for one target (a persona, or the
+General row when the target is null), held one `PainPointScoreAxis` row per
+scoring axis so a custom criterion needs no schema change.
 `target_type`/`target_id` are a plain validated pair, never an FK into the
-owning module's table (Context & Strategy cannot import Stakeholders & Personas); the level columns
+owning module's table (Context & Strategy cannot import Stakeholders & Personas); the level ids
 are FKs into core's generic `scoring_levels`.
 """
 
@@ -184,6 +185,7 @@ from app.modules.context_strategy.enums import (
     OpenQuestionStatus,
     PainPointPriority,
     PainPointStatus,
+    PainPointSubmissionPolicy,
     StrategyPriority,
     StrategyScope,
     StrategyStatus,
@@ -692,24 +694,25 @@ class PainPoint(UUIDPKMixin, TimestampMixin, Base):
 
 
 class PainPointScore(UUIDPKMixin, TimestampMixin, Base):
-    """One rating of a Pain Point for one target.
+    """The ratings of a Pain Point for one target.
 
-    A Pain Point has either exactly one all-targets row (`target_id` NULL) or
-    one row per target, never both (`service.set_pain_point_scores`
-    enforces it; the unique indexes below only stop duplicates).
+    A Pain Point has at most one General row (`target_id` NULL: every
+    whole-Pain-Point criterion, and the default for per-persona criteria) and
+    at most one row per persona that differs from it, holding per-persona
+    criteria only (`pain_point_scores.set_pain_point_scores` enforces the
+    rules; the unique indexes below only stop duplicates).
 
     Attributes:
         pain_point_id: The scored Pain Point.
         target_type: Artefact type of the scored-for record (e.g.
-            `"persona"`), or NULL for "all personas".
+            `"persona"`), or NULL for the General row.
         target_id: That record's id, or NULL. A plain id, not an FK: the
             owning module is optional, and a deleted/hidden target
             degrades to an unlabelled row rather than blocking deletion.
-        severity_level_id / frequency_level_id / confidence_level_id: The
-            chosen `scoring_levels` per axis; NULL = not scored on that axis
-            (a model needing it then shows "not scored under this model").
-            `RESTRICT` on delete: removing a level goes through
-            `scoring.delete_level`, which reassigns users first.
+        axes: The chosen level per axis (`PainPointScoreAxis`); an axis with
+            no row is not scored (a model needing it then shows "not scored
+            under this model"). Read and written through
+            `pain_point_scores.score_level_ids` / `assign_score_level_ids`.
         scored_by: The last user to change this row.
     """
 
@@ -733,16 +736,32 @@ class PainPointScore(UUIDPKMixin, TimestampMixin, Base):
     )
     target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    severity_level_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scoring_levels.id"), nullable=True
-    )
-    frequency_level_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scoring_levels.id"), nullable=True
-    )
-    confidence_level_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scoring_levels.id"), nullable=True
-    )
     scored_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # Loaded with the row in one extra query per batch, so a list of scores never reads one row at a time.
+    axes: Mapped[list[PainPointScoreAxis]] = relationship(
+        lazy="selectin", cascade="all, delete-orphan", passive_deletes=True, order_by="PainPointScoreAxis.axis_key",
+    )
+
+
+class PainPointScoreAxis(UUIDPKMixin, Base):
+    """The level a `PainPointScore` row holds on one scoring axis.
+
+    Attributes:
+        score_id: The score row it belongs to (removed with it).
+        axis_key: The scheme axis (registered or an organisation's or project's own); unique per score row.
+        level_id: The organisation's level on that axis. Deleting a level removes the row (core makes an in-use
+            level be reassigned first, so only an axis deleted with its scores loses any).
+    """
+
+    __tablename__ = "pain_point_score_axes"
+    __table_args__ = (
+        UniqueConstraint("score_id", "axis_key", name="uq_pain_point_score_axes_axis"),
+        Index("ix_pain_point_score_axes_level", "level_id"),
+    )
+
+    score_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pain_point_scores.id", ondelete="CASCADE"))
+    axis_key: Mapped[str] = mapped_column(String(64))
+    level_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("scoring_levels.id", ondelete="CASCADE"))
 
 
 class PainPointComment(UUIDPKMixin, TimestampMixin, Base):
@@ -796,6 +815,42 @@ class PainPointFile(UUIDPKMixin, Base):
     file_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("file_assets.id", ondelete="CASCADE"))
     linked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PainPointSubmissionSetting(UUIDPKMixin, TimestampMixin, Base):
+    """Who may submit a Pain Point: a project's own choice (`project_id` set) or an organisation's default
+    (`project_id` NULL). A row exists only where someone chose a value; resolution is project, nearest
+    ancestor, organisation default, then `PainPointSubmissionPolicy.MANAGERS`
+    (`submission_policy.resolve_submission_policy`).
+
+    Deliberately a Context & Strategy table, not a column on the core `Project`/`Organization` models: the
+    setting is this module's own configuration.
+
+    Attributes:
+        organization_id: The owning organisation (always set).
+        project_id: The project, or `None` for the organisation's default.
+        policy: The chosen `PainPointSubmissionPolicy`.
+    """
+
+    __tablename__ = "pain_point_submission_settings"
+    __table_args__ = (
+        Index(
+            "uq_pain_point_submission_settings_org", "organization_id", unique=True,
+            postgresql_where=sa_text("project_id IS NULL"),
+        ),
+        Index(
+            "uq_pain_point_submission_settings_project", "project_id", unique=True,
+            postgresql_where=sa_text("project_id IS NOT NULL"),
+        ),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE")
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    policy: Mapped[PainPointSubmissionPolicy] = mapped_column(str_enum(PainPointSubmissionPolicy, 20))
 
 
 # --- Guiding Principles --------------------------------------------

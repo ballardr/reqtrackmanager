@@ -38,7 +38,7 @@ Links are shown and edited in the **Links** panel beside a requirement's page (s
 
 Beyond requirements, any two records of a project can be linked, and an organisation can limit which kinds of record each link type may join and which link types each kind of record may use — see [Links and traceability](links-and-traceability.md).
 
-Each link type also has a **direction**, set by an organisation admin under **Admin → Projects & workflow → Link types**. Read with the forward name, "Target is upstream" means the target is where the source comes from ("Derives from"), "Target is downstream" means the target depends on the source ("Is implemented by"), and "No direction" suits symmetric types ("Related to"). Directions let traceability views and AI assistants (the `get_artefact_link_graph` tool) answer "where does this come from?" and "what depends on it?" instead of showing every link as merely related. The seeded types come pre-classified for new organisations where the direction is clear; existing organisations and any type you add start as "No direction" until you set one, and an unclassified type is still shown, just as related.
+Each link type also has a **direction**, set by an organisation admin under **Admin → Workflow → Link types**. Read with the forward name, "Target is upstream" means the target is where the source comes from ("Derives from"), "Target is downstream" means the target depends on the source ("Is implemented by"), and "No direction" suits symmetric types ("Related to"). Directions let traceability views and AI assistants (the `get_artefact_link_graph` tool) answer "where does this come from?" and "what depends on it?" instead of showing every link as merely related. The seeded types come pre-classified for new organisations where the direction is clear; existing organisations and any type you add start as "No direction" until you set one, and an unclassified type is still shown, just as related.
 
 ```mermaid
 flowchart LR
@@ -56,7 +56,7 @@ If the [Risk Management module](../modules/risk-management-module/overview.md) i
 
 ## Owners, reviewers and groups
 
-Every requirement has an **owner**, defaulting to whoever created it, and may have an assigned **reviewer**. Either can be a user, an organisation group or one of the project's groups, so a team stays accountable when one person leaves. The page shows a group's name, its kind (Org group or Project group) and how many people it stands for, and the version history records who owned each version. An owner is required, so a requirement can never be left without one.
+Every requirement has an **owner**, defaulting to whoever created it, and may have an assigned **reviewer**. Either can be a user, an organisation group or one of the project's groups, so a team stays accountable when one person leaves. The page shows a group's name, its kind (Organisation group or Project group) and how many people it stands for, and the version history records who owned each version. An owner is required, so a requirement can never be left without one.
 
 ```mermaid
 flowchart LR
@@ -76,7 +76,7 @@ Separately from approval, a project manager can mark an approved requirement **C
 
 ## CSV import and export
 
-Open the **List actions** menu on the Requirements page, choose **Import from CSV**, pick a file, then map its columns to the requirement's fields (name, component and category — matched by prefix within that component — plus optional reasoning, level, target version, owner, reviewer, tags and custom fields). **Preview** shows what would be created, what would change (before and after) and which rows have errors before anything is written; **Apply** then runs the valid rows through the same rules as editing by hand. A row with a code (`SW-PERF-014`) updates that requirement and a row without one creates a new one. **Export** downloads the list as currently filtered in the same format, so requirements round-trip to and from a spreadsheet: edit a cell, import the file and the preview shows exactly what will change. Owners and reviewers are one column each: an email address for a person, or `Name (Org group)` / `Name (Project group)` for a group. **Export → Download import template** gives a starter CSV with the project's own column names.
+Open the **List actions** menu on the Requirements page, choose **Import from CSV**, pick a file, then map its columns to the requirement's fields (name, component and category — matched by prefix within that component — plus optional reasoning, level, target version, owner, reviewer, tags and custom fields). **Preview** shows what would be created, what would change (before and after) and which rows have errors before anything is written; **Apply** then runs the valid rows through the same rules as editing by hand. A row with a code (`SW-PERF-014`) updates that requirement and a row without one creates a new one. **Export** downloads the list as currently filtered in the same format, so requirements round-trip to and from a spreadsheet: edit a cell, import the file and the preview shows exactly what will change. Owners and reviewers are one column each: an email address for a person, or `Name (Organisation group)` / `Name (Project group)` for a group. **Export → Download import template** gives a starter CSV with the project's own column names.
 
 ## Where this fits
 

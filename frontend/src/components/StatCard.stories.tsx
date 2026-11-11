@@ -14,7 +14,7 @@ type Story = StoryObj<typeof StatCard>;
 
 /** Value renders above the label, matching `MetricTile`'s layout — the two
  * are used interchangeably in the same `.grid.grid-metrics` row (e.g.
- * `OrgComplianceDashboard.tsx`'s top grid), so they must share the same
+ * `OrgComplianceWidgets.tsx`'s top grid), so they must share the same
  * visual order or the row reads as inconsistent (found in live review). */
 export const Default: Story = {
   args: { label: "Projects", value: 12 },

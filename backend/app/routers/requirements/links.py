@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.enums import ArtefactType
-from app.models.project import Project
 from app.models.relationship import ArtefactLink
 from app.models.requirement import Requirement, RequirementVersion
 from app.models.requirement_link_type import RequirementLinkTypeDefinition
@@ -26,6 +25,7 @@ from app.schemas.requirement import RequirementLinkCreate, RequirementLinkOut
 from app.services.audit import log_event
 from app.services.link_type_scope import UNAVAILABLE_MESSAGE, assert_link_type_usable
 from app.services.link_types import LinkRuleError
+from app.services.lookups import project_or_404
 from app.services.rbac import require_project_view
 from app.services.relationships import create_link as create_artefact_link
 from app.services.relationships import delete_link as delete_artefact_link
@@ -71,7 +71,9 @@ def _links_to_out(db: Session, links: list[ArtefactLink], viewpoint_requirement_
     } if other_ids else {}
     out = []
     for link in links:
-        link_type = link_types.get(link.link_type_id) if link.link_type_id is not None else None
+        if link.link_type_id is None:
+            raise ValueError("A requirement-to-requirement link always has a link type.")
+        link_type = link_types.get(link.link_type_id)
         if link.source_id == viewpoint_requirement_id:
             direction = "outgoing"
             display_name = link_type.forward_name if link_type is not None else ""
@@ -109,7 +111,7 @@ def create_link(
     request instead — see `routers.change_requests.create_change_request`.
     """
     _require_edit_role(db, current_user, project_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     requirement = _get_requirement_in_project(db, project_id, requirement_id)
     if is_locked(get_current_version(db, requirement.id)) and requires_change_request_for_links(db, project):
         raise HTTPException(
@@ -174,7 +176,7 @@ def delete_link(
     be in.
     """
     _require_edit_role(db, current_user, project_id)
-    project = db.get(Project, project_id)
+    project = project_or_404(db, project_id)
     requirement = _get_requirement_in_project(db, project_id, requirement_id)
     if is_locked(get_current_version(db, requirement.id)) and requires_change_request_for_links(db, project):
         raise HTTPException(

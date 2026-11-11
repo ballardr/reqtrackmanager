@@ -1,0 +1,13 @@
+# Runs reqtrack-demo-reset.service every day. Persistent=true runs a missed reset at the next boot.
+# The time and zone must equal DEMO_RESET_AT and DEMO_RESET_TZ in the service (docs/demo.md, "Daily reset"). The zone is
+# an IANA name, so the wall-clock time follows a daylight-saving change.
+[Unit]
+Description=Daily ReqTrackManager demonstration refresh and reset
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 UTC
+Persistent=true
+Unit=reqtrack-demo-reset.service
+
+[Install]
+WantedBy=timers.target

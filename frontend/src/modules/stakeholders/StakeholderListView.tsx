@@ -210,6 +210,7 @@ export function StakeholderListView({
         onShowHidden={onShowHidden}
         onOpen={onOpen}
       tagFilter={tagFilter}
+      placementType="stakeholder"
       projectScope={projectScope}
       page={page}
         onCreate={onCreate && (({ group_ids: groupIds = [], ...values }) => onCreate(values as StakeholderFieldValues, groupIds))}

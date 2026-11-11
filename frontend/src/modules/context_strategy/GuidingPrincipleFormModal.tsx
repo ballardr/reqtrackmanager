@@ -25,6 +25,7 @@ import { FormGrid, FormGridFull } from "../../components/FormGrid";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { GUIDING_PRINCIPLE_PRIORITY_LABEL } from "./types";
 import type { GuidingPrinciple, GuidingPrincipleFieldValues, GuidingPrinciplePriority } from "./types";
+import { CONTEXT_STRATEGY_HELP } from "./help";
 
 const TEXT_FIELDS: { key: keyof GuidingPrincipleFieldValues; label: string; rows: number }[] = [
   { key: "principle_statement", label: "Principle statement", rows: 3 },
@@ -88,7 +89,7 @@ export function GuidingPrincipleFormModal({
               />
             </FormGridFull>
           ))}
-          <LabeledSelect helpNotNeeded
+          <LabeledSelect help={CONTEXT_STRATEGY_HELP.priority}
             label="Priority"
             value={priority}
             onChange={(v) => setPriority(v as GuidingPrinciplePriority)}

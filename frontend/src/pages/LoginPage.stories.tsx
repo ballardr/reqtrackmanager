@@ -3,21 +3,27 @@ import { MemoryRouter } from "react-router-dom";
 import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { ApiError, api } from "../api/client";
-import type { ServerSettings, SignupConfig } from "../api/types";
+import type { AnnouncementNotice, ServerSettings, SignupConfig } from "../api/types";
 import { buildUser, withAuth, withRouter } from "../testing/storybook-helpers";
 import { LoginPage } from "./LoginPage";
 
 const SERVER_SETTINGS: ServerSettings = {
   accent_color_hex: "#475569", default_logo_file_id: null, default_header_title: "ReqTrack Manager",
+  logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: "after_content",
   default_login_background_file_id: null,
   email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
+  footer_prefix: null, company_id_label: null, company_id: null,
   org_label_singular: null, org_label_plural: null,
+  file_uploads_enabled: true,
 };
 
-function mockBrandingAndSignup(signupMode: SignupConfig["signup_mode"] = "disabled") {
+function mockBrandingAndSignup(
+  signupMode: SignupConfig["signup_mode"] = "disabled", announcements: AnnouncementNotice[] = [], settings: ServerSettings = SERVER_SETTINGS,
+) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/announcements/login")) return announcements;
     if (path.includes("signup-config")) return { signup_mode: signupMode, self_signup_organizations: [] } satisfies SignupConfig;
-    return SERVER_SETTINGS;
+    return settings;
   });
 }
 
@@ -57,6 +63,40 @@ export const Default: Story = {
     // "Sign in" is both the heading and the submit button — scope to the heading.
     await expect(canvas.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     await expect(canvas.queryByText(/New here/)).not.toBeInTheDocument();
+  },
+};
+
+/** The platform band colour is drawn behind the logo on the sign-in card; unset, it is the top bar colour. */
+export const LogoBandColour: Story = {
+  decorators: [withRouter("/login")],
+  beforeEach: () => mockBrandingAndSignup("disabled", [], { ...SERVER_SETTINGS, logo_band_color_hex: "#0b5fa5" }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await canvas.findByRole("heading", { name: "Sign in" });
+    const band = canvasElement.querySelector<HTMLElement>(".logo-band");
+    await expect(band?.style.background).toBe("rgb(11, 95, 165)");
+  },
+};
+
+export const LogoBandDefault: Story = {
+  decorators: [withRouter("/login")],
+  beforeEach: () => mockBrandingAndSignup(),
+  play: async ({ canvasElement }) => {
+    await within(canvasElement).findByRole("heading", { name: "Sign in" });
+    await expect(canvasElement.querySelector<HTMLElement>(".logo-band")?.style.background).toContain("var(--color-header-bg)");
+  },
+};
+
+/** Active platform messages flagged for login show above the form, as plain text. */
+export const ShowsPlatformMessages: Story = {
+  decorators: [withRouter("/login")],
+  beforeEach: () => mockBrandingAndSignup("disabled", [
+    { id: "n1", title: "Demo instance", body: "Sign in with the demo account.", severity: "information", scope: "server", dismissible: true },
+  ]),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText("Demo instance")).toBeInTheDocument();
+    await expect(canvas.getByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   },
 };
 
@@ -132,7 +172,7 @@ export const TwoFactorChallenge: Story = {
 };
 
 const withReauthState: Decorator = (Story) => (
-  <MemoryRouter initialEntries={[{ pathname: "/login", state: { message: "For your security, you've been signed out. Please sign in again." } }]}>
+  <MemoryRouter initialEntries={[{ pathname: "/login", state: { message: "For your security, you have been signed out. Please sign in again." } }]}>
     <Story />
   </MemoryRouter>
 );
@@ -149,5 +189,7 @@ export const ReauthMessage: Story = {
   },
 };
 
+export const LogoBandLightTheme: Story = { ...LogoBandDefault, globals: { theme: "light" } };
+export const LogoBandDarkTheme: Story = { ...LogoBandDefault, globals: { theme: "dark" } };
 export const LightTheme: Story = { ...Default, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...Default, globals: { theme: "dark" } };

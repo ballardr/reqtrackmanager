@@ -30,8 +30,8 @@ const complianceStatus: ProjectComplianceStatus[] = [
 // The `ProjectOverviewPage.tsx` integration this used to live in as a
 // `WithCompliance` story before the module boundary cleanup (2026-09-08) —
 // moved here since fetching/rendering compliance status is now this
-// component's own responsibility, registered generically via `module.ts`'s
-// `projectOverviewTiles`.
+// component's own responsibility, registered generically as `module.ts`'s
+// `overviewWidgets` entry.
 export const OneStandard: Story = {
   beforeEach: () => {
     spyOn(api, "get").mockImplementation(async (path: string) => {

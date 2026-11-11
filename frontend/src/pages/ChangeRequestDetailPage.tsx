@@ -42,7 +42,7 @@ import { Spinner } from "../components/Spinner";
 import { RecordHeader } from "../components/RecordHeader";
 import { useAuth } from "../context/AuthContext";
 import { useStrings } from "../context/TerminologyContext";
-import { useToast } from "../context/ToastContext";
+import { toErrorMessage, useToast } from "../context/ToastContext";
 import { useMyProjectRoles } from "../hooks/useMyProjectRoles";
 import { Badge } from "../components/Badge";
 import { TextField } from "../components/FormFields";
@@ -101,6 +101,7 @@ export function ChangeRequestDetailPage() {
   // chooses which to merge; `clearCompletion` carries the second approve button.
   const [approving, setApproving] = useState<{ clearCompletion: boolean } | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   async function reload() {
     if (!projectId || !crId) return;
     const [crData, commentData, stageData, taskData, voteData] = await Promise.all([
@@ -224,7 +225,17 @@ export function ChangeRequestDetailPage() {
     }
   }
 
-  useLoadOnChange(reload, [projectId, crId]);
+  // The initial load reports a missing or inaccessible record instead of leaving the spinner up.
+  async function loadRecord() {
+    try {
+      await reload();
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(toErrorMessage(err, "This change request could not be found, or you do not have access to it."));
+    }
+  }
+
+  useLoadOnChange(loadRecord, [projectId, crId]);
 
   async function act(action: () => Promise<unknown>, successMessage?: string) {
     setActionError(null);
@@ -269,6 +280,7 @@ export function ChangeRequestDetailPage() {
     reload();
   }
 
+  if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!cr) return <Spinner />;
 
   const title = cr.proposed_name ?? requirement?.name ?? cr.id;
@@ -281,6 +293,7 @@ export function ChangeRequestDetailPage() {
     >
       <RecordHeader
         recordLabel="Change request"
+        back={projectId ? { to: `/projects/${projectId}/change-requests`, label: strings.changeRequests.title } : undefined}
         title={title}
         code={cr.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="change_request" artefactId={cr.id} /> : undefined}

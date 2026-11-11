@@ -333,6 +333,8 @@ def resolve_links(
             result.declined += 1
             continue
         requirement_id = cr.requirement_id
+        if requirement_id is None:
+            raise ValueError("Proposed links are resolved after the change request's requirement exists.")
         source_type, target_type = (_REQUIREMENT, checked.other_type) if checked.outgoing else (checked.other_type, _REQUIREMENT)
         source_id, target_id = (requirement_id, row.other_id) if checked.outgoing else (row.other_id, requirement_id)
         cross = checked.other_project is not project

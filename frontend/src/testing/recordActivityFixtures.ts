@@ -12,7 +12,7 @@ import type { ChangeEntry } from "../api/types";
 export function buildActivityEntry(overrides: Partial<ChangeEntry> = {}): ChangeEntry {
   return {
     timestamp: "2026-02-03T10:00:00Z", entity_type: "requirement", entity_id: "artefact-1", action: "updated",
-    actor_id: "user-1", actor_display_name: "Alex Morgan", detail: null, ...overrides,
+    actor_id: "user-1", actor_display_name: "Alex Morgan", detail: null, kind: "edited", record_label: null, ...overrides,
   };
 }
 

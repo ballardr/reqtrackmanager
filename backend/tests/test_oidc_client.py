@@ -59,7 +59,7 @@ def test_oidc_internal_base_url_override_also_disables_the_guard(monkeypatch):
     oidc_client._assert_safe_external_url("http://127.0.0.1/.well-known/openid-configuration")
 
 
-# --- verify_id_token: signature/claims verification -------------------------
+# --- ID token verification: signature and claims -------------------------------
 #
 # These pin the joserfc-based rewrite (migrated off the now-deprecated
 # `authlib.jose`, see services/oidc_client.py's import comment) against
@@ -99,14 +99,13 @@ def _default_claims(**overrides):
 def _mock_jwks(monkeypatch, rsa_key):
     # Only `verify_id_token`'s signature/claims logic is under test in this
     # section, not the SSRF guard (covered above) — `_JWKS_URI` is never
-    # actually resolved (httpx.get is replaced below), so the guard's
+    # actually resolved (the request is replaced below), so the guard's
     # real-DNS resolution step would otherwise fail every test here for an
     # unrelated reason.
     monkeypatch.setenv("OIDC_ALLOW_PRIVATE_NETWORK_TARGETS", "true")
     get_settings.cache_clear()
     jwks = {"keys": [rsa_key.as_dict(private=False)]}
-    response = type("_FakeResponse", (), {"raise_for_status": lambda self: None, "json": lambda self: jwks})()
-    monkeypatch.setattr("httpx.get", lambda *a, **k: response)
+    monkeypatch.setattr(oidc_client, "_request_json", lambda *a, **k: jwks)
 
 
 def test_verify_id_token_accepts_a_validly_signed_token(monkeypatch, _rsa_key):
@@ -169,3 +168,66 @@ def test_verify_id_token_rejects_hs256_algorithm_confusion(monkeypatch, _rsa_key
     _mock_jwks(monkeypatch, _rsa_key)
     with pytest.raises(ValueError, match="Invalid OIDC id_token"):
         oidc_client.verify_id_token(_discovery(), token, client_id=_CLIENT_ID, issuer_url=_ISSUER)
+
+
+# --- bounded, pinned requests -------------------------------------------------
+
+
+def test_the_connection_is_pinned_to_the_address_that_was_checked(monkeypatch):
+    monkeypatch.setattr("app.services.oidc_client.resolve_public_addresses", lambda host: ["93.184.216.34"])
+    target, extra = oidc_client._pinned_target("https://idp.example.com:8443/jwks?x=1")
+    assert target == "https://93.184.216.34:8443/jwks?x=1"
+    assert extra == {"headers": {"Host": "idp.example.com:8443"}, "extensions": {"sni_hostname": "idp.example.com"}}
+    monkeypatch.setattr("app.services.oidc_client.resolve_public_addresses", lambda host: ["2606:2800:220:1::1"])
+    assert oidc_client._pinned_target("https://idp.example.com/jwks")[0] == "https://[2606:2800:220:1::1]/jwks"
+
+
+def test_the_pin_is_skipped_only_when_the_operator_switched_the_guard_off(monkeypatch):
+    monkeypatch.setenv("OIDC_ALLOW_PRIVATE_NETWORK_TARGETS", "true")
+    get_settings.cache_clear()
+    assert oidc_client._pinned_target("http://10.0.0.5/jwks") == ("http://10.0.0.5/jwks", {})
+
+
+def test_an_oversized_or_non_json_answer_is_refused(monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("OIDC_ALLOW_PRIVATE_NETWORK_TARGETS", "true")
+    get_settings.cache_clear()
+
+    from contextlib import contextmanager
+
+    state = {"body": b""}
+
+    @contextmanager
+    def fake_stream(method, url, **kwargs):
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, content=state["body"]))
+        with httpx.Client(transport=transport) as client, client.stream(method, url) as response:
+            yield response
+
+    monkeypatch.setattr(httpx, "stream", fake_stream)
+    state["body"] = b"x" * (oidc_client._MAX_RESPONSE_BYTES + 1)
+    with pytest.raises(ValueError, match="too large"):
+        oidc_client._request_json("GET", "https://idp.example.com/jwks")
+    state["body"] = b"not json"
+    with pytest.raises(ValueError, match="not valid JSON"):
+        oidc_client._request_json("GET", "https://idp.example.com/jwks")
+    state["body"] = b'{"keys": []}'
+    assert oidc_client._request_json("GET", "https://idp.example.com/jwks") == {"keys": []}
+
+
+def test_discovery_is_cached_and_a_failure_is_a_value_error(monkeypatch):
+    calls = []
+    monkeypatch.setattr(oidc_client, "_assert_safe_external_url", lambda url: None)
+    monkeypatch.setattr(oidc_client, "_request_json", lambda *a, **k: calls.append(a) or {"issuer": "x"})
+    assert oidc_client.discover("https://idp.example.com") == {"issuer": "x"}
+    assert oidc_client.discover("https://idp.example.com/") == {"issuer": "x"}
+    assert len(calls) == 1
+
+    import httpx
+
+    def fail(*a, **k):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(oidc_client, "_request_json", fail)
+    with pytest.raises(ValueError, match="could not be reached"):
+        oidc_client.discover("https://other.example.com")

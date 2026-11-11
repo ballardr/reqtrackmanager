@@ -38,6 +38,7 @@ SMALL = {
     "tiers": {"T0": 30, "T1": 100},
     "ratios": {
         "actions": 0.3, "comments": 1.5, "tags_per_requirement": 1.2, "versions_per_requirement": 2.0, "tag_vocabulary": 8,
+        "placements_per_record": 1.0,
         "records": {
             "change_request": 0.3, "risk": 0.4, "decision": 0.3, "pain_point": 0.4, "strategy": 0.2, "future_state": 0.2,
             "guiding_principle": 0.2, "open_question": 0.2, "persona": 0.2, "stakeholder": 0.3, "stakeholder_need": 0.3,
@@ -257,6 +258,29 @@ def test_the_manifest_tells_the_load_generator_how_to_address_every_type(client)
     assert all(len(ids) <= 200 and ids for ids in project["type_samples"].values())
 
 
+def test_generated_placements_stay_inside_their_own_project_tree(client):
+    """Every placement names a component (and a category under it) of the project that owns the record, for a type
+    that has placements at all, and none is written for a requirement, which keeps its own component."""
+    manifest = _generate(client, "two")
+    assert manifest["integrity_problems"] == []
+    assert manifest["rows"]["artefact_placements"] > 0
+    db = SessionLocal()
+    try:
+        crossing = db.execute(text(
+            "SELECT count(*) FROM artefact_placements p JOIN project_components c ON c.id = p.component_id "
+            "LEFT JOIN project_categories k ON k.id = p.category_id "
+            "WHERE c.project_id <> p.project_id OR (k.id IS NOT NULL AND (k.component_id <> p.component_id OR k.project_id <> p.project_id))"
+        )).scalar_one()
+        assert crossing == 0
+        assert db.execute(text("SELECT count(*) FROM artefact_placements WHERE artefact_type = 'requirement'")).scalar_one() == 0
+        assert db.execute(text("SELECT count(DISTINCT artefact_type) FROM artefact_placements")).scalar_one() > 3
+        assert db.execute(text(
+            "SELECT count(*) FROM audit_events WHERE action = 'placed'"
+        )).scalar_one() == db.execute(text("SELECT count(*) FROM artefact_placements")).scalar_one()
+    finally:
+        db.close()
+
+
 def test_the_application_reads_every_generated_type(client):
     """The application's own endpoints serve what the generators wrote: each type's list, a record's detail, its
     comments and its link graph answer 200 for an ordinary member, and the list holds the generated records."""
@@ -280,6 +304,8 @@ def test_the_application_reads_every_generated_type(client):
         paths = [f"{base}/{first}"] if probe.has_detail else []
         paths += [f"{base}/{first}/comments"] if probe.has_comments else []
         paths += [f"/api/v1/projects/{project_id}/artefacts/{artefact_type}/{first}/link-graph?depth=2"]
+        paths += [f"/api/v1/projects/{project_id}/artefacts/{artefact_type}/{first}/placements"]
+        paths += [f"/api/v1/projects/{project_id}/placements/{artefact_type}?id={first}"]
         for path in paths:
             resp = client.get(path, headers=headers)
             if resp.status_code != 200:

@@ -1,7 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Paperclip } from "lucide-react";
-import { expect, fn, userEvent, within } from "storybook/test";
+import { expect, fn, spyOn, userEvent, waitFor, within } from "storybook/test";
 
+import { api } from "../api/client";
+import type { ServerSettings } from "../api/types";
+import { BrandingProvider } from "../context/BrandingContext";
+import { withThemeProvider } from "../testing/storybook-helpers";
 import { FileUploadTrigger } from "./FileUploadTrigger";
 
 const meta: Meta<typeof FileUploadTrigger> = {
@@ -58,3 +62,62 @@ export const HiddenTriggerStillMountsInput: Story = {
 
 export const LightTheme: Story = { ...IconAndText, globals: { theme: "light" } };
 export const DarkTheme: Story = { ...IconAndText, globals: { theme: "dark" } };
+
+const UPLOADS_DISABLED_SETTINGS: ServerSettings = {
+  accent_color_hex: "#475569", default_logo_file_id: null, default_header_title: null,
+  logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: "after_content",
+  default_login_background_file_id: null, email_footer_company_name: null, email_footer_website: null,
+  email_footer_address: null, footer_prefix: null, company_id_label: null, company_id: null, org_label_singular: null, org_label_plural: null, file_uploads_enabled: false,
+};
+
+/** While the server administrator has disabled file uploads the trigger stays visible but unavailable, its input
+ * cannot be used, and a tooltip says why. */
+export const UnavailableWhileUploadsAreDisabled: Story = {
+  decorators: [
+    (Story) => <BrandingProvider projectId={null}><Story /></BrandingProvider>,
+    withThemeProvider(),
+  ],
+  args: { children: <><Paperclip size={14} /> Attach a file</> },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string): Promise<never> => {
+      if (path.includes("/system/branding")) return UPLOADS_DISABLED_SETTINGS as never;
+      return [] as never;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = await canvas.findByRole("button", { name: /Attach a file/ });
+    await waitFor(() => expect(trigger).toHaveAttribute("aria-disabled", "true"));
+    await expect(canvasElement.querySelector('input[type="file"]')).toBeDisabled();
+    await userEvent.hover(trigger);
+    await expect(await within(canvasElement.ownerDocument.body).findByText(/File uploads are disabled on this deployment/)).toBeInTheDocument();
+  },
+};
+
+const ORGANISATION_UPLOADS_DISABLED = {
+  id: "org-1", name: "Acme", logo_file_id: null, header_title: null, accent_color_hex: null, file_uploads_enabled: false,
+};
+
+/** While only the organisation's own switch is off the trigger is unavailable too, and the tooltip names the
+ * organisation as the reason. */
+export const UnavailableWhileTheOrganisationHasUploadsDisabled: Story = {
+  decorators: [
+    (Story) => <BrandingProvider projectId={null}><Story /></BrandingProvider>,
+    withThemeProvider(),
+  ],
+  args: { children: <><Paperclip size={14} /> Attach a file</> },
+  beforeEach: () => {
+    spyOn(api, "get").mockImplementation(async (path: string): Promise<never> => {
+      if (path.includes("/system/branding")) return { ...UPLOADS_DISABLED_SETTINGS, file_uploads_enabled: true } as never;
+      if (path.endsWith("/api/v1/orgs")) return [ORGANISATION_UPLOADS_DISABLED] as never;
+      return [] as never;
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = await canvas.findByRole("button", { name: /Attach a file/ });
+    await waitFor(() => expect(trigger).toHaveAttribute("aria-disabled", "true"));
+    await userEvent.hover(trigger);
+    await expect(await within(canvasElement.ownerDocument.body).findByText(/File uploads are disabled for this organisation/)).toBeInTheDocument();
+  },
+};

@@ -98,6 +98,22 @@ def _resolve_user_from_pat(token: str, db: Session, request: Request) -> User:
     return user
 
 
+def _require_policies_accepted(user: User, db: Session, request: Request) -> User:
+    """Refuses a request that changes data while the user has an unaccepted required policy.
+
+    See `services.policy_acknowledgements`: reading, searching, the policies, sign-in and sign-out stay open.
+
+    Raises:
+        HTTPException: 403 (`policy_acknowledgement_required`) for a blocked request.
+    """
+    from app.services import password_change_gate
+    from app.services.policy_acknowledgements import enforce_accepted
+
+    password_change_gate.enforce(user, request.method, request.url.path)
+    enforce_accepted(db, user, request.method, request.url.path)
+    return user
+
+
 def _resolve_user_from_token(token: str | None, db: Session, request: Request) -> User:
     """Decodes and validates a bearer token, returning the active user it names.
 
@@ -125,7 +141,7 @@ def _resolve_user_from_token(token: str | None, db: Session, request: Request) -
     if not token:
         raise _UNAUTHORIZED
     if token.startswith(PAT_PREFIX):
-        return _resolve_user_from_pat(token, db, request)
+        return _require_policies_accepted(_resolve_user_from_pat(token, db, request), db, request)
     claims = decode_access_token(token)
     if not claims or "sub" not in claims or claims.get("purpose") != "access":
         # Rejects 2FA challenge tokens (services/totp.py / routers/auth.py):
@@ -140,7 +156,7 @@ def _resolve_user_from_token(token: str | None, db: Session, request: Request) -
         # 2FA disable (see User.token_version) — reject even though the
         # signature/expiry are otherwise valid.
         raise _UNAUTHORIZED
-    return user
+    return _require_policies_accepted(user, db, request)
 
 
 def get_current_user(
@@ -164,14 +180,30 @@ def get_current_user(
     return _resolve_user_from_token(token, db, request)
 
 
+_PAT_REFUSED = "Personal access tokens cannot manage account security or other access tokens; sign in to do this."
+
+
+def refuse_personal_access_token(token: str | None = Depends(oauth2_scheme)) -> None:
+    """Route dependency (`dependencies=[Depends(...)]`) refusing a Personal Access Token.
+
+    For an action whose effect outlives or widens the token: granting or revoking a role, creating an account
+    with a chosen password, issuing the SCIM token, changing single sign-on. A PAT is a scoped, long-lived,
+    headless credential; if it could do these, its scope and expiry would only be a suggestion to its holder.
+
+    Raises:
+        HTTPException: 403 when the bearer token is a Personal Access Token.
+    """
+    if token and token.startswith(PAT_PREFIX):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, _PAT_REFUSED)
+
+
 def get_current_session_user(
     request: Request, token: str | None = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ) -> User:
     """Like `get_current_user`, but accepts only an interactive session token, never a Personal Access Token.
 
-    For the endpoints that manage the account's own credentials (password, second factor, access tokens). A
-    PAT is a scoped, long-lived, headless credential; if it could mint another PAT or rewrite the second
-    factor, its organisation and project scope and its expiry would only be a suggestion to whoever holds it.
+    For the endpoints that manage the account's own credentials (password, second factor, access tokens), and
+    for leaving an organisation. See `refuse_personal_access_token` for why.
 
     Args:
         request: The incoming request.
@@ -184,11 +216,7 @@ def get_current_session_user(
     Raises:
         HTTPException: 401 as `get_current_user`; 403 when the credential is a Personal Access Token.
     """
-    if token and token.startswith(PAT_PREFIX):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Personal access tokens cannot manage account security or other access tokens; sign in to do this.",
-        )
+    refuse_personal_access_token(token)
     return _resolve_user_from_token(token, db, request)
 
 
@@ -247,7 +275,7 @@ def get_current_user_or_module_frame(module_key: str):
                     "project_id": frame_claims.get("project_id"),
                 }
                 db.info["module_frame_project_id"] = frame_claims.get("project_id")
-                return user
+                return _require_policies_accepted(user, db, request)
         return _resolve_user_from_token(token, db, request)
 
     return _dependency
@@ -322,18 +350,20 @@ def get_current_user_header_or_query_optional(
 
 
 def get_client_ip(request: Request) -> str:
-    """Extracts the originating client IP, honouring a proxy-set header.
+    """Returns the address of the connecting client, as the server itself determined it.
+
+    Uses `request.client.host` only. uvicorn replaces it with the forwarded address when, and only when, the
+    peer is listed in `FORWARDED_ALLOW_IPS`, so a caller cannot choose the address by sending an
+    `X-Forwarded-For` header of its own. Behind a reverse proxy that is not on that list the proxy's own
+    address is returned; `docs/deployment.md` explains the setting.
 
     Args:
         request: The incoming FastAPI request.
 
     Returns:
-        The client IP address as a string.
+        The client address, at most 64 characters (the width of `LoginEvent.ip_address`), or `"unknown"`.
     """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    return (request.client.host if request.client else "unknown")[:64]
 
 
 def get_request_channel(request: Request) -> str:

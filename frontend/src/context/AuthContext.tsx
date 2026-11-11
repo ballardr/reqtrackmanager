@@ -54,13 +54,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signup = useCallback(
-    async (email: string, password: string, displayName: string, inviteToken?: string): Promise<User> => {
-      const result = await api.post<{ access_token: string; user: User }>("/api/v1/auth/signup", {
+    async (email: string, password: string, displayName: string, inviteToken?: string): Promise<User | null> => {
+      const result = await api.post<{ access_token?: string; user?: User; confirmation_required?: boolean }>("/api/v1/auth/signup", {
         email,
         password,
         display_name: displayName,
         invite_token: inviteToken || undefined,
       });
+      if (result.confirmation_required || !result.access_token || !result.user) return null;
       setAuthToken(result.access_token);
       await ensureMediaToken();
       setUser(result.user);

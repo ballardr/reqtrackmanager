@@ -6,7 +6,6 @@ import {
   installCleanupHook,
   loginAs,
   logout,
-  expectTidyStatBlocks,
   onCleanup,
   ORG_NAMES,
   PASSWORD,
@@ -73,13 +72,13 @@ test.describe("Organisation Overview page", () => {
     await expect(
       page.getByText("These figures are scoped to what you can see, not this organisation's full totals.")
     ).toBeVisible();
-    // Matched by exact "Projects<digits>" text (label immediately followed
-    // by the value, no separator) — a plain substring match on "Projects"
+    // Matched by exact "<digits>Projects" text (the value immediately followed
+    // by the label, no separator) — a plain substring match on "Projects"
     // would also catch the compliance dashboard's own "Projects subject to
     // compliance" stat, which this org has (Alpha has standards assigned
-    // from other specs' fixtures). Stat items render inside `.stat-bar`,
-    // not `.card`.
-    const memberProjectsItem = page.locator(".stat-bar-item").filter({ hasText: /^Projects\d+$/ });
+    // from other specs' fixtures). The headline figures are
+    // dashboard widgets (`[data-stat-entry]` tiles).
+    const memberProjectsItem = page.locator("[data-stat-entry]").filter({ hasText: /^\d+\s*Projects$/ });
     const memberProjectCountText = (await memberProjectsItem.innerText()).replace("Projects", "");
     const memberProjectCount = Number(memberProjectCountText);
     // Only Alpha-1 was granted — exactly one project is visible to them,
@@ -98,7 +97,7 @@ test.describe("Organisation Overview page", () => {
     await expect(
       page.getByText("These figures are scoped to what you can see, not this organisation's full totals.")
     ).not.toBeVisible();
-    const adminProjectsItem = page.locator(".stat-bar-item").filter({ hasText: /^Projects\d+$/ });
+    const adminProjectsItem = page.locator("[data-stat-entry]").filter({ hasText: /^\d+\s*Projects$/ });
     const adminProjectCountText = (await adminProjectsItem.innerText()).replace("Projects", "");
     expect(Number(adminProjectCountText)).toBeGreaterThan(memberProjectCount);
   });
@@ -147,8 +146,7 @@ test.describe("Organisation Overview page", () => {
     // "Organisation overview" nav-rail link (case-insensitive substring),
     // which is unrelated to the `ResourceMenu` group chrome this asserts on.
     await expect(page.locator(".resource-menu-nav")).toHaveCount(0);
-    await expect(page.locator(".stat-bar")).toBeVisible();
-    await expectTidyStatBlocks(page);
+    await expect(page.locator("[data-stat-entry]").first()).toBeVisible();
 
     await page.goto("/orgs");
     await selectOrgAdminGroup(page, "Modules");
@@ -159,7 +157,6 @@ test.describe("Organisation Overview page", () => {
     const overviewLink = page.locator(".resource-menu-nav").getByRole("link", { name: "Overview", exact: true });
     await expect(overviewLink).toBeVisible();
     await expect(overviewLink).toHaveAttribute("aria-current", "page");
-    await expect(page.locator(".stat-bar")).toBeVisible();
-    await expectTidyStatBlocks(page);
+    await expect(page.locator("[data-stat-entry]").first()).toBeVisible();
   });
 });

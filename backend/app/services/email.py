@@ -31,6 +31,7 @@ test-email actions report why nothing was sent.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from email.message import EmailMessage
 
@@ -40,7 +41,7 @@ from app.config import get_settings
 
 settings = get_settings()
 
-InlineImages = dict[str, tuple[bytes, str]]
+InlineImages = Mapping[str, tuple[bytes, str | None]]  # cid -> (data, content type; None falls back to octet-stream)
 """Maps a `cid:` name (e.g. `"brand_logo"`, referenced in HTML as
 `src="cid:brand_logo"`) to `(raw_bytes, content_type)`."""
 
@@ -115,9 +116,11 @@ async def send_email_async(
 
     if html_body is not None:
         message.add_alternative(html_body, subtype="html")
-        html_part = message.get_payload()[1]
+        html_part = message.get_body(("html",))
+        if html_part is None:  # `add_alternative` just added it
+            raise RuntimeError("The HTML alternative is missing from the message.")
         for cid, (data, content_type) in (inline_images or {}).items():
-            maintype, _, subtype = content_type.partition("/")
+            maintype, _, subtype = (content_type or "").partition("/")
             html_part.add_related(data, maintype=maintype or "application", subtype=subtype or "octet-stream", cid=f"<{cid}>")
 
     await aiosmtplib.send(

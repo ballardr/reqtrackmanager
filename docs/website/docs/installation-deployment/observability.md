@@ -42,7 +42,7 @@ flowchart TD
     Tempo --> Grafana
 ```
 
-This adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, cAdvisor and Grafana (http://localhost:3300 — anonymous viewer access enabled for local use; put it behind authentication before running this in production).
+This adds Prometheus (http://localhost:9090), Loki, Tempo, Grafana Alloy, cAdvisor and Grafana (http://localhost:3300). Every port is published on the loopback address only, anonymous access is off, and Grafana will not start until `GRAFANA_ADMIN_PASSWORD` is set (for example `GRAFANA_ADMIN_PASSWORD=… docker compose --profile observability up -d`). Put it behind your own authentication before widening access in production.
 
 ## Health checks and metrics
 
@@ -66,6 +66,19 @@ Two counters answer "how busy is the API and database". Ask for the window you w
 | Writes per operation, last 15 minutes | `sum by (operation) (increase(db_statements_total{operation!="select",operation!="other"}[15m]))` |
 
 `db_statements_total` counts statements the backend sends to PostgreSQL, labelled only by `operation` (`select`, `insert`, `update`, `delete`, `other`). It carries no table names, ids or SQL text, so it is safe on the unauthenticated `/metrics` endpoint. One bulk statement counts once whatever its row count, and the backend's own `/health` probe lands in `other`. Each backend replica exposes its own counters, so sum across targets as the queries above do.
+
+### Demonstration usage metrics
+
+A demonstration stack (`scripts/demo.sh`) starts its own Prometheus that scrapes only the backend and the HTTPS proxy (request counts by status code) and keeps 30 days of samples across the daily reset. `scripts/demo.sh --export-metrics` writes them to a `.tar.gz` for a developer to review: a Prometheus snapshot, one series per line in `series.jsonl`, and a manifest with the reset times. `scripts/demo.sh --view-metrics <bundle>` opens it again.
+
+| Metric | What it shows |
+|--------|---------------|
+| `http_requests_total`, `http_request_duration_seconds` | Which routes are used (the route template, never an identifier), how often, how long they take and how they end |
+| `login_attempts_total` | Sign-in outcomes |
+| `requirements_*_total`, `change_requests_*_total` | Lifecycle transitions |
+| `db_statements_total`, `db_pool_connections`, `worker_resident_memory_bytes` | Database activity and worker load |
+
+These metrics show how the product is used and how the server behaves. They do not show who did something or why: no metric carries a person, a record, a title or search text, and the export refuses to write a series with any other label. Session recordings (Microsoft Clarity, optional) give the on-screen behaviour and are lined up with the metrics by time only. See the [demonstration reference](https://github.com/ballardr/reqtrackmanager/blob/main/docs/demo.md#usage-metrics).
 
 ## Resource usage (memory and CPU)
 

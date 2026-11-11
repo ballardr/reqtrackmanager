@@ -107,6 +107,7 @@ export function ArtefactLinkRulesView({
             <div className="row">
               <OverridePill
                 custom={custom}
+                platformFallback={!projectRule}
                 defaultLabel={sourceLabel}
                 resetLabel={projectRule ? strings.orgAdmin.artefactRuleUseInherited : strings.orgAdmin.artefactRuleReset}
                 onReset={readOnly ? undefined : () => setRemoving(rule)}

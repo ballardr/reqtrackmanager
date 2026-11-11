@@ -114,23 +114,26 @@ def send_evidence_expiry_notifications(db: Session) -> None:
         # A notification is read out of context, so the record is named by its qualified code.
         named = f"{qualify(project.code, evidence.unique_code)} {evidence.title}"
 
-        if evidence.expiry_date < today:
+        expiry_date = evidence.expiry_date
+        if expiry_date is None:
+            continue  # the query selects only dated evidence
+        if expiry_date < today:
             if evidence.expiry_notified_at is not None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_EVIDENCE_EXPIRED,
                 title=f"Evidence expired: {named}",
-                body=f'"{evidence.title}" expired on {evidence.expiry_date.isoformat()}.',
+                body=f'"{evidence.title}" expired on {expiry_date.isoformat()}.',
                 project_id=evidence.project_id, entity_type="compliance_evidence", entity_id=str(evidence.id),
             )
             evidence.expiry_notified_at = datetime.now(UTC)
-        elif evidence.expiry_date <= today + timedelta(days=EVIDENCE_EXPIRY_WARNING_DAYS):
+        elif expiry_date <= today + timedelta(days=EVIDENCE_EXPIRY_WARNING_DAYS):
             if evidence.expiry_reminder_sent_at is not None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_EVIDENCE_EXPIRING_SOON,
                 title=f"Evidence expiring soon: {named}",
-                body=f'"{evidence.title}" expires on {evidence.expiry_date.isoformat()}.',
+                body=f'"{evidence.title}" expires on {expiry_date.isoformat()}.',
                 project_id=evidence.project_id, entity_type="compliance_evidence", entity_id=str(evidence.id),
             )
             evidence.expiry_reminder_sent_at = datetime.now(UTC)
@@ -221,24 +224,27 @@ def send_required_action_due_notifications(db: Session) -> None:
         if not recipients:
             recipients = get_effective_compliance_officers(db, project_id)
 
-        if assessment.due_date < today:
+        due_date = assessment.due_date
+        if due_date is None:
+            continue  # the query selects only dated assessments
+        if due_date < today:
             if assessment.overdue_notified_at is not None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_REQUIRED_ACTION_OVERDUE,
                 title="Required action overdue",
-                body=f"A required action was due on {assessment.due_date.isoformat()}.",
+                body=f"A required action was due on {due_date.isoformat()}.",
                 project_id=project_id, entity_type="compliance_required_action_assessment",
                 entity_id=str(assessment.id),
             )
             assessment.overdue_notified_at = datetime.now(UTC)
-        elif assessment.due_date <= today + timedelta(days=REQUIRED_ACTION_DUE_WARNING_DAYS):
+        elif due_date <= today + timedelta(days=REQUIRED_ACTION_DUE_WARNING_DAYS):
             if assessment.due_reminder_sent_at is not None:
                 continue
             _notify_many(
                 db, recipients, notification_type=NotificationType.COMPLIANCE_REQUIRED_ACTION_DUE_SOON,
                 title="Required action due soon",
-                body=f"A required action is due on {assessment.due_date.isoformat()}.",
+                body=f"A required action is due on {due_date.isoformat()}.",
                 project_id=project_id, entity_type="compliance_required_action_assessment",
                 entity_id=str(assessment.id),
             )
@@ -265,6 +271,8 @@ def send_target_date_notifications(db: Session) -> None:
             continue
         recipients = get_effective_compliance_officers(db, project_compliance.project_id)
         target_date = project_compliance.target_compliance_date
+        if target_date is None:
+            continue  # the query selects only assignments with a target date
 
         if target_date < today:
             if project_compliance.target_date_overdue_notified_at is not None:

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.models.file import FileAsset
 from app.models.organization import Organization
-from app.services.branding import contrast_text_hex, get_server_settings
+from app.services.branding import contrast_text_hex, get_server_settings, logo_band_hex, logo_band_text_hex
 from app.services.files import read_file
 
 DEFAULT_PRODUCT_NAME = "ReqTrackManager"
@@ -37,22 +37,34 @@ class EmailBranding:
             MIME type, for embedding as a `cid:` inline attachment
             (`services/email.py`) — `None` when no logo is configured
             anywhere, in which case the header banner renders as
-            `header_title` alone on its black background.
+            `header_title` alone on its band.
+        logo_band_hex: The header banner colour (the organisation's, else the platform's, else the top bar colour).
+        logo_band_text_hex: The title colour on it (chosen, else black or white by contrast with the band).
         footer_company_name: Never empty — falls back to the built-in
             product name, same as `header_title`.
         footer_website / footer_address: `None` when not configured at
             either level, in which case that line is simply omitted from
             the footer rather than shown blank.
+        footer_prefix / footer_company_id: The platform's "Hosted by" text and its company identifier ("ABN 12 345 678
+            901"). `None` unless the platform's own company details are the ones shown: an organisation that sets its
+            own company name speaks for itself, so the operator's prefix and identifier are not added to its emails.
     """
 
     header_title: str
     accent_color_hex: str
     accent_text_hex: str
+    logo_band_hex: str
+    logo_band_text_hex: str
     logo_bytes: bytes | None
     logo_content_type: str | None
     footer_company_name: str
     footer_website: str | None
     footer_address: str | None
+    footer_prefix: str | None = None
+    footer_company_id: str | None = None
+
+
+_EMAIL_LOGO_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 
 
 def _resolve_logo(db: Session, file_id: UUID | None) -> tuple[bytes | None, str | None]:
@@ -60,6 +72,9 @@ def _resolve_logo(db: Session, file_id: UUID | None) -> tuple[bytes | None, str 
         return None, None
     asset = db.get(FileAsset, file_id)
     if asset is None:
+        return None, None
+    # Only a raster picture is embedded in mail: the stored type was decided from the bytes at upload.
+    if asset.content_type not in _EMAIL_LOGO_TYPES:
         return None, None
     return read_file(asset), asset.content_type
 
@@ -94,13 +109,24 @@ def resolve_email_branding(db: Session, organization_id: UUID | None = None) -> 
     footer_website = (org.email_footer_website if org else None) or platform.email_footer_website
     footer_address = (org.email_footer_address if org else None) or platform.email_footer_address
 
+    # The operator's prefix and identifier belong to the operator's own company details only.
+    platform_details_shown = not (org and org.email_footer_company_name)
+    footer_prefix = platform.footer_prefix if platform_details_shown and platform.email_footer_company_name else None
+    footer_company_id = None
+    if platform_details_shown and platform.company_id:
+        footer_company_id = " ".join(part for part in (platform.company_id_label, platform.company_id) if part)
+
     return EmailBranding(
         header_title=header_title,
         accent_color_hex=accent_color_hex,
         accent_text_hex=contrast_text_hex(accent_color_hex),
+        logo_band_hex=logo_band_hex(org, platform),
+        logo_band_text_hex=logo_band_text_hex(org, platform),
         logo_bytes=logo_bytes,
         logo_content_type=logo_content_type,
         footer_company_name=footer_company_name,
         footer_website=footer_website,
         footer_address=footer_address,
+        footer_prefix=footer_prefix,
+        footer_company_id=footer_company_id,
     )

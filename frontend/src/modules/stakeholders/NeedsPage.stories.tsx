@@ -93,7 +93,7 @@ export const NeedsAloneHasNoTabs: Story = {
 export const SwitchedOffSaysSo: Story = {
   beforeEach: () => mockApis(["stakeholder_need"]),
   play: async ({ canvasElement }) => {
-    await waitFor(() => expect(within(canvasElement).getByText(/Stakeholder Needs aren't enabled/)).toBeInTheDocument());
+    await waitFor(() => expect(within(canvasElement).getByText(/Stakeholder Needs are not enabled/)).toBeInTheDocument());
   },
 };
 

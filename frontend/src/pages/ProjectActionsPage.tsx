@@ -8,17 +8,16 @@ import { api } from "../api/client";
 import type {
   ActionTypeDefinition,
   OrgUser,
-  PrincipalRef,
   Project,
   RequirementAction,
   RequirementActionOutcome,
 } from "../api/types";
 import { ENTITY_ACCENT_COLOR, REQUIREMENT_ACTION_OUTCOME_LABEL, REQUIREMENT_ACTION_OUTCOME_TONE } from "../api/types";
 import { FilterBadge } from "../components/FilterBadge";
-import { FilterCheckbox, FilterField, FilterPanel } from "../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../components/FilterPanel";
+import { FilterSelect } from "../components/FilterSelect";
 import { ListPageLayout } from "../components/ListPageLayout";
 import { PrincipalBadge } from "../components/PrincipalBadge";
-import { QuickLinkField } from "../components/QuickLinkField";
 import { SortableHeader } from "../components/SortableHeader";
 import { cycleSort } from "../components/sortState";
 import { useUrlChoice, useUrlFlag, useUrlSort, useUrlText } from "../hooks/useUrlFilter";
@@ -28,15 +27,16 @@ import { t } from "../i18n/strings";
 import { useCommitQuickLinks } from "../hooks/useCommitQuickLinks";
 import { useCommitTags } from "../hooks/useCommitTags";
 import { useProjectScope } from "../hooks/useProjectScope";
+import { placementsText } from "../api/placements";
+import { usePagePlacements } from "../hooks/usePagePlacements";
 import { useTagFilter } from "../hooks/useTagFilter";
 import { ProjectScopeFilter } from "../components/ProjectScopeFilter";
 import { ProjectScopeLabel } from "../components/ProjectScopeLabel";
 import { rowProjectId } from "../api/projectScope";
-import { TagField } from "../components/TagField";
 import { TagFilterField } from "../components/TagFilterField";
 import { useRequestSequence } from "../hooks/useRequestSequence";
 import { Badge } from "../components/Badge";
-import { ActionFields } from "../components/ActionFields";
+import { ActionFormModal, type NewActionValues } from "../components/ActionFormModal";
 import { useLoadOnChange } from "../hooks/useLoadOnChange";
 import { addSharedListFilters } from "../utils/listFilterParams";
 
@@ -63,7 +63,6 @@ export function ProjectActionsPage() {
   const commitTags = useCommitTags(projectId ?? "", "requirement_action");
   const tagFilter = useTagFilter();
   const projectScope = useProjectScope(projectId);
-  const [newTags, setNewTags] = useState<string[]>([]);
   const [actions, setActions] = useState<RequirementAction[] | null>(null);
   const [actionTypes, setActionTypes] = useState<ActionTypeDefinition[]>([]);
   const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
@@ -80,12 +79,7 @@ export function ProjectActionsPage() {
   const [sort, setSort] = useUrlSort(ACTION_SORT_KEYS);
 
   const [showNewForm, setShowNewForm] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newActionTypeId, setNewActionTypeId] = useState("");
-  const [newAssignee, setNewAssignee] = useState<PrincipalRef | null>(null);
-  const [newDueDate, setNewDueDate] = useState("");
-  const [newQuickLinks, setNewQuickLinks] = useState<CollectedLink[]>([]);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   /** The list's filters, by the names its list request and the shared export both take. */
   function filterParams(): URLSearchParams {
@@ -123,7 +117,6 @@ export function ProjectActionsPage() {
     if (!isLatest()) return;
     setActionTypes(types);
     setActions(list);
-    if (!newActionTypeId && types[0]) setNewActionTypeId(types[0].id);
   }
 
   useLoadOnChange(reload, [projectId, outcomeFilter, typeFilter, includeArchived, tagFilter.query, projectScope.scope]);
@@ -142,29 +135,17 @@ export function ProjectActionsPage() {
     })();
   }, [projectId]);
 
-  async function createAction() {
-    if (!newTitle.trim() || !newActionTypeId) return;
+  async function createAction(values: NewActionValues, quickLinks: CollectedLink[], tags: string[]) {
+    setCreateError(null);
     try {
-      const created = await api.post<RequirementAction>(`/api/v1/projects/${projectId}/actions`, {
-        title: newTitle,
-        description: newDescription,
-        action_type_id: newActionTypeId,
-        assignee: newAssignee,
-        due_date: newDueDate || null,
-      });
-      setNewTitle("");
-      setNewDescription("");
-      setNewAssignee(null);
-      setNewDueDate("");
+      const created = await api.post<RequirementAction>(`/api/v1/projects/${projectId}/actions`, values);
       setShowNewForm(false);
       reload();
       showToast(strings.actions.created);
-      await commitQuickLinks(created.id, newQuickLinks);
-      setNewQuickLinks([]);
-      await commitTags(created.id, newTags);
-      setNewTags([]);
+      await commitQuickLinks(created.id, quickLinks);
+      await commitTags(created.id, tags);
     } catch (err) {
-      showToast(toErrorMessage(err, strings.common.error), "error");
+      setCreateError(toErrorMessage(err, strings.common.error));
     }
   }
 
@@ -187,6 +168,9 @@ export function ProjectActionsPage() {
     return sort.direction === "desc" ? sorted.reverse() : sorted;
   }, [actions, sort]);
 
+  const placed = usePagePlacements(projectId, "requirement_action", (actions ?? []).map((a) => a.id));
+  const showPlaces = Object.keys(placed).length > 0;
+
   function actionTypeName(id: string) {
     return actionTypes.find((t2) => t2.id === id)?.name ?? "—";
   }
@@ -203,57 +187,32 @@ export function ProjectActionsPage() {
         records={{ projectId: projectId ?? "", recordType: "requirement_action", filters: filterParams().toString(), onImported: reload }}
         filter={
           <FilterPanel sectionKey="projectActionsFilters">
-            <FilterField label={strings.actions.actionType}>
-              <select className="input" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="">{strings.actions.allTypes}</option>
-                {actionTypes.map((at) => (
-                  <option key={at.id} value={at.id}>
-                    {at.name}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label={strings.actions.outcome}>
-              <select className="input" value={outcomeFilter} onChange={(e) => setOutcomeFilter(e.target.value as RequirementActionOutcome | "")}>
-                <option value="">{strings.actions.allOutcomes}</option>
-                {OUTCOME_OPTIONS.map((o) => (
-                  <option key={o} value={o}>
-                    {REQUIREMENT_ACTION_OUTCOME_LABEL[o]}
-                  </option>
-                ))}
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.actions.actionType}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              allLabel={strings.actions.allTypes}
+              options={actionTypes.map((at) => ({ value: at.id, label: at.name }))}
+            />
+            <FilterSelect
+              label={strings.actions.outcome}
+              value={outcomeFilter}
+              onChange={setOutcomeFilter}
+              allLabel={strings.actions.allOutcomes}
+              options={OUTCOME_OPTIONS.map((o) => ({ value: o, label: REQUIREMENT_ACTION_OUTCOME_LABEL[o] }))}
+            />
             <ProjectScopeFilter scope={projectScope} />
             {projectId && <TagFilterField projectId={projectId} filter={tagFilter} />}
             <FilterCheckbox label={strings.actions.includeArchived} checked={includeArchived} onChange={setIncludeArchived} />
           </FilterPanel>
         }
       >
-        {showNewForm && (
-          <div className="card stack">
-            <ActionFields
-              values={{ title: newTitle, description: newDescription, actionTypeId: newActionTypeId, assignee: newAssignee, dueDate: newDueDate }}
-              onChange={(v) => {
-                setNewTitle(v.title);
-                setNewDescription(v.description);
-                setNewActionTypeId(v.actionTypeId);
-                setNewAssignee(v.assignee);
-                setNewDueDate(v.dueDate);
-              }}
-              actionTypes={actionTypes}
-              orgUsers={orgUsers}
-              organizationId={organizationId}
-              projectId={projectId}
-            />
-            <QuickLinkField projectId={projectId ?? ""} artefactType="requirement_action" preferredType="requirement" value={newQuickLinks} onChange={setNewQuickLinks} />
-            <TagField projectId={projectId ?? ""} artefactType="requirement_action" value={newTags} onChange={setNewTags} />
-            <button
-              className="btn btn-primary" style={{ alignSelf: "flex-start" }}
-              onClick={createAction} disabled={!newTitle.trim() || !newActionTypeId}
-            >
-              {strings.common.create}
-            </button>
-          </div>
+        {showNewForm && projectId && (
+          <ActionFormModal
+            projectId={projectId} actionTypes={actionTypes} orgUsers={orgUsers} organizationId={organizationId}
+            error={createError} onCancel={() => { setShowNewForm(false); setCreateError(null); }}
+            onSave={createAction}
+          />
         )}
           <div className="stack">
             {!actions && <Spinner />}
@@ -281,6 +240,7 @@ export function ProjectActionsPage() {
                         label={strings.actions.dueDate} sortKey="due_date" sort={sort}
                         onSort={(key) => setSort((s) => cycleSort(s, key))}
                       />
+                      {showPlaces && <th>{strings.placements.label}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -308,6 +268,7 @@ export function ProjectActionsPage() {
                         </td>
                         <td className="text-muted"><PrincipalBadge principal={a.assignee} placeholder={strings.reviews.unassigned} /></td>
                         <td className="text-muted">{a.due_date ?? "—"}</td>
+                        {showPlaces && <td className="text-muted">{placementsText(placed[a.id])}</td>}
                       </tr>
                     ))}
                   </tbody>

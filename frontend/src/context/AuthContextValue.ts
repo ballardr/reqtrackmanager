@@ -19,7 +19,8 @@ export interface AuthContextValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
-  signup: (email: string, password: string, displayName: string, inviteToken?: string) => Promise<User>;
+  /** Creates an account; resolves to `null` when the address must be confirmed first (no session is issued). */
+  signup: (email: string, password: string, displayName: string, inviteToken?: string) => Promise<User | null>;
   verify2fa: (challengeToken: string, code: string) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;

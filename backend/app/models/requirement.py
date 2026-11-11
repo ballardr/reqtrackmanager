@@ -202,6 +202,11 @@ class Baseline(UUIDPKMixin, TimestampMixin, Base):
     stage_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("project_stages.id", ondelete="CASCADE")
     )
+    # Set for a baseline written when one component entered a locked phase (it holds that component's
+    # requirements for the stage only); NULL for the stage's own baseline.
+    component_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("project_components.id", ondelete="CASCADE"), nullable=True
+    )
     label: Mapped[str] = mapped_column(String(255))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
 

@@ -106,7 +106,7 @@ test.describe("org admin: project statuses and link types", () => {
       // workflow" resource-menu group — selecting the group is a real navigation, not a
       // client-side toggle, and must happen before either section is
       // reachable at all.
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Projects");
       await ensureExpanded(page, "Project statuses");
       for (const name of ["Proposed", "Active", "Abandoned", "Completed"]) {
         await expect(inputWithValue(page, name)).toBeVisible();
@@ -154,7 +154,7 @@ test.describe("org admin: project statuses and link types", () => {
 
     await test.step("an unused status (Abandoned) deletes immediately, with no reassignment prompt", async () => {
       await page.goto(`/orgs/${org.id}/admin`);
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Projects");
       await ensureExpanded(page, "Project statuses");
 
       const abandonedRow = inputWithValue(page, "Abandoned").locator("xpath=ancestor::div[contains(@class,'stack')][1]");
@@ -169,11 +169,11 @@ test.describe("org admin: project statuses and link types", () => {
 
     await test.step("with only 'Active (E2E)' left, its delete control is disabled", async () => {
       await expect(inputWithValue(page, "Active (E2E)")).toBeVisible();
-      await expect(page.getByTitle("This is the only one — create another first so there's something to reassign to.")).toBeDisabled();
+      await expect(page.getByTitle("This is the only one — create another first so there is something to reassign to.")).toBeDisabled();
     });
 
     await test.step("Link types: add a new type, rename it, then delete it (unused, no prompt)", async () => {
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Link types");
       await expect(inputWithValue(page, "Depends on")).toBeVisible();
 
@@ -196,7 +196,7 @@ test.describe("org admin: project statuses and link types", () => {
       await direction.selectOption({ label: "Target is downstream" });
       await expect(page.getByText("Link type direction updated.")).toBeVisible();
       await page.reload();
-      await selectOrgAdminGroup(page, "Projects & workflow");
+      await selectOrgAdminGroup(page, "Workflow");
       await ensureExpanded(page, "Link types");
       await expect(page.getByRole("combobox", { name: "Direction: E2E Precedes v2" })).toHaveValue(
         "forward_is_downstream"

@@ -2,8 +2,9 @@
 Module: scripts.seed_demo_data
 
 Seeds a realistic, presentable demo dataset — a fictional engineering
-company ("Solstice Robotics") with three projects (one a sub-project of
-another, demonstrating hierarchical projects), requirements at varied
+company ("Solstice Robotics") with three working projects (one a sub-project of
+another, demonstrating hierarchical projects), two template projects and one
+project created from a template, requirements at varied
 lifecycle stages, an in-review and an approved change request, discussion
 comments, custom fields, and a report look. Intended for
 screenshots, demos, and (eventually) a public demo instance.
@@ -16,16 +17,10 @@ Design notes:
   names and content exist to give the Playwright suite fixed, predictable
   anchors (docs/e2e-workflows.md), not to look good in a screenshot. This
   one exists purely to look like a real, in-use product.
-- Idempotent by skipping, same as the E2E seed: if "Solstice Robotics"
-  already exists, exits without changes rather than creating a duplicate.
-  This script does NOT attempt to wipe/reset existing demo data itself —
-  there is no organisation-deletion endpoint (see docs/soc2/policies/
-  data-retention-and-disposal-policy.md's Known Gaps), and this script only
-  ever talks to the API, not the database directly. A full reset (for a
-  future "resets nightly" public demo instance) is a database-level
-  operation instead — see docs/deployment.md's "Demo instance" section for
-  the documented recipe (`docker compose down -v && up -d --build`, then
-  re-run this script against the fresh database).
+- Idempotent by skipping, same as the E2E seed: if "Solstice Robotics" already exists, exits without changes
+  rather than creating a duplicate. It does not reset anything itself; `demo_setup.py` (run through
+  `scripts/demo.sh`) removes the demonstration organisation through the organisation deletion route and seeds
+  again, with the guards and the daily schedule described in docs/development.md.
 
 Run via (from tests/container):
     docker compose exec backend python scripts/seed_demo_data.py
@@ -37,16 +32,18 @@ persona and their role.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
 
-BASE = "http://localhost:8000/api/v1"
-ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASSWORD = "ChangeMe123!"
-PASSWORD = "DemoDemo123!"
+BASE = os.environ.get("DEMO_API_BASE", "http://localhost:8000/api/v1")
+ADMIN_EMAIL = os.environ.get("DEMO_ADMIN_EMAIL", "admin@example.com")
+ADMIN_PASSWORD = os.environ.get("DEMO_ADMIN_PASSWORD") or os.environ.get("SERVER_ADMIN_PASSWORD", "ChangeMe123!")
+# Shared by every demonstration account; `demo_setup.py` replaces it when it rotates the password.
+PASSWORD = os.environ.get("DEMO_PASSWORD", "DemoDemo123!")
 
 ORG_NAME = "Solstice Robotics"
 
@@ -68,11 +65,39 @@ def create_org(headers: dict, name: str) -> dict:
 
 
 def create_org_user(headers: dict, org_id: str, email: str, display_name: str, role: str) -> dict:
+    """Creates a demonstration account in the organisation, or re-joins one that outlived a reset.
+
+    An organisation's removal never deletes accounts, so a second seed finds the account already there; it is
+    then given its role in the new organisation instead.
+
+    Args:
+        headers: Server administrator headers.
+        org_id: The organisation.
+        email: Sign-in name.
+        display_name: Shown name.
+        role: Organisation role.
+
+    Returns:
+        The user, with at least `user_id`.
+
+    Raises:
+        httpx.HTTPStatusError: On any failure other than "email already in use".
+    """
     r = httpx.post(
         f"{BASE}/orgs/{org_id}/users",
         json={"email": email, "display_name": display_name, "password": PASSWORD, "role": role},
         headers=headers, timeout=30,
     )
+    if r.status_code == httpx.codes.CONFLICT:
+        found = httpx.get(f"{BASE}/system/users", params={"search": email}, headers=headers, timeout=30)
+        found.raise_for_status()
+        user = next(u for u in found.json() if u["email"].lower() == email.lower())
+        joined = httpx.post(
+            f"{BASE}/orgs/{org_id}/users/{user['user_id']}/roles",
+            json={"user_id": user["user_id"], "role": role}, headers=headers, timeout=30,
+        )
+        joined.raise_for_status()
+        return {"user_id": user["user_id"], "email": email, "display_name": user["display_name"], "roles": [role]}
     r.raise_for_status()
     return r.json()
 
@@ -80,9 +105,13 @@ def create_org_user(headers: dict, org_id: str, email: str, display_name: str, r
 def create_project(
     headers: dict, org_id: str, name: str, summary: str,
     *, parent_project_id: str | None = None, role_inheritance_mode: str | None = None, can_be_parent: bool = False,
-    report_name: str | None = None,
+    report_name: str | None = None, template_project_id: str | None = None, is_template: bool = False,
 ) -> dict:
     payload: dict = {"organization_id": org_id, "name": name, "summary": summary}
+    if template_project_id is not None:
+        payload["template_project_id"] = template_project_id
+    if is_template:
+        payload["is_template"] = True
     if report_name is not None:
         payload["report_name"] = report_name
     if parent_project_id is not None:
@@ -202,16 +231,96 @@ def create_categories_for_components(
     }
 
 
-def create_stage(headers: dict, project_id: str, name: str) -> dict:
-    r = httpx.post(f"{BASE}/projects/{project_id}/stages", json={"name": name}, headers=headers, timeout=30)
+def create_stage(headers: dict, project_id: str, name: str, workflow_id: str | None = None) -> dict:
+    body = {"name": name, **({"workflow_id": workflow_id} if workflow_id else {})}
+    r = httpx.post(f"{BASE}/projects/{project_id}/stages", json=body, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
 
 
-def transition_stage(headers: dict, project_id: str, stage_id: str, new_status: str) -> None:
+def create_org_workflow(headers: dict, org_id: str, name: str, phases: list[tuple[str, str]]) -> dict:
+    """Creates an organisation stage workflow from `(phase name, kind)` pairs, in order."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/stage-workflows",
+        json={"name": name, "phases": [{"name": phase, "kind": kind} for phase, kind in phases]},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def transition_stage(headers: dict, project_id: str, stage_id: str, phase_name: str) -> None:
+    """Moves a stage to the phase called `phase_name` (case-insensitive) in its own workflow."""
+    stage = next(
+        st for st in httpx.get(f"{BASE}/projects/{project_id}/stages", headers=headers, timeout=30).json() if st["id"] == stage_id
+    )
+    workflow = next(
+        w for w in httpx.get(f"{BASE}/projects/{project_id}/stage-workflows", headers=headers, timeout=30).json()
+        if w["id"] == stage["workflow_id"]
+    )
+    phase = next(p for p in workflow["phases"] if p["name"].lower() == phase_name.lower())
     r = httpx.post(
         f"{BASE}/projects/{project_id}/stages/{stage_id}/transition",
-        params={"new_status": new_status}, headers=headers, timeout=30,
+        json={"phase_id": phase["id"], "cascade_to_requirements": False}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def enable_component_phases(headers: dict, project_id: str) -> None:
+    """Turns component phases on, so each component follows its own workflow per stage."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/component-phases-settings", json={"mode": "on"}, headers=headers, timeout=30)
+    r.raise_for_status()
+
+
+def move_component_track(headers: dict, project_id: str, component_id: str, stage_id: str, phase_name: str) -> None:
+    """Moves one component's track in a stage to the phase called `phase_name` in the track's own workflow."""
+    tracks = httpx.get(f"{BASE}/projects/{project_id}/component-stages", headers=headers, timeout=30).json()["tracks"]
+    track = next(t for t in tracks if t["component_id"] == component_id and t["stage_id"] == stage_id)
+    workflow = next(
+        w for w in httpx.get(f"{BASE}/projects/{project_id}/stage-workflows", headers=headers, timeout=30).json()
+        if w["id"] == track["workflow_id"]
+    )
+    phase = next(p for p in workflow["phases"] if p["name"].lower() == phase_name.lower())
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/components/{component_id}/stages/{stage_id}/transition",
+        json={"phase_id": phase["id"], "cascade_to_requirements": False}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def schedule_phase(
+    headers: dict, project_id: str, stage_id: str, phase_name: str, start: date | None, end: date | None,
+    component_id: str | None = None,
+) -> None:
+    """Sets the expected range of the phase called `phase_name` in the workflow that applies to the stage,
+    or to the component's track within it."""
+    stage = next(
+        st for st in httpx.get(f"{BASE}/projects/{project_id}/stages", headers=headers, timeout=30).json() if st["id"] == stage_id
+    )
+    workflow_id = stage["workflow_id"]
+    if component_id is not None:
+        tracks = httpx.get(f"{BASE}/projects/{project_id}/component-stages", headers=headers, timeout=30).json()["tracks"]
+        workflow_id = next(t for t in tracks if t["component_id"] == component_id and t["stage_id"] == stage_id)["workflow_id"]
+    workflow = next(
+        w for w in httpx.get(f"{BASE}/projects/{project_id}/stage-workflows", headers=headers, timeout=30).json() if w["id"] == workflow_id
+    )
+    phase = next(p for p in workflow["phases"] if p["name"].lower() == phase_name.lower())
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/stages/{stage_id}/phase-plan",
+        json={
+            "phase_id": phase["id"], "component_id": component_id,
+            "expected_from": start.isoformat() if start else None, "expected_to": end.isoformat() if end else None,
+        },
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def mark_component_track_not_applicable(headers: dict, project_id: str, component_id: str, stage_id: str) -> None:
+    """Marks a stage as not applicable to one component."""
+    r = httpx.patch(
+        f"{BASE}/projects/{project_id}/components/{component_id}/stages/{stage_id}/track",
+        json={"not_applicable": True}, headers=headers, timeout=30,
     )
     r.raise_for_status()
 
@@ -228,12 +337,12 @@ def create_custom_field(headers: dict, project_id: str, entity_kind: str, name: 
 
 def create_requirement(
     headers: dict, project_id: str, *, name: str, reasoning: str, component_id: str, category_id: str,
-    custom_fields: dict | None = None,
+    description: str = "", custom_fields: dict | None = None,
 ) -> dict:
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements",
         json={
-            "name": name, "reasoning": reasoning, "component_id": component_id, "category_id": category_id,
+            "name": name, "reasoning": reasoning, "description": description, "component_id": component_id, "category_id": category_id,
             "keywords": [], "custom_fields": custom_fields or {},
         },
         headers=headers, timeout=30,
@@ -253,7 +362,7 @@ def set_requirement_status(
     `owner` / `reviewer` are `{"type": "user" | "org_group" | "project_group", "id": ...}`; `reviewer_id` is the
     shorthand for a user reviewer. The owner is carried over from the requirement when omitted."""
     body = {
-        "name": requirement["name"], "reasoning": requirement["reasoning"],
+        "name": requirement["name"], "reasoning": requirement["reasoning"], "description": requirement.get("description", ""),
         "clarification": requirement.get("clarification", ""),
         "component_id": requirement["component_id"], "category_id": requirement["category_id"],
         "owner": owner or requirement.get("owner") or {"type": "user", "id": requirement["creator_id"]},
@@ -284,6 +393,20 @@ def tag_record(headers: dict, project_id: str, artefact_type: str, artefact_id: 
     r = httpx.put(
         f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/tags", json={"tags": names},
         headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def place_record(
+    headers: dict, project_id: str, artefact_type: str, artefact_id: str, places: list[tuple[dict, dict | None]],
+) -> dict:
+    """Places a record (any type but a requirement, which has its own component) in `(component, category)` pairs."""
+    body = {"placements": [
+        {"component_id": component["id"], "category_id": category["id"] if category else None} for component, category in places
+    ]}
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/artefacts/{artefact_type}/{artefact_id}/placements", json=body, headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -349,6 +472,26 @@ def upload_comment_attachment(
     r = httpx.post(
         f"{BASE}/projects/{project_id}/requirements/{requirement_id}/comments/{comment_id}/files",
         files={"file": (filename, content, content_type)}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+#: Small bundled pictures the demo attaches to records (illustrations drawn for the demo, not photographs of real equipment).
+DATA_DIR = Path(__file__).parent / "data"
+TRIAL_SITE_PICTURE = (DATA_DIR / "test-site.png", "bvlos-trial-site.png", "image/png")
+BENCH_RIG_PICTURE = (DATA_DIR / "gust-rig.jpg", "bench-test-rig.jpg", "image/jpeg")
+ARCHITECTURE_DIAGRAM = (DATA_DIR / "flight-controller-architecture.svg", "flight-controller-architecture.svg", "image/svg+xml")
+
+
+def attach_picture(headers: dict, project_id: str, record_path: str, picture: tuple[Path, str, str]) -> dict:
+    """Attaches one of the bundled pictures to a record. `record_path` is the record's own route below `/projects/{id}`
+    (`modules/context_strategy/pain-points/{record id}`); the record must still accept attachments (a Pain Point at a
+    terminal outcome, or an approved requirement, does not)."""
+    source, filename, content_type = picture
+    r = httpx.post(
+        f"{BASE}/projects/{project_id}/{record_path}/files", files={"file": (filename, source.read_bytes(), content_type)},
+        headers=headers, timeout=30,
     )
     r.raise_for_status()
     return r.json()
@@ -458,6 +601,92 @@ def set_project_terminology(headers: dict, project_id: str, terminology: dict[st
     r = httpx.put(f"{BASE}/projects/{project_id}/terminology", json={"terminology": terminology}, headers=headers, timeout=30)
     r.raise_for_status()
     return r.json()
+
+
+def set_project_nav_labels(headers: dict, project_id: str, names: dict[str, str]) -> dict:
+    """Sets a project's own navigation names (Project Admin's Navigation names panel), keyed by stable navigation
+    key, so the manual-demo dataset shows a renamed entry in the navigation, page title and back link."""
+    r = httpx.put(f"{BASE}/projects/{project_id}/nav-labels", json={"names": names}, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def add_overview_widgets(headers: dict, project_id: str, widgets: list[dict]) -> dict:
+    """Puts widgets ahead of the built-in overview layout (Customise overview), so the manual-demo dataset shows a
+    configured gauge and a filtered record count beside the standard tiles and charts."""
+    layout = httpx.get(f"{BASE}/projects/{project_id}/overview-layout", headers=headers, timeout=30)
+    layout.raise_for_status()
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/overview-layout",
+        json={"scope": layout.json()["scope"], "widgets": [*widgets, *layout.json()["widgets"]]}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def create_announcement(
+    headers: dict, org_id: str, *, title: str, body: str, severity: str = "information", show_on_login: bool = False,
+) -> dict:
+    """Creates an organisation message (Organisation Admin's Messages group), so the manual-demo dataset shows the
+    banner every member sees after signing in. Plain text only, with no web address."""
+    r = httpx.post(
+        f"{BASE}/orgs/{org_id}/announcements",
+        json={"title": title, "body": body, "severity": severity, "show_on_login": show_on_login},
+        headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def publish_org_policy(headers: dict, org_id: str, title: str, paragraphs: list[str]) -> None:
+    """Writes and publishes an organisation policy (Organisation Admin's Policies group), so the manual-demo dataset shows
+    the organisation's section on the Policies page to every member. No audience: every member reads it."""
+    body = {"type": "doc", "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": text}]} for text in paragraphs
+    ]}
+    created = httpx.post(f"{BASE}/orgs/{org_id}/policies", json={"title": title, "body": body}, headers=headers, timeout=30)
+    created.raise_for_status()
+    httpx.post(
+        f"{BASE}/orgs/{org_id}/policies/{created.json()['id']}/publish", json={"change_note": "Demonstration text"}, headers=headers,
+        timeout=30,
+    ).raise_for_status()
+
+
+def publish_server_policy(headers: dict, key: str, heading: str, paragraphs: list[str]) -> None:
+    """Writes and publishes a built-in server policy (Server Management's Policies group), so the manual-demo dataset
+    shows the Policies page and the login-page link. A policy that already exists is left as it is."""
+    body = {"type": "doc", "content": [
+        {"type": "heading", "attrs": {"level": 1}, "content": [{"type": "text", "text": heading}]},
+        *({"type": "paragraph", "content": [{"type": "text", "text": text}]} for text in paragraphs),
+    ]}
+    created = httpx.post(f"{BASE}/system/policies", json={"key": key, "body": body}, headers=headers, timeout=30)
+    if created.status_code == 409:
+        return
+    created.raise_for_status()
+    httpx.post(
+        f"{BASE}/system/policies/{created.json()['id']}/publish", json={"change_note": "Demonstration text"}, headers=headers, timeout=30,
+    ).raise_for_status()
+
+
+def create_org_dashboard(
+    headers: dict, org_id: str, name: str, widgets: list[dict], viewer_user_ids: list[str] | None = None,
+) -> dict:
+    """Adds an organisation dashboard page with the given widgets, optionally limited to some users (an organisation
+    administrator always sees every page), so the manual-demo dataset shows a second page and a restricted one."""
+    created = httpx.post(f"{BASE}/orgs/{org_id}/dashboards", json={"name": name}, headers=headers, timeout=30)
+    created.raise_for_status()
+    page_id = created.json()["dashboard"]["id"]
+    saved = httpx.put(
+        f"{BASE}/orgs/{org_id}/dashboards/{page_id}/layout", json={"scope": "this", "widgets": widgets}, headers=headers, timeout=30,
+    )
+    saved.raise_for_status()
+    if viewer_user_ids:
+        limited = httpx.put(
+            f"{BASE}/orgs/{org_id}/dashboards/{page_id}",
+            json={"viewers": [{"type": "user", "id": user_id} for user_id in viewer_user_ids]}, headers=headers, timeout=30,
+        )
+        limited.raise_for_status()
+    return saved.json()
 
 
 def create_link_type(
@@ -631,6 +860,66 @@ PAIN_POINTS_WITH_PICTURES_LAYOUT = {
     ],
 }
 """A custom report layout with an images column: each Pain Point's attached pictures beside its code and title (a share of the column wide)."""
+
+
+def evidence_nodes() -> list[dict]:
+    """The blocks appended to the Business Requirements Document starter to make the demo version: every Pain Point,
+    Decision and Risk with the pictures attached to it and the requirements it is linked to, so the document shows links, pictures
+    and (through the requirement text in its own tables) equations. Each part sits in an `if` on its module, as the
+    starters' module parts do."""
+    def traced(record_type: str, alias: str, module_key: str, heading_text: str, requirement_empty: str) -> dict:
+        return {
+            "type": "if", "when": {"module": module_key}, "children": [
+                {"type": "heading", "level": 2, "text": heading_text},
+                {
+                    "type": "each", "source": {"record_type": record_type, "sort": [{"field": "code"}]}, "as": alias,
+                    "children": [
+                        {"type": "heading", "level": 3, "text": "{{" + alias + ".code}} {{" + alias + ".title}}"},
+                        {
+                            "type": "record_images", "types": ["png", "jpg", "svg"], "max_count": 3, "width": 10, "width_unit": "cm",
+                            "caption_source": "file_name", "numbering": "auto",
+                        },
+                        {
+                            "type": "table", "source": {"record_type": "requirement", "linked_from": alias, "sort": [{"field": "code"}]},
+                            "columns": [
+                                {"field": "code", "label": "Code"}, {"field": "title", "label": "Requirement"},
+                                {"field": "status", "label": "Status"},
+                            ],
+                            "empty_text": requirement_empty,
+                        },
+                    ],
+                },
+            ],
+        }
+
+    return [
+        {"type": "heading", "text": "Evidence and traceability"},
+        {"type": "text", "text": "The pictures and diagrams attached to each record, with the requirements it is linked to."},
+        traced("pain_point", "pp", "context_strategy", "Pain Points", "No requirement is linked to this Pain Point."),
+        traced("decision", "dc", "decisions", "Decisions", "No requirement is linked to this Decision."),
+        traced("risk", "rk", "risk_management", "Risks", "No requirement is linked to this Risk."),
+    ]
+
+
+def illustrated_brd_tree(starter_tree: dict) -> dict:
+    """The Business Requirements Document starter's tree with `evidence_nodes` after its own sections."""
+    return {**starter_tree, "nodes": [*starter_tree["nodes"], *evidence_nodes()]}
+
+
+def create_illustrated_brd(headers: dict, org_id: str) -> dict:
+    """Creates the organisation layout 'Business Requirements Document (with evidence)': a copy of the starter Business
+    Requirements Document with `evidence_nodes` after its own sections."""
+    layouts = httpx.get(f"{BASE}/orgs/{org_id}/report-layouts", headers=headers, timeout=30)
+    layouts.raise_for_status()
+    starter = next(layout for layout in layouts.json() if layout["name"] == "Business Requirements Document")
+    detail = httpx.get(f"{BASE}/orgs/{org_id}/report-layouts/{starter['id']}", headers=headers, timeout=30)
+    detail.raise_for_status()
+    return create_report_layout(
+        headers, f"/orgs/{org_id}", "Business Requirements Document (with evidence)",
+        "The Business Requirements Document with each Pain Point, Decision and Risk, its attached pictures and diagrams, and the "
+        "requirements linked to it.",
+        illustrated_brd_tree(detail.json()["current"]["tree"]), folder="Handover",
+    )
 
 
 def create_report_layout(headers: dict, path: str, name: str, description: str, tree: dict, folder: str = "") -> dict:
@@ -1187,14 +1476,19 @@ DRONE_REQUIREMENTS = [
     ("Autonomously return to launch point when battery charge falls below 15%",
      "Loss-of-aircraft incidents from battery exhaustion are the single largest driver of hull "
      "insurance claims across the fleet to date; an automatic return-to-home at a conservative "
-     "threshold removes reliance on the operator noticing in time.", "FW", "SAF", "approved", {}),
+     "threshold removes reliance on the operator noticing in time. The threshold must cover the return energy "
+     "\\(E_{rth} = P_{cruise} \\cdot \\frac{d}{v}\\) from the furthest point of the route, plus the reserve.",
+     "FW", "SAF", "approved", {}),
     ("Provide a minimum flight time of 42 minutes at an 800g payload",
      "42 minutes covers the median inspection route length (per Q3 fleet telemetry) with enough "
-     "margin for a return-to-home from the furthest point on the route without requiring a battery swap.",
+     "margin for a return-to-home from the furthest point on the route without requiring a battery swap. "
+     "Hover endurance follows from the battery energy and the hover power draw, \\(t = \\frac{E_{batt}}{P_{hover}}\\), "
+     "so the target \\(t \\geq 42\\) min fixes the battery capacity for a given airframe.",
      "PR", "PERF", "approved", {}),
     ("Withstand sustained wind gusts of up to 45 km/h without loss of stability",
      "Coastal and offshore inspection sites regularly see gusts in this range; grounding the fleet "
-     "below this threshold would make several existing customer sites unviable.", "AF", "FN", "reviewed", {}),
+     "below this threshold would make several existing customer sites unviable. The gust load scales with the "
+     "dynamic pressure \\(q = \\tfrac{1}{2}\\rho v^{2}\\), and 45 km/h is \\(v = 12.5\\) m/s.", "AF", "FN", "reviewed", {}),
     ("Stream live video telemetry to the ground station at a minimum of 24fps",
      "Below 24fps, operators reported difficulty judging distance to structures during close-approach "
      "inspection manoeuvres in the beta program.", "AV", "FN", "reviewed", {}),
@@ -1280,6 +1574,75 @@ AVIONICS_REQUIREMENTS = [
 ]
 
 
+REQUIREMENT_DESCRIPTIONS: dict[str, str] = {
+    # The requirement statement (what the document prints in its Description column), keyed by requirement name. Formulas
+    # are written between \\( and \\), as in any record text.
+    "Acquire GPS position lock within 5 seconds of power-on in open-sky conditions":
+        "The aircraft shall report a valid three-dimensional position fix no later than \\(t_{fix} = 5\\) s after power-on, "
+        "with at least 8 satellites in view and an unobstructed sky.",
+    "Autonomously return to launch point when battery charge falls below 15%":
+        "When the remaining charge \\(C\\) falls below \\(0.15\\,C_{full}\\), the flight controller shall abandon the "
+        "mission and fly the aircraft back to the launch point without operator input.",
+    "Provide a minimum flight time of 42 minutes at an 800g payload":
+        "With an 800 g payload the aircraft shall hover for at least \\(t = \\frac{E_{batt}}{P_{hover}} \\geq 42\\) minutes "
+        "at sea level and 20 \u00b0C.",
+    "Withstand sustained wind gusts of up to 45 km/h without loss of stability":
+        "The aircraft shall hold its position within 1 m in gusts up to \\(v = 12.5\\) m/s (45 km/h), a dynamic pressure of "
+        "\\(q = \\tfrac{1}{2}\\rho v^{2} \\approx 96\\) Pa.",
+    "Stream live video telemetry to the ground station at a minimum of 24fps":
+        "The video link shall deliver at least 24 frames per second to the ground station for the whole flight.",
+    "Log all flight-critical state transitions to onboard non-volatile storage":
+        "Every change of flight mode, arming state and failsafe shall be written with its time to non-volatile storage "
+        "before the change takes effect.",
+    "Support geofencing with a configurable no-fly boundary":
+        "The operator shall be able to load a polygonal no-fly boundary, and the aircraft shall refuse to cross it.",
+    "Trigger an audible and visual alert prior to autonomous landing":
+        "The aircraft shall sound a tone and flash its lights for at least 5 s before any landing it starts without operator input.",
+    "Operate in ambient temperatures between -10C and 45C":
+        "The aircraft shall meet every performance requirement for ambient temperatures \\(T\\) with "
+        "\\(-10 \\leq T \\leq 45\\) \u00b0C.",
+    "Support firmware updates over a secure, authenticated wireless connection":
+        "The aircraft shall accept a firmware image over the wireless link only when the image is signed by the manufacturer.",
+    "Complete pre-flight diagnostic checks in under 20 seconds":
+        "The pre-flight diagnostic sequence shall finish and report its result within \\(t = 20\\) s of the operator starting it.",
+    "Broadcast Part 107 remote identification per FAA requirements":
+        "The aircraft shall broadcast its identity, position and control-station location at least once per second, as the "
+        "FAA remote identification rule requires.",
+    "Authenticate all API requests using short-lived, signed access tokens":
+        "Every API request shall carry a signed access token that expires within 15 minutes of issue.",
+    "Respond to authenticated read requests within 200ms at the 95th percentile under nominal load":
+        "At nominal load, 95% of authenticated read requests shall complete within 200 ms.",
+    "Ingest telemetry from up to 500 concurrent drones without data loss":
+        "The platform shall accept telemetry from 500 aircraft at once and lose no accepted message.",
+    "Display live drone telemetry with end-to-end latency under 2 seconds":
+        "A telemetry value shall appear in the web dashboard within 2 s of the aircraft sending it.",
+    "Retain raw flight telemetry for a minimum of 12 months":
+        "Raw telemetry shall remain retrievable for at least 12 months after the flight.",
+    "Provide role-based access control scoped to individual fleets":
+        "A user shall see and control only the fleets their role grants.",
+    "Support exporting flight logs in CSV and KML formats":
+        "A user shall be able to export a flight log as a CSV file or as a KML file.",
+    "Maintain 99.9% API availability measured monthly":
+        "The API shall be available for at least 99.9% of each calendar month, which allows no more than about 43 minutes of downtime.",
+    "Automatically flag telemetry anomalies indicative of sensor failure":
+        "The platform shall flag a flight whose sensor readings leave the expected range for the sensor.",
+    "Encrypt all telemetry data at rest":
+        "All stored telemetry shall be encrypted with keys the organisation manages.",
+    "Support two-factor authentication for all user accounts":
+        "Every account shall be able to require a second factor at sign-in.",
+    "Provide a status page reflecting real-time system health":
+        "A public page shall show the current state of each platform service, updated within 1 minute of a change.",
+    "Fuse GPS, IMU, and barometric altitude into a single position estimate at 50Hz":
+        "The estimator shall publish one fused position and altitude estimate at \\(f = 50\\) Hz, a period of "
+        "\\(T = 1/f = 20\\) ms.",
+    "Detect and flag GPS spoofing via cross-check against IMU dead-reckoning":
+        "The estimator shall flag the GPS fix as suspect when it differs from the dead-reckoned position by more than the "
+        "expected drift.",
+    "Report sensor self-test results to the ground station on every power-on":
+        "At every power-on the aircraft shall send the result of each sensor's self-test to the ground station.",
+}
+
+
 def seed_project(
     headers: dict, project: dict, components: dict[str, dict], categories: dict[str, dict[str, dict]],
     specs: list[tuple], demo_admin_id: str,
@@ -1287,7 +1650,7 @@ def seed_project(
     by_name = {}
     for name, reasoning, comp_key, cat_key, status_value, extra in specs:
         req = create_requirement(
-            headers, project["id"], name=name, reasoning=reasoning,
+            headers, project["id"], name=name, reasoning=reasoning, description=REQUIREMENT_DESCRIPTIONS.get(name, ""),
             component_id=components[comp_key]["id"], category_id=categories[comp_key][cat_key]["id"],
         )
         if status_value != "draft":
@@ -1510,6 +1873,34 @@ PAIN_POINT_TYPE_DEFINITIONS: dict[str, str] = {
 }
 
 
+def set_project_module(headers: dict, project_id: str, module_key: str, enabled: bool) -> None:
+    """Sets a project's own switch for a module (a project starts with the organisation's defaults)."""
+    r = httpx.put(
+        f"{BASE}/projects/{project_id}/modules/{module_key}/enablement", json={"enabled": enabled}, headers=headers, timeout=30,
+    )
+    r.raise_for_status()
+
+
+def hide_pain_point_types(headers: dict, project_id: str, names: list[str]) -> None:
+    """Hides the organisation's default Pain Point types of these names in one project."""
+    effective = list_effective_pain_point_types(headers, project_id)
+    for name in names:
+        r = httpx.delete(
+            f"{BASE}/projects/{project_id}/modules/context_strategy/pain-point-types/{effective[name]['id']}", headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+
+
+def add_pain_point_types(headers: dict, project_id: str, definitions: dict[str, str]) -> None:
+    """Adds project-only Pain Point types, each with its definition (the text shown under the Type picker)."""
+    for name, definition in definitions.items():
+        r = httpx.post(
+            f"{BASE}/projects/{project_id}/modules/context_strategy/pain-point-types",
+            json={"name": name, "definition": definition}, headers=headers, timeout=30,
+        )
+        r.raise_for_status()
+
+
 def set_pain_point_type_definitions(headers: dict, org_id: str, types_by_name: dict[str, dict], definitions: dict[str, str]) -> None:
     """Writes the organisation-level definition of each named default Pain Point type. `types_by_name` is a project's
     effective list; an organisation type with no override has the organisation type's own id."""
@@ -1594,16 +1985,12 @@ def get_pain_point_levels(headers: dict, project_id: str) -> dict[str, dict[str,
 
 def score_entry(levels: dict[str, dict[str, str]], target_id: str | None = None, **chosen: str) -> dict:
     """Builds one Pain Point score row from level names, e.g. `severity="Major", frequency="Constant"`;
-    `target_id=None` means "all personas"."""
-    return {
-        "target_id": target_id,
-        **{f"{axis}_level_id": levels[axis][chosen[axis]] if axis in chosen else None
-           for axis in ("severity", "frequency", "confidence")},
-    }
+    `target_id=None` is the General row (every criterion, including those scored for the whole Pain Point)."""
+    return {"target_id": target_id, "levels": {axis: levels[axis][name] for axis, name in chosen.items()}}
 
 
 def set_pain_point_scores(headers: dict, project_id: str, pain_point_id: str, scores: list[dict]) -> dict:
-    """Replaces a Pain Point's per-persona scores."""
+    """Replaces a Pain Point's scores (the General row and the personas that differ)."""
     r = httpx.put(
         f"{BASE}/projects/{project_id}/modules/context_strategy/pain-points/{pain_point_id}/scores",
         json={"scores": scores}, headers=headers, timeout=30,
@@ -2100,6 +2487,52 @@ def main() -> None:
 
     h_pm = h(login("demo.admin@example.com", PASSWORD))
 
+    print("Creating the organisation's stage workflows...")
+    outsourced_workflow = create_org_workflow(h_pm, org["id"], "Outsourced work", [
+        ("Scoping", "open"), ("Technical scoping", "open"), ("Review board", "review"), ("Tendering", "on_hold"),
+        ("Awarded", "locked"), ("In progress", "locked"), ("Completion", "closed"),
+    ])
+    improvement_workflow = create_org_workflow(h_pm, org["id"], "Continuous improvement", [
+        ("Scoping", "open"), ("Implementation ready", "locked"), ("Done", "closed"),
+    ])
+
+    print("Publishing the server policies...")
+    publish_server_policy(h_admin, "privacy", "How personal data is handled", [
+        "This is a demonstration service. It holds only the sample data in this organisation.",
+        "Replace this text with the privacy policy of your own service before real use.",
+    ])
+    publish_server_policy(h_admin, "data", "How records are kept", [
+        "Records are kept until a project administrator deletes them.",
+        "Replace this text with the data policy of your own service before real use.",
+    ])
+
+    print("Publishing an organisation policy...")
+    publish_org_policy(
+        h_pm, org["id"], "Confidentiality agreement", [
+            "Information in this organisation is shared for demonstration only.",
+            "Replace this text with your own confidentiality agreement before real use.",
+        ],
+    )
+
+    print("Posting an organisation message...")
+    create_announcement(
+        h_pm, org["id"], title="Demonstration data",
+        body="Everything in this organisation is sample data; edit or delete it freely.",
+    )
+
+    print("Adding organisation dashboards...")
+    create_org_dashboard(h_pm, org["id"], "Delivery", [
+        {"id": "requirements", "type": "metric_tile", "width": 3, "height": 2, "config": {"metric": "org_requirement_count"}},
+        {"id": "by-status", "type": "status_chart", "width": 4, "height": 5, "config": {"metric": "org_projects_by_status", "chart": "pie"}},
+        {"id": "note", "type": "text", "width": 5, "height": 3, "config": {"markdown": "Delivery figures across every project."}},
+    ])
+    create_org_dashboard(h_pm, org["id"], "Engineering", [
+        {
+            "id": "records", "type": "metric_tile", "width": 3, "height": 2,
+            "config": {"metric": "org_record_count", "params": {"record_type": "requirement"}},
+        },
+    ], viewer_user_ids=[demo_engineer["user_id"]])
+
     print("Setting the organisation's report look...")
     set_report_look(h_pm, org["id"], accent_color_hex="#0F62FE", footer_text="Solstice Robotics — Confidential")
 
@@ -2108,6 +2541,10 @@ def main() -> None:
         f"{BASE}/orgs/{org['id']}/branding",
         json={
             "accent_color_hex": None, "header_title": None,
+            # The band behind the logo on the sign-in page and in email headers (the demo shows a chosen colour).
+            "logo_band_color_hex": "#0B2545",
+            # The sign-in page footer rests at the bottom of the window (the platform default is below the card).
+            "footer_position": "bottom_of_page",
             "email_footer_company_name": "Solstice Robotics, Inc.",
             "email_footer_website": "https://solsticerobotics.example.com",
             "email_footer_address": "400 Aerodrome Way, Suite 210\nAustin, TX 78701",
@@ -2152,6 +2589,27 @@ def main() -> None:
     # so the demo also shows a *partial* override (not every one of the six
     # keys has to be set).
     set_project_terminology(h_pm, drone["id"], {"stage": "Phase", "requirement": "Spec", "change_request": "ECR"})
+    # A renamed navigation entry (its name shows in the navigation and as the page title).
+    set_project_nav_labels(h_pm, drone["id"], {"reviews-due": "Scheduled reviews"})
+    # A configured overview: a gauge on how much is complete (warning below 50%, critical below 25%), a count of the
+    # Avionics requirements named by component prefix, and a text note.
+    add_overview_widgets(h_pm, drone["id"], [
+        {
+            "id": "demo-completion", "type": "gauge", "title": "Programme completion", "width": 3, "height": 4, "visible": True,
+            "config": {
+                "metric": "requirement_completed_percent", "minimum": 0, "maximum": 100, "warning": 50, "critical": 25,
+                "direction": "below",
+            },
+        },
+        {
+            "id": "demo-avionics", "type": "metric_tile", "title": "Avionics specifications", "width": 3, "height": 2, "visible": True,
+            "config": {"metric": "record_count", "params": {"record_type": "requirement", "filters": {"component": ["AV"]}}},
+        },
+        {
+            "id": "demo-note", "type": "text", "title": "Reading this overview", "width": 6, "height": 3, "visible": True,
+            "config": {"markdown": "Figures cover **this project only**. The gauge turns to a warning below 50% complete and to critical below 25%."},
+        },
+    ])
     assign_project_role(h_pm, drone["id"], demo_engineer["user_id"], "stakeholder")
     assign_project_role(h_pm, drone["id"], demo_stakeholder["user_id"], "stakeholder")
     drone_components = {
@@ -2168,8 +2626,23 @@ def main() -> None:
     )
     create_custom_field(h_pm, drone["id"], "requirement", "Risk Level", "list", ["Low", "Medium", "High"])
     drone_design = create_stage(h_pm, drone["id"], "Detailed Design")
-    create_stage(h_pm, drone["id"], "Verification & Validation")
+    drone_validation = create_stage(h_pm, drone["id"], "Verification & Validation", outsourced_workflow["id"])
     transition_stage(h_pm, drone["id"], drone_design["id"], "review")
+    # Component phases: Airframe is already in review for the design stage, and the firmware has no
+    # separate validation stage of its own (its checks run with the avionics).
+    enable_component_phases(h_pm, drone["id"])
+    move_component_track(h_pm, drone["id"], drone_components["AF"]["id"], drone_design["id"], "review")
+    mark_component_track_not_applicable(h_pm, drone["id"], drone_components["FW"]["id"], drone_validation["id"])
+    # Phase schedule: the design review has run past its expected end (an overdue reminder), the next phase starts
+    # within the lead time (an upcoming reminder), Airframe's own review has a range, and the outsourced
+    # validation stage is planned through tendering.
+    today = date.today()
+    schedule_phase(h_pm, drone["id"], drone_design["id"], "review", today - timedelta(days=14), today - timedelta(days=2))
+    schedule_phase(h_pm, drone["id"], drone_design["id"], "approved", today + timedelta(days=3), today + timedelta(days=10))
+    airframe = drone_components["AF"]["id"]
+    schedule_phase(h_pm, drone["id"], drone_design["id"], "review", today - timedelta(days=7), today + timedelta(days=4), airframe)
+    schedule_phase(h_pm, drone["id"], drone_validation["id"], "technical scoping", today, today + timedelta(days=14))
+    schedule_phase(h_pm, drone["id"], drone_validation["id"], "tendering", today + timedelta(days=15), today + timedelta(days=45))
 
     print("Seeding Falcon-3 requirements...")
     drone_reqs = seed_project(h_pm, drone, drone_components, drone_categories, DRONE_REQUIREMENTS, demo_admin["user_id"])
@@ -2489,7 +2962,7 @@ def main() -> None:
     )
     create_custom_field(h_pm, cloud["id"], "requirement", "Compliance Tag", "short_text")
     cloud_dev = create_stage(h_pm, cloud["id"], "Development")
-    create_stage(h_pm, cloud["id"], "Hardening")
+    create_stage(h_pm, cloud["id"], "Hardening", improvement_workflow["id"])
     transition_stage(h_pm, cloud["id"], cloud_dev["id"], "review")
 
     print("Seeding Solstice Cloud Platform requirements...")
@@ -3262,6 +3735,11 @@ def main() -> None:
         "band_label": "High",
     }])
     set_pain_point_scores(h_pm, drone["id"], pp_accepted["id"], [
+        # General: Cost of Delay's criteria (the whole Pain Point) and the default for the per-persona ones.
+        score_entry(
+            pp_levels, None, severity="Moderate", frequency="Frequent", confidence="High", value="High",
+            time_criticality="Moderate", risk_reduction="Substantial", job_size="Medium",
+        ),
         score_entry(pp_levels, persona_inspector["id"], severity="Major", frequency="Frequent", confidence="High"),
         score_entry(pp_levels, drone_operator_persona["id"], severity="Moderate", frequency="Constant", confidence="Medium"),
     ])
@@ -3276,6 +3754,9 @@ def main() -> None:
     )
     triage_pain_point(h_pm, drone["id"], pp_scored["id"])
     accept_pain_point(h_pm, drone["id"], pp_scored["id"])
+    # Evidence pictures on a Pain Point that is still open (a Pain Point at a terminal outcome takes no more attachments).
+    for picture in (TRIAL_SITE_PICTURE, ARCHITECTURE_DIAGRAM):
+        attach_picture(h_pm, drone["id"], f"modules/context_strategy/pain-points/{pp_scored['id']}", picture)
     set_pain_point_scores(h_pm, drone["id"], pp_scored["id"], [
         score_entry(pp_levels, drone_operator_persona["id"], severity="Blocker", frequency="Occasional", confidence="High"),
         score_entry(pp_levels, persona_inspector["id"], severity="Minor", frequency="Rare", confidence="Medium"),
@@ -3452,6 +3933,8 @@ def main() -> None:
         acceptance_criteria="Dual-redundant architecture certified; no single fault leads to loss of control.",
         inherent=("Possible", "Catastrophic"), residual=("Unlikely", "Major"), review_date=(date.today() + timedelta(days=60)).isoformat(),
     )
+    for picture in (BENCH_RIG_PICTURE, ARCHITECTURE_DIAGRAM):
+        attach_picture(h_pm, drone["id"], f"modules/risk_management/risks/{risk_single_controller['id']}", picture)
     risk_modem = create_risk(
         h_pm, drone["id"], risk_levels, risk_type_id=risk_types["Supply chain"]["id"], owner={"type": "user", "id": demo_admin["user_id"]},
         title="Cellular modem supplier misses delivery",
@@ -3697,6 +4180,119 @@ def main() -> None:
           " Requirement yet) and 2 organisation inbox requests; reports: Demand ranking, Unlinked requests, Close the"
           " loop, Triage ageing (set 'Waiting longer than' to 0) and Problem demand")
 
+    print("Linking Pain Points, a Risk and a Decision to the requirements they drive (Motivates, Impacts, Affects)...")
+    video_req = drone_reqs["Stream live video telemetry to the ground station at a minimum of 24fps"]
+    for pain_point, requirement in ((pp_scored, flight_log_req), (pp_scored, video_req), (pp_accepted, flight_log_req)):
+        create_artefact_link(
+            h_pm, drone["id"], "pain_point", pain_point["id"], link_type_id=chain_link_types["Motivates"]["id"],
+            other_type="requirement", other_id=requirement["id"],
+        )
+    for requirement in (return_to_home_req, gps_req):
+        create_artefact_link(
+            h_pm, drone["id"], "risk", risk_single_controller["id"], link_type_id=risk_link_types["Impacts"]["id"],
+            other_type="requirement", other_id=requirement["id"],
+        )
+    create_artefact_link(
+        h_pm, drone["id"], "decision", dual_fc_decision["id"], link_type_id=chain_link_types["Affects"]["id"],
+        other_type="requirement", other_id=return_to_home_req["id"],
+    )
+
+    print("Seeding the Business Requirements Document with evidence: every Pain Point and Risk with its pictures and linked requirements...")
+    create_illustrated_brd(h_pm, org["id"])
+
+    print("Seeding two template projects (Product Design, Project Management) and a project created from one, with Cost of Delay scoring...")
+    product_design = create_project(
+        h_pm, org["id"], "Product Design template",
+        "Starting point for a product design project: feedback, personas and decisions, with Usability and Accessibility Pain Points.",
+        is_template=True,
+    )
+    for module_key, enabled in (("risk_management", False), ("compliance", False)):
+        set_project_module(h_pm, product_design["id"], module_key, enabled)
+    hide_pain_point_types(h_pm, product_design["id"], ["Market", "Operator"])
+    add_pain_point_types(h_pm, product_design["id"], {
+        "Usability": "A task is slow, confusing or error-prone for the people who use the product.",
+        "Accessibility": "A person cannot use the product because of a disability, a device or a setting.",
+    })
+    # Pain Points on this template are ranked by Cost of Delay divided by job size (WSJF) instead of the platform default.
+    set_project_scoring_default_model(h_pm, product_design["id"], "pain_point", "wsjf")
+    design_components = {
+        "RS": create_component(h_pm, product_design["id"], "Research", "RS"),
+        "UI": create_component(h_pm, product_design["id"], "Interface", "UI"),
+    }
+    design_categories = create_categories_for_components(h_pm, product_design["id"], design_components, {"RS": ["FN"], "UI": ["FN", "PERF"]})
+    create_stage(h_pm, product_design["id"], "Discovery")
+    create_stage(h_pm, product_design["id"], "Release", improvement_workflow["id"])
+    for name, reasoning, comp_key, cat_key in (
+        ("Record every usability session with the participant's consent",
+         "Sessions that are not recorded cannot be reviewed by people who were not in the room.", "RS", "FN"),
+        ("Load the main screen in under 2 seconds on a mid-range phone",
+         "A slow first screen is the most common reason a person abandons a task.", "UI", "PERF"),
+        ("Offer every action from the keyboard",
+         "People who cannot use a pointing device must reach every action.", "UI", "FN"),
+    ):
+        create_requirement(
+            h_pm, product_design["id"], name=name, reasoning=reasoning, component_id=design_components[comp_key]["id"],
+            category_id=design_categories[comp_key][cat_key]["id"],
+        )
+
+    project_management = create_project(
+        h_pm, org["id"], "Project Management template",
+        "Starting point for delivering work through suppliers: risks, decisions and compliance, with Schedule, Budget and Resourcing Pain Points.",
+        is_template=True,
+    )
+    for module_key, enabled in (("product_feedback", False), ("stakeholders", False)):
+        set_project_module(h_pm, project_management["id"], module_key, enabled)
+    hide_pain_point_types(h_pm, project_management["id"], ["Market", "User", "Operator"])
+    add_pain_point_types(h_pm, project_management["id"], {
+        "Schedule": "Work is late, or its dates cannot be trusted.",
+        "Budget": "Spending is above plan, or the cost of the work is not known.",
+        "Resourcing": "The people or suppliers the work needs are not available.",
+    })
+    delivery_components = {
+        "PL": create_component(h_pm, project_management["id"], "Planning", "PL"),
+        "DL": create_component(h_pm, project_management["id"], "Delivery", "DL"),
+    }
+    delivery_categories = create_categories_for_components(
+        h_pm, project_management["id"], delivery_components, {"PL": ["FN", "REG"], "DL": ["FN", "PERF"]},
+    )
+    create_stage(h_pm, project_management["id"], "Initiation")
+    create_stage(h_pm, project_management["id"], "Tendering and delivery", outsourced_workflow["id"])
+    for name, reasoning, comp_key, cat_key in (
+        ("Name an accountable owner for every deliverable",
+         "A deliverable with no owner has no one to ask when it is late.", "PL", "FN"),
+        ("Agree the acceptance criteria with each supplier before work starts",
+         "Criteria agreed after the work starts are argued over, not applied.", "PL", "REG"),
+        ("Report progress against the plan every two weeks",
+         "A fixed reporting rhythm makes a slipping date visible while it can still be recovered.", "DL", "PERF"),
+    ):
+        create_requirement(
+            h_pm, project_management["id"], name=name, reasoning=reasoning, component_id=delivery_components[comp_key]["id"],
+            category_id=delivery_categories[comp_key][cat_key]["id"],
+        )
+
+    operator_app = create_project(
+        h_pm, org["id"], "Falcon-3 Operator App",
+        "The tablet app pilots use at the launch site, created from the Product Design template.",
+        template_project_id=product_design["id"],
+    )
+    app_pain_point_types = list_effective_pain_point_types(h_pm, operator_app["id"])
+    app_levels = get_pain_point_levels(h_pm, operator_app["id"])
+    for title, description, point_type, scores in (
+        ("Pilots cannot read the status screen in direct sunlight",
+         "The tablet's status screen washes out at the launch site, so pilots shade it with a hand or guess.", "Usability",
+         {"value": "High", "time_criticality": "Substantial", "risk_reduction": "High", "job_size": "Small"}),
+        ("Colour alone separates a warning from a fault on the status screen",
+         "A pilot who cannot tell red from amber cannot tell a warning from a fault.", "Accessibility",
+         {"value": "Substantial", "time_criticality": "Low", "risk_reduction": "Moderate", "job_size": "Large"}),
+    ):
+        pain_point = create_pain_point(
+            h_pm, operator_app["id"], pain_point_type_id=app_pain_point_types[point_type]["id"], title=title,
+            description=description, source="Pilot debrief — launch-site trial", priority="medium",
+        )
+        triage_pain_point(h_pm, operator_app["id"], pain_point["id"])
+        accept_pain_point(h_pm, operator_app["id"], pain_point["id"])
+        set_pain_point_scores(h_pm, operator_app["id"], pain_point["id"], [score_entry(app_levels, None, **scores)])
+
     print("Seeding tags — Falcon-3's own vocabulary (with colours), tags on requirements, a Pain Point, a Risk and"
           " a Persona of different kinds, an organisation tag on an organisation Persona, and the Avionics"
           " sub-project following Falcon-3's list...")
@@ -3717,6 +4313,16 @@ def main() -> None:
     create_tag_org.raise_for_status()
     tag_record(h_pm, drone["id"], "persona", persona_inspector["id"], ["Strategic"])
 
+    print("Seeding component placements — a Pain Point and a Risk in more than one component or category, and a Persona"
+          " in one component, so the Components column, the component filter and the header chips have content...")
+    place_record(h_pm, drone["id"], "pain_point", pp_accepted["id"], [
+        (drone_components["FW"], drone_categories["FW"]["SAF"]), (drone_components["AV"], None),
+    ])
+    place_record(h_pm, drone["id"], "risk", risk_single_controller["id"], [
+        (drone_components["AV"], drone_categories["AV"]["SAF"]),
+    ])
+    place_record(h_pm, drone["id"], "persona", drone_operator_persona["id"], [(drone_components["PR"], None)])
+
     print("Seeding a restricted tag vocabulary — Solstice Cloud Platform lists its tags and allows no others,"
           " so its tag field only offers the list (Falcon-3 stays free)...")
     for name, colour in (("Security", "#c53030"), ("Performance", "#b7791f"), ("Availability", "#2b6cb0")):
@@ -3727,8 +4333,22 @@ def main() -> None:
     for index, requirement in enumerate(list(cloud_reqs.values())[:3]):
         tag_record(h_pm, cloud["id"], "requirement", requirement["id"], [("Security", "Performance", "Availability")[index]])
 
+    # The project of this product's own records (requirements, decisions, SOC 2 assessment); a module of its own
+    # because it loads a large fixture generated from the repository's documents.
+    import seed_repo_demo
+
+    repo_counts = seed_repo_demo.seed_repo_demo(
+        h_pm, org, admin_user_id=demo_admin["user_id"],
+        member_user_ids=[demo_engineer["user_id"], demo_stakeholder["user_id"]],
+    )
+
+    # Four further example templates (Software delivery, Compliance readiness, Research and discovery, Hardware design).
+    import seed_template_projects
+
+    seed_template_projects.seed_template_projects(h_pm, org, owner_id=demo_admin["user_id"])
+
     print()
-    print("Done. Demo personas (all password: DemoDemo123!):")
+    print("Done. Demo personas (all share one password: DemoDemo123! unless demo_setup.py rotated it):")
     print("  demo.admin@example.com       - org admin, project manager on all three projects")
     print("  demo.engineer@example.com    - stakeholder on Falcon-3/Solstice Cloud; direct project manager"
           " on Falcon-3 Avionics Subsystem (also reaches Falcon-3 via its member-source consumption)")
@@ -3775,11 +4395,24 @@ def main() -> None:
           " Stakeholder (Dana Whitfield, Customer, monthly, represents BVLOS Remote Pilot); plus 3 Falcon-3 Engagements (a"
           " quick email log; a focus group aimed at a Stakeholder group, with anonymous participants, prompts and a finding;"
           " and a March briefing that leaves Pat Okafor overdue on a quarterly cadence)")
+    print("  Components: on Falcon-3, one Pain Point sits in Firmware / Safety and Avionics, one Risk in Avionics / Safety"
+          " and one Persona in Propulsion (a requirement keeps its own component and category)")
     print("  Tags: Falcon-3 has a free vocabulary with colours (inherited by the Avionics sub-project); Solstice Cloud"
           " Platform is restricted to three listed tags")
     print("  Risk Management (enabled org-wide): 4 Risks on Falcon-3 (RSK-001 flight controller failure — High inherent,"
           " Medium residual; a supply-chain risk; the regulator risk, whose Rare x Catastrophic cell is pinned to High; and one"
           " Identified risk with no assessment), with the Likelihood x Consequence matrix and 12 default Risk types")
+    print("  Evidence: every Falcon-3 requirement has a statement (six with equations); a Pain Point and the flight-controller Risk"
+          " carry pictures and an SVG diagram; Pain Points, a Risk and a Decision are linked to requirements, so the"
+          " 'Business Requirements Document (with evidence)' layout prints links, pictures and equations")
+    if repo_counts:
+        print(f"  {seed_repo_demo.PROJECT_NAME}: " + ", ".join(f"{count} {name}" for name, count in repo_counts.items())
+              + " — loaded from this repository's documents (docs/decisions.md, docs/requirements.md, docs/soc2/)")
+    print("  Templates: 'Product Design template' (Usability and Accessibility Pain Point types, Cost of Delay ÷ job size scoring,"
+          " no Risk Management or Compliance) and 'Project Management template' (Schedule, Budget and Resourcing Pain Point types,"
+          " no Product Feedback or Stakeholders); 'Falcon-3 Operator App' was created from the first, with two Pain Points scored by WSJF")
+    print("  More templates: " + ", ".join(repr(spec.name) for spec in seed_template_projects.SPECS)
+          + " — each with its own stage workflow, vocabularies, overview dashboard and starter drafts")
 
 
 if __name__ == "__main__":

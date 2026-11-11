@@ -24,6 +24,7 @@ class PrincipalOut(BaseModel):
         member_count: Effective members of a group (None for a user), so a badge can show how many people
             an owner group stands for.
         exists: False once a group has been deleted but a history row still names it.
+        imported: True for an imported person (a stand-in for someone named in an import bundle), so a badge can say so.
     """
 
     type: PrincipalType
@@ -31,6 +32,7 @@ class PrincipalOut(BaseModel):
     label: str
     member_count: int | None = None
     exists: bool = True
+    imported: bool = False
 
 
 class WatcherCreate(BaseModel):

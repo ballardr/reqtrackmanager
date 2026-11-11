@@ -3,16 +3,17 @@ import { expect, spyOn, userEvent, waitFor, within } from "storybook/test";
 
 import { api } from "../api/client";
 import type { Organization } from "../api/types";
-import { buildProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { buildProjectListItem, buildUnjoinedProjectListItem, buildUser, withRouter, withStatefulAuth, withToast } from "../testing/storybook-helpers";
+import { requiredCaptions } from "../testing/requiredMarkers";
 import { ProjectListPage } from "./ProjectListPage";
 
 function org(overrides: Partial<Organization>): Organization {
   return {
     id: "org-1", name: "Acme Corp", created_at: "2026-01-01T00:00:00Z", logo_file_id: null,
     default_template_project_id: null, login_background_file_id: null, slug: "acme", is_active: true,
-    disabled_at: null, accent_color_hex: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
+    disabled_at: null, accent_color_hex: null, logo_band_color_hex: null, logo_band_text_color_hex: null, footer_position: null, report_accent_color_hex: null, report_include_logo: true, header_title: null,
     email_footer_company_name: null, email_footer_website: null, email_footer_address: null,
-  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto" }, enforce_code_everywhere: false,
+  code: "ACME", project_code_policy: { kind: "alphanumeric", min_length: 2, max_length: 6, assignment: "auto", locked: false }, enforce_code_everywhere: false,
   force_require_change_request_for_approved_links: false,
   allow_ai_approvals: false,
     ...overrides,
@@ -27,10 +28,14 @@ const singleOrgProjects = [
 function mockProjectListApis(opts: { orgs: Organization[]; projects: ReturnType<typeof buildProjectListItem>[] }) {
   spyOn(api, "get").mockImplementation(async (path: string) => {
     if (path.includes("/orgs?mine=true")) return opts.orgs;
-    if (path.startsWith("/api/v1/projects?archived=false") && !path.includes("limit")) return opts.projects;
-    return opts.projects;
+    // The template picker reads its own list; the default list leaves templates out.
+    if (path.includes("templates_only=true")) return opts.projects.filter((p) => p.is_template);
+    return opts.projects.filter((p) => !p.is_template);
   });
-  spyOn(api, "getPage").mockResolvedValue({ items: opts.projects, total: opts.projects.length });
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    const items = path.includes("include_templates=true") ? opts.projects : opts.projects.filter((p) => !p.is_template);
+    return { items, total: items.length };
+  });
 }
 
 const meta: Meta<typeof ProjectListPage> = {
@@ -237,7 +242,7 @@ export const CreateProjectFormOpens: Story = {
 export const CreateProjectAsksForCodeUnderManualAssignment: Story = {
   beforeEach: () => {
     mockProjectListApis({
-      orgs: [org({ project_code_policy: { kind: "letters", min_length: 3, max_length: 4, assignment: "manual" } })],
+      orgs: [org({ project_code_policy: { kind: "letters", min_length: 3, max_length: 4, assignment: "manual", locked: false } })],
       projects: singleOrgProjects,
     });
     spyOn(api, "post").mockResolvedValue({ id: "new-project" });
@@ -257,7 +262,7 @@ export const CreateProjectAsksForCodeUnderManualAssignment: Story = {
   },
 };
 
-/** Under automatic assignment there is no code field, only a note, and no code is sent. */
+/** Under automatic assignment there is no code field, only help on Name, and no code is sent. */
 export const CreateProjectHasNoCodeFieldUnderAutomaticAssignment: Story = {
   beforeEach: () => {
     mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
@@ -269,7 +274,8 @@ export const CreateProjectHasNoCodeFieldUnderAutomaticAssignment: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
     await expect(within(dialog).queryByLabelText("Code")).not.toBeInTheDocument();
-    await expect(within(dialog).getByText(/assigned automatically from the name/)).toBeInTheDocument();
+    await userEvent.hover(within(dialog).getByRole("button", { name: "Help: Name" }));
+    await expect(within(document.body).getByText(/assigned automatically from the name/)).toBeInTheDocument();
     await userEvent.type(within(dialog).getByLabelText("Name"), "Rail Upgrade");
     await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ code: null })));
@@ -337,13 +343,81 @@ export const CreateProjectModalCancel: Story = {
   },
 };
 
-/** Picking an import file replaces the (otherwise silently-disappearing)
- * template picker with an explanatory note, rather than the field simply
- * vanishing with no indication of why. */
-export const CreateProjectImportFileHidesTemplateWithNote: Story = {
-  beforeEach: () =>
+/** Import is its own dialog, reached from the New project split button: it takes the organisation, name,
+ * summary and file, shows none of the create-only fields, and creates nothing through the create endpoint. */
+export const ImportProjectIsASeparateDialog: Story = {
+  beforeEach: () => {
     mockProjectListApis({
       orgs: [org({ default_template_project_id: null })],
+      projects: [
+        ...singleOrgProjects,
+        buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
+      ],
+    });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+    spyOn(api, "postFile").mockImplementation(async (path: string) =>
+      path.endsWith("/preview")
+        ? { people: [{ email: "alex@old.example", display_name: "Alex Morgan", resolution: "stand_in", member_id: null, member_name: null }] }
+        : { project: { id: "imported" }, warnings: [] });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Import project" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Import project" });
+
+    await expect(within(dialog).queryByText("Create from template")).not.toBeInTheDocument();
+    await expect(within(dialog).queryByLabelText("Project report name")).not.toBeInTheDocument();
+    const importButton = within(dialog).getByRole("button", { name: "Import" });
+    await expect(importButton).toBeDisabled();
+    await expect(requiredCaptions(dialog)).toEqual(["Name", "Project bundle (.zip)"]);
+
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Restored Project");
+    const fileInput = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(fileInput, new File(["zip"], "bundle.zip", { type: "application/zip" }));
+    await expect(importButton).toBeEnabled();
+    // The People step lists whom the bundle names and how each would be recorded in the chosen organisation.
+    await expect(await within(dialog).findByRole("table", { name: "People in the bundle" })).toBeInTheDocument();
+    await expect(within(dialog).getByText("alex@old.example")).toBeInTheDocument();
+    await userEvent.click(importButton);
+    await waitFor(() =>
+      expect(api.postFile).toHaveBeenCalledWith(
+        "/api/v1/projects/import", expect.any(File),
+        expect.objectContaining({ organization_id: "org-1", name: "Restored Project", people: '{"mapping":{},"keep_original_email":false}' }),
+      ),
+    );
+    await expect(api.post).not.toHaveBeenCalled();
+  },
+};
+
+/** An import the server refuses stays open and shows the error. */
+export const ImportProjectShowsTheError: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({})], projects: singleOrgProjects });
+    spyOn(api, "postFile").mockImplementation(async (path: string) => {
+      if (path.endsWith("/preview")) return { people: [] };
+      throw new Error("The file is not a project export.");
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+    await userEvent.click(within(document.body).getByRole("button", { name: "Import project" }));
+    const dialog = within(document.body).getByRole("dialog", { name: "Import project" });
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Broken");
+    await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, new File(["x"], "bad.zip", { type: "application/zip" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Import" }));
+    await expect(await within(dialog).findByText("The file is not a project export.")).toBeInTheDocument();
+  },
+};
+
+/** Templates are left out of the list until "Show templates" is ticked, and a template carries a badge. */
+export const TemplatesShowOnlyWhenAskedAndAreBadged: Story = {
+  beforeEach: () =>
+    mockProjectListApis({
+      orgs: [org({})],
       projects: [
         ...singleOrgProjects,
         buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
@@ -352,18 +426,117 @@ export const CreateProjectImportFileHidesTemplateWithNote: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await expect(canvas.queryByText("Standard Template")).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole("checkbox", { name: "Show templates" }));
+    await waitFor(() => expect(canvas.getByText("Standard Template")).toBeInTheDocument());
+    await expect(canvas.getByText("Template")).toBeInTheDocument();
+    await expect(api.getPage).toHaveBeenCalledWith(expect.stringContaining("include_templates=true"));
+  },
+};
+
+/** An organisation default template the person cannot see in the list is still offered, under a generic name. */
+export const UnseenDefaultTemplateIsOffered: Story = {
+  beforeEach: () => {
+    mockProjectListApis({ orgs: [org({ default_template_project_id: "hidden-tpl" })], projects: singleOrgProjects });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    const select = within(dialog).getByLabelText("Create from template") as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("hidden-tpl"));
+    await expect(within(select).getByRole("option", { name: "Organisation default template" })).toBeInTheDocument();
+    await userEvent.type(within(dialog).getByLabelText("Name"), "From Default");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/v1/projects", expect.objectContaining({ template_project_id: "hidden-tpl", use_template: true })),
+    );
+  },
+};
 
-    await expect(within(dialog).getByText("Create from template")).toBeInTheDocument();
-    const fileInput = dialog.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["fake zip content"], "bundle.zip", { type: "application/zip" });
-    await userEvent.upload(fileInput, file);
+/** The person's default organisation (Preferences) is where New project starts; a stale one falls back to the first. */
+export const CreateProjectStartsOnTheDefaultOrganisation: Story = {
+  // Innermost decorator: replaces the signed-in user the meta decorator provides.
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false, ui_preferences: { default_new_project_organization_id: "org-2" } }))],
+  beforeEach: () => mockProjectListApis({ orgs: [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })], projects: singleOrgProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await waitFor(() => expect((within(dialog).getByLabelText(/Organisation/) as HTMLSelectElement).value).toBe("org-2"));
+  },
+};
 
-    await expect(within(dialog).queryByText("Create from template")).not.toBeInTheDocument();
-    await expect(
-      within(dialog).getByText("A bundle brings its own structure, so template selection doesn't apply once a file is chosen above.")
-    ).toBeInTheDocument();
+export const CreateProjectIgnoresAStaleDefaultOrganisation: Story = {
+  // Innermost decorator: replaces the signed-in user the meta decorator provides.
+  decorators: [withStatefulAuth(buildUser({ is_server_admin: false, ui_preferences: { default_new_project_organization_id: "gone" } }))],
+  beforeEach: () => mockProjectListApis({ orgs: [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })], projects: singleOrgProjects }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await waitFor(() => expect((within(dialog).getByLabelText(/Organisation/) as HTMLSelectElement).value).toBe("org-1"));
+  },
+};
+
+/** New project reads organisation, rule, template, then name; switching organisation re-offers that organisation's templates. */
+export const NewProjectFieldOrderIsOrganisationTemplateName: Story = {
+  beforeEach: () => {
+    mockProjectListApis({
+      orgs: [org({ id: "org-1", name: "Acme Corp" }), org({ id: "org-2", name: "Beta Inc" })],
+      projects: [
+        ...singleOrgProjects,
+        buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
+      ],
+    });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    const top = (el: Element) => el.getBoundingClientRect().top;
+    const organisation = within(dialog).getByLabelText(/Organisation/);
+    const template = within(dialog).getByLabelText("Create from template");
+    const rule = document.body.querySelector(".form-divider") as HTMLElement;
+    await expect(top(organisation)).toBeLessThan(top(rule));
+    await expect(top(rule)).toBeLessThan(top(template));
+    await expect(Boolean(template.compareDocumentPosition(within(dialog).getByLabelText("Name")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    await expect(organisation).toHaveFocus();
+    await userEvent.selectOptions(organisation, "org-2");
+    await waitFor(() => expect(within(dialog).queryByLabelText("Create from template")).not.toBeInTheDocument());
+  },
+};
+
+/** Choosing "None" for the template is explicit: the organisation's default template would otherwise apply. */
+export const NoTemplateChoiceIsSentExplicitly: Story = {
+  beforeEach: () => {
+    mockProjectListApis({
+      orgs: [org({ default_template_project_id: "tpl1" })],
+      projects: [
+        ...singleOrgProjects,
+        buildProjectListItem({ id: "tpl1", name: "Standard Template", organization_id: "org-1", organization_name: "Acme Corp", is_template: true }),
+      ],
+    });
+    spyOn(api, "post").mockResolvedValue({ id: "new-project" });
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
+    const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    await userEvent.type(within(dialog).getByLabelText("Name"), "Blank One");
+    await userEvent.selectOptions(within(dialog).getByLabelText("Create from template"), "");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/api/v1/projects", expect.objectContaining({ template_project_id: null, use_template: false }),
+      ),
+    );
   },
 };
 
@@ -381,6 +554,7 @@ export const CreateProjectHidesParentFieldWithNoEligibleCandidates: Story = {
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
     await expect(within(dialog).queryByText("Parent project")).not.toBeInTheDocument();
+    await expect(within(dialog).queryByText("Nesting")).not.toBeInTheDocument();
   },
 };
 
@@ -399,10 +573,83 @@ export const CreateProjectOffersEligibleParent: Story = {
     await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
     await userEvent.click(canvas.getByRole("button", { name: /New project/ }));
     const dialog = within(document.body).getByRole("dialog", { name: "New project" });
+    // Parent, inheritance and mirrored role sit in one group that starts collapsed.
+    await expect(within(dialog).queryByText("Parent project")).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Nesting section" }));
     await expect(within(dialog).getByText("Parent project")).toBeInTheDocument();
     // Not offered: opted-out sibling projects.
     await expect(within(dialog).queryByRole("option", { name: "Beacon Mobile" })).not.toBeInTheDocument();
     await expect(within(dialog).getByRole("option", { name: "Eligible Parent" })).toBeInTheDocument();
+  },
+};
+
+// Organisation administrators: the filter that adds projects they are not a member of.
+const unjoinedProject = buildUnjoinedProjectListItem({ id: "u1", name: "Hidden Ledger", organization_name: "Acme Corp" });
+
+function mockUnjoinedApis(opts: { canIncludeUnjoined: boolean }) {
+  spyOn(api, "get").mockImplementation(async (path: string) => {
+    if (path.includes("/orgs?mine=true")) return [org({})];
+    if (path.includes("/effective-members") || path.includes("/group-roles") || path.includes("/pending-invites")) return [];
+    if (path.includes("/module-roles")) return [];
+    if (path.includes("/orgs/org-1/groups")) return [];
+    return singleOrgProjects;
+  });
+  spyOn(api, "getPage").mockImplementation(async (path: string) => {
+    const items = path.includes("/orgs/org-1/users") ? [] : path.includes("include_unjoined=true") ? [...singleOrgProjects, unjoinedProject] : singleOrgProjects;
+    return { items, total: items.length, canIncludeUnjoined: opts.canIncludeUnjoined };
+  });
+}
+
+export const UnjoinedFilterAbsentForNonAdministrator: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: false }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    await expect(canvas.queryByRole("checkbox", { name: "Include projects I am not a member of" })).not.toBeInTheDocument();
+  },
+};
+
+/** Off by default; ticking it adds the non-member rows, which are muted, labelled and not links. */
+export const UnjoinedFilterAddsNonMemberRows: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await waitFor(() => expect(canvas.getByText("Atlas Platform")).toBeInTheDocument());
+    const filter = canvas.getByRole("checkbox", { name: "Include projects I am not a member of" });
+    await expect(filter).not.toBeChecked();
+    await expect(canvas.queryByText("Hidden Ledger")).not.toBeInTheDocument();
+
+    await userEvent.click(filter);
+    await waitFor(() => expect(canvas.getByText("Hidden Ledger")).toBeInTheDocument());
+    await expect(canvas.getByText("Not a member")).toBeInTheDocument();
+    await expect(canvas.queryByRole("link", { name: "Hidden Ledger" })).not.toBeInTheDocument();
+    await expect(canvas.getByRole("link", { name: "Atlas Platform" })).toBeInTheDocument();
+  },
+};
+
+/** The same rows in the list view, with the gear in the first column. */
+export const UnjoinedRowInListView: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "Include projects I am not a member of" }));
+    await waitFor(() => expect(canvas.getByText("Hidden Ledger")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "List view" }));
+    const row = canvas.getByText("Hidden Ledger").closest("tr")!;
+    await expect(within(row).getByText("Not a member")).toBeInTheDocument();
+    await expect(within(row).getByRole("button", { name: "Manage users of Hidden Ledger" })).toBeInTheDocument();
+  },
+};
+
+/** The gear opens the shared Manage users dialog for the project. */
+export const UnjoinedGearOpensManageUsers: Story = {
+  beforeEach: () => mockUnjoinedApis({ canIncludeUnjoined: true }),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole("checkbox", { name: "Include projects I am not a member of" }));
+    await waitFor(() => expect(canvas.getByText("Hidden Ledger")).toBeInTheDocument());
+    await userEvent.click(canvas.getByRole("button", { name: "Manage users of Hidden Ledger" }));
+    await expect(await within(document.body).findByRole("dialog", { name: "Manage users — Hidden Ledger" })).toBeInTheDocument();
   },
 };
 

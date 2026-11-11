@@ -128,7 +128,7 @@ export function OpenQuestionDetailPage() {
   useEffect(() => {
     if (!projectId || !openQuestionId) return;
     projectOpenQuestionApi.get(projectId, openQuestionId).then(setOpenQuestion).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Open Question could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Open Question could not be found, or you do not have access to it."));
     });
   }, [projectId, openQuestionId]);
 
@@ -219,7 +219,7 @@ export function OpenQuestionDetailPage() {
         title={openQuestion.question}
         code={openQuestion.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="open_question" artefactId={openQuestion.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "← Open Question" }}
+        back={{ to: `/projects/${projectId}/modules/context_strategy/open-questions`, label: "Open Questions" }}
         badges={
           <>
           <Badge tone={OPEN_QUESTION_STATUS_TONE[openQuestion.status]}>

@@ -80,12 +80,12 @@ def _get(client, token, project_id, pp_id, **params):
     return resp.json()
 
 
-def _entry(levels, target_id=None, severity=None, frequency=None, confidence=None) -> dict:
+def _entry(levels, target_id=None, severity=None, frequency=None, confidence=None, **named) -> dict:
+    """A score entry; `named` adds any other axis by key (`job_size="Small"`)."""
+    chosen = {"severity": severity, "frequency": frequency, "confidence": confidence, **named}
     return {
         "target_id": target_id,
-        "severity_level_id": levels["severity"][severity] if severity else None,
-        "frequency_level_id": levels["frequency"][frequency] if frequency else None,
-        "confidence_level_id": levels["confidence"][confidence] if confidence else None,
+        "levels": {axis: levels[axis][name] for axis, name in chosen.items() if name},
     }
 
 
@@ -109,7 +109,7 @@ def test_is_intentional_round_trip_and_unchanged_when_omitted(client, admin_toke
 # --- Writing scores ----------------------------------------------------------
 
 
-def test_all_personas_score_and_blocker(client, admin_token):
+def test_general_score_and_blocker(client, admin_token):
     _, project, token = _setup(client, admin_token, "PP Score All Co")
     pid = project["id"]
     levels = _levels(client, token, pid)
@@ -121,10 +121,10 @@ def test_all_personas_score_and_blocker(client, admin_token):
     resp = _put(client, token, pid, pp["id"], [_entry(levels, severity="Blocker", frequency="Rare", confidence="High")], model_key="sxf")
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["scope"] == "all_personas" and body["is_blocker"] is True and body["counted"] == 1
+    assert body["scope"] == "general" and body["is_blocker"] is True and body["counted"] == 1
     # 5 x 1 = 5, of a possible 5 x 4 = 20 -> 0.25, the "Medium" band.
     assert body["score"]["raw"] == 5 and body["score"]["normalised"] == 0.25 and body["score"]["band_label"] == "Medium"
-    assert body["entries"][0]["status"] == "all" and body["entries"][0]["label"] is None
+    assert body["entries"][0]["status"] == "general" and body["entries"][0]["label"] is None
     # Re-reading under another model: S x F x C = 5 x 1 x 1 of 20.
     assert _get(client, token, pid, pp["id"], model_key="sxfxc")["score"]["raw"] == 5
 
@@ -177,22 +177,22 @@ def test_cell_rating_survives_worst_case_but_not_a_blend(client, admin_token):
     assert blend["score"]["normalised"] == 0.2 and blend["score"]["band_label"] != "Critical"
 
 
-def test_cannot_mix_all_personas_with_persona_rows_or_duplicate_a_persona(client, admin_token):
+def test_general_and_persona_rows_coexist_but_a_persona_cannot_repeat(client, admin_token):
     _, project, token = _setup(client, admin_token, "PP Score Mix Co")
     pid = project["id"]
     levels = _levels(client, token, pid)
     persona = _persona(client, token, pid, "Tech")
     pp = _pain_point(client, token, pid)
 
-    mixed = _put(client, token, pid, pp["id"], [
-        _entry(levels, None, severity="Minor"), _entry(levels, persona, severity="Minor"),
+    both = _put(client, token, pid, pp["id"], [
+        _entry(levels, None, severity="Minor"), _entry(levels, persona, severity="Major"),
     ])
-    assert mixed.status_code == 400 and "not both" in mixed.json()["detail"]
+    assert both.status_code == 200 and both.json()["scope"] == "per_persona", both.text
     dup = _put(client, token, pid, pp["id"], [_entry(levels, persona, severity="Minor"), _entry(levels, persona, severity="Major")])
     assert dup.status_code == 400
-    # Entries with no level chosen are dropped, so a blank all-personas row doesn't conflict.
+    # Entries with no level chosen are dropped, so a blank General row leaves only the persona.
     ok = _put(client, token, pid, pp["id"], [_entry(levels, None), _entry(levels, persona, severity="Minor")])
-    assert ok.status_code == 200 and ok.json()["scope"] == "per_persona"
+    assert ok.status_code == 200 and [e["status"] for e in ok.json()["entries"]] == ["active"]
 
 
 def test_level_validation(client, admin_token):
@@ -203,9 +203,11 @@ def test_level_validation(client, admin_token):
     other_levels = _levels(client, other_token, other_project["id"])
     pp = _pain_point(client, token, pid)
 
-    wrong_axis = {**_entry(levels), "severity_level_id": levels["frequency"]["Rare"]}
+    wrong_axis = {"target_id": None, "levels": {"severity": levels["frequency"]["Rare"]}}
     assert _put(client, token, pid, pp["id"], [wrong_axis]).status_code == 400
-    foreign = {**_entry(levels), "severity_level_id": other_levels["severity"]["Minor"]}
+    foreign = {"target_id": None, "levels": {"severity": other_levels["severity"]["Minor"]}}
+    unknown_axis = {"target_id": None, "levels": {"no_such_axis": levels["severity"]["Minor"]}}
+    assert _put(client, token, pid, pp["id"], [unknown_axis]).status_code == 400
     assert _put(client, token, pid, pp["id"], [foreign]).status_code == 400
     unknown_persona = _entry(levels, "00000000-0000-0000-0000-000000000001", severity="Minor")
     assert _put(client, token, pid, pp["id"], [unknown_persona]).status_code == 400
@@ -216,7 +218,7 @@ def test_oversized_score_payload_is_rejected(client, admin_token):
     _, project, token = _setup(client, admin_token, "PP Score Cap Co")
     pid = project["id"]
     pp = _pain_point(client, token, pid)
-    blank = {"target_id": None, "severity_level_id": None, "frequency_level_id": None, "confidence_level_id": None}
+    blank: dict[str, object] = {"target_id": None, "levels": {}}
     assert _put(client, token, pid, pp["id"], [blank] * 501).status_code == 422
 
 
@@ -374,7 +376,7 @@ def test_scoring_is_audit_logged_once_per_real_change(client, admin_token):
     _put(client, token, pid, pp["id"], entries)  # no change -> no second event
     with SessionLocal() as db:
         events = db.scalars(select(AuditEvent).where(AuditEvent.entity_id == pp["id"], AuditEvent.action == "scored")).all()
-    assert len(events) == 1 and events[0].detail == {"all_personas": True, "scored_targets": 0}
+    assert len(events) == 1 and events[0].detail == {"general": True, "scored_targets": 0}
 
 
 # --- Parameters, list, defaults ----------------------------------------------
@@ -429,4 +431,4 @@ def test_deleting_an_in_use_level_requires_and_performs_reassignment(client, adm
     moved = client.delete(url, params={"reassign_to_id": levels["severity"]["Moderate"]}, headers=h)
     assert moved.status_code == 204, moved.text
     entry = _get(client, token, pid, pp["id"])["entries"][0]
-    assert entry["severity_level_id"] == levels["severity"]["Moderate"]
+    assert entry["levels"]["severity"] == levels["severity"]["Moderate"]

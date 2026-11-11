@@ -67,7 +67,7 @@ test.describe("Compliance: groups as owners and assignees", () => {
     // --- The standard names its group owner with the kind; the edit dialog offers organisation groups only.
     await page.goto(`/standards/${standard.id}`);
     await expect(page.getByText(teamName).first()).toBeVisible();
-    await expect(page.getByText(/^Org group/).first()).toBeVisible();
+    await expect(page.getByText(/^Organisation group/).first()).toBeVisible();
     await page.getByRole("button", { name: "Edit", exact: true }).click();
     const editDialog = page.getByRole("dialog", { name: "Edit standard" });
     await editDialog.getByRole("combobox", { name: "Standard owner" }).fill("Field Squad");

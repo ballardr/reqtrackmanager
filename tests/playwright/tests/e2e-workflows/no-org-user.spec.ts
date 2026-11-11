@@ -38,18 +38,18 @@ test.describe("app shell for a user with zero organisation memberships", () => {
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 
     await test.step("/orgs shows an empty directory, not a crash", async () => {
-      await page.getByRole("link", { name: "My organisations" }).click();
+      await page.getByRole("link", { name: "Organisation settings" }).click();
       await expect(page).toHaveURL(/\/orgs$/);
-      await expect(page.getByText("You don't belong to any organisations yet.")).toBeVisible();
+      await expect(page.getByText("You do not belong to any organisations yet.")).toBeVisible();
     });
 
     await test.step("the nav rail has no org-admin/server-admin section for this plain, non-server-admin persona", async () => {
-      // "My organisations" itself is a universal entry point (shown to
+      // "Organisation settings" itself is a universal entry point (shown to
       // every signed-in user regardless of membership, Layout.tsx) — the
       // conditional nav content this persona must NOT see is the
       // server-admin-only "Administration" section (`user.is_server_admin`),
       // which zero org memberships alone must not accidentally unlock.
-      await expect(page.getByRole("link", { name: "My organisations" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Organisation settings" })).toBeVisible();
       await expect(page.getByText("Administration", { exact: true })).not.toBeVisible();
       await expect(page.getByRole("link", { name: "Server management" })).not.toBeVisible();
     });

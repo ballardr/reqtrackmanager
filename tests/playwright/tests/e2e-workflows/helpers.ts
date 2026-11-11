@@ -67,6 +67,38 @@ export const PROJECT_NAMES = {
  * fixed override PROJECT_NAMES.delta1 is seeded with. */
 export const TERMINOLOGY_OVERRIDE = { stage: "Phase", requirement: "Spec", changeRequest: "ECR" } as const;
 
+const LOGIN_ATTEMPTS = 6;
+
+/** The pause before retrying a sign-in answered 429: the server's `Retry-After` (seconds), at least one second. */
+function retryAfterMs(retryAfter: string | null): number {
+  const seconds = Number(retryAfter);
+  return (Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 10) : 1) * 1000 + 200;
+}
+
+/**
+ * Signs in through the API and returns the token response. The suite signs in as the same few accounts from several
+ * workers at once, and the server answers 429 to an attempt that overlaps another on the same account for longer than
+ * its short lock wait, so a 429 is retried after the time it states; any other failure is raised naming the account.
+ *
+ * @param request The API request context to use.
+ * @param email The account to sign in as.
+ * @param password The account's password.
+ * @returns The parsed login response (`access_token`).
+ */
+export async function apiLogin(
+  request: APIRequestContext, email: string, password: string = PASSWORD,
+): Promise<{ access_token: string }> {
+  let status = 0;
+  for (let attempt = 0; attempt < LOGIN_ATTEMPTS; attempt++) {
+    const resp = await request.post("http://localhost:8000/api/v1/auth/login", { data: { email, password } });
+    status = resp.status();
+    if (resp.ok()) return resp.json();
+    if (status !== 429) break;
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs(resp.headers()["retry-after"] ?? null)));
+  }
+  throw new Error(`API login as ${email} failed with status ${status}`);
+}
+
 /** Logs in through the real UI form as the given persona.
  *
  * Waits on the login response itself rather than only on "Sign out"
@@ -93,11 +125,19 @@ export async function loginAs(page: Page, email: string, password: string = PASS
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
-  const loginResponse = page.waitForResponse(
-    (r) => r.url().endsWith("/api/v1/auth/login") && r.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Sign in" }).click();
-  expect((await loginResponse).status(), `login as ${email}`).toBe(200);
+  let status = 0;
+  for (let attempt = 0; attempt < LOGIN_ATTEMPTS; attempt++) {
+    const loginResponse = page.waitForResponse(
+      (r) => r.url().endsWith("/api/v1/auth/login") && r.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Sign in" }).click();
+    const response = await loginResponse;
+    status = response.status();
+    if (status !== 429) break;
+    // Another attempt on this account was still in progress: wait the stated time and submit again.
+    await page.waitForTimeout(retryAfterMs(await response.headerValue("retry-after")));
+  }
+  expect(status, `login as ${email}`).toBe(200);
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 }
 
@@ -113,6 +153,22 @@ export async function logout(page: Page): Promise<void> {
  * actually collapsed. */
 export async function ensureExpanded(page: Page, sectionTitle: string): Promise<void> {
   const toggle = page.getByRole("button", { name: `${sectionTitle} section` });
+  // A section that is the only one on its page has no toggle (`collapsible={false}`): it is always open.
+  await expect(toggle.or(page.getByRole("heading", { name: sectionTitle, exact: true })).first()).toBeVisible();
+  if ((await toggle.count()) === 0) return;
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") {
+    await toggle.click();
+  }
+}
+
+/**
+ * Opens one row of a collapsible list (`DisclosureRow`: a workflow, a stage's schedule) when it is closed, and returns
+ * once it is open. The row's toggle is named by the row title followed by its summary, so it is matched by prefix;
+ * a row's own action buttons ("Edit workflow X") do not begin with the title.
+ */
+export async function ensureRowExpanded(page: Page, rowTitle: string): Promise<void> {
+  const escaped = rowTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const toggle = page.getByRole("button", { name: new RegExp(`^${escaped}`) }).and(page.locator("[aria-expanded]"));
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
     await toggle.click();
   }
@@ -190,10 +246,19 @@ export async function openProjectGroupPanel(page: Page, groupName: string) {
  * selected group is otherwise unreachable — unlike `CollapsibleSection`'s
  * own per-user collapse preference, group selection isn't persisted, so
  * this must run before every interaction with a section that isn't in the
- * page's default group.
+ * page's default group. `parentLabel` names the expandable group a sub-page sits under (its header is opened first).
  */
-export async function selectResourceMenuGroup(page: Page, groupLabel: string): Promise<void> {
-  const link = page.getByRole("link", { name: groupLabel, exact: true });
+export async function selectResourceMenuGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
+  // A sub-page sits under an expandable group header: open that group first when the menu shows it closed. Below the
+  // mobile breakpoint the menu is a <select> with no header button, so there is nothing to open.
+  if (parentLabel) {
+    const header = page.getByRole("button", { name: parentLabel, exact: true });
+    const narrowMenu = page.locator("select").filter({ has: page.getByRole("option", { name: groupLabel, exact: true }) });
+    await expect(header.or(narrowMenu).first()).toBeAttached();
+    if ((await header.count()) > 0 && (await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  }
+  // Scoped to the resource menu: the application navigation rail also has links named like a group (Projects).
+  const link = page.locator("nav.resource-menu-nav").getByRole("link", { name: groupLabel, exact: true });
   // Below ResourceMenu's own mobile breakpoint (theme.css/useNarrowViewport,
   // 860px) the link list is replaced with a single <select> — same group
   // switch, a different control (platform-review-2026-09, "resource menus
@@ -233,8 +298,8 @@ export async function selectResourceMenuGroup(page: Page, groupLabel: string): P
 
 /** `selectResourceMenuGroup` for `OrgAdminPage` — kept as its own name
  * since most call sites predate the generic helper above. */
-export async function selectOrgAdminGroup(page: Page, groupLabel: string): Promise<void> {
-  await selectResourceMenuGroup(page, groupLabel);
+export async function selectOrgAdminGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel, parentLabel);
 }
 
 /** Sets a module's (or, with `moduleName`, a sub-component's) org-level
@@ -285,8 +350,8 @@ export async function selectOrgOverviewGroup(page: Page, groupLabel: string): Pr
 /** `selectResourceMenuGroup` for `ProjectAdminPage`
  * (`/projects/:projectId/admin/:group?`, converted from `Tabs` — see
  * `docs/decisions.md`). */
-export async function selectProjectAdminGroup(page: Page, groupLabel: string): Promise<void> {
-  await selectResourceMenuGroup(page, groupLabel);
+export async function selectProjectAdminGroup(page: Page, groupLabel: string, parentLabel?: string): Promise<void> {
+  await selectResourceMenuGroup(page, groupLabel, parentLabel);
 }
 
 /**
@@ -425,6 +490,28 @@ export function generateTotpCode(base32Secret: string, forTimeMs: number = Date.
   return String(binCode % 1_000_000).padStart(6, "0");
 }
 
+const lastTotpStep = new Map<string, number>();
+
+/**
+ * A code the server will accept for a secret that has already been used in this run. The server refuses a code for a
+ * step at or before the last one it accepted (no replay) and tolerates one step either side of now, so successive
+ * calls take the steps one before now, now and one after, and wait for the clock when those are used up.
+ *
+ * @param base32Secret The authenticator secret shown when 2FA was enrolled.
+ * @returns A six-digit code for the earliest step the server can still accept.
+ */
+export async function nextTotpCode(base32Secret: string): Promise<string> {
+  for (;;) {
+    const current = Math.floor(Date.now() / 30_000);
+    const step = Math.max(current - 1, (lastTotpStep.get(base32Secret) ?? Number.NEGATIVE_INFINITY) + 1);
+    if (step <= current + 1) {
+      lastTotpStep.set(base32Secret, step);
+      return generateTotpCode(base32Secret, step * 30_000);
+    }
+    await new Promise((resolve) => setTimeout(resolve, (current + 1) * 30_000 - Date.now() + 100));
+  }
+}
+
 /**
  * Clicks a save control and waits for the mutating request it triggers to
  * finish, so a following `page.reload()` can't cancel it mid-flight (the
@@ -499,9 +586,29 @@ export async function openProject(page: Page, name: string): Promise<void> {
 export async function apiHeaders(
   request: APIRequestContext, email: string, password: string = PASSWORD,
 ): Promise<Record<string, string>> {
-  const resp = await request.post("http://localhost:8000/api/v1/auth/login", { data: { email, password } });
-  expect(resp.ok()).toBeTruthy();
-  return { Authorization: `Bearer ${(await resp.json()).access_token}` };
+  return { Authorization: `Bearer ${(await apiLogin(request, email, password)).access_token}` };
+}
+
+/**
+ * Moves a stage to the named phase of its own workflow (`POST .../transition`) and returns the response, so a
+ * caller can assert a refusal. The phase is found by name in the stage's workflow, whatever the ids are.
+ */
+export async function moveStageToPhase(
+  request: APIRequestContext, headers: Record<string, string>, projectId: string, stageId: string, phaseName: string,
+  cascadeToRequirements = false, lookupHeaders: Record<string, string> = headers,
+) {
+  // The stage and workflow are looked up as `lookupHeaders` (default: the caller), so a refusal can be asserted for a
+  // caller with no access to the project at all.
+  const base = `http://localhost:8000/api/v1/projects/${projectId}`;
+  const stages: { id: string; workflow_id: string }[] = await (await request.get(`${base}/stages`, { headers: lookupHeaders })).json();
+  const stage = stages.find((s) => s.id === stageId)!;
+  const workflows: { id: string; phases: { id: string; name: string }[] }[] = await (
+    await request.get(`${base}/stage-workflows`, { headers: lookupHeaders })
+  ).json();
+  const phase = workflows.find((w) => w.id === stage.workflow_id)!.phases.find((p) => p.name === phaseName)!;
+  return request.post(`${base}/stages/${stageId}/transition`, {
+    headers, data: { phase_id: phase.id, cascade_to_requirements: cascadeToRequirements },
+  });
 }
 
 type Cleanup = (request: APIRequestContext) => Promise<void>;
@@ -781,10 +888,9 @@ export async function closeDesignerPreview(page: Page): Promise<void> {
  */
 export async function createDocumentLayoutWorld(request: APIRequestContext, label: string) {
   const api = "http://localhost:8000/api/v1";
-  const login = async (email: string, password: string) => {
-    const resp = await request.post(`${api}/auth/login`, { data: { email, password } });
-    return { Authorization: `Bearer ${(await resp.json()).access_token}` };
-  };
+  const login = async (email: string, password: string) => ({
+    Authorization: `Bearer ${(await apiLogin(request, email, password)).access_token}`,
+  });
   const suffix = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
   const adminEmail = `e2e-${label}-${suffix}@example.com`;
   const serverHeaders = await login(SERVER_ADMIN_LOGIN.email, SERVER_ADMIN_LOGIN.password);

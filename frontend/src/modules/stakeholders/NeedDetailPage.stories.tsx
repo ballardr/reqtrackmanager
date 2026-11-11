@@ -220,7 +220,7 @@ export const OwnerCanBeAnOrgGroup: Story = {
     await userEvent.type(picker.getByLabelText("Need owner"), "platform");
     await userEvent.click(await picker.findByText("Platform Architecture"));
     await waitFor(() => expect(api.put).toHaveBeenCalledWith(`${BASE}/needs/${NEED_ID}`, { owner: { type: "org_group", id: "group-1" } }));
-    await waitFor(() => expect(canvas.getByText("Org group · 3 members")).toBeInTheDocument());
+    await waitFor(() => expect(canvas.getByText("Organisation group · 3 members")).toBeInTheDocument());
   },
 };
 

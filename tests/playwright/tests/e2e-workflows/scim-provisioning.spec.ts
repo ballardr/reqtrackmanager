@@ -25,6 +25,12 @@ test.describe("SCIM provisioning token", () => {
     await page.goto("/orgs");
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
+    // Idempotent start: a token left by an earlier, interrupted run is revoked through the API first.
+    const orgId = page.url().match(/\/orgs\/([^/]+)\/admin/)![1];
+    const bearer = await page.evaluate(() => localStorage.getItem("reqtrack_token"));
+    await page.request.delete(`http://localhost:8000/api/v1/orgs/${orgId}/scim-token`, { headers: { Authorization: `Bearer ${bearer}` } });
+    await page.reload();
+
     // SCIM lives in the "OAuth/SSO" top-level resource-menu group
     // — a real navigation, so it must be selected before the section is
     // reachable at all.
@@ -58,6 +64,8 @@ test.describe("SCIM provisioning token", () => {
 
     await test.step("revoking the token via the UI breaks it immediately", async () => {
       await page.getByRole("button", { name: "Revoke" }).click();
+      // Revoking the live credential asks first.
+      await page.getByRole("dialog", { name: "Revoke the SCIM token?" }).getByRole("button", { name: "Revoke" }).click();
       await expect(page.getByText("Not enabled.")).toBeVisible();
 
       const resp = await page.request.get("http://localhost:8000/scim/v2/Users", {

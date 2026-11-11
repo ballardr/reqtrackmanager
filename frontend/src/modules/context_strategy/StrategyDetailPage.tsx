@@ -98,7 +98,7 @@ export function StrategyDetailPage() {
   const backLink = projectId
     ? `/projects/${projectId}/modules/context_strategy/strategies`
     : `/org-overview`;
-  const backLabel = projectId ? "← Strategy" : "← Organisation overview";
+  const backLabel = projectId ? "Strategies" : "Organisation overview";
 
   const [strategy, setStrategy] = useState<Strategy | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -114,7 +114,7 @@ export function StrategyDetailPage() {
   useEffect(() => {
     if (!scopeId || !strategyId) return;
     scopedApi.get(scopeId, strategyId).then(setStrategy).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Strategy could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Strategy could not be found, or you do not have access to it."));
     });
     scopedApi.listVersions(scopeId, strategyId).then(setVersions).catch(() => setVersions([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

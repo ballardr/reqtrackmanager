@@ -225,7 +225,7 @@ export const NamedOrgGroupRoleSourceLine: Story = {
     // review 2026-09 follow-up) rather than relying on the `title` alone.
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Member from Morgan Casey" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("isn't a direct grant"));
+    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("is not a direct grant"));
     await expect(within(group).getByText("Member (by group)")).toBeInTheDocument();
   },
 };
@@ -244,7 +244,7 @@ export const DisabledRoleWithExplanatoryTitle: Story = {
     const group = within(document.body).getByRole("group", { name: "Priya Shah's roles" });
     const checkbox = within(group).getByRole("checkbox", { name: "Revoke Stakeholder from Priya Shah" });
     await expect(checkbox).toBeDisabled();
-    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("isn't a direct grant"));
+    await expect(checkbox).toHaveAttribute("title", expect.stringContaining("is not a direct grant"));
     await expect(within(group).getByText("Stakeholder (by group)")).toBeInTheDocument();
   },
 };

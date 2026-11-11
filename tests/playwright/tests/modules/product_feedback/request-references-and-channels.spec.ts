@@ -120,7 +120,7 @@ test.describe("Enhancement requests: external references and channel per ask", (
 
     await test.step("hiding a system in the project stops it being offered, and restoring brings it back", async () => {
       await page.goto(`/projects/${project.id}/admin`);
-      await selectProjectAdminGroup(page, "External Systems");
+      await selectProjectAdminGroup(page, "External Systems", "Product Feedback");
       await page.getByRole("button", { name: "Hide External system type in this project" }).first().click();
       await page.getByRole("dialog").getByRole("button", { name: /Hide/ }).click();
       await page.goto(`/projects/${project.id}/modules/product_feedback/requests/${request.id}`);

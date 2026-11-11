@@ -116,14 +116,14 @@ test("full requirements lifecycle through the UI", async ({ page }) => {
 
   await test.step("approve stage locks the requirement", async () => {
     await page.getByText("Project Admin").click();
-    // Project stages now lives inside the merged "Structure" tab.
-    await selectProjectAdminGroup(page, "Structure");
-    // A stage must enter review before it can be approved (C-R-05's
-    // review-deadline/response workflow lives in that state) — approving
-    // straight from scoping is no longer a valid transition.
-    await page.getByRole("button", { name: "Start review" }).click();
-    await page.getByRole("button", { name: "Approve stage" }).click();
-    await expect(page.getByRole("button", { name: "Approve stage" })).toHaveCount(0);
+    // Project stages live under the "Workflows and phases" group, with workflows, component phases and the schedule.
+    await selectProjectAdminGroup(page, "Workflows and phases");
+    // Moves between the workflow's phases are free; entering the locked "Approved" phase writes the baseline.
+    const phase = page.getByRole("combobox", { name: "Phase of Scoping" });
+    await phase.selectOption({ label: "Review" });
+    await expect(phase.locator("option:checked")).toHaveText("Review");
+    await phase.selectOption({ label: "Approved" });
+    await expect(phase.locator("option:checked")).toHaveText("Approved");
 
     await page.getByRole("link", { name: "Requirements", exact: true }).click();
     await expect(page.getByText("Locked (approved)")).toBeVisible();

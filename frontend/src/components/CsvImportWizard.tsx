@@ -234,7 +234,7 @@ export function CsvImportWizard({
             {omittedNote && <p className="text-muted" style={{ margin: 0 }}>{omittedNote}</p>}
             <table>
               <thead>
-                <tr><th>Field</th><th>Your column</th><th>What it's for</th></tr>
+                <tr><th>Field</th><th>Your column</th><th>What it is for</th></tr>
               </thead>
               <tbody>{mappable.map(renderMapRow)}</tbody>
             </table>

@@ -10,6 +10,10 @@ Terminology introduced across this site, gathered into one alphabetical referenc
 
 A visible approve/reject signal a stakeholder can cast on a change request. It never approves or rejects the change itself — only a manager's or administrator's explicit decision does. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
 
+#### Announcement
+
+A short plain-text message written by a server administrator (for the whole platform) or an organisation administrator (for that organisation), with a severity (shown by colour, icon and name) and a start (now by default) and an optional end time. It shows on the login pages when flagged, and as a banner after sign-in that can be made not dismissible, and can be sent once as a notification. See [Server administration](../workflows/server-administration.md#messages) and [Administering an organisation](../workflows/administering-an-organisation.md#messages).
+
 #### Audit trail
 
 The record of security- and administration-relevant events (logins, permission grants, password changes), independent of any one requirement's own change log — *who did what* across the system. See [Discussions, notifications, and audit](../concepts/discussions-notifications-and-audit.md).
@@ -29,6 +33,14 @@ The only way to modify a locked (Approved or Completed) requirement: a proposal 
 #### Close the loop
 
 Recording that the people who asked for an [enhancement request](#enhancement-request) were told its outcome once it was delivered or declined. Nothing is sent to them. See [Product Feedback → Relationships and closing the loop](../modules/product-feedback-module/relationships-and-closing-the-loop.md#closing-the-loop).
+
+#### Component placement
+
+The place a record sits in the project's component and category tree. A record other than a requirement can hold several, for example *Hardware / Cooling* and *Software*, and lists, search, reports and exports can be filtered by them. A requirement keeps its own single component and category. See [Core Features → Components on every record](../core-features/components-on-records.md).
+
+#### Cost of Delay
+
+A Pain Point scoring model that adds User/business value, Time criticality and Risk reduction / opportunity enablement with equal importance. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#the-criteria).
 
 #### Custom field
 
@@ -54,6 +66,14 @@ A proposed solution someone asked the product for, kept in the Product Feedback 
 
 The server-tier licensing lever controlling whether an organisation is allowed to use a given [module](#module) at all, independent of whether the organisation has actually turned it on. See [Modules → Overview](../modules/overview.md).
 
+#### General (Pain Point scores)
+
+The part of a Pain Point's scores that applies to the whole Pain Point: every criterion's level, and the default for the criteria scored per persona. A persona that differs adds its own levels, which override General for that persona. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#scoring-a-pain-point).
+
+#### Imported person
+
+A named record standing in for someone an import bundle names who is not a member of the importing organisation. It cannot sign in or hold access, shows an **Imported** badge, and keeps only a display name. See [Zip export/import](../core-features/zip-export-import.md#imported-people).
+
 #### Identity (requirement identity)
 
 The part of a requirement that never changes once created: its project, component, category, generated ID, creator, and archival state. Distinct from its versioned content. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
@@ -74,9 +94,17 @@ The named, directional relationship a [link](#link) carries ("Derives from" / "I
 
 What happens once a requirement reaches Approved or Completed: its edit form disables, and further change must go through a [change request](#change-request) rather than a silent edit. See [Requirements, versions, and the lifecycle](../concepts/requirements-versions-and-lifecycle.md).
 
+#### Logo band colour
+
+The colour of the band behind an organisation's or the platform's logo and name, so a logo that is white on a transparent background stays visible and the name reads as part of the logo. Its **Logo band text colour** sets the name's colour (empty is black or white by contrast). It is drawn across the top of the sign-in card, in the header of outgoing email and (once a colour is chosen) behind the logo on reports. Unset, it is the colour of the application's top bar. See [Server administration](../workflows/server-administration.md#server-management) and [Administering an organisation](../workflows/administering-an-organisation.md).
+
 #### Module
 
 A self-contained, optional capability area (backend endpoints, database tables, RBAC roles, frontend pages, optionally AI-assistant tools) gated by [entitlement](#entitlement) and [enablement](#enablement) rather than permanently built into the core application. Compliance, Decision Management, Context & Strategy, Stakeholders & Personas, and Risk Management are the modules shipped so far. See [Modules → Overview](../modules/overview.md).
+
+#### Navigation name
+
+A name a project or organisation gives an entry of the project navigation (for example "ADRs" for Decisions), shown in the navigation, as the page title and as the back link of that entry's records. A project's own name takes precedence over its parent's, which takes precedence over the organisation's. See [Administering a project](../workflows/administering-a-project.md#navigation-names).
 
 #### Organisation
 
@@ -93,6 +121,18 @@ A role governing organisation-wide administration (`org_admin`, `project_creator
 #### Personal access token (PAT)
 
 A long-lived, org/project-scoped bearer credential for non-interactive use, such as scripting against the REST API or connecting an AI assistant. See [Core Features → Personal access tokens](../core-features/personal-access-tokens.md).
+
+#### Platform subscription manager
+
+A server role, granted by a server administrator, that provisions and bounds organisations: create, import, suspend and enable an organisation, set its module entitlements, and see the organisation list. It cannot delete an organisation, join one as its administrator or read any organisation's records. See [Server administration](../workflows/server-administration.md#server-roles).
+
+#### Policy
+
+A written document published by a server administrator (a privacy policy or a data policy, readable at `/policies` without signing in) or by an organisation's administrators (an access policy or a confidentiality agreement, readable only by that organisation's members, optionally limited to chosen people or groups). Written in a visual editor. Saving changes a working copy; **Publish** records a new version. Distinct from the **Personal data in exports** setting, which decides whether personal data columns may leave the application in a record export. See [Server administration](../workflows/server-administration.md#policies) and [Administering an organisation](../workflows/administering-an-organisation.md#policies).
+
+#### Policy acceptance
+
+The recorded agreement of one person to the current version of a [policy](#policy) that requires it: the person, the version, a fingerprint of the text and the time. Until a person has accepted, they can read but cannot create or change records. A new version asks again. It records acceptance by an account, not a signature. See [Requiring acceptance](../workflows/administering-an-organisation.md#requiring-acceptance).
 
 #### Project
 
@@ -112,7 +152,7 @@ A role governing what someone can do inside one specific project (`project_manag
 
 #### Project stage
 
-One step in a project's sequence (e.g. Scoping → Development → Hardening). Approving a stage creates a [baseline](#baseline) and locks the requirements it captured. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md).
+One step in a project's sequence (e.g. Scoping → Development → Hardening). It follows a [stage workflow](#stage-workflow); entering a Locked phase creates a [baseline](#baseline) and locks the requirements it captured. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md).
 
 #### Project template
 
@@ -138,6 +178,30 @@ One historical or current state of a requirement's content (name, reasoning, des
 
 A Risk owner's judgement of whether one linked Requirement or Action actually reduces the Risk: Proposed, Effective, Ineffective or Needs reassessment. Only Effective counts. See [Risk Management → Treatment and relationships](../modules/risk-management-module/treatment-and-relationships.md).
 
+#### Shared resource
+
+A file owned by the organisation rather than by one project, such as a standards document. Any requirement in the organisation can link it and a report can append it. It is listed on the organisation Files page, where only a person holding the `manage_org_resources` permission (organisation administrators, or anyone given it through a custom role) can upload or delete it. See [File attachments and shared resources](../core-features/file-attachments-and-shared-resources.md#organisation-wide-shared-resources).
+
+#### Stage workflow
+
+A named, ordered list of phases a project stage moves through. Each phase has a free-text name and a kind (Open, Review, Locked, On hold or Closed) that decides what entering it does. Defined by the organisation (available to every project, which can hide it) or by one project. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#workflows-and-phases).
+
+#### Component phases
+
+A per-project setting under which each component follows its own [stage workflow](#stage-workflow) for each stage. A component's Locked phase approves only its own requirements for that stage. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#component-phases).
+
+#### Phase schedule
+
+The expected range (an expected start and end, both calendar dates) of a phase of a stage or of a component's track, with its actual start and completion and the upcoming, overdue and completed reminders sent about it. See [Core Features → Stages and baselining](../core-features/stages-and-baselining.md#phase-schedule-and-reminders).
+
+#### Storage limit
+
+The most storage an organisation may use for its files and stored report outputs, set by a server administrator or Platform subscription manager (or, for an organisation with none, the deployment's default limit). Reaching it stops new files only; existing files stay readable and deletable. See [Organisation storage](../workflows/server-administration.md#organisation-storage).
+
+#### Subscription removal authority
+
+A server role, granted by a server administrator, that permanently deletes an organisation and all of its data after its name is typed to confirm. It holds no other power: it cannot create, suspend or read records. Independent of the Platform subscription manager. See [Server administration](../workflows/server-administration.md#server-roles).
+
 #### Task (change request task)
 
 A short follow-up item tied to a change request, with an optional assignee and due date. See [Change requests and baselines](../concepts/change-requests-and-baselines.md).
@@ -161,3 +225,7 @@ An optional TOTP-based second authentication factor a user can enrol in for thei
 #### Weighted demand
 
 The sum of the weights of the distinct people and Personas who asked for an [enhancement request](#enhancement-request) (a Stakeholder's Influence level, a Persona's weight), counting each only once. See [Product Feedback → Demand and merging](../modules/product-feedback-module/demand-and-merging.md).
+
+#### WSJF (Weighted Shortest Job First)
+
+A Pain Point scoring model that divides [Cost of Delay](#cost-of-delay) by Job size, so a small piece of work ranks above a large one of the same value. See [Pain Point scoring](../modules/context-strategy-module/pain-point-scoring.md#the-criteria).

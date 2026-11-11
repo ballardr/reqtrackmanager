@@ -1,0 +1,25 @@
+# Published images for a demonstration (docs/demo.md, "Daily reset"): loaded with docker-compose.yml and
+# docker-compose.demo.yml by `scripts/demo.sh --pull` and never by a developer or test run, which keep building the
+# working tree.
+#
+# It names the images CI publishes on every passing merge to main (the same names and tag variables the production
+# compose file uses), so `docker compose pull` has something to fetch. Only images built from this repository are
+# listed; the database, storage, mail catcher, identity provider, Prometheus and the proxy are pinned third-party
+# versions and change only by a deliberate edit. No `pull_policy`: `scripts/demo.sh --pull` pulls explicitly, so a
+# failed pull leaves the images already present in use instead of failing every later `up`.
+#
+# `backend/tests/test_demo_images.py` fails when this file and the services the base file builds differ.
+services:
+  backend:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
+  # Runs the backend image (`extends: backend`), so it must be the same image.
+  demo-scheduler:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-backend:${IMAGE_TAG:-latest}
+  converter:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-converter:${IMAGE_TAG:-latest}
+  frontend:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-frontend:${IMAGE_TAG:-latest}
+  mcp-server:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-mcp-server:${IMAGE_TAG:-latest}
+  docs:
+    image: ${GHCR_IMAGE_PREFIX:-ghcr.io/ballardr/reqtrackmanager}-docs:${IMAGE_TAG:-latest}

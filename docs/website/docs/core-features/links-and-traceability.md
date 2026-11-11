@@ -8,7 +8,7 @@ Any two records in a project can be linked, whatever their kind: a requirement t
 
 ## Link types
 
-Organisation admins manage link types under **Admin → Projects & workflow → Link types**. Each has a name for both directions and a [direction](requirements-management.md#traceability-links) (upstream, downstream or none) that traceability views and AI assistants use to answer "where does this come from?" and "what depends on it?". Modules that ship their own vocabulary add link types for it when they are enabled (the Decision Management module adds "Addresses" for a decision and the pain point it addresses, for example); an admin can rename, reclassify or restrict any of them, and your edits are never overwritten.
+Organisation admins manage link types under **Admin → Workflow → Link types**. Each has a name for both directions and a [direction](requirements-management.md#traceability-links) (upstream, downstream or none) that traceability views and AI assistants use to answer "where does this come from?" and "what depends on it?". Modules that ship their own vocabulary add link types for it when they are enabled (the Decision Management module adds "Addresses" for a decision and the pain point it addresses, for example); an admin can rename, reclassify or restrict any of them, and your edits are never overwritten.
 
 ### Restrict what a link type can join
 
@@ -52,11 +52,11 @@ flowchart TD
 
 ### One shared set for the whole organisation
 
-An organisation that wants every project on the same vocabulary can switch off **Let projects add their own link types and hide the organisation's** (Admin → Projects & workflow → Link types). Asking first, it shows how many project-level link types it affects. Nothing is deleted: project link types, hiding and rules stop applying, project admins see the list read-only, and everything comes back if you switch it on again. Links already made keep showing either way.
+An organisation that wants every project on the same vocabulary can switch off **Let projects add their own link types and hide the organisation's** (Admin → Workflow → Link types). Asking first, it shows how many project-level link types it affects. Nothing is deleted: project link types, hiding and rules stop applying, project admins see the list read-only, and everything comes back if you switch it on again. Links already made keep showing either way.
 
 ## Linking across nested projects
 
-When projects are nested, a record can be linked to one in a **parent or child project**, for example a pain point taken in at product level traced to the requirements below it. Each link type decides whether, and in which direction, that is allowed, with the **Across nested projects** setting under each link type (organisation admins under **Admin → Projects & workflow → Link types**, project admins for their project's own types):
+When projects are nested, a record can be linked to one in a **parent or child project**, for example a pain point taken in at product level traced to the requirements below it. Each link type decides whether, and in which direction, that is allowed, with the **Across nested projects** setting under each link type (organisation admins under **Admin → Workflow → Link types**, project admins for their project's own types):
 
 | Setting | Meaning |
 |---------|---------|
@@ -117,7 +117,7 @@ flowchart LR
 
 The same link reads correctly from all three pages, and any of them can add or remove it. On a narrow screen the panel moves below the page; on a wide one it sits to the right and can be collapsed (the choice is remembered for you).
 
-- **Add link** links an existing record, or, where a kind of record can be made from this page (a Pain Point from an Enhancement request, for example), opens a menu: **Link an existing record** or **Create a new record**. The second asks for the record type and the relationship, then shows that record's own form and links the new record when you save it. **Link an existing record** opens a dialog. When the project has a parent or child project, a **project** choice lets you link across them. Then find the record with one finder: a **Search** box over a scope that narrows step by step.
+- **Add link** links an existing record, or, where a kind of record can be made from this page, opens a menu: **Link an existing record** or **Create a new record**. The second asks for the record type and the relationship, then shows that record's own form and links the new record when you save it. Any kind of record you may create can be made this way, for example a Decision, a Risk or a Persona from a Requirement, or a Change Request from a finding. A kind you may not create is not offered. The form's **Link to** field can link the new record to further records at the same time. **Link an existing record** opens a dialog. When the project has a parent or child project, a **project** choice lets you link across them. Then find the record with one finder: a **Search** box over a scope that narrows step by step.
   - With nothing chosen, typing two or more characters searches **every kind of record** you can link to; each result is named with its kind.
   - The search is by **words**: every word you type must appear in a record's code or title, in any order and anywhere in the title, so `limit voltage` finds "Maximum supply voltage limit". A code works as it is shown elsewhere, with the project code in front (`ACME-REQ-001`) or without (`REQ-001`). The same finder serves the **Link to** field on every create form.
   - Choose a **kind of record** ("Link to") to search only that kind, or to list its records.
@@ -193,7 +193,7 @@ flowchart LR
 
 Both views follow the same rules as the panel: records you can't see, or that are in a module that is off, are left out and never followed through, and following a record's link takes you to its page.
 
-Direction comes from the link type. A link type with no direction (an organisation admin sets one under **Admin → Projects & workflow → Link types**) always lands in **Related**, so if most of a record's links are undirected the views say so.
+Direction comes from the link type. A link type with no direction (an organisation admin sets one under **Admin → Workflow → Link types**) always lands in **Related**, so if most of a record's links are undirected the views say so.
 
 ## Deleting a link type that is in use
 

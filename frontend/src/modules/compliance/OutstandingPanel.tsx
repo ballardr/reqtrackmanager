@@ -37,7 +37,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 
-import { FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListActions } from "../../components/ListActions";
 import { ReportExportButton } from "../../components/ReportExportButton";
 import { Spinner } from "../../components/Spinner";
@@ -55,6 +56,7 @@ import {
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { useResetOnChange } from "../../hooks/useResetOnChange";
+import { COMPLIANCE_FILTER_LABEL } from "./filterLabels";
 
 export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgId: string }) {
   const { showToast } = useToast();
@@ -266,39 +268,33 @@ export function OutstandingPanel({ projectId, orgId }: { projectId: string; orgI
       </div>
 
       <FilterPanel sectionKey="projectCompliance.outstanding">
-        <FilterField label="Standard">
-          <select
-            className="input"
-            value={standardFilter}
-            onChange={(e) => {
-              setStandardFilter(e.target.value);
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standard}
+          value={standardFilter}
+          onChange={(v) => {
+              setStandardFilter(v);
               setVersionFilter("");
               setSubSectionFilter("");
             }}
-          >
-            <option value="">All standards</option>
-            {standards.map((s) => (
-              <option key={s.id} value={s.id}>{s.reference} — {s.name}</option>
-            ))}
-          </select>
-        </FilterField>
-        <FilterField label="Standard version">
-          <select className="input" value={versionFilter} onChange={(e) => setVersionFilter(e.target.value)} disabled={!standardFilter}>
-            <option value="">All versions</option>
-            {versions.map((v) => (
-              <option key={v.id} value={v.id}>{v.label}</option>
-            ))}
-          </select>
-        </FilterField>
+          allLabel="All standards"
+          options={standards.map((s) => ({ value: s.id, label: `${s.reference} — ${s.name}` }))}
+        />
+        <FilterSelect
+          label={COMPLIANCE_FILTER_LABEL.standardVersion}
+          value={versionFilter}
+          onChange={setVersionFilter}
+          allLabel="All versions"
+          options={versions.map((v) => ({ value: v.id, label: v.label }))}
+          disabled={!standardFilter}
+        />
         {standardFilter && (
-          <FilterField label="Sub-section">
-            <select className="input" value={subSectionFilter} onChange={(e) => setSubSectionFilter(e.target.value)}>
-              <option value="">All sub-sections</option>
-              {subSections.map((s) => (
-                <option key={s.id} value={s.id}>{s.reference ? `${s.reference} — ${s.name}` : s.name}</option>
-              ))}
-            </select>
-          </FilterField>
+          <FilterSelect
+            label={COMPLIANCE_FILTER_LABEL.subSection}
+            value={subSectionFilter}
+            onChange={setSubSectionFilter}
+            allLabel="All sub-sections"
+            options={subSections.map((s) => ({ value: s.id, label: s.reference ? `${s.reference} — ${s.name}` : s.name }))}
+          />
         )}
       </FilterPanel>
     </div>

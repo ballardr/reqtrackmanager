@@ -55,6 +55,7 @@ import type { FileAsset } from "../../api/types";
 import { Badge } from "../../components/Badge";
 import { useLoadOnChange } from "../../hooks/useLoadOnChange";
 import { DetailCard } from "../../components/DetailCard";
+import { DECISIONS_HELP } from "./help";
 
 export function DecisionDetailPage() {
   const { projectId, decisionId } = useParams<{ projectId: string; decisionId: string }>();
@@ -82,7 +83,7 @@ export function DecisionDetailPage() {
     });
     decisionsApi.listDecisionTypes(projectId).then(setDecisionTypes);
     decisionsApi.getDecision(projectId, decisionId).then(setDecision).catch((err) => {
-      setLoadError(toErrorMessage(err, "This Decision could not be found, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "This Decision could not be found, or you do not have access to it."));
     });
   }, [projectId, decisionId]);
 
@@ -175,7 +176,7 @@ export function DecisionDetailPage() {
         title={decision.title}
         code={decision.unique_code}
         tags={projectId ? <RecordTags projectId={projectId} artefactType="decision" artefactId={decision.id} /> : undefined}
-        back={{ to: `/projects/${projectId}/modules/decisions`, label: "← Decisions" }}
+        back={{ to: `/projects/${projectId}/modules/decisions`, label: "Decisions" }}
         badges={
           <Badge tone={DECISION_STATUS_TONE[decision.status]}>
             {DECISION_STATUS_LABEL[decision.status]}
@@ -213,8 +214,8 @@ export function DecisionDetailPage() {
         <DetailCard>
           <p style={{ margin: 0 }}>{decision.decision_statement}</p>
           <div className="row" style={{ gap: "2rem", flexWrap: "wrap" }}>
-            <RecordFieldGroup helpNotNeeded label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
-            <RecordFieldGroup helpNotNeeded label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
+            <RecordFieldGroup help={DECISIONS_HELP.decisionOwner} label="Owner"><PrincipalBadge principal={decision.owner} /></RecordFieldGroup>
+            <RecordFieldGroup help={DECISIONS_HELP.decisionMaker} label="Decision maker"><PrincipalBadge principal={decision.decision_maker} /></RecordFieldGroup>
           </div>
 
           {decision.context && <RecordField label="Context" value={decision.context} />}

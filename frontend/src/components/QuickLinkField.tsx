@@ -35,6 +35,7 @@ import { useStrings } from "../context/TerminologyContext";
 import { FieldHelp } from "./FieldHelp";
 import { ItemRow } from "./ItemRow";
 import { defaultOptionKey, optionKey } from "./linkOptions";
+import { InlineSelect } from "./LabeledSelect";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const MIN_QUERY = 2;
@@ -276,15 +277,16 @@ export function QuickLinkField({
                 )}
               >
                 {choices.length > 1 ? (
-                  <select
-                    className="input"
-                    style={{ width: "auto", marginRight: "var(--space-3)" }}
-                    aria-label={strings.artefactLinks.quick.relationshipLabel(link.otherLabel)}
-                    value={`${link.link_type_id}:${link.direction}`}
-                    onChange={(e) => changeRelationship(link, e.target.value)}
-                  >
-                    {choices.map((o) => <option key={optionKey(o)} value={optionKey(o)}>{o.phrase}</option>)}
-                  </select>
+                  <span style={{ marginRight: "var(--space-3)" }}>
+                    <InlineSelect
+                      autoWidth
+                      ariaLabel={strings.artefactLinks.quick.relationshipLabel(link.otherLabel)}
+                      value={`${link.link_type_id}:${link.direction}`}
+                      placeholder={null}
+                      onChange={(key) => changeRelationship(link, key)}
+                      options={choices.map((o) => ({ value: optionKey(o), label: o.phrase }))}
+                    />
+                  </span>
                 ) : (
                   <span className="text-muted" style={{ marginRight: "var(--space-3)" }}>{link.phrase}</span>
                 )}

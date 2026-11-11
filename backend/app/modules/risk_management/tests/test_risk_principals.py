@@ -105,7 +105,7 @@ def test_a_risk_takes_each_principal_kind_and_shows_a_group_by_name(client, admi
     unowned = create_risk(client, token, project["id"])
     assert unowned["owner"] is None
     by_org = create_risk(client, token, project["id"], owner=_org_ref(team))
-    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True}
+    assert by_org["owner"] == {"type": "org_group", "id": team, "label": "Platform Team", "member_count": 1, "exists": True, "imported": False}
     by_project = create_risk(client, token, project["id"], owner=_project_ref(squad))
     assert by_project["owner"]["label"] == "Squad" and by_project["owner"]["type"] == "project_group"
     by_user = create_risk(client, token, project["id"], owner=user_ref(member_id))
@@ -304,8 +304,8 @@ def test_the_register_prints_the_owner_with_its_kind(client, admin_token):
     assert resp.status_code == 200, resp.text
     register = next(s for s in resp.json()["sections"] if s["key"] == "register")
     owners = {row[1]: row[register["columns"].index("Owner")] for row in register["rows"]}
-    assert owners["By group"] == "Risk Board (Org group)"
-    assert owners["By user"] not in ("", "Risk Board (Org group)") and "(" not in owners["By user"]
+    assert owners["By group"] == "Risk Board (Organisation group)"
+    assert owners["By user"] not in ("", "Risk Board (Organisation group)") and "(" not in owners["By user"]
     assert owners["Nobody"] == ""
 
 

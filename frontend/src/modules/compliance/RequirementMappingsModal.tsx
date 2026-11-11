@@ -10,6 +10,7 @@
  * endpoint to type-ahead against.
  */
 import { useEffect, useState } from "react";
+import { Spinner } from "../../components/Spinner";
 
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { Modal } from "../../components/Modal";
@@ -122,7 +123,7 @@ export function RequirementMappingsModal({ orgId, standardId, versionId, require
     <Modal title={`Mappings for "${requirement.name}"`} onClose={onClose} size="lg">
       <div className="stack">
         {mappings === null ? (
-          <p>Loading…</p>
+          <Spinner />
         ) : mappings.length === 0 ? (
           <p className="text-muted">No mappings yet.</p>
         ) : (

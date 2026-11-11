@@ -140,6 +140,7 @@ export function RequirementDetailPage() {
   // guide "Pattern: resource picker dialog") — set as soon as the project
   // itself resolves, independent of whether the org-member-only calls
   // right after it (org users, link types) succeed for this user.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [showResourcePicker, setShowResourcePicker] = useState(false);
   // The project's own
@@ -166,7 +167,7 @@ export function RequirementDetailPage() {
   // Extra module-contributed sections (`requirementDetailSections`), rendered under
   // the Links panel in the aside. This page renders whatever each currently-enabled
   // module hands it and never imports a specific module's entity itself, mirroring
-  // `ProjectOverviewPage.tsx`'s identical `projectOverviewTiles` convention.
+  // the project overview's identical `overviewWidgets` convention.
   const { modules: enabledModules } = useProjectEnabledModules(projectId ?? null);
   const contributedLinkSections =
     projectId && requirementId && organizationId
@@ -362,7 +363,17 @@ export function RequirementDetailPage() {
     reload();
   }
 
-  useLoadOnChange(reload, [projectId, requirementId]);
+  // The initial load reports a missing or inaccessible record instead of leaving the spinner up.
+  async function loadRecord() {
+    try {
+      await reload();
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(toErrorMessage(err, `This ${strings.requirements.recordLabel.toLowerCase()} could not be found, or you do not have access to it.`));
+    }
+  }
+
+  useLoadOnChange(loadRecord, [projectId, requirementId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -569,6 +580,7 @@ export function RequirementDetailPage() {
     },
   );
 
+  if (loadError) return <p className="text-muted">{loadError}</p>;
   if (!requirement) return <Spinner />;
 
   return (
@@ -595,6 +607,7 @@ export function RequirementDetailPage() {
     >
       <RecordHeader
         recordLabel={strings.requirements.recordLabel}
+        back={projectId ? { to: `/projects/${projectId}/requirements`, label: strings.requirements.title } : undefined}
         title={requirement.name}
         code={requirement.unique_code}
         tags={projectId && requirementId ? <RecordTags projectId={projectId} artefactType="requirement" artefactId={requirementId} /> : undefined}

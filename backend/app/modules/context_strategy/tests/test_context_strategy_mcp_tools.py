@@ -21,10 +21,10 @@ Management).
 
 from __future__ import annotations
 
-from app.modules.registry import build_mcp_tool_manifest
+from app.modules.registry import ResolvedMcpTool, build_mcp_tool_manifest
 
 
-def _by_local_name() -> dict[str, object]:
+def _by_local_name() -> dict[str, ResolvedMcpTool]:
     tools = build_mcp_tool_manifest()
     return {t.name.removeprefix("context_strategy_"): t for t in tools if t.name.startswith("context_strategy_")}
 

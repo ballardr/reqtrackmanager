@@ -15,13 +15,60 @@ A project marked **"Usable as a project template"** (**Project Admin → Project
 
 ## What a template carries over
 
-Creating a new project **from a template** copies its components, categories, custom field definitions, groups and group memberships, and requirements (reset to draft status) into the new project — so a team's established structure doesn't need rebuilding by hand every time a new project starts. A requirement owned by one of the template's project groups is owned by that group's copy in the new project; one owned by a user or an organisation group keeps that owner.
+Creating a new project **from a template** copies the template's configuration and starter content into the new project, so a team's established structure does not need rebuilding each time a project starts.
 
-**Module and sub-component settings are not copied from the template.** A new project — blank or from a template — starts with the organisation's current defaults instead; see [Workflows → Organisations and projects → Creating a project](../workflows/organisations-and-projects.md#creating-a-project).
+| Copied | Details |
+| --- | --- |
+| Structure | Components, categories, custom field definitions, action types, groups and group memberships, direct role grants, terminology, navigation names, the overview layout, the stage workflows the template defines and the AI approvals setting |
+| Settings | Review reminder lead days, the tag vocabulary and mode, component phases settings, the project's own scoring configuration (default model, offered models, rating bands, thresholds and cell ratings) and report setup (layouts, packs, snippets, folders) |
+| Modules | Which modules and sub-components the template has on or off (within what the organisation allows) |
+| Module configuration | Each module's types, hidden organisation defaults, scoring definitions, submission policies, external systems and channels |
+| Starter records | Requirements (with their codes and the links between them), and each module's records (Decisions, Risks, Pain Points, Strategies, Future States, Guiding Principles, Open Questions, Enhancement Requests, Personas, Stakeholders and Needs) as fresh drafts, with Engagements as logged and Compliance assignments, assessments and evidence with approvals reset, and the links between all of them |
+
+Starter records start as new drafts: the initial status, with the person creating the project as creator, and with no comments, reviews, votes, scores, approvals or history. Records of modules are numbered afresh; requirements keep the template's codes. Archived records are not copied. What a template should not give to its projects should not be kept in the template. A requirement owned by one of the template's project groups is owned by that group's copy in the new project; one owned by a user or an organisation group keeps that owner.
+
+**Not copied:** change requests, comments, baselines and stage progress. A new project always starts at its own first stage and in the organisation's default project status.
+
+```mermaid
+flowchart LR
+    T["Template project"] --> C["Configuration and\nstarter records"]
+    C --> D["Records reset to drafts"]
+    D --> N["New project"]
+    T -. "change requests, comments,\nbaselines, stage progress" .-> X["Not copied"]
+```
+
+Read left to right: the template's configuration and starter records are copied, records are returned to drafts, and the template's own history, people and assessments stay behind.
+
+## Example templates
+
+The demonstration organisation includes six example templates, each showing a different way to set up a project. A project created from one receives its modules, workflow, types, scoring, overview dashboard and starter drafts.
+
+| Template | Suited to | Modules and workflow | Starter drafts |
+| --- | --- | --- | --- |
+| Product Design | Feedback-driven design | Risk and Compliance off; Cost of Delay scoring | Requirements |
+| Project Management | Work delivered through suppliers | Product Feedback and Stakeholders off | Requirements |
+| Software delivery | A software product | Release train: Backlog, Build, Code review, Release candidate, Released; Cost of Delay scoring | Requirements, a decision, an action, a Pain Point |
+| Compliance readiness | Preparing for an audit | Audit readiness: Gap analysis, Remediation, Evidence review, Audit window, Certified; an example standard assigned | Requirements, a risk, evidence |
+| Research and discovery | Learning before building | Research cycle: Planning, Fieldwork, Synthesis, Playback, Closed; Stakeholders on, Risk and Compliance off | Requirements, a persona, a stakeholder, a need, an open question, an engagement with a finding |
+| Hardware design | An embedded product such as an IoT data logger | Design gates: Concept, Schematic design, Design review, Prototype build, Validation, Production release | Requirements with a verification method, a decision, a risk, an action, a Pain Point |
+
+Every starter record arrives as a draft, so nothing is approved until the new project's own reviewers approve it.
+
+## Who can change a template
+
+While a project is marked as a template, only project managers, project administrators and organisation administrators can change it. Everyone else, including people who can see it through organisation-wide visibility or hold a module role on it, can read it but cannot add or change anything, whatever the project's other settings. This keeps a template stable as the starting point for new projects. Clear the template setting to let the team work in it again.
+
+A project manager can make a project a template (for the team, or for nested projects) or make it visible to the whole organisation, but not both. A template that everyone in the organisation can see needs the **Publish organization templates** permission, which organisation administrators hold and can give to others through a custom role.
+
+To create a project from a template you must be able to view it: a team-only template is available to its own team and to organisation administrators, and an organisation-wide template (a template with organisation-wide visibility) is available to everyone in the organisation who can create projects.
+
+## Finding templates
+
+Templates are left out of the project list so everyday work is not mixed with them. Tick **Show templates** in the list's filter panel to include them; each carries a **Template** badge. The **New project** form shows the organisation first (when you can create in more than one), then a divider, then **Create from template** and the project name. The template list depends on the organisation, which is why the organisation comes first. Choose **None** to create a blank project even when the organisation has a default template.
 
 ## Organisation default template
 
-An organisation can also set a **default template** (**Organisation admin → Projects & workflow**), which is offered by default whenever someone in that organisation creates a new project — while any other project marked as usable-as-template remains available as an alternative starting point.
+An organisation administrator can set any template in the organisation as the **default template** (**Organisation admin → Branding & defaults**), including one they hold no role in. It is offered by default whenever someone in that organisation creates a new project, and every person who can create projects may use it, whether or not they can otherwise see it — the administrator has chosen it as the starting point for everyone. Any other template remains available as an alternative to those who can view it.
 
 ## Where this fits
 

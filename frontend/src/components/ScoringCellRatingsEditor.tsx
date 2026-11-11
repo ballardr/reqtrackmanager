@@ -36,7 +36,7 @@ const sameCell = (a: ScoringCellRating, firstId: string, secondId: string) =>
  * @param onReset Clears the override; same feedback contract as `onSave`.
  */
 export function ScoringCellRatingsEditor({
-  xAxis, yAxis, bands, cellRatings, custom, defaultLabel, resetLabel, caption, onSave, onReset,
+  xAxis, yAxis, bands, cellRatings, custom, defaultLabel, resetLabel, platformFallback, caption, onSave, onReset,
 }: {
   xAxis: ScoringAxis;
   yAxis: ScoringAxis;
@@ -45,6 +45,8 @@ export function ScoringCellRatingsEditor({
   custom: boolean;
   defaultLabel: string;
   resetLabel?: string;
+  /** The fallback is the module default on an organisation page: no pill, only a reset while custom. */
+  platformFallback?: boolean;
   caption: string;
   onSave: (cells: ScoringCellRating[]) => Promise<void>;
   onReset: () => Promise<void>;
@@ -80,7 +82,7 @@ export function ScoringCellRatingsEditor({
     <div className="stack" style={{ gap: "var(--space-3)" }}>
       <div className="row" style={{ gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap" }}>
         <span>Cell ratings</span>
-        <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel}
+        <OverridePill custom={custom} defaultLabel={defaultLabel} resetLabel={resetLabel} platformFallback={platformFallback}
           onReset={() => void run(onReset)} disabled={busy} />
       </div>
       <p className="text-muted" style={{ margin: 0 }}>

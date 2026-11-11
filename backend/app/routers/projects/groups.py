@@ -12,11 +12,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, refuse_personal_access_token
 from app.models.enums import PrincipalType, ProjectRole
 from app.models.notification import NotificationType
 from app.models.organization import OrgGroup, OrgGroupMember
@@ -27,6 +27,7 @@ from app.schemas.principal import PrincipalRef, PrincipalUsageOut
 from app.schemas.project import ProjectGroupCreate, ProjectGroupMemberAdd, ProjectGroupOut, ProjectGroupRoleAssign
 from app.services import engagement
 from app.services.audit import log_event
+from app.services.lookups import present
 from app.services.membership_notifications import (
     actor_bypasses_project_managers,
     notify_managers_of_member_change,
@@ -148,7 +149,7 @@ def _member_label(
     return f"the members of {source.name}" if source is not None else "a project roster"
 
 
-@router.post("/{project_id}/groups/{group_id}/roles", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{project_id}/groups/{group_id}/roles", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def assign_project_group_role(
     project_id: UUID, group_id: UUID, payload: ProjectGroupRoleAssign,
     project: Project = Depends(require_project_manage),
@@ -193,7 +194,10 @@ def assign_project_group_role(
         db.commit()
 
 
-@router.delete("/{project_id}/groups/{group_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/groups/{group_id}/roles/{role}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def revoke_project_group_role(
     project_id: UUID, group_id: UUID, role: ProjectRole,
     project: Project = Depends(require_project_manage),
@@ -219,7 +223,7 @@ def revoke_project_group_role(
     if role == ProjectRole.PROJECT_MANAGER:
         lock_project_for_update(db, project.id)
     removed = db.execute(
-        ProjectGroupRole.__table__.delete().where(
+        delete(ProjectGroupRole).where(
             ProjectGroupRole.project_group_id == group_id, ProjectGroupRole.role == role,
         )
     )
@@ -248,6 +252,7 @@ def revoke_project_group_role(
                     ProjectGroupMember.project_group_id == group_id, ProjectGroupMember.user_id.is_not(None),
                 )
             ).all()
+            if m.user_id is not None
         }
         for affected_user_id in affected_user_ids:
             if not get_effective_project_roles(db, affected_user_id, project.id):
@@ -314,7 +319,7 @@ def delete_project_group(
     handed_over = prepare_group_deletion(
         db, PrincipalRef(type=PrincipalType.PROJECT_GROUP, id=group_id), organization_id=project.organization_id,
         project_id=project.id, actor_id=current_user.id, clear_optional=clear_optional,
-        replacement=PrincipalRef(type=replacement_type, id=replacement_id) if replacement_type else None,
+        replacement=PrincipalRef(type=replacement_type, id=replacement_id) if replacement_type and replacement_id else None,
     )
     bypass = actor_bypasses_project_managers(db, current_user, project)
 
@@ -340,7 +345,7 @@ def delete_project_group(
     db.commit()
 
 
-@router.post("/{project_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{project_id}/groups/{group_id}/members", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(refuse_personal_access_token)])
 def add_project_group_member(
     project_id: UUID, group_id: UUID, payload: ProjectGroupMemberAdd,
     project: Project = Depends(require_project_manage),
@@ -407,7 +412,10 @@ def add_project_group_member(
     db.commit()
 
 
-@router.delete("/{project_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/groups/{group_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(refuse_personal_access_token)],
+)
 def remove_project_group_member(
     project_id: UUID, group_id: UUID, member_id: UUID,
     project: Project = Depends(require_project_manage),
@@ -451,7 +459,7 @@ def remove_project_group_member(
         )
     )
     db.execute(
-        ProjectGroupMember.__table__.delete().where(
+        delete(ProjectGroupMember).where(
             ProjectGroupMember.project_group_id == group_id,
             (ProjectGroupMember.user_id == member_id)
             | (ProjectGroupMember.org_group_id == member_id)
@@ -491,17 +499,20 @@ def remove_project_group_member(
         affected_user_ids = {removed_member.user_id}
     elif removed_member.org_group_id is not None:
         affected_user_ids = set(
-            db.scalars(
+            present(db.scalars(
                 select(OrgGroupMember.user_id).where(
                     OrgGroupMember.org_group_id.in_(
                         {removed_member.org_group_id} | _descendant_org_group_ids(db, {removed_member.org_group_id})
                     ),
                     OrgGroupMember.user_id.is_not(None),
                 )
-            ).all()
+            ).all())
         )
     else:
-        affected_user_ids = _direct_project_member_ids_base(db, removed_member.source_project_id)
+        affected_user_ids = (
+            _direct_project_member_ids_base(db, removed_member.source_project_id)
+            if removed_member.source_project_id is not None else set()
+        )
     # A group can grant a role alongside other direct/group roles a user
     # holds on the same project, so only clean up subscriptions/favourites
     # for someone this removal actually left with no remaining access — not

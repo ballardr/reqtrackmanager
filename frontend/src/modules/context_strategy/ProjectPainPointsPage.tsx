@@ -46,7 +46,8 @@ import type { Project } from "../../api/types";
 import { api } from "../../api/client";
 import { projectScoringApi, type ScoringScheme } from "../../api/scoring";
 import { DirectoryTable, type DirectoryColumn } from "../../components/DirectoryTable";
-import { FilterCheckbox, FilterField, FilterPanel } from "../../components/FilterPanel";
+import { FilterCheckbox, FilterPanel } from "../../components/FilterPanel";
+import { FilterSelect } from "../../components/FilterSelect";
 import { ListPageLayout } from "../../components/ListPageLayout";
 import { RecordGrid } from "../../components/RecordGrid";
 import { ScoringModelSwitcher } from "../../components/ScoringModelSwitcher";
@@ -65,7 +66,7 @@ import {
 } from "./types";
 import type {
   EffectivePainPointType, PainPoint, PainPointFieldValues, PainPointPriority, PainPointRollup,
-  PainPointScoringList, PainPointScoringSummary, PainPointScoringTargets, PainPointStatus,
+  PainPointScoringList, PainPointScoringSummary, PainPointScoringTargets, PainPointStatus, PainPointSubmissionSettings,
 } from "./types";
 import { Badge } from "../../components/Badge";
 import { RecordCode } from "../../components/RecordCode";
@@ -80,6 +81,8 @@ import { useProjectScope } from "../../hooks/useProjectScope";
 import { useTagFilter } from "../../hooks/useTagFilter";
 import { TagFilterField } from "../../components/TagFilterField";
 import { addSharedListFilters } from "../../utils/listFilterParams";
+import { useStrings } from "../../context/TerminologyContext";
+import { labelOptions } from "../../utils/labelOptions";
 
 const SCHEME_KEY = "pain_point";
 const DEFAULT_ROLLUP: PainPointRollup = "weighted_average";
@@ -88,6 +91,7 @@ const SCORED_FILTERS = ["yes", "no"] as const;
 const SORT_KEYS = ["score"] as const;
 
 export function ProjectPainPointsPage() {
+  const strings = useStrings();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -100,6 +104,8 @@ export function ProjectPainPointsPage() {
   const [painPoints, setPainPoints] = useState<PainPoint[] | null>(null);
   const [types, setTypes] = useState<EffectivePainPointType[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Who may submit here; until it loads (or if it fails) the New button is offered and the server decides.
+  const [submission, setSubmission] = useState<PainPointSubmissionSettings | null>(null);
 
   const [search, setSearch] = useUrlText("q");
   const [statusFilter, setStatusFilter] = useUrlChoice("status", Object.keys(PAIN_POINT_STATUS_LABEL) as PainPointStatus[]);
@@ -135,10 +141,10 @@ export function ProjectPainPointsPage() {
   async function reloadPainPoints() {
     if (!projectId) return;
     try {
-      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, tags: tagFilter.tags, tag_mode: tagFilter.mode, project_scope: projectScope.scope }));
+      setPainPoints(await projectPainPointApi.list(projectId, { include_archived: includeArchived, ...tagFilter.listFilters, project_scope: projectScope.scope }));
       setLoadError(null);
     } catch (err) {
-      setLoadError(toErrorMessage(err, "The Context & Strategy module isn't enabled for this project's organisation, or you don't have access to it."));
+      setLoadError(toErrorMessage(err, "The Context & Strategy module is not enabled for this project's organisation, or you do not have access to it."));
     }
   }
 
@@ -146,6 +152,7 @@ export function ProjectPainPointsPage() {
     if (!projectId) return;
     api.get<Project>(`/api/v1/projects/${projectId}`).then(setProject);
     void projectPainPointApi.listTypes(projectId).then(setTypes).catch(() => setTypes([]));
+    void projectPainPointApi.getSubmissionSettings(projectId).then(setSubmission).catch(() => setSubmission(null));
   }, [projectId]);
 
   useLoadOnChange(reloadPainPoints, [projectId, includeArchived, tagFilter.query, projectScope.scope]);
@@ -253,7 +260,9 @@ export function ProjectPainPointsPage() {
         >
           <div className="stack">
             <ScoringModelSwitcher
-              models={scheme.models.map((m) => ({ value: m.key, label: m.label }))}
+              models={scheme.models
+                .filter((m) => !scheme.enabled_model_keys?.length || scheme.enabled_model_keys.includes(m.key) || m.key === model)
+                .map((m) => ({ value: m.key, label: m.label }))}
               model={model}
               onModelChange={(next) => setModelParam(next === scheme.default_model_key ? "" : next)}
               rollups={Object.entries(PAIN_POINT_ROLLUP_LABEL).map(([value, label]) => ({ value, label }))}
@@ -280,38 +289,40 @@ export function ProjectPainPointsPage() {
         title="Pain Point"
         records={{ projectId, recordType: "pain_point", filters: filterParams().toString(), onImported: reloadPainPoints }}
         actions={
-          <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
-            New Pain Point
-          </button>
+          submission && !submission.can_submit ? (
+            <p className="text-muted" role="note">{submission.restriction_message}</p>
+          ) : (
+            <button className="btn btn-primary" style={{ alignSelf: "flex-start" }} onClick={() => setCreating(true)}>
+              New Pain Point
+            </button>
+          )
         }
         filter={
           <FilterPanel
             sectionKey="context_strategy.pain_points.list" total={filtered.length}
             search={search} onSearchChange={setSearch} searchPlaceholder="Search Pain Points…" searchAriaLabel="Search Pain Points"
           >
-            <FilterField label="Status">
-              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PainPointStatus | "")}>
-                <option value="">All statuses</option>
-                {Object.entries(PAIN_POINT_STATUS_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Priority">
-              <select className="input" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as PainPointPriority | "")}>
-                <option value="">All priorities</option>
-                {Object.entries(PAIN_POINT_PRIORITY_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-            </FilterField>
-            <FilterField label="Scoring">
-              <select className="input" value={scoredFilter} onChange={(e) => setScoredFilter(e.target.value as "" | "yes" | "no")}>
-                <option value="">Any scoring</option>
-                <option value="yes">Scored</option>
-                <option value="no">Not scored</option>
-              </select>
-            </FilterField>
+            <FilterSelect
+              label={strings.filters.status}
+              value={statusFilter}
+              onChange={setStatusFilter}
+              allLabel="All statuses"
+              options={labelOptions(PAIN_POINT_STATUS_LABEL)}
+            />
+            <FilterSelect
+              label={strings.filters.priority}
+              value={priorityFilter}
+              onChange={setPriorityFilter}
+              allLabel="All priorities"
+              options={labelOptions(PAIN_POINT_PRIORITY_LABEL)}
+            />
+            <FilterSelect
+              label={strings.filters.scoring}
+              value={scoredFilter}
+              onChange={setScoredFilter}
+              allLabel="Any scoring"
+              options={[{ value: "yes", label: "Scored" }, { value: "no", label: "Not scored" }]}
+            />
             <FilterCheckbox label="Open only" checked={openOnly} onChange={setOpenOnly} />
             <FilterCheckbox label="Blockers only" checked={blockersOnly} onChange={setBlockersOnly} />
             <FilterCheckbox
@@ -348,6 +359,7 @@ export function ProjectPainPointsPage() {
             sort={sort}
             onSort={(key) => setSort((current) => cycleSort(current, key))}
             rowKey={(p) => p.id}
+            placements={{ projectId, artefactType: "pain_point", rowId: (p) => p.id }}
             onRowClick={(p) => navigate(`/projects/${rowProjectId(p, projectId)}/modules/context_strategy/pain-points/${p.id}`)}
             emptyState={
               <p className="text-muted">
