@@ -51,9 +51,10 @@ async function createWorld(request: APIRequestContext, label: string): Promise<W
     headers: serverHeaders,
     data: { email: adminEmail, display_name: "E2E Scope Admin", password: PASSWORD, role: "org_admin" },
   });
-  const token = (
-    await (await request.post(`${apiBaseUrl}/api/v1/auth/login`, { data: { email: adminEmail, password: PASSWORD } })).json()
-  ).access_token;
+  const login = await request.post(`${apiBaseUrl}/api/v1/auth/login`, { data: { email: adminEmail, password: PASSWORD } });
+  // Checked here: a refused sign-in would otherwise surface much later as an unrelated 401 on a setup call.
+  expect(login.ok(), `sign in as ${adminEmail}: ${login.status()}`).toBeTruthy();
+  const token = (await login.json()).access_token;
   return { orgId: org.id, adminEmail, headers: { Authorization: `Bearer ${token}` } };
 }
 

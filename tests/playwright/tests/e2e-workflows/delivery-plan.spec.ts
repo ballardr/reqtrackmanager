@@ -42,17 +42,19 @@ test.describe("delivery plan page", () => {
     });
 
     await test.step("the table shows progress, the expected range and an overdue badge", async () => {
+      // The chosen view is kept per person, so a repeated run opens on the last one used.
+      await page.getByRole("button", { name: "Table view" }).click();
       const stageTable = page.getByRole("table", { name: "Status by stage" });
       await expect(stageTable.getByRole("columnheader", { name: "Progress" })).toBeVisible();
       await expect(stageTable.getByRole("columnheader", { name: "Expected" })).toBeVisible();
-      await expect(stageTable.getByText("Overdue")).toBeVisible();
+      await expect(stageTable.getByText("Overdue", { exact: true })).toBeVisible();
       await expect(stageTable.getByText(/^Step 1 of \d+$/).first()).toBeVisible();
     });
 
     await test.step("the timeline draws the same rows and the choice is kept on reload", async () => {
       await page.getByRole("button", { name: "Timeline view" }).click();
       await expect(page.getByRole("list", { name: "Delivery timeline" }).first()).toBeVisible();
-      await expect(page.getByRole("list", { name: "Delivery timeline" }).first().getByText("Overdue")).toBeVisible();
+      await expect(page.getByRole("list", { name: "Delivery timeline" }).first().getByText("Overdue", { exact: true })).toBeVisible();
       await page.waitForLoadState("networkidle");
       await page.reload();
       await expect(page.getByRole("list", { name: "Delivery timeline" }).first()).toBeVisible();

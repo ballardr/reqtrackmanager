@@ -8,10 +8,20 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-NGINX = (REPO / "frontend" / "nginx.conf").read_text()
-HEADERS_INC = (REPO / "frontend" / "docker" / "security-headers.inc").read_text()
-ENTRYPOINT = (REPO / "frontend" / "docker" / "env-config-entrypoint.sh").read_text()
-CADDY = "\n".join(p.read_text() for p in sorted((REPO / "tests" / "container" / "caddy").rglob("*")) if p.is_file())
+FRONTEND_PRESENT = (REPO / "frontend" / "nginx.conf").exists()
+needs_frontend_sources = pytest.mark.skipif(not FRONTEND_PRESENT, reason="frontend sources are not available (backend-only image)")
+
+
+def _read(path: Path) -> str:
+    """The file's text, or an empty string where the repository is not mounted (the tests that need it are skipped)."""
+    return path.read_text() if path.exists() else ""
+
+
+NGINX = _read(REPO / "frontend" / "nginx.conf")
+HEADERS_INC = _read(REPO / "frontend" / "docker" / "security-headers.inc")
+ENTRYPOINT = _read(REPO / "frontend" / "docker" / "env-config-entrypoint.sh")
+_CADDY_DIR = REPO / "tests" / "container" / "caddy"
+CADDY = "\n".join(p.read_text() for p in sorted(_CADDY_DIR.rglob("*")) if p.is_file()) if _CADDY_DIR.exists() else ""
 
 
 def test_api_json_is_not_cached_and_carries_the_baseline_headers(client, admin_token):
@@ -28,6 +38,7 @@ def test_only_json_without_a_policy_of_its_own_is_marked_no_store(client):
     assert "cache-control" not in client.get("/metrics").headers  # not JSON: the exposition format is left alone
 
 
+@needs_frontend_sources
 @pytest.mark.parametrize("header", [
     "X-Frame-Options", "X-Content-Type-Options", "Referrer-Policy", "Permissions-Policy", "Strict-Transport-Security",
     "Content-Security-Policy",
@@ -36,6 +47,7 @@ def test_the_front_end_proxy_sends_every_security_header(header):
     assert header in HEADERS_INC or header == "Content-Security-Policy" and "content-security-policy.inc" in HEADERS_INC
 
 
+@needs_frontend_sources
 def test_every_location_that_adds_a_header_includes_the_security_set_again():
     """nginx drops the server block's `add_header` lines in a location that has its own, so each one must include the set."""
     for match in re.finditer(r"location [^{]+\{(?P<body>[^}]*)\}", NGINX):
@@ -44,6 +56,7 @@ def test_every_location_that_adds_a_header_includes_the_security_set_again():
             assert "security-headers.inc" in body, match.group(0)
 
 
+@needs_frontend_sources
 def test_the_policy_is_built_from_checked_values_and_names_the_hardening_directives():
     for directive in ("object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'", "script-src 'self'"):
         assert directive in ENTRYPOINT
@@ -51,6 +64,7 @@ def test_the_policy_is_built_from_checked_values_and_names_the_hardening_directi
     assert "unsafe-eval" not in ENTRYPOINT and "script-src 'self' 'unsafe-inline'" not in ENTRYPOINT
 
 
+@pytest.mark.skipif(not CADDY, reason="tests/container is not available (backend-only image)")
 def test_the_demonstration_proxy_sets_strict_transport_security_for_a_public_certificate():
     """The other headers come from the services behind it, which the proxy passes through unchanged."""
     assert "Strict-Transport-Security" in CADDY

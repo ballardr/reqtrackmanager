@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from sqlalchemy import event
 
 from app.database import SessionLocal, engine
@@ -29,6 +30,7 @@ from tests.conftest import (
 )
 
 BASE = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
+TYPES_TS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "api" / "types.ts"
 
 
 def _changes(client, token, project_id, **params):
@@ -68,8 +70,9 @@ def test_an_unclassified_action_is_other():
     assert kind_of("approved") == "status"
 
 
+@pytest.mark.skipif(not TYPES_TS.exists(), reason="frontend sources are not available (backend-only image)")
 def test_the_frontend_kind_labels_match_the_backend_kinds():
-    source = (Path(__file__).resolve().parents[2] / "frontend/src/api/types.ts").read_text()
+    source = TYPES_TS.read_text()
     block = re.search(r"ACTIVITY_KIND_LABEL[^{]*\{(.*?)\};", source, re.S)
     assert block, "ACTIVITY_KIND_LABEL is missing from frontend/src/api/types.ts"
     assert dict(re.findall(r"(\w+):\s*\"([^\"]+)\"", block.group(1))) == KIND_LABELS

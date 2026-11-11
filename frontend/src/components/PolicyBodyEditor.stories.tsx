@@ -33,18 +33,18 @@ export const ShowsToolbarAndText: Story = {
   },
 };
 
-/** Typing and applying a style reports the document, with the style as a mark. */
+/** Applying a style to the selected text reports the document, with the style as a mark on that text. */
 export const ReportsTheDocumentAfterEdits: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
     const box = await canvas.findByRole("textbox", { name: "Policy text" });
     await userEvent.click(box);
-    await userEvent.keyboard("{Control>}a{/Control}");
+    // Selected through the DOM, not Ctrl+A: that key selects everything on Linux but moves the caret on macOS.
+    window.getSelection()?.selectAllChildren(box);
     await userEvent.click(canvas.getByRole("button", { name: "Bold" }));
-    await userEvent.keyboard("Bold words");
     await waitFor(() => {
       expect(lastReported(args.onChange)).toContain('"type":"bold"');
-      expect(lastReported(args.onChange)).toContain("Bold words");
+      expect(lastReported(args.onChange)).toContain("Existing text.");
     });
   },
 };

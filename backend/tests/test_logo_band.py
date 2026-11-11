@@ -27,6 +27,7 @@ from app.services.report_images import ResolvedImage, load_org_logo
 from tests.conftest import auth_headers, create_org_admin_in
 
 PLATFORM_URL = "/api/v1/system/branding"
+THEME_CSS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "styles" / "theme.css"
 BAD_COLOURS = ["red", "#12345", "#12345g", "url(x)", "#1234567", "rgb(0,0,0)"]
 
 
@@ -121,8 +122,9 @@ def test_resolution_is_organisation_then_platform_then_the_top_bar_colour(client
         assert explicit_logo_band_hex(org, platform) == "#222222"
 
 
+@pytest.mark.skipif(not THEME_CSS.exists(), reason="frontend sources are not available (backend-only image)")
 def test_the_default_equals_the_stylesheets_top_bar_colour():
-    css = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "styles" / "theme.css").read_text()
+    css = THEME_CSS.read_text()
     match = re.search(r"--color-header-bg:\s*(#[0-9a-fA-F]{6})", css)
     assert match is not None
     assert match.group(1).lower() == DEFAULT_LOGO_BAND_HEX.lower()

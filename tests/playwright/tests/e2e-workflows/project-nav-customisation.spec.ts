@@ -64,7 +64,9 @@ async function navLinkNames(page: Page): Promise<string[]> {
 /** The History item's label under default terminology. */
 const HISTORY = "Project history";
 
-const navLink = (page: Page, name: string) => page.getByRole("navigation").getByRole("link", { name, exact: true });
+/** A project nav link; the organisation-wide Files link beside them has the same name but is not under /projects/. */
+const navLink = (page: Page, name: string) =>
+  page.getByRole("navigation").getByRole("link", { name, exact: true }).and(page.locator('[href*="/projects/"]'));
 const editor = (page: Page) => page.getByRole("dialog", { name: "Customise navigation" });
 
 async function openEditor(page: Page): Promise<void> {

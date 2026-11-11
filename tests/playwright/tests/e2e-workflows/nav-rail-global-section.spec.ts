@@ -54,7 +54,11 @@ test.describe("navigation rail: Global section", () => {
       await page.goto("/projects");
       await expect(rail.getByRole("link", { name: "My reviews due" })).toBeVisible();
       const names = await railNames();
-      expect(names.slice(names.indexOf("Files"))).toEqual(["Files", "My reviews due", "Organisation overview", "Organisation settings"]);
+      // Module entries (Compliance Standards while that module is on for the organisation) sit between Files and the
+      // personal items, so the order is asserted around them rather than assuming none are present.
+      const fromFiles = names.slice(names.indexOf("Files"));
+      expect(fromFiles[0]).toBe("Files");
+      expect(fromFiles.slice(-3)).toEqual(["My reviews due", "Organisation overview", "Organisation settings"]);
     });
   });
 });

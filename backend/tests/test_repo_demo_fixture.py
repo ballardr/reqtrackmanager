@@ -21,17 +21,22 @@ import extract_repo_demo as extractor  # noqa: E402
 from app.modules.decisions.service import DEFAULT_DECISION_TYPES  # noqa: E402
 from app.modules.risk_management.service import DEFAULT_RISK_TYPES  # noqa: E402
 
+DECISIONS = extractor.REPO_ROOT / "docs" / "decisions.md"
+needs_documents = pytest.mark.skipif(not DECISIONS.exists(), reason="docs/ is not available (backend-only image)")
+
 
 @pytest.fixture(scope="module")
 def fixture() -> dict:
     return json.loads(extractor.FIXTURE_PATH.read_text(encoding="utf-8"))
 
 
+@needs_documents
 def test_the_fixture_matches_the_documents_it_is_generated_from(fixture):
     problems = extractor.find_drift(fixture, extractor.build_fixture(), extractor.parse_decisions())
     assert problems == [], "regenerate with: python backend/scripts/extract_repo_demo.py --write"
 
 
+@needs_documents
 def test_a_new_log_entry_is_not_drift_but_an_edited_one_is(fixture):
     all_decisions = extractor.parse_decisions()
     fresh = extractor.build_fixture()
@@ -61,6 +66,7 @@ def test_decision_text_reads_as_prose(fixture):
         assert decision["statement"][0].isalnum() or decision["statement"][0] in "`*\"(", decision["title"]
 
 
+@needs_documents
 def test_the_curation_file_names_only_entries_that_still_exist(fixture):
     curation = json.loads(extractor.CURATION_PATH.read_text(encoding="utf-8"))
     original = extractor.CURATION

@@ -31,6 +31,7 @@ from tests.link_world import REQ, World
 DEC = "decision"
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
+TYPES_TS = APP_DIR.parents[1] / "frontend" / "src" / "api" / "types.ts"
 
 
 def _log(project: dict, entity_type: str, action: str, detail: dict | None = None) -> None:
@@ -237,11 +238,12 @@ def test_the_statement_count_stays_flat_as_events_grow_with_a_group_filter(clien
     assert many.count == few.count
 
 
+@pytest.mark.skipif(not TYPES_TS.exists(), reason="frontend sources are not available (backend-only image)")
 def test_every_classified_action_has_a_label_in_the_frontend_label_map():
     """No raw action key reaches the Event column: each action the kinds map knows is worded in `ACTIVITY_ACTION_LABEL`."""
     from app.modules.registry import get_activity_action_kinds
 
-    source = (APP_DIR.parents[1] / "frontend" / "src" / "api" / "types.ts").read_text()
+    source = TYPES_TS.read_text()
     block = source[source.index("const ACTIVITY_ACTION_LABEL"):source.index("/** The kinds of activity event")]
     labelled = set(re.findall(r"^\s+([a-z_]+):", block, re.M))
     missing = (set(CORE_ACTION_KINDS) | set(get_activity_action_kinds())) - labelled

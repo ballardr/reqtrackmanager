@@ -88,7 +88,7 @@ test.describe("project admin: action types", () => {
       await page.getByRole("link", { name: "Actions", exact: true }).click();
       await page.getByRole("button", { name: /New action/ }).click();
       await page.getByLabel("Title").fill("E2E Action Type Test");
-      await page.getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
+      await page.getByRole("dialog", { name: "New action" }).getByLabel("Type", { exact: true }).selectOption({ label: "Review" });
       await page.getByRole("button", { name: "Create", exact: true }).click();
       await expect(page.getByText("E2E Action Type Test")).toBeVisible();
     });
@@ -108,7 +108,7 @@ test.describe("project admin: action types", () => {
     await test.step("the reassigned action now shows type Test", async () => {
       await page.getByRole("link", { name: "Actions", exact: true }).click();
       await page.getByText("E2E Action Type Test").click();
-      await expect(page.getByLabel("Type", { exact: true }).locator("option:checked")).toHaveText("Test");
+      await expect(page.getByRole("dialog").getByLabel("Type", { exact: true }).locator("option:checked")).toHaveText("Test");
     });
 
     await test.step("with only Test remaining, its delete control is disabled", async () => {

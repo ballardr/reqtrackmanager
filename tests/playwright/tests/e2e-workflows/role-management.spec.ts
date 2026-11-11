@@ -198,7 +198,7 @@ test.describe("Fine-Grained Access Control: Role Management", () => {
     await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
 
     await selectOrgAdminGroup(page, "Role management");
-    await expect(page.getByText("Grant roles to users or groups")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Grant roles to users or groups" })).toBeVisible();
     await expect(page.getByRole("button", { name: "New custom role" })).toHaveCount(0);
   });
 });

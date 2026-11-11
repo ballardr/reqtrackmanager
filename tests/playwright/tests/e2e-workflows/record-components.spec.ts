@@ -65,7 +65,11 @@ test.describe("components on every record", () => {
       await expect(places).toContainText("Software / Performance");
       await page.reload();
       await expect(page.locator(".record-header").getByRole("group", { name: "Components" })).toContainText("Software / Performance");
-      await page.locator(".record-header").getByRole("button", { name: "Remove Software / Performance" }).click();
+      // The chip leaves the page before the change is saved, so wait for the save: the API is read in the next step.
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/placements") && r.request().method() !== "GET"),
+        page.locator(".record-header").getByRole("button", { name: "Remove Software / Performance" }).click(),
+      ]);
       await expect(page.locator(".record-header").getByRole("group", { name: "Components" })).not.toContainText("Software / Performance");
     });
 

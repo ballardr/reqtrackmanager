@@ -117,7 +117,7 @@ test.describe("organisation bundle merge-import", () => {
     await test.step("upload the bundle and resolve the project-name conflict as a copy", async () => {
       await page.goto("/orgs");
       await expect(page).toHaveURL(/\/orgs\/[^/]+\/admin$/);
-      await page.getByRole("button", { name: `Import into this organisation` }).click();
+      await page.getByRole("button", { name: "Import into this organisation section" }).click();
       const fileInput = page.locator('input[type="file"][accept*="zip"]');
       await fileInput.setInputFiles(exportedPath!);
       await page.getByRole("button", { name: "Preview import" }).click();

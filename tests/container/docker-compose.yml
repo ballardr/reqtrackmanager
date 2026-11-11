@@ -152,6 +152,10 @@ services:
       REQUIRE_STRONG_SECRETS: ${REQUIRE_STRONG_SECRETS:-false}
       # The seeds and the Playwright suite sign in as accounts whose passwords the seed typed; production forces a change.
       FORCE_PASSWORD_CHANGE_ON_ADMIN_SET: ${FORCE_PASSWORD_CHANGE_ON_ADMIN_SET:-false}
+      # Every suite sign-in comes from one address and the Playwright suite signs in hundreds of times, some with a wrong
+      # password on purpose, so the per-address allowance (30 failures in 15 minutes) would delay later sign-ins with a 429.
+      # The per-account delay stays at its default.
+      LOGIN_DELAY_FREE_ATTEMPTS_ADDRESS: ${LOGIN_DELAY_FREE_ATTEMPTS_ADDRESS:-100000}
       REQUIRE_EMAIL_CONFIRMATION: ${REQUIRE_EMAIL_CONFIRMATION:-false}
       SERVER_ADMIN_ENABLED: "true"
       SERVER_ADMIN_EMAIL: ${SERVER_ADMIN_EMAIL:-admin@example.com}

@@ -26,7 +26,7 @@ test("clicking a requirement status badge filters the list, and clicking it agai
   await page.getByRole("link", { name: "Requirements", exact: true }).click();
   await page.getByLabel("List view").click();
 
-  const statusFilterSelect = page.getByLabel("Status");
+  const statusFilterSelect = page.getByLabel("Status", { exact: true });
   await expect(statusFilterSelect).toHaveValue("");
 
   const rows = page.locator("table tbody tr");
